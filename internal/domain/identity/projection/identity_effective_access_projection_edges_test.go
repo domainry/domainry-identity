@@ -15,9 +15,10 @@ func TestIdentityBuildEffectiveAccessSnapshotEdges(t *testing.T) {
 			Role: identitymodel.RoleSchema{
 				Permissions: []string{"order.read", "domain.order.update", "invalid"},
 				DataPermissions: []identitymodel.DataPermission{
-					{ObjectKey: "order", Scope: "department", Read: true},
+					{ObjectKey: "order", Scope: "department", Read: true, AuditDenial: true},
 					{ObjectKey: "order", Scope: "all_records", Read: true, Write: true, Predicate: &identitymodel.IdentityPolicyExpression{Operator: "eq"}},
 				},
+				FieldPermissions: []identitymodel.FieldPermission{{ObjectKey: "order", FieldKey: "plain", Read: true, Reason: "sensitive", Policies: []identitymodel.ContextualFieldPolicyRule{{Key: "owner", Priority: 10, Actions: []string{"read"}, Effect: "allow", Predicate: &identitymodel.IdentityPolicyExpression{Operator: "eq", FieldKey: "owner_id", ValueSource: "actor_claim", ClaimKey: "user_id"}}}}},
 			},
 		},
 		Assignments: []identitymodel.IdentityUserRoleAssignment{
@@ -70,6 +71,12 @@ func TestIdentityBuildEffectiveAccessSnapshotEdges(t *testing.T) {
 	}
 	if len(snapshot.DataAccess) != 2 || len(snapshot.Permissions) != 3 {
 		t.Fatalf("data/permissions = %#v %#v", snapshot.DataAccess, snapshot.Permissions)
+	}
+	if !snapshot.DataAccess[0].AuditDenial && !snapshot.DataAccess[1].AuditDenial {
+		t.Fatalf("data denial-audit intent was lost: %#v", snapshot.DataAccess)
+	}
+	if snapshot.FieldAccess[0].Reason != "sensitive" || len(snapshot.FieldAccess[0].Policies) != 1 {
+		t.Fatalf("contextual field policy was lost: %#v", snapshot.FieldAccess[0])
 	}
 
 	withoutDecision := IdentityBuildEffectiveAccessSnapshot(IdentityEffectiveAccessProjectionInput{})

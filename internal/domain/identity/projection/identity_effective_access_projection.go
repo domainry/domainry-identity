@@ -187,9 +187,10 @@ func identityProjectionSourcesForGrant(key string, roleSources map[string][]iden
 
 func identityProjectionDataAccess(role identitymodel.RoleSchema, sources map[string][]identitymodel.IdentityGrantSource) []identitymodel.IdentityEffectiveDataAccess {
 	type aggregate struct {
-		scopes     []string
-		predicates []identitymodel.IdentityPolicyExpression
-		sources    []identitymodel.IdentityGrantSource
+		scopes      []string
+		predicates  []identitymodel.IdentityPolicyExpression
+		auditDenial bool
+		sources     []identitymodel.IdentityGrantSource
 	}
 	values := map[string]*aggregate{}
 	for _, permission := range role.DataPermissions {
@@ -202,6 +203,7 @@ func identityProjectionDataAccess(role identitymodel.RoleSchema, sources map[str
 				values[key] = &aggregate{}
 			}
 			values[key].scopes = append(values[key].scopes, permission.Scope)
+			values[key].auditDenial = values[key].auditDenial || permission.AuditDenial
 			if permission.Predicate != nil {
 				values[key].predicates = append(values[key].predicates, *permission.Predicate)
 			}
@@ -222,7 +224,7 @@ func identityProjectionDataAccess(role identitymodel.RoleSchema, sources map[str
 		} else if len(value.predicates) > 1 {
 			predicate = &identitymodel.IdentityPolicyExpression{Operator: "or", Children: value.predicates}
 		}
-		out = append(out, identitymodel.IdentityEffectiveDataAccess{ObjectKey: parts[0], Action: parts[1], Allowed: true, Scope: scope, Scopes: scopes, Predicate: predicate, Sources: identityProjectionUniqueSources(value.sources)})
+		out = append(out, identitymodel.IdentityEffectiveDataAccess{ObjectKey: parts[0], Action: parts[1], Allowed: true, Scope: scope, Scopes: scopes, Predicate: predicate, AuditDenial: value.auditDenial, Sources: identityProjectionUniqueSources(value.sources)})
 	}
 	sort.Slice(out, func(left, right int) bool {
 		return out[left].ObjectKey+"\x00"+out[left].Action < out[right].ObjectKey+"\x00"+out[right].Action
@@ -245,9 +247,10 @@ func identityProjectionFieldAccess(role identitymodel.RoleSchema, objects []defi
 				fieldSources = append(fieldSources, roleSources...)
 			}
 			read, write, export, masked := decision(role, object, field)
+			reason, rules := identityProjectionContextualFieldRules(role, object.Key, field.Key)
 			out = append(out, identitymodel.IdentityEffectiveFieldAccess{
 				ObjectKey: object.Key, FieldKey: field.Key,
-				Read: read, Write: write, Export: export, Masked: masked,
+				Read: read, Write: write, Export: export, Masked: masked, Reason: reason, Policies: rules,
 				Sensitive: identityProjectionSensitiveField(object, field), Sources: identityProjectionUniqueSources(fieldSources),
 			})
 		}
@@ -256,6 +259,48 @@ func identityProjectionFieldAccess(role identitymodel.RoleSchema, objects []defi
 		return out[left].ObjectKey+"\x00"+out[left].FieldKey < out[right].ObjectKey+"\x00"+out[right].FieldKey
 	})
 	return out
+}
+
+func identityProjectionContextualFieldRules(role identitymodel.RoleSchema, objectKey, fieldKey string) (string, []identitymodel.ContextualFieldPolicyRule) {
+	reason := ""
+	rules := []identitymodel.ContextualFieldPolicyRule{}
+	for _, permission := range role.FieldPermissions {
+		if permission.ObjectKey != objectKey || permission.FieldKey != fieldKey && permission.FieldKey != "*" {
+			continue
+		}
+		if reason == "" {
+			reason = permission.Reason
+		}
+		rules = append(rules, cloneIdentityProjectionFieldRules(permission.Policies)...)
+	}
+	return reason, rules
+}
+
+func cloneIdentityProjectionFieldRules(values []identitymodel.ContextualFieldPolicyRule) []identitymodel.ContextualFieldPolicyRule {
+	result := make([]identitymodel.ContextualFieldPolicyRule, len(values))
+	for index := range values {
+		result[index] = values[index]
+		result[index].Actions = append([]string(nil), values[index].Actions...)
+		if values[index].Predicate != nil {
+			predicate := cloneIdentityProjectionPredicate(*values[index].Predicate)
+			result[index].Predicate = &predicate
+		}
+		if values[index].MaskStrategy != nil {
+			strategy := *values[index].MaskStrategy
+			result[index].MaskStrategy = &strategy
+		}
+	}
+	return result
+}
+
+func cloneIdentityProjectionPredicate(value identitymodel.IdentityPolicyExpression) identitymodel.IdentityPolicyExpression {
+	value.Path = append([]identitymodel.IdentityPolicyRelationSegment(nil), value.Path...)
+	value.Values = append([]string(nil), value.Values...)
+	value.Children = append([]identitymodel.IdentityPolicyExpression(nil), value.Children...)
+	for index := range value.Children {
+		value.Children[index] = cloneIdentityProjectionPredicate(value.Children[index])
+	}
+	return value
 }
 
 func identityProjectionPermission(values []identitymodel.IdentityEffectivePermissionGrant, key string) (identitymodel.IdentityEffectivePermissionGrant, bool) {

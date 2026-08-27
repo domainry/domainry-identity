@@ -54,11 +54,12 @@ func resolveCatalogRoleAccess(bundle identitysdk.AccessBundle, catalog identitys
 				scope := identitycontract.IdentityDataScopeForAction(role, string(action.Resource), string(action.Action))
 				if scope != "" && scope != "none" && scope != "custom" {
 					bundle.DataPolicies = append(bundle.DataPolicies, identitysdk.DataPolicy{
-						Key:       "catalog-role:" + string(action.Resource) + ":" + string(action.Action),
-						Resource:  action.Resource,
-						Action:    action.Action,
-						Effect:    identitysdk.EffectAllow,
-						Predicate: sdkScopePredicate(scope),
+						Key:         "catalog-role:" + string(action.Resource) + ":" + string(action.Action),
+						Resource:    action.Resource,
+						Action:      action.Action,
+						Effect:      identitysdk.EffectAllow,
+						Predicate:   sdkScopePredicate(scope),
+						AuditDenial: catalogRoleAuditsDataDenial(role, string(action.Resource), string(action.Action)),
 					})
 					dataAllows[key] = struct{}{}
 				}
@@ -72,6 +73,7 @@ func resolveCatalogRoleAccess(bundle identitysdk.AccessBundle, catalog identitys
 			if _, exists := fieldPolicies[key]; exists {
 				continue
 			}
+			reason, rules := catalogRoleContextualFieldRules(role, string(resource.Key), field)
 			bundle.FieldPolicies = append(bundle.FieldPolicies, identitysdk.FieldPolicy{
 				Resource: resource.Key,
 				Field:    field,
@@ -79,11 +81,41 @@ func resolveCatalogRoleAccess(bundle identitysdk.AccessBundle, catalog identitys
 				Write:    identitycontract.IdentityCanWriteField(role, string(resource.Key), field),
 				Export:   identitycontract.IdentityCanExportField(role, string(resource.Key), field),
 				Masked:   identitycontract.IdentityFieldReadMasked(role, string(resource.Key), field),
+				Reason:   reason,
+				Rules:    rules,
 			})
 			fieldPolicies[key] = struct{}{}
 		}
 	}
 	return bundle
+}
+
+func catalogRoleAuditsDataDenial(role identitymodel.RoleSchema, resource, action string) bool {
+	action = strings.TrimSpace(action)
+	for _, permission := range role.DataPermissions {
+		if strings.TrimSpace(permission.ObjectKey) != strings.TrimSpace(resource) || !permission.AuditDenial {
+			continue
+		}
+		if action == "read" && permission.Read || action != "read" && permission.Write {
+			return true
+		}
+	}
+	return false
+}
+
+func catalogRoleContextualFieldRules(role identitymodel.RoleSchema, resource, field string) (string, []identitysdk.FieldRule) {
+	reason := ""
+	rules := []identitysdk.FieldRule{}
+	for _, permission := range role.FieldPermissions {
+		if strings.TrimSpace(permission.ObjectKey) != strings.TrimSpace(resource) || permission.FieldKey != field && permission.FieldKey != "*" {
+			continue
+		}
+		if reason == "" {
+			reason = strings.TrimSpace(permission.Reason)
+		}
+		rules = append(rules, sdkFieldRules(permission.Policies)...)
+	}
+	return reason, rules
 }
 
 func catalogActionKey(resource identitysdk.ResourceType, action identitysdk.Action) string {
@@ -126,11 +158,11 @@ func accessBundleForCatalog(bundle identitysdk.AccessBundle, catalog identitysdk
 	}
 	dataPolicies := make([]identitysdk.DataPolicy, 0, len(bundle.DataPolicies))
 	for _, policy := range bundle.DataPolicies {
-		resource, found := resources[policy.Resource]
+		_, found := resources[policy.Resource]
 		if !found || !hasAction(policy.Resource, policy.Action) {
 			continue
 		}
-		if !catalogPredicateSupported(policy.Predicate, resource.facts) {
+		if !catalogPredicateSupported(policy.Predicate, policy.Resource, resources) {
 			return identitysdk.AccessBundle{}, &identitysdk.Error{Code: "identity.catalog_policy_fact_unsupported", Message: policy.Key}
 		}
 		dataPolicies = append(dataPolicies, policy)
@@ -138,9 +170,15 @@ func accessBundleForCatalog(bundle identitysdk.AccessBundle, catalog identitysdk
 	fieldPolicies := make([]identitysdk.FieldPolicy, 0, len(bundle.FieldPolicies))
 	for _, policy := range bundle.FieldPolicies {
 		resource, found := resources[policy.Resource]
-		if _, declared := resource.fields[strings.TrimSpace(policy.Field)]; found && declared {
-			fieldPolicies = append(fieldPolicies, policy)
+		if _, declared := resource.fields[strings.TrimSpace(policy.Field)]; !found || !declared {
+			continue
 		}
+		for _, rule := range policy.Rules {
+			if rule.Predicate != nil && !catalogPredicateSupported(*rule.Predicate, policy.Resource, resources) {
+				return identitysdk.AccessBundle{}, &identitysdk.Error{Code: "identity.catalog_policy_fact_unsupported", Message: rule.Key}
+			}
+		}
+		fieldPolicies = append(fieldPolicies, policy)
 	}
 	referencePolicies := make([]identitysdk.ReferencePolicy, 0, len(bundle.ReferencePolicies))
 	for _, policy := range bundle.ReferencePolicies {
@@ -185,7 +223,12 @@ func accessBundleForCatalog(bundle identitysdk.AccessBundle, catalog identitysdk
 		if !found || guardrail.Action != "" && !hasAction(guardrail.Resource, guardrail.Action) {
 			continue
 		}
-		if guardrail.Predicate != nil && !catalogPredicateSupported(*guardrail.Predicate, resource.facts) {
+		if strings.TrimSpace(guardrail.Field) != "" {
+			if _, declared := resource.fields[strings.TrimSpace(guardrail.Field)]; !declared {
+				continue
+			}
+		}
+		if guardrail.Predicate != nil && !catalogPredicateSupported(*guardrail.Predicate, guardrail.Resource, resources) {
 			return identitysdk.AccessBundle{}, &identitysdk.Error{Code: "identity.catalog_policy_fact_unsupported", Message: guardrail.Key}
 		}
 		guardrails = append(guardrails, guardrail)
@@ -199,10 +242,10 @@ func accessBundleForCatalog(bundle identitysdk.AccessBundle, catalog identitysdk
 	return bundle, nil
 }
 
-func catalogPredicateSupported(predicate identitysdk.Predicate, facts map[string]struct{}) bool {
+func catalogPredicateSupported(predicate identitysdk.Predicate, root identitysdk.ResourceType, resources map[identitysdk.ResourceType]catalogResourcePolicy) bool {
 	if len(predicate.All) > 0 {
 		for _, child := range predicate.All {
-			if !catalogPredicateSupported(child, facts) {
+			if !catalogPredicateSupported(child, root, resources) {
 				return false
 			}
 		}
@@ -210,15 +253,46 @@ func catalogPredicateSupported(predicate identitysdk.Predicate, facts map[string
 	}
 	if len(predicate.Any) > 0 {
 		for _, child := range predicate.Any {
-			if !catalogPredicateSupported(child, facts) {
+			if !catalogPredicateSupported(child, root, resources) {
 				return false
 			}
 		}
 		return true
 	}
 	if predicate.Not != nil {
-		return catalogPredicateSupported(*predicate.Not, facts)
+		return catalogPredicateSupported(*predicate.Not, root, resources)
 	}
-	_, found := facts[strings.TrimSpace(predicate.Fact)]
+	current := root
+	visited := map[identitysdk.ResourceType]bool{root: true}
+	for _, segment := range predicate.Path {
+		target := segment.TargetResource
+		if visited[target] {
+			return false
+		}
+		currentPolicy, currentFound := resources[current]
+		targetPolicy, targetFound := resources[target]
+		if !currentFound || !targetFound {
+			return false
+		}
+		switch segment.Direction {
+		case identitysdk.RelationForward:
+			if currentPolicy.references[strings.TrimSpace(segment.Reference)] != target {
+				return false
+			}
+		case identitysdk.RelationReverse:
+			if targetPolicy.references[strings.TrimSpace(segment.Reference)] != current {
+				return false
+			}
+		default:
+			return false
+		}
+		visited[target] = true
+		current = target
+	}
+	policy, found := resources[current]
+	if !found {
+		return false
+	}
+	_, found = policy.facts[strings.TrimSpace(predicate.Fact)]
 	return found
 }

@@ -58,13 +58,24 @@ func New(ctx context.Context, cfg config.Config, store *database.IdentityStore, 
 	if store == nil {
 		return nil, fmt.Errorf("Identity persistence store is required")
 	}
-	fail := func(err error) (*Core, error) {
+	manifest, err := loadManifest(cfg.ManifestPath)
+	if err != nil {
 		_ = store.CloseContext(context.Background())
 		return nil, err
 	}
-	manifest, err := loadManifest(cfg.ManifestPath)
-	if err != nil {
-		return fail(err)
+	return NewWithManifest(ctx, cfg, store, manifest, options)
+}
+
+// NewWithManifest assembles Identity from an implementation-owned manifest.
+// The in-process module uses this entrypoint so it never borrows the embedding
+// application's TEMPLATE_MANIFEST or filesystem layout.
+func NewWithManifest(ctx context.Context, cfg config.Config, store *database.IdentityStore, manifest manifestmodel.ManifestSchema, options Options) (*Core, error) {
+	if store == nil {
+		return nil, fmt.Errorf("Identity persistence store is required")
+	}
+	fail := func(err error) (*Core, error) {
+		_ = store.CloseContext(context.Background())
+		return nil, err
 	}
 	manifest.Roles = identityapplication.WithStandaloneIdentityRoleDefinitions(manifest.Roles)
 	metadataStore := metadatapersistence.NewMetadataStore(store)

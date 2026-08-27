@@ -78,7 +78,7 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 		Audience: "orders-runtime", ServiceAccessToken: serviceCredential,
 		HTTPClient: testServer.Client(),
 	})
-	binding, err := factory.Open(t.Context(), nil)
+	binding, err := factory.Open(t.Context(), identity.ApplicationRef{})
 	if err != nil {
 		t.Fatal(err)
 	}

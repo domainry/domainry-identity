@@ -3,12 +3,12 @@ package module
 import (
 	"context"
 	"fmt"
-	"strings"
+	"net/http"
 
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	identityapplication "github.com/domainry/domainry-identity-sdk/application"
-	identitymanagement "github.com/domainry/domainry-identity-sdk/management"
-	identitymodulehost "github.com/domainry/domainry-identity-sdk/modulehost"
+	"github.com/domainry/domainry-identity-sdk/browsergateway"
+	identityhttpapi "github.com/domainry/domainry-identity-sdk/httpapi"
 	"github.com/domainry/domainry-identity/internal/assembly"
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
 	httpserver "github.com/domainry/domainry-identity/internal/transport/http/server"
@@ -24,48 +24,40 @@ func NewFactory(options Options) *Factory {
 	return &Factory{Options: options}
 }
 
-func (factory *Factory) Open(ctx context.Context, host identitysdk.Host) (identitysdk.Binding, error) {
-	moduleHost, ok := host.(identitymodulehost.Host)
-	if !ok {
-		return nil, &identitysdk.Error{Code: "identity.module_host_capabilities_required"}
+func (factory *Factory) Open(ctx context.Context, application identitysdk.ApplicationRef) (identitysdk.Binding, error) {
+	if ctx == nil {
+		return nil, &identitysdk.Error{Code: "identity.context_required"}
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, &identitysdk.Error{StatusCode: http.StatusServiceUnavailable, Code: "identity.context_unavailable", Cause: err}
+	}
+	if !application.WorkspaceID.Valid() || !application.ApplicationKey.Valid() {
+		return nil, &identitysdk.Error{Code: "identity.module_application_scope_required"}
 	}
 	cfg, _, err := loadModuleConfig(factory.Options)
 	if err != nil {
 		return nil, err
 	}
-	application := moduleHost.Application()
-	if !application.WorkspaceID.Valid() || !application.ApplicationKey.Valid() {
-		return nil, &identitysdk.Error{Code: "identity.module_application_scope_required"}
-	}
 	// The embedding Runtime owns the application identity. It is the
 	// authoritative token audience, avoiding a split trust scope between
 	// Runtime IDENTITY_AUDIENCE and module-local environment configuration.
 	cfg.AuthAudience = string(application.ApplicationKey)
-	hostDatabase, err := moduleHost.IdentityDatabase(ctx)
+	store, err := database.OpenContext(ctx, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("open host Identity database: %w", err)
+		return nil, fmt.Errorf("open Identity module database: %w", err)
 	}
-	if hostDatabase.DB == nil || strings.TrimSpace(hostDatabase.Driver) == "" {
-		return nil, &identitysdk.Error{Code: "identity.module_database_unavailable"}
+	if err := store.EnsureSchema(ctx); err != nil {
+		_ = store.CloseContext(context.Background())
+		return nil, fmt.Errorf("prepare Identity module schema: %w", err)
 	}
-	if err := moduleHost.RegisterIdentityMigrations(ctx, []identitymodulehost.Migration{{
-		Version: database.CurrentIdentitySchemaVersion,
-		Up: func(migrationCtx context.Context, migrationDatabase identitymodulehost.Database) error {
-			store, attachErr := database.AttachContext(migrationCtx, cfg, migrationDatabase.DB, migrationDatabase.Driver, migrationDatabase.Schema)
-			if attachErr != nil {
-				return attachErr
-			}
-			return store.EnsureSchema(migrationCtx)
-		},
-	}}); err != nil {
-		return nil, fmt.Errorf("register Identity module migrations: %w", err)
-	}
-	store, err := database.AttachContext(ctx, cfg, hostDatabase.DB, hostDatabase.Driver, hostDatabase.Schema)
+	manifest, err := loadModuleManifest()
 	if err != nil {
+		_ = store.CloseContext(context.Background())
 		return nil, err
 	}
-	identityRuntime, err := assembly.New(ctx, cfg, store, assembly.Options{Clock: moduleHost.Clock()})
+	identityRuntime, err := assembly.NewWithManifest(ctx, cfg, store, manifest, assembly.Options{Clock: factory.Options.Clock})
 	if err != nil {
+		_ = store.CloseContext(context.Background())
 		return nil, err
 	}
 	binding := identityRuntime.Binding
@@ -83,24 +75,53 @@ func (factory *Factory) Open(ctx context.Context, host identitysdk.Host) (identi
 		_ = identityRuntime.CloseContext(ctx)
 		return nil, fmt.Errorf("assemble Identity module management surface: %w", err)
 	}
-	managementSurface := &moduleManagementSurface{handler: managementServer.Routes()}
+	managementSurface := &moduleHTTPSurface{name: "identity_management", handler: managementServer.Routes()}
 	for _, pattern := range managementServer.IdentityManagementRoutes() {
-		managementSurface.routes = append(managementSurface.routes, identitymanagement.Route{Pattern: pattern})
+		managementSurface.routes = append(managementSurface.routes, identityhttpapi.Route{Pattern: pattern, Exposures: []identityhttpapi.Exposure{identityhttpapi.ExposureTenantAdmin}})
 	}
-	return &moduleBinding{Binding: scopedBinding, runtime: identityRuntime, management: managementSurface}, nil
+	browserGateway, err := browsergateway.New(scopedBinding, browsergateway.Config{
+		ApplicationKey:     application.ApplicationKey,
+		AllowedReturnURLs:  append([]string(nil), application.RedirectURLs...),
+		DefaultWorkspaceID: application.WorkspaceID,
+		MaxRequestBodySize: int64(cfg.HTTPPublicMaxJSONBodyBytes),
+		Cookie: browsergateway.CookieConfig{
+			Path: "/auth", Secure: cfg.IsProduction(), SameSite: http.SameSiteLaxMode, MaxAge: cfg.AuthRefreshTTL,
+		},
+	})
+	if err != nil {
+		_ = identityRuntime.CloseContext(ctx)
+		return nil, fmt.Errorf("assemble Identity module browser authentication surface: %w", err)
+	}
+	browserMux := http.NewServeMux()
+	if err := browserGateway.RegisterRoutes(browserMux, ""); err != nil {
+		_ = identityRuntime.CloseContext(ctx)
+		return nil, fmt.Errorf("register Identity module browser authentication surface: %w", err)
+	}
+	browserPatterns, err := browsergateway.RoutePatterns("")
+	if err != nil {
+		_ = identityRuntime.CloseContext(ctx)
+		return nil, fmt.Errorf("resolve Identity module browser authentication routes: %w", err)
+	}
+	browserSurface := &moduleHTTPSurface{name: "browser_authentication", handler: browserMux}
+	for _, pattern := range browserPatterns {
+		browserSurface.routes = append(browserSurface.routes, identityhttpapi.Route{
+			Pattern: pattern, Exposures: []identityhttpapi.Exposure{identityhttpapi.ExposurePublic, identityhttpapi.ExposureTenantAdmin},
+		})
+	}
+	return &moduleBinding{Binding: scopedBinding, runtime: identityRuntime, surfaces: []identityhttpapi.Surface{browserSurface, managementSurface}}, nil
 }
 
 type moduleBinding struct {
 	identitysdk.Binding
-	runtime    *assembly.Core
-	management identitymanagement.Surface
+	runtime  *assembly.Core
+	surfaces []identityhttpapi.Surface
 }
 
-func (binding *moduleBinding) ManagementSurface() identitymanagement.Surface {
+func (binding *moduleBinding) HTTPSurfaces() []identityhttpapi.Surface {
 	if binding == nil {
 		return nil
 	}
-	return binding.management
+	return append([]identityhttpapi.Surface(nil), binding.surfaces...)
 }
 
 func (binding *moduleBinding) Close(ctx context.Context) error {
@@ -112,4 +133,4 @@ func (binding *moduleBinding) Close(ctx context.Context) error {
 
 var _ identitysdk.Factory = (*Factory)(nil)
 var _ identitysdk.Binding = (*moduleBinding)(nil)
-var _ identitymanagement.Provider = (*moduleBinding)(nil)
+var _ identityhttpapi.Provider = (*moduleBinding)(nil)

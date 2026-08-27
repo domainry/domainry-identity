@@ -41,7 +41,6 @@ type IdentityStore struct {
 	schemaAssembler      identitySchemaAssembler
 	backupChecksum       func(string) (string, error)
 	migrationReadDir     func(string) ([]os.DirEntry, error)
-	externalDatabase     bool
 }
 
 func OpenContext(ctx context.Context, cfg config.Config) (*IdentityStore, error) {
@@ -154,33 +153,6 @@ func openContextWithDependencies(ctx context.Context, cfg config.Config, depende
 	return store, nil
 }
 
-// AttachContext builds Identity persistence over a host-owned database. The
-// returned store never closes the supplied pool; lifecycle ownership remains
-// with the embedding Runtime.
-func AttachContext(ctx context.Context, cfg config.Config, db *sql.DB, driverName, databaseSchema string) (*IdentityStore, error) {
-	if ctx == nil || db == nil {
-		return nil, fmt.Errorf("attach Identity database: context and database are required")
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	dialect, err := dialectFor(strings.TrimSpace(driverName))
-	if err != nil {
-		return nil, err
-	}
-	activeMaterial, keyRing, err := identityDataKeyProvider(cfg, defaultIdentityOpenDependencies().keyRing)
-	if err != nil {
-		return nil, fmt.Errorf("initialize Identity data key ring: %w", err)
-	}
-	return &IdentityStore{
-		db: db, dialect: dialect, config: cfg, databaseSchema: strings.TrimSpace(databaseSchema),
-		secretMaterialKey: activeMaterial, secretKeyProvider: keyRing,
-		idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096), sqlMetrics: telemetry.NewSQLMetrics(),
-		operationalMetrics: NewIdentityOperationalMetrics(cfg.MigrationBackupLastSuccessAt, cfg.MigrationRestoreDrillSuccessAt),
-		externalDatabase:   true,
-	}, nil
-}
-
 func identityDataKeyProvider(cfg config.Config, factory func(secrets.Key, ...secrets.Key) (secrets.KeyProvider, error)) ([32]byte, secrets.KeyProvider, error) {
 	activeMaterial := sha256.Sum256([]byte(cfg.IdentityDataSecretKey))
 	activeID := strings.TrimSpace(cfg.IdentityDataActiveKeyID)
@@ -214,9 +186,6 @@ func (s *IdentityStore) Close() error {
 	if s == nil {
 		return nil
 	}
-	if s.externalDatabase {
-		return nil
-	}
 	var first error
 	if s.migrationConn != nil {
 		first = s.migrationConn.Close()
@@ -237,9 +206,6 @@ func (s *IdentityStore) Close() error {
 // already in flight, bounded by the caller's shutdown deadline.
 func (s *IdentityStore) CloseContext(ctx context.Context) error {
 	if s == nil {
-		return nil
-	}
-	if s.externalDatabase {
 		return nil
 	}
 	done := make(chan error, 1)

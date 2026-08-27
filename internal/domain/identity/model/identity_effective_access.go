@@ -27,24 +27,27 @@ type IdentityEffectivePermissionGrant struct {
 }
 
 type IdentityEffectiveDataAccess struct {
-	ObjectKey string                    `json:"object_key"`
-	Action    string                    `json:"action"`
-	Allowed   bool                      `json:"allowed"`
-	Scope     string                    `json:"scope"`
-	Scopes    []string                  `json:"scopes"`
-	Predicate *IdentityPolicyExpression `json:"predicate,omitempty"`
-	Sources   []IdentityGrantSource     `json:"sources"`
+	ObjectKey   string                    `json:"object_key"`
+	Action      string                    `json:"action"`
+	Allowed     bool                      `json:"allowed"`
+	Scope       string                    `json:"scope"`
+	Scopes      []string                  `json:"scopes"`
+	Predicate   *IdentityPolicyExpression `json:"predicate,omitempty"`
+	AuditDenial bool                      `json:"audit_denial,omitempty"`
+	Sources     []IdentityGrantSource     `json:"sources"`
 }
 
 type IdentityEffectiveFieldAccess struct {
-	ObjectKey string                `json:"object_key"`
-	FieldKey  string                `json:"field_key"`
-	Read      bool                  `json:"read"`
-	Write     bool                  `json:"write"`
-	Export    bool                  `json:"export"`
-	Masked    bool                  `json:"masked,omitempty"`
-	Sensitive bool                  `json:"sensitive,omitempty"`
-	Sources   []IdentityGrantSource `json:"sources"`
+	ObjectKey string                      `json:"object_key"`
+	FieldKey  string                      `json:"field_key"`
+	Read      bool                        `json:"read"`
+	Write     bool                        `json:"write"`
+	Export    bool                        `json:"export"`
+	Masked    bool                        `json:"masked,omitempty"`
+	Reason    string                      `json:"reason,omitempty"`
+	Policies  []ContextualFieldPolicyRule `json:"policies,omitempty"`
+	Sensitive bool                        `json:"sensitive,omitempty"`
+	Sources   []IdentityGrantSource       `json:"sources"`
 }
 
 type IdentityEffectiveAccessSnapshot struct {

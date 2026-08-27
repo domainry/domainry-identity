@@ -32,18 +32,18 @@ Identity 通过 [`github.com/domainry/domainry-identity-sdk`](https://github.com
 ```go
 import identitymodule "github.com/domainry/domainry-identity/module"
 
-factory := identitymodule.NewFactory(identitymodule.Options{
-	IdentityVersion: identityVersion,
-})
+factory := identitymodule.NewFactory(identitymodule.OptionsFromEnvironment())
 ```
 
-`module.Factory.Open` 要求宿主实现 `modulehost.Host`。Identity 会：
+`module.Factory.Open` 只接收 SDK 的应用上下文。Identity 会：
 
-- 复用宿主提供的 `*sql.DB`，不创建或关闭宿主连接池；
-- 向宿主注册 Identity schema migration；
-- 使用宿主提供的 Clock 和 Audit；
-- 使用宿主 `Application()` 提供的 workspace、application key 与回调地址，
+- 自己打开并关闭 Identity 数据库连接池；
+- 自己执行和校验 Identity schema migration；
+- 使用 Module 自己的 Clock（测试可通过 `Options.Clock` 覆盖）；
+- 使用 `Factory.Open` 显式传入的 workspace、application key 与回调地址，
   并拒绝跨 workspace/audience 复用同一个 Binding；
+- 只读取 `IDENTITY_MODULE_DATABASE_*` 持久化配置，绝不继承 Runtime 的
+  `DATABASE_DRIVER`、`DATABASE_DSN` 或 `APP_DB_PATH`；
 - 直接返回进程内 SDK Binding，不产生回环 HTTP 调用。
 
 ### 独立服务模式
@@ -81,7 +81,7 @@ MySQL 和 PostgreSQL 使用各自的标识符、占位符及 schema migration SQ
 
 Identity 不负责在数据库服务器上创建 database。部署前应由运维创建名为 `identity` 的 database，并为查询账号和迁移账号授予相应权限；服务启动时会拒绝指向其他 database 的 MySQL/PostgreSQL DSN。`DATABASE_MIGRATION_DSN` 如有配置，也必须指向同一个 `identity` database。
 
-单体模式不会根据环境变量重新打开数据库，而是根据宿主 `modulehost.Database.Driver` 选择上述 dialect，并使用宿主提供的连接和 schema。
+单体模式和独立服务模式使用同一套 Identity 数据库配置、migration 和生命周期；Runtime 不再提供连接池或 schema。
 
 ## 主要配置
 

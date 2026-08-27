@@ -12,48 +12,13 @@ import (
 
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	identitycontracttest "github.com/domainry/domainry-identity-sdk/contracttest"
-	identitymanagement "github.com/domainry/domainry-identity-sdk/management"
-	identitymodulehost "github.com/domainry/domainry-identity-sdk/modulehost"
+	identityhttpapi "github.com/domainry/domainry-identity-sdk/httpapi"
 	identitymodule "github.com/domainry/domainry-identity/module"
 )
-
-type testHost struct {
-	db             *sql.DB
-	migrationCalls int
-	clock          identitysdk.Clock
-	application    identitysdk.ApplicationRef
-}
-
-func (host *testHost) Clock() identitysdk.Clock {
-	if host.clock != nil {
-		return host.clock
-	}
-	return testClock{now: time.Now().UTC()}
-}
-func (*testHost) Audit() identitysdk.AuditAppender { return testAudit{} }
-func (host *testHost) Application() identitysdk.ApplicationRef {
-	return host.application
-}
-func (host *testHost) IdentityDatabase(context.Context) (identitymodulehost.Database, error) {
-	return identitymodulehost.Database{DB: host.db, Driver: "sqlite"}, nil
-}
-func (host *testHost) RegisterIdentityMigrations(ctx context.Context, migrations []identitymodulehost.Migration) error {
-	for _, migration := range migrations {
-		host.migrationCalls++
-		if err := migration.Up(ctx, identitymodulehost.Database{DB: host.db, Driver: "sqlite"}); err != nil {
-			return err
-		}
-	}
-	return nil
-}
 
 type testClock struct{ now time.Time }
 
 func (clock testClock) Now() time.Time { return clock.now }
-
-type testAudit struct{}
-
-func (testAudit) AppendIdentityAudit(context.Context, identitysdk.AuditEvent) error { return nil }
 
 func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	_, sourceFile, _, ok := runtime.Caller(0)
@@ -63,18 +28,14 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	projectRoot := filepath.Clean(filepath.Join(filepath.Dir(sourceFile), ".."))
 	t.Setenv("APP_ENV", "development")
 	t.Setenv("DATABASE_DRIVER", "sqlite")
-	t.Setenv("APP_DB_PATH", filepath.Join(t.TempDir(), "identity.db"))
+	moduleDBPath := filepath.Join(t.TempDir(), "identity.db")
+	t.Setenv("APP_DB_PATH", filepath.Join(t.TempDir(), "runtime-must-not-be-used.db"))
 	t.Setenv("TEMPLATE_MANIFEST", filepath.Join(projectRoot, "domainry.template.json"))
 	t.Setenv("AUTH_AUDIENCE", "must-not-win-over-host-application")
-	hostDB, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "module-host.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = hostDB.Close() })
 	now := time.Now().UTC().Truncate(time.Second)
-	host := &testHost{db: hostDB, clock: testClock{now: now}, application: identitysdk.ApplicationRef{WorkspaceID: "default", ApplicationKey: "orders-runtime", RedirectURLs: []string{"http://localhost:3100/auth/callback"}}}
-	factory := identitymodule.NewFactory(identitymodule.Options{IdentityVersion: "test"})
-	binding, err := factory.Open(t.Context(), host)
+	application := identitysdk.ApplicationRef{WorkspaceID: "default", ApplicationKey: "orders-runtime", RedirectURLs: []string{"http://localhost:3100/auth/callback"}}
+	factory := identitymodule.NewFactory(identitymodule.Options{IdentityVersion: "test", DatabaseDriver: "sqlite", DatabasePath: moduleDBPath, Clock: testClock{now: now}})
+	binding, err := factory.Open(t.Context(), application)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,33 +45,35 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	if binding.Descriptor().Audience != "orders-runtime" {
 		t.Fatalf("module audience=%q want host application audience", binding.Descriptor().Audience)
 	}
-	if host.migrationCalls != 1 {
-		t.Fatalf("Identity host migration calls=%d", host.migrationCalls)
-	}
-	managementProvider, ok := binding.(identitymanagement.Provider)
+	httpProvider, ok := binding.(identityhttpapi.Provider)
 	if !ok {
-		t.Fatal("module Binding does not expose its management Surface")
+		t.Fatal("module Binding does not expose its HTTP Surfaces")
 	}
-	managementSurface := managementProvider.ManagementSurface()
-	if managementSurface == nil || managementSurface.Handler() == nil || managementSurface.ContractVersion() != identitymanagement.ContractVersion {
-		t.Fatalf("invalid module management Surface %#v", managementSurface)
+	surfaces := httpProvider.HTTPSurfaces()
+	if len(surfaces) != 2 {
+		t.Fatalf("HTTP surface count=%d", len(surfaces))
 	}
-	routes := managementSurface.Routes()
-	if len(routes) == 0 {
-		t.Fatal("module management Surface has no routes")
-	}
-	foundUsers := false
-	for _, route := range routes {
-		if route.Pattern == "GET /identity/users" {
-			foundUsers = true
+	foundUsers, foundLogin := false, false
+	for _, surface := range surfaces {
+		if surface == nil || surface.Handler() == nil || surface.ContractVersion() != identityhttpapi.ContractVersion {
+			t.Fatalf("invalid module HTTP Surface %#v", surface)
 		}
-		if route.Pattern == "POST /auth/login" || route.Pattern == "GET /health" {
-			t.Fatalf("standalone-only route leaked into module management Surface: %q", route.Pattern)
+		for _, route := range surface.Routes() {
+			if route.Pattern == "GET /identity/users" {
+				foundUsers = true
+			}
+			if route.Pattern == "POST /auth/login" {
+				foundLogin = true
+			}
+			if route.Pattern == "GET /health" {
+				t.Fatalf("standalone-only route leaked into module HTTP Surface: %q", route.Pattern)
+			}
 		}
 	}
-	if !foundUsers {
-		t.Fatal("module management Surface is missing GET /identity/users")
+	if !foundUsers || !foundLogin {
+		t.Fatalf("module surfaces users=%v login=%v", foundUsers, foundLogin)
 	}
+	managementSurface := surfaces[1]
 	response := httptest.NewRecorder()
 	managementSurface.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/identity/users", nil))
 	if response.Code == http.StatusNotFound {
@@ -144,8 +107,13 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	if err != nil || restoredReceipt != receipt {
 		t.Fatalf("restored immutable catalog receipt=%#v want=%#v err=%v", restoredReceipt, receipt, err)
 	}
+	moduleDB, err := sql.Open("sqlite", moduleDBPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = moduleDB.Close() })
 	var revisionCount int
-	if err := hostDB.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM identity_authorization_catalog_revisions WHERE workspace_id = ? AND application_key = ?`, "default", "orders-runtime").Scan(&revisionCount); err != nil || revisionCount != 2 {
+	if err := moduleDB.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM identity_authorization_catalog_revisions WHERE workspace_id = ? AND application_key = ?`, "default", "orders-runtime").Scan(&revisionCount); err != nil || revisionCount != 2 {
 		t.Fatalf("catalog revision history count=%d err=%v", revisionCount, err)
 	}
 	otherWorkspaceCatalog := catalog
@@ -165,7 +133,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	reopened, err := factory.Open(t.Context(), host)
+	reopened, err := factory.Open(t.Context(), application)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,10 +147,37 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	}
 }
 
-func TestFactoryRejectsHostWithoutModuleCapabilities(t *testing.T) {
-	if _, err := identitymodule.NewFactory(identitymodule.Options{}).Open(t.Context(), nil); err == nil {
-		t.Fatal("module factory accepted host without database and migration capabilities")
+func TestFactoryRejectsMissingApplication(t *testing.T) {
+	if _, err := identitymodule.NewFactory(identitymodule.Options{}).Open(t.Context(), identitysdk.ApplicationRef{}); err == nil {
+		t.Fatal("module factory accepted a missing application scope")
 	}
 }
 
-var _ identitymodulehost.Host = (*testHost)(nil)
+func TestFactoryRejectsUnavailableContextBeforeOpeningInfrastructure(t *testing.T) {
+	factory := identitymodule.NewFactory(identitymodule.Options{})
+	application := identitysdk.ApplicationRef{WorkspaceID: "default", ApplicationKey: "orders-runtime"}
+	if _, err := factory.Open(nil, application); err == nil {
+		t.Fatal("module factory accepted a nil context")
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := factory.Open(ctx, application); err == nil {
+		t.Fatal("module factory accepted a cancelled context")
+	}
+}
+
+func TestOptionsFromEnvironmentUsesModuleOwnedDatabaseNamespace(t *testing.T) {
+	t.Setenv("DATABASE_DRIVER", "postgres")
+	t.Setenv("DATABASE_DSN", "runtime-dsn")
+	t.Setenv("APP_DB_PATH", "runtime.db")
+	t.Setenv("IDENTITY_MODULE_DATABASE_DRIVER", "sqlite")
+	t.Setenv("IDENTITY_MODULE_DATABASE_DSN", "identity-dsn")
+	t.Setenv("IDENTITY_MODULE_DATABASE_MIGRATION_DSN", "identity-migration-dsn")
+	t.Setenv("IDENTITY_MODULE_DATABASE_SCHEMA", "identity")
+	t.Setenv("IDENTITY_MODULE_DB_PATH", "identity.db")
+
+	options := identitymodule.OptionsFromEnvironment()
+	if options.DatabaseDriver != "sqlite" || options.DatabaseDSN != "identity-dsn" || options.DatabaseMigrationDSN != "identity-migration-dsn" || options.DatabaseSchema != "identity" || options.DatabasePath != "identity.db" {
+		t.Fatalf("module database options=%#v", options)
+	}
+}

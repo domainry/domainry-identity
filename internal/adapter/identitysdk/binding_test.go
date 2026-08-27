@@ -70,6 +70,38 @@ func TestSDKAccessBundleDoesNotInventDataAccessFromFunctionGrant(t *testing.T) {
 	}
 }
 
+func TestSDKAccessBundlePreservesCompleteV2PolicySemantics(t *testing.T) {
+	relation := &identitymodel.IdentityPolicyExpression{
+		Operator: "eq", FieldKey: "owner_id", ValueSource: "actor_claim", ClaimKey: "business_profile_id",
+		Path: []identitymodel.IdentityPolicyRelationSegment{{Direction: "forward", RelationFieldKey: "account_id", TargetObjectKey: "account"}},
+	}
+	bundle := sdkAccessBundle(identitymodel.IdentityEffectiveAccessSnapshot{
+		AuthorizationRevision: "revision-2",
+		DataAccess:            []identitymodel.IdentityEffectiveDataAccess{{ObjectKey: "invoice", Action: "read", Allowed: true, Scope: "custom", Predicate: relation, AuditDenial: true}},
+		FieldAccess: []identitymodel.IdentityEffectiveFieldAccess{{
+			ObjectKey: "invoice", FieldKey: "phone", Read: true, Masked: true, Reason: "personal data",
+			Policies: []identitymodel.ContextualFieldPolicyRule{{Key: "owner-clear", Priority: 100, Actions: []string{"read"}, Effect: "allow", Predicate: relation}},
+		}},
+		ReferencePermissions: []identitymodel.ReferencePermission{{SourceObjectKey: "invoice", RelationFieldKey: "account_id", TargetObjectKey: "account", Mode: "deny", Reason: "restricted"}},
+		GuardrailKeys:        []string{"regulated"},
+	}, identitymodel.Principal{
+		WorkspaceID: "default", UserID: "user-1",
+		Role: identitymodel.RoleSchema{Guardrails: []identitymodel.IdentityGuardrailPolicy{{Key: "regulated", FieldRestrictions: []identitymodel.IdentityFieldRestriction{{ObjectKey: "invoice", FieldKey: "phone", Actions: []string{"export"}, Reason: "legal hold"}}}}},
+	}, "catalog-2", time.Now())
+	if bundle.ContractVersion != identitysdk.CurrentPolicyBundleVersion || len(bundle.DataPolicies) != 1 || !bundle.DataPolicies[0].AuditDenial || len(bundle.DataPolicies[0].Predicate.Path) != 1 || bundle.DataPolicies[0].Predicate.Value != "$context.business_profile_id" {
+		t.Fatalf("data policy lost V2 semantics: %#v", bundle.DataPolicies)
+	}
+	if len(bundle.FieldPolicies) != 1 || bundle.FieldPolicies[0].Reason != "personal data" || len(bundle.FieldPolicies[0].Rules) != 1 || len(bundle.FieldPolicies[0].Rules[0].Predicate.Path) != 1 {
+		t.Fatalf("field policy lost contextual semantics: %#v", bundle.FieldPolicies)
+	}
+	if len(bundle.ReferencePolicies) != 1 || bundle.ReferencePolicies[0].Allowed || bundle.ReferencePolicies[0].Reason != "restricted" {
+		t.Fatalf("reference policy lost reason/mode: %#v", bundle.ReferencePolicies)
+	}
+	if len(bundle.Guardrails) != 1 || bundle.Guardrails[0].Field != "phone" || bundle.Guardrails[0].Reason != "legal hold" {
+		t.Fatalf("field guardrail lost restriction: %#v", bundle.Guardrails)
+	}
+}
+
 func TestAccessBundleIsConstrainedByPublishedCatalog(t *testing.T) {
 	catalog := identitysdk.AuthorizationCatalog{
 		ContractVersion: identitysdk.CatalogVersionV1,
@@ -103,6 +135,30 @@ func TestAccessBundleIsConstrainedByPublishedCatalog(t *testing.T) {
 	}
 }
 
+func TestCatalogAcceptsDeclaredRelationshipPredicatesAndRejectsDrift(t *testing.T) {
+	catalog := identitysdk.AuthorizationCatalog{
+		ContractVersion: identitysdk.CatalogVersionV1,
+		Application:     identitysdk.ApplicationRef{WorkspaceID: "default", ApplicationKey: "runtime-app"},
+		Resources: []identitysdk.ResourceDefinition{
+			{Key: "invoice", Fields: []string{"id", "account_id", "phone"}, SupportedFacts: []string{"id"}, References: []identitysdk.ReferenceDefinition{{Key: "account_id", TargetResource: "account"}}},
+			{Key: "account", Fields: []string{"id", "owner_id"}, SupportedFacts: []string{"owner_id"}},
+		},
+		Actions: []identitysdk.ActionDefinition{{Resource: "invoice", Action: "read"}},
+	}
+	predicate := identitysdk.Predicate{Fact: "owner_id", Operator: identitysdk.OperatorEqual, Value: "$subject.id", Path: []identitysdk.RelationSegment{{Direction: identitysdk.RelationForward, Reference: "account_id", TargetResource: "account"}}}
+	bundle := identitysdk.AccessBundle{
+		DataPolicies:  []identitysdk.DataPolicy{{Key: "account-owner", Resource: "invoice", Action: "read", Effect: identitysdk.EffectAllow, Predicate: predicate}},
+		FieldPolicies: []identitysdk.FieldPolicy{{Resource: "invoice", Field: "phone", Read: true, Rules: []identitysdk.FieldRule{{Key: "owner-clear", Priority: 10, Actions: []identitysdk.Action{"read"}, Effect: identitysdk.FieldEffectAllow, Predicate: &predicate}}}},
+	}
+	if _, err := accessBundleForCatalog(bundle, catalog); err != nil {
+		t.Fatalf("declared relationship predicate rejected: %v", err)
+	}
+	bundle.DataPolicies[0].Predicate.Path[0].Reference = "missing"
+	if _, err := accessBundleForCatalog(bundle, catalog); err == nil {
+		t.Fatal("drifted relationship predicate was accepted")
+	}
+}
+
 func TestPublishedCatalogMaterializesWorkspaceAdministratorAuthority(t *testing.T) {
 	catalog := identitysdk.AuthorizationCatalog{
 		ContractVersion: identitysdk.CatalogVersionV1,
@@ -111,7 +167,7 @@ func TestPublishedCatalogMaterializesWorkspaceAdministratorAuthority(t *testing.
 		Actions:         []identitysdk.ActionDefinition{{Resource: "customer", Action: "read"}},
 	}
 	bundle := identitysdk.AccessBundle{
-		ContractVersion:       identitysdk.PolicyBundleVersionV1,
+		ContractVersion:       identitysdk.CurrentPolicyBundleVersion,
 		CatalogRevision:       "catalog-revision",
 		AuthorizationRevision: "authorization-revision",
 		ExpiresAt:             time.Now().Add(time.Minute),

@@ -91,7 +91,7 @@ func NewBinding(dependencies BindingDependencies) (identitysdk.Binding, error) {
 		dependencies.Clock = sdkSystemClock{}
 	}
 	binding := &sdkBinding{descriptor: identitysdk.Descriptor{
-		ProtocolVersion: identitysdk.CurrentProtocolVersion, BundleVersion: identitysdk.PolicyBundleVersionV1, CatalogVersion: identitysdk.CatalogVersionV1,
+		ProtocolVersion: identitysdk.CurrentProtocolVersion, BundleVersion: identitysdk.CurrentPolicyBundleVersion, CatalogVersion: identitysdk.CatalogVersionV1,
 		Mode: identitysdk.DeploymentModeModule, Issuer: defaultString(dependencies.Config.AuthIssuer, "http://localhost:8081"), Audience: defaultString(dependencies.Config.AuthAudience, "domainry-runtime"),
 		Capabilities: []string{"authentication", "token_verification", "authorization", "principal_resolution", "directory_projection", "catalog", "credentials", "oidc", "saml"},
 	}, auth: dependencies.Authentication, providers: dependencies.ProviderConfiguration, flows: dependencies.ProviderFlows,
@@ -576,7 +576,7 @@ func sdkAuthSession(session authmodel.AuthSession) identitysdk.AuthSession {
 }
 
 func sdkAccessBundle(snapshot identitymodel.IdentityEffectiveAccessSnapshot, principal identitymodel.Principal, catalogRevision string, now time.Time) identitysdk.AccessBundle {
-	bundle := identitysdk.AccessBundle{ContractVersion: identitysdk.PolicyBundleVersionV1, CatalogRevision: identitysdk.CatalogRevision(catalogRevision), AuthorizationRevision: identitysdk.AuthorizationRevision(snapshot.AuthorizationRevision), ExpiresAt: now.UTC().Add(5 * time.Minute), Subject: identitysdk.Subject{WorkspaceID: identitysdk.WorkspaceID(principal.WorkspaceID), SubjectID: identitysdk.SubjectID(principal.UserID), WorkforceProfileID: principal.WorkforceProfileID, DepartmentID: principal.DepartmentID, DepartmentPath: principal.DepartmentPath, ReportingPath: principal.ReportingPath, OrganizationScopes: map[string][]string{"team_ids": append([]string(nil), principal.TeamIDs...), "store_ids": append([]string(nil), principal.StoreIDs...), "territory_ids": append([]string(nil), principal.TerritoryIDs...), "warehouse_ids": append([]string(nil), principal.WarehouseIDs...)}}}
+	bundle := identitysdk.AccessBundle{ContractVersion: identitysdk.CurrentPolicyBundleVersion, CatalogRevision: identitysdk.CatalogRevision(catalogRevision), AuthorizationRevision: identitysdk.AuthorizationRevision(snapshot.AuthorizationRevision), ExpiresAt: now.UTC().Add(5 * time.Minute), Subject: identitysdk.Subject{WorkspaceID: identitysdk.WorkspaceID(principal.WorkspaceID), SubjectID: identitysdk.SubjectID(principal.UserID), WorkforceProfileID: principal.WorkforceProfileID, DepartmentID: principal.DepartmentID, DepartmentPath: principal.DepartmentPath, ReportingPath: principal.ReportingPath, OrganizationScopes: map[string][]string{"team_ids": append([]string(nil), principal.TeamIDs...), "store_ids": append([]string(nil), principal.StoreIDs...), "territory_ids": append([]string(nil), principal.TerritoryIDs...), "warehouse_ids": append([]string(nil), principal.WarehouseIDs...)}}}
 	for _, id := range principal.ReportingUserIDs {
 		bundle.Subject.ReportingSubjectIDs = append(bundle.Subject.ReportingSubjectIDs, identitysdk.SubjectID(id))
 	}
@@ -597,13 +597,13 @@ func sdkAccessBundle(snapshot identitymodel.IdentityEffectiveAccessSnapshot, pri
 		if !policy.Allowed {
 			effect = identitysdk.EffectDeny
 		}
-		bundle.DataPolicies = append(bundle.DataPolicies, identitysdk.DataPolicy{Key: "data-" + policy.ObjectKey + "-" + policy.Action + "-" + strconv.Itoa(index), Resource: identitysdk.ResourceType(policy.ObjectKey), Action: identitysdk.Action(policy.Action), Effect: effect, Predicate: predicate})
+		bundle.DataPolicies = append(bundle.DataPolicies, identitysdk.DataPolicy{Key: "data-" + policy.ObjectKey + "-" + policy.Action + "-" + strconv.Itoa(index), Resource: identitysdk.ResourceType(policy.ObjectKey), Action: identitysdk.Action(policy.Action), Effect: effect, Predicate: predicate, AuditDenial: policy.AuditDenial})
 	}
 	for _, field := range snapshot.FieldAccess {
-		bundle.FieldPolicies = append(bundle.FieldPolicies, identitysdk.FieldPolicy{Resource: identitysdk.ResourceType(field.ObjectKey), Field: field.FieldKey, Read: field.Read, Write: field.Write, Export: field.Export, Masked: field.Masked})
+		bundle.FieldPolicies = append(bundle.FieldPolicies, identitysdk.FieldPolicy{Resource: identitysdk.ResourceType(field.ObjectKey), Field: field.FieldKey, Read: field.Read, Write: field.Write, Export: field.Export, Masked: field.Masked, Reason: field.Reason, Rules: sdkFieldRules(field.Policies)})
 	}
 	for _, reference := range snapshot.ReferencePermissions {
-		bundle.ReferencePolicies = append(bundle.ReferencePolicies, identitysdk.ReferencePolicy{SourceResource: identitysdk.ResourceType(reference.SourceObjectKey), Reference: reference.RelationFieldKey, TargetResource: identitysdk.ResourceType(reference.TargetObjectKey), DisplayFields: append([]string(nil), reference.DisplayFields...), Allowed: reference.Mode != "deny"})
+		bundle.ReferencePolicies = append(bundle.ReferencePolicies, identitysdk.ReferencePolicy{SourceResource: identitysdk.ResourceType(reference.SourceObjectKey), Reference: reference.RelationFieldKey, TargetResource: identitysdk.ResourceType(reference.TargetObjectKey), DisplayFields: append([]string(nil), reference.DisplayFields...), Allowed: reference.Mode != "deny", Reason: reference.Reason})
 	}
 	for _, rule := range snapshot.ExportRules {
 		bundle.ExportPolicies = append(bundle.ExportPolicies, identitysdk.ExportPolicy{Resource: identitysdk.ResourceType(rule.ObjectKey), Mode: identitysdk.ExportMode(rule.Mode), Fields: append([]string(nil), rule.Fields...)})
@@ -632,7 +632,12 @@ func adapterGuardrails(principal identitymodel.Principal, enabled map[string]boo
 		}
 		for _, restriction := range guardrail.DataRestrictions {
 			for _, action := range restriction.Actions {
-				result = append(result, identitysdk.Guardrail{Key: guardrail.Key + ":data:" + restriction.ObjectKey + ":" + action, Resource: identitysdk.ResourceType(restriction.ObjectKey), Action: identitysdk.Action(action), Effect: identitysdk.EffectDeny})
+				result = append(result, identitysdk.Guardrail{Key: guardrail.Key + ":data:" + restriction.ObjectKey + ":" + action, Resource: identitysdk.ResourceType(restriction.ObjectKey), Action: identitysdk.Action(action), Effect: identitysdk.EffectDeny, Reason: restriction.Reason})
+			}
+		}
+		for _, restriction := range guardrail.FieldRestrictions {
+			for _, action := range restriction.Actions {
+				result = append(result, identitysdk.Guardrail{Key: guardrail.Key + ":field:" + restriction.ObjectKey + ":" + restriction.FieldKey + ":" + action, Resource: identitysdk.ResourceType(restriction.ObjectKey), Action: identitysdk.Action(action), Field: restriction.FieldKey, Effect: identitysdk.EffectDeny, Reason: restriction.Reason})
 			}
 		}
 	}
@@ -668,7 +673,7 @@ func sdkPolicyPredicate(value identitymodel.IdentityPolicyExpression) identitysd
 		}
 	}
 	fact := strings.TrimSpace(value.FieldKey)
-	if len(value.Path) > 0 || fact == "" {
+	if fact == "" {
 		return identitysdk.Predicate{Fact: "__identity_policy_unsupported__", Operator: identitysdk.OperatorEqual, Value: true}
 	}
 	operator := identitysdk.OperatorEqual
@@ -682,7 +687,11 @@ func sdkPolicyPredicate(value identitymodel.IdentityPolicyExpression) identitysd
 	if strings.EqualFold(value.ValueSource, "actor_claim") {
 		policyValue = sdkActorClaim(value.ClaimKey)
 	}
-	return identitysdk.Predicate{Fact: fact, Operator: operator, Value: policyValue}
+	path := make([]identitysdk.RelationSegment, 0, len(value.Path))
+	for _, segment := range value.Path {
+		path = append(path, identitysdk.RelationSegment{Direction: identitysdk.RelationDirection(strings.TrimSpace(segment.Direction)), Reference: strings.TrimSpace(segment.RelationFieldKey), TargetResource: identitysdk.ResourceType(strings.TrimSpace(segment.TargetObjectKey))})
+	}
+	return identitysdk.Predicate{Fact: fact, Path: path, Operator: operator, Value: policyValue}
 }
 
 func sdkActorClaim(key string) string {
@@ -695,9 +704,34 @@ func sdkActorClaim(key string) string {
 		return "$subject.workforce_profile_id"
 	case "reporting_user_ids", "reporting_subject_ids":
 		return "$subject.reporting_subject_ids"
+	case "team_ids", "store_ids", "territory_ids", "warehouse_ids":
+		return "$subject.organization_scopes." + strings.ToLower(strings.TrimSpace(key))
+	case "business_profile_id":
+		return "$context.business_profile_id"
 	default:
-		return "$subject.organization_scopes." + strings.TrimSpace(key)
+		return "$context.claims." + strings.TrimSpace(key)
 	}
+}
+
+func sdkFieldRules(values []identitymodel.ContextualFieldPolicyRule) []identitysdk.FieldRule {
+	result := make([]identitysdk.FieldRule, 0, len(values))
+	for _, value := range values {
+		actions := make([]identitysdk.Action, 0, len(value.Actions))
+		for _, action := range value.Actions {
+			actions = append(actions, identitysdk.Action(strings.TrimSpace(action)))
+		}
+		var predicate *identitysdk.Predicate
+		if value.Predicate != nil {
+			converted := sdkPolicyPredicate(*value.Predicate)
+			predicate = &converted
+		}
+		var strategy *identitysdk.MaskStrategy
+		if value.MaskStrategy != nil {
+			strategy = &identitysdk.MaskStrategy{Type: identitysdk.MaskType(strings.TrimSpace(value.MaskStrategy.Type)), LastN: value.MaskStrategy.LastN}
+		}
+		result = append(result, identitysdk.FieldRule{Key: strings.TrimSpace(value.Key), Priority: value.Priority, Actions: actions, Effect: identitysdk.FieldEffect(strings.TrimSpace(value.Effect)), Predicate: predicate, MaskStrategy: strategy, AuditDenial: value.AuditDenial})
+	}
+	return result
 }
 
 func sdkScopePredicate(scope string) identitysdk.Predicate {
