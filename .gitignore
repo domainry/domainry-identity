@@ -1,0 +1,13 @@
+/backup/*
+!/backup/go.mod
+/.idea/
+/frontend/node_modules/
+**/node_modules/
+/domainry-identity
+/frontend/identity-admin/dist/
+/frontend/identity-admin/test-results/
+/frontend/identity-admin/playwright-report/
+/data/*.db
+/data/*.db-*
+/data/*.db.*
+/data/migration-backups/

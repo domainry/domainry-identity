@@ -1,0 +1,62 @@
+{
+  "schema_version": "2",
+  "template_id": "identity-workforce",
+  "version": "1.0.0",
+  "name": "Identity Workforce",
+  "objects": [],
+  "roles": [
+    {
+      "key": "employee",
+      "name": "Employee",
+      "permissions": ["identity.profile.read"],
+      "record_scope": "owned_records"
+    }
+  ],
+  "identity_bootstrap": {
+    "version": "1",
+    "departments": [
+      {"id": "default", "name": "Default"}
+    ],
+    "users": [
+      {"id": "employee_user", "name": "Employee", "email": "employee@example.com", "role_keys": ["employee"]},
+      {"id": "line_manager_user", "name": "Line Manager", "email": "line-manager@example.com", "role_keys": ["employee"]}
+    ],
+    "workforce_profiles": [
+      {
+        "id": "employee_user_workforce",
+        "organization_id": "default",
+        "identity_user_id": "employee_user",
+        "worker_no": "EMP-001",
+        "worker_type": "employee",
+        "work_status": "active",
+        "primary_assignment_id": "employee_user_primary_assignment"
+      },
+      {
+        "id": "line_manager_user_workforce",
+        "organization_id": "default",
+        "identity_user_id": "line_manager_user",
+        "worker_no": "MGR-001",
+        "worker_type": "employee",
+        "work_status": "active",
+        "primary_assignment_id": "line_manager_user_primary_assignment"
+      }
+    ],
+    "workforce_assignments": [
+      {
+        "id": "employee_user_primary_assignment",
+        "workforce_profile_id": "employee_user_workforce",
+        "organization_unit_id": "default",
+        "manager_workforce_profile_id": "line_manager_user_workforce",
+        "assignment_type": "primary",
+        "status": "active"
+      },
+      {
+        "id": "line_manager_user_primary_assignment",
+        "workforce_profile_id": "line_manager_user_workforce",
+        "organization_unit_id": "default",
+        "assignment_type": "primary",
+        "status": "active"
+      }
+    ]
+  }
+}

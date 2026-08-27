@@ -1,0 +1,429 @@
+package service
+
+import (
+	"context"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/domainry/domainry-foundation/apperror"
+	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+)
+
+func (s *IdentityDomainService) ListRoles(ctx context.Context) ([]identitymodel.IdentityRole, error) {
+	return s.repo.ListIdentityRoles(ctx, s.workspace)
+}
+
+func (s *IdentityDomainService) SearchRoles(ctx context.Context, query identitymodel.IdentityListQuery) (identitymodel.IdentityRolePage, error) {
+	roles, err := s.repo.ListIdentityRoles(ctx, s.workspace)
+	if err != nil {
+		return identitymodel.IdentityRolePage{}, err
+	}
+	page := query.Page
+	if page < 1 {
+		page = 1
+	}
+	pageSize := query.PageSize
+	if pageSize < 1 {
+		pageSize = 10
+	}
+	if pageSize > 200 {
+		pageSize = 200
+	}
+	fields := query.SearchFields
+	if len(fields) == 0 {
+		fields = []string{"label", "key"}
+	}
+	for _, field := range fields {
+		if field != "label" && field != "key" && field != "description" {
+			return identitymodel.IdentityRolePage{}, badRequest("backend.identity.role_search_field_invalid", "field", field)
+		}
+	}
+	needle := strings.ToLower(strings.TrimSpace(query.Search))
+	filtered := make([]identitymodel.IdentityRole, 0, len(roles))
+	for _, role := range roles {
+		matches := needle == ""
+		for _, field := range fields {
+			var value string
+			switch field {
+			case "label":
+				value = role.Label
+			case "key":
+				value = role.Key
+			case "description":
+				value = role.Description
+			}
+			if strings.Contains(strings.ToLower(value), needle) {
+				matches = true
+				break
+			}
+		}
+		if matches {
+			filtered = append(filtered, role)
+		}
+	}
+	total := len(filtered)
+	start := (page - 1) * pageSize
+	if start > total {
+		start = total
+	}
+	end := start + pageSize
+	if end > total {
+		end = total
+	}
+	return identitymodel.IdentityRolePage{
+		Items:    filtered[start:end],
+		Page:     page,
+		PageSize: pageSize,
+		Total:    total,
+		HasNext:  end < total,
+	}, nil
+}
+
+func (s *IdentityDomainService) ActiveRolesForUser(ctx context.Context, userID string) ([]identitymodel.IdentityRole, error) {
+	assignments, err := s.repo.ListIdentityUserRoleAssignments(ctx, s.workspace, userID)
+	if err != nil {
+		return nil, err
+	}
+	roles, err := s.repo.ListIdentityRoles(ctx, s.workspace)
+	if err != nil {
+		return nil, err
+	}
+	activeRoleIDs := map[string]struct{}{}
+	now := time.Now()
+	for _, assignment := range assignments {
+		if identityAssignmentActive(assignment, now) {
+			activeRoleIDs[assignment.RoleID] = struct{}{}
+		}
+	}
+	out := []identitymodel.IdentityRole{}
+	for _, role := range roles {
+		if _, published := s.publishedRoleDefinition(role); !published {
+			continue
+		}
+		if _, assigned := activeRoleIDs[role.ID]; assigned {
+			out = append(out, role)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
+}
+
+func (s *IdentityDomainService) AssignUserRole(ctx context.Context, assignment identitymodel.IdentityUserRoleAssignment) error {
+	assignment, _, err := s.prepareManualRoleAssignment(ctx, assignment, false)
+	if err != nil {
+		return err
+	}
+	return s.repo.AssignIdentityUserRole(ctx, s.workspace, assignment)
+}
+
+func (s *IdentityDomainService) prepareManualRoleAssignment(ctx context.Context, assignment identitymodel.IdentityUserRoleAssignment, deferConflictCheck bool) (identitymodel.IdentityUserRoleAssignment, identitymodel.RoleSchema, error) {
+	issues, err := s.validation.ValidateRoleAssignmentConfiguration(ctx, assignment)
+	if err != nil {
+		return identitymodel.IdentityUserRoleAssignment{}, identitymodel.RoleSchema{}, err
+	}
+	if err := s.validation.FirstConfigurationError(issues); err != nil {
+		return identitymodel.IdentityUserRoleAssignment{}, identitymodel.RoleSchema{}, err
+	}
+	role, found, err := s.roleByID(ctx, strings.TrimSpace(assignment.RoleID))
+	if err != nil {
+		return identitymodel.IdentityUserRoleAssignment{}, identitymodel.RoleSchema{}, err
+	}
+	if !found {
+		return identitymodel.IdentityUserRoleAssignment{}, identitymodel.RoleSchema{}, badRequest("backend.identity.role_not_found", "role", assignment.RoleID)
+	}
+	definition, published := s.publishedRoleDefinition(role)
+	if !published {
+		definition = identitymodel.RoleSchema{Key: valueOrDefault(role.Key, role.ID), Audience: identitymodel.IdentityRoleAudienceAny, AssignmentMode: identitymodel.IdentityRoleAssignmentManual, RiskLevel: identitymodel.IdentityRoleRiskNormal}
+	}
+	if err := s.validateRoleEligibilityWithoutConflicts(ctx, assignment, definition, false); err != nil {
+		return identitymodel.IdentityUserRoleAssignment{}, identitymodel.RoleSchema{}, err
+	}
+	if !deferConflictCheck {
+		if err := s.validateRoleConflicts(ctx, assignment.UserID, definition); err != nil {
+			return identitymodel.IdentityUserRoleAssignment{}, identitymodel.RoleSchema{}, err
+		}
+	}
+	assignment.Source = "manual"
+	assignment.Status = "active"
+	return assignment, definition, nil
+}
+
+func (s *IdentityDomainService) validateManualRoleEligibility(ctx context.Context, assignment identitymodel.IdentityUserRoleAssignment, role identitymodel.RoleSchema) error {
+	return s.validateRoleEligibility(ctx, assignment, role, false)
+}
+
+func (s *IdentityDomainService) validateRoleEligibility(ctx context.Context, assignment identitymodel.IdentityUserRoleAssignment, role identitymodel.RoleSchema, fromApprovedRequest bool) error {
+	if err := s.validateRoleEligibilityWithoutConflicts(ctx, assignment, role, fromApprovedRequest); err != nil {
+		return err
+	}
+	return s.validateRoleConflicts(ctx, assignment.UserID, role)
+}
+
+func (s *IdentityDomainService) validateRoleEligibilityWithoutConflicts(ctx context.Context, assignment identitymodel.IdentityUserRoleAssignment, role identitymodel.RoleSchema, fromApprovedRequest bool) error {
+	mode := role.AssignmentMode
+	if mode == "" {
+		mode = identitymodel.IdentityRoleAssignmentManual
+	}
+	if mode == identitymodel.IdentityRoleAssignmentSystemManaged {
+		return forbidden("backend.identity.system_managed_role_assignment_denied")
+	}
+	if mode == identitymodel.IdentityRoleAssignmentRequestOnly && !fromApprovedRequest {
+		return forbidden("backend.identity.role_request_required")
+	}
+	audience := role.Audience
+	if audience == "" {
+		audience = identitymodel.IdentityRoleAudienceAny
+	}
+	switch audience {
+	case identitymodel.IdentityRoleAudienceWorkforce:
+		_, activeProfiles, err := s.resolveWorkforceFacts(ctx, assignment.UserID, time.Now())
+		if err != nil {
+			return err
+		}
+		if profileID := strings.TrimSpace(assignment.WorkforceProfileID); profileID == "" || !activeProfiles[profileID] {
+			return forbidden("backend.identity.workforce_role_eligibility_required")
+		}
+	case identitymodel.IdentityRoleAudienceBusiness:
+		if strings.TrimSpace(assignment.BindingKey) != strings.TrimSpace(role.RequiredBindingKey) || strings.TrimSpace(assignment.ProfileID) == "" || s.bindingEligibility == nil {
+			return forbidden("backend.identity.business_role_eligibility_required")
+		}
+		active, err := s.bindingEligibility.IdentityRoleBindingActive(ctx, s.workspace, assignment.BindingKey, assignment.ProfileID, assignment.UserID)
+		if err != nil {
+			return err
+		}
+		if !active {
+			return forbidden("backend.identity.business_role_eligibility_required")
+		}
+	}
+	return nil
+}
+
+func (s *IdentityDomainService) validateRoleConflicts(ctx context.Context, userID string, target identitymodel.RoleSchema) error {
+	conflicts := map[string]bool{}
+	for _, key := range target.ConflictRoleKeys {
+		conflicts[strings.TrimSpace(key)] = true
+	}
+	assignments, err := s.repo.ListIdentityUserRoleAssignments(ctx, s.workspace, userID)
+	if err != nil {
+		return err
+	}
+	roles, err := s.repo.ListIdentityRoles(ctx, s.workspace)
+	if err != nil {
+		return err
+	}
+	byID := map[string]identitymodel.RoleSchema{}
+	for _, role := range roles {
+		if definition, ok := s.publishedRoleDefinition(role); ok {
+			byID[role.ID] = definition
+		}
+	}
+	now := time.Now()
+	for _, assignment := range assignments {
+		if !identityAssignmentActive(assignment, now) {
+			continue
+		}
+		existing, ok := byID[assignment.RoleID]
+		if !ok {
+			continue
+		}
+		if conflicts[existing.Key] || identityStringSliceContains(existing.ConflictRoleKeys, target.Key) {
+			return forbidden("backend.identity.role_conflict")
+		}
+	}
+	return nil
+}
+
+func identityStringSliceContains(values []string, expected string) bool {
+	for _, value := range values {
+		if strings.TrimSpace(value) == strings.TrimSpace(expected) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *IdentityDomainService) AssignSystemManagedRole(ctx context.Context, assignment identitymodel.IdentityUserRoleAssignment) error {
+	role, found, err := s.roleByID(ctx, strings.TrimSpace(assignment.RoleID))
+	if err != nil {
+		return err
+	}
+	if !found {
+		return badRequest("backend.identity.role_not_found", "role", assignment.RoleID)
+	}
+	definition, published := s.publishedRoleDefinition(role)
+	if !published || definition.AssignmentMode != identitymodel.IdentityRoleAssignmentSystemManaged || definition.Audience != identitymodel.IdentityRoleAudienceBusiness {
+		return forbidden("backend.identity.system_managed_role_required")
+	}
+	if strings.TrimSpace(assignment.BindingKey) != strings.TrimSpace(definition.RequiredBindingKey) || strings.TrimSpace(assignment.ProfileID) == "" || s.bindingEligibility == nil {
+		return forbidden("backend.identity.business_role_eligibility_required")
+	}
+	active, err := s.bindingEligibility.IdentityRoleBindingActive(ctx, s.workspace, assignment.BindingKey, assignment.ProfileID, assignment.UserID)
+	if err != nil {
+		return err
+	}
+	if !active {
+		return forbidden("backend.identity.business_role_eligibility_required")
+	}
+	if err := s.validateRoleConflicts(ctx, assignment.UserID, definition); err != nil {
+		return err
+	}
+	assignment.Source = "profile_binding"
+	assignment.Status = "active"
+	return s.repo.AssignIdentityUserRole(ctx, s.workspace, assignment)
+}
+
+func (s *IdentityDomainService) RemoveUserRole(ctx context.Context, userID string, roleID string) error {
+	return s.RemoveUserRoleGoverned(ctx, userID, roleID, "", "manual_removal")
+}
+
+func (s *IdentityDomainService) RemoveUserRoleGoverned(ctx context.Context, userID, roleID, actorID, reason string) error {
+	role, found, err := s.roleByID(ctx, strings.TrimSpace(roleID))
+	if err != nil {
+		return err
+	}
+	if found {
+		if definition, ok := s.publishedRoleDefinition(role); ok {
+			if definition.AssignmentMode == identitymodel.IdentityRoleAssignmentSystemManaged {
+				return forbidden("backend.identity.system_managed_role_assignment_denied")
+			}
+			if identityStringSliceContains(definition.Permissions, "workspace.admin") {
+				if err := s.ensureAnotherActiveAdministrator(ctx, userID, roleID); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	assignments, err := s.repo.ListIdentityUserRoleAssignments(ctx, s.workspace, userID)
+	if err != nil {
+		return err
+	}
+	for _, assignment := range assignments {
+		if assignment.RoleID != roleID || !identityAssignmentActive(assignment, time.Now()) {
+			continue
+		}
+		assignment.Status = "revoked"
+		assignment.RevokedAt = time.Now().UTC().Format(time.RFC3339)
+		assignment.RevokedBy = strings.TrimSpace(actorID)
+		assignment.RevokeReason = valueOrDefault(strings.TrimSpace(reason), "manual_removal")
+		return s.repo.AssignIdentityUserRole(ctx, s.workspace, assignment)
+	}
+	return s.repo.RemoveIdentityUserRole(ctx, s.workspace, userID, roleID)
+}
+
+func (s *IdentityDomainService) ensureAnotherActiveAdministrator(ctx context.Context, excludedUserID, _ string) error {
+	assignments, err := s.repo.ListIdentityUserRoleAssignments(ctx, s.workspace, "")
+	if err != nil {
+		return err
+	}
+	roles, err := s.repo.ListIdentityRoles(ctx, s.workspace)
+	if err != nil {
+		return err
+	}
+	adminRoleIDs := map[string]bool{}
+	for _, role := range roles {
+		if definition, published := s.publishedRoleDefinition(role); published && identityStringSliceContains(definition.Permissions, "workspace.admin") {
+			adminRoleIDs[role.ID] = true
+		}
+	}
+	active := 0
+	now := time.Now()
+	for _, assignment := range assignments {
+		if adminRoleIDs[assignment.RoleID] && assignment.UserID != excludedUserID && identityAssignmentActive(assignment, now) {
+			active++
+		}
+	}
+	if active == 0 {
+		return forbidden("backend.identity.last_administrator_revocation_denied")
+	}
+	return nil
+}
+
+func (s *IdentityDomainService) ListUserRoleAssignments(ctx context.Context, userID string) ([]identitymodel.IdentityUserRoleAssignment, error) {
+	return s.repo.ListIdentityUserRoleAssignments(ctx, s.workspace, userID)
+}
+
+func (s *IdentityDomainService) ListAssignableRoles(ctx context.Context, targetUserID string, actor identitymodel.Principal) ([]identitymodel.IdentityRole, error) {
+	targetUserID = strings.TrimSpace(targetUserID)
+	if targetUserID == "" {
+		return nil, badRequest("backend.identity.user_required")
+	}
+	target, found, err := s.userByID(ctx, targetUserID)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, badRequest("backend.identity.user_not_found", "user", targetUserID)
+	}
+	if target.Status != identitymodel.IdentityStatusActive {
+		return []identitymodel.IdentityRole{}, nil
+	}
+	workforce, _, err := s.resolveWorkforceFacts(ctx, targetUserID, time.Now())
+	if err != nil {
+		return nil, err
+	}
+	if !identityActorCanManageRoleTarget(actor, targetUserID, workforce) {
+		return []identitymodel.IdentityRole{}, nil
+	}
+	bindings, err := s.repo.ListIdentityProfileBindingsByUser(ctx, s.workspace, targetUserID)
+	if err != nil {
+		return nil, err
+	}
+	activeBindings := map[string]bool{}
+	for _, binding := range bindings {
+		if binding.Status == identitymodel.IdentityProfileBindingActive {
+			activeBindings[strings.TrimSpace(binding.BindingKey)] = true
+		}
+	}
+	roles, err := s.repo.ListIdentityRoles(ctx, s.workspace)
+	if err != nil {
+		return nil, err
+	}
+	out := []identitymodel.IdentityRole{}
+	for _, role := range roles {
+		definition, published := s.publishedRoleDefinition(role)
+		if !published || s.identityPrivilegedAutoAssignableRole(role) ||
+			definition.AssignmentMode == identitymodel.IdentityRoleAssignmentSystemManaged ||
+			definition.AssignmentMode == identitymodel.IdentityRoleAssignmentRequestOnly {
+			continue
+		}
+		risk := definition.RiskLevel
+		if risk == "" {
+			risk = identitymodel.IdentityRoleRiskNormal
+		}
+		if risk != identitymodel.IdentityRoleRiskNormal &&
+			!identityStringSliceContains(actor.Role.GrantableRoleKeys, "*") &&
+			!identityStringSliceContains(actor.Role.GrantableRoleKeys, definition.Key) {
+			continue
+		}
+		if risk == identitymodel.IdentityRoleRiskPrivileged && actor.UserID == targetUserID {
+			continue
+		}
+		switch definition.Audience {
+		case identitymodel.IdentityRoleAudienceWorkforce:
+			if workforce.ProfileID == "" {
+				continue
+			}
+		case identitymodel.IdentityRoleAudienceBusiness:
+			if !activeBindings[strings.TrimSpace(definition.RequiredBindingKey)] {
+				continue
+			}
+		case identitymodel.IdentityRoleAudienceService:
+			continue
+		}
+		if err := s.validateRoleConflicts(ctx, targetUserID, definition); err != nil {
+			if apperror.CodeOf(err) == "backend.identity.role_conflict" {
+				continue
+			}
+			return nil, err
+		}
+		out = append(out, role)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Label == out[j].Label {
+			return out[i].Key < out[j].Key
+		}
+		return out[i].Label < out[j].Label
+	})
+	return out, nil
+}

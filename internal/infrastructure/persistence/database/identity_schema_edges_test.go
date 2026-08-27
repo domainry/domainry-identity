@@ -1,0 +1,375 @@
+package database
+
+import (
+	"context"
+	"database/sql"
+	"database/sql/driver"
+	"errors"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	identityschema "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/schema"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/mysql"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/sqlite"
+	"github.com/domainry/domainry-identity/internal/platform/config"
+)
+
+func identitySchemaStore(t *testing.T, state *databaseSQLState) *IdentityStore {
+	t.Helper()
+	db := openDatabaseScriptedDB(state)
+	t.Cleanup(func() { _ = db.Close() })
+	return &IdentityStore{db: db, dialect: sqlite.Dialect{}}
+}
+
+func identitySchemaLedgerQueries(count int64, checksum string, dirty bool) []databaseSQLQueryStep {
+	steps := make([]databaseSQLQueryStep, 0, 11)
+	for range 9 {
+		steps = append(steps, databaseSQLQueryStep{})
+	}
+	steps = append(steps,
+		databaseSQLQueryStep{columns: []string{"count"}, rows: [][]driver.Value{{count}}},
+		databaseSQLQueryStep{columns: []string{"checksum", "dirty"}, rows: [][]driver.Value{{checksum, dirty}}},
+	)
+	return steps
+}
+
+func TestIdentitySchemaHelpersAndDatabaseSelection(t *testing.T) {
+	versions := SupportedIdentitySchemaVersions()
+	if len(versions) != 3 || versions[0] != IdentitySchemaVersionBaseline || versions[1] != IdentitySchemaVersionPortability || versions[2] != CurrentIdentitySchemaVersion {
+		t.Fatalf("versions=%#v", versions)
+	}
+	store := identitySchemaStore(t, &databaseSQLState{})
+	if store.schemaDatabase() != store.db {
+		t.Fatal("primary database not selected")
+	}
+	migrationDB := openDatabaseScriptedDB(&databaseSQLState{})
+	t.Cleanup(func() { _ = migrationDB.Close() })
+	store.migrationDB = migrationDB
+	if store.schemaDatabase() != migrationDB {
+		t.Fatal("migration database not selected")
+	}
+	connection, err := migrationDB.Conn(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = connection.Close() })
+	store.migrationConn = connection
+	if store.schemaDatabase() != connection {
+		t.Fatal("migration connection not selected")
+	}
+
+	store = &IdentityStore{dialect: sqlite.Dialect{}, config: config.Config{DBPath: filepath.Join("tmp", "identity.db")}}
+	if got := store.identityMigrationConfig().MigrationBackupDir; got != filepath.Join("tmp", "migration-backups") {
+		t.Fatalf("backup dir=%q", got)
+	}
+	store.config = config.Config{DatabaseDSN: filepath.Join("var", "identity.db")}
+	if got := store.identityMigrationConfig().MigrationBackupDir; got != filepath.Join("var", "migration-backups") {
+		t.Fatalf("dsn backup dir=%q", got)
+	}
+	store.config.MigrationBackupDir = "custom"
+	if got := store.identityMigrationConfig().MigrationBackupDir; got != "custom" {
+		t.Fatalf("custom backup dir=%q", got)
+	}
+	store.config = config.Config{DBPath: ":memory:"}
+	if got := store.identityMigrationConfig().MigrationBackupDir; got != "" {
+		t.Fatalf("memory backup dir=%q", got)
+	}
+	store = &IdentityStore{dialect: mysql.Dialect{}}
+	if got := store.identityMigrationConfig().MigrationBackupDir; got != "" {
+		t.Fatalf("mysql backup dir=%q", got)
+	}
+}
+
+func TestIdentitySchemaUpgradeRemovesFrontendCapabilityRegistry(t *testing.T) {
+	directory := t.TempDir()
+	cfg := config.Config{
+		DatabaseDriver:     "sqlite",
+		DBPath:             filepath.Join(directory, "identity.db"),
+		MigrationBackupDir: filepath.Join(directory, "backups"),
+	}
+	store, err := OpenContext(t.Context(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.EnsureSchema(t.Context()); err != nil {
+		_ = store.Close()
+		t.Fatal(err)
+	}
+	if _, err := store.DB().ExecContext(t.Context(), `CREATE TABLE frontend_capability_manifests (workspace_id TEXT PRIMARY KEY)`); err != nil {
+		_ = store.Close()
+		t.Fatal(err)
+	}
+	if _, err := store.DB().ExecContext(t.Context(), `DELETE FROM _identity_schema_migrations WHERE version = ?`, CurrentIdentitySchemaVersion); err != nil {
+		_ = store.Close()
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	upgraded, err := OpenContext(t.Context(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = upgraded.Close() })
+	if err := upgraded.EnsureSchema(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	var tableCount, migrationCount int
+	if err := upgraded.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'frontend_capability_manifests'`).Scan(&tableCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := upgraded.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _identity_schema_migrations WHERE version = ? AND dirty = FALSE`, CurrentIdentitySchemaVersion).Scan(&migrationCount); err != nil {
+		t.Fatal(err)
+	}
+	if tableCount != 0 || migrationCount != 1 {
+		t.Fatalf("retired table count=%d completed migration count=%d", tableCount, migrationCount)
+	}
+}
+
+func TestVerifyIdentitySchemaStates(t *testing.T) {
+	checksum := currentIdentitySchemaChecksum()
+	tests := []struct {
+		name  string
+		step  databaseSQLQueryStep
+		match string
+	}{
+		{"query", databaseSQLQueryStep{err: errDatabaseSQL}, "verify Identity schema"},
+		{"dirty", databaseSQLQueryStep{columns: []string{"checksum", "dirty"}, rows: [][]driver.Value{{checksum, true}}}, "migration.dirty"},
+		{"drift", databaseSQLQueryStep{columns: []string{"checksum", "dirty"}, rows: [][]driver.Value{{"drift", false}}}, "checksum_drift"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			store := identitySchemaStore(t, &databaseSQLState{querySteps: []databaseSQLQueryStep{test.step}})
+			if err := store.verifyIdentitySchema(t.Context()); err == nil || !strings.Contains(err.Error(), test.match) {
+				t.Fatalf("error=%v", err)
+			}
+		})
+	}
+	store := identitySchemaStore(t, &databaseSQLState{querySteps: []databaseSQLQueryStep{{columns: []string{"checksum", "dirty"}, rows: [][]driver.Value{{checksum, false}}}}})
+	if err := store.verifyIdentitySchema(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestIdentitySchemaMigrationLedgerFailures(t *testing.T) {
+	store := identitySchemaStore(t, &databaseSQLState{execSteps: []databaseSQLExecStep{{err: errDatabaseSQL}}})
+	if _, err := store.identitySchemaMigrationPending(t.Context(), "version"); !errors.Is(err, errDatabaseSQL) {
+		t.Fatalf("create error=%v", err)
+	}
+	store = identitySchemaStore(t, &databaseSQLState{execSteps: []databaseSQLExecStep{{rows: 1}, {err: errDatabaseSQL}}, querySteps: []databaseSQLQueryStep{{err: errDatabaseSQL}}})
+	if _, err := store.identitySchemaMigrationPending(t.Context(), "version"); !errors.Is(err, errDatabaseSQL) {
+		t.Fatalf("alter error=%v", err)
+	}
+	queries := make([]databaseSQLQueryStep, 10)
+	queries[9].err = errDatabaseSQL
+	store = identitySchemaStore(t, &databaseSQLState{querySteps: queries})
+	if _, err := store.identitySchemaMigrationPending(t.Context(), "version"); !errors.Is(err, errDatabaseSQL) {
+		t.Fatalf("count error=%v", err)
+	}
+	store = identitySchemaStore(t, &databaseSQLState{querySteps: identitySchemaLedgerQueries(0, "", false)})
+	if pending, err := store.identitySchemaMigrationPending(t.Context(), "version"); err != nil || !pending {
+		t.Fatalf("pending=%v err=%v", pending, err)
+	}
+	queries = make([]databaseSQLQueryStep, 10)
+	queries[0] = databaseSQLQueryStep{err: errDatabaseSQL}
+	queries[9] = databaseSQLQueryStep{columns: []string{"count"}, rows: [][]driver.Value{{int64(0)}}}
+	store = identitySchemaStore(t, &databaseSQLState{querySteps: queries})
+	if pending, err := store.identitySchemaMigrationPending(t.Context(), "version"); err != nil || !pending {
+		t.Fatalf("alter success pending=%v err=%v", pending, err)
+	}
+	for _, test := range []struct {
+		name     string
+		checksum string
+		dirty    bool
+		want     string
+	}{
+		{"dirty", currentIdentitySchemaChecksum(), true, "migration.dirty"},
+		{"drift", "drift", false, "checksum_drift"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store := identitySchemaStore(t, &databaseSQLState{querySteps: identitySchemaLedgerQueries(1, test.checksum, test.dirty)})
+			if _, err := store.identitySchemaMigrationPending(t.Context(), "version"); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error=%v", err)
+			}
+		})
+	}
+	store = identitySchemaStore(t, &databaseSQLState{querySteps: identitySchemaLedgerQueries(1, "", false), execSteps: []databaseSQLExecStep{{rows: 1}, {err: errDatabaseSQL}}})
+	if _, err := store.identitySchemaMigrationPending(t.Context(), "version"); !errors.Is(err, errDatabaseSQL) {
+		t.Fatalf("backfill error=%v", err)
+	}
+}
+
+func TestIdentitySchemaMutationFailuresAndDefinitions(t *testing.T) {
+	store := identitySchemaStore(t, &databaseSQLState{execSteps: []databaseSQLExecStep{{err: errDatabaseSQL}}})
+	if err := store.startIdentitySchemaMigration(t.Context(), "version"); !errors.Is(err, errDatabaseSQL) {
+		t.Fatalf("start=%v", err)
+	}
+	store = identitySchemaStore(t, &databaseSQLState{execSteps: []databaseSQLExecStep{{err: errDatabaseSQL}}})
+	if err := store.recordIdentitySchemaMigration(t.Context(), "version", time.Second); !errors.Is(err, errDatabaseSQL) {
+		t.Fatalf("record=%v", err)
+	}
+	store = identitySchemaStore(t, &databaseSQLState{querySteps: []databaseSQLQueryStep{{closeErr: errDatabaseSQL}}})
+	if err := store.ensureColumn(t.Context(), "table", "column", "TEXT"); !errors.Is(err, errDatabaseSQL) {
+		t.Fatalf("close=%v", err)
+	}
+	store = identitySchemaStore(t, &databaseSQLState{querySteps: []databaseSQLQueryStep{{err: errDatabaseSQL}}, execSteps: []databaseSQLExecStep{{err: errDatabaseSQL}}})
+	if err := store.ensureColumn(t.Context(), "table", "column", "TEXT"); !errors.Is(err, errDatabaseSQL) {
+		t.Fatalf("alter=%v", err)
+	}
+	store = identitySchemaStore(t, &databaseSQLState{querySteps: []databaseSQLQueryStep{{err: errDatabaseSQL}}})
+	if err := store.ensureColumn(t.Context(), "table", "column", "TEXT"); err != nil {
+		t.Fatal(err)
+	}
+	mysqlStore := &IdentityStore{dialect: mysql.Dialect{}}
+	definition := "TEXT NOT NULL DEFAULT '[]', TEXT NOT NULL DEFAULT '{}', TEXT NOT NULL DEFAULT ''"
+	got := mysqlStore.columnDefinition(definition)
+	for _, expected := range []string{"DEFAULT ('[]')", "DEFAULT ('{}')", "DEFAULT ('')"} {
+		if !strings.Contains(got, expected) {
+			t.Fatalf("definition=%q", got)
+		}
+	}
+	if got := (&IdentityStore{dialect: sqlite.Dialect{}}).columnDefinition(definition); got != definition {
+		t.Fatalf("sqlite definition=%q", got)
+	}
+}
+
+type identitySchemaAssemblerStub struct{ fail string }
+
+func (stub identitySchemaAssemblerStub) result(stage string) error {
+	if stub.fail == stage {
+		return errDatabaseSQL
+	}
+	return nil
+}
+func (stub identitySchemaAssemblerStub) EnsureMetadataSchema(context.Context, identityschema.Store) error {
+	return stub.result("metadata")
+}
+func (stub identitySchemaAssemblerStub) EnsureIdentitySchema(context.Context, identityschema.Store) error {
+	return stub.result("identity")
+}
+func (stub identitySchemaAssemblerStub) EnsureEvidenceSchema(context.Context, identityschema.Store) error {
+	return stub.result("evidence")
+}
+
+func TestEnsureIdentitySchemaAssemblerFailures(t *testing.T) {
+	for _, stage := range []string{"metadata", "identity", "evidence"} {
+		t.Run(stage, func(t *testing.T) {
+			state := &databaseSQLState{querySteps: identitySchemaLedgerQueries(1, currentIdentitySchemaChecksum(), false)}
+			store := identitySchemaStore(t, state)
+			store.schemaAssembler = identitySchemaAssemblerStub{fail: stage}
+			if err := store.EnsureSchema(t.Context()); !errors.Is(err, errDatabaseSQL) {
+				t.Fatalf("error=%v", err)
+			}
+		})
+	}
+}
+
+func TestEnsureIdentitySchemaOrchestrationFailures(t *testing.T) {
+	verify := identitySchemaStore(t, &databaseSQLState{querySteps: []databaseSQLQueryStep{{err: errDatabaseSQL}}})
+	verify.config.DatabaseMigrationMode = "verify"
+	if err := verify.EnsureSchema(t.Context()); !errors.Is(err, errDatabaseSQL) {
+		t.Fatalf("verify error=%v", err)
+	}
+
+	primary := identitySchemaStore(t, &databaseSQLState{})
+	closedMigration := openDatabaseScriptedDB(&databaseSQLState{})
+	_ = closedMigration.Close()
+	primary.migrationDB = closedMigration
+	if err := primary.EnsureSchema(t.Context()); err == nil {
+		t.Fatal("closed migration database was accepted")
+	}
+
+	locked := identitySchemaStore(t, &databaseSQLState{})
+	locked.config.DBPath = filepath.Join("/dev/null", "identity.db")
+	if err := locked.EnsureSchema(t.Context()); err == nil {
+		t.Fatal("invalid migration lock path was accepted")
+	}
+
+	pendingFailure := identitySchemaStore(t, &databaseSQLState{execSteps: []databaseSQLExecStep{{err: errDatabaseSQL}}})
+	if err := pendingFailure.EnsureSchema(t.Context()); !errors.Is(err, errDatabaseSQL) {
+		t.Fatalf("pending error=%v", err)
+	}
+
+	pendingLedgerQueries := identitySchemaLedgerQueries(0, "", false)[:10]
+	validationQueries := append(append([]databaseSQLQueryStep{}, pendingLedgerQueries...), databaseSQLQueryStep{err: errDatabaseSQL})
+	validation := identitySchemaStore(t, &databaseSQLState{querySteps: validationQueries})
+	if err := validation.EnsureSchema(t.Context()); !errors.Is(err, errDatabaseSQL) {
+		t.Fatalf("validation error=%v", err)
+	}
+
+	backupQueries := append(append([]databaseSQLQueryStep{}, pendingLedgerQueries...), databaseSQLQueryStep{}, databaseSQLQueryStep{err: errDatabaseSQL})
+	backup := identitySchemaStore(t, &databaseSQLState{querySteps: backupQueries})
+	if err := backup.EnsureSchema(t.Context()); !errors.Is(err, errDatabaseSQL) {
+		t.Fatalf("backup error=%v", err)
+	}
+
+	recordQueries := append(append([]databaseSQLQueryStep{}, pendingLedgerQueries...), databaseSQLQueryStep{}, databaseSQLQueryStep{})
+	record := identitySchemaStore(t, &databaseSQLState{querySteps: recordQueries, execSteps: []databaseSQLExecStep{{rows: 1}, {rows: 1}, {err: errDatabaseSQL}}})
+	record.schemaAssembler = identitySchemaAssemblerStub{}
+	if err := record.EnsureSchema(t.Context()); !errors.Is(err, errDatabaseSQL) {
+		t.Fatalf("record error=%v", err)
+	}
+
+	startQueries := append(append([]databaseSQLQueryStep{}, pendingLedgerQueries...), databaseSQLQueryStep{}, databaseSQLQueryStep{})
+	start := identitySchemaStore(t, &databaseSQLState{querySteps: startQueries, execSteps: []databaseSQLExecStep{{rows: 1}, {err: errDatabaseSQL}}})
+	if err := start.EnsureSchema(t.Context()); !errors.Is(err, errDatabaseSQL) {
+		t.Fatalf("start error=%v", err)
+	}
+}
+
+func TestIdentitySchemaPendingRecordAndActionExecutionContextEdges(t *testing.T) {
+	store := identitySchemaStore(t, &databaseSQLState{execSteps: []databaseSQLExecStep{{err: errDatabaseSQL}}})
+	if err := store.recordIdentitySchemaMigrationIfPending(t.Context(), false, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.recordIdentitySchemaMigrationIfPending(t.Context(), true, time.Now()); !errors.Is(err, errDatabaseSQL) {
+		t.Fatalf("record error=%v", err)
+	}
+	success := identitySchemaStore(t, &databaseSQLState{execSteps: []databaseSQLExecStep{{rows: 1}}})
+	if err := success.recordIdentitySchemaMigrationIfPending(t.Context(), true, time.Now()); err != nil {
+		t.Fatalf("successful record error=%v", err)
+	}
+	if WithActionExecutionTransaction(nil, store.DB()) != nil {
+		t.Fatal("nil context changed")
+	}
+	if got := WithActionExecutionTransaction(t.Context(), nil); got != t.Context() {
+		t.Fatal("nil executor changed context")
+	}
+	if ActionExecutionTransaction(nil) != nil {
+		t.Fatal("nil context returned executor")
+	}
+	ctx := WithActionExecutionTransaction(t.Context(), store.DB())
+	if ActionExecutionTransaction(ctx) != store.DB() {
+		t.Fatal("transaction executor was not preserved")
+	}
+	if ActionExecutionTransaction(t.Context()) != nil {
+		t.Fatal("plain context returned executor")
+	}
+}
+
+func TestIdentitySchemaMigrationChecksumQueryFailure(t *testing.T) {
+	queries := identitySchemaLedgerQueries(1, currentIdentitySchemaChecksum(), false)
+	queries[10] = databaseSQLQueryStep{err: errDatabaseSQL}
+	store := identitySchemaStore(t, &databaseSQLState{querySteps: queries})
+	if _, err := store.identitySchemaMigrationPending(t.Context(), "version"); !errors.Is(err, errDatabaseSQL) {
+		t.Fatalf("checksum query error=%v", err)
+	}
+}
+
+func TestSchemaAssemblerSeamMethods(t *testing.T) {
+	store := &IdentityStore{schemaAssembler: identitySchemaAssemblerStub{}}
+	if err := store.EnsureMetadataSchema(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.EnsureIdentitySchema(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.EnsureEvidenceSchema(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+var _ schemaDatabase = (*sql.DB)(nil)

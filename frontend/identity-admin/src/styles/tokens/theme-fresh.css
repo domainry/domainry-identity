@@ -1,0 +1,163 @@
+/* ============================================================
+   Domainry Design Tokens — Theme: Fresh (清爽)
+   Additive overlay. Apply data-theme="fresh" on (or above) the
+   [data-shell] element. Loads AFTER console.css / portal.css.
+   Default theme files stay untouched.
+
+   Expression: aqua-teal brand, mint accent, ice-white neutrals,
+   hairline borders, feather-light shadows. Status colors are
+   contract-bound and inherited unchanged from base.css.
+   ============================================================ */
+
+[data-theme='fresh'] {
+  /* ---------- Brand ramp → aqua teal (hue ~205) ---------- */
+  --brand-50:  oklch(0.976 0.012 200);
+  --brand-100: oklch(0.942 0.030 200);
+  --brand-200: oklch(0.888 0.055 200);
+  --brand-300: oklch(0.802 0.085 202);
+  --brand-400: oklch(0.702 0.110 204);
+  --brand-500: oklch(0.605 0.125 206);
+  --brand-600: oklch(0.525 0.115 210);
+  --brand-700: oklch(0.452 0.100 212);
+  --brand-800: oklch(0.372 0.080 214);
+  --brand-900: oklch(0.292 0.060 216);
+  --brand-950: oklch(0.222 0.042 218);
+
+  /* ---------- Expressive accent → mint (hue ~165) ---------- */
+  --coral-300: oklch(0.832 0.100 165);
+  --coral-400: oklch(0.762 0.130 165);
+  --coral-500: oklch(0.700 0.145 168);
+  --coral-600: oklch(0.602 0.130 170);
+  --coral-700: oklch(0.502 0.110 172);
+
+  /* ---------- Warm sand → ice (hue ~215, near-white) ---------- */
+  --sand-50:  oklch(0.990 0.002 210);
+  --sand-100: oklch(0.972 0.003 210);
+  --sand-200: oklch(0.938 0.005 212);
+  --sand-300: oklch(0.892 0.007 214);
+  --sand-500: oklch(0.600 0.012 218);
+  --sand-700: oklch(0.400 0.014 222);
+  --sand-900: oklch(0.245 0.016 226);
+  --sand-950: oklch(0.192 0.015 228);
+
+  /* ---------- Gradients & glow, cooled down ---------- */
+  --gradient-brand: linear-gradient(135deg, oklch(0.66 0.115 195), oklch(0.54 0.125 218));
+  --gradient-accent: linear-gradient(135deg, oklch(0.78 0.125 160), oklch(0.66 0.125 188));
+  --gradient-hero: linear-gradient(140deg, oklch(0.952 0.025 200), oklch(0.962 0.028 162) 55%, oklch(0.945 0.025 232));
+  --shadow-glow-brand: 0 6px 20px oklch(0.60 0.125 206 / 24%), 0 2px 6px oklch(0.60 0.125 206 / 14%);
+  --shadow-glow-coral: 0 8px 24px oklch(0.70 0.145 168 / 28%), 0 2px 8px oklch(0.70 0.145 168 / 16%);
+
+  /* Feather shadows */
+  --shadow-xs: 0 1px 2px oklch(0.40 0.05 215 / 5%);
+  --shadow-sm: 0 1px 2px oklch(0.40 0.05 215 / 4%), 0 2px 10px oklch(0.40 0.05 215 / 5%);
+  --shadow-md: 0 2px 4px oklch(0.40 0.05 215 / 4%), 0 10px 28px oklch(0.40 0.05 215 / 7%);
+}
+
+/* ---------------- Console shell, fresh light ---------------- */
+[data-shell='console'][data-theme='fresh'],
+[data-theme='fresh'] [data-shell='console'] {
+  --background: oklch(0.991 0.002 210);
+  --foreground: oklch(0.235 0.020 220);
+  --secondary: oklch(0.962 0.004 210);
+  --muted: oklch(0.960 0.004 210);
+  --muted-foreground: oklch(0.500 0.018 216);
+  --accent: oklch(0.938 0.028 202);
+  --accent-foreground: var(--brand-800);
+  --border: oklch(0.922 0.006 212);
+  --input: oklch(0.885 0.008 214);
+  --ring: var(--brand-400);
+
+  --sidebar: oklch(1 0 0);
+  --sidebar-foreground: oklch(0.320 0.020 218);
+  --sidebar-accent: oklch(0.945 0.026 202);
+  --sidebar-accent-foreground: var(--brand-800);
+  --sidebar-border: oklch(0.930 0.005 212);
+
+  --surface-hover: oklch(0.968 0.005 208);
+  --surface-selected: oklch(0.938 0.028 202);
+  --table-header: oklch(0.975 0.004 208);
+
+  --chart-1: var(--brand-500);
+  --chart-2: oklch(0.700 0.130 165);
+  --chart-3: oklch(0.740 0.120 90);
+  --chart-4: oklch(0.620 0.130 280);
+  --chart-5: oklch(0.680 0.130 20);
+}
+
+/* ---------------- Console shell, fresh dark ---------------- */
+[data-shell='console'][data-theme='fresh'].dark,
+.dark [data-shell='console'][data-theme='fresh'],
+[data-theme='fresh'] [data-shell='console'].dark,
+[data-theme='fresh'].dark [data-shell='console'] {
+  --background: oklch(0.172 0.018 222);
+  --foreground: oklch(0.945 0.008 210);
+  --card: oklch(0.212 0.020 222);
+  --card-foreground: oklch(0.945 0.008 210);
+  --popover: oklch(0.228 0.022 222);
+  --popover-foreground: oklch(0.945 0.008 210);
+  --primary: var(--brand-300);
+  --primary-foreground: var(--brand-950);
+  --secondary: oklch(0.268 0.020 222);
+  --secondary-foreground: oklch(0.920 0.010 210);
+  --muted: oklch(0.268 0.020 222);
+  --muted-foreground: oklch(0.700 0.018 214);
+  --accent: oklch(0.300 0.038 210);
+  --accent-foreground: oklch(0.920 0.020 205);
+  --border: oklch(1 0 0 / 11%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: var(--brand-400);
+
+  --sidebar: oklch(0.148 0.016 224);
+  --sidebar-foreground: oklch(0.910 0.012 210);
+  --sidebar-accent: oklch(0.278 0.036 212);
+  --sidebar-accent-foreground: oklch(0.935 0.018 205);
+  --sidebar-border: oklch(1 0 0 / 9%);
+
+  --surface-hover: oklch(0.248 0.020 222);
+  --surface-selected: oklch(0.288 0.038 212);
+  --table-header: oklch(0.232 0.020 222);
+
+  --chart-1: var(--brand-300);
+  --chart-2: oklch(0.760 0.115 165);
+  --chart-3: oklch(0.800 0.110 92);
+  --chart-4: oklch(0.720 0.120 280);
+  --chart-5: oklch(0.720 0.130 22);
+}
+
+/* ---------------- Portal shell, fresh light ---------------- */
+[data-shell='portal'][data-theme='fresh'],
+[data-theme='fresh'] [data-shell='portal'] {
+  --promo-soft: oklch(0.950 0.032 166);
+  --promo-soft-foreground: var(--coral-700);
+  --nav: oklch(1 0 0 / 92%);
+  --nav-border: oklch(0.30 0.02 220 / 7%);
+  --hero-gradient: var(--gradient-hero);
+}
+
+/* ---------------- Portal shell, fresh dark ---------------- */
+[data-shell='portal'][data-theme='fresh'].dark,
+.dark [data-shell='portal'][data-theme='fresh'],
+[data-theme='fresh'] [data-shell='portal'].dark,
+[data-theme='fresh'].dark [data-shell='portal'] {
+  --background: oklch(0.182 0.015 226);
+  --foreground: oklch(0.950 0.006 210);
+  --card: oklch(0.228 0.017 226);
+  --card-foreground: oklch(0.950 0.006 210);
+  --popover: oklch(0.244 0.017 226);
+  --popover-foreground: oklch(0.950 0.006 210);
+  --secondary: oklch(0.282 0.016 226);
+  --secondary-foreground: oklch(0.930 0.008 210);
+  --muted: oklch(0.282 0.016 226);
+  --muted-foreground: oklch(0.700 0.014 218);
+  --border: oklch(1 0 0 / 11%);
+  --input: oklch(1 0 0 / 15%);
+  --promo: var(--coral-400);
+  --promo-foreground: oklch(0.170 0.025 170);
+  --promo-soft: oklch(0.312 0.048 168);
+  --promo-soft-foreground: oklch(0.855 0.085 165);
+  --nav: oklch(0.205 0.015 226 / 94%);
+  --nav-foreground: oklch(0.680 0.012 218);
+  --nav-active: var(--brand-300);
+  --nav-border: oklch(1 0 0 / 9%);
+  --gradient-hero: linear-gradient(140deg, oklch(0.285 0.045 215), oklch(0.27 0.04 175) 55%, oklch(0.28 0.04 245));
+}

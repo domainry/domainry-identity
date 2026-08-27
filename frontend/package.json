@@ -1,0 +1,24 @@
+{
+  "name": "identity-frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "identity-admin"
+  ],
+  "scripts": {
+    "brand:check": "node scripts/check-product-brand.mjs",
+    "build": "npm run build --workspaces --if-present",
+    "build:identity-admin": "npm run build --workspace identity-admin",
+    "dev:identity-admin": "npm run dev --workspace identity-admin --"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "typescript": "~6.0.3",
+    "vite": "^8.0.8"
+  }
+}

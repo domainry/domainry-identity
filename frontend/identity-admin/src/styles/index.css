@@ -1,0 +1,362 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+/* Workspace packages are symlinked into node_modules, which Tailwind v4
+   skips by default — point the scanner at their sources explicitly. */
+@source '../../../packages/ui/src';
+@import '../../../packages/ui/src/styles/base.css';
+@import './tokens/console.css';
+/* Theme overlays are additive and scoped by [data-theme=...]; importing
+   all of them lets the runtime switch skins without a rebuild. */
+@import './tokens/theme-graphite.css';
+@import './tokens/theme-fresh.css';
+@import './tokens/theme-violet.css';
+@import './tokens/theme-forest.css';
+
+@custom-variant dark (&:is(.dark *));
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  html {
+    @apply overflow-x-hidden;
+  }
+  body {
+    @apply min-h-svh w-full bg-background text-foreground has-[div[data-variant='inset']]:bg-sidebar;
+  }
+
+  /* Cursor pointer for buttons */
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+
+  /* Prevent focus zoom on mobile devices */
+  @media screen and (max-width: 767px) {
+    input,
+    select,
+    textarea {
+      font-size: 16px !important;
+    }
+  }
+  .typography {
+    max-width: 65ch;
+    color: var(--color-foreground);
+  }
+  .typography h1:not(.not-typography h1) {
+    scroll-margin: calc(var(--spacing) * 20);
+    font-size: var(--text-4xl);
+    line-height: var(--text-4xl--line-height);
+    font-weight: 800;
+    letter-spacing: var(--tracking-tight);
+  }
+  .typography h2:not(.not-typography h2) {
+    scroll-margin: calc(var(--spacing) * 20);
+    border-bottom: 1px solid var(--color-border);
+    padding-bottom: calc(var(--spacing) * 2);
+    font-size: var(--text-3xl);
+    line-height: var(--text-3xl--line-height);
+    font-weight: 600;
+    letter-spacing: var(--tracking-tight);
+    margin-top: calc(var(--spacing) * 12);
+  }
+  .typography h2:not(.not-typography h2):first-child {
+    margin-top: 0;
+  }
+  .typography h3:not(.not-typography h3) {
+    scroll-margin: calc(var(--spacing) * 20);
+    font-size: var(--text-2xl);
+    line-height: var(--text-2xl--line-height);
+    font-weight: 600;
+    letter-spacing: var(--tracking-tight);
+    margin-top: calc(var(--spacing) * 12);
+  }
+  .typography h3:not(.not-typography h3):first-child {
+    margin-top: 0;
+  }
+  .typography h4:not(.not-typography h4) {
+    scroll-margin: calc(var(--spacing) * 20);
+    font-size: var(--text-xl);
+    line-height: var(--text-xl--line-height);
+    font-weight: 600;
+    letter-spacing: var(--tracking-tight);
+    margin-top: calc(var(--spacing) * 12);
+  }
+  .typography h4:not(.not-typography h4):first-child {
+    margin-top: 0;
+  }
+  .typography h5:not(.not-typography h5) {
+    scroll-margin: calc(var(--spacing) * 20);
+    font-size: var(--text-lg);
+    line-height: var(--text-lg--line-height);
+    font-weight: 600;
+    letter-spacing: var(--tracking-tight);
+    margin-top: calc(var(--spacing) * 12);
+  }
+  .typography h5:not(.not-typography h5):first-child {
+    margin-top: 0;
+  }
+  .typography h6:not(.not-typography h6) {
+    scroll-margin: calc(var(--spacing) * 20);
+    font-size: var(--text-base);
+    line-height: var(--text-base--line-height);
+    font-weight: 600;
+    letter-spacing: var(--tracking-tight);
+    margin-top: calc(var(--spacing) * 12);
+  }
+  .typography h6:not(.not-typography h6):first-child {
+    margin-top: 0;
+  }
+  .typography h1:not(.not-typography h1) + p, .typography h2:not(.not-typography h2) + p, .typography h3:not(.not-typography h3) + p, .typography h4:not(.not-typography h4) + p, .typography h5:not(.not-typography h5) + p, .typography h6:not(.not-typography h6) + p {
+    margin-top: 0;
+  }
+  .typography p:not(.not-typography p) {
+    line-height: 1.75;
+  }
+  .typography p:not(.not-typography p):not(:first-child) {
+    margin-top: calc(var(--spacing) * 6);
+  }
+  .typography li:not(.not-typography li) {
+    line-height: 1.75;
+  }
+  .typography a:not(.not-typography a) {
+    font-weight: 500;
+    color: var(--color-primary);
+    text-decoration: underline;
+    text-underline-offset: var(--spacing);
+  }
+  .typography blockquote:not(.not-typography blockquote) {
+    margin-top: calc(var(--spacing) * 6);
+    border-left: 2px solid var(--color-border);
+    padding-left: calc(var(--spacing) * 6);
+    font-style: italic;
+  }
+  .typography table:not(.not-typography table) {
+    margin-top: calc(var(--spacing) * 6);
+    margin-bottom: calc(var(--spacing) * 6);
+    width: 100%;
+    overflow-y: auto;
+  }
+  .typography table:not(.not-typography table) thead tr {
+    margin: 0;
+    border-top: 1px solid var(--color-border);
+    padding: 0;
+  }
+  .typography table:not(.not-typography table) thead tr:nth-child(even) {
+    background-color: var(--color-muted);
+  }
+  .typography table:not(.not-typography table) th {
+    border: 1px solid var(--color-border);
+    padding: calc(var(--spacing) * 2) calc(var(--spacing) * 4);
+    text-align: left;
+    font-weight: 700;
+  }
+  .typography table:not(.not-typography table) th[align="center"] {
+    text-align: center;
+  }
+  .typography table:not(.not-typography table) th[align="right"] {
+    text-align: right;
+  }
+  .typography table:not(.not-typography table) tbody tr {
+    margin: 0;
+    border-top: 1px solid var(--color-border);
+    padding: 0;
+  }
+  .typography table:not(.not-typography table) tbody tr:nth-child(even) {
+    background-color: var(--color-muted);
+  }
+  .typography table:not(.not-typography table) td {
+    border: 1px solid var(--color-border);
+    padding: calc(var(--spacing) * 2) calc(var(--spacing) * 4);
+    text-align: left;
+  }
+  .typography table:not(.not-typography table) td[align="center"] {
+    text-align: center;
+  }
+  .typography table:not(.not-typography table) td[align="right"] {
+    text-align: right;
+  }
+  .typography ul:not(.not-typography ul) {
+    margin-top: calc(var(--spacing) * 6);
+    margin-left: calc(var(--spacing) * 6);
+    list-style: disc;
+  }
+  .typography ul:not(.not-typography ul) > li {
+    margin-top: calc(var(--spacing) * 2);
+  }
+  .typography ul:not(.not-typography ul) p {
+    margin-top: 0;
+    margin-bottom: 0;
+    display: inline;
+  }
+  .typography ol:not(.not-typography ol) {
+    margin-top: calc(var(--spacing) * 6);
+    margin-left: calc(var(--spacing) * 6);
+    list-style: decimal;
+  }
+  .typography ol:not(.not-typography ol) > li {
+    margin-top: calc(var(--spacing) * 2);
+  }
+  .typography ol:not(.not-typography ol) p {
+    margin-top: 0;
+    margin-bottom: 0;
+    display: inline;
+  }
+  .typography pre:not(.not-typography pre) {
+    background-color: var(--color-muted);
+    border-radius: calc(var(--radius) - 2px);
+    padding: calc(var(--spacing) * 4);
+    margin-top: calc(var(--spacing) * 6);
+    margin-bottom: calc(var(--spacing) * 6);
+    font-size: var(--text-sm);
+    line-height: var(--text-sm--line-height);
+    overflow-y: auto;
+  }
+  .typography code:not(pre code):not(.not-typography code) {
+    position: relative;
+    border-radius: var(--radius);
+    background-color: var(--color-muted);
+    padding: calc(var(--spacing) * 0.2) calc(var(--spacing) * 0.3);
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    line-height: var(--text-sm--line-height);
+    font-weight: 600;
+  }
+  .typography .lead:not(.not-typography .lead) {
+    font-size: var(--text-xl);
+    line-height: var(--text-xl--line-height);
+    color: var(--color-muted-foreground);
+  }
+  .typography .large:not(.not-typography .large) {
+    font-size: var(--text-lg);
+    line-height: var(--text-lg--line-height);
+    font-weight: 600;
+  }
+  .typography .small:not(.not-typography .small) {
+    font-size: var(--text-sm);
+    line-height: 1;
+    font-weight: 500;
+  }
+  .typography .muted:not(.not-typography .muted) {
+    font-size: var(--text-sm);
+    line-height: var(--text-sm--line-height);
+    color: var(--color-muted-foreground);
+  }
+  .typography img:not(.not-typography img),
+    .typography picture:not(.not-typography picture),
+    .typography video:not(.not-typography video) {
+    margin-top: calc(var(--spacing) * 6);
+    margin-bottom: calc(var(--spacing) * 6);
+  }
+  .typography picture > img:not(.not-typography picture > img) {
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+  .typography kbd:not(.not-typography kbd) {
+    border-radius: calc(var(--radius) - 2px);
+    background-color: var(--color-muted);
+    padding: calc(var(--spacing) * 0.5) calc(var(--spacing) * 1.5);
+    font-size: var(--text-xs);
+    line-height: var(--text-xs--line-height);
+    font-weight: 600;
+  }
+  .typography hr {
+    margin-top: calc(var(--spacing) * 10);
+    margin-bottom: calc(var(--spacing) * 10);
+  }
+  .typography dl:not(.not-typography dl) {
+    margin-top: calc(var(--spacing) * 6);
+    margin-bottom: calc(var(--spacing) * 6);
+  }
+  .typography dl:not(.not-typography dl) dt {
+    font-weight: 600;
+    margin-top: calc(var(--spacing) * 6);
+    letter-spacing: var(--tracking-tight);
+  }
+  .typography dl:not(.not-typography dl) dt:first-child {
+    margin-top: 0;
+  }
+  .typography details:not(.not-typography details) {
+    margin-top: calc(var(--spacing) * 6);
+  }
+  .typography details:not(.not-typography details) summary {
+    cursor: pointer;
+    font-weight: 600;
+    margin-top: calc(var(--spacing) * 6);
+    letter-spacing: var(--tracking-tight);
+  }
+  .typography details:not(.not-typography details) p:first-of-type {
+    margin-top: calc(var(--spacing) * 2);
+  }
+  .typography mark:not(.not-typography mark) {
+    background-color: var(--color-yellow-300);
+  }
+  .typography small:not(.not-typography small) {
+    font-size: var(--text-xs);
+    line-height: 1;
+  }
+
+@media (min-width: 1024px) {
+  .typography h1:not(.not-typography h1) {
+    font-size: var(--text-5xl);
+    line-height: var(--text-5xl--line-height);
+    }
+  }
+}
+
+@utility container {
+  margin-inline: auto;
+  padding-inline: 2rem;
+}
+
+@utility num {
+  /* Tabular numerals for amounts, IDs, and metric values (demo.html .num). */
+  font-feature-settings: var(--font-numeric);
+  font-variant-numeric: tabular-nums;
+}
+
+@utility no-scrollbar {
+  /* Hide scrollbar for Chrome, Safari and Opera */
+  &::-webkit-scrollbar {
+    display: none;
+  }
+  /* Hide scrollbar for IE, Edge and Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+
+@utility faded-bottom {
+  @apply after:pointer-events-none after:absolute after:inset-s-0 after:bottom-0 after:hidden after:h-32 after:w-full after:rounded-b-2xl after:bg-[linear-gradient(180deg,transparent_10%,var(--background)_70%)] md:after:block;
+}
+
+/* styles.css */
+.CollapsibleContent {
+  overflow: hidden;
+}
+.CollapsibleContent[data-state='open'] {
+  animation: slideDown 300ms ease-out;
+}
+.CollapsibleContent[data-state='closed'] {
+  animation: slideUp 300ms ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-collapsible-content-height);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    height: var(--radix-collapsible-content-height);
+  }
+  to {
+    height: 0;
+  }
+}

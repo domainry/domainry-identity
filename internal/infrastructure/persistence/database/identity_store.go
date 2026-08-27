@@ -1,0 +1,371 @@
+package database
+
+import (
+	"context"
+	"crypto/sha256"
+	"database/sql"
+	"fmt"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/domainry/domainry-foundation/idempotency"
+	"github.com/domainry/domainry-foundation/secrets"
+	"github.com/domainry/domainry-foundation/telemetry"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/postgres"
+	"github.com/domainry/domainry-identity/internal/platform/config"
+)
+
+// IdentityStore owns the Identity database connection and dialect.
+type IdentityStore struct {
+	db                   *sql.DB
+	migrationDB          *sql.DB
+	migrationConn        *sql.Conn
+	dialect              dialect
+	config               config.Config
+	databaseSchema       string
+	postgresProfile      *postgres.ConnectionProfile
+	postgresCapabilities postgres.Capabilities
+	migratorCapabilities postgres.Capabilities
+	expectedMigrations   []string
+	expectedChecksums    map[string]string
+	secretMaterialKey    [32]byte
+	secretKeyProvider    secrets.KeyProvider
+	migrationBackupReady bool
+	migrationCompatible  bool
+	migrationBackupID    string
+	idempotencyMetrics   *idempotency.MemoryMetricsCollector
+	sqlMetrics           *telemetry.SQLMetrics
+	operationalMetrics   *IdentityOperationalMetrics
+	workspaceRLS         WorkspaceRLSStatus
+	schemaAssembler      identitySchemaAssembler
+	backupChecksum       func(string) (string, error)
+	migrationReadDir     func(string) ([]os.DirEntry, error)
+	externalDatabase     bool
+}
+
+func OpenContext(ctx context.Context, cfg config.Config) (*IdentityStore, error) {
+	return openContextWithDependencies(ctx, cfg, defaultIdentityOpenDependencies())
+}
+
+func openContextWithDependencies(ctx context.Context, cfg config.Config, dependencies identityOpenDependencies) (*IdentityStore, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	dialect, err := dependencies.dialect(cfg.DatabaseDriver)
+	if err != nil {
+		return nil, err
+	}
+	var db *sql.DB
+	var migrationDB *sql.DB
+	var postgresProfile *postgres.ConnectionProfile
+	var postgresConnection identityPostgresProfile
+	var postgresCapabilities postgres.Capabilities
+	var migratorCapabilities postgres.Capabilities
+	sqlMetrics := telemetry.NewSQLMetrics()
+	operationalMetrics := NewIdentityOperationalMetrics(cfg.MigrationBackupLastSuccessAt, cfg.MigrationRestoreDrillSuccessAt)
+	dsn := ""
+	if dialect.Name() == "postgres" {
+		profile, profileErr := dependencies.postgresProfile(cfg)
+		if profileErr != nil {
+			return nil, profileErr
+		}
+		db, err = profile.Open(sqlMetrics)
+		if err == nil {
+			postgresConnection = profile
+			postgresProfile = profile.Profile()
+		}
+	} else {
+		dsn, err = dialect.DSN(cfg)
+		if err == nil {
+			db, err = dependencies.observedSQL(dialect.SQLDriver(), dsn, "identity", sqlMetrics)
+		}
+	}
+	if err != nil {
+		return nil, fmt.Errorf("open database: %w", err)
+	}
+	if err := dialect.Configure(ctx, db, dsn); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	if postgresProfile != nil {
+		if postgresProfile.MigrationConfigured {
+			migrationDB, err = postgresConnection.OpenMigration(sqlMetrics)
+			if err != nil {
+				_ = db.Close()
+				return nil, err
+			}
+			if err := migrationDB.PingContext(ctx); err != nil {
+				_ = migrationDB.Close()
+				_ = db.Close()
+				return nil, fmt.Errorf("connect postgres migration database (%s)", postgres.ClassifyConnectionFailure(err))
+			}
+		}
+		postgresCapabilities, err = postgresConnection.ProbeWithBackoff(ctx, db)
+		if err != nil {
+			if migrationDB != nil {
+				_ = migrationDB.Close()
+			}
+			_ = db.Close()
+			return nil, fmt.Errorf("probe postgres query connection (%s)", postgres.ClassifyConnectionFailure(err))
+		}
+		if migrationDB != nil {
+			migratorCapabilities, err = postgresConnection.ProbeWithBackoff(ctx, migrationDB)
+			if err != nil {
+				_ = migrationDB.Close()
+				_ = db.Close()
+				return nil, fmt.Errorf("probe postgres migration connection (%s)", postgres.ClassifyConnectionFailure(err))
+			}
+		}
+		if err := postgresConnection.ValidateRuntimeCapabilities(postgresCapabilities, migratorCapabilities); err != nil {
+			if migrationDB != nil {
+				_ = migrationDB.Close()
+			}
+			_ = db.Close()
+			return nil, err
+		}
+	}
+	activeMaterial, keyRing, err := identityDataKeyProvider(cfg, dependencies.keyRing)
+	if err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("initialize Identity data key ring: %w", err)
+	}
+	databaseSchema := ""
+	if postgresProfile != nil {
+		databaseSchema = postgresProfile.Schema
+	}
+	store := &IdentityStore{db: db, migrationDB: migrationDB, dialect: dialect, config: cfg, databaseSchema: databaseSchema, postgresProfile: postgresProfile, postgresCapabilities: postgresCapabilities, migratorCapabilities: migratorCapabilities, secretMaterialKey: activeMaterial, secretKeyProvider: keyRing, idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096), sqlMetrics: sqlMetrics, operationalMetrics: operationalMetrics}
+	var migrationErr error
+	migrationStarted := time.Now()
+	if cfg.EffectiveDatabaseMigrationMode() == "verify" {
+		migrationErr = store.verifyMigrations(ctx, cfg)
+	} else {
+		migrationErr = store.applyMigrations(ctx, cfg)
+	}
+	operationalMetrics.ObserveMigration(time.Since(migrationStarted), migrationErr)
+	if migrationErr != nil {
+		if migrationDB != nil {
+			_ = migrationDB.Close()
+		}
+		_ = db.Close()
+		return nil, migrationErr
+	}
+	store.migrationCompatible = true
+	return store, nil
+}
+
+// AttachContext builds Identity persistence over a host-owned database. The
+// returned store never closes the supplied pool; lifecycle ownership remains
+// with the embedding Runtime.
+func AttachContext(ctx context.Context, cfg config.Config, db *sql.DB, driverName, databaseSchema string) (*IdentityStore, error) {
+	if ctx == nil || db == nil {
+		return nil, fmt.Errorf("attach Identity database: context and database are required")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	dialect, err := dialectFor(strings.TrimSpace(driverName))
+	if err != nil {
+		return nil, err
+	}
+	activeMaterial, keyRing, err := identityDataKeyProvider(cfg, defaultIdentityOpenDependencies().keyRing)
+	if err != nil {
+		return nil, fmt.Errorf("initialize Identity data key ring: %w", err)
+	}
+	return &IdentityStore{
+		db: db, dialect: dialect, config: cfg, databaseSchema: strings.TrimSpace(databaseSchema),
+		secretMaterialKey: activeMaterial, secretKeyProvider: keyRing,
+		idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096), sqlMetrics: telemetry.NewSQLMetrics(),
+		operationalMetrics: NewIdentityOperationalMetrics(cfg.MigrationBackupLastSuccessAt, cfg.MigrationRestoreDrillSuccessAt),
+		externalDatabase:   true,
+	}, nil
+}
+
+func identityDataKeyProvider(cfg config.Config, factory func(secrets.Key, ...secrets.Key) (secrets.KeyProvider, error)) ([32]byte, secrets.KeyProvider, error) {
+	activeMaterial := sha256.Sum256([]byte(cfg.IdentityDataSecretKey))
+	activeID := strings.TrimSpace(cfg.IdentityDataActiveKeyID)
+	if activeID == "" {
+		activeID = "legacy-v1"
+	}
+	decryptOnly := make([]secrets.Key, 0, len(cfg.IdentityDataDecryptOnlyKeys))
+	for id, value := range cfg.IdentityDataDecryptOnlyKeys {
+		material := sha256.Sum256([]byte(value))
+		decryptOnly = append(decryptOnly, secrets.Key{ID: id, Material: material[:]})
+	}
+	keyRing, err := factory(secrets.Key{ID: activeID, Material: activeMaterial[:]}, decryptOnly...)
+	return activeMaterial, keyRing, err
+}
+
+// OpenContextWithKeyProvider replaces the local env/file key ring with a
+// production KMS, Vault, or Secret Manager adapter before secret access.
+func OpenContextWithKeyProvider(ctx context.Context, cfg config.Config, provider secrets.KeyProvider) (*IdentityStore, error) {
+	if provider == nil {
+		return nil, fmt.Errorf("secret key provider is required")
+	}
+	store, err := OpenContext(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	store.secretKeyProvider = provider
+	return store, nil
+}
+
+func (s *IdentityStore) Close() error {
+	if s == nil {
+		return nil
+	}
+	if s.externalDatabase {
+		return nil
+	}
+	var first error
+	if s.migrationConn != nil {
+		first = s.migrationConn.Close()
+		s.migrationConn = nil
+	}
+	if s.migrationDB != nil {
+		first = s.migrationDB.Close()
+	}
+	if s.db != nil {
+		if err := s.db.Close(); first == nil {
+			first = err
+		}
+	}
+	return first
+}
+
+// CloseContext stops accepting new work and lets database/sql drain operations
+// already in flight, bounded by the caller's shutdown deadline.
+func (s *IdentityStore) CloseContext(ctx context.Context) error {
+	if s == nil {
+		return nil
+	}
+	if s.externalDatabase {
+		return nil
+	}
+	done := make(chan error, 1)
+	go func() {
+		var first error
+		if s.migrationDB != nil {
+			first = s.migrationDB.Close()
+		}
+		if s.db != nil {
+			if err := s.db.Close(); first == nil {
+				first = err
+			}
+		}
+		done <- first
+	}()
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		return fmt.Errorf("close Identity database: %w", ctx.Err())
+	}
+}
+
+func (s *IdentityStore) DB() *sql.DB {
+	return s.db
+}
+
+func (s *IdentityStore) SQLMetrics() *telemetry.SQLMetrics {
+	if s == nil {
+		return nil
+	}
+	return s.sqlMetrics
+}
+
+func (s *IdentityStore) OperationalMetrics() *IdentityOperationalMetrics {
+	if s == nil {
+		return nil
+	}
+	return s.operationalMetrics
+}
+
+func (s *IdentityStore) Driver() string {
+	return s.dialect.Name()
+}
+
+func (s *IdentityStore) DatabaseSchema() string {
+	return s.databaseSchema
+}
+
+func (s *IdentityStore) DatabaseStatus() (postgres.SafeStatus, bool) {
+	if s == nil || s.postgresProfile == nil {
+		return postgres.SafeStatus{}, false
+	}
+	return s.postgresProfile.SafeStatus(), true
+}
+
+type DatabaseReadiness struct {
+	Ready                    bool   `json:"ready"`
+	Failure                  string `json:"failure,omitempty"`
+	ReadReady                bool   `json:"read_ready"`
+	WriteReady               bool   `json:"write_ready"`
+	MigrationCompatible      bool   `json:"migration_compatible"`
+	PoolDegraded             bool   `json:"pool_degraded"`
+	SchemaExists             bool   `json:"schema_exists"`
+	SchemaUsage              bool   `json:"schema_usage"`
+	ReadOnly                 bool   `json:"read_only"`
+	TLSVerified              bool   `json:"tls_verified"`
+	MigrationConnectionReady bool   `json:"migration_connection_ready"`
+	RLSEnabled               bool   `json:"rls_enabled"`
+	RLSPolicyVersion         string `json:"rls_policy_version,omitempty"`
+	RLSCoveredTables         int    `json:"rls_covered_tables"`
+	RLSMissingTables         int    `json:"rls_missing_tables"`
+}
+
+func (s *IdentityStore) DatabaseReadiness() DatabaseReadiness {
+	if s == nil || s.postgresProfile == nil {
+		ready := s != nil && s.db != nil
+		return DatabaseReadiness{Ready: ready, ReadReady: ready, WriteReady: ready, MigrationCompatible: ready}
+	}
+	capability := s.postgresCapabilities
+	stats := s.db.Stats()
+	result := DatabaseReadiness{
+		SchemaExists:             capability.SchemaExists,
+		SchemaUsage:              capability.SchemaUsage,
+		ReadOnly:                 capability.ReadOnly || capability.InRecovery,
+		TLSVerified:              capability.TLS == s.postgresProfile.TLS,
+		MigrationConnectionReady: !s.postgresProfile.MigrationConfigured || s.migratorCapabilities.Database != "",
+		RLSEnabled:               s.workspaceRLS.Enabled,
+		RLSPolicyVersion:         s.workspaceRLS.PolicyVersion,
+		RLSCoveredTables:         len(s.workspaceRLS.CoveredTables),
+		RLSMissingTables:         len(s.workspaceRLS.MissingTables),
+		ReadReady:                capability.SchemaExists && capability.SchemaUsage,
+		WriteReady:               capability.SchemaExists && capability.SchemaUsage && !capability.ReadOnly && !capability.InRecovery,
+		MigrationCompatible:      s.migrationCompatible,
+		PoolDegraded:             stats.MaxOpenConnections > 0 && stats.InUse >= stats.MaxOpenConnections,
+	}
+	switch {
+	case !result.SchemaExists || !result.SchemaUsage:
+		result.Failure = postgres.FailureSchemaIncompatible
+	case result.ReadOnly:
+		result.Failure = "read_only"
+	case !result.TLSVerified:
+		result.Failure = postgres.FailureTLS
+	case !result.MigrationConnectionReady:
+		result.Failure = postgres.FailureServerUnavailable
+	case !result.MigrationCompatible:
+		result.Failure = "migration_incompatible"
+	case result.PoolDegraded:
+		result.Failure = "pool_degraded"
+	case s.postgresProfile.RLSEnabled && (!result.RLSEnabled || result.RLSMissingTables > 0):
+		result.Failure = "rls_incompatible"
+	default:
+		result.Ready = true
+	}
+	return result
+}
+
+func (s *IdentityStore) ObserveIdempotency(_ context.Context, workspaceID, scope string, outcome idempotency.Outcome) {
+	if s != nil && s.idempotencyMetrics != nil {
+		s.idempotencyMetrics.Observe(workspaceID, scope, outcome)
+	}
+}
+
+func (s *IdentityStore) IdempotencyMetrics(_ context.Context) idempotency.MetricsCollector {
+	if s == nil {
+		return nil
+	}
+	return s.idempotencyMetrics
+}

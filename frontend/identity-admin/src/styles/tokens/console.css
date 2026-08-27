@@ -1,0 +1,113 @@
+/* ============================================================
+   Domainry Design Tokens — Layer 1: Console shell (B端)
+   Scope: [data-shell="console"]. Restrained, border-first,
+   cool-neutral, compact density for operational work.
+   Requires tokens/base.css.
+   ============================================================ */
+
+[data-shell='console'] {
+  --radius: 0.5rem;
+
+  --background: var(--gray-50);
+  --foreground: var(--gray-900);
+  --card: var(--gray-0);
+  --card-foreground: var(--gray-900);
+  --popover: var(--gray-0);
+  --popover-foreground: var(--gray-900);
+
+  --primary: var(--brand-600);
+  --primary-foreground: oklch(0.988 0.004 262);
+  --primary-hover: var(--brand-700);
+
+  --secondary: var(--gray-100);
+  --secondary-foreground: var(--gray-800);
+  --muted: var(--gray-100);
+  --muted-foreground: var(--gray-500);
+  --accent: oklch(0.936 0.020 262);
+  --accent-foreground: var(--brand-800);
+
+  --border: var(--gray-200);
+  --input: var(--gray-300);
+  --ring: var(--brand-400);
+
+  --sidebar: var(--gray-100);
+  --sidebar-foreground: var(--gray-800);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: oklch(0.922 0.018 262);
+  --sidebar-accent-foreground: var(--brand-800);
+  --sidebar-border: var(--gray-200);
+  --sidebar-ring: var(--ring);
+
+  /* Categorical chart ramp (reports) */
+  --chart-1: var(--brand-500);
+  --chart-2: oklch(0.620 0.120 190);
+  --chart-3: oklch(0.720 0.150 78);
+  --chart-4: oklch(0.590 0.170 305);
+  --chart-5: oklch(0.630 0.170 22);
+
+  /* Density: compact operational rhythm */
+  --control-height: 2rem;          /* 32px inputs/buttons        */
+  --control-height-sm: 1.75rem;    /* 28px table inline controls */
+  --table-row-height: 2.5rem;      /* 40px                       */
+  --font-size-body: var(--text-sm);      /* 13px */
+  --font-size-label: var(--text-md);     /* 14px */
+  --font-size-meta: var(--text-2xs);     /* 11px */
+  --page-gutter: 1.25rem;
+  --section-gap: 1rem;
+  --card-padding: 1rem;
+  --card-shadow: var(--shadow-xs), var(--card-highlight);
+  --touch-target: 2rem;
+
+  /* Interaction surfaces */
+  --surface-hover: oklch(0.955 0.008 258);
+  --surface-selected: oklch(0.936 0.020 262);
+  --table-header: oklch(0.968 0.005 258);
+
+  font-family: var(--font-sans);
+  font-size: var(--font-size-body);
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-normal);
+}
+
+[data-shell='console'].dark,
+.dark [data-shell='console'] {
+  --background: var(--gray-950);
+  --foreground: oklch(0.945 0.011 255);
+  --card: var(--gray-900);
+  --card-foreground: oklch(0.945 0.011 255);
+  --popover: oklch(0.240 0.030 262);
+  --popover-foreground: oklch(0.945 0.011 255);
+
+  --primary: var(--brand-300);
+  --primary-foreground: var(--gray-950);
+  --primary-hover: var(--brand-200);
+
+  --secondary: var(--gray-800);
+  --secondary-foreground: oklch(0.920 0.012 255);
+  --muted: var(--gray-800);
+  --muted-foreground: var(--gray-400);
+  --accent: oklch(0.315 0.048 260);
+  --accent-foreground: oklch(0.920 0.022 255);
+
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 16%);
+  --ring: var(--brand-400);
+
+  --sidebar: oklch(0.150 0.026 262);
+  --sidebar-foreground: oklch(0.910 0.016 255);
+  --sidebar-accent: oklch(0.290 0.045 260);
+  --sidebar-accent-foreground: oklch(0.940 0.018 255);
+  --sidebar-border: oklch(1 0 0 / 10%);
+
+  --chart-1: var(--brand-300);
+  --chart-2: oklch(0.720 0.115 188);
+  --chart-3: oklch(0.780 0.145 80);
+  --chart-4: oklch(0.710 0.155 305);
+  --chart-5: oklch(0.700 0.175 22);
+
+  --card-shadow: var(--shadow-hairline);
+  --surface-hover: oklch(0.260 0.028 262);
+  --surface-selected: oklch(0.300 0.045 262);
+  --table-header: oklch(0.245 0.028 262);
+}

@@ -1,0 +1,486 @@
+{
+  "key": "identity.user",
+  "status": "supported",
+  "lifecycle": "immediate_audited_configuration",
+  "parameters": [
+    {
+      "key": "id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "key": "name",
+      "type": "string",
+      "required": true
+    },
+    {
+      "key": "email",
+      "type": "string",
+      "required": true,
+      "format": "email"
+    },
+    {
+      "key": "given_name",
+      "type": "string"
+    },
+    {
+      "key": "middle_name",
+      "type": "string"
+    },
+    {
+      "key": "family_name",
+      "type": "string"
+    },
+    {
+      "key": "name_prefix",
+      "type": "string"
+    },
+    {
+      "key": "name_suffix",
+      "type": "string"
+    },
+    {
+      "key": "native_name",
+      "type": "string"
+    },
+    {
+      "key": "name_locale",
+      "type": "string"
+    },
+    {
+      "key": "phone",
+      "type": "string"
+    },
+    {
+      "key": "account_type",
+      "type": "string",
+      "default": "human",
+      "enum": [
+        "human",
+        "service",
+        "automation"
+      ]
+    },
+    {
+      "key": "locale",
+      "type": "string"
+    },
+    {
+      "key": "timezone",
+      "type": "string"
+    },
+    {
+      "key": "status",
+      "type": "string",
+      "required": true,
+      "enum": [
+        "active",
+        "disabled"
+      ]
+    }
+  ],
+  "permissions": [
+    "identity.users.write"
+  ],
+  "audit_events": [
+    "identity_user_created",
+    "identity_user_updated"
+  ],
+  "validation_endpoint": "POST /identity/users/{userID}/validate",
+  "configuration_routes": [
+    "POST /identity/users",
+    "PATCH /identity/users/{userID}",
+    "GET /identity/users/{userID}",
+    "GET /identity/users/{userID}/versions",
+    "DELETE /identity/users/{userID}",
+    "POST /identity/users/{userID}/disable",
+    "POST /identity/users/{userID}/enable"
+  ],
+  "resource_operations": {
+    "persistence_mode": "audited_resource",
+    "validate": "POST /identity/users/{userID}/validate",
+    "upsert": "PATCH /identity/users/{userID}",
+    "upsert_headers": [
+      {
+        "name": "Builder-Task-ID",
+        "required": true,
+        "value_source": "builder_task_id",
+        "description": "Stable identity of the project-owned builder task."
+      },
+      {
+        "name": "Idempotency-Key",
+        "required": true,
+        "value_source": "request_fingerprint",
+        "description": "Stable key for this capability, resource, and canonical payload."
+      },
+      {
+        "name": "Expected-Schema-Hash",
+        "required": true,
+        "value_source": "expected_resource_hash",
+        "description": "Last observed resource hash, or empty when the resource does not exist."
+      }
+    ],
+    "success_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "available_successors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "detail_endpoint": {
+                "type": "string"
+              },
+              "domain": {
+                "type": "string"
+              },
+              "key": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "validation_endpoint": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "key",
+              "domain",
+              "status",
+              "detail_endpoint"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "resource": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": true
+            },
+            {
+              "type": "array"
+            }
+          ]
+        },
+        "resource_hash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "snapshot_hash": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "resource",
+        "resource_hash",
+        "snapshot_hash",
+        "available_successors"
+      ],
+      "additionalProperties": true
+    },
+    "get": "GET /identity/users/{userID}",
+    "versions": "GET /identity/users/{userID}/versions",
+    "delete": "DELETE /identity/users/{userID}"
+  },
+  "resource_key_path_parameter": "userID",
+  "errors": [
+    {
+      "code": "backend.identity.user_required",
+      "field_path": "id",
+      "message_key": "backend.identity.user_required"
+    },
+    {
+      "code": "backend.identity.user_name_required",
+      "field_path": "name",
+      "message_key": "backend.identity.user_name_required"
+    },
+    {
+      "code": "backend.identity.user_email_required",
+      "field_path": "email",
+      "message_key": "backend.identity.user_email_required"
+    },
+    {
+      "code": "backend.identity.user_email_invalid",
+      "field_path": "email",
+      "parameter_keys": [
+        "actual",
+        "expected"
+      ],
+      "message_key": "backend.identity.user_email_invalid"
+    },
+    {
+      "code": "backend.identity.user_email_exists",
+      "field_path": "email",
+      "parameter_keys": [
+        "actual"
+      ],
+      "message_key": "backend.identity.user_email_exists"
+    },
+    {
+      "code": "backend.identity.user_account_type_invalid",
+      "field_path": "account_type",
+      "parameter_keys": [
+        "actual",
+        "allowed"
+      ],
+      "message_key": "backend.identity.user_account_type_invalid"
+    },
+    {
+      "code": "backend.identity.user_timezone_invalid",
+      "field_path": "timezone",
+      "parameter_keys": [
+        "actual",
+        "expected"
+      ],
+      "message_key": "backend.identity.user_timezone_invalid"
+    }
+  ],
+  "examples": [
+    {
+      "name": "minimal_valid",
+      "value": {
+        "account_type": "human",
+        "email": "sales.rep@example.com",
+        "id": "sales_rep",
+        "name": "Sales Rep",
+        "status": "active"
+      }
+    },
+    {
+      "name": "representative",
+      "value": {
+        "account_type": "human",
+        "email": "sales.rep@example.com",
+        "family_name": "Carreño Quiñones",
+        "given_name": "María",
+        "id": "sales_rep",
+        "locale": "es-CO",
+        "middle_name": "José",
+        "name": "Dr. María José Carreño Quiñones",
+        "name_locale": "es-CO",
+        "name_prefix": "Dr.",
+        "native_name": "마리아 카레뇨",
+        "phone": "+1-555-0100",
+        "status": "active",
+        "timezone": "America/Bogota"
+      }
+    },
+    {
+      "name": "invalid_with_repair",
+      "value": {
+        "email": "not-an-email",
+        "id": "sales_rep",
+        "name": "Sales Rep",
+        "status": "active"
+      },
+      "expected_error_codes": [
+        "backend.identity.user_email_invalid"
+      ]
+    }
+  ],
+  "input_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "account_type": {
+        "type": "string",
+        "enum": [
+          "human",
+          "service",
+          "automation"
+        ],
+        "default": "human"
+      },
+      "email": {
+        "type": "string",
+        "format": "email",
+        "minLength": 1
+      },
+      "family_name": {
+        "type": "string"
+      },
+      "given_name": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string",
+        "minLength": 1
+      },
+      "locale": {
+        "type": "string"
+      },
+      "middle_name": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string",
+        "minLength": 1
+      },
+      "name_locale": {
+        "type": "string"
+      },
+      "name_prefix": {
+        "type": "string"
+      },
+      "name_suffix": {
+        "type": "string"
+      },
+      "native_name": {
+        "type": "string"
+      },
+      "phone": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "active",
+          "disabled"
+        ]
+      },
+      "timezone": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "name",
+      "email",
+      "status"
+    ],
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "account_type": {
+        "type": "string",
+        "enum": [
+          "human",
+          "service",
+          "automation"
+        ]
+      },
+      "created_at": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "email": {
+        "type": "string",
+        "format": "email"
+      },
+      "family_name": {
+        "type": "string"
+      },
+      "given_name": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "locale": {
+        "type": "string"
+      },
+      "middle_name": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "name_locale": {
+        "type": "string"
+      },
+      "name_prefix": {
+        "type": "string"
+      },
+      "name_suffix": {
+        "type": "string"
+      },
+      "native_name": {
+        "type": "string"
+      },
+      "phone": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "active",
+          "disabled"
+        ]
+      },
+      "timezone": {
+        "type": "string"
+      },
+      "updated_at": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "version": {
+        "type": "integer"
+      }
+    },
+    "required": [
+      "id",
+      "name",
+      "email",
+      "account_type",
+      "status",
+      "version",
+      "created_at",
+      "updated_at"
+    ],
+    "additionalProperties": false
+  },
+  "output_variables": [
+    {
+      "name": "user_id",
+      "json_pointer": "/id",
+      "type": "user_id",
+      "visible_to": "subsequent_capability_calls"
+    }
+  ],
+  "execution": {
+    "read_set": [
+      "identity.user"
+    ],
+    "write_set": [
+      "identity.user"
+    ],
+    "boundary_class": "",
+    "transaction": "identity_repository_transaction",
+    "idempotency": "stable_user_id_upsert",
+    "side_effects": [
+      "audit:identity_user_updated"
+    ],
+    "side_effect_level": "internal",
+    "permission_model": "identity.users.write",
+    "change_control": "direct_on_configuring_runtime_change_plan_on_existing_runtime"
+  },
+  "sources": [
+    {
+      "kind": "contract",
+      "path": "internal/domain/identity/contract/identity_management_authoring.go"
+    },
+    {
+      "kind": "model",
+      "path": "internal/domain/identity/model/identity_model.go",
+      "symbol": "IdentityUser"
+    },
+    {
+      "kind": "validation",
+      "path": "internal/domain/identity/service/identity_configuration_domain_service.go",
+      "symbol": "ValidateUserConfiguration"
+    },
+    {
+      "kind": "http",
+      "path": "internal/transport/http/identity/identity_routes.go",
+      "symbol": "RegisterRoutes"
+    }
+  ]
+}
