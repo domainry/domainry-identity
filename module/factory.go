@@ -148,7 +148,7 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 			Pattern: pattern, Exposures: []identityhttpapi.Exposure{identityhttpapi.ExposurePublic, identityhttpapi.ExposureTenantAdmin},
 		})
 	}
-	return &moduleBinding{Binding: scopedBinding, runtime: identityRuntime, surfaces: []identityhttpapi.Surface{browserSurface, managementSurface}}, nil
+	return &moduleBinding{Binding: scopedBinding, runtime: identityRuntime, application: application, surfaces: []identityhttpapi.Surface{browserSurface, managementSurface}}, nil
 }
 
 type moduleOrganizationScopeResolver struct {
@@ -168,8 +168,9 @@ func (resolver moduleOrganizationScopeResolver) ResolveIdentityOrganizationScope
 
 type moduleBinding struct {
 	identitysdk.Binding
-	runtime  *assembly.Core
-	surfaces []identityhttpapi.Surface
+	runtime     *assembly.Core
+	application identitysdk.ApplicationRef
+	surfaces    []identityhttpapi.Surface
 }
 
 func (binding *moduleBinding) HTTPSurfaces() []identityhttpapi.Surface {
@@ -189,4 +190,5 @@ func (binding *moduleBinding) Close(ctx context.Context) error {
 var _ identitysdk.Factory = (*Factory)(nil)
 var _ identitysdk.DatabaseFactory = (*Factory)(nil)
 var _ identitysdk.Binding = (*moduleBinding)(nil)
+var _ identitysdk.ProjectRoleCatalogPublisher = (*moduleBinding)(nil)
 var _ identityhttpapi.Provider = (*moduleBinding)(nil)

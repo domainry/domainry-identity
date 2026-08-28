@@ -145,6 +145,46 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	if err != nil || receipt.Revision == "" {
 		t.Fatalf("publish receipt=%#v err=%v", receipt, err)
 	}
+	rolePublisher, ok := binding.(identitysdk.ProjectRoleCatalogPublisher)
+	if !ok {
+		t.Fatal("module Binding does not expose project role publication")
+	}
+	roleReceipt, err := rolePublisher.PublishProjectRoles(t.Context(), identitysdk.ProjectRoleCatalog{
+		Application: application,
+		Roles: []identitysdk.ProjectRoleDefinition{{
+			Key: "project_viewer", Name: "Project Viewer", Permissions: []string{"customer.read"}, RecordScope: "all_records",
+			Audience: "any", AssignmentMode: "manual", RiskLevel: "normal", SchemaHash: strings.Repeat("a", 64),
+			DataPermissions: json.RawMessage(`[{"object_key":"customer","scope":"all_records","read":true,"write":false}]`),
+		}},
+	})
+	if err != nil || roleReceipt.Published != 1 || len(roleReceipt.SHA256) != 64 {
+		t.Fatalf("project role receipt=%#v err=%v", roleReceipt, err)
+	}
+	repeatedRoleReceipt, err := rolePublisher.PublishProjectRoles(t.Context(), identitysdk.ProjectRoleCatalog{
+		Application: application,
+		Roles: []identitysdk.ProjectRoleDefinition{{
+			Key: "project_viewer", Name: "Project Viewer", Permissions: []string{"customer.read"}, RecordScope: "all_records",
+			Audience: "any", AssignmentMode: "manual", RiskLevel: "normal", SchemaHash: strings.Repeat("a", 64),
+			DataPermissions: json.RawMessage(`[{"object_key":"customer","scope":"all_records","read":true,"write":false}]`),
+		}},
+	})
+	if err != nil || repeatedRoleReceipt != roleReceipt {
+		t.Fatalf("idempotent project role receipt=%#v want=%#v err=%v", repeatedRoleReceipt, roleReceipt, err)
+	}
+	if _, err := rolePublisher.PublishProjectRoles(t.Context(), identitysdk.ProjectRoleCatalog{Application: identitysdk.ApplicationRef{WorkspaceID: "other", ApplicationKey: application.ApplicationKey}}); err == nil {
+		t.Fatal("cross-workspace project role publication accepted")
+	}
+	roles, err := binding.Directory().ListRoles(t.Context(), identitysdk.DirectoryQuery{Application: identitysdk.ApplicationScope{WorkspaceID: application.WorkspaceID, ApplicationKey: application.ApplicationKey}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundProjectRole := false
+	for _, role := range roles {
+		foundProjectRole = foundProjectRole || role.Key == "project_viewer"
+	}
+	if !foundProjectRole {
+		t.Fatalf("project role missing from directory: %#v", roles)
+	}
 
 	unauthenticatedSetup := httptest.NewRecorder()
 	unauthenticatedSetupRequest := httptest.NewRequest(http.MethodPut, "/auth/providers/wechat_mini_program/setup", strings.NewReader(`{}`))
