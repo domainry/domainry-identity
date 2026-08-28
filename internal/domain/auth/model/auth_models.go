@@ -72,6 +72,11 @@ type AuthExternalIdentityAssertion struct {
 	AvatarURL   string            `json:"avatar_url,omitempty"`
 	Metadata    string            `json:"metadata,omitempty"`
 	Claims      map[string]string `json:"-"`
+
+	// ProviderSubjectVerified is set only by server-side provider adapters after
+	// they verify a stable subject with the upstream provider. It is never
+	// accepted from transport JSON.
+	ProviderSubjectVerified bool `json:"-"`
 }
 
 type AuthExternalLoginPolicy struct {

@@ -19,7 +19,7 @@ func TestExchangeWeChatMiniProgramCodeUsesUnionIDAndDiscardsSessionKey(t *testin
 	}))
 	defer server.Close()
 	assertion, err := ExchangeWeChatMiniProgramCode(t.Context(), "wechat_mini_program", " login-code ", authmodel.AuthProviderConfig{ClientID: "app-id", ClientSecret: "app-secret", TokenURL: server.URL})
-	if err != nil || assertion.Subject != "union-1" || assertion.Claims["openid"] != "open-1" || assertion.Claims["unionid"] != "union-1" {
+	if err != nil || assertion.Subject != "union-1" || !assertion.ProviderSubjectVerified || assertion.Claims["openid"] != "open-1" || assertion.Claims["unionid"] != "union-1" {
 		t.Fatalf("assertion=%#v err=%v", assertion, err)
 	}
 	if strings.Contains(assertion.Metadata, "session_key") || assertion.Claims["session_key"] != "" {

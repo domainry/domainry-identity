@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -345,6 +346,13 @@ func TestExternalIdentityCreationAndRoleMappingEdges(t *testing.T) {
 	auth, identities, _ := newFaultAuthDomainService()
 	if _, err := auth.createExternalIdentityUser(t.Context(), authmodel.AuthExternalIdentityAssertion{Provider: "oidc", Subject: "subject"}, authmodel.AuthExternalLoginPolicy{}); err == nil {
 		t.Fatal("external identity created without email")
+	}
+	if _, err := auth.createExternalIdentityUser(t.Context(), authmodel.AuthExternalIdentityAssertion{Provider: "wechat_mini_program", Subject: "open-id"}, authmodel.AuthExternalLoginPolicy{}); err == nil {
+		t.Fatal("unverified wechat subject created without email")
+	}
+	createdFromWeChat, err := auth.createExternalIdentityUser(t.Context(), authmodel.AuthExternalIdentityAssertion{Provider: "wechat_mini_program", Subject: "open-id", ProviderSubjectVerified: true}, authmodel.AuthExternalLoginPolicy{})
+	if err != nil || createdFromWeChat.Email != wechatMiniProgramPlaceholderEmail("wechat_mini_program", "open-id") || !strings.HasSuffix(createdFromWeChat.Email, "@external.invalid") {
+		t.Fatalf("verified wechat identity=%+v err=%v", createdFromWeChat, err)
 	}
 	identities.users = []identitymodel.IdentityUser{activeExternalIdentityUser("oidc_subject", "existing@example.test")}
 	created, err := auth.createExternalIdentityUser(t.Context(), authmodel.AuthExternalIdentityAssertion{

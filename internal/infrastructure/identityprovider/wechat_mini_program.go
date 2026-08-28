@@ -63,7 +63,7 @@ func ExchangeWeChatMiniProgramCode(ctx context.Context, provider, code string, c
 		claims["unionid"] = unionID
 	}
 	return authmodel.AuthExternalIdentityAssertion{
-		Provider: strings.ToLower(strings.TrimSpace(provider)), Subject: subject,
+		Provider: strings.ToLower(strings.TrimSpace(provider)), Subject: subject, ProviderSubjectVerified: true,
 		Claims: claims, Metadata: `{"source":"wechat_jscode2session"}`,
 	}, nil
 }

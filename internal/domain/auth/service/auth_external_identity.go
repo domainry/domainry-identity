@@ -4,6 +4,7 @@ import authmodel "github.com/domainry/domainry-identity/internal/domain/auth/mod
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"strings"
 	"time"
@@ -182,7 +183,10 @@ func (s *AuthDomainService) externalAccountByProviderSubject(ctx context.Context
 func (s *AuthDomainService) createExternalIdentityUser(ctx context.Context, assertion authmodel.AuthExternalIdentityAssertion, policy authmodel.AuthExternalLoginPolicy) (identitymodel.IdentityUser, error) {
 	email := strings.TrimSpace(assertion.Email)
 	if email == "" {
-		return identitymodel.IdentityUser{}, badRequest("auth.external_email_required")
+		if !wechatMiniProgramSubjectOnlyIdentity(assertion) {
+			return identitymodel.IdentityUser{}, badRequest("auth.external_email_required")
+		}
+		email = wechatMiniProgramPlaceholderEmail(assertion.Provider, assertion.Subject)
 	}
 	idBase := assertion.Provider + "_" + assertion.Subject
 	idBase = strings.Trim(strings.Map(func(r rune) rune {
@@ -229,6 +233,17 @@ func (s *AuthDomainService) createExternalIdentityUser(ctx context.Context, asse
 		}
 	}
 	return user, nil
+}
+
+func wechatMiniProgramSubjectOnlyIdentity(assertion authmodel.AuthExternalIdentityAssertion) bool {
+	return assertion.ProviderSubjectVerified &&
+		strings.EqualFold(strings.TrimSpace(assertion.Provider), "wechat_mini_program") &&
+		strings.TrimSpace(assertion.Subject) != ""
+}
+
+func wechatMiniProgramPlaceholderEmail(provider, subject string) string {
+	digest := sha256.Sum256([]byte(normalizeProvider(provider) + "\x00" + strings.TrimSpace(subject)))
+	return fmt.Sprintf("wechat-mini-%x@external.invalid", digest[:16])
 }
 
 func (s *AuthDomainService) roleForExternalAssertion(ctx context.Context, assertion authmodel.AuthExternalIdentityAssertion, policy authmodel.AuthExternalLoginPolicy) (identitymodel.IdentityRole, bool, error) {
