@@ -327,8 +327,12 @@ func (r *faultExternalIdentityRepository) ListIdentityRoles(context.Context) ([]
 	return append([]identitymodel.IdentityRole(nil), r.roles...), nil
 }
 
-func (r *faultExternalIdentityRepository) AssignIdentityUserRole(context.Context, identitymodel.IdentityUserRoleAssignment) error {
-	return r.assignRoleErr
+func (r *faultExternalIdentityRepository) AssignIdentityUserRole(_ context.Context, assignment identitymodel.IdentityUserRoleAssignment) error {
+	if r.assignRoleErr != nil {
+		return r.assignRoleErr
+	}
+	r.roleAssignments = append(r.roleAssignments, assignment)
+	return nil
 }
 
 func (r *faultExternalIdentityRepository) ListIdentityUserRoleAssignments(_ context.Context, userID string) ([]identitymodel.IdentityUserRoleAssignment, error) {

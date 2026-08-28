@@ -38,6 +38,9 @@ func (s *AuthDomainService) ExternalLoginWithPolicyForApplication(ctx context.Co
 		if !ok || user.Status != identitymodel.IdentityStatusActive {
 			return authmodel.AuthSession{}, forbidden("auth.user_disabled")
 		}
+		if err := s.ensureExternalDefaultRole(ctx, user.ID, policy.DefaultRoleKey); err != nil {
+			return authmodel.AuthSession{}, err
+		}
 		return s.issueSessionForAudience(ctx, workspaceID, user, applicationKey)
 	}
 	if !policy.AutoCreateUsers {
@@ -287,7 +290,26 @@ func externalAutoAssignableRole(role identitymodel.RoleSchema) bool {
 	if audience == "" {
 		audience = identitymodel.IdentityRoleAudienceAny
 	}
-	return mode == identitymodel.IdentityRoleAssignmentManual && audience == identitymodel.IdentityRoleAudienceAny
+	risk := role.RiskLevel
+	if risk == "" {
+		risk = identitymodel.IdentityRoleRiskNormal
+	}
+	return mode == identitymodel.IdentityRoleAssignmentManual && audience == identitymodel.IdentityRoleAudienceAny && risk == identitymodel.IdentityRoleRiskNormal
+}
+
+func (s *AuthDomainService) ensureExternalDefaultRole(ctx context.Context, userID, defaultRoleKey string) error {
+	if strings.TrimSpace(defaultRoleKey) == "" {
+		return nil
+	}
+	roles, err := s.identity.ActiveRolesForUser(ctx, userID)
+	if err != nil || len(roles) > 0 {
+		return err
+	}
+	role, ok, err := s.roleForExternalAssertion(ctx, authmodel.AuthExternalIdentityAssertion{}, authmodel.AuthExternalLoginPolicy{DefaultRoleKey: defaultRoleKey})
+	if err != nil || !ok {
+		return err
+	}
+	return s.identity.AssignUserRole(ctx, identitymodel.IdentityUserRoleAssignment{UserID: userID, RoleID: role.ID})
 }
 
 func externalAssertionMappingMatches(assertion authmodel.AuthExternalIdentityAssertion, mapping authmodel.AuthExternalRoleMapping) bool {

@@ -422,6 +422,47 @@ func TestWeChatExternalLoginReusesOrphanAndSkipsBindingManagedDefaultRole(t *tes
 	}
 }
 
+func TestLinkedExternalLoginBackfillsOnlySafeDefaultRole(t *testing.T) {
+	newFixture := func(definition identitymodel.RoleSchema) (*AuthDomainService, *faultExternalIdentityRepository, *faultExternalAuthRepository) {
+		auth, identities, repository := newFaultAuthDomainService()
+		identities.users = append(identities.users, identitymodel.IdentityUser{ID: "linked", Name: "Linked", Email: "linked@example.test", Status: identitymodel.IdentityStatusActive})
+		identities.roles = append(identities.roles, identitymodel.IdentityRole{ID: "default-role", Key: "default-role", Status: identitymodel.IdentityStatusActive})
+		identities.roleDefinitions["default-role"] = definition
+		repository.accounts = append(repository.accounts, identitymodel.IdentityExternalAccount{ID: "external", UserID: "linked", Provider: "oidc", ProviderSubject: "subject"})
+		return auth, identities, repository
+	}
+
+	t.Run("manual normal role is added once", func(t *testing.T) {
+		auth, identities, _ := newFixture(identitymodel.RoleSchema{Key: "default-role", Audience: identitymodel.IdentityRoleAudienceAny, AssignmentMode: identitymodel.IdentityRoleAssignmentManual, RiskLevel: identitymodel.IdentityRoleRiskNormal})
+		policy := authmodel.AuthExternalLoginPolicy{DefaultRoleKey: "default-role"}
+		assertion := authmodel.AuthExternalIdentityAssertion{Provider: "oidc", Subject: "subject"}
+		for range 2 {
+			if _, err := auth.ExternalLoginWithPolicy(t.Context(), "default", assertion, policy); err != nil {
+				t.Fatalf("linked login: %v", err)
+			}
+		}
+		if len(identities.roleAssignments) != 1 || identities.roleAssignments[0].RoleID != "default-role" {
+			t.Fatalf("default role assignments=%+v", identities.roleAssignments)
+		}
+	})
+
+	for name, definition := range map[string]identitymodel.RoleSchema{
+		"system managed":  {Key: "default-role", AssignmentMode: identitymodel.IdentityRoleAssignmentSystemManaged},
+		"privileged risk": {Key: "default-role", AssignmentMode: identitymodel.IdentityRoleAssignmentManual, RiskLevel: identitymodel.IdentityRoleRiskPrivileged},
+		"workspace admin": {Key: "default-role", AssignmentMode: identitymodel.IdentityRoleAssignmentManual, Permissions: []string{"workspace.admin"}},
+	} {
+		t.Run(name+" is denied", func(t *testing.T) {
+			auth, identities, _ := newFixture(definition)
+			if _, err := auth.ExternalLoginWithPolicy(t.Context(), "default", authmodel.AuthExternalIdentityAssertion{Provider: "oidc", Subject: "subject"}, authmodel.AuthExternalLoginPolicy{DefaultRoleKey: "default-role"}); err != nil {
+				t.Fatalf("linked login with denied default role: %v", err)
+			}
+			if len(identities.roleAssignments) != 0 {
+				t.Fatalf("unsafe default role assigned: %+v", identities.roleAssignments)
+			}
+		})
+	}
+}
+
 type assertionAdapter struct {
 	assertion authmodel.AuthExternalIdentityAssertion
 	err       error
