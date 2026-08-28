@@ -86,6 +86,9 @@ func TestApplicationCredentialRotationSharesOneApplicationRateBucket(t *testing.
 	}
 	registry.clock = func() time.Time { return time.Date(2026, 8, 27, 4, 30, 0, 0, time.UTC) }
 	scope := identitysdk.ApplicationScope{WorkspaceID: "default", ApplicationKey: "orders-runtime"}
+	if !registry.Active(scope, "old") || !registry.Active(scope, "new") || registry.Active(scope, "retired") {
+		t.Fatal("credential rotation IDs were not constrained to active registrations")
+	}
 	if decision := registry.Authorize("Bearer old-service-secret", scope); !decision.Authenticated || decision.RateLimited {
 		t.Fatalf("old credential=%+v", decision)
 	}

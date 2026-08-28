@@ -117,6 +117,10 @@ func RegisterRoutes(mux *http.ServeMux, binding identitysdk.Binding, support Sup
 			support.writeServiceError(w, r, err)
 			return
 		}
+		if !credentials.Active(identitysdk.ApplicationScope{TenantID: principal.Application.TenantID, WorkspaceID: principal.Application.WorkspaceID, ApplicationKey: principal.Application.ApplicationKey}, principal.CredentialID) {
+			support.writeError(w, r, http.StatusUnauthorized, "identity.application_service_credential_rotated")
+			return
+		}
 		support.writeJSON(w, http.StatusOK, principal)
 	})
 	mux.HandleFunc("GET /auth/session", func(w http.ResponseWriter, r *http.Request) {

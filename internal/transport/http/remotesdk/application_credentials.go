@@ -105,6 +105,26 @@ func (registry *ApplicationCredentialRegistry) Authorize(authorization string, s
 	return ApplicationCredentialDecision{}
 }
 
+// Active reports whether a credential rotation ID remains registered for the
+// exact application scope. Resource-service verification uses this after JWT
+// signature/grant verification so removing an old credential ID revokes its
+// outstanding short-lived tokens immediately.
+func (registry *ApplicationCredentialRegistry) Active(scope identitysdk.ApplicationScope, credentialID string) bool {
+	if registry == nil || !scope.WorkspaceID.Valid() || !scope.ApplicationKey.Valid() || strings.TrimSpace(credentialID) == "" {
+		return false
+	}
+	tenantID := scope.TenantID
+	if !tenantID.Valid() {
+		tenantID = identitysdk.TenantID(scope.WorkspaceID)
+	}
+	for _, registered := range registry.credentials {
+		if registered.tenantID == tenantID && registered.workspaceID == scope.WorkspaceID && registered.applicationKey == scope.ApplicationKey && registered.credentialID == credentialID {
+			return true
+		}
+	}
+	return false
+}
+
 type applicationRateLimiter struct {
 	mu        sync.Mutex
 	limit     int
