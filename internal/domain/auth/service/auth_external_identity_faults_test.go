@@ -188,7 +188,14 @@ type faultExternalIdentityRepository struct {
 	listRolesErr       error
 	listAssignmentsErr error
 	upsertUserErr      error
+	reconcileErr       error
+	reconcileCalls     int
 	assignRoleErr      error
+}
+
+func (r *faultExternalIdentityRepository) ReconcileSystemManagedBusinessRoles(context.Context, string) error {
+	r.reconcileCalls++
+	return r.reconcileErr
 }
 
 func (r *faultExternalIdentityRepository) AssignUserRole(ctx context.Context, assignment identitymodel.IdentityUserRoleAssignment) error {

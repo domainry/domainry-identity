@@ -18,6 +18,16 @@ func TestSessionIssuance(t *testing.T) {
 		assertExternalAuthFault(t, err, fault)
 	})
 
+	t.Run("reconciles profile roles before role lookup", func(t *testing.T) {
+		auth, identityRepository, _ := newFaultAuthDomainService()
+		identityRepository.reconcileErr = fault
+		_, err := auth.issueSession(t.Context(), "default", user)
+		assertExternalAuthFault(t, err, fault)
+		if identityRepository.reconcileCalls != 1 {
+			t.Fatalf("reconcile calls=%d", identityRepository.reconcileCalls)
+		}
+	})
+
 	t.Run("refresh token write failure", func(t *testing.T) {
 		auth, _, authRepository := newFaultAuthDomainService()
 		authRepository.createRefreshTokenErr = fault

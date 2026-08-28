@@ -5,6 +5,7 @@ import (
 
 	"github.com/domainry/domainry-foundation/requestcontext"
 	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
+	authcontract "github.com/domainry/domainry-identity/internal/domain/auth/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
@@ -94,6 +95,14 @@ func (a workspaceAuthIdentity) ResolvePrincipal(ctx context.Context, userID stri
 	return scoped.ResolvePrincipal(ctx, userID)
 }
 
+func (a workspaceAuthIdentity) ReconcileSystemManagedBusinessRoles(ctx context.Context, userID string) error {
+	scoped, err := a.scoped(ctx)
+	if err != nil {
+		return err
+	}
+	return scoped.ReconcileSystemManagedBusinessRoles(ctx, userID)
+}
+
 func (a workspaceAuthIdentity) UpdateUserLocale(ctx context.Context, workspaceID, userID, locale string, expectedVersion int64) (identitymodel.IdentityUser, error) {
 	scoped, err := a.identity.ForWorkspace(workspaceID)
 	if err != nil {
@@ -101,3 +110,5 @@ func (a workspaceAuthIdentity) UpdateUserLocale(ctx context.Context, workspaceID
 	}
 	return scoped.UpdateUserLocale(ctx, workspaceID, userID, locale, expectedVersion)
 }
+
+var _ authcontract.AuthSystemManagedRoleReconciler = workspaceAuthIdentity{}
