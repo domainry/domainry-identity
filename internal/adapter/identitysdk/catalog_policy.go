@@ -150,6 +150,28 @@ func accessBundleForCatalog(bundle identitysdk.AccessBundle, catalog identitysdk
 		_, found = policy.actions[action]
 		return found
 	}
+	hasDataAction := func(resource identitysdk.ResourceType, action identitysdk.Action) bool {
+		policy, found := resources[resource]
+		if !found {
+			return false
+		}
+		if _, exact := policy.actions[action]; exact {
+			return true
+		}
+		switch strings.ToLower(strings.TrimSpace(string(action))) {
+		case "read":
+			_, exports := policy.actions[identitysdk.Action("export")]
+			return exports
+		case "write":
+			for declared := range policy.actions {
+				value := strings.ToLower(strings.TrimSpace(string(declared)))
+				if value != "" && value != "read" && value != "export" {
+					return true
+				}
+			}
+		}
+		return false
+	}
 	functionGrants := make([]identitysdk.FunctionGrant, 0, len(bundle.FunctionGrants))
 	for _, grant := range bundle.FunctionGrants {
 		if hasAction(grant.Resource, grant.Action) {
@@ -159,7 +181,7 @@ func accessBundleForCatalog(bundle identitysdk.AccessBundle, catalog identitysdk
 	dataPolicies := make([]identitysdk.DataPolicy, 0, len(bundle.DataPolicies))
 	for _, policy := range bundle.DataPolicies {
 		_, found := resources[policy.Resource]
-		if !found || !hasAction(policy.Resource, policy.Action) {
+		if !found || !hasDataAction(policy.Resource, policy.Action) {
 			continue
 		}
 		if !catalogPredicateSupported(policy.Predicate, policy.Resource, resources) {

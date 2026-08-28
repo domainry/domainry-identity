@@ -135,6 +135,59 @@ func TestAccessBundleIsConstrainedByPublishedCatalog(t *testing.T) {
 	}
 }
 
+func TestGymOnboardingWritePolicySurvivesCatalogAndAuthorizesExactMutations(t *testing.T) {
+	now := time.Now().UTC()
+	catalog := identitysdk.AuthorizationCatalog{
+		ContractVersion: identitysdk.CatalogVersionV1,
+		Application:     identitysdk.ApplicationRef{WorkspaceID: "default", ApplicationKey: "runtime-app"},
+		Resources: []identitysdk.ResourceDefinition{
+			{Key: "course_favorite", Fields: []string{"id", "identity_user_id", "course_template_id"}, SupportedFacts: []string{"id", "identity_user_id"}},
+			{Key: "member", Fields: []string{"id", "identity_user_id"}, SupportedFacts: []string{"id", "identity_user_id"}},
+		},
+		Actions: []identitysdk.ActionDefinition{
+			{Resource: "course_favorite", Action: "create"}, {Resource: "course_favorite", Action: "read"}, {Resource: "course_favorite", Action: "delete"},
+			{Resource: "member", Action: "read"}, {Resource: "member", Action: "self_enroll"},
+		},
+	}
+	predicate := identitymodel.IdentityPolicyExpression{Operator: "eq", FieldKey: "identity_user_id", ValueSource: "actor_claim", ClaimKey: "user_id"}
+	snapshot := identitymodel.IdentityEffectiveAccessSnapshot{
+		AuthorizationRevision: "authz",
+		Permissions: []identitymodel.IdentityEffectivePermissionGrant{
+			{Key: "course_favorite.create", ObjectKey: "course_favorite", Action: "create"},
+			{Key: "member.self_enroll", ObjectKey: "member", Action: "self_enroll"},
+		},
+		DataAccess: []identitymodel.IdentityEffectiveDataAccess{
+			{ObjectKey: "course_favorite", Action: "write", Allowed: true, Scope: "custom", Predicate: &predicate},
+			{ObjectKey: "member", Action: "write", Allowed: true, Scope: "custom", Predicate: &predicate},
+		},
+	}
+	principal := identitymodel.Principal{Known: true, WorkspaceID: "default", UserID: "wechat-user"}
+	bundle := sdkAccessBundle(snapshot, principal, "catalog", now)
+	bundle = resolveCatalogRoleAccess(bundle, catalog, identitymodel.RoleSchema{Permissions: []string{"course_favorite.create", "member.self_enroll"}})
+	bundle, err := accessBundleForCatalog(bundle, catalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bundle.DataPolicies) != 2 {
+		t.Fatalf("write policies were removed by catalog constraint: %+v", bundle.DataPolicies)
+	}
+	for _, request := range []identitysdk.AccessRequest{{ObjectKey: "course_favorite", Action: "create"}, {ObjectKey: "member", Action: "self_enroll"}} {
+		decision, err := identityevaluator.Evaluate(bundle, request, identitysdk.ResourceFacts{"identity_user_id": "wechat-user"}, now)
+		if err != nil || !decision.Allowed {
+			t.Fatalf("request=%+v decision=%+v err=%v bundle=%+v", request, decision, err, bundle)
+		}
+	}
+	readOnlyCatalog := catalog
+	readOnlyCatalog.Actions = []identitysdk.ActionDefinition{{Resource: "course_favorite", Action: "read"}, {Resource: "member", Action: "read"}}
+	readOnlyBundle, err := accessBundleForCatalog(sdkAccessBundle(snapshot, principal, "catalog", now), readOnlyCatalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(readOnlyBundle.DataPolicies) != 0 {
+		t.Fatalf("write policy survived a read-only catalog: %+v", readOnlyBundle.DataPolicies)
+	}
+}
+
 func TestCatalogAcceptsDeclaredRelationshipPredicatesAndRejectsDrift(t *testing.T) {
 	catalog := identitysdk.AuthorizationCatalog{
 		ContractVersion: identitysdk.CatalogVersionV1,
