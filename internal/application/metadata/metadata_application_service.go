@@ -42,10 +42,20 @@ type MetadataApplicationService struct {
 	operations             changeplanrepository.ChangePlanOperationRepository
 	auditAppender          MetadataAuditAppender
 	actionDefinitions      func() []definitionmodel.ActionSchema
+	permissionDefinitions  func() []identitymodel.IdentityPermissionDefinition
 	authorizationObjectsMu sync.RWMutex
 	authorizationObjects   []definitionmodel.ObjectSchema
 	reloadObserversMu      sync.RWMutex
 	reloadObservers        []func(metadatamodel.MetadataSchemaSnapshot)
+}
+
+// UsePermissionDefinitionSource binds the effective Identity authorization
+// catalog to the generic metadata definition read surface. Permissions are a
+// runtime projection, not rows in the versioned metadata tables.
+func (s *MetadataApplicationService) UsePermissionDefinitionSource(source func() []identitymodel.IdentityPermissionDefinition) {
+	if s != nil {
+		s.permissionDefinitions = source
+	}
 }
 
 // ReplaceAuthorizationObjects supplies the application object catalog used by

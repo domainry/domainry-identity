@@ -2,7 +2,11 @@ package metadata
 
 import "net/http"
 
-func (h *MetadataHandler) RegisterRoutes(mux *http.ServeMux) {
+type routeRegistrar interface {
+	HandleFunc(string, func(http.ResponseWriter, *http.Request))
+}
+
+func (h *MetadataHandler) RegisterRoutes(mux routeRegistrar) {
 	authenticated := h.authenticated
 	if authenticated == nil {
 		authenticated = h.admin

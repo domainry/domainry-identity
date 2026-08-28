@@ -131,6 +131,9 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 		AuditAppender: auditApp.AppendWithMetadata, TemplateID: metadataRuntime.Schema().TemplateID,
 		Version: metadataRuntime.Schema().TemplateVersion, Name: metadataRuntime.Schema().Name,
 	})
+	metadataApp.UsePermissionDefinitionSource(func() []identitymodel.IdentityPermissionDefinition {
+		return identityApp.ListPermissions(context.Background())
+	})
 	metadataSchemaApp := metadataapplication.NewMetadataSchemaApplicationService(metadataRuntime, metadataStore)
 	refreshIdentityCatalog := func(snapshot metadatamodel.MetadataSchemaSnapshot) {
 		identityApp.ReplacePermissionDefinitions(identityapplication.MergeIdentityPermissions(seed.Permissions, identityapplication.IdentityPermissionsFromRuntime(snapshot.Roles, snapshot.Objects, snapshot.Actions, cfg.AppLocale)))

@@ -2,7 +2,10 @@ package metadata
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
+	"sort"
 	"strings"
 
 	definitionmodel "github.com/domainry/domainry-identity/internal/domain/definition/model"
@@ -117,11 +120,39 @@ func (s *MetadataApplicationService) ListMetadataDefinitions(ctx context.Context
 	if workspaceID != strings.TrimSpace(principal.WorkspaceID) || !identitycontract.IdentityRoleHasPermissionKey(principal.Role, "workspace.admin") {
 		return nil, forbidden("auth.permission_denied")
 	}
+	if strings.TrimSpace(resourceType) == "permission" {
+		return s.permissionMetadataDefinitions(), nil
+	}
 	definitions, err := s.repository.ListDefinitions(ctx, metadataInstallationScope("list metadata definitions"), resourceType)
 	if err != nil {
 		return nil, wrapMetadataError(err)
 	}
 	return s.withEffectiveActionDefinitions(resourceType, definitions), nil
+}
+
+func (s *MetadataApplicationService) permissionMetadataDefinitions() []metadatamodel.MetadataDefinition {
+	if s == nil || s.permissionDefinitions == nil {
+		return []metadatamodel.MetadataDefinition{}
+	}
+	permissions := s.permissionDefinitions()
+	definitions := make([]metadatamodel.MetadataDefinition, 0, len(permissions))
+	for _, permission := range permissions {
+		key := strings.TrimSpace(permission.Key)
+		if key == "" {
+			continue
+		}
+		payload, err := json.Marshal(permission)
+		if err != nil {
+			continue
+		}
+		digest := sha256.Sum256(payload)
+		definitions = append(definitions, metadatamodel.MetadataDefinition{
+			ResourceType: "permission", ResourceKey: key, ObjectKey: strings.TrimSpace(permission.ObjectKey), Name: strings.TrimSpace(permission.Label),
+			Payload: payload, SchemaVersion: "runtime", SchemaHash: fmt.Sprintf("%x", digest[:]), SourceKind: "runtime_catalog", SourceID: "identity_permissions",
+		})
+	}
+	sort.Slice(definitions, func(i, j int) bool { return definitions[i].ResourceKey < definitions[j].ResourceKey })
+	return definitions
 }
 
 func (s *MetadataApplicationService) GetMetadataDefinition(ctx context.Context, resourceType, resourceKey string, principal identitymodel.Principal) (metadatamodel.MetadataDefinition, bool, error) {

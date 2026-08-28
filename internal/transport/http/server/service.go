@@ -173,7 +173,8 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 		WriteJSON: httpSupport.writeJSON, WriteError: httpSupport.writeError, WriteServiceError: httpSupport.writeServiceError,
 		DecodeJSON: httpSupport.decodeJSON, Admin: httpSupport.admin, Authenticated: httpSupport.authenticated, LegacyHeaders: func(http.ResponseWriter) {},
 	})
-	metadataHandler.RegisterRoutes(mux)
+	metadataRoutes := &recordingRouteRegistrar{mux: mux}
+	metadataHandler.RegisterRoutes(metadataRoutes)
 	registerAuditRoutes(mux, core.Audit, httpSupport)
 
 	changePlanStore := changeplanpersistence.NewBusinessChangePlanStore(core.Store)
@@ -233,6 +234,12 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 	embeddedPublicAuthRoutes, embeddedManagementAuthRoutes := embeddedAuthRouteInventory(authRoutes.patterns, embeddedBrowserRoutes)
 	managementRoutes := append([]string(nil), identityRoutes.patterns...)
 	managementRoutes = append(managementRoutes, changePlanRoutes.patterns...)
+	for _, pattern := range metadataRoutes.patterns {
+		method, path, ok := strings.Cut(pattern, " ")
+		if ok && classifyRouteSurface(method, path) == routeSurfaceTenantAdmin {
+			managementRoutes = append(managementRoutes, pattern)
+		}
+	}
 	managementRoutes = append(managementRoutes, "GET /domain-system-snapshot", "GET /domain-reference-graph")
 	return &Server{
 		core: core, routes: httpSupport.middleware(mux),

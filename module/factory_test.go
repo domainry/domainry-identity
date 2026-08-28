@@ -110,6 +110,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		"POST /tenant-admin/change-plans/apply":                 identityhttpapi.ExposureTenantAdmin,
 		"GET /domain-system-snapshot":                           identityhttpapi.ExposureTenantAdmin,
 		"GET /domain-reference-graph":                           identityhttpapi.ExposureTenantAdmin,
+		"GET /tenant-admin/metadata/definitions/{resourceType}": identityhttpapi.ExposureTenantAdmin,
 	} {
 		owner, ok := mountedPatterns[pattern]
 		if !ok {
@@ -167,6 +168,15 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	mounted.ServeHTTP(reset, resetRequest)
 	if reset.Code != http.StatusOK {
 		t.Fatalf("mounted tenant-admin reset-password status=%d body=%s", reset.Code, reset.Body.String())
+	}
+	for _, resourceType := range []string{"role", "permission"} {
+		response := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, "/tenant-admin/metadata/definitions/"+resourceType, nil)
+		request.Header.Set("Authorization", "Bearer "+adminSession.AccessToken)
+		mounted.ServeHTTP(response, request)
+		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"definitions"`) {
+			t.Fatalf("mounted %s definitions status=%d body=%s", resourceType, response.Code, response.Body.String())
+		}
 	}
 	wechat := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
