@@ -244,6 +244,10 @@ func identityStringSliceContains(values []string, expected string) bool {
 }
 
 func (s *IdentityDomainService) AssignSystemManagedRole(ctx context.Context, assignment identitymodel.IdentityUserRoleAssignment) error {
+	return s.assignSystemManagedRole(ctx, assignment, false)
+}
+
+func (s *IdentityDomainService) assignSystemManagedRole(ctx context.Context, assignment identitymodel.IdentityUserRoleAssignment, bindingAlreadyResolved bool) error {
 	role, found, err := s.roleByID(ctx, strings.TrimSpace(assignment.RoleID))
 	if err != nil {
 		return err
@@ -255,15 +259,17 @@ func (s *IdentityDomainService) AssignSystemManagedRole(ctx context.Context, ass
 	if !published || definition.AssignmentMode != identitymodel.IdentityRoleAssignmentSystemManaged || definition.Audience != identitymodel.IdentityRoleAudienceBusiness {
 		return forbidden("backend.identity.system_managed_role_required")
 	}
-	if strings.TrimSpace(assignment.BindingKey) != strings.TrimSpace(definition.RequiredBindingKey) || strings.TrimSpace(assignment.ProfileID) == "" || s.bindingEligibility == nil {
+	if strings.TrimSpace(assignment.BindingKey) != strings.TrimSpace(definition.RequiredBindingKey) || strings.TrimSpace(assignment.ProfileID) == "" || !bindingAlreadyResolved && s.bindingEligibility == nil {
 		return forbidden("backend.identity.business_role_eligibility_required")
 	}
-	active, err := s.bindingEligibility.IdentityRoleBindingActive(ctx, s.workspace, assignment.BindingKey, assignment.ProfileID, assignment.UserID)
-	if err != nil {
-		return err
-	}
-	if !active {
-		return forbidden("backend.identity.business_role_eligibility_required")
+	if !bindingAlreadyResolved {
+		active, err := s.bindingEligibility.IdentityRoleBindingActive(ctx, s.workspace, assignment.BindingKey, assignment.ProfileID, assignment.UserID)
+		if err != nil {
+			return err
+		}
+		if !active {
+			return forbidden("backend.identity.business_role_eligibility_required")
+		}
 	}
 	if err := s.validateRoleConflicts(ctx, assignment.UserID, definition); err != nil {
 		return err

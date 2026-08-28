@@ -24,11 +24,21 @@ type IdentityDomainService struct {
 	validation          *IdentityConfigurationDomainService
 	workspace           string
 	bindingEligibility  IdentityRoleBindingEligibilityResolver
+	businessProfiles    IdentityBusinessProfileResolver
 	organizationScopes  IdentityOrganizationScopeResolver
 }
 
 type IdentityRoleBindingEligibilityResolver interface {
 	IdentityRoleBindingActive(context.Context, string, string, string, string) (bool, error)
+}
+
+type IdentityBusinessProfile struct {
+	BindingKey string
+	ProfileID  string
+}
+
+type IdentityBusinessProfileResolver interface {
+	ResolveIdentityBusinessProfiles(context.Context, string, string) ([]IdentityBusinessProfile, error)
 }
 
 type IdentityOrganizationScopeResolver interface {
@@ -52,6 +62,30 @@ func (s *IdentityDomainService) UseRoleBindingEligibility(resolver IdentityRoleB
 	if s != nil {
 		s.bindingEligibility = resolver
 	}
+}
+
+func (s *IdentityDomainService) UseBusinessProfileResolver(resolver IdentityBusinessProfileResolver) {
+	if s != nil {
+		s.businessProfiles = resolver
+		s.bindingEligibility = businessProfileBindingEligibility{resolver: resolver}
+	}
+}
+
+type businessProfileBindingEligibility struct {
+	resolver IdentityBusinessProfileResolver
+}
+
+func (r businessProfileBindingEligibility) IdentityRoleBindingActive(ctx context.Context, workspaceID, bindingKey, profileID, userID string) (bool, error) {
+	profiles, err := r.resolver.ResolveIdentityBusinessProfiles(ctx, workspaceID, userID)
+	if err != nil {
+		return false, err
+	}
+	for _, profile := range profiles {
+		if strings.TrimSpace(profile.BindingKey) == strings.TrimSpace(bindingKey) && strings.TrimSpace(profile.ProfileID) == strings.TrimSpace(profileID) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (s *IdentityDomainService) UseOrganizationScopeResolver(resolver IdentityOrganizationScopeResolver) {

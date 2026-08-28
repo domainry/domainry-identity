@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	authcontract "github.com/domainry/domainry-identity/internal/domain/auth/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
@@ -43,6 +44,11 @@ func (s *AuthDomainService) prepareSessionForAudienceWithID(ctx context.Context,
 		return authmodel.AuthSession{}, identitymodel.AuthRefreshToken{}, err
 	}
 	workspaceID = workspace.String()
+	if reconciler, ok := s.identity.(authcontract.AuthSystemManagedRoleReconciler); ok {
+		if err := reconciler.ReconcileSystemManagedBusinessRoles(ctx, user.ID); err != nil {
+			return authmodel.AuthSession{}, identitymodel.AuthRefreshToken{}, err
+		}
+	}
 	roles, err := s.identity.ActiveRolesForUser(ctx, user.ID)
 	if err != nil {
 		return authmodel.AuthSession{}, identitymodel.AuthRefreshToken{}, err

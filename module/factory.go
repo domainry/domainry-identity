@@ -12,6 +12,7 @@ import (
 	identityhttpapi "github.com/domainry/domainry-identity-sdk/httpapi"
 	"github.com/domainry/domainry-identity/internal/assembly"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	identityservice "github.com/domainry/domainry-identity/internal/domain/identity/service"
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
 	httpserver "github.com/domainry/domainry-identity/internal/transport/http/server"
 )
@@ -87,6 +88,9 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 	if handle != nil && handle.OrganizationScopeResolver != nil {
 		identityRuntime.Identity.UseOrganizationScopeResolver(moduleOrganizationScopeResolver{resolve: handle.OrganizationScopeResolver})
 	}
+	if handle != nil && handle.BusinessProfileResolver != nil {
+		identityRuntime.Identity.UseBusinessProfileResolver(moduleBusinessProfileResolver{resolve: handle.BusinessProfileResolver})
+	}
 	binding := identityRuntime.Binding
 	if binding == nil {
 		_ = identityRuntime.CloseContext(ctx)
@@ -153,6 +157,22 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 
 type moduleOrganizationScopeResolver struct {
 	resolve identitysdk.OrganizationScopeResolver
+}
+
+type moduleBusinessProfileResolver struct {
+	resolve identitysdk.BusinessProfileResolver
+}
+
+func (resolver moduleBusinessProfileResolver) ResolveIdentityBusinessProfiles(ctx context.Context, workspaceID, userID string) ([]identityservice.IdentityBusinessProfile, error) {
+	profiles, err := resolver.resolve(ctx, workspaceID, userID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]identityservice.IdentityBusinessProfile, 0, len(profiles))
+	for _, profile := range profiles {
+		out = append(out, identityservice.IdentityBusinessProfile{BindingKey: profile.BindingKey, ProfileID: profile.ProfileID})
+	}
+	return out, nil
 }
 
 func (resolver moduleOrganizationScopeResolver) ResolveIdentityOrganizationScopes(ctx context.Context, workspaceID string, profileIDs []string) (identitymodel.IdentityOrganizationScopeFacts, error) {

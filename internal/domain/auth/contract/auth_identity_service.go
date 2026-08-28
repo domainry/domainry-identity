@@ -23,6 +23,10 @@ type AuthLocaleIdentityPort interface {
 	UpdateUserLocale(context.Context, string, string, string, int64) (identitymodel.IdentityUser, error)
 }
 
+type AuthSystemManagedRoleReconciler interface {
+	ReconcileSystemManagedBusinessRoles(context.Context, string) error
+}
+
 type AuthAuthorization interface {
 	ResolveEffectivePermissions(context.Context, string) ([]string, error)
 	ResolvePrincipal(context.Context, string) (identitymodel.Principal, error)
