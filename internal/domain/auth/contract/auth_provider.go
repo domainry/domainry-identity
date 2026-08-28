@@ -13,3 +13,7 @@ type AuthProviderExternalIdentityWriteback interface {
 type AuthProviderCallbackAdapter interface {
 	Exchange(context.Context, string, authmodel.AuthProviderConfig, authmodel.AuthProviderChallenge, authmodel.AuthProviderCallbackInput) (authmodel.AuthExternalIdentityAssertion, error)
 }
+
+type AuthProviderCodeExchangeAdapter interface {
+	ExchangeCode(context.Context, string, authmodel.AuthProviderConfig, string) (authmodel.AuthExternalIdentityAssertion, error)
+}

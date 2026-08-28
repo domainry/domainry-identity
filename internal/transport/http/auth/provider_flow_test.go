@@ -27,6 +27,13 @@ type authProviderCallbackStub struct {
 	input     authmodel.AuthProviderCallbackInput
 }
 
+func (s *authProviderCallbackStub) ExchangeCode(_ context.Context, provider string, config authmodel.AuthProviderConfig, code string) (authmodel.AuthExternalIdentityAssertion, error) {
+	s.called++
+	s.provider, s.config = provider, config
+	s.input = authmodel.AuthProviderCallbackInput{Method: http.MethodPost, Values: map[string]string{"code": code}}
+	return s.assertion, s.err
+}
+
 func (s *authProviderCallbackStub) Exchange(_ context.Context, provider string, config authmodel.AuthProviderConfig, challenge authmodel.AuthProviderChallenge, input authmodel.AuthProviderCallbackInput) (authmodel.AuthExternalIdentityAssertion, error) {
 	s.called++
 	s.provider, s.config, s.challenge, s.input = provider, config, challenge, input
@@ -68,12 +75,14 @@ func newAuthProviderFlowFixture(t *testing.T) *authProviderFlowFixture {
 	repository.accounts = []identitymodel.IdentityExternalAccount{
 		{ID: "otp-account", UserID: "user-1", Provider: "whatsapp", ProviderSubject: "+8613800000000"},
 		{ID: "oidc-account", UserID: "user-1", Provider: "oidc", ProviderSubject: "oidc-user"},
+		{ID: "wechat-account", UserID: "user-1", Provider: "wechat_mini_program", ProviderSubject: "wechat-user"},
 	}
 	providers := authapplication.NewAuthProviderApplicationService([]map[string]any{
 		{"key": "oidc", "type": "oidc", "enabled": true, "auth_url": "https://identity.example/authorize", "client_id": "client-1", "redirect_url": "https://app.example/callback", "scope": "openid", "auto_create_users": false},
 		{"key": "whatsapp", "type": "otp", "enabled": true, "otp_provider": "mock", "auto_create_users": false},
 		{"key": "unsupported", "type": "custom", "enabled": true},
 		{"key": "disabled", "type": "oidc", "enabled": false},
+		{"key": "wechat_mini_program", "type": "wechat_mini_program", "enabled": true, "client_id": "app", "client_secret": "secret", "auto_create_users": false},
 	}, false, nil)
 	flows := authapplication.NewAuthProviderFlowApplicationService(handler.passwords, providers)
 	callback := &authProviderCallbackStub{assertion: authmodel.AuthExternalIdentityAssertion{Provider: "oidc", Subject: "oidc-user"}}
@@ -84,6 +93,23 @@ func newAuthProviderFlowFixture(t *testing.T) *authProviderFlowFixture {
 		fixture.failureEvent, fixture.failureReason = provider, reason
 	}
 	return fixture
+}
+
+func TestAuthProviderExchangeCompletesWeChatMiniProgramLogin(t *testing.T) {
+	fixture := newAuthProviderFlowFixture(t)
+	fixture.callback.assertion = authmodel.AuthExternalIdentityAssertion{Provider: "wechat_mini_program", Subject: "wechat-user"}
+	request := providerFlowRequest(http.MethodPost, "/auth/providers/wechat_mini_program/exchange", "wechat_mini_program", `{"workspace_id":"workspace-a","application_key":"mini-app","code":"wx-code"}`)
+	response := httptest.NewRecorder()
+	fixture.handler.authProviderExchange(response, request)
+	if session := decodeProviderFlowSession(t, response); response.Code != http.StatusOK || session.User.ID != "user-1" || fixture.callback.input.Values["code"] != "wx-code" {
+		t.Fatalf("status=%d session=%#v callback=%#v body=%s", response.Code, session, fixture.callback, response.Body.String())
+	}
+
+	unsupported := httptest.NewRecorder()
+	fixture.handler.authProviderExchange(unsupported, providerFlowRequest(http.MethodPost, "/", "oidc", `{"workspace_id":"workspace-a","code":"code"}`))
+	if unsupported.Code != http.StatusUnprocessableEntity || fixture.capture.serviceErr == nil {
+		t.Fatalf("unsupported status=%d error=%v", unsupported.Code, fixture.capture.serviceErr)
+	}
 }
 
 func providerFlowRequest(method, target, provider, body string) *http.Request {

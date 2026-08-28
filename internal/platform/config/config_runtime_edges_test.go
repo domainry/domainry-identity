@@ -125,9 +125,18 @@ func TestAuthProviderMarketOrderingAndClassification(t *testing.T) {
 	if providerSupportsMarket(map[string]any{"markets": []string{"br"}}, "jp") || !providerSupportsMarket(map[string]any{}, "jp") {
 		t.Fatal("market classification mismatch")
 	}
-	if providers := (Config{AuthMarket: "br"}).AuthProviders(); len(providers) != 2 || providers[0]["selected_market"] != "br" || providers[0]["key"] != "local" || providers[1]["key"] != "sms" {
+	if providers := (Config{AuthMarket: "br"}).AuthProviders(); len(providers) < 10 || providers[0]["selected_market"] != "br" || providers[0]["key"] != "local" || providers[1]["key"] != "sms" || providerByKey(providers, "feishu") == nil || providerByKey(providers, "google") == nil || providerByKey(providers, "line") == nil || providerByKey(providers, "wechat_mini_program") == nil {
 		t.Fatalf("auth providers = %#v", providers)
 	}
+}
+
+func providerByKey(providers []map[string]any, key string) map[string]any {
+	for _, provider := range providers {
+		if provider["key"] == key {
+			return provider
+		}
+	}
+	return nil
 }
 
 func TestConfigEnvironmentHelperEdges(t *testing.T) {

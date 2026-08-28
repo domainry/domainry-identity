@@ -13,8 +13,9 @@ import (
 )
 
 type providerSecretPayload struct {
-	ClientSecret string `json:"client_secret,omitempty"`
-	AccessToken  string `json:"access_token,omitempty"`
+	ClientSecret    string `json:"client_secret,omitempty"`
+	VerificationKey string `json:"verification_key,omitempty"`
+	AccessToken     string `json:"access_token,omitempty"`
 }
 
 func (s AuthStore) ListAuthProviderCredentials(ctx context.Context, workspaceID string) ([]authmodel.AuthProviderCredential, error) {
@@ -46,7 +47,7 @@ func (s AuthStore) ListAuthProviderCredentials(ctx context.Context, workspaceID 
 		if err := json.Unmarshal(plain, &secret); err != nil {
 			return nil, fmt.Errorf("decode auth provider secret %q: %w", credential.ProviderKey, err)
 		}
-		credential.ClientSecret, credential.AccessToken = secret.ClientSecret, secret.AccessToken
+		credential.ClientSecret, credential.VerificationKey, credential.AccessToken = secret.ClientSecret, secret.VerificationKey, secret.AccessToken
 		result = append(result, credential)
 	}
 	return result, rows.Err()
@@ -59,10 +60,10 @@ func (s AuthStore) UpsertAuthProviderCredential(ctx context.Context, provider st
 		return authmodel.AuthProviderCredential{}, fmt.Errorf("workspace and provider are required")
 	}
 	credential := authmodel.AuthProviderCredential{
-		ProviderKey: provider, ConnectionKey: strings.TrimSpace(request.ConnectionKey), WorkspaceID: workspaceID,
-		Type: strings.TrimSpace(request.Type), Issuer: strings.TrimSpace(request.Issuer), AuthURL: strings.TrimSpace(request.AuthURL),
+		ProviderKey: provider, Label: strings.TrimSpace(request.Label), ConnectionKey: strings.TrimSpace(request.ConnectionKey), WorkspaceID: workspaceID,
+		Type: strings.TrimSpace(request.Type), Adapter: strings.TrimSpace(request.Adapter), Issuer: strings.TrimSpace(request.Issuer), AuthURL: strings.TrimSpace(request.AuthURL),
 		TokenURL: strings.TrimSpace(request.TokenURL), UserInfoURL: strings.TrimSpace(request.UserInfoURL), Scope: strings.TrimSpace(request.Scope),
-		ListUsersURL: strings.TrimSpace(request.ListUsersURL), ClientID: strings.TrimSpace(request.ClientID), ClientSecret: strings.TrimSpace(request.ClientSecret),
+		ListUsersURL: strings.TrimSpace(request.ListUsersURL), ClientID: strings.TrimSpace(request.ClientID), ClientSecret: strings.TrimSpace(request.ClientSecret), VerificationKey: strings.TrimSpace(request.VerificationKey),
 		RedirectURL: strings.TrimSpace(request.RedirectURL), OTPProvider: strings.TrimSpace(request.OTPProvider), AccessToken: strings.TrimSpace(request.AccessToken),
 		PhoneNumberID: strings.TrimSpace(request.PhoneNumberID), DefaultRoleKey: strings.TrimSpace(request.DefaultRoleKey), RoleMappings: append([]authmodel.AuthProviderRoleMapping(nil), request.RoleMappings...),
 		UpdatedBy: strings.TrimSpace(principal.UserID),
@@ -79,6 +80,9 @@ func (s AuthStore) UpsertAuthProviderCredential(ctx context.Context, provider st
 		if credential.ClientSecret == "" {
 			credential.ClientSecret = current.ClientSecret
 		}
+		if credential.VerificationKey == "" {
+			credential.VerificationKey = current.VerificationKey
+		}
 		if credential.AccessToken == "" {
 			credential.AccessToken = current.AccessToken
 		}
@@ -92,7 +96,7 @@ func (s AuthStore) UpsertAuthProviderCredential(ctx context.Context, provider st
 	if err != nil {
 		return authmodel.AuthProviderCredential{}, err
 	}
-	secretJSON, _ := json.Marshal(providerSecretPayload{ClientSecret: credential.ClientSecret, AccessToken: credential.AccessToken})
+	secretJSON, _ := json.Marshal(providerSecretPayload{ClientSecret: credential.ClientSecret, VerificationKey: credential.VerificationKey, AccessToken: credential.AccessToken})
 	envelope, err := s.secrets.Encrypt(ctx, workspaceID, provider, secretJSON)
 	if err != nil {
 		return authmodel.AuthProviderCredential{}, fmt.Errorf("encrypt auth provider credential: %w", err)

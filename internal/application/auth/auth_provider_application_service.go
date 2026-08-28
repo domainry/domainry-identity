@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"regexp"
 	"strings"
 
 	"github.com/domainry/domainry-foundation/apperror"
@@ -10,6 +11,8 @@ import (
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	identitypolicy "github.com/domainry/domainry-identity/internal/domain/identity/policy"
 )
+
+var customAuthProviderKeyPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{1,63}$`)
 
 type AuthProviderCredentialWriter interface {
 	UpsertAuthProviderCredential(context.Context, string, authmodel.AuthProviderCredentialUpsertRequest, identitymodel.Principal) (authmodel.AuthProviderCredential, error)
@@ -39,11 +42,31 @@ func (s *AuthProviderApplicationService) SaveSetup(ctx context.Context, provider
 		return authmodel.AuthProviderConfig{}, authProviderApplicationError(apperror.KindForbidden, "auth.permission_denied")
 	}
 	config, ok := s.Find(ctx, provider)
+	newProvider := false
 	if !ok {
-		return authmodel.AuthProviderConfig{}, authProviderApplicationError(apperror.KindNotFound, "auth.provider_unknown")
+		provider = strings.ToLower(strings.TrimSpace(provider))
+		providerType := strings.ToLower(strings.TrimSpace(request.Type))
+		if !customAuthProviderKeyPattern.MatchString(provider) || (providerType != "oidc" && providerType != "oauth2" && providerType != "saml") {
+			return authmodel.AuthProviderConfig{}, authProviderApplicationError(apperror.KindNotFound, "auth.provider_unknown")
+		}
+		label := strings.TrimSpace(request.Label)
+		if label == "" {
+			label = provider
+		}
+		config = authmodel.AuthProviderConfig{Key: provider, Label: label, Type: providerType}
+		if providerType == "oauth2" {
+			config.Adapter = "generic_oauth2"
+		}
+		newProvider = true
 	}
 	if strings.TrimSpace(request.Type) == "" {
 		request.Type = config.Type
+	}
+	if !newProvider && !sameAuthProviderType(config.Type, request.Type) {
+		return authmodel.AuthProviderConfig{}, authProviderApplicationError(apperror.KindBadRequest, "auth.provider_type_change_not_allowed")
+	}
+	if strings.TrimSpace(request.Adapter) == "" {
+		request.Adapter = config.Adapter
 	}
 	if strings.TrimSpace(request.RedirectURL) == "" {
 		request.RedirectURL = config.RedirectURL
@@ -63,6 +86,9 @@ func (s *AuthProviderApplicationService) SaveSetup(ctx context.Context, provider
 	if strings.TrimSpace(request.Scope) == "" {
 		request.Scope = config.Scope
 	}
+	if !configurableAuthProviderType(request.Type) {
+		return authmodel.AuthProviderConfig{}, authProviderApplicationError(apperror.KindBadRequest, "auth.provider_type_not_supported")
+	}
 	if s.credentials == nil {
 		return authmodel.AuthProviderConfig{}, authProviderApplicationError(apperror.KindInternal, "auth.provider_credential_writer_not_configured")
 	}
@@ -71,6 +97,13 @@ func (s *AuthProviderApplicationService) SaveSetup(ctx context.Context, provider
 		return authmodel.AuthProviderConfig{}, err
 	}
 	authProviderApplyCredential(&config, credential)
+	if newProvider {
+		updated, added := s.AddConfig(config)
+		if !added {
+			return authmodel.AuthProviderConfig{}, authProviderApplicationError(apperror.KindConflict, "auth.provider_configuration_conflict")
+		}
+		return updated, nil
+	}
 	updated, ok := s.ReplaceConfig(config)
 	if !ok {
 		return authmodel.AuthProviderConfig{}, authProviderApplicationError(apperror.KindNotFound, "auth.provider_unknown")
@@ -83,30 +116,103 @@ func MergeTypedAuthProviderCredentials(configs []map[string]any, credentials []a
 	for _, value := range credentials {
 		byKey[strings.ToLower(strings.TrimSpace(value.ProviderKey))] = value
 	}
-	out := make([]map[string]any, 0, len(configs))
+	out := make([]map[string]any, 0, len(configs)+len(credentials))
+	seen := map[string]bool{}
 	for _, raw := range configs {
 		config := authmodel.AuthProviderConfigFromMap(raw)
-		if value, ok := byKey[strings.ToLower(config.Key)]; ok {
+		key := strings.ToLower(strings.TrimSpace(config.Key))
+		if key == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		if value, ok := byKey[key]; ok {
 			authProviderApplyCredential(&config, value)
 		}
 		out = append(out, config.Map())
 	}
+	for _, value := range credentials {
+		key := strings.ToLower(strings.TrimSpace(value.ProviderKey))
+		providerType := strings.ToLower(strings.TrimSpace(value.Type))
+		if key == "" || seen[key] || !restorableAuthProviderType(providerType) {
+			continue
+		}
+		label := strings.TrimSpace(value.Label)
+		if label == "" {
+			label = key
+		}
+		config := authmodel.AuthProviderConfig{Key: key, Label: label, Type: providerType}
+		authProviderApplyCredential(&config, value)
+		out = append(out, config.Map())
+		seen[key] = true
+	}
 	return out
+}
+
+func restorableAuthProviderType(providerType string) bool {
+	switch strings.ToLower(strings.TrimSpace(providerType)) {
+	case "oidc", "oauth2", "saml", "code_exchange", "wechat_mini_program":
+		return true
+	default:
+		return false
+	}
+}
+
+func configurableAuthProviderType(providerType string) bool {
+	switch strings.ToLower(strings.TrimSpace(providerType)) {
+	case "oidc", "oauth2", "saml", "otp", "code_exchange", "wechat_mini_program":
+		return true
+	default:
+		return false
+	}
+}
+
+func sameAuthProviderType(current, requested string) bool {
+	current = strings.ToLower(strings.TrimSpace(current))
+	requested = strings.ToLower(strings.TrimSpace(requested))
+	return current == requested || current == "wechat_mini_program" && requested == "code_exchange"
 }
 
 func authProviderApplyCredential(config *authmodel.AuthProviderConfig, value authmodel.AuthProviderCredential) {
 	if value.Type != "" {
 		config.Type = value.Type
 	}
+	if value.Adapter != "" {
+		config.Adapter = value.Adapter
+	}
+	if value.Label != "" {
+		config.Label = strings.TrimSpace(value.Label)
+	}
+	for target, candidate := range map[*string]string{
+		&config.Issuer: value.Issuer, &config.AuthURL: value.AuthURL, &config.TokenURL: value.TokenURL,
+		&config.UserInfoURL: value.UserInfoURL, &config.Scope: value.Scope,
+	} {
+		if strings.TrimSpace(candidate) != "" {
+			*target = strings.TrimSpace(candidate)
+		}
+	}
 	if strings.EqualFold(config.Type, "otp") {
 		config.OTPProvider, config.AccessToken, config.PhoneNumberID = value.OTPProvider, value.AccessToken, value.PhoneNumberID
 		config.AccessTokenConfigured = value.AccessToken != ""
 		config.PhoneNumberIDConfigured = value.PhoneNumberID != ""
 		config.Enabled = config.OTPProvider != "" && config.AccessTokenConfigured && config.PhoneNumberIDConfigured
+	} else if strings.EqualFold(config.Type, "code_exchange") || strings.EqualFold(config.Type, "wechat_mini_program") {
+		config.ClientID, config.ClientSecret, config.VerificationKey = value.ClientID, value.ClientSecret, value.VerificationKey
+		config.ClientSecretConfigured = value.ClientSecret != ""
+		config.VerificationKeyConfigured = value.VerificationKey != ""
+		config.Enabled = config.ClientID != "" && config.ClientSecretConfigured && (!strings.EqualFold(config.Adapter, "alipay_mini_program") || config.VerificationKeyConfigured)
 	} else {
 		config.ClientID, config.ClientSecret, config.RedirectURL = value.ClientID, value.ClientSecret, value.RedirectURL
 		config.ClientSecretConfigured = value.ClientSecret != ""
 		config.Enabled = config.ClientID != "" && config.ClientSecretConfigured && config.RedirectURL != ""
+		if strings.EqualFold(config.Type, "oidc") && !strings.EqualFold(config.Key, "feishu") && !strings.EqualFold(config.Key, "lark") {
+			config.Enabled = config.Enabled && config.Issuer != "" && config.AuthURL != ""
+		}
+		if strings.EqualFold(config.Type, "oauth2") {
+			config.Enabled = config.Enabled && config.Adapter != "" && config.AuthURL != "" && config.TokenURL != "" && config.UserInfoURL != ""
+		}
+		if strings.EqualFold(config.Type, "saml") {
+			config.Enabled = config.Enabled && config.AuthURL != ""
+		}
 	}
 	config.AutoCreateUsers, config.AutoCreateConfigured, config.DefaultRoleKey = value.AutoCreateUsers, true, value.DefaultRoleKey
 	config.RoleMappings = make([]authmodel.AuthExternalRoleMapping, 0, len(value.RoleMappings))

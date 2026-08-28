@@ -75,7 +75,7 @@ func (h *AuthHandler) authProviderSetupResult(config authmodel.AuthProviderConfi
 		return result
 	}
 	switch strings.ToLower(config.Key) {
-	case "feishu":
+	case "feishu", "lark":
 		result["can_auto_fetch"] = true
 		result["remote_check"] = h.checkFeishuProviderConfig(raw)
 	default:
@@ -109,6 +109,16 @@ func authProviderSetupChecks(config map[string]any) []map[string]any {
 			{"key": "access_token", "ok": boolFromProviderConfig(config, "access_token_configured"), "label": "Access token"},
 			{"key": "phone_number_id", "ok": boolFromProviderConfig(config, "phone_number_id_configured"), "label": "Phone number ID"},
 		}
+	case "code_exchange", "wechat_mini_program":
+		checks := []map[string]any{
+			{"key": "client_id", "ok": stringFromProviderConfig(config, "client_id") != "", "label": "App ID"},
+			{"key": "client_secret", "ok": boolFromProviderConfig(config, "client_secret_configured"), "label": "App Secret"},
+		}
+		if strings.EqualFold(stringFromProviderConfig(config, "adapter"), "alipay_mini_program") {
+			checks[1]["label"] = "Application private key"
+			checks = append(checks, map[string]any{"key": "verification_key", "ok": boolFromProviderConfig(config, "verification_key_configured"), "label": "Alipay public key"})
+		}
+		return checks
 	default:
 		return []map[string]any{
 			{"key": "client_id", "ok": stringFromProviderConfig(config, "client_id") != "", "label": "Client ID / App ID"},
@@ -149,7 +159,11 @@ func (h *AuthHandler) checkFeishuProviderConfig(config map[string]any) map[strin
 		}
 	}
 	payload, _ := json.Marshal(map[string]string{"app_id": appID, "app_secret": appSecret})
-	req, err := buildAuthProviderProbeRequest(http.MethodPost, "https://open.feishu.cn/open-apis/auth/v3/app_access_token/internal", bytes.NewReader(payload))
+	probeURL := "https://open.feishu.cn/open-apis/auth/v3/app_access_token/internal"
+	if strings.EqualFold(stringFromProviderConfig(config, "key"), "lark") {
+		probeURL = "https://open.larksuite.com/open-apis/auth/v3/app_access_token/internal"
+	}
+	req, err := buildAuthProviderProbeRequest(http.MethodPost, probeURL, bytes.NewReader(payload))
 	if err != nil {
 		return map[string]any{"status": "failed", "reason": "build_request_failed"}
 	}

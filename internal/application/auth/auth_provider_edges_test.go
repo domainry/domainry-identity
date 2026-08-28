@@ -54,6 +54,16 @@ func TestAuthProviderSaveSetupEdges(t *testing.T) {
 	if _, err := service.SaveSetup(t.Context(), "missing", authmodel.AuthProviderCredentialUpsertRequest{}, principal); apperror.CodeOf(err) != "auth.provider_unknown" {
 		t.Fatalf("unknown provider error=%v", err)
 	}
+	writer.err = nil
+	writer.credential = authmodel.AuthProviderCredential{ProviderKey: "partner_oidc", Type: "oidc", Issuer: "https://id.example", AuthURL: "https://id.example/authorize", ClientID: "client", ClientSecret: "secret", RedirectURL: "https://app.example/callback"}
+	custom, err := service.SaveSetup(t.Context(), "partner_oidc", authmodel.AuthProviderCredentialUpsertRequest{Type: "oidc", Issuer: "https://id.example", AuthURL: "https://id.example/authorize", ClientID: "client", ClientSecret: "secret", RedirectURL: "https://app.example/callback"}, principal)
+	if err != nil || !custom.Enabled || custom.Key != "partner_oidc" {
+		t.Fatalf("custom provider=%+v err=%v", custom, err)
+	}
+	if _, ok := service.Find(t.Context(), "partner_oidc"); !ok {
+		t.Fatal("custom provider was not made effective")
+	}
+	writer.err = errors.New("write failed")
 	if _, err := service.SaveSetup(t.Context(), "oidc", authmodel.AuthProviderCredentialUpsertRequest{}, principal); !errors.Is(err, writer.err) {
 		t.Fatalf("writer error=%v", err)
 	}
@@ -63,15 +73,18 @@ func TestAuthProviderSaveSetupEdges(t *testing.T) {
 
 	writer.err = nil
 	writer.credential = authmodel.AuthProviderCredential{ProviderKey: "oidc", Type: "oidc", ClientID: "client", ClientSecret: "secret", RedirectURL: "redirect", AutoCreateUsers: true, DefaultRoleKey: "operator", RoleMappings: []authmodel.AuthProviderRoleMapping{{Claim: "groups", Match: "ops", RoleKey: "operator"}}, UpdatedAt: "now"}
-	updated, err := service.SaveSetup(t.Context(), "OIDC", authmodel.AuthProviderCredentialUpsertRequest{Type: "custom", Issuer: "custom-issuer"}, principal)
+	updated, err := service.SaveSetup(t.Context(), "OIDC", authmodel.AuthProviderCredentialUpsertRequest{Type: "oidc", Issuer: "custom-issuer"}, principal)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !updated.Enabled || updated.ClientID != "client" || !updated.ClientSecretConfigured || updated.ConfiguredFrom != "setup" || len(updated.RoleMappings) != 1 {
 		t.Fatalf("updated=%+v", updated)
 	}
-	if writer.request.Type != "custom" || writer.request.Issuer != "custom-issuer" {
+	if writer.request.Type != "oidc" || writer.request.Issuer != "custom-issuer" {
 		t.Fatalf("explicit request overwritten: %+v", writer.request)
+	}
+	if _, err := service.SaveSetup(t.Context(), "oidc", authmodel.AuthProviderCredentialUpsertRequest{Type: "custom"}, principal); apperror.CodeOf(err) != "auth.provider_type_change_not_allowed" {
+		t.Fatalf("unsupported provider type error=%v", err)
 	}
 	explicit := authmodel.AuthProviderCredentialUpsertRequest{Type: "oidc", Issuer: "i", AuthURL: "a", TokenURL: "t", UserInfoURL: "u", Scope: "s", RedirectURL: "r"}
 	if _, err := service.SaveSetup(t.Context(), "oidc", explicit, principal); err != nil || !reflect.DeepEqual(writer.request, explicit) {
@@ -91,7 +104,7 @@ func TestAuthProviderCredentialProjectionEdges(t *testing.T) {
 		t.Fatalf("otp config=%+v", config)
 	}
 
-	merged := MergeTypedAuthProviderCredentials([]map[string]any{{"key": "OIDC", "type": "oidc"}, {"key": "local", "type": "password"}}, []authmodel.AuthProviderCredential{{ProviderKey: " oidc ", Type: "oidc", ClientID: "client", ClientSecret: "secret", RedirectURL: "redirect"}})
+	merged := MergeTypedAuthProviderCredentials([]map[string]any{{"key": "OIDC", "type": "oidc"}, {"key": "local", "type": "password"}}, []authmodel.AuthProviderCredential{{ProviderKey: " oidc ", Type: "oidc", Issuer: "https://id.example", AuthURL: "https://id.example/authorize", ClientID: "client", ClientSecret: "secret", RedirectURL: "redirect"}})
 	if len(merged) != 2 || merged[0]["enabled"] != true || merged[1]["enabled"] != false {
 		t.Fatalf("merged=%#v", merged)
 	}

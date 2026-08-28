@@ -25,6 +25,10 @@ type authProviderApplicationFlow interface {
 	StartForApplication(context.Context, string, string, string, string, string, string) (authprojection.AuthProviderStartResponse, error)
 }
 
+type authProviderCodeExchangeFlow interface {
+	ExchangeCode(context.Context, string, string, string, string, authcontract.AuthProviderCodeExchangeAdapter) (authmodel.AuthSession, error)
+}
+
 type authAuthorizationCodeIssuer interface {
 	IssueAuthorizationCode(context.Context, string, string, authmodel.AuthSession) (string, error)
 }

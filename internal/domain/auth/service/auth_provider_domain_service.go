@@ -64,6 +64,21 @@ func (s *AuthProviderDomainService) ReplaceConfig(value authmodel.AuthProviderCo
 	s.configs[key] = value.Clone()
 	return value.Clone(), true
 }
+func (s *AuthProviderDomainService) AddConfig(value authmodel.AuthProviderConfig) (authmodel.AuthProviderConfig, bool) {
+	key := strings.ToLower(strings.TrimSpace(value.Key))
+	if key == "" {
+		return authmodel.AuthProviderConfig{}, false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.configs[key]; exists {
+		return authmodel.AuthProviderConfig{}, false
+	}
+	value.Key = key
+	s.configs[key] = value.Clone()
+	s.order = append(s.order, key)
+	return value.Clone(), true
+}
 func (s *AuthProviderDomainService) AuthExternalLoginPolicy(_ context.Context, config authmodel.AuthProviderConfig) authmodel.AuthExternalLoginPolicy {
 	autoCreate := s.defaultAutoCreate
 	if config.AutoCreateConfigured {

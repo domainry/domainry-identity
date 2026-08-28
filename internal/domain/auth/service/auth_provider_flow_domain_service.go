@@ -6,9 +6,11 @@ import authmodel "github.com/domainry/domainry-identity/internal/domain/auth/mod
 
 import (
 	"context"
+	"net/url"
 	"strings"
 	"time"
 
+	"github.com/domainry/domainry-foundation/apperror"
 	authcontract "github.com/domainry/domainry-identity/internal/domain/auth/contract"
 	authrepository "github.com/domainry/domainry-identity/internal/domain/auth/repository"
 )
@@ -50,9 +52,35 @@ func (s *AuthProviderFlowDomainService) StartForApplication(ctx context.Context,
 		return s.auth.BeginSAMLLoginForApplication(ctx, workspaceID, provider, config.AuthURL, config.ClientID, config.RedirectURL, applicationKey, returnURL)
 	case "oidc":
 		return s.auth.BeginProviderLoginForApplication(ctx, workspaceID, provider, config.AuthURL, config.ClientID, config.RedirectURL, config.Scope, applicationKey, returnURL)
+	case "oauth2":
+		result, err := s.auth.BeginProviderLoginForApplication(ctx, workspaceID, provider, config.AuthURL, config.ClientID, config.RedirectURL, config.Scope, applicationKey, returnURL)
+		if err == nil {
+			result.AuthURL = adaptOAuth2ProviderAuthURL(result.AuthURL, config)
+		}
+		return result, err
 	default:
 		return authprojection.AuthProviderStartResponse{}, badRequest("auth.provider_start_not_supported")
 	}
+}
+
+func adaptOAuth2ProviderAuthURL(raw string, config authmodel.AuthProviderConfig) string {
+	adapter := strings.ToLower(strings.TrimSpace(config.Adapter))
+	if adapter != "wechat_web" && adapter != "wecom" {
+		return raw
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+	query := parsed.Query()
+	query.Set("appid", strings.TrimSpace(config.ClientID))
+	query.Del("client_id")
+	query.Del("nonce")
+	query.Del("code_challenge")
+	query.Del("code_challenge_method")
+	parsed.RawQuery = query.Encode()
+	parsed.Fragment = "wechat_redirect"
+	return parsed.String()
 }
 func (s *AuthProviderFlowDomainService) VerifyOTP(ctx context.Context, workspaceID, provider, state, code string) (authmodel.AuthSession, error) {
 	config, ok := s.providers.Enabled(ctx, provider)
@@ -68,12 +96,29 @@ func (s *AuthProviderFlowDomainService) VerifyOTP(ctx context.Context, workspace
 	}
 	return s.auth.ExternalLoginWithPolicyForApplication(ctx, workspaceID, assertion, s.providers.AuthExternalLoginPolicy(ctx, config), applicationKey)
 }
+func (s *AuthProviderFlowDomainService) ExchangeCode(ctx context.Context, workspaceID, provider, code, applicationKey string, adapter authcontract.AuthProviderCodeExchangeAdapter) (authmodel.AuthSession, error) {
+	config, ok := s.providers.Enabled(ctx, provider)
+	if !ok {
+		return authmodel.AuthSession{}, forbidden("auth.provider_not_configured")
+	}
+	if !strings.EqualFold(config.Type, "code_exchange") && !strings.EqualFold(config.Type, "wechat_mini_program") {
+		return authmodel.AuthSession{}, badRequest("auth.provider_exchange_not_supported")
+	}
+	if strings.TrimSpace(code) == "" {
+		return authmodel.AuthSession{}, badRequest("auth.provider_code_required")
+	}
+	assertion, err := adapter.ExchangeCode(ctx, provider, config, code)
+	if err != nil {
+		return authmodel.AuthSession{}, &apperror.AppError{Kind: apperror.KindUnavailable, Code: "auth.provider_code_exchange_failed", Err: err}
+	}
+	return s.CompleteCallbackForApplication(ctx, workspaceID, config, assertion, applicationKey)
+}
 func (s *AuthProviderFlowDomainService) ConsumeCallbackChallenge(ctx context.Context, provider, state string) (authmodel.AuthProviderConfig, authmodel.AuthProviderChallenge, error) {
 	config, ok := s.providers.Enabled(ctx, provider)
 	if !ok {
 		return authmodel.AuthProviderConfig{}, authmodel.AuthProviderChallenge{}, forbidden("auth.provider_not_configured")
 	}
-	if config.Type != "oidc" && config.Type != "saml" {
+	if config.Type != "oidc" && config.Type != "oauth2" && config.Type != "saml" {
 		return authmodel.AuthProviderConfig{}, authmodel.AuthProviderChallenge{}, badRequest("auth.provider_callback_not_supported")
 	}
 	challenge, err := s.auth.ConsumeProviderChallenge(ctx, provider, state)

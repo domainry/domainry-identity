@@ -5,9 +5,11 @@ package authmodel
 // Integration domain: OIDC/SSO credentials are part of the login boundary.
 type AuthProviderCredential struct {
 	ProviderKey     string                    `json:"provider_key"`
+	Label           string                    `json:"label,omitempty"`
 	ConnectionKey   string                    `json:"connection_key,omitempty"`
 	WorkspaceID     string                    `json:"workspace_id,omitempty"`
 	Type            string                    `json:"type,omitempty"`
+	Adapter         string                    `json:"adapter,omitempty"`
 	Issuer          string                    `json:"issuer,omitempty"`
 	AuthURL         string                    `json:"auth_url,omitempty"`
 	TokenURL        string                    `json:"token_url,omitempty"`
@@ -16,6 +18,7 @@ type AuthProviderCredential struct {
 	ListUsersURL    string                    `json:"list_users_url,omitempty"`
 	ClientID        string                    `json:"client_id,omitempty"`
 	ClientSecret    string                    `json:"-"`
+	VerificationKey string                    `json:"-"`
 	RedirectURL     string                    `json:"redirect_url,omitempty"`
 	OTPProvider     string                    `json:"otp_provider,omitempty"`
 	AccessToken     string                    `json:"-"`
@@ -35,8 +38,10 @@ type AuthProviderRoleMapping struct {
 }
 
 type AuthProviderCredentialUpsertRequest struct {
+	Label           string                    `json:"label,omitempty"`
 	ConnectionKey   string                    `json:"connection_key,omitempty"`
 	Type            string                    `json:"type,omitempty"`
+	Adapter         string                    `json:"adapter,omitempty"`
 	Issuer          string                    `json:"issuer,omitempty"`
 	AuthURL         string                    `json:"auth_url,omitempty"`
 	TokenURL        string                    `json:"token_url,omitempty"`
@@ -45,6 +50,7 @@ type AuthProviderCredentialUpsertRequest struct {
 	ListUsersURL    string                    `json:"list_users_url,omitempty"`
 	ClientID        string                    `json:"client_id,omitempty"`
 	ClientSecret    string                    `json:"client_secret,omitempty"`
+	VerificationKey string                    `json:"verification_key,omitempty"`
 	RedirectURL     string                    `json:"redirect_url,omitempty"`
 	OTPProvider     string                    `json:"otp_provider,omitempty"`
 	AccessToken     string                    `json:"access_token,omitempty"`

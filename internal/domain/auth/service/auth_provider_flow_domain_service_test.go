@@ -8,12 +8,23 @@ import authmodel "github.com/domainry/domainry-identity/internal/domain/auth/mod
 import (
 	"context"
 	"errors"
+	"net/url"
 	"testing"
 )
 
 type authProviderCallbackAdapterProbe struct {
 	called bool
 	input  authmodel.AuthProviderCallbackInput
+}
+
+func TestOAuth2StartAdaptsWeChatClientParameterWithoutWeakeningState(t *testing.T) {
+	auth := NewAuthDomainService(nil, nil, "secret", "", 0, 0, 0, 0, 0, 0, authpolicy.AuthPasswordPolicy{})
+	providers := NewAuthProviderDomainService([]map[string]any{{"key": "wechat_web", "type": "oauth2", "adapter": "wechat_web", "enabled": true, "auth_url": "https://open.weixin.qq.com/connect/oauth2/authorize", "client_id": "app-id", "redirect_url": "https://app/callback", "scope": "snsapi_userinfo"}}, false)
+	started, err := NewAuthProviderFlowDomainService(auth, providers).Start(t.Context(), "default", "wechat_web", "GET", "")
+	parsed, parseErr := url.Parse(started.AuthURL)
+	if err != nil || parseErr != nil || parsed.Query().Get("appid") != "app-id" || parsed.Query().Get("client_id") != "" || parsed.Query().Get("state") == "" || parsed.Fragment != "wechat_redirect" {
+		t.Fatalf("started=%#v parsed=%#v err=%v parseErr=%v", started, parsed, err, parseErr)
+	}
 }
 
 func (p *authProviderCallbackAdapterProbe) Exchange(_ context.Context, _ string, _ authmodel.AuthProviderConfig, _ authmodel.AuthProviderChallenge, input authmodel.AuthProviderCallbackInput) (authmodel.AuthExternalIdentityAssertion, error) {

@@ -7,6 +7,7 @@ import (
 
 	apperror "github.com/domainry/domainry-foundation/apperror"
 	"github.com/domainry/domainry-foundation/requestcontext"
+	authcontract "github.com/domainry/domainry-identity/internal/domain/auth/contract"
 	authprojection "github.com/domainry/domainry-identity/internal/domain/auth/projection"
 )
 
@@ -62,6 +63,45 @@ func (h *AuthHandler) authProviderVerify(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if err != nil {
+		h.providerFailureAudit(r, provider, "external_login")
+		h.writeError(w, r, http.StatusForbidden, "auth.external_account_unlinked")
+		return
+	}
+	h.writeJSON(w, http.StatusOK, result)
+}
+
+func (h *AuthHandler) authProviderExchange(w http.ResponseWriter, r *http.Request) {
+	provider := strings.TrimSpace(r.PathValue("provider"))
+	var req struct {
+		WorkspaceID    string `json:"workspace_id"`
+		ApplicationKey string `json:"application_key"`
+		Code           string `json:"code"`
+	}
+	if !h.decodeJSON(w, r, &req) {
+		return
+	}
+	workspaceID, ok := h.requireWorkspace(w, r, req.WorkspaceID)
+	if !ok {
+		return
+	}
+	flow, flowOK := h.providerFlows.(authProviderCodeExchangeFlow)
+	adapter, adapterOK := h.providerCallback.(authcontract.AuthProviderCodeExchangeAdapter)
+	if !flowOK || !adapterOK {
+		h.writeError(w, r, http.StatusServiceUnavailable, "auth.provider_code_exchange_unavailable")
+		return
+	}
+	result, err := flow.ExchangeCode(requestcontext.WithWorkspaceID(r.Context(), workspaceID), workspaceID, provider, req.Code, req.ApplicationKey, adapter)
+	if err != nil {
+		code := apperror.CodeOf(err)
+		if code == "auth.provider_not_configured" || code == "auth.provider_exchange_not_supported" || code == "auth.provider_code_required" {
+			h.writeServiceError(w, r, err)
+			return
+		}
+		if code == "auth.provider_code_exchange_failed" {
+			h.providerFailureAudit(r, provider, "code_exchange")
+			h.writeError(w, r, http.StatusBadGateway, "auth.provider_code_exchange_failed")
+			return
+		}
 		h.providerFailureAudit(r, provider, "external_login")
 		h.writeError(w, r, http.StatusForbidden, "auth.external_account_unlinked")
 		return

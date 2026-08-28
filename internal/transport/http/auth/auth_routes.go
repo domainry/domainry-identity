@@ -24,6 +24,7 @@ func (h *AuthHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /auth/providers/{provider}/callback", h.authProviderCallback)
 	mux.HandleFunc("POST /auth/providers/{provider}/callback", h.authProviderCallback)
 	mux.HandleFunc("POST /auth/providers/{provider}/verify", h.authProviderVerify)
+	mux.HandleFunc("POST /auth/providers/{provider}/exchange", h.authProviderExchange)
 	mux.HandleFunc("GET /auth/external-accounts", h.authExternalAccounts)
 	mux.HandleFunc("POST /auth/external-accounts/{provider}/bind", h.authBindExternalAccount)
 	mux.HandleFunc("DELETE /auth/external-accounts/{provider}/{accountID}", h.authUnbindExternalAccount)
