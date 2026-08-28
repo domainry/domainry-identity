@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	identitysdk "github.com/domainry/domainry-identity-sdk"
@@ -224,26 +225,42 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 	if err := browserGateway.RegisterRoutes(mux, "/browser"); err != nil {
 		return nil, fmt.Errorf("register Identity browser gateway: %w", err)
 	}
+	embeddedBrowserRoutes, err := browsergateway.RoutePatterns("")
+	if err != nil {
+		return nil, fmt.Errorf("resolve embedded browser authentication routes: %w", err)
+	}
+	embeddedPublicAuthRoutes, embeddedManagementAuthRoutes := embeddedAuthRouteInventory(authRoutes.patterns, embeddedBrowserRoutes)
 	return &Server{
 		core: core, routes: httpSupport.middleware(mux),
 		identityManagementRoutes:     append([]string(nil), identityRoutes.patterns...),
-		embeddedPublicAuthRoutes:     selectRecordedRoutes(authRoutes.patterns, "POST /auth/providers/{provider}/exchange"),
-		embeddedManagementAuthRoutes: selectRecordedRoutes(authRoutes.patterns, "GET /auth/providers/{provider}/setup-check", "PUT /auth/providers/{provider}/setup"),
+		embeddedPublicAuthRoutes:     embeddedPublicAuthRoutes,
+		embeddedManagementAuthRoutes: embeddedManagementAuthRoutes,
 	}, nil
 }
 
-func selectRecordedRoutes(recorded []string, selected ...string) []string {
-	allowed := make(map[string]struct{}, len(selected))
-	for _, pattern := range selected {
-		allowed[pattern] = struct{}{}
+func embeddedAuthRouteInventory(authRoutes, browserRoutes []string) ([]string, []string) {
+	browserOwned := make(map[string]struct{}, len(browserRoutes))
+	for _, pattern := range browserRoutes {
+		browserOwned[pattern] = struct{}{}
 	}
-	routes := make([]string, 0, len(selected))
-	for _, pattern := range recorded {
-		if _, ok := allowed[pattern]; ok {
-			routes = append(routes, pattern)
+	publicRoutes := []string{}
+	managementRoutes := []string{}
+	for _, pattern := range authRoutes {
+		if _, duplicate := browserOwned[pattern]; duplicate {
+			continue
+		}
+		method, path, ok := strings.Cut(pattern, " ")
+		if !ok {
+			continue
+		}
+		switch classifyRouteSurface(method, path) {
+		case routeSurfaceTenantAdmin:
+			managementRoutes = append(managementRoutes, pattern)
+		case routeSurfacePublic:
+			publicRoutes = append(publicRoutes, pattern)
 		}
 	}
-	return routes
+	return publicRoutes, managementRoutes
 }
 
 // NewWithCore assembles the HTTP adapters over an already-opened embedded

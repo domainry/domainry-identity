@@ -3,10 +3,59 @@ package httpserver
 import (
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/domainry/domainry-identity-sdk/browsergateway"
+	authhttp "github.com/domainry/domainry-identity/internal/transport/http/auth"
 )
+
+func TestEmbeddedAuthRouteInventoryOwnsEveryNonBrowserRoute(t *testing.T) {
+	authRoutes := &recordingRouteRegistrar{mux: http.NewServeMux()}
+	authhttp.NewAuthHandler(authhttp.AuthDependencies{Authenticated: func(next http.HandlerFunc) http.HandlerFunc { return next }}).RegisterRoutes(authRoutes)
+	browserRoutes, err := browsergateway.RoutePatterns("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicRoutes, managementRoutes := embeddedAuthRouteInventory(authRoutes.patterns, browserRoutes)
+	wantPublic := []string{
+		"GET /.well-known/jwks.json",
+		"GET /.well-known/openid-configuration",
+		"POST /auth/guest",
+		"POST /auth/providers/{provider}/exchange",
+		"GET /auth/external-accounts",
+		"POST /auth/external-accounts/{provider}/bind",
+		"DELETE /auth/external-accounts/{provider}/{accountID}",
+		"GET /auth/me",
+		"PATCH /auth/me",
+		"GET /auth/role-options",
+		"GET /auth/role-requests",
+		"POST /auth/role-requests",
+	}
+	wantManagement := []string{
+		"GET /auth/providers/{provider}/setup-check",
+		"PUT /auth/providers/{provider}/setup",
+	}
+	if !reflect.DeepEqual(publicRoutes, wantPublic) {
+		t.Fatalf("embedded public auth routes=%#v want=%#v", publicRoutes, wantPublic)
+	}
+	if !reflect.DeepEqual(managementRoutes, wantManagement) {
+		t.Fatalf("embedded management auth routes=%#v want=%#v", managementRoutes, wantManagement)
+	}
+	owned := map[string]bool{}
+	for _, routes := range [][]string{browserRoutes, publicRoutes, managementRoutes} {
+		for _, pattern := range routes {
+			owned[pattern] = true
+		}
+	}
+	for _, pattern := range authRoutes.patterns {
+		if !owned[pattern] {
+			t.Fatalf("AuthHandler route %q has no embedded owner", pattern)
+		}
+	}
+}
 
 func TestClassifyRouteSurface(t *testing.T) {
 	tests := map[string]routeSurface{

@@ -3,6 +3,8 @@ package module_test
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -86,10 +88,21 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		}
 	}
 	for pattern, wantExposure := range map[string]identityhttpapi.Exposure{
-		"POST /auth/login":                           identityhttpapi.ExposurePublic,
-		"POST /auth/providers/{provider}/exchange":   identityhttpapi.ExposurePublic,
-		"GET /auth/providers/{provider}/setup-check": identityhttpapi.ExposureTenantAdmin,
-		"PUT /auth/providers/{provider}/setup":       identityhttpapi.ExposureTenantAdmin,
+		"GET /.well-known/jwks.json":                            identityhttpapi.ExposurePublic,
+		"GET /.well-known/openid-configuration":                 identityhttpapi.ExposurePublic,
+		"POST /auth/login":                                      identityhttpapi.ExposurePublic,
+		"POST /auth/guest":                                      identityhttpapi.ExposurePublic,
+		"POST /auth/providers/{provider}/exchange":              identityhttpapi.ExposurePublic,
+		"GET /auth/providers/{provider}/setup-check":            identityhttpapi.ExposureTenantAdmin,
+		"PUT /auth/providers/{provider}/setup":                  identityhttpapi.ExposureTenantAdmin,
+		"GET /auth/external-accounts":                           identityhttpapi.ExposurePublic,
+		"POST /auth/external-accounts/{provider}/bind":          identityhttpapi.ExposurePublic,
+		"DELETE /auth/external-accounts/{provider}/{accountID}": identityhttpapi.ExposurePublic,
+		"GET /auth/me":                                          identityhttpapi.ExposurePublic,
+		"PATCH /auth/me":                                        identityhttpapi.ExposurePublic,
+		"GET /auth/role-options":                                identityhttpapi.ExposurePublic,
+		"GET /auth/role-requests":                               identityhttpapi.ExposurePublic,
+		"POST /auth/role-requests":                              identityhttpapi.ExposurePublic,
 	} {
 		owner, ok := mountedPatterns[pattern]
 		if !ok {
@@ -139,8 +152,14 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	if err != nil || adminSession.AccessToken == "" {
 		t.Fatalf("workspace admin login session=%#v err=%v", adminSession, err)
 	}
+	wechat := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"openid":"wechat-subject"}`))
+	}))
+	t.Cleanup(wechat.Close)
 	adminSetup := httptest.NewRecorder()
-	adminSetupRequest := httptest.NewRequest(http.MethodPut, "/auth/providers/wechat_mini_program/setup", strings.NewReader(`{"type":"code_exchange","adapter":"wechat_mini_program","client_id":"app-id","client_secret":"app-secret","token_url":"https://api.weixin.qq.com/sns/jscode2session"}`))
+	adminSetupBody := fmt.Sprintf(`{"type":"code_exchange","adapter":"wechat_mini_program","client_id":"app-id","client_secret":"app-secret","token_url":%q}`, wechat.URL)
+	adminSetupRequest := httptest.NewRequest(http.MethodPut, "/auth/providers/wechat_mini_program/setup", strings.NewReader(adminSetupBody))
 	adminSetupRequest.Header.Set("Content-Type", "application/json")
 	adminSetupRequest.Header.Set("Authorization", "Bearer "+adminSession.AccessToken)
 	mounted.ServeHTTP(adminSetup, adminSetupRequest)
@@ -153,12 +172,51 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		t.Fatalf("provider setup-check did not reach handler: status=%d body=%s", setupCheck.Code, setupCheck.Body.String())
 	}
 
+	unauthenticatedBind := httptest.NewRecorder()
+	unauthenticatedBindRequest := httptest.NewRequest(http.MethodPost, "/auth/external-accounts/wechat_mini_program/bind", strings.NewReader(`{"subject":"wechat-subject"}`))
+	unauthenticatedBindRequest.Header.Set("Content-Type", "application/json")
+	mounted.ServeHTTP(unauthenticatedBind, unauthenticatedBindRequest)
+	if unauthenticatedBind.Code != http.StatusForbidden && unauthenticatedBind.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated external-account bind status=%d body=%s", unauthenticatedBind.Code, unauthenticatedBind.Body.String())
+	}
+
+	bind := httptest.NewRecorder()
+	bindRequest := httptest.NewRequest(http.MethodPost, "/auth/external-accounts/wechat_mini_program/bind", strings.NewReader(`{"subject":"wechat-subject"}`))
+	bindRequest.Header.Set("Content-Type", "application/json")
+	bindRequest.Header.Set("Authorization", "Bearer "+adminSession.AccessToken)
+	mounted.ServeHTTP(bind, bindRequest)
+	if bind.Code != http.StatusCreated {
+		t.Fatalf("external-account bind status=%d body=%s", bind.Code, bind.Body.String())
+	}
+	var boundAccount struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(bind.Body.Bytes(), &boundAccount); err != nil || boundAccount.ID == "" {
+		t.Fatalf("decode bound account=%#v err=%v body=%s", boundAccount, err, bind.Body.String())
+	}
+
+	list := httptest.NewRecorder()
+	listRequest := httptest.NewRequest(http.MethodGet, "/auth/external-accounts", nil)
+	listRequest.Header.Set("Authorization", "Bearer "+adminSession.AccessToken)
+	mounted.ServeHTTP(list, listRequest)
+	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), "wechat-subject") {
+		t.Fatalf("external-account list status=%d body=%s", list.Code, list.Body.String())
+	}
+
 	publicExchange := httptest.NewRecorder()
-	publicExchangeRequest := httptest.NewRequest(http.MethodPost, "/auth/providers/wechat_mini_program/exchange", strings.NewReader(`{}`))
+	publicExchangeRequest := httptest.NewRequest(http.MethodPost, "/auth/providers/wechat_mini_program/exchange", strings.NewReader(`{"workspace_id":"default","application_key":"orders-runtime","code":"wx-code"}`))
 	publicExchangeRequest.Header.Set("Content-Type", "application/json")
 	mounted.ServeHTTP(publicExchange, publicExchangeRequest)
-	if publicExchange.Code == http.StatusNotFound {
-		t.Fatalf("public provider exchange did not reach handler: body=%s", publicExchange.Body.String())
+	if publicExchange.Code != http.StatusOK {
+		t.Fatalf("bound public provider exchange status=%d body=%s", publicExchange.Code, publicExchange.Body.String())
+	}
+
+	unbind := httptest.NewRecorder()
+	unbindRequest := httptest.NewRequest(http.MethodDelete, "/auth/external-accounts/wechat_mini_program/"+boundAccount.ID, nil)
+	unbindRequest.Header.Set("Authorization", "Bearer "+adminSession.AccessToken)
+	mounted.ServeHTTP(unbind, unbindRequest)
+	if unbind.Code != http.StatusOK {
+		t.Fatalf("external-account unbind status=%d body=%s", unbind.Code, unbind.Body.String())
 	}
 	managementSurface := surfaces[1]
 	response := httptest.NewRecorder()
