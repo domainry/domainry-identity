@@ -1,6 +1,7 @@
 package remotesdk
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"strings"
@@ -8,6 +9,11 @@ import (
 
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 )
+
+type applicationServiceTokenAuthority interface {
+	IssueApplicationServiceToken(context.Context, identitysdk.ExchangeApplicationServiceTokenRequest, string) (identitysdk.ApplicationServiceToken, error)
+	VerifyApplicationServiceToken(context.Context, identitysdk.VerifyApplicationServiceTokenRequest) (identitysdk.ApplicationServicePrincipal, error)
+}
 
 type Support struct {
 	DecodeJSON        func(http.ResponseWriter, *http.Request, any) bool
@@ -41,6 +47,77 @@ func RegisterRoutes(mux *http.ServeMux, binding identitysdk.Binding, support Sup
 		// discovery describes the issuer and protocol, not one tenant app.
 		descriptor.Audience = ""
 		support.writeJSON(w, http.StatusOK, descriptor)
+	})
+	mux.HandleFunc("POST /identity/application-service/token", func(w http.ResponseWriter, r *http.Request) {
+		var request identitysdk.ExchangeApplicationServiceTokenRequest
+		if !support.decodeJSON(w, r, &request) {
+			return
+		}
+		if credentials == nil {
+			support.writeError(w, r, http.StatusUnauthorized, "identity.application_service_credential_invalid")
+			return
+		}
+		decision := credentials.Authorize(r.Header.Get("Authorization"), applicationScope(request.Application))
+		writeApplicationCredentialRateLimit(w, decision)
+		if !decision.Authenticated {
+			support.writeError(w, r, http.StatusUnauthorized, "identity.application_service_credential_invalid")
+			return
+		}
+		if decision.RateLimited {
+			support.writeError(w, r, http.StatusTooManyRequests, "identity.application_rate_limited")
+			return
+		}
+		authority, ok := binding.(applicationServiceTokenAuthority)
+		if !ok {
+			support.writeError(w, r, http.StatusNotImplemented, "identity.application_service_authentication_unavailable")
+			return
+		}
+		token, err := authority.IssueApplicationServiceToken(r.Context(), request, decision.CredentialID)
+		if err != nil {
+			support.writeServiceError(w, r, err)
+			return
+		}
+		support.writeJSON(w, http.StatusOK, token)
+	})
+	mux.HandleFunc("POST /identity/application-service/verify", func(w http.ResponseWriter, r *http.Request) {
+		var request identitysdk.VerifyApplicationServiceTokenRequest
+		if !support.decodeJSON(w, r, &request) {
+			return
+		}
+		// The verifier is itself an Identity-bound resource application. Its
+		// static credential authenticates that exact audience; the caller's
+		// short-lived token remains in the JSON body and is never confused with
+		// the verifier credential.
+		scope := identitysdk.ApplicationScope{WorkspaceID: identitysdk.WorkspaceID(strings.TrimSpace(r.Header.Get("X-Domainry-Workspace-ID"))), ApplicationKey: request.Audience}
+		scope.TenantID = identitysdk.TenantID(strings.TrimSpace(r.Header.Get("X-Domainry-Tenant-ID")))
+		if scope.WorkspaceID == "" {
+			scope.WorkspaceID = identitysdk.WorkspaceID(strings.TrimSpace(r.Header.Get("X-Domainry-Identity-Workspace-ID")))
+		}
+		if credentials == nil {
+			support.writeError(w, r, http.StatusUnauthorized, "identity.application_service_verifier_invalid")
+			return
+		}
+		decision := credentials.Authorize(r.Header.Get("Authorization"), scope)
+		writeApplicationCredentialRateLimit(w, decision)
+		if !decision.Authenticated {
+			support.writeError(w, r, http.StatusUnauthorized, "identity.application_service_verifier_invalid")
+			return
+		}
+		if decision.RateLimited {
+			support.writeError(w, r, http.StatusTooManyRequests, "identity.application_rate_limited")
+			return
+		}
+		authority, ok := binding.(applicationServiceTokenAuthority)
+		if !ok {
+			support.writeError(w, r, http.StatusNotImplemented, "identity.application_service_authentication_unavailable")
+			return
+		}
+		principal, err := authority.VerifyApplicationServiceToken(r.Context(), request)
+		if err != nil {
+			support.writeServiceError(w, r, err)
+			return
+		}
+		support.writeJSON(w, http.StatusOK, principal)
 	})
 	mux.HandleFunc("GET /auth/session", func(w http.ResponseWriter, r *http.Request) {
 		token := sdkBearerToken(r.Header.Get("Authorization"))
@@ -158,6 +235,15 @@ func authorizeApplicationCredential(w http.ResponseWriter, r *http.Request, supp
 		support.writeError(w, r, http.StatusUnauthorized, "identity.service_credential_required")
 		return false
 	}
+	writeApplicationCredentialRateLimit(w, decision)
+	if decision.RateLimited {
+		support.writeError(w, r, http.StatusTooManyRequests, "identity.application_rate_limited")
+		return false
+	}
+	return true
+}
+
+func writeApplicationCredentialRateLimit(w http.ResponseWriter, decision ApplicationCredentialDecision) {
 	w.Header().Set("X-RateLimit-Remaining", strconv.Itoa(decision.Remaining))
 	if !decision.ResetAt.IsZero() {
 		w.Header().Set("X-RateLimit-Reset", strconv.FormatInt(decision.ResetAt.Unix(), 10))
@@ -168,10 +254,7 @@ func authorizeApplicationCredential(w http.ResponseWriter, r *http.Request, supp
 			retryAfter = 1
 		}
 		w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
-		support.writeError(w, r, http.StatusTooManyRequests, "identity.application_rate_limited")
-		return false
 	}
-	return true
 }
 
 func sdkBearerToken(value string) string {

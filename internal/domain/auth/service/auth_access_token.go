@@ -18,6 +18,9 @@ func (s *AuthDomainService) VerifyAccessToken(ctx context.Context, token string)
 	if err != nil {
 		return authmodel.AuthClaims{}, err
 	}
+	if claims.ServiceApplicationKey != "" {
+		return authmodel.AuthClaims{}, forbidden("auth.user_token_required")
+	}
 	now := time.Now()
 	sessions, ok := s.identityStore.(authrepository.AuthSessionRepository)
 	if !ok {

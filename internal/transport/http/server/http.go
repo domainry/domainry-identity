@@ -12,6 +12,7 @@ import (
 
 	"github.com/domainry/domainry-foundation/apperror"
 	"github.com/domainry/domainry-foundation/requestcontext"
+	identitysdk "github.com/domainry/domainry-identity-sdk"
 	authapplication "github.com/domainry/domainry-identity/internal/application/auth"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
@@ -88,6 +89,19 @@ func (h *httpSupport) writeError(w http.ResponseWriter, _ *http.Request, status 
 }
 
 func (h *httpSupport) writeServiceError(w http.ResponseWriter, r *http.Request, err error) {
+	var sdkError *identitysdk.Error
+	if errors.As(err, &sdkError) {
+		status := sdkError.StatusCode
+		if status == 0 {
+			status = http.StatusBadRequest
+		}
+		params := []string{}
+		for key, value := range sdkError.Params {
+			params = append(params, key, value)
+		}
+		h.writeError(w, r, status, sdkError.Code, params...)
+		return
+	}
 	status := http.StatusInternalServerError
 	switch apperror.KindOf(err) {
 	case apperror.KindBadRequest:

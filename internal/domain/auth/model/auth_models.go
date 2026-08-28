@@ -3,22 +3,30 @@ package authmodel
 import identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 
 type AuthClaims struct {
-	Issuer                string   `json:"iss"`
-	Audience              string   `json:"aud"`
-	Subject               string   `json:"sub"`
-	TenantID              string   `json:"tenant_id"`
-	WorkspaceID           string   `json:"workspace_id"`
-	SessionID             string   `json:"sid"`
-	AuthorizationRevision string   `json:"authz_revision"`
-	AuthenticationTime    int64    `json:"auth_time,omitempty"`
-	AuthenticationMethods []string `json:"amr,omitempty"`
-	AssuranceLevel        string   `json:"acr,omitempty"`
-	IssuedAt              int64    `json:"iat"`
-	ExpiresAt             int64    `json:"exp"`
-	JTI                   string   `json:"jti"`
+	Issuer                string             `json:"iss"`
+	Audience              string             `json:"aud"`
+	Subject               string             `json:"sub"`
+	TenantID              string             `json:"tenant_id"`
+	WorkspaceID           string             `json:"workspace_id"`
+	SessionID             string             `json:"sid"`
+	AuthorizationRevision string             `json:"authz_revision"`
+	AuthenticationTime    int64              `json:"auth_time,omitempty"`
+	AuthenticationMethods []string           `json:"amr,omitempty"`
+	AssuranceLevel        string             `json:"acr,omitempty"`
+	IssuedAt              int64              `json:"iat"`
+	ExpiresAt             int64              `json:"exp"`
+	JTI                   string             `json:"jti"`
+	ServiceApplicationKey string             `json:"service_application_key,omitempty"`
+	ServiceCredentialID   string             `json:"service_credential_id,omitempty"`
+	ServiceGrants         []AuthServiceGrant `json:"service_grants,omitempty"`
 	// RoleKeys remains source-compatible for callers during the protocol
 	// transition, but is deliberately never serialized into access tokens.
 	RoleKeys []string `json:"-"`
+}
+
+type AuthServiceGrant struct {
+	Resource string `json:"resource"`
+	Action   string `json:"action"`
 }
 
 type AuthUser struct {

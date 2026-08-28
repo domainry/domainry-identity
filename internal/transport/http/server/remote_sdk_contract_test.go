@@ -32,7 +32,8 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 	cfg.AuthIssuer = issuer
 	cfg.AuthAudience = "domainry-runtime"
 	serviceCredential := "runtime-service-token"
-	cfg.IdentityApplicationServiceCredentials = map[string]string{"default/orders-runtime": serviceCredential}
+	notificationCredential := "notification-service-token"
+	cfg.IdentityApplicationServiceCredentials = map[string]string{"default/orders-runtime": serviceCredential, "default/domainry-notification": notificationCredential}
 
 	identityServer, err := httpserver.New(t.Context(), cfg)
 	if err != nil {
@@ -85,6 +86,39 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 	t.Cleanup(func() { _ = binding.Close(t.Context()) })
 	if binding.Descriptor().Mode != identity.DeploymentModeSaaS {
 		t.Fatalf("mode=%q", binding.Descriptor().Mode)
+	}
+	notificationFactory := identityremote.NewFactory(identityremote.Config{
+		Endpoint: testServer.URL, TenantID: "default", WorkspaceID: "default", Issuer: issuer,
+		Audience: "domainry-notification", ServiceAccessToken: notificationCredential,
+		HTTPClient: testServer.Client(),
+	})
+	notificationBinding, err := notificationFactory.Open(t.Context(), identity.ApplicationRef{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = notificationBinding.Close(t.Context()) })
+	notificationCatalog := identity.AuthorizationCatalog{
+		ContractVersion: identity.CatalogVersionV1,
+		Application:     identity.ApplicationRef{TenantID: "default", WorkspaceID: "default", ApplicationKey: "domainry-notification"},
+		Resources:       []identity.ResourceDefinition{{Key: "notification_event", SupportedFacts: []string{"tenant_id", "workspace_id", "application_key"}}},
+		Actions:         []identity.ActionDefinition{{Resource: "notification_event", Action: "publish", ServiceCallable: true}},
+	}
+	if _, err := notificationBinding.Catalog().Publish(t.Context(), notificationCatalog); err != nil {
+		t.Fatal(err)
+	}
+	callerServices := binding.(identity.ApplicationServiceBinding).ApplicationServices()
+	grant := identity.ApplicationServiceGrant{Resource: "notification_event", Action: "publish"}
+	serviceToken, err := callerServices.Exchange(t.Context(), identity.ExchangeApplicationServiceTokenRequest{Audience: "domainry-notification", Grants: []identity.ApplicationServiceGrant{grant}})
+	if err != nil || serviceToken.AccessToken == "" || serviceToken.CredentialID != "default" {
+		t.Fatalf("service token=%+v err=%v", serviceToken, err)
+	}
+	resourceServices := notificationBinding.(identity.ApplicationServiceBinding).ApplicationServices()
+	servicePrincipal, err := resourceServices.Verify(t.Context(), identity.VerifyApplicationServiceTokenRequest{AccessToken: serviceToken.AccessToken, Grant: grant})
+	if err != nil || servicePrincipal.SubjectID != "service:orders-runtime" || servicePrincipal.Application.ApplicationKey != "orders-runtime" || servicePrincipal.Audience != "domainry-notification" {
+		t.Fatalf("service principal=%+v err=%v", servicePrincipal, err)
+	}
+	if _, err := resourceServices.Verify(t.Context(), identity.VerifyApplicationServiceTokenRequest{AccessToken: serviceToken.AccessToken, Grant: identity.ApplicationServiceGrant{Resource: "notification_governance", Action: "read"}}); err == nil {
+		t.Fatal("service token authorized an unissued grant")
 	}
 
 	catalog := identity.AuthorizationCatalog{

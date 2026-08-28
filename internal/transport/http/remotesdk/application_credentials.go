@@ -35,6 +35,7 @@ type ApplicationCredentialDecision struct {
 	RateLimited   bool
 	Remaining     int
 	ResetAt       time.Time
+	CredentialID  string
 }
 
 // NewApplicationCredentialRegistry builds a registry from configuration keys
@@ -98,7 +99,7 @@ func (registry *ApplicationCredentialRegistry) Authorize(authorization string, s
 		tokenMatches := subtle.ConstantTimeCompare(digest[:], registered.digest[:]) == 1
 		if tokenMatches && registered.tenantID == tenantID && registered.workspaceID == scope.WorkspaceID && registered.applicationKey == scope.ApplicationKey {
 			allowed, remaining, resetAt := registered.limiter.Allow(registry.clock())
-			return ApplicationCredentialDecision{Authenticated: true, RateLimited: !allowed, Remaining: remaining, ResetAt: resetAt}
+			return ApplicationCredentialDecision{Authenticated: true, RateLimited: !allowed, Remaining: remaining, ResetAt: resetAt, CredentialID: registered.credentialID}
 		}
 	}
 	return ApplicationCredentialDecision{}
