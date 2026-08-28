@@ -138,7 +138,13 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 		identityApp.ReplaceAuthorizationCatalogs(snapshot.PermissionSets, snapshot.PermissionSetGroups, snapshot.Guardrails)
 	}
 	metadataApp.AddReloadObserver(refreshIdentityCatalog)
-	refreshIdentityCatalog(metadataRuntime.Schema())
+	bootstrapPrincipal := identitymodel.Principal{
+		Known: true, WorkspaceID: identitymodel.InstallationWorkspaceID, UserID: "system",
+		Role: identitymodel.RoleSchema{Key: "system_administrator", Permissions: []string{"workspace.admin"}},
+	}
+	if _, err := metadataApp.ReloadMetadata(workspaceCtx, bootstrapPrincipal); err != nil {
+		return fail(fmt.Errorf("load persisted Identity metadata: %w", err))
+	}
 
 	providerCredentials, err := authStore.ListAuthProviderCredentials(workspaceCtx, identitymodel.InstallationWorkspaceID)
 	if err != nil {
