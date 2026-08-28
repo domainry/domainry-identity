@@ -6,6 +6,8 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/domainry/domainry-foundation/requestcontext"
+	identitysdk "github.com/domainry/domainry-identity-sdk"
 	changeplanmodel "github.com/domainry/domainry-identity/internal/domain/changeplan/model"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
@@ -38,6 +40,43 @@ func TestBindingRuntimeAssemblyReturnsDirectSDKBinding(t *testing.T) {
 	t.Cleanup(func() { _ = assembled.CloseContext(t.Context()) })
 	if assembled.Binding == nil {
 		t.Fatal("binding-only assembly returned no SDK Binding")
+	}
+}
+
+func TestPublishedRuntimeCatalogParticipatesInRoleCandidateValidation(t *testing.T) {
+	_, sourceFile, _, _ := runtime.Caller(0)
+	projectRoot := filepath.Clean(filepath.Join(filepath.Dir(sourceFile), "..", ".."))
+	cfg := config.FromEnv()
+	cfg.Environment, cfg.DatabaseDriver, cfg.DBPath = "development", "sqlite", filepath.Join(t.TempDir(), "identity.db")
+	cfg.ManifestPath = filepath.Join(projectRoot, "domainry.template.json")
+	store, err := database.OpenContext(t.Context(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.EnsureSchema(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	core, err := New(t.Context(), cfg, store, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = core.CloseContext(t.Context()) })
+
+	workspaceID := identitysdk.WorkspaceID(identitymodel.InstallationWorkspaceID)
+	ctx := requestcontext.WithWorkspaceID(t.Context(), identitymodel.InstallationWorkspaceID)
+	_, err = core.Binding.Catalog().Publish(ctx, identitysdk.AuthorizationCatalog{
+		ContractVersion: identitysdk.CatalogVersionV1,
+		Application:     identitysdk.ApplicationRef{WorkspaceID: workspaceID, ApplicationKey: "gym"},
+		Resources:       []identitysdk.ResourceDefinition{{Key: "access_session", Fields: []string{"id", "member_id"}, SupportedFacts: []string{"id"}}},
+		Actions:         []identitysdk.ActionDefinition{{Resource: "access_session", Action: "read"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := json.RawMessage(`{"key":"member","name":"Member","permissions":["access_session.read"],"record_scope":"all_records","data_permissions":[{"object_key":"access_session","scope":"all_records","read":true}]}`)
+	mutation := metadatamodel.MetadataDefinitionMutation{Operation: "create", ResourceType: "role", ResourceKey: "member", Request: metadatamodel.MetadataDefinitionUpsertRequest{Payload: payload}}
+	if err := core.Metadata.ValidateMetadataCandidate(ctx, []metadatamodel.MetadataDefinitionMutation{mutation}); err != nil {
+		t.Fatalf("Runtime catalog object rejected by role candidate validation: %#v", err)
 	}
 }
 

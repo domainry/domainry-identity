@@ -31,19 +31,42 @@ import (
 // runtime ports; the service does not retain the aggregate RuntimeServices.
 // MetadataApplicationService owns metadata lifecycle behavior.
 type MetadataApplicationService struct {
-	repository        metadatarepository.MetadataRepository
-	runtime           LifecycleRuntime
-	audit             auditcontract.AuditEventFactory
-	templateID        string
-	version           string
-	name              string
-	references        MetadataReferenceGraphProvider
-	changePlans       changeplanrepository.ChangePlanRepository
-	operations        changeplanrepository.ChangePlanOperationRepository
-	auditAppender     MetadataAuditAppender
-	actionDefinitions func() []definitionmodel.ActionSchema
-	reloadObserversMu sync.RWMutex
-	reloadObservers   []func(metadatamodel.MetadataSchemaSnapshot)
+	repository             metadatarepository.MetadataRepository
+	runtime                LifecycleRuntime
+	audit                  auditcontract.AuditEventFactory
+	templateID             string
+	version                string
+	name                   string
+	references             MetadataReferenceGraphProvider
+	changePlans            changeplanrepository.ChangePlanRepository
+	operations             changeplanrepository.ChangePlanOperationRepository
+	auditAppender          MetadataAuditAppender
+	actionDefinitions      func() []definitionmodel.ActionSchema
+	authorizationObjectsMu sync.RWMutex
+	authorizationObjects   []definitionmodel.ObjectSchema
+	reloadObserversMu      sync.RWMutex
+	reloadObservers        []func(metadatamodel.MetadataSchemaSnapshot)
+}
+
+// ReplaceAuthorizationObjects supplies the application object catalog used by
+// Identity-owned role policy validation. These objects remain externally owned:
+// they are reference targets only and are never persisted as Identity metadata.
+func (s *MetadataApplicationService) ReplaceAuthorizationObjects(objects []definitionmodel.ObjectSchema) {
+	if s == nil {
+		return
+	}
+	s.authorizationObjectsMu.Lock()
+	s.authorizationObjects = append([]definitionmodel.ObjectSchema(nil), objects...)
+	s.authorizationObjectsMu.Unlock()
+}
+
+func (s *MetadataApplicationService) currentAuthorizationObjects() []definitionmodel.ObjectSchema {
+	if s == nil {
+		return nil
+	}
+	s.authorizationObjectsMu.RLock()
+	defer s.authorizationObjectsMu.RUnlock()
+	return append([]definitionmodel.ObjectSchema(nil), s.authorizationObjects...)
 }
 
 // UseActionDefinitionSource binds the effective execution catalog used by

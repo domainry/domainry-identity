@@ -42,6 +42,7 @@ type BindingDependencies struct {
 	Catalog               CatalogPersistence
 	MutationFence         IdentityMutationFence
 	LoginTransactions     FederatedLoginTransactionReader
+	CatalogPublished      func([]identitysdk.AuthorizationCatalog)
 }
 
 type sdkCatalogScope struct {
@@ -79,6 +80,7 @@ type sdkBinding struct {
 	clock              identitysdk.Clock
 	mutationFence      IdentityMutationFence
 	loginTransactions  FederatedLoginTransactionReader
+	catalogPublished   func([]identitysdk.AuthorizationCatalog)
 }
 
 func NewBinding(dependencies BindingDependencies) (identitysdk.Binding, error) {
@@ -99,7 +101,8 @@ func NewBinding(dependencies BindingDependencies) (identitysdk.Binding, error) {
 		metadata: dependencies.Metadata, catalogs: map[sdkCatalogScope]identitysdk.CatalogReceipt{},
 		catalogDefinitions: map[sdkCatalogScope]identitysdk.AuthorizationCatalog{}, catalogHistory: map[sdkCatalogRevisionScope]identitysdk.AuthorizationCatalog{},
 		catalogReceipts: map[sdkCatalogRevisionScope]identitysdk.CatalogReceipt{}, catalogStore: dependencies.Catalog, clock: dependencies.Clock,
-		mutationFence: dependencies.MutationFence, loginTransactions: dependencies.LoginTransactions}
+		mutationFence: dependencies.MutationFence, loginTransactions: dependencies.LoginTransactions,
+		catalogPublished: dependencies.CatalogPublished}
 	return binding, nil
 }
 
@@ -412,6 +415,13 @@ func (adapter sdkCatalog) Publish(ctx context.Context, catalog identitysdk.Autho
 	adapter.binding.catalogDefinitions[scope] = catalog
 	adapter.binding.catalogReceipts[revisionScope] = receipt
 	adapter.binding.catalogHistory[revisionScope] = catalog
+	if adapter.binding.catalogPublished != nil {
+		catalogs := make([]identitysdk.AuthorizationCatalog, 0, len(adapter.binding.catalogDefinitions))
+		for _, current := range adapter.binding.catalogDefinitions {
+			catalogs = append(catalogs, current)
+		}
+		adapter.binding.catalogPublished(catalogs)
+	}
 	return receipt, nil
 }
 

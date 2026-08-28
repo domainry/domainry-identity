@@ -16,7 +16,15 @@ import (
 // references. It deliberately knows nothing about workflow, automation,
 // reporting, agents or integrations.
 func MetadataValidateIdentitySchema(schema manifestmodel.ManifestSchema) error {
-	validator := newIdentitySchemaValidator(schema)
+	return MetadataValidateIdentitySchemaWithAuthorizationObjects(schema, nil)
+}
+
+// MetadataValidateIdentitySchemaWithAuthorizationObjects validates Identity's
+// owned graph while allowing role policies to reference application objects
+// published through the authorization catalog. External objects participate in
+// reference lookup only; their shape is not treated as Identity-owned metadata.
+func MetadataValidateIdentitySchemaWithAuthorizationObjects(schema manifestmodel.ManifestSchema, authorizationObjects []definitionmodel.ObjectSchema) error {
+	validator := newIdentitySchemaValidator(schema, authorizationObjects)
 	validator.validateObjects()
 	validator.validateViewsAndActions()
 	validator.validateAuthorization()
@@ -37,13 +45,26 @@ type identitySchemaValidator struct {
 	issues  []string
 }
 
-func newIdentitySchemaValidator(schema manifestmodel.ManifestSchema) *identitySchemaValidator {
+func newIdentitySchemaValidator(schema manifestmodel.ManifestSchema, authorizationObjects []definitionmodel.ObjectSchema) *identitySchemaValidator {
 	validator := &identitySchemaValidator{
 		schema:  schema,
 		objects: map[string]definitionmodel.ObjectSchema{},
 		fields:  map[string]map[string]definitionmodel.FieldSchema{},
 		actions: map[string]definitionmodel.ActionSchema{},
 		roles:   map[string]identitymodel.RoleSchema{},
+	}
+	for _, object := range authorizationObjects {
+		key := strings.TrimSpace(object.Key)
+		if key == "" {
+			continue
+		}
+		validator.objects[key] = object
+		validator.fields[key] = map[string]definitionmodel.FieldSchema{}
+		for _, field := range object.Fields {
+			if fieldKey := strings.TrimSpace(field.Key); fieldKey != "" {
+				validator.fields[key][fieldKey] = field
+			}
+		}
 	}
 	for _, object := range schema.Objects {
 		key := strings.TrimSpace(object.Key)

@@ -67,6 +67,22 @@ func TestMetadataCandidateRejectsDanglingReferencesBeforePersistence(t *testing.
 	}
 }
 
+func TestMetadataCandidateAcceptsRoleReferencesFromPublishedAuthorizationSchema(t *testing.T) {
+	service := NewMetadataApplicationService(MetadataApplicationDependencies{Repository: metadataCandidateRepository{manifest: loadMetadataCandidateFixture(t)}})
+	service.ReplaceAuthorizationObjects([]definitionmodel.ObjectSchema{{Key: "booking", Fields: []definitionmodel.FieldSchema{{Key: "member_id"}}}})
+	role := json.RawMessage(`{"key":"coach","name":"Coach","record_scope":"all_records","data_permissions":[{"object_key":"booking","scope":"all_records","read":true}],"field_permissions":[{"object_key":"booking","field_key":"member_id","readable":true}]}`)
+	mutation := metadatamodel.MetadataDefinitionMutation{Operation: "create", ResourceType: "role", ResourceKey: "coach", Request: metadatamodel.MetadataDefinitionUpsertRequest{Payload: role}}
+	if err := service.ValidateMetadataCandidate(t.Context(), []metadatamodel.MetadataDefinitionMutation{mutation}); err != nil {
+		t.Fatalf("role referencing published application schema rejected: %#v", err)
+	}
+
+	role = json.RawMessage(`{"key":"coach","name":"Coach","record_scope":"all_records","data_permissions":[{"object_key":"unknown","scope":"all_records","read":true}]}`)
+	mutation.Request.Payload = role
+	if err := service.ValidateMetadataCandidate(t.Context(), []metadatamodel.MetadataDefinitionMutation{mutation}); apperror.CodeOf(err) != "backend.change_plan.candidate_invalid" || !strings.Contains(apperror.ParamsOf(err)["diagnostic"], `references unknown object "unknown"`) {
+		t.Fatalf("unknown application object was not rejected: %#v", err)
+	}
+}
+
 func TestMetadataCandidateRequiresRoleCleanupWhenLastDedicatedActionPermissionIsRetired(t *testing.T) {
 	manifest := loadMetadataCandidateFixture(t)
 	action := definitionmodel.ActionSchema{Key: "customer.approve", ObjectKey: "customer", Label: "Approve", Kind: "record_operation", RequiresPermission: "customer.approve", AuditEvent: "customer.approved"}

@@ -164,6 +164,9 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 		EffectiveAccess: effectiveAccess, Identity: identityApp, Metadata: metadataRuntime,
 		Clock: options.Clock, Catalog: identitycatalogpersistence.NewStore(identityStore),
 		MutationFence: store, LoginTransactions: authStore,
+		CatalogPublished: func(catalogs []identitysdk.AuthorizationCatalog) {
+			metadataApp.ReplaceAuthorizationObjects(authorizationCatalogObjects(catalogs))
+		},
 	})
 	if err != nil {
 		return fail(fmt.Errorf("assemble Identity SDK binding: %w", err))
@@ -201,4 +204,34 @@ func defaultString(value, fallback string) string {
 		return value
 	}
 	return strings.TrimSpace(fallback)
+}
+
+func authorizationCatalogObjects(catalogs []identitysdk.AuthorizationCatalog) []definitionmodel.ObjectSchema {
+	byKey := map[string]definitionmodel.ObjectSchema{}
+	for _, catalog := range catalogs {
+		for _, resource := range catalog.Resources {
+			key := strings.TrimSpace(string(resource.Key))
+			if key == "" {
+				continue
+			}
+			object := byKey[key]
+			object.Key = key
+			fields := map[string]bool{}
+			for _, current := range object.Fields {
+				fields[current.Key] = true
+			}
+			for _, field := range resource.Fields {
+				if field = strings.TrimSpace(field); field != "" && !fields[field] {
+					object.Fields = append(object.Fields, definitionmodel.FieldSchema{Key: field})
+					fields[field] = true
+				}
+			}
+			byKey[key] = object
+		}
+	}
+	objects := make([]definitionmodel.ObjectSchema, 0, len(byKey))
+	for _, object := range byKey {
+		objects = append(objects, object)
+	}
+	return objects
 }

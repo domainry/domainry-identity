@@ -30,7 +30,7 @@ func (s *MetadataApplicationService) ValidateMetadataCandidate(ctx context.Conte
 			return badRequest("backend.change_plan.candidate_invalid", "resource_type", mutation.ResourceType, "resource_key", mutation.ResourceKey, "diagnostic", err.Error())
 		}
 	}
-	if err := metadatavalidation.MetadataValidateIdentitySchema(candidate); err != nil {
+	if err := metadatavalidation.MetadataValidateIdentitySchemaWithAuthorizationObjects(candidate, s.currentAuthorizationObjects()); err != nil {
 		return badRequest("backend.change_plan.candidate_invalid", "diagnostic", err.Error())
 	}
 	if err := validateRetiredActionPermissionAssignments(activeActions, candidate.Actions, candidate.Roles); err != nil {
