@@ -107,6 +107,51 @@ func TestWorkspaceScopeInventoryAndValidationFailures(t *testing.T) {
 	}
 }
 
+func TestWorkspaceScopeInventoryIsolatesBorrowedIdentityRelations(t *testing.T) {
+	for _, dialect := range []dialect{sqlite.Dialect{}, mysql.Dialect{}, postgres.Dialect{}} {
+		t.Run(dialect.Name(), func(t *testing.T) {
+			store := identitySchemaStore(t, &databaseSQLState{querySteps: []databaseSQLQueryStep{{
+				columns: []string{"table"},
+				rows: [][]driver.Value{
+					{"_audit_events"},
+					{"domainry_identity_identity_users"},
+					{"runtime_jobs"},
+					{"domainry_identity_auth_sessions"},
+				},
+			}}})
+			store.dialect = dialect
+			store.relationPrefix = "domainry_identity_"
+
+			tables, err := store.inventoryWorkspaceTables(t.Context(), store.db)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got, want := strings.Join(tables, ","), "auth_sessions,identity_users"; got != want {
+				t.Fatalf("borrowed inventory=%q want=%q", got, want)
+			}
+		})
+	}
+}
+
+func TestWorkspaceScopeValidationStillInspectsBorrowedIdentityRelations(t *testing.T) {
+	store := identitySchemaStore(t, &databaseSQLState{querySteps: []databaseSQLQueryStep{
+		{
+			columns: []string{"table"},
+			rows: [][]driver.Value{
+				{"_audit_events"},
+				{"domainry_identity_identity_users"},
+			},
+		},
+		{columns: []string{"workspace", "count"}, rows: [][]driver.Value{{"", int64(3)}}},
+	}})
+	store.relationPrefix = "domainry_identity_"
+
+	err := store.ValidateLegacyWorkspaceScopes(t.Context())
+	if err == nil || !strings.Contains(err.Error(), "table=identity_users classification=missing_workspace row_count=3") {
+		t.Fatalf("validation error=%v", err)
+	}
+}
+
 func TestInsertSystemRowFailure(t *testing.T) {
 	store := identitySchemaStore(t, &databaseSQLState{execSteps: []databaseSQLExecStep{{err: errDatabaseSQL}}})
 	if err := store.insertSystemRowContext(t.Context(), "records", []string{"id"}, []any{"id"}); !errors.Is(err, errDatabaseSQL) {

@@ -78,6 +78,16 @@ func (s *IdentityStore) inventoryWorkspaceTables(ctx context.Context, db schemaD
 		if err := rows.Scan(&table); err != nil {
 			return nil, err
 		}
+		// A borrowed Runtime database contains Runtime-owned workspace tables as
+		// well as Identity's prefixed tables. Only inventory this module's
+		// relations; passing a Runtime table name through tableIdentifier would
+		// incorrectly prefix it and query a relation that does not exist.
+		if s.relationPrefix != "" {
+			if !strings.HasPrefix(table, s.relationPrefix) {
+				continue
+			}
+			table = strings.TrimPrefix(table, s.relationPrefix)
+		}
 		tables = append(tables, table)
 	}
 	sort.Strings(tables)

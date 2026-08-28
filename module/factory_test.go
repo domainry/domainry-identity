@@ -189,7 +189,7 @@ func TestFactoryBorrowsProjectPoolWithoutClosingOrColliding(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if _, err := db.ExecContext(t.Context(), `CREATE TABLE metadata_catalog (owner TEXT NOT NULL); INSERT INTO metadata_catalog (owner) VALUES ('runtime')`); err != nil {
+	if _, err := db.ExecContext(t.Context(), `CREATE TABLE metadata_catalog (owner TEXT NOT NULL); INSERT INTO metadata_catalog (owner) VALUES ('runtime'); CREATE TABLE _audit_events (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL); INSERT INTO _audit_events (id, workspace_id) VALUES ('runtime-event', 'default')`); err != nil {
 		t.Fatal(err)
 	}
 	factory := identitymodule.NewFactory(identitymodule.Options{DatabaseDriver: "sqlite", DatabasePath: dbPath})
@@ -203,6 +203,10 @@ func TestFactoryBorrowsProjectPoolWithoutClosingOrColliding(t *testing.T) {
 	var owner string
 	if err := db.QueryRowContext(t.Context(), `SELECT owner FROM metadata_catalog`).Scan(&owner); err != nil || owner != "runtime" {
 		t.Fatalf("runtime table changed or pool closed: owner=%q err=%v", owner, err)
+	}
+	var runtimeAuditEvents int
+	if err := db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _audit_events WHERE workspace_id = 'default'`).Scan(&runtimeAuditEvents); err != nil || runtimeAuditEvents != 1 {
+		t.Fatalf("Runtime-owned workspace table changed: count=%d err=%v", runtimeAuditEvents, err)
 	}
 	var identityTables int
 	if err := db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name LIKE 'domainry_identity_%'`).Scan(&identityTables); err != nil || identityTables == 0 {
