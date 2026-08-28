@@ -250,17 +250,21 @@ func embeddedAuthRouteInventory(authRoutes, browserRoutes []string) ([]string, [
 	publicRoutes := []string{}
 	managementRoutes := []string{}
 	for _, pattern := range authRoutes {
-		if _, duplicate := browserOwned[pattern]; duplicate {
-			continue
-		}
 		method, path, ok := strings.Cut(pattern, " ")
 		if !ok {
 			continue
 		}
 		switch classifyRouteSurface(method, path) {
 		case routeSurfaceTenantAdmin:
+			// Tenant-administration semantics remain owned by AuthHandler even
+			// when the SDK browser gateway exposes a route at the same path.
+			// In particular reset-password accepts Identity's user_id contract,
+			// while the browser SDK contract uses subject_id.
 			managementRoutes = append(managementRoutes, pattern)
 		case routeSurfacePublic:
+			if _, duplicate := browserOwned[pattern]; duplicate {
+				continue
+			}
 			publicRoutes = append(publicRoutes, pattern)
 		}
 	}

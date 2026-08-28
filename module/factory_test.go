@@ -103,6 +103,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		"GET /auth/role-options":                                identityhttpapi.ExposurePublic,
 		"GET /auth/role-requests":                               identityhttpapi.ExposurePublic,
 		"POST /auth/role-requests":                              identityhttpapi.ExposurePublic,
+		"POST /auth/reset-password":                             identityhttpapi.ExposureTenantAdmin,
 		"PUT /tenant-admin/change-plans/{planID}":               identityhttpapi.ExposureTenantAdmin,
 		"POST /tenant-admin/change-plans/{planID}/review":       identityhttpapi.ExposureTenantAdmin,
 		"POST /tenant-admin/change-plans/{planID}/approve":      identityhttpapi.ExposureTenantAdmin,
@@ -157,6 +158,15 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	})
 	if err != nil || adminSession.AccessToken == "" {
 		t.Fatalf("workspace admin login session=%#v err=%v", adminSession, err)
+	}
+	reset := httptest.NewRecorder()
+	resetRequest := httptest.NewRequest(http.MethodPost, "/auth/reset-password", strings.NewReader(`{"user_id":"admin","new_password":"Domainry@2026","must_change_password":false}`))
+	resetRequest.Header.Set("Content-Type", "application/json")
+	resetRequest.Header.Set("Authorization", "Bearer "+adminSession.AccessToken)
+	resetRequest.Header.Set("Idempotency-Key", "reset-missing-user")
+	mounted.ServeHTTP(reset, resetRequest)
+	if reset.Code != http.StatusOK {
+		t.Fatalf("mounted tenant-admin reset-password status=%d body=%s", reset.Code, reset.Body.String())
 	}
 	wechat := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

@@ -132,7 +132,14 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 		return nil, fmt.Errorf("resolve Identity module browser authentication routes: %w", err)
 	}
 	browserSurface := &moduleHTTPSurface{name: "browser_authentication", handler: browserMux}
+	managementOwned := make(map[string]struct{}, len(managementSurface.routes))
+	for _, route := range managementSurface.routes {
+		managementOwned[route.Pattern] = struct{}{}
+	}
 	for _, pattern := range browserPatterns {
+		if _, owned := managementOwned[pattern]; owned {
+			continue
+		}
 		browserSurface.routes = append(browserSurface.routes, identityhttpapi.Route{
 			Pattern: pattern, Exposures: []identityhttpapi.Exposure{identityhttpapi.ExposurePublic, identityhttpapi.ExposureTenantAdmin},
 		})

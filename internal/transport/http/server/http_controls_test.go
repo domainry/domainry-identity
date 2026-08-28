@@ -35,6 +35,7 @@ func TestEmbeddedAuthRouteInventoryOwnsEveryNonBrowserRoute(t *testing.T) {
 		"POST /auth/role-requests",
 	}
 	wantManagement := []string{
+		"POST /auth/reset-password",
 		"GET /auth/providers/{provider}/setup-check",
 		"PUT /auth/providers/{provider}/setup",
 	}
