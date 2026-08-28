@@ -128,7 +128,14 @@ func (s *IdentityStore) applicationTables(ctx context.Context) ([]string, error)
 		if err := rows.Scan(&name); err != nil {
 			return nil, err
 		}
-		if isMigrationSystemTable(name) {
+		logicalName := name
+		if s.relationPrefix != "" {
+			if !strings.HasPrefix(name, s.relationPrefix) {
+				continue
+			}
+			logicalName = strings.TrimPrefix(name, s.relationPrefix)
+		}
+		if isMigrationSystemTable(logicalName) {
 			continue
 		}
 		tables = append(tables, name)

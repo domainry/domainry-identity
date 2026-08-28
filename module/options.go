@@ -17,7 +17,7 @@ import (
 // never borrows Runtime infrastructure.
 type Options struct {
 	// ProjectConfigurationPath optionally points to a Git-owned, non-secret
-	// Identity project configuration file. Secrets remain environment-owned.
+// Identity project configuration file. Secrets remain environment-owned.
 	ProjectConfigurationPath string
 	IdentityVersion          string
 	DatabaseDriver           string
@@ -30,10 +30,8 @@ type Options struct {
 	Clock identitysdk.Clock
 }
 
-// OptionsFromEnvironment reads only module-owned persistence settings. It
-// deliberately ignores Runtime's DATABASE_DRIVER, DATABASE_DSN and
-// APP_DB_PATH so an embedded Identity deployment cannot accidentally share
-// the business database.
+// OptionsFromEnvironment supplies standalone defaults. A Runtime host using
+// OpenWithDatabase overrides these values with its project-owned pool.
 func OptionsFromEnvironment() Options {
 	return Options{
 		ProjectConfigurationPath: strings.TrimSpace(os.Getenv("IDENTITY_MODULE_PROJECT_CONFIG")),

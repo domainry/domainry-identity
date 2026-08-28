@@ -2,6 +2,7 @@ package module
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net/http"
 
@@ -25,6 +26,14 @@ func NewFactory(options Options) *Factory {
 }
 
 func (factory *Factory) Open(ctx context.Context, application identitysdk.ApplicationRef) (identitysdk.Binding, error) {
+	return factory.open(ctx, application, nil)
+}
+
+func (factory *Factory) OpenWithDatabase(ctx context.Context, application identitysdk.ApplicationRef, handle identitysdk.DatabaseHandle) (identitysdk.Binding, error) {
+	return factory.open(ctx, application, &handle)
+}
+
+func (factory *Factory) open(ctx context.Context, application identitysdk.ApplicationRef, handle *identitysdk.DatabaseHandle) (identitysdk.Binding, error) {
 	if ctx == nil {
 		return nil, &identitysdk.Error{Code: "identity.context_required"}
 	}
@@ -42,7 +51,21 @@ func (factory *Factory) Open(ctx context.Context, application identitysdk.Applic
 	// authoritative token audience, avoiding a split trust scope between
 	// Runtime IDENTITY_AUDIENCE and module-local environment configuration.
 	cfg.AuthAudience = string(application.ApplicationKey)
-	store, err := database.OpenContext(ctx, cfg)
+	var store *database.IdentityStore
+	if handle == nil {
+		store, err = database.OpenContext(ctx, cfg)
+	} else {
+		db, valid := handle.Pool.(*sql.DB)
+		if !valid || db == nil {
+			return nil, &identitysdk.Error{Code: "identity.module_database_required"}
+		}
+		cfg.DatabaseDriver = handle.Driver
+		cfg.DatabaseSchema = handle.Schema
+		cfg.DBPath = handle.FilePath
+		cfg.DatabaseDSN = ""
+		cfg.DatabaseMigrationDSN = ""
+		store, err = database.OpenBorrowedContext(ctx, cfg, db)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("open Identity module database: %w", err)
 	}
@@ -132,5 +155,6 @@ func (binding *moduleBinding) Close(ctx context.Context) error {
 }
 
 var _ identitysdk.Factory = (*Factory)(nil)
+var _ identitysdk.DatabaseFactory = (*Factory)(nil)
 var _ identitysdk.Binding = (*moduleBinding)(nil)
 var _ identityhttpapi.Provider = (*moduleBinding)(nil)

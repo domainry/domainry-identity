@@ -16,7 +16,7 @@ import (
 	"github.com/domainry/domainry-identity/internal/platform/config"
 )
 
-// IdentityStore owns the Identity database connection and dialect.
+// IdentityStore owns a standalone connection or borrows a project-owned pool.
 type IdentityStore struct {
 	db                   *sql.DB
 	migrationDB          *sql.DB
@@ -41,6 +41,8 @@ type IdentityStore struct {
 	schemaAssembler      identitySchemaAssembler
 	backupChecksum       func(string) (string, error)
 	migrationReadDir     func(string) ([]os.DirEntry, error)
+	borrowedDatabase     bool
+	relationPrefix       string
 }
 
 func OpenContext(ctx context.Context, cfg config.Config) (*IdentityStore, error) {
@@ -153,6 +155,51 @@ func openContextWithDependencies(ctx context.Context, cfg config.Config, depende
 	return store, nil
 }
 
+// OpenBorrowedContext prepares an Identity store on a project-owned pool. The
+// caller retains lifecycle ownership of db; Close and CloseContext never close
+// a borrowed pool.
+func OpenBorrowedContext(ctx context.Context, cfg config.Config, db *sql.DB) (*IdentityStore, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if db == nil {
+		return nil, fmt.Errorf("borrowed database pool is required")
+	}
+	dialect, err := dialectFor(cfg.DatabaseDriver)
+	if err != nil {
+		return nil, err
+	}
+	activeMaterial, keyRing, err := identityDataKeyProvider(cfg, defaultIdentityOpenDependencies().keyRing)
+	if err != nil {
+		return nil, fmt.Errorf("initialize Identity data key ring: %w", err)
+	}
+	schema := ""
+	if dialect.Name() == "postgres" {
+		schema = strings.TrimSpace(cfg.DatabaseSchema)
+		if schema == "" {
+			schema = "public"
+		}
+	}
+	store := &IdentityStore{
+		db: db, dialect: dialect, config: cfg, databaseSchema: schema,
+		secretMaterialKey: activeMaterial, secretKeyProvider: keyRing,
+		idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096),
+		sqlMetrics:         telemetry.NewSQLMetrics(), operationalMetrics: NewIdentityOperationalMetrics(cfg.MigrationBackupLastSuccessAt, cfg.MigrationRestoreDrillSuccessAt),
+		borrowedDatabase: true,
+		relationPrefix:   "domainry_identity_",
+	}
+	if cfg.EffectiveDatabaseMigrationMode() == "verify" {
+		err = store.verifyMigrations(ctx, cfg)
+	} else {
+		err = store.applyMigrations(ctx, cfg)
+	}
+	if err != nil {
+		return nil, err
+	}
+	store.migrationCompatible = true
+	return store, nil
+}
+
 func identityDataKeyProvider(cfg config.Config, factory func(secrets.Key, ...secrets.Key) (secrets.KeyProvider, error)) ([32]byte, secrets.KeyProvider, error) {
 	activeMaterial := sha256.Sum256([]byte(cfg.IdentityDataSecretKey))
 	activeID := strings.TrimSpace(cfg.IdentityDataActiveKeyID)
@@ -186,6 +233,9 @@ func (s *IdentityStore) Close() error {
 	if s == nil {
 		return nil
 	}
+	if s.borrowedDatabase {
+		return nil
+	}
 	var first error
 	if s.migrationConn != nil {
 		first = s.migrationConn.Close()
@@ -206,6 +256,9 @@ func (s *IdentityStore) Close() error {
 // already in flight, bounded by the caller's shutdown deadline.
 func (s *IdentityStore) CloseContext(ctx context.Context) error {
 	if s == nil {
+		return nil
+	}
+	if s.borrowedDatabase {
 		return nil
 	}
 	done := make(chan error, 1)
@@ -253,6 +306,10 @@ func (s *IdentityStore) Driver() string {
 
 func (s *IdentityStore) DatabaseSchema() string {
 	return s.databaseSchema
+}
+
+func (s *IdentityStore) RelationPrefix() string {
+	return s.relationPrefix
 }
 
 func (s *IdentityStore) DatabaseStatus() (postgres.SafeStatus, bool) {

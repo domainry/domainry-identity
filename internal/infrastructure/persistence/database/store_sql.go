@@ -48,6 +48,9 @@ func (s *IdentityStore) identifier(value string) string {
 }
 
 func (s *IdentityStore) tableIdentifier(value string) string {
+	if s.relationPrefix != "" && !strings.HasPrefix(value, s.relationPrefix) {
+		value = s.relationPrefix + value
+	}
 	if s.dialect.Name() == "postgres" && strings.TrimSpace(s.databaseSchema) != "" {
 		return s.dialect.Identifier(s.databaseSchema) + "." + s.dialect.Identifier(value)
 	}

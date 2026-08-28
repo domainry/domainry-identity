@@ -181,3 +181,31 @@ func TestOptionsFromEnvironmentUsesModuleOwnedDatabaseNamespace(t *testing.T) {
 		t.Fatalf("module database options=%#v", options)
 	}
 }
+
+func TestFactoryBorrowsProjectPoolWithoutClosingOrColliding(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "project.db")
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.ExecContext(t.Context(), `CREATE TABLE metadata_catalog (owner TEXT NOT NULL); INSERT INTO metadata_catalog (owner) VALUES ('runtime')`); err != nil {
+		t.Fatal(err)
+	}
+	factory := identitymodule.NewFactory(identitymodule.Options{DatabaseDriver: "sqlite", DatabasePath: dbPath})
+	binding, err := factory.OpenWithDatabase(t.Context(), identitysdk.ApplicationRef{WorkspaceID: "default", ApplicationKey: "crm"}, identitysdk.DatabaseHandle{Pool: db, Driver: "sqlite", FilePath: dbPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := binding.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	var owner string
+	if err := db.QueryRowContext(t.Context(), `SELECT owner FROM metadata_catalog`).Scan(&owner); err != nil || owner != "runtime" {
+		t.Fatalf("runtime table changed or pool closed: owner=%q err=%v", owner, err)
+	}
+	var identityTables int
+	if err := db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name LIKE 'domainry_identity_%'`).Scan(&identityTables); err != nil || identityTables == 0 {
+		t.Fatalf("borrowed Identity tables=%d err=%v", identityTables, err)
+	}
+}

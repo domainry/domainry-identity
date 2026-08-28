@@ -35,16 +35,19 @@ import identitymodule "github.com/domainry/domainry-identity/module"
 factory := identitymodule.NewFactory(identitymodule.OptionsFromEnvironment())
 ```
 
-`module.Factory.Open` 只接收 SDK 的应用上下文。Identity 会：
+生成项目由 Runtime Host 调用 `module.Factory.OpenWithDatabase`，把项目唯一
+数据库连接池借给 Identity。Identity 会：
 
-- 自己打开并关闭 Identity 数据库连接池；
+- 使用 Runtime 拥有的连接池，且不会关闭它；
 - 自己执行和校验 Identity schema migration；
+- 在共享 schema 中用 `domainry_identity_` 表前缀隔离 Identity 表；
 - 使用 Module 自己的 Clock（测试可通过 `Options.Clock` 覆盖）；
 - 使用 `Factory.Open` 显式传入的 workspace、application key 与回调地址，
   并拒绝跨 workspace/audience 复用同一个 Binding；
-- 只读取 `IDENTITY_MODULE_DATABASE_*` 持久化配置，绝不继承 Runtime 的
-  `DATABASE_DRIVER`、`DATABASE_DSN` 或 `APP_DB_PATH`；
 - 直接返回进程内 SDK Binding，不产生回环 HTTP 调用。
+
+`Factory.Open` 仍保留给非 Runtime 的独立嵌入场景；该入口才使用
+`IDENTITY_MODULE_DATABASE_*` 并自行拥有连接池。
 
 ### 独立服务模式
 

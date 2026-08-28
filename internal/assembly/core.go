@@ -82,7 +82,7 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 	if err := metadataStore.EnsureManifestMetadata(ctx, manifest); err != nil {
 		return fail(fmt.Errorf("install metadata manifest: %w", err))
 	}
-	identityStore, err := identitypersistence.NewSQLIdentityStoreWithSchema(ctx, store.DB(), store.SchemaDB(), store.Driver(), store.DatabaseSchema())
+	identityStore, err := identitypersistence.NewSQLIdentityStoreWithSchema(ctx, store.DB(), store.SchemaDB(), store.Driver(), store.DatabaseSchema(), store.RelationPrefix())
 	if err != nil {
 		return fail(fmt.Errorf("open Identity repository: %w", err))
 	}

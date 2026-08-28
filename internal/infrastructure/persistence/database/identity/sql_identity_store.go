@@ -37,6 +37,7 @@ type SQLIdentityStore struct {
 	schemaDB          identityschema.SQLDatabase
 	driver            string
 	schema            string
+	relationPrefix    string
 	memory            *MemoryIdentityStore
 	roleRequestsReady atomic.Bool
 }
@@ -52,6 +53,9 @@ func (s *SQLIdentityStore) identifier(value string) string {
 }
 
 func (s *SQLIdentityStore) tableIdentifier(value string) string {
+	if s.relationPrefix != "" && !strings.HasPrefix(value, s.relationPrefix) {
+		value = s.relationPrefix + value
+	}
 	if s.driver == "postgres" && strings.TrimSpace(s.schema) != "" {
 		return sqlite.Dialect{}.Identifier(s.schema) + "." + sqlite.Dialect{}.Identifier(value)
 	}
@@ -75,7 +79,11 @@ func NewSQLIdentityStoreWithSchema(ctx context.Context, db *sql.DB, schemaDB ide
 	if len(schema) > 0 {
 		databaseSchema = strings.TrimSpace(schema[0])
 	}
-	store := &SQLIdentityStore{db: db, schemaDB: schemaDB, driver: driver, schema: databaseSchema, memory: NewMemoryIdentityStore()}
+	relationPrefix := ""
+	if len(schema) > 1 {
+		relationPrefix = strings.TrimSpace(schema[1])
+	}
+	store := &SQLIdentityStore{db: db, schemaDB: schemaDB, driver: driver, schema: databaseSchema, relationPrefix: relationPrefix, memory: NewMemoryIdentityStore()}
 	if err := store.ensureRoleRequestsTable(ctx); err != nil {
 		return nil, err
 	}
