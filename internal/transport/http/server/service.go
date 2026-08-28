@@ -33,9 +33,11 @@ import (
 )
 
 type Server struct {
-	core                     *assembly.Core
-	routes                   http.Handler
-	identityManagementRoutes []string
+	core                         *assembly.Core
+	routes                       http.Handler
+	identityManagementRoutes     []string
+	embeddedPublicAuthRoutes     []string
+	embeddedManagementAuthRoutes []string
 }
 
 type recordingRouteRegistrar struct {
@@ -135,7 +137,8 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 			return false, lookupErr
 		},
 	})
-	authHandler.RegisterRoutes(mux)
+	authRoutes := &recordingRouteRegistrar{mux: mux}
+	authHandler.RegisterRoutes(authRoutes)
 
 	objects := func() []definitionmodel.ObjectSchema { return core.MetadataRuntime.Schema().Objects }
 	governance := identityapplication.NewIdentityGovernanceApplicationServiceWithPermissionSource(core.Identity.Repository(), core.Identity.PermissionDefinitions, func() map[string]definitionmodel.ObjectSchema {
@@ -221,7 +224,26 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 	if err := browserGateway.RegisterRoutes(mux, "/browser"); err != nil {
 		return nil, fmt.Errorf("register Identity browser gateway: %w", err)
 	}
-	return &Server{core: core, routes: httpSupport.middleware(mux), identityManagementRoutes: append([]string(nil), identityRoutes.patterns...)}, nil
+	return &Server{
+		core: core, routes: httpSupport.middleware(mux),
+		identityManagementRoutes:     append([]string(nil), identityRoutes.patterns...),
+		embeddedPublicAuthRoutes:     selectRecordedRoutes(authRoutes.patterns, "POST /auth/providers/{provider}/exchange"),
+		embeddedManagementAuthRoutes: selectRecordedRoutes(authRoutes.patterns, "GET /auth/providers/{provider}/setup-check", "PUT /auth/providers/{provider}/setup"),
+	}, nil
+}
+
+func selectRecordedRoutes(recorded []string, selected ...string) []string {
+	allowed := make(map[string]struct{}, len(selected))
+	for _, pattern := range selected {
+		allowed[pattern] = struct{}{}
+	}
+	routes := make([]string, 0, len(selected))
+	for _, pattern := range recorded {
+		if _, ok := allowed[pattern]; ok {
+			routes = append(routes, pattern)
+		}
+	}
+	return routes
 }
 
 // NewWithCore assembles the HTTP adapters over an already-opened embedded
@@ -298,6 +320,24 @@ func (s *Server) IdentityManagementRoutes() []string {
 		return nil
 	}
 	return append([]string(nil), s.identityManagementRoutes...)
+}
+
+// EmbeddedPublicAuthRoutes returns AuthHandler routes that are required by an
+// embedded application but are not owned by the SDK browser gateway.
+func (s *Server) EmbeddedPublicAuthRoutes() []string {
+	if s == nil {
+		return nil
+	}
+	return append([]string(nil), s.embeddedPublicAuthRoutes...)
+}
+
+// EmbeddedManagementAuthRoutes returns provider configuration routes owned by
+// the Identity tenant-administration surface.
+func (s *Server) EmbeddedManagementAuthRoutes() []string {
+	if s == nil {
+		return nil
+	}
+	return append([]string(nil), s.embeddedManagementAuthRoutes...)
 }
 func (s *Server) SDKBinding() identitysdk.Binding {
 	if s == nil || s.core == nil {

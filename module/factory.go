@@ -102,6 +102,12 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 	for _, pattern := range managementServer.IdentityManagementRoutes() {
 		managementSurface.routes = append(managementSurface.routes, identityhttpapi.Route{Pattern: pattern, Exposures: []identityhttpapi.Exposure{identityhttpapi.ExposureTenantAdmin}})
 	}
+	for _, pattern := range managementServer.EmbeddedManagementAuthRoutes() {
+		managementSurface.routes = append(managementSurface.routes, identityhttpapi.Route{Pattern: pattern, Exposures: []identityhttpapi.Exposure{identityhttpapi.ExposureTenantAdmin}})
+	}
+	for _, pattern := range managementServer.EmbeddedPublicAuthRoutes() {
+		managementSurface.routes = append(managementSurface.routes, identityhttpapi.Route{Pattern: pattern, Exposures: []identityhttpapi.Exposure{identityhttpapi.ExposurePublic}})
+	}
 	browserGateway, err := browsergateway.New(scopedBinding, browsergateway.Config{
 		ApplicationKey:     application.ApplicationKey,
 		AllowedReturnURLs:  append([]string(nil), application.RedirectURLs...),

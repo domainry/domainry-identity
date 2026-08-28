@@ -2,7 +2,11 @@ package auth
 
 import "net/http"
 
-func (h *AuthHandler) RegisterRoutes(mux *http.ServeMux) {
+type routeRegistrar interface {
+	HandleFunc(string, func(http.ResponseWriter, *http.Request))
+}
+
+func (h *AuthHandler) RegisterRoutes(mux routeRegistrar) {
 	authenticated := h.authenticated
 	if authenticated == nil {
 		authenticated = h.admin

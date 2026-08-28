@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -73,11 +74,45 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	if !foundUsers || !foundLogin {
 		t.Fatalf("module surfaces users=%v login=%v", foundUsers, foundLogin)
 	}
-	managementSurface := surfaces[1]
-	response := httptest.NewRecorder()
-	managementSurface.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/identity/users", nil))
-	if response.Code == http.StatusNotFound {
-		t.Fatal("module management route list points at an unregistered Handler route")
+	mounted := http.NewServeMux()
+	mountedPatterns := map[string]string{}
+	for _, surface := range surfaces {
+		for _, route := range surface.Routes() {
+			if owner, duplicate := mountedPatterns[route.Pattern]; duplicate {
+				t.Fatalf("module route %q is duplicated by %q and %q", route.Pattern, owner, surface.Name())
+			}
+			mountedPatterns[route.Pattern] = surface.Name()
+			mounted.Handle(route.Pattern, surface.Handler())
+		}
+	}
+	for pattern, wantExposure := range map[string]identityhttpapi.Exposure{
+		"POST /auth/login":                           identityhttpapi.ExposurePublic,
+		"POST /auth/providers/{provider}/exchange":   identityhttpapi.ExposurePublic,
+		"GET /auth/providers/{provider}/setup-check": identityhttpapi.ExposureTenantAdmin,
+		"PUT /auth/providers/{provider}/setup":       identityhttpapi.ExposureTenantAdmin,
+	} {
+		owner, ok := mountedPatterns[pattern]
+		if !ok {
+			t.Fatalf("module route %q is not exported", pattern)
+		}
+		foundExposure := false
+		for _, surface := range surfaces {
+			if surface.Name() != owner {
+				continue
+			}
+			for _, route := range surface.Routes() {
+				if route.Pattern == pattern {
+					for _, exposure := range route.Exposures {
+						if exposure == wantExposure {
+							foundExposure = true
+						}
+					}
+				}
+			}
+		}
+		if !foundExposure {
+			t.Fatalf("module route %q does not have exposure %q", pattern, wantExposure)
+		}
 	}
 	catalog := identitysdk.AuthorizationCatalog{
 		ContractVersion: identitysdk.CatalogVersionV1,
@@ -88,6 +123,48 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	receipt, err := binding.Catalog().Publish(t.Context(), catalog)
 	if err != nil || receipt.Revision == "" {
 		t.Fatalf("publish receipt=%#v err=%v", receipt, err)
+	}
+
+	unauthenticatedSetup := httptest.NewRecorder()
+	unauthenticatedSetupRequest := httptest.NewRequest(http.MethodPut, "/auth/providers/wechat_mini_program/setup", strings.NewReader(`{}`))
+	unauthenticatedSetupRequest.Header.Set("Content-Type", "application/json")
+	mounted.ServeHTTP(unauthenticatedSetup, unauthenticatedSetupRequest)
+	if unauthenticatedSetup.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated provider setup status=%d body=%s", unauthenticatedSetup.Code, unauthenticatedSetup.Body.String())
+	}
+
+	adminSession, err := binding.Authentication().LoginWithPassword(t.Context(), identitysdk.PasswordLoginRequest{
+		WorkspaceID: "default", Login: "admin@example.com", Password: "Domainry@2026",
+	})
+	if err != nil || adminSession.AccessToken == "" {
+		t.Fatalf("workspace admin login session=%#v err=%v", adminSession, err)
+	}
+	adminSetup := httptest.NewRecorder()
+	adminSetupRequest := httptest.NewRequest(http.MethodPut, "/auth/providers/wechat_mini_program/setup", strings.NewReader(`{"type":"code_exchange","adapter":"wechat_mini_program","client_id":"app-id","client_secret":"app-secret","token_url":"https://api.weixin.qq.com/sns/jscode2session"}`))
+	adminSetupRequest.Header.Set("Content-Type", "application/json")
+	adminSetupRequest.Header.Set("Authorization", "Bearer "+adminSession.AccessToken)
+	mounted.ServeHTTP(adminSetup, adminSetupRequest)
+	if adminSetup.Code != http.StatusOK {
+		t.Fatalf("workspace admin provider setup did not reach handler: status=%d body=%s", adminSetup.Code, adminSetup.Body.String())
+	}
+	setupCheck := httptest.NewRecorder()
+	mounted.ServeHTTP(setupCheck, httptest.NewRequest(http.MethodGet, "/auth/providers/wechat_mini_program/setup-check", nil))
+	if setupCheck.Code != http.StatusOK {
+		t.Fatalf("provider setup-check did not reach handler: status=%d body=%s", setupCheck.Code, setupCheck.Body.String())
+	}
+
+	publicExchange := httptest.NewRecorder()
+	publicExchangeRequest := httptest.NewRequest(http.MethodPost, "/auth/providers/wechat_mini_program/exchange", strings.NewReader(`{}`))
+	publicExchangeRequest.Header.Set("Content-Type", "application/json")
+	mounted.ServeHTTP(publicExchange, publicExchangeRequest)
+	if publicExchange.Code == http.StatusNotFound {
+		t.Fatalf("public provider exchange did not reach handler: body=%s", publicExchange.Body.String())
+	}
+	managementSurface := surfaces[1]
+	response := httptest.NewRecorder()
+	managementSurface.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/identity/users", nil))
+	if response.Code == http.StatusNotFound {
+		t.Fatal("module management route list points at an unregistered Handler route")
 	}
 	if receipt.PublishedAt != now.Format(time.RFC3339Nano) {
 		t.Fatalf("catalog publication time=%q want=%q", receipt.PublishedAt, now.Format(time.RFC3339Nano))
