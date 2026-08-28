@@ -397,6 +397,31 @@ func TestExternalIdentityCreationAndRoleMappingEdges(t *testing.T) {
 	}
 }
 
+func TestWeChatExternalLoginReusesOrphanAndSkipsBindingManagedDefaultRole(t *testing.T) {
+	auth, identities, repository := newFaultAuthDomainService()
+	assertion := authmodel.AuthExternalIdentityAssertion{Provider: "wechat_mini_program", Subject: "open-id", ProviderSubjectVerified: true}
+	placeholder := wechatMiniProgramPlaceholderEmail(assertion.Provider, assertion.Subject)
+	identities.users = append(identities.users, identitymodel.IdentityUser{ID: "orphan", Name: placeholder, Email: placeholder, Status: identitymodel.IdentityStatusActive})
+	identities.roles = append(identities.roles, identitymodel.IdentityRole{ID: "member", Key: "member", Status: identitymodel.IdentityStatusActive})
+	identities.roleDefinitions["member"] = identitymodel.RoleSchema{
+		Key: "member", Audience: identitymodel.IdentityRoleAudienceBusiness, RequiredBindingKey: "member", AssignmentMode: identitymodel.IdentityRoleAssignmentSystemManaged,
+	}
+
+	session, err := auth.ExternalLoginWithPolicy(t.Context(), "default", assertion, authmodel.AuthExternalLoginPolicy{AutoCreateUsers: true, DefaultRoleKey: "member"})
+	if err != nil {
+		t.Fatalf("recover verified wechat login: %v", err)
+	}
+	if session.User.ID != "orphan" || len(identities.users) != 1 {
+		t.Fatalf("orphan was not reused: session=%+v users=%+v", session.User, identities.users)
+	}
+	if len(identities.roleAssignments) != 0 {
+		t.Fatalf("binding-managed role was assigned without a binding: %+v", identities.roleAssignments)
+	}
+	if len(repository.accounts) != 1 || repository.accounts[0].UserID != "orphan" {
+		t.Fatalf("external account was not linked to orphan: %+v", repository.accounts)
+	}
+}
+
 type assertionAdapter struct {
 	assertion authmodel.AuthExternalIdentityAssertion
 	err       error

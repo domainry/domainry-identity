@@ -87,6 +87,9 @@ func (s *AuthDomainService) ExternalLoginWithPolicyForApplication(ctx context.Co
 
 func (s *AuthDomainService) externalLoginUserByVerifiedEmail(ctx context.Context, assertion authmodel.AuthExternalIdentityAssertion) (identitymodel.IdentityUser, bool, error) {
 	email := strings.TrimSpace(assertion.Email)
+	if email == "" && wechatMiniProgramSubjectOnlyIdentity(assertion) {
+		email = wechatMiniProgramPlaceholderEmail(assertion.Provider, assertion.Subject)
+	}
 	if email == "" {
 		return identitymodel.IdentityUser{}, false, nil
 	}
@@ -253,7 +256,8 @@ func (s *AuthDomainService) roleForExternalAssertion(ctx context.Context, assert
 	}
 	byKey := map[string]identitymodel.IdentityRole{}
 	for _, role := range roles {
-		if _, published := s.identity.PublishedRoleDefinition(ctx, valueOrDefault(role.Key, role.ID)); !published {
+		definition, published := s.identity.PublishedRoleDefinition(ctx, valueOrDefault(role.Key, role.ID))
+		if !published || !externalAutoAssignableRole(definition) {
 			continue
 		}
 		byKey[strings.ToLower(strings.TrimSpace(role.Key))] = role
@@ -272,6 +276,18 @@ func (s *AuthDomainService) roleForExternalAssertion(ctx context.Context, assert
 		return role, true, nil
 	}
 	return identitymodel.IdentityRole{}, false, nil
+}
+
+func externalAutoAssignableRole(role identitymodel.RoleSchema) bool {
+	mode := role.AssignmentMode
+	if mode == "" {
+		mode = identitymodel.IdentityRoleAssignmentManual
+	}
+	audience := role.Audience
+	if audience == "" {
+		audience = identitymodel.IdentityRoleAudienceAny
+	}
+	return mode == identitymodel.IdentityRoleAssignmentManual && audience == identitymodel.IdentityRoleAudienceAny
 }
 
 func externalAssertionMappingMatches(assertion authmodel.AuthExternalIdentityAssertion, mapping authmodel.AuthExternalRoleMapping) bool {
