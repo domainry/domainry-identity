@@ -7,7 +7,7 @@ require (
 	github.com/coreos/go-oidc/v3 v3.20.0
 	github.com/crewjam/saml v0.5.1
 	github.com/domainry/domainry-foundation v0.1.0-dev.1
-	github.com/domainry/domainry-identity-sdk v0.1.0-dev3
+	github.com/domainry/domainry-identity-sdk v0.1.0-dev4
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/russellhaering/goxmldsig v1.6.0

@@ -11,6 +11,7 @@ import (
 	"github.com/domainry/domainry-identity-sdk/browsergateway"
 	identityhttpapi "github.com/domainry/domainry-identity-sdk/httpapi"
 	"github.com/domainry/domainry-identity/internal/assembly"
+	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
 	httpserver "github.com/domainry/domainry-identity/internal/transport/http/server"
 )
@@ -83,6 +84,9 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 		_ = store.CloseContext(context.Background())
 		return nil, err
 	}
+	if handle != nil && handle.OrganizationScopeResolver != nil {
+		identityRuntime.Identity.UseOrganizationScopeResolver(moduleOrganizationScopeResolver{resolve: handle.OrganizationScopeResolver})
+	}
 	binding := identityRuntime.Binding
 	if binding == nil {
 		_ = identityRuntime.CloseContext(ctx)
@@ -145,6 +149,21 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 		})
 	}
 	return &moduleBinding{Binding: scopedBinding, runtime: identityRuntime, surfaces: []identityhttpapi.Surface{browserSurface, managementSurface}}, nil
+}
+
+type moduleOrganizationScopeResolver struct {
+	resolve identitysdk.OrganizationScopeResolver
+}
+
+func (resolver moduleOrganizationScopeResolver) ResolveIdentityOrganizationScopes(ctx context.Context, workspaceID string, profileIDs []string) (identitymodel.IdentityOrganizationScopeFacts, error) {
+	facts, err := resolver.resolve(ctx, workspaceID, append([]string(nil), profileIDs...))
+	if err != nil {
+		return identitymodel.IdentityOrganizationScopeFacts{}, err
+	}
+	return identitymodel.IdentityOrganizationScopeFacts{
+		TeamIDs: append([]string(nil), facts.TeamIDs...), StoreIDs: append([]string(nil), facts.StoreIDs...),
+		TerritoryIDs: append([]string(nil), facts.TerritoryIDs...), WarehouseIDs: append([]string(nil), facts.WarehouseIDs...),
+	}, nil
 }
 
 type moduleBinding struct {
