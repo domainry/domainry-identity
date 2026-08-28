@@ -76,6 +76,7 @@ func (h *AuthHandler) authProviderExchange(w http.ResponseWriter, r *http.Reques
 		WorkspaceID    string `json:"workspace_id"`
 		ApplicationKey string `json:"application_key"`
 		Code           string `json:"code"`
+		IDToken        string `json:"id_token"`
 	}
 	if !h.decodeJSON(w, r, &req) {
 		return
@@ -90,7 +91,11 @@ func (h *AuthHandler) authProviderExchange(w http.ResponseWriter, r *http.Reques
 		h.writeError(w, r, http.StatusServiceUnavailable, "auth.provider_code_exchange_unavailable")
 		return
 	}
-	result, err := flow.ExchangeCode(requestcontext.WithWorkspaceID(r.Context(), workspaceID), workspaceID, provider, req.Code, req.ApplicationKey, adapter)
+	credential := req.Code
+	if strings.TrimSpace(req.IDToken) != "" {
+		credential = req.IDToken
+	}
+	result, err := flow.ExchangeCode(requestcontext.WithWorkspaceID(r.Context(), workspaceID), workspaceID, provider, credential, req.ApplicationKey, adapter)
 	if err != nil {
 		code := apperror.CodeOf(err)
 		if code == "auth.provider_not_configured" || code == "auth.provider_exchange_not_supported" || code == "auth.provider_code_required" {

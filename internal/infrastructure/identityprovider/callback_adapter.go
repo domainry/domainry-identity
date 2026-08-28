@@ -62,6 +62,8 @@ func (a CallbackAdapter) ExchangeCode(ctx context.Context, provider string, conf
 	switch adapter {
 	case "wechat_mini_program":
 		return ExchangeWeChatMiniProgramCode(ctx, provider, code, config)
+	case "line_liff":
+		return ExchangeLineLIFFIDToken(ctx, provider, code, config)
 	case "alipay_mini_program":
 		return ExchangeAlipayMiniProgramCode(ctx, provider, code, config)
 	default:

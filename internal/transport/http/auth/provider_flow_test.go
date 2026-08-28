@@ -76,6 +76,7 @@ func newAuthProviderFlowFixture(t *testing.T) *authProviderFlowFixture {
 		{ID: "otp-account", UserID: "user-1", Provider: "whatsapp", ProviderSubject: "+8613800000000"},
 		{ID: "oidc-account", UserID: "user-1", Provider: "oidc", ProviderSubject: "oidc-user"},
 		{ID: "wechat-account", UserID: "user-1", Provider: "wechat_mini_program", ProviderSubject: "wechat-user"},
+		{ID: "line-account", UserID: "user-1", Provider: "line", ProviderSubject: "line-user"},
 	}
 	providers := authapplication.NewAuthProviderApplicationService([]map[string]any{
 		{"key": "oidc", "type": "oidc", "enabled": true, "auth_url": "https://identity.example/authorize", "client_id": "client-1", "redirect_url": "https://app.example/callback", "scope": "openid", "auto_create_users": false},
@@ -83,6 +84,7 @@ func newAuthProviderFlowFixture(t *testing.T) *authProviderFlowFixture {
 		{"key": "unsupported", "type": "custom", "enabled": true},
 		{"key": "disabled", "type": "oidc", "enabled": false},
 		{"key": "wechat_mini_program", "type": "wechat_mini_program", "enabled": true, "client_id": "app", "client_secret": "secret", "auto_create_users": false},
+		{"key": "line", "type": "code_exchange", "adapter": "line_liff", "enabled": true, "client_id": "channel", "auto_create_users": true, "default_role_key": "member_onboarding"},
 	}, false, nil)
 	flows := authapplication.NewAuthProviderFlowApplicationService(handler.passwords, providers)
 	callback := &authProviderCallbackStub{assertion: authmodel.AuthExternalIdentityAssertion{Provider: "oidc", Subject: "oidc-user"}}
@@ -93,6 +95,17 @@ func newAuthProviderFlowFixture(t *testing.T) *authProviderFlowFixture {
 		fixture.failureEvent, fixture.failureReason = provider, reason
 	}
 	return fixture
+}
+
+func TestAuthProviderExchangeAcceptsLineLIFFIDToken(t *testing.T) {
+	fixture := newAuthProviderFlowFixture(t)
+	fixture.callback.assertion = authmodel.AuthExternalIdentityAssertion{Provider: "line", Subject: "line-user", ProviderSubjectVerified: true}
+	request := providerFlowRequest(http.MethodPost, "/auth/providers/line/exchange", "line", `{"workspace_id":"workspace-a","application_key":"line-mini","id_token":"liff-id-token"}`)
+	response := httptest.NewRecorder()
+	fixture.handler.authProviderExchange(response, request)
+	if session := decodeProviderFlowSession(t, response); response.Code != http.StatusOK || session.User.ID != "user-1" || fixture.callback.input.Values["code"] != "liff-id-token" {
+		t.Fatalf("status=%d session=%#v callback=%#v body=%s", response.Code, session, fixture.callback, response.Body.String())
+	}
 }
 
 func TestAuthProviderExchangeCompletesWeChatMiniProgramLogin(t *testing.T) {

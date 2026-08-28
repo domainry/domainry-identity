@@ -62,7 +62,7 @@ func (s *AuthProviderApplicationService) SaveSetup(ctx context.Context, provider
 	if strings.TrimSpace(request.Type) == "" {
 		request.Type = config.Type
 	}
-	if !newProvider && !sameAuthProviderType(config.Type, request.Type) {
+	if !newProvider && !sameAuthProviderType(config.Key, config.Type, request.Type, request.Adapter) {
 		return authmodel.AuthProviderConfig{}, authProviderApplicationError(apperror.KindBadRequest, "auth.provider_type_change_not_allowed")
 	}
 	if strings.TrimSpace(request.Adapter) == "" {
@@ -166,10 +166,12 @@ func configurableAuthProviderType(providerType string) bool {
 	}
 }
 
-func sameAuthProviderType(current, requested string) bool {
+func sameAuthProviderType(providerKey, current, requested, adapter string) bool {
+	providerKey = strings.ToLower(strings.TrimSpace(providerKey))
 	current = strings.ToLower(strings.TrimSpace(current))
 	requested = strings.ToLower(strings.TrimSpace(requested))
-	return current == requested || current == "wechat_mini_program" && requested == "code_exchange"
+	adapter = strings.ToLower(strings.TrimSpace(adapter))
+	return current == requested || current == "wechat_mini_program" && requested == "code_exchange" || providerKey == "line" && current == "oidc" && requested == "code_exchange" && adapter == "line_liff"
 }
 
 func authProviderApplyCredential(config *authmodel.AuthProviderConfig, value authmodel.AuthProviderCredential) {
@@ -199,7 +201,7 @@ func authProviderApplyCredential(config *authmodel.AuthProviderConfig, value aut
 		config.ClientID, config.ClientSecret, config.VerificationKey = value.ClientID, value.ClientSecret, value.VerificationKey
 		config.ClientSecretConfigured = value.ClientSecret != ""
 		config.VerificationKeyConfigured = value.VerificationKey != ""
-		config.Enabled = config.ClientID != "" && config.ClientSecretConfigured && (!strings.EqualFold(config.Adapter, "alipay_mini_program") || config.VerificationKeyConfigured)
+		config.Enabled = config.ClientID != "" && (strings.EqualFold(config.Adapter, "line_liff") || config.ClientSecretConfigured) && (!strings.EqualFold(config.Adapter, "alipay_mini_program") || config.VerificationKeyConfigured)
 	} else {
 		config.ClientID, config.ClientSecret, config.RedirectURL = value.ClientID, value.ClientSecret, value.RedirectURL
 		config.ClientSecretConfigured = value.ClientSecret != ""

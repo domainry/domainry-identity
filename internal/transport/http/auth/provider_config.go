@@ -114,6 +114,9 @@ func authProviderSetupChecks(config map[string]any) []map[string]any {
 			{"key": "client_id", "ok": stringFromProviderConfig(config, "client_id") != "", "label": "App ID"},
 			{"key": "client_secret", "ok": boolFromProviderConfig(config, "client_secret_configured"), "label": "App Secret"},
 		}
+		if strings.EqualFold(stringFromProviderConfig(config, "adapter"), "line_liff") {
+			return checks[:1]
+		}
 		if strings.EqualFold(stringFromProviderConfig(config, "adapter"), "alipay_mini_program") {
 			checks[1]["label"] = "Application private key"
 			checks = append(checks, map[string]any{"key": "verification_key", "ok": boolFromProviderConfig(config, "verification_key_configured"), "label": "Alipay public key"})

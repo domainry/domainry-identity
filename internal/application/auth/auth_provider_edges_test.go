@@ -118,3 +118,18 @@ func TestAuthProviderCredentialProjectionEdges(t *testing.T) {
 		t.Fatal("provider flow owners were not wired")
 	}
 }
+
+func TestLINEProviderCanSelectLIFFTokenExchangeWithoutClientSecret(t *testing.T) {
+	writer := &authProviderEdgeWriter{credential: authmodel.AuthProviderCredential{
+		ProviderKey: "line", Type: "code_exchange", Adapter: "line_liff", ClientID: "channel-id", AutoCreateUsers: true, DefaultRoleKey: "member_onboarding",
+	}}
+	service := NewAuthProviderApplicationService([]map[string]any{{"key": "line", "type": "oidc"}}, false, writer)
+	config, err := service.SaveSetup(t.Context(), "line", authmodel.AuthProviderCredentialUpsertRequest{
+		Type: "code_exchange", Adapter: "line_liff", ClientID: "channel-id", AutoCreateUsers: boolPointer(true), DefaultRoleKey: "member_onboarding",
+	}, authMutationPrincipal())
+	if err != nil || !config.Enabled || config.ClientID != "channel-id" || config.ClientSecretConfigured || config.DefaultRoleKey != "member_onboarding" {
+		t.Fatalf("LINE LIFF config=%+v err=%v", config, err)
+	}
+}
+
+func boolPointer(value bool) *bool { return &value }

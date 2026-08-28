@@ -90,8 +90,8 @@ func (s *AuthDomainService) ExternalLoginWithPolicyForApplication(ctx context.Co
 
 func (s *AuthDomainService) externalLoginUserByVerifiedEmail(ctx context.Context, assertion authmodel.AuthExternalIdentityAssertion) (identitymodel.IdentityUser, bool, error) {
 	email := strings.TrimSpace(assertion.Email)
-	if email == "" && wechatMiniProgramSubjectOnlyIdentity(assertion) {
-		email = wechatMiniProgramPlaceholderEmail(assertion.Provider, assertion.Subject)
+	if email == "" && verifiedSubjectOnlyIdentity(assertion) {
+		email = verifiedSubjectPlaceholderEmail(assertion.Provider, assertion.Subject)
 	}
 	if email == "" {
 		return identitymodel.IdentityUser{}, false, nil
@@ -189,10 +189,10 @@ func (s *AuthDomainService) externalAccountByProviderSubject(ctx context.Context
 func (s *AuthDomainService) createExternalIdentityUser(ctx context.Context, assertion authmodel.AuthExternalIdentityAssertion, policy authmodel.AuthExternalLoginPolicy) (identitymodel.IdentityUser, error) {
 	email := strings.TrimSpace(assertion.Email)
 	if email == "" {
-		if !wechatMiniProgramSubjectOnlyIdentity(assertion) {
+		if !verifiedSubjectOnlyIdentity(assertion) {
 			return identitymodel.IdentityUser{}, badRequest("auth.external_email_required")
 		}
-		email = wechatMiniProgramPlaceholderEmail(assertion.Provider, assertion.Subject)
+		email = verifiedSubjectPlaceholderEmail(assertion.Provider, assertion.Subject)
 	}
 	idBase := assertion.Provider + "_" + assertion.Subject
 	idBase = strings.Trim(strings.Map(func(r rune) rune {
@@ -241,15 +241,19 @@ func (s *AuthDomainService) createExternalIdentityUser(ctx context.Context, asse
 	return user, nil
 }
 
-func wechatMiniProgramSubjectOnlyIdentity(assertion authmodel.AuthExternalIdentityAssertion) bool {
-	return assertion.ProviderSubjectVerified &&
-		strings.EqualFold(strings.TrimSpace(assertion.Provider), "wechat_mini_program") &&
-		strings.TrimSpace(assertion.Subject) != ""
+func verifiedSubjectOnlyIdentity(assertion authmodel.AuthExternalIdentityAssertion) bool {
+	provider := normalizeProvider(assertion.Provider)
+	return assertion.ProviderSubjectVerified && (provider == "wechat_mini_program" || provider == "line") && strings.TrimSpace(assertion.Subject) != ""
 }
 
-func wechatMiniProgramPlaceholderEmail(provider, subject string) string {
-	digest := sha256.Sum256([]byte(normalizeProvider(provider) + "\x00" + strings.TrimSpace(subject)))
-	return fmt.Sprintf("wechat-mini-%x@external.invalid", digest[:16])
+func verifiedSubjectPlaceholderEmail(provider, subject string) string {
+	provider = normalizeProvider(provider)
+	digest := sha256.Sum256([]byte(provider + "\x00" + strings.TrimSpace(subject)))
+	prefix := "line-liff"
+	if provider == "wechat_mini_program" {
+		prefix = "wechat-mini"
+	}
+	return fmt.Sprintf("%s-%x@external.invalid", prefix, digest[:16])
 }
 
 func (s *AuthDomainService) roleForExternalAssertion(ctx context.Context, assertion authmodel.AuthExternalIdentityAssertion, policy authmodel.AuthExternalLoginPolicy) (identitymodel.IdentityRole, bool, error) {

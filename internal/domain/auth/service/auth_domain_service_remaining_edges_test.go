@@ -351,8 +351,12 @@ func TestExternalIdentityCreationAndRoleMappingEdges(t *testing.T) {
 		t.Fatal("unverified wechat subject created without email")
 	}
 	createdFromWeChat, err := auth.createExternalIdentityUser(t.Context(), authmodel.AuthExternalIdentityAssertion{Provider: "wechat_mini_program", Subject: "open-id", ProviderSubjectVerified: true}, authmodel.AuthExternalLoginPolicy{})
-	if err != nil || createdFromWeChat.Email != wechatMiniProgramPlaceholderEmail("wechat_mini_program", "open-id") || !strings.HasSuffix(createdFromWeChat.Email, "@external.invalid") {
+	if err != nil || createdFromWeChat.Email != verifiedSubjectPlaceholderEmail("wechat_mini_program", "open-id") || !strings.HasSuffix(createdFromWeChat.Email, "@external.invalid") {
 		t.Fatalf("verified wechat identity=%+v err=%v", createdFromWeChat, err)
+	}
+	createdFromLINE, err := auth.createExternalIdentityUser(t.Context(), authmodel.AuthExternalIdentityAssertion{Provider: "line", Subject: "line-user", ProviderSubjectVerified: true}, authmodel.AuthExternalLoginPolicy{})
+	if err != nil || !strings.HasPrefix(createdFromLINE.Email, "line-liff-") || !strings.HasSuffix(createdFromLINE.Email, "@external.invalid") {
+		t.Fatalf("verified LINE identity=%+v err=%v", createdFromLINE, err)
 	}
 	identities.users = []identitymodel.IdentityUser{activeExternalIdentityUser("oidc_subject", "existing@example.test")}
 	created, err := auth.createExternalIdentityUser(t.Context(), authmodel.AuthExternalIdentityAssertion{
@@ -400,7 +404,7 @@ func TestExternalIdentityCreationAndRoleMappingEdges(t *testing.T) {
 func TestWeChatExternalLoginReusesOrphanAndSkipsBindingManagedDefaultRole(t *testing.T) {
 	auth, identities, repository := newFaultAuthDomainService()
 	assertion := authmodel.AuthExternalIdentityAssertion{Provider: "wechat_mini_program", Subject: "open-id", ProviderSubjectVerified: true}
-	placeholder := wechatMiniProgramPlaceholderEmail(assertion.Provider, assertion.Subject)
+	placeholder := verifiedSubjectPlaceholderEmail(assertion.Provider, assertion.Subject)
 	identities.users = append(identities.users, identitymodel.IdentityUser{ID: "orphan", Name: placeholder, Email: placeholder, Status: identitymodel.IdentityStatusActive})
 	identities.roles = append(identities.roles, identitymodel.IdentityRole{ID: "member", Key: "member", Status: identitymodel.IdentityStatusActive})
 	identities.roleDefinitions["member"] = identitymodel.RoleSchema{
