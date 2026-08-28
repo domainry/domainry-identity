@@ -183,7 +183,8 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 		Service: changePlanService, Principal: httpSupport.principal, Snapshot: changePlanProjection.snapshotSource, Graph: changePlanProjection.graphSource,
 		WriteJSON: httpSupport.writeJSON, WriteError: httpSupport.writeError, WriteServiceError: httpSupport.writeServiceError, DecodeJSON: httpSupport.decodeJSON,
 	})
-	changePlanHandler.RegisterRoutes(mux)
+	changePlanRoutes := &recordingRouteRegistrar{mux: mux}
+	changePlanHandler.RegisterRoutes(changePlanRoutes)
 	mux.HandleFunc("GET /domain-system-snapshot", httpSupport.admin(changePlanProjection.systemSnapshot))
 	mux.HandleFunc("GET /domain-reference-graph", httpSupport.admin(changePlanProjection.referenceGraph))
 	mux.HandleFunc("GET /permissions/effective", httpSupport.authenticated(func(w http.ResponseWriter, r *http.Request) {
@@ -230,9 +231,12 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 		return nil, fmt.Errorf("resolve embedded browser authentication routes: %w", err)
 	}
 	embeddedPublicAuthRoutes, embeddedManagementAuthRoutes := embeddedAuthRouteInventory(authRoutes.patterns, embeddedBrowserRoutes)
+	managementRoutes := append([]string(nil), identityRoutes.patterns...)
+	managementRoutes = append(managementRoutes, changePlanRoutes.patterns...)
+	managementRoutes = append(managementRoutes, "GET /domain-system-snapshot", "GET /domain-reference-graph")
 	return &Server{
 		core: core, routes: httpSupport.middleware(mux),
-		identityManagementRoutes:     append([]string(nil), identityRoutes.patterns...),
+		identityManagementRoutes:     managementRoutes,
 		embeddedPublicAuthRoutes:     embeddedPublicAuthRoutes,
 		embeddedManagementAuthRoutes: embeddedManagementAuthRoutes,
 	}, nil

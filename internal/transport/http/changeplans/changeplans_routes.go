@@ -2,7 +2,11 @@ package changeplans
 
 import "net/http"
 
-func (h *ChangePlansHandler) RegisterRoutes(mux *http.ServeMux) {
+type routeRegistrar interface {
+	HandleFunc(string, func(http.ResponseWriter, *http.Request))
+}
+
+func (h *ChangePlansHandler) RegisterRoutes(mux routeRegistrar) {
 	mux.HandleFunc("POST /tenant-admin/change-plans/validate", h.validate)
 	mux.HandleFunc("GET /tenant-admin/change-plans/{planID}", h.getDraft)
 	mux.HandleFunc("PUT /tenant-admin/change-plans/{planID}", h.saveDraft)

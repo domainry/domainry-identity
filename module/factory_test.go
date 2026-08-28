@@ -103,6 +103,12 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		"GET /auth/role-options":                                identityhttpapi.ExposurePublic,
 		"GET /auth/role-requests":                               identityhttpapi.ExposurePublic,
 		"POST /auth/role-requests":                              identityhttpapi.ExposurePublic,
+		"PUT /tenant-admin/change-plans/{planID}":               identityhttpapi.ExposureTenantAdmin,
+		"POST /tenant-admin/change-plans/{planID}/review":       identityhttpapi.ExposureTenantAdmin,
+		"POST /tenant-admin/change-plans/{planID}/approve":      identityhttpapi.ExposureTenantAdmin,
+		"POST /tenant-admin/change-plans/apply":                 identityhttpapi.ExposureTenantAdmin,
+		"GET /domain-system-snapshot":                           identityhttpapi.ExposureTenantAdmin,
+		"GET /domain-reference-graph":                           identityhttpapi.ExposureTenantAdmin,
 	} {
 		owner, ok := mountedPatterns[pattern]
 		if !ok {
