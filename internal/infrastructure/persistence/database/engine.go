@@ -11,16 +11,16 @@ import (
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 )
 
-type dialect = driver.Engine
+type databaseEngine = driver.Engine
 
 var engineRegistry = map[string]func() driver.Engine{
-	"":           func() dialect { return sqlite.NewEngine() },
-	"sqlite":     func() dialect { return sqlite.NewEngine() },
-	"sqlite3":    func() dialect { return sqlite.NewEngine() },
-	"mysql":      func() dialect { return mysql.NewEngine() },
-	"postgres":   func() dialect { return postgres.NewEngine() },
-	"postgresql": func() dialect { return postgres.NewEngine() },
-	"pgx":        func() dialect { return postgres.NewEngine() },
+	"":           func() driver.Engine { return sqlite.NewEngine() },
+	"sqlite":     func() driver.Engine { return sqlite.NewEngine() },
+	"sqlite3":    func() driver.Engine { return sqlite.NewEngine() },
+	"mysql":      func() driver.Engine { return mysql.NewEngine() },
+	"postgres":   func() driver.Engine { return postgres.NewEngine() },
+	"postgresql": func() driver.Engine { return postgres.NewEngine() },
+	"pgx":        func() driver.Engine { return postgres.NewEngine() },
 }
 
 func engineFor(driverName string) (driver.Engine, error) {
@@ -51,7 +51,7 @@ func (s *IdentityStore) SetEngineForTesting(driver string) error {
 	if err != nil {
 		return err
 	}
-	s.dialect = engine
+	s.engine = engine
 	s.SQLDatabase = nil
 	return nil
 }

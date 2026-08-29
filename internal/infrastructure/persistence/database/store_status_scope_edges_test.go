@@ -60,11 +60,11 @@ func TestMigrationStatusClassificationsAndVersionBounds(t *testing.T) {
 }
 
 func TestWorkspaceScopeInventoryAndValidationFailures(t *testing.T) {
-	for _, dialect := range []dialect{sqlite.NewEngine(), mysql.NewEngine(), postgres.NewEngine()} {
+	for _, engine := range []databaseEngine{sqlite.NewEngine(), mysql.NewEngine(), postgres.NewEngine()} {
 		store := identitySchemaStore(t, &databaseSQLState{})
-		store.dialect = dialect
+		store.engine = engine
 		if tables, err := store.inventoryWorkspaceTables(t.Context(), store.db); err != nil || len(tables) != 0 {
-			t.Fatalf("dialect=%s tables=%#v err=%v", dialect.Name(), tables, err)
+			t.Fatalf("engine=%s tables=%#v err=%v", engine.Name(), tables, err)
 		}
 	}
 	for _, step := range []databaseSQLQueryStep{
@@ -108,8 +108,8 @@ func TestWorkspaceScopeInventoryAndValidationFailures(t *testing.T) {
 }
 
 func TestWorkspaceScopeInventoryIsolatesBorrowedIdentityRelations(t *testing.T) {
-	for _, dialect := range []dialect{sqlite.NewEngine(), mysql.NewEngine(), postgres.NewEngine()} {
-		t.Run(dialect.Name(), func(t *testing.T) {
+	for _, engine := range []databaseEngine{sqlite.NewEngine(), mysql.NewEngine(), postgres.NewEngine()} {
+		t.Run(engine.Name(), func(t *testing.T) {
 			store := identitySchemaStore(t, &databaseSQLState{querySteps: []databaseSQLQueryStep{{
 				columns: []string{"table"},
 				rows: [][]driver.Value{
@@ -119,7 +119,7 @@ func TestWorkspaceScopeInventoryIsolatesBorrowedIdentityRelations(t *testing.T) 
 					{"domainry_identity_auth_sessions"},
 				},
 			}}})
-			store.dialect = dialect
+			store.engine = engine
 			store.relationPrefix = "domainry_identity_"
 
 			tables, err := store.inventoryWorkspaceTables(t.Context(), store.db)

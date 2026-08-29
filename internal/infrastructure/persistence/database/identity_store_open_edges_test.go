@@ -74,13 +74,13 @@ func runtimeOpenTestDB(t *testing.T) *sql.DB {
 	return db
 }
 
-func runtimeOpenTestDependencies(selectedDialect dialect, profile identityPostgresProfile) identityOpenDependencies {
-	if stub, ok := selectedDialect.(runtimeOpenDialectStub); ok && stub.Engine == nil {
+func runtimeOpenTestDependencies(selectedEngine databaseEngine, profile identityPostgresProfile) identityOpenDependencies {
+	if stub, ok := selectedEngine.(runtimeOpenDialectStub); ok && stub.Engine == nil {
 		stub.Engine = sqlite.NewEngine()
-		selectedDialect = stub
+		selectedEngine = stub
 	}
 	return identityOpenDependencies{
-		dialect: func(string) (dialect, error) { return selectedDialect, nil },
+		engine: func(string) (databaseEngine, error) { return selectedEngine, nil },
 		postgresProfile: func(config.Config) (identityPostgresProfile, error) {
 			return profile, nil
 		},
@@ -99,10 +99,10 @@ func TestOpenContextNonPostgresDependencyFailures(t *testing.T) {
 		name string
 		deps identityOpenDependencies
 	}{
-		{"dsn", identityOpenDependencies{dialect: func(string) (dialect, error) {
+		{"dsn", identityOpenDependencies{engine: func(string) (databaseEngine, error) {
 			return runtimeOpenDialectStub{name: "sqlite", dsnErr: errDatabaseSQL}, nil
 		}}},
-		{"open", identityOpenDependencies{dialect: func(string) (dialect, error) { return runtimeOpenDialectStub{name: "sqlite"}, nil }, observedSQL: func(string, string, string, *telemetry.SQLMetrics) (*sql.DB, error) { return nil, errDatabaseSQL }}},
+		{"open", identityOpenDependencies{engine: func(string) (databaseEngine, error) { return runtimeOpenDialectStub{name: "sqlite"}, nil }, observedSQL: func(string, string, string, *telemetry.SQLMetrics) (*sql.DB, error) { return nil, errDatabaseSQL }}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if _, err := openContextWithDependencies(t.Context(), cfg, test.deps); err == nil {
@@ -201,7 +201,7 @@ func TestOpenContextKeyRingAndPostgresSuccess(t *testing.T) {
 
 func TestDefaultRuntimeOpenDependenciesAndProfileAdapter(t *testing.T) {
 	dependencies := defaultIdentityOpenDependencies()
-	if _, err := dependencies.dialect("sqlite"); err != nil {
+	if _, err := dependencies.engine("sqlite"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := dependencies.postgresProfile(config.Config{}); err == nil {

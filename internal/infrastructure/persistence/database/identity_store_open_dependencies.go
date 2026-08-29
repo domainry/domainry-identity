@@ -38,7 +38,7 @@ func (adapter identityPostgresProfileAdapter) Profile() *postgres.ConnectionProf
 }
 
 type identityOpenDependencies struct {
-	dialect         func(string) (dialect, error)
+	engine          func(string) (databaseEngine, error)
 	postgresProfile func(config.Config) (identityPostgresProfile, error)
 	observedSQL     func(string, string, string, *telemetry.SQLMetrics) (*sql.DB, error)
 	keyRing         func(secrets.Key, ...secrets.Key) (secrets.KeyProvider, error)
@@ -46,7 +46,7 @@ type identityOpenDependencies struct {
 
 func defaultIdentityOpenDependencies() identityOpenDependencies {
 	return identityOpenDependencies{
-		dialect: engineFor,
+		engine: engineFor,
 		postgresProfile: func(cfg config.Config) (identityPostgresProfile, error) {
 			profile, err := postgres.NewConnectionProfile(cfg)
 			if err != nil {

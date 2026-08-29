@@ -17,7 +17,7 @@ func (s *IdentityStore) BuilderRenderer() ormdialect.Renderer {
 
 func (s *IdentityStore) sqlBase() *base.SQLDatabase {
 	if s.SQLDatabase == nil {
-		s.SQLDatabase = base.NewSQLDatabase(s.db, s.dialect, s.databaseSchema, s.relationPrefix)
+		s.SQLDatabase = base.NewSQLDatabase(s.db, s.engine, s.databaseSchema, s.relationPrefix)
 	}
 	return s.SQLDatabase
 }

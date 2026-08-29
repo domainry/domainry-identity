@@ -83,8 +83,8 @@ func ValidateExternalMigrationBackup(driverName, evidencePath string) error {
 	return err
 }
 
-func MigrationPathsForDialect(cfg config.Config, dialect driver.Engine) ([]string, error) {
-	return (&IdentityStore{dialect: dialect}).migrationPaths(cfg)
+func MigrationPathsForEngine(cfg config.Config, engine driver.Engine) ([]string, error) {
+	return (&IdentityStore{engine: engine}).migrationPaths(cfg)
 }
 
 func (s *IdentityStore) CreateSQLiteMigrationBackup(ctx context.Context, cfg config.Config) (string, error) {

@@ -303,7 +303,7 @@ func (s *IdentityStore) migrationPaths(cfg config.Config) ([]string, error) {
 	if strings.TrimSpace(cfg.MigrationSQL) != "" {
 		return []string{cfg.MigrationSQL}, nil
 	}
-	driverDir := filepath.Join(cfg.MigrationDir, s.dialect.Name())
+	driverDir := filepath.Join(cfg.MigrationDir, s.engine.Name())
 	if entries, err := s.readMigrationDir(driverDir); err == nil {
 		return sqlPaths(driverDir, entries)
 	} else if !os.IsNotExist(err) {

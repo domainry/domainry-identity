@@ -21,26 +21,26 @@ type identityConnectionState struct {
 }
 
 type identityConnectionStrategy interface {
-	Open(context.Context, config.Config, dialect, identityOpenDependencies, *telemetry.SQLMetrics) (identityConnectionState, error)
+	Open(context.Context, config.Config, databaseEngine, identityOpenDependencies, *telemetry.SQLMetrics) (identityConnectionState, error)
 }
 
 type standardIdentityConnectionStrategy struct{}
 
-func (standardIdentityConnectionStrategy) Open(_ context.Context, cfg config.Config, dialect dialect, dependencies identityOpenDependencies, metrics *telemetry.SQLMetrics) (identityConnectionState, error) {
-	dsn, err := dialect.DSN(cfg)
+func (standardIdentityConnectionStrategy) Open(_ context.Context, cfg config.Config, engine databaseEngine, dependencies identityOpenDependencies, metrics *telemetry.SQLMetrics) (identityConnectionState, error) {
+	dsn, err := engine.DSN(cfg)
 	if err != nil {
 		return identityConnectionState{}, err
 	}
-	database, err := dependencies.observedSQL(dialect.SQLDriver(), dsn, "identity", metrics)
+	database, err := dependencies.observedSQL(engine.SQLDriver(), dsn, "identity", metrics)
 	if err != nil {
 		return identityConnectionState{}, err
 	}
-	return identityConnectionState{Database: database, DSN: dsn, DatabaseSchema: dialect.DatabaseSchema(cfg)}, nil
+	return identityConnectionState{Database: database, DSN: dsn, DatabaseSchema: engine.DatabaseSchema(cfg)}, nil
 }
 
 type postgresIdentityConnectionStrategy struct{}
 
-func (postgresIdentityConnectionStrategy) Open(ctx context.Context, cfg config.Config, _ dialect, dependencies identityOpenDependencies, metrics *telemetry.SQLMetrics) (identityConnectionState, error) {
+func (postgresIdentityConnectionStrategy) Open(ctx context.Context, cfg config.Config, _ databaseEngine, dependencies identityOpenDependencies, metrics *telemetry.SQLMetrics) (identityConnectionState, error) {
 	connection, err := dependencies.postgresProfile(cfg)
 	if err != nil {
 		return identityConnectionState{}, err
@@ -91,7 +91,7 @@ var identityConnectionStrategies = map[string]identityConnectionStrategy{
 	"postgres": postgresIdentityConnectionStrategy{},
 }
 
-func identityConnectionStrategyFor(selected dialect) identityConnectionStrategy {
+func identityConnectionStrategyFor(selected databaseEngine) identityConnectionStrategy {
 	if strategy, found := identityConnectionStrategies[selected.Name()]; found {
 		return strategy
 	}

@@ -29,24 +29,24 @@ func TestMigrationHelpersCoverDialectAndFilesystemEdges(t *testing.T) {
 		t.Fatalf("migrationIdentity=%q,%q", version, name)
 	}
 
-	mysqlStore := &IdentityStore{dialect: mysql.NewEngine()}
+	mysqlStore := &IdentityStore{engine: mysql.NewEngine()}
 	if sql := mysqlStore.schemaMigrationSQL(); !strings.Contains(sql, "VARCHAR(255)") || !strings.Contains(sql, "VARCHAR(64)") {
 		t.Fatalf("mysql ledger SQL=%q", sql)
 	}
-	postgresStore := &IdentityStore{dialect: postgres.NewEngine(), databaseSchema: "runtime"}
+	postgresStore := &IdentityStore{engine: postgres.NewEngine(), databaseSchema: "runtime"}
 	if sql := postgresStore.schemaMigrationSQL(); strings.Contains(sql, "VARCHAR(255)") || !strings.Contains(sql, `"_schema_migrations"`) {
 		t.Fatalf("postgres ledger SQL=%q", sql)
 	}
 
 	dir := t.TempDir()
-	if paths, err := (&IdentityStore{dialect: sqlite.NewEngine()}).migrationPaths(config.Config{MigrationDir: filepath.Join(dir, "missing")}); err != nil || paths != nil {
+	if paths, err := (&IdentityStore{engine: sqlite.NewEngine()}).migrationPaths(config.Config{MigrationDir: filepath.Join(dir, "missing")}); err != nil || paths != nil {
 		t.Fatalf("missing migration directory paths=%v err=%v", paths, err)
 	}
 	blocked := filepath.Join(dir, "not-a-directory")
 	if err := os.WriteFile(blocked, []byte("file"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := (&IdentityStore{dialect: sqlite.NewEngine()}).migrationPaths(config.Config{MigrationDir: blocked}); err == nil {
+	if _, err := (&IdentityStore{engine: sqlite.NewEngine()}).migrationPaths(config.Config{MigrationDir: blocked}); err == nil {
 		t.Fatal("file used as migration directory was accepted")
 	}
 	entriesDir := filepath.Join(dir, "entries")
@@ -82,7 +82,7 @@ func TestMigrationBackupAndTableDiscoveryRejectInvalidInputs(t *testing.T) {
 		}
 	}
 
-	store := &IdentityStore{dialect: sqlite.NewEngine()}
+	store := &IdentityStore{engine: sqlite.NewEngine()}
 	cancelled, cancel := context.WithCancel(t.Context())
 	cancel()
 	if _, err := store.createSQLiteMigrationBackup(cancelled, config.Config{}); err == nil || !strings.Contains(err.Error(), "context canceled") {
@@ -92,7 +92,7 @@ func TestMigrationBackupAndTableDiscoveryRejectInvalidInputs(t *testing.T) {
 		t.Fatalf("memory backup error=%v", err)
 	}
 
-	unsupported := &IdentityStore{dialect: unsupportedMigrationDialect{Engine: sqlite.NewEngine()}}
+	unsupported := &IdentityStore{engine: unsupportedMigrationDialect{Engine: sqlite.NewEngine()}}
 	if _, err := unsupported.applicationTables(t.Context()); err == nil || !strings.Contains(err.Error(), "unsupported database driver") {
 		t.Fatalf("applicationTables error=%v", err)
 	}
@@ -132,7 +132,7 @@ func TestValidateExternalMigrationBackupAcceptsMatchingEvidence(t *testing.T) {
 		{columns: []string{"count"}, rows: [][]driver.Value{{int64(1)}}},
 	}}
 	store := identitySchemaStore(t, state)
-	store.dialect = postgres.NewEngine()
+	store.engine = postgres.NewEngine()
 	store.operationalMetrics = NewIdentityOperationalMetrics("", "")
 	if err := store.ensureMigrationBackupForExistingData(t.Context(), config.Config{MigrationBackupEvidencePath: path}); err != nil {
 		t.Fatal(err)
@@ -144,7 +144,7 @@ func TestValidateExternalMigrationBackupAcceptsMatchingEvidence(t *testing.T) {
 		{columns: []string{"name"}, rows: [][]driver.Value{{"records"}}},
 		{columns: []string{"count"}, rows: [][]driver.Value{{int64(1)}}},
 	}})
-	store.dialect = postgres.NewEngine()
+	store.engine = postgres.NewEngine()
 	if err := store.ensureMigrationBackupForExistingData(t.Context(), config.Config{MigrationBackupEvidencePath: path}); err != nil {
 		t.Fatalf("external backup without metrics=%v", err)
 	}
@@ -156,7 +156,7 @@ func TestEnsureMigrationBackupCoversEmptyAndExistingSQLiteDatabases(t *testing.T
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = emptyDB.Close() })
-	emptyStore := &IdentityStore{db: emptyDB, dialect: sqlite.NewEngine()}
+	emptyStore := &IdentityStore{db: emptyDB, engine: sqlite.NewEngine()}
 	if err := emptyStore.ensureMigrationBackupForExistingData(t.Context(), config.Config{}); err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +177,7 @@ func TestEnsureMigrationBackupCoversEmptyAndExistingSQLiteDatabases(t *testing.T
 	if _, err := db.ExecContext(t.Context(), `CREATE TABLE customer (id TEXT PRIMARY KEY); INSERT INTO customer (id) VALUES ('one')`); err != nil {
 		t.Fatal(err)
 	}
-	store := &IdentityStore{db: db, dialect: sqlite.NewEngine(), operationalMetrics: NewIdentityOperationalMetrics("", "")}
+	store := &IdentityStore{db: db, engine: sqlite.NewEngine(), operationalMetrics: NewIdentityOperationalMetrics("", "")}
 	if err := store.ensureMigrationBackupForExistingData(t.Context(), config.Config{DBPath: dbPath, MigrationBackupDir: filepath.Join(dir, "backups")}); err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +188,7 @@ func TestEnsureMigrationBackupCoversEmptyAndExistingSQLiteDatabases(t *testing.T
 	if err != nil || len(entries) != 1 || !strings.HasSuffix(entries[0].Name(), ".bak.enc") {
 		t.Fatalf("backup entries=%v err=%v", entries, err)
 	}
-	store = &IdentityStore{db: db, dialect: sqlite.NewEngine()}
+	store = &IdentityStore{db: db, engine: sqlite.NewEngine()}
 	if err := store.ensureMigrationBackupForExistingData(t.Context(), config.Config{DBPath: dbPath, MigrationBackupDir: filepath.Join(dir, "backups-without-metrics")}); err != nil {
 		t.Fatalf("sqlite backup without metrics=%v", err)
 	}

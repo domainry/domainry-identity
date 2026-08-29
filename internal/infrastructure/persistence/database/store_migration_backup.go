@@ -111,7 +111,7 @@ func (s *IdentityStore) applicationTables(ctx context.Context) ([]string, error)
 	base := s.sqlBase()
 	query := base.Engine.ApplicationTablesQuery(base.SQLRenderer, base.DatabaseSchema)
 	if strings.TrimSpace(query.Statement) == "" {
-		return nil, fmt.Errorf("unsupported database driver %q: application table introspection is unavailable", s.dialect.Name())
+		return nil, fmt.Errorf("unsupported database driver %q: application table introspection is unavailable", s.engine.Name())
 	}
 	rows, err := s.schemaDatabase().QueryContext(ctx, query.Statement, query.Arguments...)
 	if err != nil {

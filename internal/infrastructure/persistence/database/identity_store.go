@@ -24,7 +24,7 @@ type IdentityStore struct {
 	db                   *sql.DB
 	migrationDB          *sql.DB
 	migrationConn        *sql.Conn
-	dialect              dialect
+	engine               databaseEngine
 	config               config.Config
 	databaseSchema       string
 	postgresProfile      *postgres.ConnectionProfile
@@ -56,18 +56,18 @@ func openContextWithDependencies(ctx context.Context, cfg config.Config, depende
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	dialect, err := dependencies.dialect(cfg.DatabaseDriver)
+	engine, err := dependencies.engine(cfg.DatabaseDriver)
 	if err != nil {
 		return nil, err
 	}
 	sqlMetrics := telemetry.NewSQLMetrics()
 	operationalMetrics := NewIdentityOperationalMetrics(cfg.MigrationBackupLastSuccessAt, cfg.MigrationRestoreDrillSuccessAt)
-	connection, err := identityConnectionStrategyFor(dialect).Open(ctx, cfg, dialect, dependencies, sqlMetrics)
+	connection, err := identityConnectionStrategyFor(engine).Open(ctx, cfg, engine, dependencies, sqlMetrics)
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
 	db, migrationDB := connection.Database, connection.MigrationDatabase
-	if err := dialect.Configure(ctx, db, connection.DSN); err != nil {
+	if err := engine.Configure(ctx, db, connection.DSN); err != nil {
 		if migrationDB != nil {
 			_ = migrationDB.Close()
 		}
@@ -80,7 +80,7 @@ func openContextWithDependencies(ctx context.Context, cfg config.Config, depende
 		return nil, fmt.Errorf("initialize Identity data key ring: %w", err)
 	}
 	databaseSchema := connection.DatabaseSchema
-	store := &IdentityStore{SQLDatabase: base.NewSQLDatabase(db, dialect, databaseSchema, ""), db: db, migrationDB: migrationDB, dialect: dialect, config: cfg, databaseSchema: databaseSchema, postgresProfile: connection.PostgresProfile, postgresCapabilities: connection.PostgresCapabilities, migratorCapabilities: connection.MigratorCapabilities, secretMaterialKey: activeMaterial, secretKeyProvider: keyRing, idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096), sqlMetrics: sqlMetrics, operationalMetrics: operationalMetrics}
+	store := &IdentityStore{SQLDatabase: base.NewSQLDatabase(db, engine, databaseSchema, ""), db: db, migrationDB: migrationDB, engine: engine, config: cfg, databaseSchema: databaseSchema, postgresProfile: connection.PostgresProfile, postgresCapabilities: connection.PostgresCapabilities, migratorCapabilities: connection.MigratorCapabilities, secretMaterialKey: activeMaterial, secretKeyProvider: keyRing, idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096), sqlMetrics: sqlMetrics, operationalMetrics: operationalMetrics}
 	var migrationErr error
 	migrationStarted := time.Now()
 	if cfg.EffectiveDatabaseMigrationMode() == "verify" {
@@ -110,7 +110,7 @@ func OpenBorrowedContext(ctx context.Context, cfg config.Config, db *sql.DB) (*I
 	if db == nil {
 		return nil, fmt.Errorf("borrowed database pool is required")
 	}
-	dialect, err := engineFor(cfg.DatabaseDriver)
+	engine, err := engineFor(cfg.DatabaseDriver)
 	if err != nil {
 		return nil, err
 	}
@@ -118,10 +118,10 @@ func OpenBorrowedContext(ctx context.Context, cfg config.Config, db *sql.DB) (*I
 	if err != nil {
 		return nil, fmt.Errorf("initialize Identity data key ring: %w", err)
 	}
-	schema := dialect.DatabaseSchema(cfg)
+	schema := engine.DatabaseSchema(cfg)
 	store := &IdentityStore{
-		SQLDatabase: base.NewSQLDatabase(db, dialect, schema, "domainry_identity_"),
-		db:          db, dialect: dialect, config: cfg, databaseSchema: schema,
+		SQLDatabase: base.NewSQLDatabase(db, engine, schema, "domainry_identity_"),
+		db:          db, engine: engine, config: cfg, databaseSchema: schema,
 		secretMaterialKey: activeMaterial, secretKeyProvider: keyRing,
 		idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096),
 		sqlMetrics:         telemetry.NewSQLMetrics(), operationalMetrics: NewIdentityOperationalMetrics(cfg.MigrationBackupLastSuccessAt, cfg.MigrationRestoreDrillSuccessAt),
@@ -241,7 +241,7 @@ func (s *IdentityStore) OperationalMetrics() *IdentityOperationalMetrics {
 }
 
 func (s *IdentityStore) PersistenceEngine() driver.Engine {
-	return s.dialect
+	return s.engine
 }
 
 func (s *IdentityStore) DatabaseSchema() string {

@@ -29,12 +29,12 @@ func TestEnsureWorkspaceRLSGuardsAndSuccess(t *testing.T) {
 		t.Fatalf("nil store: %v", err)
 	}
 	sqliteDialect, _ := engineFor("sqlite")
-	store := &IdentityStore{dialect: sqliteDialect, config: config.Config{DatabaseRLSEnabled: true}, workspaceRLS: WorkspaceRLSStatus{Enabled: true}}
+	store := &IdentityStore{engine: sqliteDialect, config: config.Config{DatabaseRLSEnabled: true}, workspaceRLS: WorkspaceRLSStatus{Enabled: true}}
 	if err := store.EnsureWorkspaceRLS(t.Context()); err != nil || store.workspaceRLS.Enabled {
 		t.Fatalf("sqlite status=%#v err=%v", store.workspaceRLS, err)
 	}
 	postgresDialect, _ := engineFor("postgres")
-	store = &IdentityStore{dialect: postgresDialect, workspaceRLS: WorkspaceRLSStatus{Enabled: true}}
+	store = &IdentityStore{engine: postgresDialect, workspaceRLS: WorkspaceRLSStatus{Enabled: true}}
 	if err := store.EnsureWorkspaceRLS(t.Context()); err != nil || store.workspaceRLS.Enabled {
 		t.Fatalf("disabled status=%#v err=%v", store.workspaceRLS, err)
 	}
@@ -172,8 +172,8 @@ func TestSetLocalWorkspaceRLSContext(t *testing.T) {
 	}
 }
 
-func newWorkspaceRLSTestStore(dialect dialect, db, migrationDB *sql.DB, mode string) *IdentityStore {
-	return &IdentityStore{db: db, migrationDB: migrationDB, dialect: dialect, databaseSchema: "public", config: config.Config{DatabaseRLSEnabled: true, DatabaseMigrationMode: mode}, postgresProfile: &postgrespersistence.ConnectionProfile{}, postgresCapabilities: postgrespersistence.Capabilities{User: "runtime_user"}}
+func newWorkspaceRLSTestStore(engine databaseEngine, db, migrationDB *sql.DB, mode string) *IdentityStore {
+	return &IdentityStore{db: db, migrationDB: migrationDB, engine: engine, databaseSchema: "public", config: config.Config{DatabaseRLSEnabled: true, DatabaseMigrationMode: mode}, postgresProfile: &postgrespersistence.ConnectionProfile{}, postgresCapabilities: postgrespersistence.Capabilities{User: "runtime_user"}}
 }
 
 type workspaceRLSScript struct {

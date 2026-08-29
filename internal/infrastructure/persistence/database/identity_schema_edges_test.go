@@ -20,7 +20,7 @@ func identitySchemaStore(t *testing.T, state *databaseSQLState) *IdentityStore {
 	t.Helper()
 	db := openDatabaseScriptedDB(state)
 	t.Cleanup(func() { _ = db.Close() })
-	return &IdentityStore{db: db, dialect: sqlite.NewEngine()}
+	return &IdentityStore{db: db, engine: sqlite.NewEngine()}
 }
 
 func identitySchemaLedgerQueries(count int64, checksum string, dirty bool) []databaseSQLQueryStep {
@@ -60,7 +60,7 @@ func TestIdentitySchemaHelpersAndDatabaseSelection(t *testing.T) {
 		t.Fatal("migration connection not selected")
 	}
 
-	store = &IdentityStore{dialect: sqlite.NewEngine(), config: config.Config{DBPath: filepath.Join("tmp", "identity.db")}}
+	store = &IdentityStore{engine: sqlite.NewEngine(), config: config.Config{DBPath: filepath.Join("tmp", "identity.db")}}
 	if got := store.identityMigrationConfig().MigrationBackupDir; got != filepath.Join("tmp", "migration-backups") {
 		t.Fatalf("backup dir=%q", got)
 	}
@@ -76,7 +76,7 @@ func TestIdentitySchemaHelpersAndDatabaseSelection(t *testing.T) {
 	if got := store.identityMigrationConfig().MigrationBackupDir; got != "" {
 		t.Fatalf("memory backup dir=%q", got)
 	}
-	store = &IdentityStore{dialect: mysql.NewEngine()}
+	store = &IdentityStore{engine: mysql.NewEngine()}
 	if got := store.identityMigrationConfig().MigrationBackupDir; got != "" {
 		t.Fatalf("mysql backup dir=%q", got)
 	}
@@ -223,7 +223,7 @@ func TestIdentitySchemaMutationFailuresAndDefinitions(t *testing.T) {
 	if err := store.ensureColumn(t.Context(), "table", "column", "TEXT"); err != nil {
 		t.Fatal(err)
 	}
-	mysqlStore := &IdentityStore{dialect: mysql.NewEngine()}
+	mysqlStore := &IdentityStore{engine: mysql.NewEngine()}
 	definition := "TEXT NOT NULL DEFAULT '[]', TEXT NOT NULL DEFAULT '{}', TEXT NOT NULL DEFAULT ''"
 	got := mysqlStore.columnDefinition(definition)
 	for _, expected := range []string{"DEFAULT ('[]')", "DEFAULT ('{}')", "DEFAULT ('')"} {
@@ -231,7 +231,7 @@ func TestIdentitySchemaMutationFailuresAndDefinitions(t *testing.T) {
 			t.Fatalf("definition=%q", got)
 		}
 	}
-	if got := (&IdentityStore{dialect: sqlite.NewEngine()}).columnDefinition(definition); got != definition {
+	if got := (&IdentityStore{engine: sqlite.NewEngine()}).columnDefinition(definition); got != definition {
 		t.Fatalf("sqlite definition=%q", got)
 	}
 }

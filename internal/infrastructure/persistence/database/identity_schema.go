@@ -99,7 +99,7 @@ func (s *IdentityStore) EnsureSchema(ctx context.Context) error {
 func (s *IdentityStore) identityMigrationStore() *IdentityStore {
 	return &IdentityStore{
 		db:                   s.migrationDB,
-		dialect:              s.dialect,
+		engine:               s.engine,
 		config:               s.config,
 		databaseSchema:       s.databaseSchema,
 		postgresProfile:      s.postgresProfile,
