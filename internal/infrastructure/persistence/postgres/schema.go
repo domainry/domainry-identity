@@ -30,6 +30,10 @@ func (Dialect) CreateIndexIfMissing(ctx context.Context, database driver.SchemaD
 	return nil
 }
 
+func (Dialect) NormalizeAuditCursorColumns(context.Context, driver.SchemaDatabase, ormdialect.Renderer, string, string, string, ...string) error {
+	return nil
+}
+
 func postgresIndexExists(rows interface {
 	Next() bool
 	Scan(...any) error

@@ -7,6 +7,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	mysqlpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/mysql"
+	ormdialect "github.com/domainry/domainry-orm/dialect"
 )
 
 const mysqlInnoDBMaxIndexBytes = 3072
@@ -51,9 +54,9 @@ func TestMySQLAuditCursorColumnNormalizationRepairsPartialBootstrap(t *testing.T
 	}}}
 	database := openSchemaScriptedDB(state)
 	t.Cleanup(func() { _ = database.Close() })
-	store := scriptedSchemaStore{db: database, driver: "mysql"}
-
-	if err := ensureMySQLAuditCursorColumns(t.Context(), store); err != nil {
+	dialect, _ := ormdialect.New(ormdialect.MySQL)
+	renderer, _ := dialect.WithNamespace("", "")
+	if err := (mysqlpersistence.Dialect{}).NormalizeAuditCursorColumns(t.Context(), database, renderer, "", "", "_audit_events", "id", "created_at"); err != nil {
 		t.Fatal(err)
 	}
 	if len(state.execQueries) != 1 {
@@ -61,9 +64,9 @@ func TestMySQLAuditCursorColumnNormalizationRepairsPartialBootstrap(t *testing.T
 	}
 	statement := state.execQueries[0]
 	for _, fragment := range []string{
-		`ALTER TABLE "_audit_events"`,
-		`MODIFY COLUMN "id" ` + mysqlAuditCursorType + ` NOT NULL`,
-		`MODIFY COLUMN "created_at" ` + mysqlAuditCursorType + ` NOT NULL`,
+		"ALTER TABLE `_audit_events`",
+		"MODIFY COLUMN `id` " + mysqlAuditCursorType + " NOT NULL",
+		"MODIFY COLUMN `created_at` " + mysqlAuditCursorType + " NOT NULL",
 	} {
 		if !strings.Contains(statement, fragment) {
 			t.Fatalf("normalization DDL missing %q: %s", fragment, statement)

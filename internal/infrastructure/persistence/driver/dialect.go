@@ -28,6 +28,7 @@ type EngineProfile interface {
 	ApplyUpdateLock(*ormbuilder.SelectBuilder) *ormbuilder.SelectBuilder
 	ApplyUpsert(*ormbuilder.InsertBuilder, []string, ...string) *ormbuilder.InsertBuilder
 	CreateIndexIfMissing(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, string, bool, ...string) error
+	NormalizeAuditCursorColumns(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, ...string) error
 	EnsureCompositePrimaryKey(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, ...string) error
 }
 
@@ -64,6 +65,9 @@ func (portableEngineProfile) ApplyUpsert(builder *ormbuilder.InsertBuilder, conf
 }
 func (portableEngineProfile) CreateIndexIfMissing(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, string, bool, ...string) error {
 	return fmt.Errorf("database engine does not support index creation")
+}
+func (portableEngineProfile) NormalizeAuditCursorColumns(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, ...string) error {
+	return nil
 }
 func (portableEngineProfile) EnsureCompositePrimaryKey(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, ...string) error {
 	return fmt.Errorf("database engine does not support composite primary-key migration")

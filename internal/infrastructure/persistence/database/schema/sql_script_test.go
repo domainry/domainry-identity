@@ -127,6 +127,9 @@ func (scriptedSchemaStore) Placeholder(int) string              { return "?" }
 func (scriptedSchemaStore) CreateIndexIfMissing(context.Context, string, string, bool, ...string) error {
 	return nil
 }
+func (scriptedSchemaStore) NormalizeAuditCursorColumns(context.Context, string, ...string) error {
+	return nil
+}
 func (s scriptedSchemaStore) EnsureColumn(context.Context, string, string, string) error {
 	return s.ensureErr
 }

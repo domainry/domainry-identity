@@ -48,6 +48,10 @@ func (s *IdentityStore) CreateIndexIfMissing(ctx context.Context, table, index s
 	base := s.sqlBase()
 	return base.Engine.CreateIndexIfMissing(ctx, s.schemaDatabase(), base.SQLRenderer, base.DatabaseSchema, base.RelationPrefix, table, index, unique, columns...)
 }
+func (s *IdentityStore) NormalizeAuditCursorColumns(ctx context.Context, table string, columns ...string) error {
+	base := s.sqlBase()
+	return base.Engine.NormalizeAuditCursorColumns(ctx, s.schemaDatabase(), base.SQLRenderer, base.DatabaseSchema, base.RelationPrefix, table, columns...)
+}
 
 func (s *IdentityStore) EnsureColumn(ctx context.Context, table, column, definition string) error {
 	return s.ensureColumn(ctx, table, column, definition)

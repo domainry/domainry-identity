@@ -28,6 +28,7 @@ type Store interface {
 	TableIdentifier(string) string
 	Placeholder(int) string
 	CreateIndexIfMissing(context.Context, string, string, bool, ...string) error
+	NormalizeAuditCursorColumns(context.Context, string, ...string) error
 	EnsureColumn(context.Context, string, string, string) error
 	EnsureCompositePrimaryKey(context.Context, string, ...string) error
 	MetadataIDColumnType() string

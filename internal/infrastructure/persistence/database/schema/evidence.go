@@ -20,7 +20,7 @@ func EnsureEvidenceSchema(ctx context.Context, s Store) error {
 	if err := prepareAuditEventWorkspace(ctx, s, text); err != nil {
 		return err
 	}
-	if err := ensureMySQLAuditCursorColumns(ctx, s); err != nil {
+	if err := s.NormalizeAuditCursorColumns(ctx, "_audit_events", "id", "created_at"); err != nil {
 		return err
 	}
 	if err := s.CreateIndexIfMissing(ctx, "_audit_events", "idx_audit_event_actor_cursor", false, auditEventActorCursorColumns()...); err != nil {

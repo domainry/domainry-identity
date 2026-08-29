@@ -20,6 +20,9 @@ func (schemaHelperStore) Placeholder(index int) string        { return "?" }
 func (schemaHelperStore) CreateIndexIfMissing(context.Context, string, string, bool, ...string) error {
 	return nil
 }
+func (schemaHelperStore) NormalizeAuditCursorColumns(context.Context, string, ...string) error {
+	return nil
+}
 func (schemaHelperStore) EnsureColumn(context.Context, string, string, string) error {
 	return nil
 }
