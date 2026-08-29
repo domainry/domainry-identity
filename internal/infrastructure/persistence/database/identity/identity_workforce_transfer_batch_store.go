@@ -10,6 +10,7 @@ import (
 
 	"github.com/domainry/domainry-foundation/apperror"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
 
 func (s *SQLIdentityStore) GetIdentityWorkforceTransferBatchReceipt(ctx context.Context, workspaceID, idempotencyKey string) (identitymodel.IdentityWorkforceTransferBatchReceipt, bool, error) {
@@ -58,10 +59,13 @@ func (s *SQLIdentityStore) ApplyIdentityWorkforceTransferBatch(ctx context.Conte
 	// The receipt contains only strings and typed Workforce values, so it is
 	// always JSON-encodable.
 	resultJSON, _ := json.Marshal(receipt)
-	query := "INSERT INTO " + s.tableIdentifier("identity_workforce_transfer_batch_receipts") + " (" +
-		s.identityColumns("id", "workspace_id", "actor_id", "idempotency_key", "request_fingerprint", "result_json", "created_at") +
-		") VALUES (" + s.placeholders(7) + ")"
-	if _, err := tx.ExecContext(ctx, query, receipt.ID, receipt.WorkspaceID, receipt.ActorID, receipt.IdempotencyKey, receipt.RequestFingerprint, string(resultJSON), receipt.CreatedAt); err != nil {
+	statement, arguments, err := ormbuilder.NewWorkspaceInsertBuilder(s.sqlRenderer(), "identity_workforce_transfer_batch_receipts", workspaceID).
+		Columns("id", "actor_id", "idempotency_key", "request_fingerprint", "result_json", "created_at").
+		Values(receipt.ID, receipt.ActorID, receipt.IdempotencyKey, receipt.RequestFingerprint, string(resultJSON), receipt.CreatedAt).Build()
+	if err != nil {
+		return identitymodel.IdentityWorkforceTransferBatchReceipt{}, fmt.Errorf("build identity workforce transfer batch receipt: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
 		return identitymodel.IdentityWorkforceTransferBatchReceipt{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -75,12 +79,13 @@ type identityWorkforceTransferBatchQueryer interface {
 }
 
 func (s *SQLIdentityStore) loadIdentityWorkforceTransferBatchReceipt(ctx context.Context, queryer identityWorkforceTransferBatchQueryer, workspaceID, idempotencyKey string) (identitymodel.IdentityWorkforceTransferBatchReceipt, bool, error) {
-	query := "SELECT " + s.identityColumns("result_json", "request_fingerprint") + " FROM " +
-		s.tableIdentifier("identity_workforce_transfer_batch_receipts") + " WHERE " +
-		s.identifier("workspace_id") + " = " + s.placeholder(1) + " AND " +
-		s.identifier("idempotency_key") + " = " + s.placeholder(2)
+	statement, arguments, buildErr := ormbuilder.NewWorkspaceSelectBuilder(s.sqlRenderer(), "identity_workforce_transfer_batch_receipts", workspaceID).
+		Columns("result_json", "request_fingerprint").Where(ormbuilder.Equal("idempotency_key", idempotencyKey)).Build()
+	if buildErr != nil {
+		return identitymodel.IdentityWorkforceTransferBatchReceipt{}, false, buildErr
+	}
 	var resultJSON, fingerprint string
-	err := queryer.QueryRowContext(ctx, query, workspaceID, idempotencyKey).Scan(&resultJSON, &fingerprint)
+	err := queryer.QueryRowContext(ctx, statement, arguments...).Scan(&resultJSON, &fingerprint)
 	if errors.Is(err, sql.ErrNoRows) {
 		return identitymodel.IdentityWorkforceTransferBatchReceipt{}, false, nil
 	}
