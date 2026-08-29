@@ -16,6 +16,8 @@ import (
 type Backend interface {
 	DB() *sql.DB
 	SQLRenderer() ormdialect.Renderer
+	MaxParameters() int
+	QueryIdentityContext(context.Context, string, ...any) (*sql.Rows, error)
 }
 
 type Store struct{ backend Backend }

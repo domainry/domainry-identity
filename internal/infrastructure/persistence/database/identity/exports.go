@@ -1,6 +1,7 @@
 package identity
 
 import (
+	"context"
 	"database/sql"
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
@@ -11,6 +12,10 @@ import (
 func (s *SQLIdentityStore) DB() *sql.DB { return s.db }
 
 func (s *SQLIdentityStore) MaxParameters() int { return s.engineProfile().MaxParameters() }
+
+func (s *SQLIdentityStore) QueryIdentityContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	return s.reader(ctx).QueryContext(ctx, query, args...)
+}
 
 func (s *SQLIdentityStore) SQLRenderer() ormdialect.Renderer { return s.sqlRenderer() }
 
