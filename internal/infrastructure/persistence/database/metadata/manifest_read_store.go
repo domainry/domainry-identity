@@ -17,6 +17,7 @@ import (
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
 
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
+	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
 
 // MetadataStore is the request-aware storage boundary for metadata.
@@ -76,7 +77,11 @@ func (r MetadataStore) LoadManifest(ctx context.Context, scope identitymodel.Sys
 }
 
 func (r MetadataStore) loadCatalog(ctx context.Context) (map[string]string, error) {
-	rows, err := r.database().QueryContext(ctx, "SELECT "+r.store.Identifier("key")+", "+r.store.Identifier("value")+" FROM "+r.store.TableIdentifier("metadata_catalog"))
+	statement, arguments, err := ormbuilder.NewSelectBuilder(r.store.SQLRenderer, "metadata_catalog").Columns("key", "value").Build()
+	if err != nil {
+		return nil, fmt.Errorf("build metadata catalog query: %w", err)
+	}
+	rows, err := r.database().QueryContext(ctx, statement, arguments...)
 	if err != nil {
 		return nil, fmt.Errorf("load metadata catalog: %w", err)
 	}
@@ -99,7 +104,11 @@ func (r MetadataStore) loadCatalog(ctx context.Context) (map[string]string, erro
 }
 
 func loadMetadataSliceContext[T any](ctx context.Context, db *sql.DB, store *database.IdentityStore, table string) ([]T, error) {
-	rows, err := db.QueryContext(ctx, "SELECT "+store.Identifier("payload_json")+" FROM "+store.TableIdentifier(table)+" WHERE "+store.Identifier("disabled_at")+" IS NULL ORDER BY "+store.Identifier("resource_key")+" ASC")
+	statement, arguments, err := ormbuilder.NewSelectBuilder(store.SQLRenderer, table).Columns("payload_json").Where(ormbuilder.IsNull("disabled_at")).OrderBy(ormbuilder.Ascending("resource_key")).Build()
+	if err != nil {
+		return nil, fmt.Errorf("build %s query: %w", table, err)
+	}
+	rows, err := db.QueryContext(ctx, statement, arguments...)
 	if err != nil {
 		return nil, fmt.Errorf("load %s: %w", table, err)
 	}
@@ -130,9 +139,11 @@ func (r MetadataStore) ListDefinitions(ctx context.Context, scope identitymodel.
 	if err != nil {
 		return nil, err
 	}
-	query := "SELECT " + strings.Join(database.QuotedColumns(r.store, []string{"resource_key", "object_key", "name", "payload_json", "schema_version", "schema_hash", "source_kind", "source_id", "disabled_at", "created_at", "updated_at"}), ", ") + " FROM " + r.store.TableIdentifier(table) + " WHERE " + r.store.Identifier("disabled_at") + " IS NULL"
-	query += " ORDER BY " + r.store.Identifier("resource_key") + " ASC"
-	rows, err := r.database().QueryContext(ctx, query)
+	statement, arguments, err := metadataDefinitionSelect(r, table).Where(ormbuilder.IsNull("disabled_at")).OrderBy(ormbuilder.Ascending("resource_key")).Build()
+	if err != nil {
+		return nil, fmt.Errorf("build %s definitions query: %w", resourceType, err)
+	}
+	rows, err := r.database().QueryContext(ctx, statement, arguments...)
 	if err != nil {
 		return nil, fmt.Errorf("list %s definitions: %w", resourceType, err)
 	}
@@ -156,12 +167,21 @@ func (r MetadataStore) GetDefinition(ctx context.Context, scope identitymodel.Sy
 	if err != nil {
 		return metadatamodel.MetadataDefinition{}, false, err
 	}
-	query := "SELECT " + strings.Join(database.QuotedColumns(r.store, []string{"resource_key", "object_key", "name", "payload_json", "schema_version", "schema_hash", "source_kind", "source_id", "disabled_at", "created_at", "updated_at"}), ", ") + " FROM " + r.store.TableIdentifier(table) + " WHERE " + r.store.Identifier("resource_key") + " = " + r.store.Placeholder(1)
-	definition, err := scanMetadataDefinition(r.database().QueryRowContext(ctx, query, resourceKey), resourceType)
+	statement, arguments, err := metadataDefinitionSelect(r, table).Where(ormbuilder.Equal("resource_key", resourceKey)).Build()
+	if err != nil {
+		return metadatamodel.MetadataDefinition{}, false, fmt.Errorf("build %s definition query: %w", resourceType, err)
+	}
+	definition, err := scanMetadataDefinition(r.database().QueryRowContext(ctx, statement, arguments...), resourceType)
 	if err == sql.ErrNoRows {
 		return metadatamodel.MetadataDefinition{}, false, nil
 	}
 	return definition, err == nil, err
+}
+
+func metadataDefinitionSelect(r MetadataStore, table string) *ormbuilder.SelectBuilder {
+	return ormbuilder.NewSelectBuilder(r.store.SQLRenderer, table).Columns(
+		"resource_key", "object_key", "name", "payload_json", "schema_version", "schema_hash", "source_kind", "source_id", "disabled_at", "created_at", "updated_at",
+	)
 }
 
 type metadataDefinitionScanner interface{ Scan(...any) error }
@@ -185,8 +205,14 @@ func (r MetadataStore) ListDefinitionVersions(ctx context.Context, scope identit
 	if err := requireMetadataInstallationScope(scope); err != nil {
 		return nil, err
 	}
-	query := "SELECT " + strings.Join(database.QuotedColumns(r.store, []string{"schema_version", "schema_hash", "payload_json", "created_at"}), ", ") + " FROM " + r.store.TableIdentifier("metadata_definition_versions") + " WHERE " + r.store.Identifier("resource_type") + " = " + r.store.Placeholder(1) + " AND " + r.store.Identifier("resource_key") + " = " + r.store.Placeholder(2) + " ORDER BY " + r.store.Identifier("created_at") + " DESC"
-	rows, err := r.database().QueryContext(ctx, query, resourceType, resourceKey)
+	statement, arguments, err := ormbuilder.NewSelectBuilder(r.store.SQLRenderer, "metadata_definition_versions").
+		Columns("schema_version", "schema_hash", "payload_json", "created_at").
+		Where(ormbuilder.And(ormbuilder.Equal("resource_type", resourceType), ormbuilder.Equal("resource_key", resourceKey))).
+		OrderBy(ormbuilder.Descending("created_at")).Build()
+	if err != nil {
+		return nil, fmt.Errorf("build versions %s %s query: %w", resourceType, resourceKey, err)
+	}
+	rows, err := r.database().QueryContext(ctx, statement, arguments...)
 	if err != nil {
 		return nil, fmt.Errorf("list versions %s %s: %w", resourceType, resourceKey, err)
 	}
