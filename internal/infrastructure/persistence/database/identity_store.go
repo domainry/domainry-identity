@@ -13,6 +13,7 @@ import (
 	"github.com/domainry/domainry-foundation/secrets"
 	"github.com/domainry/domainry-foundation/telemetry"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/base"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/connection"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/observability"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/postgres"
@@ -63,12 +64,12 @@ func openContextWithDependencies(ctx context.Context, cfg config.Config, depende
 	}
 	sqlMetrics := telemetry.NewSQLMetrics()
 	operationalMetrics := observability.NewMetrics(cfg.MigrationBackupLastSuccessAt, cfg.MigrationRestoreDrillSuccessAt)
-	connection, err := identityConnectionStrategyFor(engine).Open(ctx, cfg, engine, dependencies, sqlMetrics)
+	connectionState, err := connection.Open(ctx, cfg, engine, dependencies.connection, sqlMetrics)
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
-	db, migrationDB := connection.Database, connection.MigrationDatabase
-	if err := engine.Configure(ctx, db, connection.DSN); err != nil {
+	db, migrationDB := connectionState.Database, connectionState.MigrationDatabase
+	if err := engine.Configure(ctx, db, connectionState.DSN); err != nil {
 		if migrationDB != nil {
 			_ = migrationDB.Close()
 		}
@@ -80,8 +81,8 @@ func openContextWithDependencies(ctx context.Context, cfg config.Config, depende
 		_ = db.Close()
 		return nil, fmt.Errorf("initialize Identity data key ring: %w", err)
 	}
-	databaseSchema := connection.DatabaseSchema
-	store := &IdentityStore{SQLDatabase: base.NewSQLDatabase(db, engine, databaseSchema, ""), db: db, migrationDB: migrationDB, engine: engine, config: cfg, databaseSchema: databaseSchema, postgresProfile: connection.PostgresProfile, postgresCapabilities: connection.PostgresCapabilities, migratorCapabilities: connection.MigratorCapabilities, secretMaterialKey: activeMaterial, secretKeyProvider: keyRing, idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096), sqlMetrics: sqlMetrics, operationalMetrics: operationalMetrics}
+	databaseSchema := connectionState.DatabaseSchema
+	store := &IdentityStore{SQLDatabase: base.NewSQLDatabase(db, engine, databaseSchema, ""), db: db, migrationDB: migrationDB, engine: engine, config: cfg, databaseSchema: databaseSchema, postgresProfile: connectionState.PostgresProfile, postgresCapabilities: connectionState.PostgresCapabilities, migratorCapabilities: connectionState.MigratorCapabilities, secretMaterialKey: activeMaterial, secretKeyProvider: keyRing, idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096), sqlMetrics: sqlMetrics, operationalMetrics: operationalMetrics}
 	var migrationErr error
 	migrationStarted := time.Now()
 	if cfg.EffectiveDatabaseMigrationMode() == "verify" {
@@ -111,7 +112,7 @@ func OpenBorrowedContext(ctx context.Context, cfg config.Config, db *sql.DB) (*I
 	if db == nil {
 		return nil, fmt.Errorf("borrowed database pool is required")
 	}
-	engine, err := engineFor(cfg.DatabaseDriver)
+	engine, err := connection.EngineFor(cfg.DatabaseDriver)
 	if err != nil {
 		return nil, err
 	}

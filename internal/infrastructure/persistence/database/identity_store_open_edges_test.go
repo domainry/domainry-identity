@@ -8,6 +8,7 @@ import (
 
 	"github.com/domainry/domainry-foundation/secrets"
 	"github.com/domainry/domainry-foundation/telemetry"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/connection"
 	persistencedriver "github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/postgres"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/sqlite"
@@ -74,18 +75,20 @@ func runtimeOpenTestDB(t *testing.T) *sql.DB {
 	return db
 }
 
-func runtimeOpenTestDependencies(selectedEngine databaseEngine, profile identityPostgresProfile) identityOpenDependencies {
+func runtimeOpenTestDependencies(selectedEngine databaseEngine, profile connection.PostgresProfile) identityOpenDependencies {
 	if stub, ok := selectedEngine.(runtimeOpenDialectStub); ok && stub.Engine == nil {
 		stub.Engine = sqlite.NewEngine()
 		selectedEngine = stub
 	}
 	return identityOpenDependencies{
 		engine: func(string) (databaseEngine, error) { return selectedEngine, nil },
-		postgresProfile: func(config.Config) (identityPostgresProfile, error) {
-			return profile, nil
-		},
-		observedSQL: func(string, string, string, *telemetry.SQLMetrics) (*sql.DB, error) {
-			return nil, errors.New("observed SQL not configured")
+		connection: connection.Dependencies{
+			PostgresProfile: func(config.Config) (connection.PostgresProfile, error) {
+				return profile, nil
+			},
+			ObservedSQL: func(string, string, string, *telemetry.SQLMetrics) (*sql.DB, error) {
+				return nil, errors.New("observed SQL not configured")
+			},
 		},
 		keyRing: func(active secrets.Key, decryptOnly ...secrets.Key) (secrets.KeyProvider, error) {
 			return secrets.NewMemoryKeyRing(active, decryptOnly...)
@@ -102,7 +105,7 @@ func TestOpenContextNonPostgresDependencyFailures(t *testing.T) {
 		{"dsn", identityOpenDependencies{engine: func(string) (databaseEngine, error) {
 			return runtimeOpenDialectStub{name: "sqlite", dsnErr: errDatabaseSQL}, nil
 		}}},
-		{"open", identityOpenDependencies{engine: func(string) (databaseEngine, error) { return runtimeOpenDialectStub{name: "sqlite"}, nil }, observedSQL: func(string, string, string, *telemetry.SQLMetrics) (*sql.DB, error) { return nil, errDatabaseSQL }}},
+		{"open", identityOpenDependencies{engine: func(string) (databaseEngine, error) { return runtimeOpenDialectStub{name: "sqlite"}, nil }, connection: connection.Dependencies{ObservedSQL: func(string, string, string, *telemetry.SQLMetrics) (*sql.DB, error) { return nil, errDatabaseSQL }}}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if _, err := openContextWithDependencies(t.Context(), cfg, test.deps); err == nil {
@@ -112,7 +115,7 @@ func TestOpenContextNonPostgresDependencyFailures(t *testing.T) {
 	}
 	db := runtimeOpenTestDB(t)
 	deps := runtimeOpenTestDependencies(runtimeOpenDialectStub{name: "sqlite", configureErr: errDatabaseSQL}, nil)
-	deps.observedSQL = func(string, string, string, *telemetry.SQLMetrics) (*sql.DB, error) { return db, nil }
+	deps.connection.ObservedSQL = func(string, string, string, *telemetry.SQLMetrics) (*sql.DB, error) { return db, nil }
 	if _, err := openContextWithDependencies(t.Context(), cfg, deps); !errors.Is(err, errDatabaseSQL) {
 		t.Fatalf("configure error=%v", err)
 	}
@@ -121,7 +124,7 @@ func TestOpenContextNonPostgresDependencyFailures(t *testing.T) {
 func TestOpenContextPostgresLifecycleFailures(t *testing.T) {
 	cfg := config.Config{DatabaseMigrationMode: "verify"}
 	profileFactoryError := runtimeOpenTestDependencies(runtimeOpenDialectStub{name: "postgres"}, nil)
-	profileFactoryError.postgresProfile = func(config.Config) (identityPostgresProfile, error) { return nil, errDatabaseSQL }
+	profileFactoryError.connection.PostgresProfile = func(config.Config) (connection.PostgresProfile, error) { return nil, errDatabaseSQL }
 	if _, err := openContextWithDependencies(t.Context(), cfg, profileFactoryError); !errors.Is(err, errDatabaseSQL) {
 		t.Fatalf("profile error=%v", err)
 	}
@@ -204,10 +207,10 @@ func TestDefaultRuntimeOpenDependenciesAndProfileAdapter(t *testing.T) {
 	if _, err := dependencies.engine("sqlite"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := dependencies.postgresProfile(config.Config{}); err == nil {
+	if _, err := dependencies.connection.PostgresProfile(config.Config{}); err == nil {
 		t.Fatal("invalid PostgreSQL config accepted")
 	}
-	profile, err := dependencies.postgresProfile(config.Config{
+	profile, err := dependencies.connection.PostgresProfile(config.Config{
 		DatabaseDriver: "postgres", DatabaseDSN: "postgres://user:password@localhost/identity?sslmode=disable", DatabaseMigrationMode: "verify",
 	})
 	if err != nil || profile.Profile() == nil {
@@ -229,7 +232,7 @@ func TestDefaultRuntimeOpenDependenciesAndProfileAdapter(t *testing.T) {
 	if err := profile.ValidateRuntimeCapabilities(postgres.Capabilities{}, postgres.Capabilities{}); err == nil {
 		t.Fatal("empty capabilities accepted")
 	}
-	observed, err := dependencies.observedSQL("sqlite", ":memory:", "runtime", telemetry.NewSQLMetrics())
+	observed, err := dependencies.connection.ObservedSQL("sqlite", ":memory:", "runtime", telemetry.NewSQLMetrics())
 	if err != nil {
 		t.Fatal(err)
 	}

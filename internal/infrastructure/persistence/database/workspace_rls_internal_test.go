@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/domainry/domainry-foundation/requestcontext"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/connection"
 	postgrespersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/postgres"
 	postgresrls "github.com/domainry/domainry-identity/internal/infrastructure/persistence/postgres/rls"
 	"github.com/domainry/domainry-identity/internal/platform/config"
@@ -28,12 +29,12 @@ func TestEnsureWorkspaceRLSGuardsAndSuccess(t *testing.T) {
 	if err := (*IdentityStore)(nil).EnsureWorkspaceRLS(t.Context()); err != nil {
 		t.Fatalf("nil store: %v", err)
 	}
-	sqliteDialect, _ := engineFor("sqlite")
+	sqliteDialect, _ := connection.EngineFor("sqlite")
 	store := &IdentityStore{engine: sqliteDialect, config: config.Config{DatabaseRLSEnabled: true}, workspaceRLS: WorkspaceRLSStatus{Enabled: true}}
 	if err := store.EnsureWorkspaceRLS(t.Context()); err != nil || store.workspaceRLS.Enabled {
 		t.Fatalf("sqlite status=%#v err=%v", store.workspaceRLS, err)
 	}
-	postgresDialect, _ := engineFor("postgres")
+	postgresDialect, _ := connection.EngineFor("postgres")
 	store = &IdentityStore{engine: postgresDialect, workspaceRLS: WorkspaceRLSStatus{Enabled: true}}
 	if err := store.EnsureWorkspaceRLS(t.Context()); err != nil || store.workspaceRLS.Enabled {
 		t.Fatalf("disabled status=%#v err=%v", store.workspaceRLS, err)
@@ -70,7 +71,7 @@ func TestEnsureWorkspaceRLSGuardsAndSuccess(t *testing.T) {
 }
 
 func TestWorkspaceRLSApplyFailures(t *testing.T) {
-	postgresDialect, _ := engineFor("postgres")
+	postgresDialect, _ := connection.EngineFor("postgres")
 	for _, test := range []struct {
 		name         string
 		queryErr     error
@@ -95,7 +96,7 @@ func TestWorkspaceRLSApplyFailures(t *testing.T) {
 }
 
 func TestWorkspaceRLSInspectionFailuresAndMissingCoverage(t *testing.T) {
-	postgresDialect, _ := engineFor("postgres")
+	postgresDialect, _ := connection.EngineFor("postgres")
 	for _, test := range []struct {
 		name   string
 		script *workspaceRLSScript
