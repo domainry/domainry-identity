@@ -11,6 +11,12 @@ import (
 
 func (Dialect) ManagedDatabaseMarkerEnabled() bool        { return false }
 func (Dialect) ColumnDefinition(definition string) string { return strings.TrimSpace(definition) }
+func (Dialect) ApplicationTablesQuery(ormdialect.Renderer, string) driver.SchemaQuery {
+	return driver.SchemaQuery{Statement: "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"}
+}
+func (Dialect) WorkspaceTablesQuery(ormdialect.Renderer, string) driver.SchemaQuery {
+	return driver.SchemaQuery{Statement: "SELECT DISTINCT m.name FROM sqlite_master m JOIN pragma_table_info(m.name) p WHERE m.type = 'table' AND p.name = 'workspace_id' ORDER BY m.name"}
+}
 
 func (Dialect) CreateIndexIfMissing(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _ string, relationPrefix, table, index string, unique bool, columns ...string) error {
 	indexes, err := (Dialect{}).TableIndexes(ctx, database, renderer, "", relationPrefix, table)

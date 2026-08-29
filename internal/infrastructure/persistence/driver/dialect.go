@@ -37,6 +37,8 @@ type EngineProfile interface {
 	MigrationDatabasePath(config.Config) string
 	ManagedDatabaseMarkerEnabled() bool
 	ColumnDefinition(string) string
+	ApplicationTablesQuery(ormdialect.Renderer, string) SchemaQuery
+	WorkspaceTablesQuery(ormdialect.Renderer, string) SchemaQuery
 }
 
 type SchemaTypes struct {
@@ -46,6 +48,11 @@ type SchemaTypes struct {
 	DocumentText    string
 	IndexedText     string
 	AuditCursorText string
+}
+
+type SchemaQuery struct {
+	Statement string
+	Arguments []any
 }
 
 type SchemaDatabase interface {
@@ -93,6 +100,12 @@ func (portableEngineProfile) MigrationDatabasePath(config.Config) string { retur
 func (portableEngineProfile) ManagedDatabaseMarkerEnabled() bool         { return true }
 func (portableEngineProfile) ColumnDefinition(definition string) string {
 	return strings.TrimSpace(definition)
+}
+func (portableEngineProfile) ApplicationTablesQuery(ormdialect.Renderer, string) SchemaQuery {
+	return SchemaQuery{}
+}
+func (portableEngineProfile) WorkspaceTablesQuery(ormdialect.Renderer, string) SchemaQuery {
+	return SchemaQuery{}
 }
 
 func ProfileFor(value Dialect) EngineProfile {

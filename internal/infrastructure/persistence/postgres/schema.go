@@ -11,6 +11,18 @@ import (
 
 func (Dialect) ManagedDatabaseMarkerEnabled() bool        { return true }
 func (Dialect) ColumnDefinition(definition string) string { return strings.TrimSpace(definition) }
+func (Dialect) ApplicationTablesQuery(renderer ormdialect.Renderer, databaseSchema string) driver.SchemaQuery {
+	return driver.SchemaQuery{
+		Statement: "SELECT table_name FROM information_schema.tables WHERE table_schema = " + renderer.Placeholder(1),
+		Arguments: []any{databaseSchema},
+	}
+}
+func (Dialect) WorkspaceTablesQuery(renderer ormdialect.Renderer, databaseSchema string) driver.SchemaQuery {
+	return driver.SchemaQuery{
+		Statement: "SELECT DISTINCT table_name FROM information_schema.columns WHERE table_schema = " + renderer.Placeholder(1) + " AND column_name = 'workspace_id' ORDER BY table_name",
+		Arguments: []any{databaseSchema},
+	}
+}
 
 func (Dialect) CreateIndexIfMissing(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, databaseSchema, relationPrefix, table, index string, unique bool, columns ...string) error {
 	indexes, err := (Dialect{}).TableIndexes(ctx, database, renderer, databaseSchema, relationPrefix, table)

@@ -104,20 +104,12 @@ func (s *IdentityStore) hasExistingApplicationData(ctx context.Context) (bool, e
 }
 
 func (s *IdentityStore) applicationTables(ctx context.Context) ([]string, error) {
-	var query string
-	var args []any
-	switch s.dialect.Name() {
-	case "sqlite":
-		query = "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
-	case "mysql":
-		query = "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE()"
-	case "postgres":
-		query = "SELECT table_name FROM information_schema.tables WHERE table_schema = " + s.placeholder(1)
-		args = []any{s.DatabaseSchema()}
-	default:
-		return nil, fmt.Errorf("unsupported database driver %q", s.dialect.Name())
+	base := s.sqlBase()
+	query := base.Engine.ApplicationTablesQuery(base.SQLRenderer, base.DatabaseSchema)
+	if strings.TrimSpace(query.Statement) == "" {
+		return nil, fmt.Errorf("unsupported database driver %q: application table introspection is unavailable", s.dialect.Name())
 	}
-	rows, err := s.schemaDatabase().QueryContext(ctx, query, args...)
+	rows, err := s.schemaDatabase().QueryContext(ctx, query.Statement, query.Arguments...)
 	if err != nil {
 		return nil, err
 	}
