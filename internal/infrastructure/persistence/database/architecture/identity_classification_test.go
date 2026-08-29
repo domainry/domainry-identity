@@ -85,6 +85,22 @@ func TestIdentityWorkforceLifecycleRootFilesRemainFacades(t *testing.T) {
 	}
 }
 
+func TestIdentityAccessReviewRootFileRemainsFacade(t *testing.T) {
+	source, err := os.ReadFile(filepath.Join(identityPersistenceRoot(t), "identity_access_review_store.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	for _, forbidden := range []string{"ormbuilder", ".BeginTx(", ".ExecContext(", ".QueryRowContext("} {
+		if strings.Contains(text, forbidden) {
+			t.Errorf("Identity access review facade owns persistence implementation %q", forbidden)
+		}
+	}
+	if !strings.Contains(text, "accessreviewpersistence.New") {
+		t.Error("Identity access review facade lost classified owner delegation")
+	}
+}
+
 func identityPersistenceRoot(t *testing.T) string {
 	t.Helper()
 	_, sourceFile, _, ok := runtime.Caller(0)
