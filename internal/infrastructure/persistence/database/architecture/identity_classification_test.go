@@ -167,6 +167,24 @@ func TestIdentityRoleRootFileRemainsFacade(t *testing.T) {
 	}
 }
 
+func TestIdentityUserRootFileOnlyCoordinatesClassifiedOwners(t *testing.T) {
+	source, err := os.ReadFile(filepath.Join(identityPersistenceRoot(t), "identity_store_sql_users.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	for _, forbiddenTable := range []string{"identity_users", "identity_departments", "identity_profile_bindings"} {
+		if strings.Contains(text, forbiddenTable) {
+			t.Errorf("Identity user coordinator still owns classified table %q", forbiddenTable)
+		}
+	}
+	for _, owner := range []string{"departmentpersistence.New", "userpersistence.New", "NewIdentityProfileBindingStore"} {
+		if !strings.Contains(text, owner) {
+			t.Errorf("Identity user coordinator lost classified owner delegation %q", owner)
+		}
+	}
+}
+
 func identityPersistenceRoot(t *testing.T) string {
 	t.Helper()
 	_, sourceFile, _, ok := runtime.Caller(0)

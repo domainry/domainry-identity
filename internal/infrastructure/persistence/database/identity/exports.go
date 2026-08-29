@@ -17,6 +17,10 @@ func (s *SQLIdentityStore) QueryIdentityContext(ctx context.Context, query strin
 	return s.reader(ctx).QueryContext(ctx, query, args...)
 }
 
+func (s *SQLIdentityStore) QueryIdentityRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	return s.reader(ctx).QueryRowContext(ctx, query, args...)
+}
+
 func (s *SQLIdentityStore) SQLRenderer() ormdialect.Renderer { return s.sqlRenderer() }
 
 func (s *SQLIdentityStore) ApplyUpsert(insert *ormbuilder.InsertBuilder, conflictColumns []string, updateColumns ...string) *ormbuilder.InsertBuilder {

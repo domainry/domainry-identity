@@ -23,6 +23,30 @@ type Backend interface {
 	ApplyUpsert(*ormbuilder.InsertBuilder, []string, ...string) *ormbuilder.InsertBuilder
 }
 
+func (s *Store) ListIdentityProfileBindingsByUser(ctx context.Context, workspaceID, userID string) ([]identitymodel.IdentityProfileBinding, error) {
+	statement, arguments, err := profileBindingSelect(s.store, workspaceID).
+		Where(ormbuilder.Equal("identity_user_id", strings.TrimSpace(userID))).
+		OrderBy(ormbuilder.Ascending("object_key"), ormbuilder.Ascending("profile_id")).
+		Build()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.store.DB().QueryContext(ctx, statement, arguments...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	bindings := []identitymodel.IdentityProfileBinding{}
+	for rows.Next() {
+		binding, scanErr := scanIdentityProfileBinding(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		bindings = append(bindings, binding)
+	}
+	return bindings, rows.Err()
+}
+
 type Store struct {
 	store Backend
 }

@@ -32,6 +32,10 @@ func (s *IdentityProfileBindingStore) GetIdentityProfileBindingByKey(ctx context
 	return s.owner().GetIdentityProfileBindingByKey(ctx, workspaceID, bindingKey, profileID)
 }
 
+func (s *IdentityProfileBindingStore) ListIdentityProfileBindingsByUser(ctx context.Context, workspaceID, userID string) ([]identitymodel.IdentityProfileBinding, error) {
+	return s.owner().ListIdentityProfileBindingsByUser(ctx, workspaceID, userID)
+}
+
 func (s *IdentityProfileBindingStore) IdentityRoleBindingActive(ctx context.Context, workspaceID, bindingKey, profileID, userID string) (bool, error) {
 	return s.owner().IdentityRoleBindingActive(ctx, workspaceID, bindingKey, profileID, userID)
 }
