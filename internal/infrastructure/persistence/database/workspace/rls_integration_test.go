@@ -1,4 +1,4 @@
-package database_test
+package workspace_test
 
 import (
 	"strings"

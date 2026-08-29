@@ -1,4 +1,4 @@
-package database
+package postgres_test
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 	"github.com/jackc/pgx/v5"
 )
@@ -52,7 +53,7 @@ func TestPostgresRuntimePersistenceEndToEnd(t *testing.T) {
 		DatabaseMaxIdleConns:  2,
 		MigrationSQL:          migrationPath,
 	}
-	store, err := OpenContext(t.Context(), cfg)
+	store, err := database.OpenContext(t.Context(), cfg)
 	if err != nil {
 		t.Fatalf("open generic PostgreSQL Runtime store: %v", err)
 	}
@@ -74,7 +75,7 @@ func TestPostgresRuntimePersistenceEndToEnd(t *testing.T) {
 	}
 
 	cfg.DatabaseMigrationMode = "verify"
-	restarted, err := OpenContext(t.Context(), cfg)
+	restarted, err := database.OpenContext(t.Context(), cfg)
 	if err != nil {
 		t.Fatalf("restart generic PostgreSQL Runtime store: %v", err)
 	}
