@@ -10,10 +10,9 @@ import (
 	changeplanmodel "github.com/domainry/domainry-identity/internal/domain/changeplan/model"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
+	ormbuilder "github.com/domainry/domainry-orm/builder"
 	"strings"
 	"time"
-
-	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
 )
 
 const metadataRefreshIntentTable = "identity_metadata_refresh_intents"
@@ -61,10 +60,14 @@ func (r MetadataStore) publishDefinition(ctx context.Context, scope identitymode
 		return metadatamodel.MetadataDefinition{}, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	columns := []string{"id", "resource_key", "object_key", "name", "payload_json", "schema_version", "schema_hash", "source_kind", "source_id", "disabled_at", "created_at", "updated_at"}
 	values := []any{metadataResourceID(resourceType, shape.Key), shape.Key, shape.ObjectKey, shape.Name, string(raw), version, hash, sourceKind, sourceID, nil, now, now}
-	query := "INSERT INTO " + r.store.TableIdentifier(table) + " (" + strings.Join(database.QuotedColumns(r.store, columns), ", ") + ") VALUES (" + strings.Join(placeholders(r.store, len(columns)), ", ") + ")"
-	if _, err := tx.ExecContext(ctx, query, values...); err != nil {
+	statement, arguments, err := ormbuilder.NewInsertBuilder(r.store.SQLRenderer, table).
+		Columns("id", "resource_key", "object_key", "name", "payload_json", "schema_version", "schema_hash", "source_kind", "source_id", "disabled_at", "created_at", "updated_at").
+		Values(values...).Build()
+	if err != nil {
+		return metadatamodel.MetadataDefinition{}, fmt.Errorf("build %s %s insert: %w", resourceType, shape.Key, err)
+	}
+	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
 		_ = tx.Rollback()
 		if replay, found, replayErr := r.metadataDefinitionReplay(ctx, scope, resourceType, shape.Key, hash, req.ExpectedSchemaHash); replayErr == nil && found {
 			return replay, nil
@@ -108,10 +111,13 @@ func (r MetadataStore) insertDefinitionRefreshIntentTx(ctx context.Context, tx *
 	payload, _ := json.Marshal(map[string]any{"resource_type": definition.ResourceType, "resource_key": definition.ResourceKey, "schema_version": definition.SchemaVersion, "schema_hash": definition.SchemaHash})
 	id := metadataDefinitionRefreshIntentID(definition.ResourceType, definition.ResourceKey, definition.SchemaHash)
 	leaseExpires := time.Now().UTC().Add(90 * time.Second).Format(time.RFC3339Nano)
-	columns := []string{"id", "workspace_id", "owner", "operation", "resource_id", "idempotency_key", "status", "payload_json", "compensation_payload_json", "attempt_count", "next_attempt_at", "lease_owner", "lease_expires_at", "fencing_token", "last_error", "created_at", "updated_at"}
-	values := []any{id, identitymodel.InstallationWorkspaceID, "metadata", "catalog_refresh", definition.ResourceType + ":" + definition.ResourceKey, definition.SchemaHash, "executing", string(payload), "{}", 0, "", "metadata-inline", leaseExpires, 1, "", now, now}
-	query := "INSERT INTO " + r.store.TableIdentifier(metadataRefreshIntentTable) + " (" + stringsJoinIdentifiers(r.store, columns...) + ") VALUES (" + strings.Join(placeholders(r.store, len(values)), ", ") + ")"
-	if _, err := tx.ExecContext(ctx, query, values...); err != nil {
+	statement, arguments, err := ormbuilder.NewWorkspaceInsertBuilder(r.store.SQLRenderer, metadataRefreshIntentTable, identitymodel.InstallationWorkspaceID).
+		Columns("id", "owner", "operation", "resource_id", "idempotency_key", "status", "payload_json", "compensation_payload_json", "attempt_count", "next_attempt_at", "lease_owner", "lease_expires_at", "fencing_token", "last_error", "created_at", "updated_at").
+		Values(id, "metadata", "catalog_refresh", definition.ResourceType+":"+definition.ResourceKey, definition.SchemaHash, "executing", string(payload), "{}", 0, "", "metadata-inline", leaseExpires, 1, "", now, now).Build()
+	if err != nil {
+		return fmt.Errorf("build metadata refresh intent insert: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
 		return fmt.Errorf("insert metadata refresh intent: %w", err)
 	}
 	return nil
@@ -129,8 +135,17 @@ func (r MetadataStore) CompleteDefinitionRefresh(ctx context.Context, scope iden
 		attemptIncrement = 1
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	query := "UPDATE " + r.store.TableIdentifier(metadataRefreshIntentTable) + " SET " + r.store.Identifier("status") + " = " + r.store.Placeholder(1) + ", " + r.store.Identifier("last_error") + " = " + r.store.Placeholder(2) + ", " + r.store.Identifier("next_attempt_at") + " = " + r.store.Placeholder(3) + ", " + r.store.Identifier("attempt_count") + " = " + r.store.Identifier("attempt_count") + " + " + r.store.Placeholder(4) + ", " + r.store.Identifier("lease_owner") + " = '', " + r.store.Identifier("lease_expires_at") + " = '', " + r.store.Identifier("updated_at") + " = " + r.store.Placeholder(5) + " WHERE " + r.store.Identifier("id") + " = " + r.store.Placeholder(6) + " AND " + r.store.Identifier("status") + " = 'executing' AND " + r.store.Identifier("lease_owner") + " = 'metadata-inline' AND " + r.store.Identifier("fencing_token") + " = 1"
-	result, err := r.database().ExecContext(ctx, query, status, strings.TrimSpace(errorText), nextAttemptAt, attemptIncrement, now, id)
+	statement, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(r.store.SQLRenderer, metadataRefreshIntentTable, identitymodel.InstallationWorkspaceID).
+		Set("status", status).
+		Set("last_error", strings.TrimSpace(errorText)).
+		Set("next_attempt_at", nextAttemptAt).
+		SetExpression("attempt_count", ormbuilder.Add(ormbuilder.Column("attempt_count"), ormbuilder.Value(attemptIncrement))).
+		Set("lease_owner", "").Set("lease_expires_at", "").Set("updated_at", now).
+		Where(ormbuilder.And(ormbuilder.Equal("id", id), ormbuilder.Equal("status", "executing"), ormbuilder.Equal("lease_owner", "metadata-inline"), ormbuilder.Equal("fencing_token", 1))).Build()
+	if err != nil {
+		return fmt.Errorf("build metadata refresh intent completion: %w", err)
+	}
+	result, err := r.database().ExecContext(ctx, statement, arguments...)
 	if err != nil {
 		return fmt.Errorf("complete metadata refresh intent: %w", err)
 	}
@@ -167,7 +182,12 @@ func (r MetadataStore) DisableDefinition(ctx context.Context, scope identitymode
 	}
 	defer tx.Rollback()
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	result, err := tx.ExecContext(ctx, "UPDATE "+r.store.TableIdentifier(table)+" SET "+r.store.Identifier("disabled_at")+" = "+r.store.Placeholder(1)+" WHERE "+r.store.Identifier("resource_key")+" = "+r.store.Placeholder(2), now, resourceKey)
+	statement, arguments, err := ormbuilder.NewUpdateBuilder(r.store.SQLRenderer, table).
+		Set("disabled_at", now).Where(ormbuilder.Equal("resource_key", resourceKey)).Build()
+	if err != nil {
+		return fmt.Errorf("build disable %s %s: %w", resourceType, resourceKey, err)
+	}
+	result, err := tx.ExecContext(ctx, statement, arguments...)
 	if err != nil {
 		return fmt.Errorf("disable %s %s: %w", resourceType, resourceKey, err)
 	}
@@ -188,61 +208,15 @@ func (r MetadataStore) DisableDefinition(ctx context.Context, scope identitymode
 }
 
 func (r MetadataStore) replaceDefinition(ctx context.Context, tx *sql.Tx, table, resourceType, resourceKey string, expectedHash *string) error {
-	keyColumn, hashColumn := r.store.Identifier("resource_key"), r.store.Identifier("schema_hash")
-	if expectedHash == nil {
-		_, err := tx.ExecContext(ctx, "DELETE FROM "+r.store.TableIdentifier(table)+" WHERE "+keyColumn+" = "+r.store.Placeholder(1), resourceKey)
-		if err != nil {
-			return fmt.Errorf("replace %s %s: %w", resourceType, resourceKey, err)
-		}
-		return nil
-	}
-	expected := strings.TrimSpace(*expectedHash)
-	if expected == "" {
-		var current string
-		err := tx.QueryRowContext(ctx, "SELECT "+hashColumn+" FROM "+r.store.TableIdentifier(table)+" WHERE "+keyColumn+" = "+r.store.Placeholder(1), resourceKey).Scan(&current)
-		if err == sql.ErrNoRows {
-			return nil
-		}
-		if err != nil {
-			return fmt.Errorf("read current %s %s version: %w", resourceType, resourceKey, err)
-		}
-		return &metadatamodel.MetadataDefinitionConflictError{ResourceType: resourceType, ResourceKey: resourceKey, ExpectedHash: expected, CurrentHash: current}
-	}
-	result, err := tx.ExecContext(ctx, "DELETE FROM "+r.store.TableIdentifier(table)+" WHERE "+keyColumn+" = "+r.store.Placeholder(1)+" AND "+hashColumn+" = "+r.store.Placeholder(2), resourceKey, expected)
-	if err != nil {
-		return fmt.Errorf("replace %s %s: %w", resourceType, resourceKey, err)
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("read replaced %s %s rows: %w", resourceType, resourceKey, err)
-	}
-	if affected == 1 {
-		return nil
-	}
-	var current string
-	if err := tx.QueryRowContext(ctx, "SELECT "+hashColumn+" FROM "+r.store.TableIdentifier(table)+" WHERE "+keyColumn+" = "+r.store.Placeholder(1), resourceKey).Scan(&current); err != nil && err != sql.ErrNoRows {
-		return fmt.Errorf("read conflicting %s %s version: %w", resourceType, resourceKey, err)
-	}
-	return &metadatamodel.MetadataDefinitionConflictError{ResourceType: resourceType, ResourceKey: resourceKey, ExpectedHash: expected, CurrentHash: current}
+	return r.replaceMetadataDefinitionVersion(ctx, tx, table, resourceType, resourceKey, expectedHash)
 }
 
 func (r MetadataStore) nextVersion(ctx context.Context, tx *sql.Tx, resourceType, resourceKey string) (string, error) {
-	query := "SELECT COUNT(*) FROM " + r.store.TableIdentifier("metadata_definition_versions") + " WHERE " + r.store.Identifier("resource_type") + " = " + r.store.Placeholder(1) + " AND " + r.store.Identifier("resource_key") + " = " + r.store.Placeholder(2)
-	var count int
-	if err := tx.QueryRowContext(ctx, query, resourceType, resourceKey).Scan(&count); err != nil {
-		return "", fmt.Errorf("read metadata version count: %w", err)
-	}
-	return fmt.Sprintf("%d", count+1), nil
+	return r.nextMetadataSchemaVersionTx(ctx, tx, resourceType, resourceKey)
 }
 
 func (r MetadataStore) insertDefinitionVersion(ctx context.Context, tx *sql.Tx, resourceType, resourceKey, version, hash string, payload []byte, now string) error {
-	columns := []string{"id", "resource_type", "resource_key", "schema_version", "schema_hash", "payload_json", "created_at"}
-	values := []any{metadataResourceID(resourceType+":version", resourceKey+":"+version+":"+metadataHashPrefix(hash)), resourceType, resourceKey, version, hash, string(payload), now}
-	query := "INSERT INTO " + r.store.TableIdentifier("metadata_definition_versions") + " (" + strings.Join(database.QuotedColumns(r.store, columns), ", ") + ") VALUES (" + strings.Join(placeholders(r.store, len(columns)), ", ") + ")"
-	if _, err := tx.ExecContext(ctx, query, values...); err != nil {
-		return fmt.Errorf("insert %s %s version: %w", resourceType, resourceKey, err)
-	}
-	return nil
+	return r.insertMetadataDefinitionVersionTx(ctx, tx, resourceType, resourceKey, version, hash, payload, now)
 }
 
 func (r MetadataStore) ApplyDefinitionMutations(ctx context.Context, scope identitymodel.SystemScope, mutations []metadatamodel.MetadataDefinitionMutation, audits []auditmodel.AuditEvent, publication *changeplanmodel.BusinessChangePlanPublication) ([]metadatamodel.MetadataDefinition, error) {
@@ -288,8 +262,14 @@ func (r MetadataStore) ApplyDefinitionMutations(ctx context.Context, scope ident
 		if scopeErr != nil {
 			return nil, scopeErr
 		}
-		query := "UPDATE " + r.store.TableIdentifier("identity_change_plan_drafts") + " SET " + r.store.Identifier("status") + " = 'applying', " + r.store.Identifier("updated_by") + " = " + r.store.Placeholder(1) + ", " + r.store.Identifier("updated_at") + " = " + r.store.Placeholder(2) + ", " + r.store.Identifier("revision") + " = " + r.store.Identifier("revision") + " + 1 WHERE " + r.store.Identifier("workspace_id") + " = " + r.store.Placeholder(3) + " AND " + r.store.Identifier("plan_id") + " = " + r.store.Placeholder(4) + " AND " + r.store.Identifier("revision") + " = " + r.store.Placeholder(5) + " AND " + r.store.Identifier("status") + " = 'approved'"
-		result, updateErr := tx.ExecContext(ctx, query, publication.UpdatedBy, publication.UpdatedAt, workspaceID.String(), publication.PlanID, publication.ExpectedRevision)
+		statement, arguments, buildErr := ormbuilder.NewWorkspaceUpdateBuilder(r.store.SQLRenderer, "identity_change_plan_drafts", workspaceID.String()).
+			Set("status", "applying").Set("updated_by", publication.UpdatedBy).Set("updated_at", publication.UpdatedAt).
+			SetExpression("revision", ormbuilder.Add(ormbuilder.Column("revision"), ormbuilder.Value(1))).
+			Where(ormbuilder.And(ormbuilder.Equal("plan_id", publication.PlanID), ormbuilder.Equal("revision", publication.ExpectedRevision), ormbuilder.Equal("status", "approved"))).Build()
+		if buildErr != nil {
+			return nil, fmt.Errorf("build domain change plan publication: %w", buildErr)
+		}
+		result, updateErr := tx.ExecContext(ctx, statement, arguments...)
 		if updateErr != nil {
 			return nil, fmt.Errorf("publish domain change plan draft: %w", updateErr)
 		}
@@ -327,10 +307,14 @@ func (r MetadataStore) applyDefinitionUpsert(ctx context.Context, tx *sql.Tx, mu
 	now := time.Now().UTC().Format(time.RFC3339)
 	sourceKind := metadataMutationValueOrDefault(mutation.Request.SourceKind, "builder")
 	sourceID := metadataMutationValueOrDefault(mutation.Request.SourceID, "identity_change_plan")
-	columns := []string{"id", "resource_key", "object_key", "name", "payload_json", "schema_version", "schema_hash", "source_kind", "source_id", "disabled_at", "created_at", "updated_at"}
 	values := []any{metadataResourceID(mutation.ResourceType, shape.Key), shape.Key, shape.ObjectKey, shape.Name, string(raw), version, hash, sourceKind, sourceID, nil, now, now}
-	query := "INSERT INTO " + r.store.TableIdentifier(table) + " (" + strings.Join(database.QuotedColumns(r.store, columns), ", ") + ") VALUES (" + strings.Join(placeholders(r.store, len(columns)), ", ") + ")"
-	if _, err := tx.ExecContext(ctx, query, values...); err != nil {
+	statement, arguments, err := ormbuilder.NewInsertBuilder(r.store.SQLRenderer, table).
+		Columns("id", "resource_key", "object_key", "name", "payload_json", "schema_version", "schema_hash", "source_kind", "source_id", "disabled_at", "created_at", "updated_at").
+		Values(values...).Build()
+	if err != nil {
+		return metadatamodel.MetadataDefinition{}, fmt.Errorf("build %s %s insert: %w", mutation.ResourceType, shape.Key, err)
+	}
+	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
 		return metadatamodel.MetadataDefinition{}, fmt.Errorf("insert %s %s: %w", mutation.ResourceType, shape.Key, err)
 	}
 	if err := r.insertDefinitionVersion(ctx, tx, mutation.ResourceType, shape.Key, version, hash, raw, now); err != nil {
@@ -351,8 +335,13 @@ func (r MetadataStore) applyDefinitionArchive(ctx context.Context, tx *sql.Tx, m
 		return metadatamodel.MetadataDefinition{}, &metadatamodel.MetadataDefinitionConflictError{ResourceType: mutation.ResourceType, ResourceKey: mutation.ResourceKey}
 	}
 	expected, now := strings.TrimSpace(*mutation.Request.ExpectedSchemaHash), time.Now().UTC().Format(time.RFC3339)
-	query := "UPDATE " + r.store.TableIdentifier(table) + " SET " + r.store.Identifier("disabled_at") + " = " + r.store.Placeholder(1) + ", " + r.store.Identifier("updated_at") + " = " + r.store.Placeholder(2) + " WHERE " + r.store.Identifier("resource_key") + " = " + r.store.Placeholder(3) + " AND " + r.store.Identifier("schema_hash") + " = " + r.store.Placeholder(4) + " AND " + r.store.Identifier("disabled_at") + " IS NULL"
-	result, err := tx.ExecContext(ctx, query, now, now, mutation.ResourceKey, expected)
+	statement, arguments, err := ormbuilder.NewUpdateBuilder(r.store.SQLRenderer, table).
+		Set("disabled_at", now).Set("updated_at", now).
+		Where(ormbuilder.And(ormbuilder.Equal("resource_key", mutation.ResourceKey), ormbuilder.Equal("schema_hash", expected), ormbuilder.IsNull("disabled_at"))).Build()
+	if err != nil {
+		return metadatamodel.MetadataDefinition{}, fmt.Errorf("build archive %s %s: %w", mutation.ResourceType, mutation.ResourceKey, err)
+	}
+	result, err := tx.ExecContext(ctx, statement, arguments...)
 	if err != nil {
 		return metadatamodel.MetadataDefinition{}, fmt.Errorf("archive %s %s: %w", mutation.ResourceType, mutation.ResourceKey, err)
 	}
@@ -367,67 +356,15 @@ func (r MetadataStore) applyDefinitionArchive(ctx context.Context, tx *sql.Tx, m
 }
 
 func (r MetadataStore) insertChangeAudit(ctx context.Context, tx *sql.Tx, event auditmodel.AuditEvent) error {
-	before, err := json.Marshal(event.Before)
-	if err != nil {
-		return fmt.Errorf("encode audit before: %w", err)
-	}
-	after, err := json.Marshal(event.After)
-	if err != nil {
-		return fmt.Errorf("encode audit after: %w", err)
-	}
-	metadata, err := json.Marshal(event.Metadata)
-	if err != nil {
-		return fmt.Errorf("encode audit metadata: %w", err)
-	}
-	columns := []string{"id", "workspace_id", "event", "object_key", "record_id", "actor_id", "role_key", "summary", "metadata_json", "before_json", "after_json", "created_at"}
-	values := []any{event.ID, event.WorkspaceID, event.Event, event.ObjectKey, event.RecordID, event.ActorID, event.RoleKey, event.Summary, string(metadata), string(before), string(after), event.CreatedAt}
-	query := "INSERT INTO " + r.store.TableIdentifier("_audit_events") + " (" + strings.Join(database.QuotedColumns(r.store, columns), ", ") + ") VALUES (" + strings.Join(placeholders(r.store, len(columns)), ", ") + ")"
-	if _, err := tx.ExecContext(ctx, query, values...); err != nil {
-		return fmt.Errorf("insert metadata change audit: %w", err)
-	}
-	return nil
+	return r.insertMetadataChangeAudit(ctx, tx, event)
 }
 
 func (r MetadataStore) syncLocalizedProjection(ctx context.Context, tx *sql.Tx, resourceType, resourceKey string, payload []byte, sourceID, now string) error {
-	var document map[string]any
-	if err := json.Unmarshal(payload, &document); err != nil {
-		return fmt.Errorf("decode metadata localized text projection: %w", err)
-	}
-	rawI18n, declared := document["i18n"]
-	if !declared {
-		return nil
-	}
-	workspaceID, entityType, entityKey := identitymodel.InstallationWorkspaceID, strings.TrimSpace(resourceType), strings.TrimSpace(resourceKey)
-	if _, err := tx.ExecContext(ctx, "DELETE FROM "+r.store.TableIdentifier("identity_localized_text")+" WHERE "+r.store.Identifier("workspace_id")+" = "+r.store.Placeholder(1)+" AND "+r.store.Identifier("entity_type")+" = "+r.store.Placeholder(2)+" AND "+r.store.Identifier("entity_key")+" = "+r.store.Placeholder(3)+" AND "+r.store.Identifier("source_kind")+" = "+r.store.Placeholder(4), workspaceID, entityType, entityKey, "metadata_definition"); err != nil {
-		return fmt.Errorf("clear metadata localized text projection: %w", err)
-	}
-	for _, projection := range metadataLocalizedProjections(rawI18n) {
-		update := "UPDATE " + r.store.TableIdentifier("identity_localized_text") + " SET " + r.store.Identifier("text") + " = " + r.store.Placeholder(1) + ", " + r.store.Identifier("source_kind") + " = " + r.store.Placeholder(2) + ", " + r.store.Identifier("source_id") + " = " + r.store.Placeholder(3) + ", " + r.store.Identifier("updated_at") + " = " + r.store.Placeholder(4) + " WHERE " + r.store.Identifier("workspace_id") + " = " + r.store.Placeholder(5) + " AND " + r.store.Identifier("entity_type") + " = " + r.store.Placeholder(6) + " AND " + r.store.Identifier("entity_key") + " = " + r.store.Placeholder(7) + " AND " + r.store.Identifier("property") + " = " + r.store.Placeholder(8) + " AND " + r.store.Identifier("locale") + " = " + r.store.Placeholder(9)
-		result, err := tx.ExecContext(ctx, update, projection.Text, "metadata_definition", sourceID, now, workspaceID, entityType, entityKey, projection.Property, projection.Locale)
-		if err != nil {
-			return fmt.Errorf("update metadata localized text projection: %w", err)
-		}
-		affected, rowsErr := result.RowsAffected()
-		if rowsErr != nil {
-			return fmt.Errorf("read updated metadata localized text projection rows: %w", rowsErr)
-		}
-		if affected == 1 {
-			continue
-		}
-		localized := metadatamodel.LocalizedText{WorkspaceID: workspaceID, EntityType: entityType, EntityKey: entityKey, Property: projection.Property, Locale: projection.Locale, Text: projection.Text}
-		columns := []string{"id", "workspace_id", "entity_type", "entity_key", "property", "locale", "text", "source_kind", "source_id", "created_at", "updated_at"}
-		values := []any{localizedTextID(localized), workspaceID, entityType, entityKey, projection.Property, projection.Locale, projection.Text, "metadata_definition", sourceID, now, now}
-		if _, err := tx.ExecContext(ctx, "INSERT INTO "+r.store.TableIdentifier("identity_localized_text")+" ("+joinIdentifiers(r.store, columns...)+") VALUES ("+joinPlaceholders(r.store, len(values))+")", values...); err != nil {
-			return fmt.Errorf("insert metadata localized text projection: %w", err)
-		}
-	}
-	return nil
+	return r.syncMetadataLocalizedTextTx(ctx, tx, resourceType, resourceKey, payload, sourceID, now)
 }
 
 func (r MetadataStore) currentHash(ctx context.Context, tx *sql.Tx, table, resourceKey string) string {
-	var current string
-	_ = tx.QueryRowContext(ctx, "SELECT "+r.store.Identifier("schema_hash")+" FROM "+r.store.TableIdentifier(table)+" WHERE "+r.store.Identifier("resource_key")+" = "+r.store.Placeholder(1), resourceKey).Scan(&current)
-	return current
+	return r.currentMetadataHashTx(ctx, tx, table, resourceKey)
 }
 
 func (r MetadataStore) RollbackDefinition(ctx context.Context, scope identitymodel.SystemScope, resourceType, resourceKey string, request metadatamodel.MetadataDefinitionRollbackRequest, audit auditmodel.AuditEvent) (metadatamodel.MetadataDefinition, error) {
@@ -443,9 +380,14 @@ func (r MetadataStore) RollbackDefinition(ctx context.Context, scope identitymod
 		return metadatamodel.MetadataDefinition{}, fmt.Errorf("begin rollback: %w", err)
 	}
 	defer tx.Rollback()
-	query := "SELECT " + r.store.Identifier("payload_json") + ", " + r.store.Identifier("schema_hash") + " FROM " + r.store.TableIdentifier("metadata_definition_versions") + " WHERE " + r.store.Identifier("resource_type") + " = " + r.store.Placeholder(1) + " AND " + r.store.Identifier("resource_key") + " = " + r.store.Placeholder(2) + " AND " + r.store.Identifier("schema_version") + " = " + r.store.Placeholder(3)
+	query, arguments, err := ormbuilder.NewSelectBuilder(r.store.SQLRenderer, "metadata_definition_versions").
+		Columns("payload_json", "schema_hash").
+		Where(ormbuilder.And(ormbuilder.Equal("resource_type", resourceType), ormbuilder.Equal("resource_key", resourceKey), ormbuilder.Equal("schema_version", request.TargetVersion))).Build()
+	if err != nil {
+		return metadatamodel.MetadataDefinition{}, fmt.Errorf("build rollback version read: %w", err)
+	}
 	var payloadJSON, targetHash string
-	if err := tx.QueryRowContext(ctx, query, resourceType, resourceKey, request.TargetVersion).Scan(&payloadJSON, &targetHash); err == sql.ErrNoRows {
+	if err := tx.QueryRowContext(ctx, query, arguments...).Scan(&payloadJSON, &targetHash); err == sql.ErrNoRows {
 		return metadatamodel.MetadataDefinition{}, fmt.Errorf("metadata.version.notFound: %s@%s", resourceKey, request.TargetVersion)
 	} else if err != nil {
 		return metadatamodel.MetadataDefinition{}, fmt.Errorf("rollback read version: %w", err)
@@ -459,8 +401,15 @@ func (r MetadataStore) RollbackDefinition(ctx context.Context, scope identitymod
 		return metadatamodel.MetadataDefinition{}, fmt.Errorf("rollback decode target: %w", err)
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	update := "UPDATE " + r.store.TableIdentifier(table) + " SET " + r.store.Identifier("payload_json") + " = " + r.store.Placeholder(1) + ", " + r.store.Identifier("object_key") + " = " + r.store.Placeholder(2) + ", " + r.store.Identifier("name") + " = " + r.store.Placeholder(3) + ", " + r.store.Identifier("schema_version") + " = " + r.store.Placeholder(4) + ", " + r.store.Identifier("schema_hash") + " = " + r.store.Placeholder(5) + ", " + r.store.Identifier("source_kind") + " = " + r.store.Placeholder(6) + ", " + r.store.Identifier("source_id") + " = " + r.store.Placeholder(7) + ", " + r.store.Identifier("disabled_at") + " = NULL, " + r.store.Identifier("updated_at") + " = " + r.store.Placeholder(8) + " WHERE " + r.store.Identifier("resource_key") + " = " + r.store.Placeholder(9) + " AND " + r.store.Identifier("schema_hash") + " = " + r.store.Placeholder(10)
-	result, err := tx.ExecContext(ctx, update, payloadJSON, shape.ObjectKey, shape.Name, nextVersion, targetHash, "builder", request.ChangePlanID, now, resourceKey, request.ExpectedSchemaHash)
+	update, arguments, err := ormbuilder.NewUpdateBuilder(r.store.SQLRenderer, table).
+		Set("payload_json", payloadJSON).Set("object_key", shape.ObjectKey).Set("name", shape.Name).
+		Set("schema_version", nextVersion).Set("schema_hash", targetHash).Set("source_kind", "builder").
+		Set("source_id", request.ChangePlanID).Set("disabled_at", nil).Set("updated_at", now).
+		Where(ormbuilder.And(ormbuilder.Equal("resource_key", resourceKey), ormbuilder.Equal("schema_hash", request.ExpectedSchemaHash))).Build()
+	if err != nil {
+		return metadatamodel.MetadataDefinition{}, fmt.Errorf("build rollback update: %w", err)
+	}
+	result, err := tx.ExecContext(ctx, update, arguments...)
 	if err != nil {
 		return metadatamodel.MetadataDefinition{}, fmt.Errorf("rollback update: %w", err)
 	}
@@ -494,31 +443,5 @@ func (r MetadataStore) RollbackDefinition(ctx context.Context, scope identitymod
 }
 
 func (r MetadataStore) stageRollbackIntent(ctx context.Context, tx *sql.Tx, resourceType, resourceKey string, request metadatamodel.MetadataDefinitionRollbackRequest, audit auditmodel.AuditEvent, now string) error {
-	planID := strings.TrimSpace(request.ChangePlanID)
-	if planID == "" {
-		return fmt.Errorf("rollback change plan id is required")
-	}
-	workspaceID, err := identitymodel.NewWorkspaceID(audit.WorkspaceID)
-	if err != nil {
-		return err
-	}
-	payload, _ := json.Marshal(map[string]any{"operation": "metadata_rollback", "resource_type": resourceType, "resource_key": resourceKey, "target_version": request.TargetVersion, "expected_schema_hash": request.ExpectedSchemaHash, "business_reason": request.BusinessReason, "builder_task_id": request.BuilderTaskID})
-	update := "UPDATE " + r.store.TableIdentifier("identity_change_plan_drafts") + " SET " + r.store.Identifier("status") + " = 'applying', " + r.store.Identifier("payload_json") + " = " + r.store.Placeholder(1) + ", " + r.store.Identifier("updated_by") + " = " + r.store.Placeholder(2) + ", " + r.store.Identifier("updated_at") + " = " + r.store.Placeholder(3) + ", " + r.store.Identifier("revision") + " = " + r.store.Identifier("revision") + " + 1 WHERE " + r.store.Identifier("workspace_id") + " = " + r.store.Placeholder(4) + " AND " + r.store.Identifier("plan_id") + " = " + r.store.Placeholder(5) + " AND " + r.store.Identifier("status") + " = 'draft'"
-	result, err := tx.ExecContext(ctx, update, string(payload), audit.ActorID, now, workspaceID.String(), planID)
-	if err != nil {
-		return fmt.Errorf("stage rollback change plan: %w", err)
-	}
-	affected, rowsErr := result.RowsAffected()
-	if rowsErr != nil {
-		return fmt.Errorf("read staged rollback change plan rows: %w", rowsErr)
-	}
-	if affected == 1 {
-		return nil
-	}
-	columns := []string{"workspace_id", "plan_id", "revision", "status", "payload_json", "created_by", "updated_by", "created_at", "updated_at"}
-	values := []any{workspaceID.String(), planID, 1, "applying", string(payload), audit.ActorID, audit.ActorID, now, now}
-	if _, err := tx.ExecContext(ctx, "INSERT INTO "+r.store.TableIdentifier("identity_change_plan_drafts")+" ("+joinIdentifiers(r.store, columns...)+") VALUES ("+joinPlaceholders(r.store, len(values))+")", values...); err != nil {
-		return fmt.Errorf("create rollback change plan intent: %w", err)
-	}
-	return nil
+	return r.stageMetadataRollbackIntentTx(ctx, tx, resourceType, resourceKey, request, audit, now)
 }
