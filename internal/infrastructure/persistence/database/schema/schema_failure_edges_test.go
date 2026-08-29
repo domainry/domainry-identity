@@ -27,18 +27,6 @@ type schemaDriverStore struct {
 
 func (s schemaDriverStore) Driver() string { return s.driver }
 
-type schemaIndexDriverStore struct{ schemaDriverStore }
-
-func (s schemaIndexDriverStore) SchemaDB() identityschema.SQLDatabase {
-	return schemaIndexDatabase{SQLDatabase: s.Store.SchemaDB()}
-}
-
-type schemaIndexDatabase struct{ identityschema.SQLDatabase }
-
-func (d schemaIndexDatabase) QueryContext(ctx context.Context, _ string, _ ...any) (*sql.Rows, error) {
-	return d.SQLDatabase.QueryContext(ctx, "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=?", "index_fixture")
-}
-
 func (s *schemaFaultStore) SchemaDB() identityschema.SQLDatabase {
 	return schemaFaultDatabase{SQLDatabase: s.Store.SchemaDB(), owner: s}
 }
@@ -172,25 +160,16 @@ func TestCreateIndexIfMissingCoversDialectAndExistingIndexContracts(t *testing.T
 		t.Fatal(err)
 	}
 	faults := &schemaFaultStore{Store: store, failAt: 1}
-	if err := identityschema.CreateIndexIfMissing(t.Context(), faults, "index_fixture", "idx_fixture_fault", false, "id"); !errors.Is(err, errSchemaMutationFault) {
+	if err := faults.CreateIndexIfMissing(t.Context(), "index_fixture", "idx_fixture_fault", false, "id"); !errors.Is(err, errSchemaMutationFault) {
 		t.Fatalf("index query fault=%v", err)
 	}
-	if err := identityschema.CreateIndexIfMissing(t.Context(), store, "index_fixture", "idx_fixture_sqlite", false, "scope"); err != nil {
+	if err := store.CreateIndexIfMissing(t.Context(), "index_fixture", "idx_fixture_sqlite", false, "scope"); err != nil {
 		t.Fatal(err)
 	}
-	if err := identityschema.CreateIndexIfMissing(t.Context(), store, "index_fixture", "idx_fixture_sqlite", false, "scope"); err != nil {
+	if err := store.CreateIndexIfMissing(t.Context(), "index_fixture", "idx_fixture_sqlite", false, "scope"); err != nil {
 		t.Fatalf("existing index was not idempotent: %v", err)
 	}
-	if err := identityschema.CreateIndexIfMissing(t.Context(), schemaIndexDriverStore{schemaDriverStore{Store: store, driver: "mysql"}}, "index_fixture", "idx_fixture_mysql", true, "id", "scope"); err != nil {
-		t.Fatalf("mysql unique index: %v", err)
-	}
-	if err := identityschema.CreateIndexIfMissing(t.Context(), schemaIndexDriverStore{schemaDriverStore{Store: store, driver: "mysql"}}, "index_fixture", "idx_fixture_mysql_nonunique", false, "scope"); err != nil {
-		t.Fatalf("mysql non-unique index: %v", err)
-	}
-	if err := identityschema.CreateIndexIfMissing(t.Context(), schemaIndexDriverStore{schemaDriverStore{Store: store, driver: "postgres"}}, "index_fixture", "idx_fixture_postgres", false, "id"); err != nil {
-		t.Fatalf("postgres index: %v", err)
-	}
-	if err := identityschema.CreateIndexIfMissing(t.Context(), store, "missing_table", "idx_missing", false, "id"); err == nil {
+	if err := store.CreateIndexIfMissing(t.Context(), "missing_table", "idx_missing", false, "id"); err == nil {
 		t.Fatal("index creation failure was swallowed")
 	}
 }

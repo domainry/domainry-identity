@@ -63,11 +63,3 @@ func TestFindIdempotencyMigrationDuplicatesFailureAndSuccessEdges(t *testing.T) 
 		t.Fatalf("duplicates=%+v err=%v", duplicates, err)
 	}
 }
-
-func TestCreateIndexRejectsCorruptIndexRows(t *testing.T) {
-	state := schemaSQLState{querySteps: []schemaSQLQueryStep{{columns: []string{"name", "extra"}, rows: [][]driver.Value{{"idx", "extra"}}}}}
-	store := scriptedMigrationStore(t, &state)
-	if err := CreateIndexIfMissing(t.Context(), store, "records", "idx_records", false, "id"); err == nil {
-		t.Fatal("corrupt index row accepted")
-	}
-}

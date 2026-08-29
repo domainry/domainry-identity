@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/domainry/domainry-foundation/secrets"
-	identityschema "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/schema"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 )
@@ -46,7 +45,8 @@ func (s *IdentityStore) SecretMaterialKey() [32]byte            { return s.secre
 func (s *IdentityStore) SecretKeyProvider() secrets.KeyProvider { return s.secretKeyProvider }
 
 func (s *IdentityStore) CreateIndexIfMissing(ctx context.Context, table, index string, unique bool, columns ...string) error {
-	return identityschema.CreateIndexIfMissing(ctx, s, table, index, unique, columns...)
+	base := s.sqlBase()
+	return base.Engine.CreateIndexIfMissing(ctx, s.schemaDatabase(), base.SQLRenderer, base.DatabaseSchema, base.RelationPrefix, table, index, unique, columns...)
 }
 
 func (s *IdentityStore) EnsureColumn(ctx context.Context, table, column, definition string) error {

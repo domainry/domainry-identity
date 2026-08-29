@@ -27,6 +27,7 @@ type EngineProfile interface {
 	SchemaTypes() SchemaTypes
 	ApplyUpdateLock(*ormbuilder.SelectBuilder) *ormbuilder.SelectBuilder
 	ApplyUpsert(*ormbuilder.InsertBuilder, []string, ...string) *ormbuilder.InsertBuilder
+	CreateIndexIfMissing(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, string, bool, ...string) error
 	EnsureCompositePrimaryKey(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, ...string) error
 }
 
@@ -60,6 +61,9 @@ func (portableEngineProfile) ApplyUpsert(builder *ormbuilder.InsertBuilder, conf
 		assignments[index] = ormbuilder.AssignExpression(column, ormbuilder.InsertedValue(column))
 	}
 	return builder.OnConflictDoUpdate(conflictColumns, assignments...)
+}
+func (portableEngineProfile) CreateIndexIfMissing(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, string, bool, ...string) error {
+	return fmt.Errorf("database engine does not support index creation")
 }
 func (portableEngineProfile) EnsureCompositePrimaryKey(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, ...string) error {
 	return fmt.Errorf("database engine does not support composite primary-key migration")
