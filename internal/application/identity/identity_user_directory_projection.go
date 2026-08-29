@@ -2,10 +2,12 @@ package identity
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"strings"
 
 	"github.com/domainry/domainry-foundation/apperror"
+	"github.com/domainry/domainry-foundation/pagination"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	identityrepository "github.com/domainry/domainry-identity/internal/domain/identity/repository"
 )
@@ -163,37 +165,20 @@ func (s *IdentityApplicationService) ListWorkforceApplicationProjection(ctx cont
 		return items[left].Profile.WorkerNo < items[right].Profile.WorkerNo
 	})
 	total := len(items)
-	pageSize := query.PageSize
-	if pageSize <= 0 || pageSize > total && total > 0 {
-		pageSize = total
+	defaultPageSize := total
+	if defaultPageSize == 0 {
+		defaultPageSize = 50
 	}
-	if pageSize == 0 {
-		pageSize = 50
-	}
-	start := 0
-	if afterID := strings.TrimSpace(query.AfterID); afterID != "" {
-		found := false
-		for index := range items {
-			if items[index].Profile.ID == afterID {
-				start, found = index+1, true
-				break
-			}
+	cursor := pagination.NewCursor(query.AfterID, query.PageSize, pagination.CursorOptions{DefaultPageSize: defaultPageSize, MaximumPageSize: total})
+	page, err := pagination.Slice(cursor, items, func(item identitymodel.IdentityWorkforceProjectionItem) string { return item.Profile.ID })
+	if err != nil {
+		var cursorNotFound pagination.CursorNotFoundError
+		if errors.As(err, &cursorNotFound) {
+			return identitymodel.IdentityWorkforceProjectionPage{}, apperror.New(apperror.KindBadRequest, "backend.identity.workforce_projection_cursor_invalid", nil, map[string]string{"after_id": cursorNotFound.AfterID})
 		}
-		if !found {
-			return identitymodel.IdentityWorkforceProjectionPage{}, apperror.New(apperror.KindBadRequest, "backend.identity.workforce_projection_cursor_invalid", nil, map[string]string{"after_id": afterID})
-		}
+		return identitymodel.IdentityWorkforceProjectionPage{}, err
 	}
-	end := start + pageSize
-	if end > total {
-		end = total
-	}
-	pageItems := items[start:end]
-	hasNext := end < total
-	nextID := ""
-	if hasNext && len(pageItems) > 0 {
-		nextID = pageItems[len(pageItems)-1].Profile.ID
-	}
-	return identitymodel.IdentityWorkforceProjectionPage{Items: pageItems, PageSize: pageSize, Total: total, HasNext: hasNext, NextID: nextID}, nil
+	return identitymodel.IdentityWorkforceProjectionPage{Items: page.Items, PageSize: cursor.PageSize(), Total: total, HasNext: page.HasNext, NextID: page.NextID}, nil
 }
 
 func filterWorkforceApplicationProjection(items []identitymodel.IdentityWorkforceProjectionItem, query identitymodel.IdentityWorkforceProjectionQuery) []identitymodel.IdentityWorkforceProjectionItem {

@@ -62,12 +62,12 @@ func TestIdentityDirectoryPaginationRemainsWorkspaceKeysetOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(source)
-	for _, forbidden := range []string{" OFFSET ", "identityDirectoryWhere", "identityDirectoryOrder", "Placeholder("} {
+	for _, forbidden := range []string{" OFFSET ", "identityDirectoryWhere", "identityDirectoryOrder", "Placeholder(", "PageSize + 1", "PageSize+1"} {
 		if strings.Contains(text, forbidden) {
 			t.Fatalf("Identity directory pagination reintroduced forbidden SQL pattern %q", forbidden)
 		}
 	}
-	for _, required := range []string{"NewWorkspaceSelectBuilder", ".FirstPage(", ".NextPage("} {
+	for _, required := range []string{"NewWorkspaceSelectBuilder", ".FirstPage(", ".NextPage(", "pagination.Boundary", ".FetchLimit()"} {
 		if !strings.Contains(text, required) {
 			t.Fatalf("Identity directory pagination lost required keyset boundary %q", required)
 		}

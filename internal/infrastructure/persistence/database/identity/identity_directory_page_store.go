@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/domainry/domainry-foundation/pagination"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
@@ -45,7 +46,8 @@ func (s *SQLIdentityStore) SearchIdentityUsers(ctx context.Context, workspaceID 
 		return identitymodel.IdentityUserPage{}, err
 	}
 	defer rows.Close()
-	items := make([]identitymodel.IdentityUser, 0, query.PageSize+1)
+	cursor := identitySQLDirectoryCursor(query)
+	items := make([]identitymodel.IdentityUser, 0, cursor.FetchLimit())
 	for rows.Next() {
 		var user identitymodel.IdentityUser
 		var accountType, status string
@@ -62,8 +64,8 @@ func (s *SQLIdentityStore) SearchIdentityUsers(ctx context.Context, workspaceID 
 	if err := rows.Err(); err != nil {
 		return identitymodel.IdentityUserPage{}, err
 	}
-	items, hasNext, nextID := identityUserPageBoundary(items, query.PageSize)
-	return identitymodel.IdentityUserPage{Items: items, PageSize: query.PageSize, Total: total, HasNext: hasNext, NextID: nextID}, nil
+	page := pagination.Boundary(cursor, items, func(user identitymodel.IdentityUser) string { return user.ID })
+	return identitymodel.IdentityUserPage{Items: page.Items, PageSize: cursor.PageSize(), Total: total, HasNext: page.HasNext, NextID: page.NextID}, nil
 }
 
 func (s *SQLIdentityStore) SearchIdentityWorkforceProfiles(ctx context.Context, workspaceID string, query identitymodel.IdentityListQuery) (identitymodel.IdentityWorkforceProfilePage, error) {
@@ -86,7 +88,8 @@ func (s *SQLIdentityStore) SearchIdentityWorkforceProfiles(ctx context.Context, 
 		return identitymodel.IdentityWorkforceProfilePage{}, err
 	}
 	defer rows.Close()
-	items := make([]identitymodel.IdentityWorkforceProfile, 0, query.PageSize+1)
+	cursor := identitySQLDirectoryCursor(query)
+	items := make([]identitymodel.IdentityWorkforceProfile, 0, cursor.FetchLimit())
 	for rows.Next() {
 		profile, scanErr := scanIdentityWorkforceProfile(rows)
 		if scanErr != nil {
@@ -97,8 +100,8 @@ func (s *SQLIdentityStore) SearchIdentityWorkforceProfiles(ctx context.Context, 
 	if err := rows.Err(); err != nil {
 		return identitymodel.IdentityWorkforceProfilePage{}, err
 	}
-	items, hasNext, nextID := identityWorkforcePageBoundary(items, query.PageSize)
-	return identitymodel.IdentityWorkforceProfilePage{Items: items, PageSize: query.PageSize, Total: total, HasNext: hasNext, NextID: nextID}, nil
+	page := pagination.Boundary(cursor, items, func(profile identitymodel.IdentityWorkforceProfile) string { return profile.ID })
+	return identitymodel.IdentityWorkforceProfilePage{Items: page.Items, PageSize: cursor.PageSize(), Total: total, HasNext: page.HasNext, NextID: page.NextID}, nil
 }
 
 func identityDirectoryPredicates(query identitymodel.IdentityListQuery, columns map[string]string) []ormbuilder.Predicate {
@@ -139,15 +142,15 @@ func (s *SQLIdentityStore) identityDirectoryPageSQL(ctx context.Context, workspa
 	builder := ormbuilder.NewWorkspaceSelectBuilder(s.sqlRenderer(), table, workspaceID).
 		Columns(columns...)
 	applyIdentityDirectoryPredicates(builder, conditions)
-	limit := query.PageSize + 1
+	cursor := identitySQLDirectoryCursor(query)
 	if strings.TrimSpace(query.AfterID) == "" {
-		return builder.FirstPage(limit, orders...).Build()
+		return builder.FirstPage(cursor.FetchLimit(), orders...).Build()
 	}
 	values, err := s.identityDirectoryCursorValues(ctx, workspaceID, table, query.AfterID, query.Sort, conditions)
 	if err != nil {
 		return "", nil, err
 	}
-	return builder.NextPage(query.AfterID, limit, values, orders...).Build()
+	return builder.NextPage(cursor.AfterID(), cursor.FetchLimit(), values, orders...).Build()
 }
 
 func (s *SQLIdentityStore) identityDirectoryCursorValues(ctx context.Context, workspaceID, table, afterID string, rules []identitymodel.IdentitySortRule, conditions []ormbuilder.Predicate) (map[string]any, error) {
@@ -203,20 +206,8 @@ func identityDirectoryKeysetOrders(rules []identitymodel.IdentitySortRule) []orm
 	return orders
 }
 
-func identityUserPageBoundary(items []identitymodel.IdentityUser, pageSize int) ([]identitymodel.IdentityUser, bool, string) {
-	if len(items) <= pageSize {
-		return items, false, ""
-	}
-	items = items[:pageSize]
-	return items, true, items[len(items)-1].ID
-}
-
-func identityWorkforcePageBoundary(items []identitymodel.IdentityWorkforceProfile, pageSize int) ([]identitymodel.IdentityWorkforceProfile, bool, string) {
-	if len(items) <= pageSize {
-		return items, false, ""
-	}
-	items = items[:pageSize]
-	return items, true, items[len(items)-1].ID
+func identitySQLDirectoryCursor(query identitymodel.IdentityListQuery) pagination.Cursor {
+	return pagination.NewCursor(query.AfterID, query.PageSize, pagination.CursorOptions{DefaultPageSize: 20, MaximumPageSize: 200})
 }
 
 func sortedStringKeys(values map[string]any) []string {

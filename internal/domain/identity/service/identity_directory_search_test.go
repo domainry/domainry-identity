@@ -111,7 +111,7 @@ func TestIdentityDirectorySearchWorkforceAndAssignments(t *testing.T) {
 }
 
 func TestIdentityDirectorySearchHelpersAndValidation(t *testing.T) {
-	if size := identityDirectoryPageSize(identitymodel.IdentityListQuery{PageSize: -1}); size != 20 {
+	if size := identityDirectoryPagination(identitymodel.IdentityListQuery{PageSize: -1}).PageSize(); size != 20 {
 		t.Fatalf("unexpected default: %d", size)
 	}
 	if !identityDirectoryMatchesSearch("", nil, func(string) string { return "" }) {
