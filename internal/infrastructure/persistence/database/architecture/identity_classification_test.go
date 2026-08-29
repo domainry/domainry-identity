@@ -101,6 +101,22 @@ func TestIdentityAccessReviewRootFileRemainsFacade(t *testing.T) {
 	}
 }
 
+func TestIdentityProfileBindingRootFileRemainsFacade(t *testing.T) {
+	source, err := os.ReadFile(filepath.Join(identityPersistenceRoot(t), "identity_profile_binding_store.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	for _, forbidden := range []string{"ormbuilder", ".BeginTx(", ".ExecContext(", ".QueryRowContext("} {
+		if strings.Contains(text, forbidden) {
+			t.Errorf("Identity profile binding facade owns persistence implementation %q", forbidden)
+		}
+	}
+	if !strings.Contains(text, "profilebindingpersistence.New") {
+		t.Error("Identity profile binding facade lost classified owner delegation")
+	}
+}
+
 func identityPersistenceRoot(t *testing.T) string {
 	t.Helper()
 	_, sourceFile, _, ok := runtime.Caller(0)
