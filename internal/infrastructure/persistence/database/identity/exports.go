@@ -20,18 +20,6 @@ func (s *SQLIdentityStore) ApplyUpsert(insert *ormbuilder.InsertBuilder, conflic
 	return s.engineProfile().ApplyUpsert(insert, conflictColumns, updateColumns...)
 }
 
-func (s *SQLIdentityStore) Identifier(value string) string { return s.identifier(value) }
-
-func (s *SQLIdentityStore) TableIdentifier(value string) string { return s.tableIdentifier(value) }
-
-func (s *SQLIdentityStore) Placeholder(position int) string { return s.placeholder(position) }
-
-func (s *SQLIdentityStore) IdentityColumns(columns ...string) string {
-	return s.identityColumns(columns...)
-}
-
-func (s *SQLIdentityStore) Placeholders(count int) string { return s.placeholders(count) }
-
 func NowString() string { return nowString() }
 
 func ValueFromNull(value sql.NullString) string { return valueFromNull(value) }

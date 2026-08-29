@@ -301,7 +301,7 @@ func TestMemoryIdentityRequestsMenusAndPolicyEdges(t *testing.T) {
 }
 
 func TestIdentityValueAndDepartmentEdges(t *testing.T) {
-	if identityColumns("a", "b") == "" || identityID("a.b", "c:d", "e/f") != "a_b_c_d_e_f" || len(uniqueSortedStrings([]string{"", "a"})) != 1 {
+	if identityID("a.b", "c:d", "e/f") != "a_b_c_d_e_f" || len(uniqueSortedStrings([]string{"", "a"})) != 1 {
 		t.Fatal("identity value helpers")
 	}
 	empty := " "

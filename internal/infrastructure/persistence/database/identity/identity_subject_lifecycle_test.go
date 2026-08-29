@@ -225,7 +225,7 @@ func TestIdentityExportHelpers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if identity.DB() == nil || identity.Identifier("id") == "" || identity.TableIdentifier("users") == "" || identity.Placeholder(1) == "" || identity.IdentityColumns("id", "name") == "" || identity.Placeholders(2) == "" || identitypersistence.NowString() == "" {
+	if identity.DB() == nil || identity.SQLRenderer().Identifier("id") == "" || identitypersistence.NowString() == "" {
 		t.Fatal("empty SQL helper")
 	}
 	if identitypersistence.ValueFromNull(sql.NullString{}) != "" || identitypersistence.ValueFromNull(sql.NullString{String: "x", Valid: true}) != "x" {

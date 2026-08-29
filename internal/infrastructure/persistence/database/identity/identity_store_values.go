@@ -7,17 +7,7 @@ import (
 	"time"
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
-	ormdialect "github.com/domainry/domainry-orm/dialect"
 )
-
-func identityColumns(values ...string) string {
-	columns := make([]string, 0, len(values))
-	dialect, _ := ormdialect.New(ormdialect.SQLite)
-	for _, value := range values {
-		columns = append(columns, dialect.Identifier(value))
-	}
-	return strings.Join(columns, ", ")
-}
 
 func identityID(parts ...string) string {
 	value := strings.Join(parts, "_")

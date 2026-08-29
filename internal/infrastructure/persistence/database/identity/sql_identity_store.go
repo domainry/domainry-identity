@@ -48,22 +48,6 @@ type SQLIdentityStore struct {
 var _ identityrepository.IdentityRepository = (*SQLIdentityStore)(nil)
 var _ identityrepository.IdentityWorkforceRepository = (*SQLIdentityStore)(nil)
 
-func (s *SQLIdentityStore) identifier(value string) string {
-	return s.sqlRenderer().Identifier(value)
-}
-
-func (s *SQLIdentityStore) sqlDialect() ormdialect.Dialect {
-	value, err := ormdialect.Parse(s.driver)
-	if err != nil {
-		panic(err)
-	}
-	return value
-}
-
-func (s *SQLIdentityStore) tableIdentifier(value string) string {
-	return s.sqlRenderer().Table(value)
-}
-
 func (s *SQLIdentityStore) sqlRenderer() ormdialect.Renderer {
 	configuration := strings.Join([]string{s.driver, strings.TrimSpace(s.schema), strings.TrimSpace(s.relationPrefix)}, "\x00")
 	if s.renderer != nil && s.rendererConfig == configuration {
@@ -84,14 +68,6 @@ func (s *SQLIdentityStore) sqlRenderer() ormdialect.Renderer {
 	s.renderer = &value
 	s.rendererConfig = configuration
 	return value
-}
-
-func (s *SQLIdentityStore) identityColumns(values ...string) string {
-	quoted := make([]string, 0, len(values))
-	for _, value := range values {
-		quoted = append(quoted, s.identifier(value))
-	}
-	return strings.Join(quoted, ", ")
 }
 
 func (s *SQLIdentityStore) engineProfile() persistencedriver.EngineProfile {

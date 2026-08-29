@@ -11,15 +11,15 @@ import (
 
 func TestSQLIdentityDialectAndConstructorEdges(t *testing.T) {
 	mysql := &SQLIdentityStore{driver: "mysql"}
-	if mysql.identifier("id") != "`id`" || mysql.placeholder(1) != "?" {
+	if mysql.sqlRenderer().Identifier("id") != "`id`" || mysql.sqlRenderer().Placeholder(1) != "?" {
 		t.Fatal("mysql dialect")
 	}
 	postgres := &SQLIdentityStore{driver: "postgres", schema: "tenant"}
-	if postgres.placeholder(2) != "$2" || postgres.tableIdentifier("users") != `"tenant"."users"` || postgres.placeholders(2) != "$1, $2" {
+	if postgres.sqlRenderer().Placeholder(2) != "$2" || postgres.sqlRenderer().Table("users") != `"tenant"."users"` {
 		t.Fatal("postgres dialect")
 	}
 	postgres.schema = " "
-	if postgres.tableIdentifier("users") != `"users"` {
+	if postgres.sqlRenderer().Table("users") != `"users"` {
 		t.Fatal("empty postgres schema")
 	}
 	db := sql.OpenDB(identitySQLConnector{state: &identitySQLState{execFailAt: 1, failure: errors.New("schema")}})
