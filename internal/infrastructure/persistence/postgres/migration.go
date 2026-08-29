@@ -18,6 +18,12 @@ func (Dialect) MigrationLedgerTypes() driver.MigrationLedgerTypes {
 func (Dialect) MigrationBackupPolicy() driver.MigrationBackupPolicy {
 	return driver.MigrationBackupPolicy{EvidenceEngine: "postgres"}
 }
+func (Dialect) MigrationRollbackPolicy() driver.MigrationRollbackPolicy {
+	return driver.MigrationRollbackPolicy{
+		Mode: "restore_external_backup_or_pitr", RequiresVerifiedBackup: true,
+		Procedure: []string{"stop_identity", "restore_verified_database_backup_or_pitr", "restart_identity", "verify_migration_status"},
+	}
+}
 func (Dialect) EnsureMigrationNamespace(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, databaseSchema string) error {
 	if strings.TrimSpace(databaseSchema) == "" || strings.EqualFold(databaseSchema, "public") {
 		return nil

@@ -13,7 +13,12 @@ import (
 // MigrationStatus reports Identity database infrastructure state without
 // exposing Store internals to transport or operations adapters.
 func (s *IdentityStore) MigrationStatus(ctx context.Context) (migration.MigrationStatus, error) {
-	status := migration.MigrationStatus{Current: true, State: migration.StateCurrent, ServiceVersion: s.config.ServiceVersion, ExpectedPaths: append([]string(nil), s.expectedMigrations...), Rollback: migration.RollbackPolicy(s.Driver())}
+	profilePolicy := s.sqlBase().Engine.MigrationRollbackPolicy()
+	rollback := migration.MigrationRollbackPolicy{
+		Mode: profilePolicy.Mode, RequiresVerifiedBackup: profilePolicy.RequiresVerifiedBackup,
+		Procedure: append([]string(nil), profilePolicy.Procedure...),
+	}
+	status := migration.MigrationStatus{Current: true, State: migration.StateCurrent, ServiceVersion: s.config.ServiceVersion, ExpectedPaths: append([]string(nil), s.expectedMigrations...), Rollback: rollback}
 	sort.Strings(status.ExpectedPaths)
 	if len(status.ExpectedPaths) > 0 {
 		status.MinSchemaVersion, _ = migrationIdentity(status.ExpectedPaths[0])

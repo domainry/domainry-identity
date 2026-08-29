@@ -45,6 +45,7 @@ type EngineProfile interface {
 	ConfigureMigrationTransaction(context.Context, *sql.Tx, ormdialect.Renderer, string, time.Duration, time.Duration) error
 	AcquireMigrationLock(context.Context, *sql.DB, ormdialect.Renderer, MigrationLockOptions) (MigrationLock, error)
 	MigrationBackupPolicy() MigrationBackupPolicy
+	MigrationRollbackPolicy() MigrationRollbackPolicy
 }
 
 type SchemaTypes struct {
@@ -83,6 +84,12 @@ type MigrationBackupPolicy struct {
 	LocalSnapshot  bool
 	EvidenceEngine string
 	BackupIDPrefix string
+}
+
+type MigrationRollbackPolicy struct {
+	Mode                   string
+	RequiresVerifiedBackup bool
+	Procedure              []string
 }
 
 type SchemaDatabase interface {
@@ -151,6 +158,9 @@ func (portableEngineProfile) AcquireMigrationLock(context.Context, *sql.DB, ormd
 }
 func (portableEngineProfile) MigrationBackupPolicy() MigrationBackupPolicy {
 	return MigrationBackupPolicy{}
+}
+func (portableEngineProfile) MigrationRollbackPolicy() MigrationRollbackPolicy {
+	return MigrationRollbackPolicy{Mode: "unsupported", RequiresVerifiedBackup: true}
 }
 
 func ProfileFor(value Dialect) EngineProfile {

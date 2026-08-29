@@ -21,6 +21,12 @@ func (Dialect) MigrationLedgerTypes() driver.MigrationLedgerTypes {
 func (Dialect) MigrationBackupPolicy() driver.MigrationBackupPolicy {
 	return driver.MigrationBackupPolicy{LocalSnapshot: true, EvidenceEngine: "sqlite", BackupIDPrefix: "sqlite-"}
 }
+func (Dialect) MigrationRollbackPolicy() driver.MigrationRollbackPolicy {
+	return driver.MigrationRollbackPolicy{
+		Mode: "restore_sqlite_backup", RequiresVerifiedBackup: true,
+		Procedure: []string{"stop_identity", "replace_database_with_latest_migration_backup", "restart_identity", "verify_migration_status"},
+	}
+}
 func (Dialect) EnsureMigrationNamespace(context.Context, driver.SchemaDatabase, ormdialect.Renderer, string) error {
 	return nil
 }
