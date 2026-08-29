@@ -1,4 +1,4 @@
-package database
+package workspace
 
 import (
 	"context"
@@ -11,7 +11,17 @@ import (
 
 	portabilitymodel "github.com/domainry/domainry-identity/internal/domain/portability"
 	ormbuilder "github.com/domainry/domainry-orm/builder"
+	ormdialect "github.com/domainry/domainry-orm/dialect"
 )
+
+type WriteFenceStore struct {
+	db       *sql.DB
+	renderer ormdialect.Renderer
+}
+
+func NewWriteFenceStore(db *sql.DB, renderer ormdialect.Renderer) *WriteFenceStore {
+	return &WriteFenceStore{db: db, renderer: renderer}
+}
 
 const (
 	identityWorkspaceWriteFenceTable   = "identity_workspace_write_fences"
@@ -24,7 +34,7 @@ type identityWriteFenceQueryer interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
 
-func (store *IdentityStore) FreezeIdentityWrites(ctx context.Context, workspaceID, evidence, operator string, now time.Time) (portabilitymodel.WriteFence, error) {
+func (store *WriteFenceStore) FreezeIdentityWrites(ctx context.Context, workspaceID, evidence, operator string, now time.Time) (portabilitymodel.WriteFence, error) {
 	workspaceID, evidence, operator = strings.TrimSpace(workspaceID), strings.TrimSpace(evidence), strings.TrimSpace(operator)
 	if workspaceID == "" || evidence == "" || operator == "" {
 		return portabilitymodel.WriteFence{}, fmt.Errorf("identity.portability_write_freeze_fields_required")
@@ -49,14 +59,14 @@ func (store *IdentityStore) FreezeIdentityWrites(ctx context.Context, workspaceI
 		}
 		return portabilitymodel.WriteFence{}, fmt.Errorf("identity.portability_write_fence_already_active")
 	}
-	statement, arguments, err := ormbuilder.NewWorkspaceDeleteBuilder(store.BuilderRenderer(), identityWorkspaceWriteFenceTable, workspaceID).Build()
+	statement, arguments, err := ormbuilder.NewWorkspaceDeleteBuilder(store.renderer, identityWorkspaceWriteFenceTable, workspaceID).Build()
 	if err != nil {
 		return portabilitymodel.WriteFence{}, fmt.Errorf("build Identity write fence replacement: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
 		return portabilitymodel.WriteFence{}, err
 	}
-	statement, arguments, err = ormbuilder.NewWorkspaceInsertBuilder(store.BuilderRenderer(), identityWorkspaceWriteFenceTable, fence.WorkspaceID).
+	statement, arguments, err = ormbuilder.NewWorkspaceInsertBuilder(store.renderer, identityWorkspaceWriteFenceTable, fence.WorkspaceID).
 		Columns("state", "evidence_sha256", "frozen_by", "frozen_at", "released_by", "released_at", "updated_at").
 		Values(fence.State, fence.EvidenceSHA256, fence.FrozenBy, fence.FrozenAt.Format(time.RFC3339Nano), "", nil, fence.FrozenAt.Format(time.RFC3339Nano)).Build()
 	if err != nil {
@@ -74,7 +84,7 @@ func (store *IdentityStore) FreezeIdentityWrites(ctx context.Context, workspaceI
 	return fence, nil
 }
 
-func (store *IdentityStore) ReleaseIdentityWriteFence(ctx context.Context, workspaceID, operator string, now time.Time) (portabilitymodel.WriteFence, error) {
+func (store *WriteFenceStore) ReleaseIdentityWriteFence(ctx context.Context, workspaceID, operator string, now time.Time) (portabilitymodel.WriteFence, error) {
 	workspaceID, operator = strings.TrimSpace(workspaceID), strings.TrimSpace(operator)
 	if workspaceID == "" || operator == "" {
 		return portabilitymodel.WriteFence{}, fmt.Errorf("identity.portability_write_release_fields_required")
@@ -92,7 +102,7 @@ func (store *IdentityStore) ReleaseIdentityWriteFence(ctx context.Context, works
 	if !found || fence.State != "frozen" {
 		return portabilitymodel.WriteFence{}, fmt.Errorf("identity.portability_write_fence_not_active")
 	}
-	query, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(store.BuilderRenderer(), identityWorkspaceWriteFenceTable, workspaceID).
+	query, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(store.renderer, identityWorkspaceWriteFenceTable, workspaceID).
 		Set("state", "released").Set("released_by", operator).
 		Set("released_at", releasedAt.Format(time.RFC3339Nano)).Set("updated_at", releasedAt.Format(time.RFC3339Nano)).
 		Where(ormbuilder.And(ormbuilder.Equal("state", "frozen"), ormbuilder.Equal("evidence_sha256", fence.EvidenceSHA256))).Build()
@@ -122,12 +132,12 @@ func (store *IdentityStore) ReleaseIdentityWriteFence(ctx context.Context, works
 	return fence, nil
 }
 
-func (store *IdentityStore) IdentityWriteFence(ctx context.Context, workspaceID string) (portabilitymodel.WriteFence, bool, error) {
+func (store *WriteFenceStore) IdentityWriteFence(ctx context.Context, workspaceID string) (portabilitymodel.WriteFence, bool, error) {
 	return store.identityWriteFence(ctx, store.db, workspaceID)
 }
 
-func (store *IdentityStore) identityWriteFence(ctx context.Context, queryer identityWriteFenceQueryer, workspaceID string) (portabilitymodel.WriteFence, bool, error) {
-	query, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(store.BuilderRenderer(), identityWorkspaceWriteFenceTable, strings.TrimSpace(workspaceID)).
+func (store *WriteFenceStore) identityWriteFence(ctx context.Context, queryer identityWriteFenceQueryer, workspaceID string) (portabilitymodel.WriteFence, bool, error) {
+	query, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(store.renderer, identityWorkspaceWriteFenceTable, strings.TrimSpace(workspaceID)).
 		Columns("state", "evidence_sha256", "frozen_by", "frozen_at", "released_by", "released_at").Build()
 	if err != nil {
 		return portabilitymodel.WriteFence{}, false, fmt.Errorf("build Identity write fence read: %w", err)
@@ -157,9 +167,9 @@ func (store *IdentityStore) identityWriteFence(ctx context.Context, queryer iden
 	return fence, true, nil
 }
 
-func (store *IdentityStore) appendIdentityWriteFenceEvent(ctx context.Context, tx *sql.Tx, workspaceID, event, evidenceSHA256, operator string, occurredAt time.Time) error {
+func (store *WriteFenceStore) appendIdentityWriteFenceEvent(ctx context.Context, tx *sql.Tx, workspaceID, event, evidenceSHA256, operator string, occurredAt time.Time) error {
 	digest := sha256.Sum256([]byte(strings.Join([]string{workspaceID, event, evidenceSHA256, operator, occurredAt.UTC().Format(time.RFC3339Nano)}, "\x00")))
-	query, arguments, err := ormbuilder.NewWorkspaceInsertBuilder(store.BuilderRenderer(), identityPortabilityFenceEventTable, workspaceID).
+	query, arguments, err := ormbuilder.NewWorkspaceInsertBuilder(store.renderer, identityPortabilityFenceEventTable, workspaceID).
 		Columns("event_id", "event", "evidence_sha256", "operator", "occurred_at").
 		Values(hex.EncodeToString(digest[:]), event, evidenceSHA256, operator, occurredAt.UTC().Format(time.RFC3339Nano)).Build()
 	if err != nil {
@@ -171,13 +181,13 @@ func (store *IdentityStore) appendIdentityWriteFenceEvent(ctx context.Context, t
 	return nil
 }
 
-func (store *IdentityStore) IdentityWritesFrozen(ctx context.Context, workspaceID string) (bool, error) {
+func (store *WriteFenceStore) IdentityWritesFrozen(ctx context.Context, workspaceID string) (bool, error) {
 	fence, found, err := store.IdentityWriteFence(ctx, workspaceID)
 	return found && fence.State == "frozen", err
 }
 
-func (store *IdentityStore) AnyIdentityWritesFrozen(ctx context.Context) (bool, error) {
-	query, arguments, err := ormbuilder.NewSelectBuilder(store.BuilderRenderer(), identityWorkspaceWriteFenceTable).
+func (store *WriteFenceStore) AnyIdentityWritesFrozen(ctx context.Context) (bool, error) {
+	query, arguments, err := ormbuilder.NewSelectBuilder(store.renderer, identityWorkspaceWriteFenceTable).
 		Projections(ormbuilder.Project(ormbuilder.CountAll())).Where(ormbuilder.Equal("state", "frozen")).Build()
 	if err != nil {
 		return false, fmt.Errorf("build active Identity write fence count: %w", err)
@@ -189,7 +199,7 @@ func (store *IdentityStore) AnyIdentityWritesFrozen(ctx context.Context) (bool, 
 	return count > 0, nil
 }
 
-func (store *IdentityStore) VerifyIdentityWriteFreeze(ctx context.Context, workspaceID, evidence string) error {
+func (store *WriteFenceStore) VerifyIdentityWriteFreeze(ctx context.Context, workspaceID, evidence string) error {
 	fence, found, err := store.IdentityWriteFence(ctx, workspaceID)
 	if err != nil {
 		return err

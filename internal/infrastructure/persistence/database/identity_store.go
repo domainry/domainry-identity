@@ -15,6 +15,7 @@ import (
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/base"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/connection"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/observability"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/workspace"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/postgres"
 	"github.com/domainry/domainry-identity/internal/platform/config"
@@ -23,6 +24,7 @@ import (
 // IdentityStore owns a standalone connection or borrows a project-owned pool.
 type IdentityStore struct {
 	*base.SQLDatabase
+	*workspace.WriteFenceStore
 	db                   *sql.DB
 	migrationDB          *sql.DB
 	migrationConn        *sql.Conn
@@ -82,7 +84,8 @@ func openContextWithDependencies(ctx context.Context, cfg config.Config, depende
 		return nil, fmt.Errorf("initialize Identity data key ring: %w", err)
 	}
 	databaseSchema := connectionState.DatabaseSchema
-	store := &IdentityStore{SQLDatabase: base.NewSQLDatabase(db, engine, databaseSchema, ""), db: db, migrationDB: migrationDB, engine: engine, config: cfg, databaseSchema: databaseSchema, postgresProfile: connectionState.PostgresProfile, postgresCapabilities: connectionState.PostgresCapabilities, migratorCapabilities: connectionState.MigratorCapabilities, secretMaterialKey: activeMaterial, secretKeyProvider: keyRing, idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096), sqlMetrics: sqlMetrics, operationalMetrics: operationalMetrics}
+	sqlDatabase := base.NewSQLDatabase(db, engine, databaseSchema, "")
+	store := &IdentityStore{SQLDatabase: sqlDatabase, WriteFenceStore: workspace.NewWriteFenceStore(db, sqlDatabase.SQLRenderer), db: db, migrationDB: migrationDB, engine: engine, config: cfg, databaseSchema: databaseSchema, postgresProfile: connectionState.PostgresProfile, postgresCapabilities: connectionState.PostgresCapabilities, migratorCapabilities: connectionState.MigratorCapabilities, secretMaterialKey: activeMaterial, secretKeyProvider: keyRing, idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096), sqlMetrics: sqlMetrics, operationalMetrics: operationalMetrics}
 	var migrationErr error
 	migrationStarted := time.Now()
 	if cfg.EffectiveDatabaseMigrationMode() == "verify" {
@@ -121,9 +124,10 @@ func OpenBorrowedContext(ctx context.Context, cfg config.Config, db *sql.DB) (*I
 		return nil, fmt.Errorf("initialize Identity data key ring: %w", err)
 	}
 	schema := engine.DatabaseSchema(cfg)
+	sqlDatabase := base.NewSQLDatabase(db, engine, schema, "domainry_identity_")
 	store := &IdentityStore{
-		SQLDatabase: base.NewSQLDatabase(db, engine, schema, "domainry_identity_"),
-		db:          db, engine: engine, config: cfg, databaseSchema: schema,
+		SQLDatabase: sqlDatabase, WriteFenceStore: workspace.NewWriteFenceStore(db, sqlDatabase.SQLRenderer),
+		db: db, engine: engine, config: cfg, databaseSchema: schema,
 		secretMaterialKey: activeMaterial, secretKeyProvider: keyRing,
 		idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096),
 		sqlMetrics:         telemetry.NewSQLMetrics(), operationalMetrics: observability.NewMetrics(cfg.MigrationBackupLastSuccessAt, cfg.MigrationRestoreDrillSuccessAt),
