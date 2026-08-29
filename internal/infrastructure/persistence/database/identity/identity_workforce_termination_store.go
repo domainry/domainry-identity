@@ -7,6 +7,7 @@ import (
 
 	"github.com/domainry/domainry-foundation/apperror"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
 
 func (s *SQLIdentityStore) TerminateIdentityWorkforce(ctx context.Context, mutation identitymodel.IdentityWorkforceTerminationMutation) (identitymodel.IdentityWorkforceTerminationResult, error) {
@@ -30,14 +31,14 @@ func (s *SQLIdentityStore) TerminateIdentityWorkforce(ctx context.Context, mutat
 	if err := s.writeIdentityWorkforceProfile(ctx, tx, workspaceID, result.Profile); err != nil {
 		return result, err
 	}
-	assignmentResult, err := tx.ExecContext(ctx,
-		"UPDATE "+s.tableIdentifier("identity_workforce_assignments")+
-			" SET "+s.identifier("status")+" = 'disabled', "+s.identifier("effective_to")+" = "+s.placeholder(1)+
-			", "+s.identifier("version")+" = "+s.identifier("version")+" + 1, "+s.identifier("updated_at")+" = "+s.placeholder(2)+
-			" WHERE "+s.identifier("workspace_id")+" = "+s.placeholder(3)+" AND "+s.identifier("workforce_profile_id")+" = "+s.placeholder(4)+
-			" AND "+s.identifier("status")+" = 'active'",
-		strings.TrimSpace(mutation.EffectiveAt), now, workspaceID, result.Profile.ID,
-	)
+	statement, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(s.sqlRenderer(), "identity_workforce_assignments", workspaceID).
+		Set("status", "disabled").Set("effective_to", strings.TrimSpace(mutation.EffectiveAt)).
+		SetExpression("version", ormbuilder.Add(ormbuilder.Column("version"), ormbuilder.Value(1))).Set("updated_at", now).
+		Where(ormbuilder.And(ormbuilder.Equal("workforce_profile_id", result.Profile.ID), ormbuilder.Equal("status", "active"))).Build()
+	if err != nil {
+		return result, err
+	}
+	assignmentResult, err := tx.ExecContext(ctx, statement, arguments...)
 	if err != nil {
 		return result, err
 	}
@@ -48,26 +49,19 @@ func (s *SQLIdentityStore) TerminateIdentityWorkforce(ctx context.Context, mutat
 	if actorID == "" {
 		actorID = "runtime-workforce-termination"
 	}
-	entitlementResult, err := tx.ExecContext(ctx,
-		"UPDATE "+s.tableIdentifier("identity_user_role_assignments")+
-			" SET "+s.identifier("status")+" = 'revoked', "+s.identifier("revoked_by")+" = "+s.placeholder(1)+
-			", "+s.identifier("revoked_at")+" = "+s.placeholder(2)+", "+s.identifier("revoke_reason")+" = "+s.placeholder(3)+
-			", "+s.identifier("updated_at")+" = "+s.placeholder(4)+
-			" WHERE "+s.identifier("workspace_id")+" = "+s.placeholder(5)+" AND "+s.identifier("workforce_profile_id")+" = "+s.placeholder(6)+
-			" AND "+s.identifier("status")+" = 'active'",
-		actorID, now, valueOrFallback(strings.TrimSpace(mutation.Reason), "workforce_terminated"), now, workspaceID, result.Profile.ID,
-	)
+	entitlementResult, err := s.revokeWorkforceEntitlements(ctx, tx, workspaceID, result.Profile.ID, actorID, valueOrFallback(strings.TrimSpace(mutation.Reason), "workforce_terminated"), now)
 	if err != nil {
 		return result, err
 	}
 	if result.RevokedEntitlementCount, err = entitlementResult.RowsAffected(); err != nil {
 		return result, err
 	}
-	if err := tx.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM "+s.tableIdentifier("identity_profile_bindings")+
-			" WHERE "+s.identifier("workspace_id")+" = "+s.placeholder(1)+" AND "+s.identifier("identity_user_id")+" = "+s.placeholder(2),
-		workspaceID, result.Profile.IdentityUserID,
-	).Scan(&result.PreservedProfileBindings); err != nil {
+	statement, arguments, err = ormbuilder.NewWorkspaceSelectBuilder(s.sqlRenderer(), "identity_profile_bindings", workspaceID).
+		Projections(ormbuilder.Project(ormbuilder.CountAll())).Where(ormbuilder.Equal("identity_user_id", result.Profile.IdentityUserID)).Build()
+	if err != nil {
+		return result, err
+	}
+	if err := tx.QueryRowContext(ctx, statement, arguments...).Scan(&result.PreservedProfileBindings); err != nil {
 		return result, err
 	}
 	if err := tx.Commit(); err != nil {
