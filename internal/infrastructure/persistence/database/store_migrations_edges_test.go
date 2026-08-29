@@ -28,6 +28,7 @@ func openMigrationEdgeStore(t *testing.T) *IdentityStore {
 	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { _ = db.Close() })
 	store := &IdentityStore{db: db, engine: sqlite.NewEngine()}
+	attachBackupManager(store, nil)
 	if err := store.ensureMigrationLedger(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -142,6 +143,7 @@ func TestMigrationApplicationLedgerAndContextEdges(t *testing.T) {
 		t.Fatal(err)
 	}
 	closedStore := &IdentityStore{db: closedDB, engine: sqlite.NewEngine()}
+	attachBackupManager(closedStore, nil)
 	_ = closedDB.Close()
 	if err := closedStore.ensureMigrationLedger(t.Context()); err == nil {
 		t.Fatal("closed database prepared a ledger")
@@ -291,14 +293,14 @@ func TestMigrationBackupDiscoveryAndFailureEdges(t *testing.T) {
 	if _, err := store.db.ExecContext(t.Context(), `CREATE TABLE _schema_materializations(id TEXT); CREATE TABLE customer(id TEXT); INSERT INTO customer(id) VALUES ('one')`); err != nil {
 		t.Fatal(err)
 	}
-	tables, err := store.applicationTables(t.Context())
+	tables, err := store.ApplicationTables(t.Context())
 	if err != nil || !reflect.DeepEqual(tables, []string{"customer"}) {
 		t.Fatalf("tables=%v error=%v", tables, err)
 	}
-	if hasData, err := store.hasExistingApplicationData(t.Context()); err != nil || !hasData {
+	if hasData, err := store.HasExistingApplicationData(t.Context()); err != nil || !hasData {
 		t.Fatalf("hasData=%v error=%v", hasData, err)
 	}
-	if !isMigrationSystemTable("") || !isMigrationSystemTable(" _schema_migrations ") || isMigrationSystemTable("customer") {
+	if !migrationcontract.IsSystemTable("") || !migrationcontract.IsSystemTable(" _schema_migrations ") || migrationcontract.IsSystemTable("customer") {
 		t.Fatal("migration system table classification changed")
 	}
 
@@ -307,11 +309,12 @@ func TestMigrationBackupDiscoveryAndFailureEdges(t *testing.T) {
 		t.Fatal(err)
 	}
 	closedStore := &IdentityStore{db: closedDB, engine: sqlite.NewEngine()}
+	attachBackupManager(closedStore, nil)
 	_ = closedDB.Close()
-	if _, err := closedStore.applicationTables(t.Context()); err == nil {
+	if _, err := closedStore.ApplicationTables(t.Context()); err == nil {
 		t.Fatal("closed database listed tables")
 	}
-	if _, err := closedStore.hasExistingApplicationData(t.Context()); err == nil {
+	if _, err := closedStore.HasExistingApplicationData(t.Context()); err == nil {
 		t.Fatal("closed database checked data")
 	}
 
@@ -324,11 +327,11 @@ func TestMigrationBackupDiscoveryAndFailureEdges(t *testing.T) {
 	if err := os.WriteFile(blockedBackupDir, []byte("file"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.createSQLiteMigrationBackup(t.Context(), config.Config{DatabaseDSN: databasePath, MigrationBackupDir: blockedBackupDir}); err == nil || !strings.Contains(err.Error(), "create migration backup directory") {
+	if _, err := store.CreateSQLiteMigrationBackup(t.Context(), config.Config{DatabaseDSN: databasePath, MigrationBackupDir: blockedBackupDir}); err == nil || !strings.Contains(err.Error(), "create migration backup directory") {
 		t.Fatalf("blocked backup error=%v", err)
 	}
-	store.migrationBackupReady = false
-	if err := store.ensureMigrationBackupForExistingData(t.Context(), config.Config{DBPath: ":memory:"}); err == nil {
+	store.BackupManager.Reset()
+	if err := store.BackupManager.EnsureForExistingData(t.Context(), config.Config{DBPath: ":memory:"}); err == nil {
 		t.Fatal("existing in-memory database backup accepted")
 	}
 }

@@ -36,7 +36,8 @@ func TestApplicationTablesDialectAndFailureEdges(t *testing.T) {
 			store := identitySchemaStore(t, state)
 			store.engine = test.engine
 			store.databaseSchema = "runtime"
-			tables, err := store.applicationTables(t.Context())
+			attachBackupManager(store, nil)
+			tables, err := store.ApplicationTables(t.Context())
 			if err != nil || !reflect.DeepEqual(tables, []string{"alpha", "zeta"}) {
 				t.Fatalf("tables=%#v err=%v", tables, err)
 			}
@@ -44,7 +45,8 @@ func TestApplicationTablesDialectAndFailureEdges(t *testing.T) {
 	}
 	store := identitySchemaStore(t, &databaseSQLState{})
 	store.engine = namedTestDialect{Engine: sqlite.NewEngine(), name: "oracle"}
-	if _, err := store.applicationTables(t.Context()); err == nil {
+	attachBackupManager(store, nil)
+	if _, err := store.ApplicationTables(t.Context()); err == nil {
 		t.Fatal("unsupported dialect accepted")
 	}
 	for _, step := range []databaseSQLQueryStep{
@@ -53,7 +55,7 @@ func TestApplicationTablesDialectAndFailureEdges(t *testing.T) {
 		{columns: []string{"name"}, nextErr: errDatabaseSQL},
 	} {
 		store := identitySchemaStore(t, &databaseSQLState{querySteps: []databaseSQLQueryStep{step}})
-		if _, err := store.applicationTables(t.Context()); err == nil {
+		if _, err := store.ApplicationTables(t.Context()); err == nil {
 			t.Fatal("expected inventory error")
 		}
 	}
@@ -61,14 +63,14 @@ func TestApplicationTablesDialectAndFailureEdges(t *testing.T) {
 
 func TestExistingApplicationDataEdges(t *testing.T) {
 	store := identitySchemaStore(t, &databaseSQLState{querySteps: []databaseSQLQueryStep{{err: errDatabaseSQL}}})
-	if _, err := store.hasExistingApplicationData(t.Context()); !errors.Is(err, errDatabaseSQL) {
+	if _, err := store.HasExistingApplicationData(t.Context()); !errors.Is(err, errDatabaseSQL) {
 		t.Fatalf("inventory error=%v", err)
 	}
 	store = identitySchemaStore(t, &databaseSQLState{querySteps: []databaseSQLQueryStep{
 		{columns: []string{"name"}, rows: [][]driver.Value{{"records"}}},
 		{err: errDatabaseSQL},
 	}})
-	if _, err := store.hasExistingApplicationData(t.Context()); !errors.Is(err, errDatabaseSQL) {
+	if _, err := store.HasExistingApplicationData(t.Context()); !errors.Is(err, errDatabaseSQL) {
 		t.Fatalf("count error=%v", err)
 	}
 	for _, count := range []int64{0, 1} {
@@ -76,7 +78,7 @@ func TestExistingApplicationDataEdges(t *testing.T) {
 			{columns: []string{"name"}, rows: [][]driver.Value{{"records"}}},
 			{columns: []string{"count"}, rows: [][]driver.Value{{count}}},
 		}})
-		hasData, err := store.hasExistingApplicationData(t.Context())
+		hasData, err := store.HasExistingApplicationData(t.Context())
 		if err != nil || hasData != (count > 0) {
 			t.Fatalf("count=%d hasData=%v err=%v", count, hasData, err)
 		}
@@ -85,16 +87,18 @@ func TestExistingApplicationDataEdges(t *testing.T) {
 
 func TestEnsureMigrationBackupShortCircuitsAndFailures(t *testing.T) {
 	store := identitySchemaStore(t, &databaseSQLState{})
-	store.migrationBackupReady = true
-	if err := store.ensureMigrationBackupForExistingData(t.Context(), config.Config{}); err != nil {
+	if err := store.BackupManager.EnsureForExistingData(t.Context(), config.Config{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.BackupManager.EnsureForExistingData(t.Context(), config.Config{}); err != nil {
 		t.Fatal(err)
 	}
 	store = identitySchemaStore(t, &databaseSQLState{})
-	if err := store.ensureMigrationBackupForExistingData(t.Context(), config.Config{}); err != nil || !store.migrationBackupReady || store.migrationBackupID != "bootstrap-empty" {
-		t.Fatalf("ready=%v id=%q err=%v", store.migrationBackupReady, store.migrationBackupID, err)
+	if err := store.BackupManager.EnsureForExistingData(t.Context(), config.Config{}); err != nil || !store.BackupManager.Ready() || store.BackupManager.BackupID() != "bootstrap-empty" {
+		t.Fatalf("ready=%v id=%q err=%v", store.BackupManager.Ready(), store.BackupManager.BackupID(), err)
 	}
 	store = identitySchemaStore(t, &databaseSQLState{querySteps: []databaseSQLQueryStep{{err: errDatabaseSQL}}})
-	if err := store.ensureMigrationBackupForExistingData(t.Context(), config.Config{}); !errors.Is(err, errDatabaseSQL) {
+	if err := store.BackupManager.EnsureForExistingData(t.Context(), config.Config{}); !errors.Is(err, errDatabaseSQL) {
 		t.Fatalf("inventory error=%v", err)
 	}
 
@@ -106,7 +110,7 @@ func TestEnsureMigrationBackupShortCircuitsAndFailures(t *testing.T) {
 		{columns: []string{"name"}, rows: [][]driver.Value{{"records"}}},
 		{columns: []string{"count"}, rows: [][]driver.Value{{int64(1)}}},
 	}})
-	if err := store.ensureMigrationBackupForExistingData(t.Context(), config.Config{DBPath: "runtime.db", MigrationBackupDir: backupDir}); err == nil || !strings.Contains(err.Error(), "backup directory") {
+	if err := store.BackupManager.EnsureForExistingData(t.Context(), config.Config{DBPath: "runtime.db", MigrationBackupDir: backupDir}); err == nil || !strings.Contains(err.Error(), "backup directory") {
 		t.Fatalf("backup error=%v", err)
 	}
 
@@ -115,7 +119,8 @@ func TestEnsureMigrationBackupShortCircuitsAndFailures(t *testing.T) {
 		{columns: []string{"count"}, rows: [][]driver.Value{{int64(1)}}},
 	}})
 	store.engine = postgres.NewEngine()
-	if err := store.ensureMigrationBackupForExistingData(t.Context(), config.Config{}); err == nil || !strings.Contains(err.Error(), "MIGRATION_BACKUP_EVIDENCE_PATH") {
+	attachBackupManager(store, nil)
+	if err := store.BackupManager.EnsureForExistingData(t.Context(), config.Config{}); err == nil || !strings.Contains(err.Error(), "MIGRATION_BACKUP_EVIDENCE_PATH") {
 		t.Fatalf("external evidence error=%v", err)
 	}
 }
@@ -124,18 +129,18 @@ func TestCreateSQLiteMigrationBackupSQLAndEncryptionFailures(t *testing.T) {
 	backupDir := t.TempDir()
 	cfg := config.Config{DBPath: filepath.Join(t.TempDir(), "runtime.db"), MigrationBackupDir: backupDir}
 	store := identitySchemaStore(t, &databaseSQLState{execSteps: []databaseSQLExecStep{{err: errDatabaseSQL}}})
-	if _, err := store.createSQLiteMigrationBackup(t.Context(), cfg); !errors.Is(err, errDatabaseSQL) {
+	if _, err := store.CreateSQLiteMigrationBackup(t.Context(), cfg); !errors.Is(err, errDatabaseSQL) {
 		t.Fatalf("vacuum error=%v", err)
 	}
 	store = identitySchemaStore(t, &databaseSQLState{})
-	if _, err := store.createSQLiteMigrationBackup(t.Context(), config.Config{}); err == nil {
+	if _, err := store.CreateSQLiteMigrationBackup(t.Context(), config.Config{}); err == nil {
 		t.Fatal("empty database path accepted")
 	}
-	if _, err := store.createSQLiteMigrationBackup(t.Context(), cfg); err == nil || !strings.Contains(err.Error(), "encrypt sqlite migration backup") {
+	if _, err := store.CreateSQLiteMigrationBackup(t.Context(), cfg); err == nil || !strings.Contains(err.Error(), "encrypt sqlite migration backup") {
 		t.Fatalf("encryption error=%v", err)
 	}
 	cfg.DatabaseDSN = "file:memory"
-	if _, err := store.createSQLiteMigrationBackup(t.Context(), cfg); err == nil {
+	if _, err := store.CreateSQLiteMigrationBackup(t.Context(), cfg); err == nil {
 		t.Fatal("file DSN accepted")
 	}
 }
@@ -151,8 +156,9 @@ func TestSQLiteMigrationBackupChecksumAndStatFailures(t *testing.T) {
 	if _, err := db.ExecContext(t.Context(), `CREATE TABLE records(id TEXT); INSERT INTO records VALUES ('one')`); err != nil {
 		t.Fatal(err)
 	}
-	store := &IdentityStore{db: db, engine: sqlite.NewEngine(), backupChecksum: func(string) (string, error) { return "", errDatabaseSQL }}
-	if err := store.ensureMigrationBackupForExistingData(t.Context(), config.Config{DBPath: dbPath, MigrationBackupDir: filepath.Join(dir, "checksum")}); !errors.Is(err, errDatabaseSQL) {
+	store := &IdentityStore{db: db, engine: sqlite.NewEngine()}
+	attachBackupManager(store, func(string) (string, error) { return "", errDatabaseSQL })
+	if err := store.BackupManager.EnsureForExistingData(t.Context(), config.Config{DBPath: dbPath, MigrationBackupDir: filepath.Join(dir, "checksum")}); !errors.Is(err, errDatabaseSQL) {
 		t.Fatalf("checksum error=%v", err)
 	}
 
@@ -173,7 +179,7 @@ func TestSQLiteMigrationBackupChecksumAndStatFailures(t *testing.T) {
 			t.Fatal(err)
 		}
 		candidate := identitySchemaStore(t, &databaseSQLState{})
-		_, err := candidate.createSQLiteMigrationBackup(t.Context(), config.Config{DBPath: caseDB, MigrationBackupDir: caseBackup})
+		_, err := candidate.CreateSQLiteMigrationBackup(t.Context(), config.Config{DBPath: caseDB, MigrationBackupDir: caseBackup})
 		if err == nil || !strings.Contains(err.Error(), match) {
 			t.Fatalf("stat failure=%v", err)
 		}

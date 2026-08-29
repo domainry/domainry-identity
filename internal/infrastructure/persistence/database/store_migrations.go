@@ -37,7 +37,7 @@ func (s *IdentityStore) applyMigrations(ctx context.Context, cfg config.Config) 
 			return fmt.Errorf("check migration %s: %w", path, err)
 		}
 		if pending && !backupChecked {
-			if err := s.ensureMigrationBackupForExistingData(ctx, cfg); err != nil {
+			if err := s.BackupManager.EnsureForExistingData(ctx, cfg); err != nil {
 				return err
 			}
 			backupChecked = true
@@ -156,7 +156,7 @@ func (s *IdentityStore) applyMigrationFile(ctx context.Context, path string) err
 	checksum := migrationcontract.ChecksumBytes(raw)
 	version, migrationName := migrationcontract.Identity(name)
 	insertDirty := "INSERT INTO " + s.tableIdentifier("_schema_migrations") + " (" + migrationColumns(s) + ") VALUES (" + strings.Join(placeholders(s, 12), ", ") + ")"
-	if _, err := s.schemaDatabase().ExecContext(ctx, insertDirty, name, version, migrationName, migrationcontract.Kind(migrationName), checksum, true, time.Now().UTC().Format(time.RFC3339), strings.TrimSpace(s.config.ServiceVersion), 0, migrationcontract.Operator(s.config), migrationcontract.InstanceID(s.config), strings.TrimSpace(s.migrationBackupID)); err != nil {
+	if _, err := s.schemaDatabase().ExecContext(ctx, insertDirty, name, version, migrationName, migrationcontract.Kind(migrationName), checksum, true, time.Now().UTC().Format(time.RFC3339), strings.TrimSpace(s.config.ServiceVersion), 0, migrationcontract.Operator(s.config), migrationcontract.InstanceID(s.config), strings.TrimSpace(s.BackupManager.BackupID())); err != nil {
 		return fmt.Errorf("record dirty migration: %w", err)
 	}
 	tx, err := s.schemaDatabase().BeginTx(ctx, nil)

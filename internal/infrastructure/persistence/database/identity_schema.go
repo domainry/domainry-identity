@@ -68,7 +68,7 @@ func (s *IdentityStore) EnsureSchema(ctx context.Context) error {
 		if err := s.ValidateLegacyWorkspaceScopes(ctx); err != nil {
 			return err
 		}
-		if err := s.ensureMigrationBackupForExistingData(ctx, s.identityMigrationConfig()); err != nil {
+		if err := s.BackupManager.EnsureForExistingData(ctx, s.identityMigrationConfig()); err != nil {
 			return err
 		}
 		if err := s.startIdentitySchemaMigration(ctx, CurrentIdentitySchemaVersion); err != nil {
@@ -103,6 +103,7 @@ func (s *IdentityStore) identityMigrationStore() *IdentityStore {
 		RLSManager:           s.RLSManager,
 		ScopeValidator:       workspace.NewScopeValidator(s.migrationDB, s.engine, s.BuilderRenderer(), s.databaseSchema, s.relationPrefix),
 		StatusReader:         s.StatusReader,
+		BackupManager:        s.BackupManager,
 		db:                   s.migrationDB,
 		engine:               s.engine,
 		config:               s.config,
@@ -112,14 +113,11 @@ func (s *IdentityStore) identityMigrationStore() *IdentityStore {
 		migratorCapabilities: s.migratorCapabilities,
 		secretMaterialKey:    s.secretMaterialKey,
 		secretKeyProvider:    s.secretKeyProvider,
-		migrationBackupReady: s.migrationBackupReady,
 		migrationCompatible:  s.migrationCompatible,
-		migrationBackupID:    s.migrationBackupID,
 		idempotencyMetrics:   s.idempotencyMetrics,
 		sqlMetrics:           s.sqlMetrics,
 		operationalMetrics:   s.operationalMetrics,
 		schemaAssembler:      s.schemaAssembler,
-		backupChecksum:       s.backupChecksum,
 		migrationReadDir:     s.migrationReadDir,
 	}
 }
@@ -248,7 +246,7 @@ func (s *IdentityStore) identitySchemaMigrationPending(ctx context.Context, vers
 func (s *IdentityStore) startIdentitySchemaMigration(ctx context.Context, version string) error {
 	columns := []string{"version", "name", "kind", "checksum", "dirty", "applied_at", "service_version", "duration_ms", "operator", "instance_id", "backup_id"}
 	query := "INSERT INTO " + s.tableIdentifier(identitySchemaMigrationTable) + " (" + strings.Join(quotedColumns(s, columns), ", ") + ") VALUES (" + strings.Join(placeholders(s, len(columns)), ", ") + ")"
-	_, err := s.schemaDatabase().ExecContext(ctx, query, version, identitySchemaMigrationName, identitySchemaMigrationKind, currentIdentitySchemaChecksum(), true, time.Now().UTC().Format(time.RFC3339), s.config.ServiceVersion, 0, migrationcontract.Operator(s.config), migrationcontract.InstanceID(s.config), s.migrationBackupID)
+	_, err := s.schemaDatabase().ExecContext(ctx, query, version, identitySchemaMigrationName, identitySchemaMigrationKind, currentIdentitySchemaChecksum(), true, time.Now().UTC().Format(time.RFC3339), s.config.ServiceVersion, 0, migrationcontract.Operator(s.config), migrationcontract.InstanceID(s.config), s.BackupManager.BackupID())
 	return err
 }
 

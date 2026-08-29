@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/domainry/domainry-foundation/secrets"
+	migrationcontract "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/migration"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 )
@@ -79,16 +80,12 @@ func (s *IdentityStore) ColumnDefinition(definition string) string {
 }
 
 func ValidateExternalMigrationBackup(driverName, evidencePath string) error {
-	_, err := validateExternalMigrationBackup(driverName, evidencePath)
+	_, err := migrationcontract.ValidateExternalBackup(driverName, evidencePath)
 	return err
 }
 
 func MigrationPathsForEngine(cfg config.Config, engine driver.Engine) ([]string, error) {
 	return (&IdentityStore{engine: engine}).migrationPaths(cfg)
-}
-
-func (s *IdentityStore) CreateSQLiteMigrationBackup(ctx context.Context, cfg config.Config) (string, error) {
-	return s.createSQLiteMigrationBackup(ctx, cfg)
 }
 
 func NonNilMap(value map[string]any) map[string]any {

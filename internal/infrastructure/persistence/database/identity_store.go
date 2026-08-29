@@ -29,6 +29,7 @@ type IdentityStore struct {
 	*workspace.RLSManager
 	*workspace.ScopeValidator
 	*migrationowner.StatusReader
+	*migrationowner.BackupManager
 	db                   *sql.DB
 	migrationDB          *sql.DB
 	migrationConn        *sql.Conn
@@ -40,14 +41,11 @@ type IdentityStore struct {
 	migratorCapabilities postgres.Capabilities
 	secretMaterialKey    [32]byte
 	secretKeyProvider    secrets.KeyProvider
-	migrationBackupReady bool
 	migrationCompatible  bool
-	migrationBackupID    string
 	idempotencyMetrics   *idempotency.MemoryMetricsCollector
 	sqlMetrics           *telemetry.SQLMetrics
 	operationalMetrics   *observability.Metrics
 	schemaAssembler      identitySchemaAssembler
-	backupChecksum       func(string) (string, error)
 	migrationReadDir     func(string) ([]os.DirEntry, error)
 	borrowedDatabase     bool
 	relationPrefix       string
@@ -88,10 +86,12 @@ func openContextWithDependencies(ctx context.Context, cfg config.Config, depende
 	sqlDatabase := base.NewSQLDatabase(db, engine, databaseSchema, "")
 	rlsManager := workspace.NewRLSManager(workspace.RLSOptions{Database: db, MigrationDatabase: migrationDB, Engine: engine, Renderer: sqlDatabase.SQLRenderer, DatabaseSchema: databaseSchema, ApplicationRole: connectionState.PostgresCapabilities.User, Enabled: cfg.DatabaseRLSEnabled, Apply: cfg.EffectiveDatabaseMigrationMode() == "apply", ConnectionProfileSet: connectionState.PostgresProfile != nil})
 	migrationDatabase := driver.SchemaDatabase(db)
+	backupDatabase := db
 	if migrationDB != nil {
 		migrationDatabase = migrationDB
+		backupDatabase = migrationDB
 	}
-	store := &IdentityStore{SQLDatabase: sqlDatabase, WriteFenceStore: workspace.NewWriteFenceStore(db, sqlDatabase.SQLRenderer), RLSManager: rlsManager, ScopeValidator: workspace.NewScopeValidator(db, engine, sqlDatabase.SQLRenderer, databaseSchema, ""), StatusReader: migrationowner.NewStatusReader(migrationDatabase, engine, sqlDatabase.SQLRenderer, cfg), db: db, migrationDB: migrationDB, engine: engine, config: cfg, databaseSchema: databaseSchema, postgresProfile: connectionState.PostgresProfile, postgresCapabilities: connectionState.PostgresCapabilities, migratorCapabilities: connectionState.MigratorCapabilities, secretMaterialKey: activeMaterial, secretKeyProvider: keyRing, idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096), sqlMetrics: sqlMetrics, operationalMetrics: operationalMetrics}
+	store := &IdentityStore{SQLDatabase: sqlDatabase, WriteFenceStore: workspace.NewWriteFenceStore(db, sqlDatabase.SQLRenderer), RLSManager: rlsManager, ScopeValidator: workspace.NewScopeValidator(db, engine, sqlDatabase.SQLRenderer, databaseSchema, ""), StatusReader: migrationowner.NewStatusReader(migrationDatabase, engine, sqlDatabase.SQLRenderer, cfg), BackupManager: migrationowner.NewBackupManager(migrationowner.BackupOptions{Database: backupDatabase, Engine: engine, Renderer: sqlDatabase.SQLRenderer, DatabaseSchema: databaseSchema, SecretMaterialKey: activeMaterial, Metrics: operationalMetrics}), db: db, migrationDB: migrationDB, engine: engine, config: cfg, databaseSchema: databaseSchema, postgresProfile: connectionState.PostgresProfile, postgresCapabilities: connectionState.PostgresCapabilities, migratorCapabilities: connectionState.MigratorCapabilities, secretMaterialKey: activeMaterial, secretKeyProvider: keyRing, idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096), sqlMetrics: sqlMetrics, operationalMetrics: operationalMetrics}
 	var migrationErr error
 	migrationStarted := time.Now()
 	if cfg.EffectiveDatabaseMigrationMode() == "verify" {
@@ -131,15 +131,17 @@ func OpenBorrowedContext(ctx context.Context, cfg config.Config, db *sql.DB) (*I
 	}
 	schema := engine.DatabaseSchema(cfg)
 	sqlDatabase := base.NewSQLDatabase(db, engine, schema, "domainry_identity_")
+	operationalMetrics := observability.NewMetrics(cfg.MigrationBackupLastSuccessAt, cfg.MigrationRestoreDrillSuccessAt)
 	store := &IdentityStore{
 		SQLDatabase: sqlDatabase, WriteFenceStore: workspace.NewWriteFenceStore(db, sqlDatabase.SQLRenderer),
 		RLSManager:     workspace.NewRLSManager(workspace.RLSOptions{Database: db, Engine: engine, Renderer: sqlDatabase.SQLRenderer, DatabaseSchema: schema, Enabled: cfg.DatabaseRLSEnabled, Apply: cfg.EffectiveDatabaseMigrationMode() == "apply"}),
 		ScopeValidator: workspace.NewScopeValidator(db, engine, sqlDatabase.SQLRenderer, schema, "domainry_identity_"),
 		StatusReader:   migrationowner.NewStatusReader(db, engine, sqlDatabase.SQLRenderer, cfg),
+		BackupManager:  migrationowner.NewBackupManager(migrationowner.BackupOptions{Database: db, Engine: engine, Renderer: sqlDatabase.SQLRenderer, DatabaseSchema: schema, RelationPrefix: "domainry_identity_", SecretMaterialKey: activeMaterial, Metrics: operationalMetrics}),
 		db:             db, engine: engine, config: cfg, databaseSchema: schema,
 		secretMaterialKey: activeMaterial, secretKeyProvider: keyRing,
 		idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096),
-		sqlMetrics:         telemetry.NewSQLMetrics(), operationalMetrics: observability.NewMetrics(cfg.MigrationBackupLastSuccessAt, cfg.MigrationRestoreDrillSuccessAt),
+		sqlMetrics:         telemetry.NewSQLMetrics(), operationalMetrics: operationalMetrics,
 		borrowedDatabase: true,
 		relationPrefix:   "domainry_identity_",
 	}

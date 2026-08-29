@@ -78,23 +78,25 @@ func TestMigrationBackupAndTableDiscoveryRejectInvalidInputs(t *testing.T) {
 		{driver: "postgres", want: "MIGRATION_BACKUP_EVIDENCE_PATH"},
 		{driver: "mysql", evidence: filepath.Join(t.TempDir(), "missing.json"), want: "read backup evidence"},
 	} {
-		if _, err := validateExternalMigrationBackup(test.driver, test.evidence); err == nil || !strings.Contains(err.Error(), test.want) {
+		if _, err := migrationcontract.ValidateExternalBackup(test.driver, test.evidence); err == nil || !strings.Contains(err.Error(), test.want) {
 			t.Fatalf("driver=%q error=%v want=%q", test.driver, err, test.want)
 		}
 	}
 
 	store := &IdentityStore{engine: sqlite.NewEngine()}
+	attachBackupManager(store, nil)
 	cancelled, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, err := store.createSQLiteMigrationBackup(cancelled, config.Config{}); err == nil || !strings.Contains(err.Error(), "context canceled") {
+	if _, err := store.CreateSQLiteMigrationBackup(cancelled, config.Config{}); err == nil || !strings.Contains(err.Error(), "context canceled") {
 		t.Fatalf("cancelled backup error=%v", err)
 	}
-	if _, err := store.createSQLiteMigrationBackup(t.Context(), config.Config{DBPath: ":memory:"}); err == nil || !strings.Contains(err.Error(), "not a copyable file path") {
+	if _, err := store.CreateSQLiteMigrationBackup(t.Context(), config.Config{DBPath: ":memory:"}); err == nil || !strings.Contains(err.Error(), "not a copyable file path") {
 		t.Fatalf("memory backup error=%v", err)
 	}
 
 	unsupported := &IdentityStore{engine: unsupportedMigrationDialect{Engine: sqlite.NewEngine()}}
-	if _, err := unsupported.applicationTables(t.Context()); err == nil || !strings.Contains(err.Error(), "unsupported database driver") {
+	attachBackupManager(unsupported, nil)
+	if _, err := unsupported.ApplicationTables(t.Context()); err == nil || !strings.Contains(err.Error(), "unsupported database driver") {
 		t.Fatalf("applicationTables error=%v", err)
 	}
 }
@@ -121,11 +123,11 @@ func TestValidateExternalMigrationBackupAcceptsMatchingEvidence(t *testing.T) {
 	if err := os.WriteFile(path, raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	loaded, err := validateExternalMigrationBackup("postgres", path)
+	loaded, err := migrationcontract.ValidateExternalBackup("postgres", path)
 	if err != nil || loaded.BackupID != evidence.BackupID {
 		t.Fatalf("loaded=%+v err=%v", loaded, err)
 	}
-	if _, err := validateExternalMigrationBackup("mysql", path); err == nil || !strings.Contains(err.Error(), "does not match") {
+	if _, err := migrationcontract.ValidateExternalBackup("mysql", path); err == nil || !strings.Contains(err.Error(), "does not match") {
 		t.Fatalf("engine mismatch error=%v", err)
 	}
 	state := &databaseSQLState{querySteps: []databaseSQLQueryStep{
@@ -135,18 +137,20 @@ func TestValidateExternalMigrationBackupAcceptsMatchingEvidence(t *testing.T) {
 	store := identitySchemaStore(t, state)
 	store.engine = postgres.NewEngine()
 	store.operationalMetrics = observability.NewMetrics("", "")
-	if err := store.ensureMigrationBackupForExistingData(t.Context(), config.Config{MigrationBackupEvidencePath: path}); err != nil {
+	attachBackupManager(store, nil)
+	if err := store.BackupManager.EnsureForExistingData(t.Context(), config.Config{MigrationBackupEvidencePath: path}); err != nil {
 		t.Fatal(err)
 	}
-	if !store.migrationBackupReady || store.migrationBackupID != evidence.BackupID || store.operationalMetrics.AgeSnapshot().BackupLastSuccess.IsZero() {
-		t.Fatalf("ready=%v id=%q metrics=%+v", store.migrationBackupReady, store.migrationBackupID, store.operationalMetrics.AgeSnapshot())
+	if !store.BackupManager.Ready() || store.BackupManager.BackupID() != evidence.BackupID || store.operationalMetrics.AgeSnapshot().BackupLastSuccess.IsZero() {
+		t.Fatalf("ready=%v id=%q metrics=%+v", store.BackupManager.Ready(), store.BackupManager.BackupID(), store.operationalMetrics.AgeSnapshot())
 	}
 	store = identitySchemaStore(t, &databaseSQLState{querySteps: []databaseSQLQueryStep{
 		{columns: []string{"name"}, rows: [][]driver.Value{{"records"}}},
 		{columns: []string{"count"}, rows: [][]driver.Value{{int64(1)}}},
 	}})
 	store.engine = postgres.NewEngine()
-	if err := store.ensureMigrationBackupForExistingData(t.Context(), config.Config{MigrationBackupEvidencePath: path}); err != nil {
+	attachBackupManager(store, nil)
+	if err := store.BackupManager.EnsureForExistingData(t.Context(), config.Config{MigrationBackupEvidencePath: path}); err != nil {
 		t.Fatalf("external backup without metrics=%v", err)
 	}
 }
@@ -158,13 +162,14 @@ func TestEnsureMigrationBackupCoversEmptyAndExistingSQLiteDatabases(t *testing.T
 	}
 	t.Cleanup(func() { _ = emptyDB.Close() })
 	emptyStore := &IdentityStore{db: emptyDB, engine: sqlite.NewEngine()}
-	if err := emptyStore.ensureMigrationBackupForExistingData(t.Context(), config.Config{}); err != nil {
+	attachBackupManager(emptyStore, nil)
+	if err := emptyStore.BackupManager.EnsureForExistingData(t.Context(), config.Config{}); err != nil {
 		t.Fatal(err)
 	}
-	if !emptyStore.migrationBackupReady || emptyStore.migrationBackupID != "bootstrap-empty" {
-		t.Fatalf("empty backup state ready=%v id=%q", emptyStore.migrationBackupReady, emptyStore.migrationBackupID)
+	if !emptyStore.BackupManager.Ready() || emptyStore.BackupManager.BackupID() != "bootstrap-empty" {
+		t.Fatalf("empty backup state ready=%v id=%q", emptyStore.BackupManager.Ready(), emptyStore.BackupManager.BackupID())
 	}
-	if err := emptyStore.ensureMigrationBackupForExistingData(t.Context(), config.Config{}); err != nil {
+	if err := emptyStore.BackupManager.EnsureForExistingData(t.Context(), config.Config{}); err != nil {
 		t.Fatalf("already-ready backup error=%v", err)
 	}
 
@@ -179,18 +184,20 @@ func TestEnsureMigrationBackupCoversEmptyAndExistingSQLiteDatabases(t *testing.T
 		t.Fatal(err)
 	}
 	store := &IdentityStore{db: db, engine: sqlite.NewEngine(), operationalMetrics: observability.NewMetrics("", "")}
-	if err := store.ensureMigrationBackupForExistingData(t.Context(), config.Config{DBPath: dbPath, MigrationBackupDir: filepath.Join(dir, "backups")}); err != nil {
+	attachBackupManager(store, nil)
+	if err := store.BackupManager.EnsureForExistingData(t.Context(), config.Config{DBPath: dbPath, MigrationBackupDir: filepath.Join(dir, "backups")}); err != nil {
 		t.Fatal(err)
 	}
-	if !store.migrationBackupReady || !strings.HasPrefix(store.migrationBackupID, "sqlite-") {
-		t.Fatalf("existing backup state ready=%v id=%q", store.migrationBackupReady, store.migrationBackupID)
+	if !store.BackupManager.Ready() || !strings.HasPrefix(store.BackupManager.BackupID(), "sqlite-") {
+		t.Fatalf("existing backup state ready=%v id=%q", store.BackupManager.Ready(), store.BackupManager.BackupID())
 	}
 	entries, err := os.ReadDir(filepath.Join(dir, "backups"))
 	if err != nil || len(entries) != 1 || !strings.HasSuffix(entries[0].Name(), ".bak.enc") {
 		t.Fatalf("backup entries=%v err=%v", entries, err)
 	}
 	store = &IdentityStore{db: db, engine: sqlite.NewEngine()}
-	if err := store.ensureMigrationBackupForExistingData(t.Context(), config.Config{DBPath: dbPath, MigrationBackupDir: filepath.Join(dir, "backups-without-metrics")}); err != nil {
+	attachBackupManager(store, nil)
+	if err := store.BackupManager.EnsureForExistingData(t.Context(), config.Config{DBPath: dbPath, MigrationBackupDir: filepath.Join(dir, "backups-without-metrics")}); err != nil {
 		t.Fatalf("sqlite backup without metrics=%v", err)
 	}
 }

@@ -25,7 +25,9 @@ func identitySchemaStore(t *testing.T, state *databaseSQLState) *IdentityStore {
 	t.Cleanup(func() { _ = db.Close() })
 	engine := sqlite.NewEngine()
 	renderer := base.NewSQLDatabase(db, engine, "", "").SQLRenderer
-	return &IdentityStore{db: db, engine: engine, ScopeValidator: workspace.NewScopeValidator(db, engine, renderer, "", ""), StatusReader: migrationowner.NewStatusReader(db, engine, renderer, config.Config{})}
+	store := &IdentityStore{db: db, engine: engine, ScopeValidator: workspace.NewScopeValidator(db, engine, renderer, "", ""), StatusReader: migrationowner.NewStatusReader(db, engine, renderer, config.Config{})}
+	attachBackupManager(store, nil)
+	return store
 }
 
 func identitySchemaLedgerQueries(count int64, checksum string, dirty bool) []databaseSQLQueryStep {
