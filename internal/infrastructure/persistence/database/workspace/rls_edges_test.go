@@ -1,4 +1,4 @@
-package database
+package workspace
 
 import (
 	"context"
@@ -11,13 +11,13 @@ import (
 
 	"github.com/domainry/domainry-foundation/requestcontext"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/connection"
-	workspacepersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/workspace"
+	persistencedriver "github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	postgrespersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/postgres"
 	postgresrls "github.com/domainry/domainry-identity/internal/infrastructure/persistence/postgres/rls"
 )
 
 func TestWorkspaceRLSStatusCopiesSlices(t *testing.T) {
-	store := &IdentityStore{RLSManager: workspacepersistence.NewRLSManager(workspacepersistence.RLSOptions{Status: WorkspaceRLSStatus{Enabled: true, CoveredTables: []string{"records"}, MissingTables: []string{"audit"}}})}
+	store := NewRLSManager(RLSOptions{Status: WorkspaceRLSStatus{Enabled: true, CoveredTables: []string{"records"}, MissingTables: []string{"audit"}}})
 	status := store.WorkspaceRLSStatus(t.Context())
 	status.CoveredTables[0], status.MissingTables[0] = "changed", "changed"
 	preserved := store.WorkspaceRLSStatus(t.Context())
@@ -27,24 +27,24 @@ func TestWorkspaceRLSStatusCopiesSlices(t *testing.T) {
 }
 
 func TestEnsureWorkspaceRLSGuardsAndSuccess(t *testing.T) {
-	if err := (*workspacepersistence.RLSManager)(nil).EnsureWorkspaceRLS(t.Context()); err != nil {
+	if err := (*RLSManager)(nil).EnsureWorkspaceRLS(t.Context()); err != nil {
 		t.Fatalf("nil store: %v", err)
 	}
 	sqliteDialect, _ := connection.EngineFor("sqlite")
-	store := &IdentityStore{RLSManager: workspacepersistence.NewRLSManager(workspacepersistence.RLSOptions{Engine: sqliteDialect, Enabled: true, Status: WorkspaceRLSStatus{Enabled: true}})}
+	store := NewRLSManager(RLSOptions{Engine: sqliteDialect, Enabled: true, Status: WorkspaceRLSStatus{Enabled: true}})
 	if err := store.EnsureWorkspaceRLS(t.Context()); err != nil || store.WorkspaceRLSStatus(t.Context()).Enabled {
 		t.Fatalf("sqlite status=%#v err=%v", store.WorkspaceRLSStatus(t.Context()), err)
 	}
 	postgresDialect, _ := connection.EngineFor("postgres")
-	store = &IdentityStore{RLSManager: workspacepersistence.NewRLSManager(workspacepersistence.RLSOptions{Engine: postgresDialect, Status: WorkspaceRLSStatus{Enabled: true}})}
+	store = NewRLSManager(RLSOptions{Engine: postgresDialect, Status: WorkspaceRLSStatus{Enabled: true}})
 	if err := store.EnsureWorkspaceRLS(t.Context()); err != nil || store.WorkspaceRLSStatus(t.Context()).Enabled {
 		t.Fatalf("disabled status=%#v err=%v", store.WorkspaceRLSStatus(t.Context()), err)
 	}
-	store = &IdentityStore{RLSManager: workspacepersistence.NewRLSManager(workspacepersistence.RLSOptions{Engine: postgresDialect, Enabled: true})}
+	store = NewRLSManager(RLSOptions{Engine: postgresDialect, Enabled: true})
 	if err := store.EnsureWorkspaceRLS(t.Context()); err == nil || !strings.Contains(err.Error(), "connection profile") {
 		t.Fatalf("profile error=%v", err)
 	}
-	store = &IdentityStore{RLSManager: workspacepersistence.NewRLSManager(workspacepersistence.RLSOptions{Engine: postgresDialect, Enabled: true, Apply: true, ConnectionProfileSet: true})}
+	store = NewRLSManager(RLSOptions{Engine: postgresDialect, Enabled: true, Apply: true, ConnectionProfileSet: true})
 	if err := store.EnsureWorkspaceRLS(t.Context()); err == nil || !strings.Contains(err.Error(), "migration connection") {
 		t.Fatalf("migration error=%v", err)
 	}
@@ -173,11 +173,11 @@ func TestSetLocalWorkspaceRLSContext(t *testing.T) {
 	}
 }
 
-func newWorkspaceRLSTestStore(engine databaseEngine, db, migrationDB *sql.DB, mode string) *IdentityStore {
-	return &IdentityStore{RLSManager: workspacepersistence.NewRLSManager(workspacepersistence.RLSOptions{
+func newWorkspaceRLSTestStore(engine persistencedriver.Engine, db, migrationDB *sql.DB, mode string) *RLSManager {
+	return NewRLSManager(RLSOptions{
 		Database: db, MigrationDatabase: migrationDB, Engine: engine, Renderer: engine.SQLDialect().WithSchema("public"),
 		DatabaseSchema: "public", ApplicationRole: "runtime_user", Enabled: true, Apply: mode == "apply", ConnectionProfileSet: true,
-	})}
+	})
 }
 
 type workspaceRLSScript struct {

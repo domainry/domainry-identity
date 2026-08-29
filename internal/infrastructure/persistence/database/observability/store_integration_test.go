@@ -1,15 +1,16 @@
-package database
+package observability_test
 
 import (
 	"path/filepath"
 	"strings"
 	"testing"
 
+	identitydatabase "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 )
 
 func TestIdentityStoreObservesAllSQLWithoutQueryTextLabels(t *testing.T) {
-	store, err := OpenContext(t.Context(), config.Config{
+	store, err := identitydatabase.OpenContext(t.Context(), config.Config{
 		DatabaseDriver: "sqlite", DBPath: filepath.Join(t.TempDir(), "observability.db"),
 		IdentityDataSecretKey: "test-integration-secret-key",
 	})

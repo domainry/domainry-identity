@@ -1,4 +1,4 @@
-package database
+package migration
 
 import (
 	"context"
@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/observability"
+	persistencedriver "github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/mysql"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/postgres"
 	"github.com/domainry/domainry-identity/internal/platform/config"
@@ -113,7 +114,7 @@ func openMigrationLockScript(t *testing.T, script *migrationLockScript) *sql.DB 
 func TestAcquireMigrationLockCoversExternalDialectsAndRelease(t *testing.T) {
 	tests := []struct {
 		name      string
-		engine    databaseEngine
+		engine    persistencedriver.Engine
 		result    driver.Value
 		lockSQL   string
 		unlockSQL string
@@ -125,14 +126,13 @@ func TestAcquireMigrationLockCoversExternalDialectsAndRelease(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			script := &migrationLockScript{results: []driver.Value{test.result}}
 			db := openMigrationLockScript(t, script)
-			store := &IdentityStore{db: db, engine: test.engine, databaseSchema: "runtime", operationalMetrics: observability.NewMetrics("", "")}
-			attachLockManager(store)
+			manager := NewLockManager(db, test.engine, test.engine.SQLDialect().WithSchema("runtime"), "runtime", config.Config{}, observability.NewMetrics("", ""))
 			ctx, cancel := context.WithCancel(t.Context())
-			release, err := store.LockManager.Acquire(ctx, config.Config{MigrationInstanceID: "test-instance"})
+			release, err := manager.Acquire(ctx, config.Config{MigrationInstanceID: "test-instance"})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if store.LockManager.Connection() == nil {
+			if manager.Connection() == nil {
 				t.Fatal("migration connection was not retained while lock is held")
 			}
 			cancel()
@@ -145,16 +145,16 @@ func TestAcquireMigrationLockCoversExternalDialectsAndRelease(t *testing.T) {
 			if len(script.execs) != 1 || !strings.Contains(script.execs[0], test.unlockSQL) {
 				t.Fatalf("unlock execs=%v", script.execs)
 			}
-			if script.execContextErr != nil || store.LockManager.Connection() != nil {
-				t.Fatalf("release context error=%v retained=%v", script.execContextErr, store.LockManager.Connection() != nil)
+			if script.execContextErr != nil || manager.Connection() != nil {
+				t.Fatalf("release context error=%v retained=%v", script.execContextErr, manager.Connection() != nil)
 			}
 		})
 	}
 	script := &migrationLockScript{results: []driver.Value{true}}
 	migrationDB := openMigrationLockScript(t, script)
-	store := &IdentityStore{migrationDB: migrationDB, engine: postgres.NewEngine(), config: config.Config{DatabaseConnectTimeout: time.Second}}
-	attachLockManager(store)
-	release, err := store.LockManager.Acquire(t.Context(), config.Config{})
+	engine := postgres.NewEngine()
+	manager := NewLockManager(migrationDB, engine, engine.SQLDialect().WithSchema("public"), "", config.Config{DatabaseConnectTimeout: time.Second}, nil)
+	release, err := manager.Acquire(t.Context(), config.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,9 +175,9 @@ func TestAcquireMigrationLockReportsConnectionQueryAndTimeoutFailures(t *testing
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			db := openMigrationLockScript(t, test.script)
-			store := &IdentityStore{db: db, engine: postgres.NewEngine(), config: config.Config{DatabaseLockTimeout: test.timeout}}
-			attachLockManager(store)
-			if _, err := store.LockManager.Acquire(t.Context(), config.Config{MigrationInstanceID: "test-instance"}); err == nil || !strings.Contains(err.Error(), test.want) {
+			engine := postgres.NewEngine()
+			manager := NewLockManager(db, engine, engine.SQLDialect().WithSchema("public"), "", config.Config{DatabaseLockTimeout: test.timeout}, nil)
+			if _, err := manager.Acquire(t.Context(), config.Config{MigrationInstanceID: "test-instance"}); err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("error=%v want=%q", err, test.want)
 			}
 		})
@@ -187,9 +187,9 @@ func TestAcquireMigrationLockReportsConnectionQueryAndTimeoutFailures(t *testing
 func TestAcquireMigrationLockWaitsThenSucceeds(t *testing.T) {
 	script := &migrationLockScript{results: []driver.Value{false, true}}
 	db := openMigrationLockScript(t, script)
-	store := &IdentityStore{db: db, engine: postgres.NewEngine(), config: config.Config{DatabaseLockTimeout: time.Second}}
-	attachLockManager(store)
-	release, err := store.LockManager.Acquire(t.Context(), config.Config{MigrationInstanceID: "wait-success"})
+	engine := postgres.NewEngine()
+	manager := NewLockManager(db, engine, engine.SQLDialect().WithSchema("public"), "", config.Config{DatabaseLockTimeout: time.Second}, nil)
+	release, err := manager.Acquire(t.Context(), config.Config{MigrationInstanceID: "wait-success"})
 	if err != nil {
 		t.Fatal(err)
 	}

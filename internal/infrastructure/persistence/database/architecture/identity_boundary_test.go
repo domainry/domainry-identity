@@ -1,4 +1,4 @@
-package database_test
+package architecture_test
 
 import (
 	"io/fs"
@@ -14,7 +14,7 @@ func TestIdentityPersistenceDoesNotReintroducePlaneRuntimeOwnership(t *testing.T
 	if !ok {
 		t.Fatal("resolve Identity persistence source root")
 	}
-	root := filepath.Dir(sourceFile)
+	root := filepath.Dir(filepath.Dir(sourceFile))
 	forbidden := []string{
 		"RuntimeStore",
 		"RuntimeOperationalMetrics",
@@ -56,7 +56,7 @@ func TestIdentityDirectoryPaginationRemainsWorkspaceKeysetOnly(t *testing.T) {
 	if !ok {
 		t.Fatal("resolve Identity persistence source root")
 	}
-	path := filepath.Join(filepath.Dir(sourceFile), "identity", "identity_directory_page_store.go")
+	path := filepath.Join(filepath.Dir(filepath.Dir(sourceFile)), "identity", "identity_directory_page_store.go")
 	source, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)

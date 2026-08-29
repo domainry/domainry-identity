@@ -1,4 +1,4 @@
-package database
+package architecture_test
 
 import (
 	"os"
@@ -9,7 +9,7 @@ import (
 )
 
 func TestProductionSQLUsesTableIdentifierAfterRelationKeywords(t *testing.T) {
-	root := "."
+	root := ".."
 	unqualified := regexp.MustCompile(`(?i)(?:INSERT(?: OR REPLACE)? INTO|UPDATE|DELETE FROM|FROM|JOIN|CREATE TABLE IF NOT EXISTS|ALTER TABLE|REFERENCES|ON|DROP TABLE|TRUNCATE)\s*"\s*\+\s*[A-Za-z_][A-Za-z0-9_.]*\.(?:Identifier|identifier)\(`)
 	violations := []string{}
 	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
