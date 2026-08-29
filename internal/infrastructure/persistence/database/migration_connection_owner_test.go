@@ -18,6 +18,7 @@ func TestFileMigrationsUseDedicatedManagementConnection(t *testing.T) {
 	store := &IdentityStore{db: queryDB, migrationDB: migrationDB, engine: sqlite.NewEngine()}
 	attachBackupManager(store, nil)
 	attachLockManager(store)
+	attachLedger(store)
 
 	migrationPath := filepath.Join(t.TempDir(), "001_management_owner.sql")
 	if err := os.WriteFile(migrationPath, []byte(`CREATE TABLE management_owned (id TEXT PRIMARY KEY);`), 0o600); err != nil {
@@ -40,6 +41,7 @@ func TestIdentitySchemaUsesDedicatedManagementConnection(t *testing.T) {
 	store := &IdentityStore{db: queryDB, migrationDB: migrationDB, engine: sqlite.NewEngine(), config: config.Config{MigrationBackupDir: t.TempDir()}}
 	attachBackupManager(store, nil)
 	attachLockManager(store)
+	attachLedger(store)
 	if err := store.EnsureSchema(t.Context()); err != nil {
 		t.Fatal(err)
 	}

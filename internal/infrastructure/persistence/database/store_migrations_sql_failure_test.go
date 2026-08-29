@@ -64,18 +64,19 @@ func TestApplyMigrationFilePostgresTimeoutSuccess(t *testing.T) {
 func TestEnsureMigrationLedgerSQLFailures(t *testing.T) {
 	store := identitySchemaStore(t, &databaseSQLState{execSteps: []databaseSQLExecStep{{err: errDatabaseSQL}}})
 	store.engine, store.databaseSchema = postgres.NewEngine(), "runtime"
-	if err := store.ensureMigrationLedger(t.Context()); !errors.Is(err, errDatabaseSQL) {
+	attachLedger(store)
+	if err := store.Ledger.Ensure(t.Context()); !errors.Is(err, errDatabaseSQL) {
 		t.Fatalf("schema error=%v", err)
 	}
 	store = identitySchemaStore(t, &databaseSQLState{execSteps: []databaseSQLExecStep{{err: errDatabaseSQL}}})
-	if err := store.ensureMigrationLedger(t.Context()); !errors.Is(err, errDatabaseSQL) {
+	if err := store.Ledger.Ensure(t.Context()); !errors.Is(err, errDatabaseSQL) {
 		t.Fatalf("table error=%v", err)
 	}
 	store = identitySchemaStore(t, &databaseSQLState{
 		execSteps:  []databaseSQLExecStep{{rows: 1}, {err: errDatabaseSQL}},
 		querySteps: []databaseSQLQueryStep{{err: errDatabaseSQL}},
 	})
-	if err := store.ensureMigrationLedger(t.Context()); !errors.Is(err, errDatabaseSQL) {
+	if err := store.Ledger.Ensure(t.Context()); !errors.Is(err, errDatabaseSQL) {
 		t.Fatalf("alter error=%v", err)
 	}
 }
@@ -84,12 +85,13 @@ func TestEnsureMigrationLedgerPostgresConditionOutcomes(t *testing.T) {
 	for _, schema := range []string{"", "public", "runtime"} {
 		store := identitySchemaStore(t, &databaseSQLState{querySteps: make([]databaseSQLQueryStep, 10)})
 		store.engine, store.databaseSchema = postgres.NewEngine(), schema
-		if err := store.ensureMigrationLedger(t.Context()); err != nil {
+		attachLedger(store)
+		if err := store.Ledger.Ensure(t.Context()); err != nil {
 			t.Fatalf("schema=%q error=%v", schema, err)
 		}
 	}
 	store := identitySchemaStore(t, &databaseSQLState{querySteps: append([]databaseSQLQueryStep{{err: errDatabaseSQL}}, make([]databaseSQLQueryStep, 9)...)})
-	if err := store.ensureMigrationLedger(t.Context()); err != nil {
+	if err := store.Ledger.Ensure(t.Context()); err != nil {
 		t.Fatalf("alter success=%v", err)
 	}
 }

@@ -31,6 +31,7 @@ type IdentityStore struct {
 	*migrationowner.StatusReader
 	*migrationowner.BackupManager
 	*migrationowner.LockManager
+	*migrationowner.Ledger
 	db                   *sql.DB
 	migrationDB          *sql.DB
 	engine               databaseEngine
@@ -95,7 +96,7 @@ func openContextWithDependencies(ctx context.Context, cfg config.Config, depende
 	if migrationDB != nil {
 		lockDatabase = migrationDB
 	}
-	store := &IdentityStore{SQLDatabase: sqlDatabase, WriteFenceStore: workspace.NewWriteFenceStore(db, sqlDatabase.SQLRenderer), RLSManager: rlsManager, ScopeValidator: workspace.NewScopeValidator(db, engine, sqlDatabase.SQLRenderer, databaseSchema, ""), StatusReader: migrationowner.NewStatusReader(migrationDatabase, engine, sqlDatabase.SQLRenderer, cfg), BackupManager: migrationowner.NewBackupManager(migrationowner.BackupOptions{Database: backupDatabase, Engine: engine, Renderer: sqlDatabase.SQLRenderer, DatabaseSchema: databaseSchema, SecretMaterialKey: activeMaterial, Metrics: operationalMetrics}), LockManager: migrationowner.NewLockManager(lockDatabase, engine, sqlDatabase.SQLRenderer, databaseSchema, cfg, operationalMetrics), db: db, migrationDB: migrationDB, engine: engine, config: cfg, databaseSchema: databaseSchema, postgresProfile: connectionState.PostgresProfile, postgresCapabilities: connectionState.PostgresCapabilities, migratorCapabilities: connectionState.MigratorCapabilities, secretMaterialKey: activeMaterial, secretKeyProvider: keyRing, idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096), sqlMetrics: sqlMetrics, operationalMetrics: operationalMetrics}
+	store := &IdentityStore{SQLDatabase: sqlDatabase, WriteFenceStore: workspace.NewWriteFenceStore(db, sqlDatabase.SQLRenderer), RLSManager: rlsManager, ScopeValidator: workspace.NewScopeValidator(db, engine, sqlDatabase.SQLRenderer, databaseSchema, ""), StatusReader: migrationowner.NewStatusReader(migrationDatabase, engine, sqlDatabase.SQLRenderer, cfg), BackupManager: migrationowner.NewBackupManager(migrationowner.BackupOptions{Database: backupDatabase, Engine: engine, Renderer: sqlDatabase.SQLRenderer, DatabaseSchema: databaseSchema, SecretMaterialKey: activeMaterial, Metrics: operationalMetrics}), LockManager: migrationowner.NewLockManager(lockDatabase, engine, sqlDatabase.SQLRenderer, databaseSchema, cfg, operationalMetrics), Ledger: migrationowner.NewLedger(migrationDatabase, engine, sqlDatabase.SQLRenderer, databaseSchema), db: db, migrationDB: migrationDB, engine: engine, config: cfg, databaseSchema: databaseSchema, postgresProfile: connectionState.PostgresProfile, postgresCapabilities: connectionState.PostgresCapabilities, migratorCapabilities: connectionState.MigratorCapabilities, secretMaterialKey: activeMaterial, secretKeyProvider: keyRing, idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096), sqlMetrics: sqlMetrics, operationalMetrics: operationalMetrics}
 	var migrationErr error
 	migrationStarted := time.Now()
 	if cfg.EffectiveDatabaseMigrationMode() == "verify" {
@@ -143,6 +144,7 @@ func OpenBorrowedContext(ctx context.Context, cfg config.Config, db *sql.DB) (*I
 		StatusReader:   migrationowner.NewStatusReader(db, engine, sqlDatabase.SQLRenderer, cfg),
 		BackupManager:  migrationowner.NewBackupManager(migrationowner.BackupOptions{Database: db, Engine: engine, Renderer: sqlDatabase.SQLRenderer, DatabaseSchema: schema, RelationPrefix: "domainry_identity_", SecretMaterialKey: activeMaterial, Metrics: operationalMetrics}),
 		LockManager:    migrationowner.NewLockManager(db, engine, sqlDatabase.SQLRenderer, schema, cfg, operationalMetrics),
+		Ledger:         migrationowner.NewLedger(db, engine, sqlDatabase.SQLRenderer, schema),
 		db:             db, engine: engine, config: cfg, databaseSchema: schema,
 		secretMaterialKey: activeMaterial, secretKeyProvider: keyRing,
 		idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096),

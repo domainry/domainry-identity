@@ -26,3 +26,12 @@ func attachLockManager(store *IdentityStore) {
 	renderer := base.NewSQLDatabase(database, store.engine, store.databaseSchema, store.relationPrefix).SQLRenderer
 	store.LockManager = migration.NewLockManager(database, store.engine, renderer, store.databaseSchema, store.config, store.operationalMetrics)
 }
+
+func attachLedger(store *IdentityStore) {
+	database := store.db
+	if store.migrationDB != nil {
+		database = store.migrationDB
+	}
+	renderer := base.NewSQLDatabase(database, store.engine, store.databaseSchema, store.relationPrefix).SQLRenderer
+	store.Ledger = migration.NewLedger(database, store.engine, renderer, store.databaseSchema)
+}

@@ -30,7 +30,8 @@ func openMigrationEdgeStore(t *testing.T) *IdentityStore {
 	store := &IdentityStore{db: db, engine: sqlite.NewEngine()}
 	attachBackupManager(store, nil)
 	attachLockManager(store)
-	if err := store.ensureMigrationLedger(t.Context()); err != nil {
+	attachLedger(store)
+	if err := store.Ledger.Ensure(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	return store
@@ -145,8 +146,9 @@ func TestMigrationApplicationLedgerAndContextEdges(t *testing.T) {
 	}
 	closedStore := &IdentityStore{db: closedDB, engine: sqlite.NewEngine()}
 	attachBackupManager(closedStore, nil)
+	attachLedger(closedStore)
 	_ = closedDB.Close()
-	if err := closedStore.ensureMigrationLedger(t.Context()); err == nil {
+	if err := closedStore.Ledger.Ensure(t.Context()); err == nil {
 		t.Fatal("closed database prepared a ledger")
 	}
 }
@@ -284,7 +286,8 @@ func TestMigrationScriptedSQLFailureEdges(t *testing.T) {
 
 	mysqlStore := identitySchemaStore(t, &databaseSQLState{querySteps: make([]databaseSQLQueryStep, 10)})
 	mysqlStore.engine = mysql.NewEngine()
-	if err := mysqlStore.ensureMigrationLedger(t.Context()); err != nil {
+	attachLedger(mysqlStore)
+	if err := mysqlStore.Ledger.Ensure(t.Context()); err != nil {
 		t.Fatalf("mysql ledger error=%v", err)
 	}
 }
@@ -352,6 +355,7 @@ func TestApplyMigrationsOrchestrationErrorEdges(t *testing.T) {
 		}
 		store := &IdentityStore{db: db, engine: sqlite.NewEngine()}
 		attachLockManager(store)
+		attachLedger(store)
 		_ = db.Close()
 		if err := store.applyMigrations(t.Context(), config.Config{DBPath: ":memory:"}); err == nil || !strings.Contains(err.Error(), "prepare schema migration table") {
 			t.Fatalf("closed ledger error=%v", err)

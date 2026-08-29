@@ -105,6 +105,7 @@ func (s *IdentityStore) identityMigrationStore() *IdentityStore {
 		StatusReader:         s.StatusReader,
 		BackupManager:        s.BackupManager,
 		LockManager:          s.LockManager,
+		Ledger:               s.Ledger,
 		db:                   s.migrationDB,
 		engine:               s.engine,
 		config:               s.config,

@@ -28,6 +28,7 @@ func identitySchemaStore(t *testing.T, state *databaseSQLState) *IdentityStore {
 	store := &IdentityStore{db: db, engine: engine, ScopeValidator: workspace.NewScopeValidator(db, engine, renderer, "", ""), StatusReader: migrationowner.NewStatusReader(db, engine, renderer, config.Config{})}
 	attachBackupManager(store, nil)
 	attachLockManager(store)
+	attachLedger(store)
 	return store
 }
 
