@@ -121,7 +121,7 @@ func TestOTPResendStoredChallengeShortCircuitEdges(t *testing.T) {
 	auth.otpResendCooldown = time.Hour
 	auth.otpMaxAttempts = 2
 	auth.challenges["state"] = authmodel.AuthProviderChallenge{Provider: "oidc", WorkspaceID: "workspace-a", ExpiresAt: now.Add(time.Hour).Format(time.RFC3339)}
-	if _, err := auth.ConsumeProviderChallenge(t.Context(), "saml", "state"); err == nil {
+	if _, err := auth.ConsumeProviderChallenge(t.Context(), "workspace-a", "saml", "state"); err == nil {
 		t.Fatal("mismatched provider challenge accepted")
 	}
 	auth.challenges["otp-provider-mismatch"] = authmodel.AuthProviderChallenge{Provider: "other", WorkspaceID: "workspace-a", ExpiresAt: now.Add(time.Hour).Format(time.RFC3339)}
@@ -174,7 +174,7 @@ func TestProviderConfigurationAndFlowRemainingEdges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := flows.ConsumeCallbackChallenge(t.Context(), "saml", started.State); err != nil {
+	if _, _, err := flows.ConsumeCallbackChallenge(t.Context(), "workspace-a", "saml", started.State); err != nil {
 		t.Fatalf("SAML callback challenge: %v", err)
 	}
 	mismatched, err := flows.Start(t.Context(), "workspace-a", "saml", "GET", "")
@@ -184,7 +184,7 @@ func TestProviderConfigurationAndFlowRemainingEdges(t *testing.T) {
 	challenge := auth.challenges[mismatched.State]
 	challenge.RedirectURL = "https://unexpected.example/callback"
 	auth.challenges[mismatched.State] = challenge
-	if _, _, err := flows.ConsumeCallbackChallenge(t.Context(), "saml", mismatched.State); err == nil {
+	if _, _, err := flows.ConsumeCallbackChallenge(t.Context(), "workspace-a", "saml", mismatched.State); err == nil {
 		t.Fatal("callback with mismatched redirect accepted")
 	}
 }
@@ -486,10 +486,10 @@ func TestProviderFlowErrorAndNoWritebackEdges(t *testing.T) {
 	if _, err := flows.VerifyOTP(t.Context(), "workspace-a", "otp", "missing", "code"); err == nil {
 		t.Fatal("missing OTP state accepted")
 	}
-	if _, _, err := flows.ConsumeCallbackChallenge(t.Context(), "missing", "state"); err == nil {
+	if _, _, err := flows.ConsumeCallbackChallenge(t.Context(), "workspace-a", "missing", "state"); err == nil {
 		t.Fatal("missing callback provider accepted")
 	}
-	if _, _, err := flows.ConsumeCallbackChallenge(t.Context(), "otp", "state"); err == nil {
+	if _, _, err := flows.ConsumeCallbackChallenge(t.Context(), "workspace-a", "otp", "state"); err == nil {
 		t.Fatal("OTP callback accepted")
 	}
 	if _, err := flows.CompleteCallback(t.Context(), "workspace-a", authmodel.AuthProviderConfig{}, authmodel.AuthExternalIdentityAssertion{}); err == nil {
@@ -500,14 +500,14 @@ func TestProviderFlowErrorAndNoWritebackEdges(t *testing.T) {
 	if _, err := flows.CompleteCallback(t.Context(), "workspace-a", config, assertion); err != nil {
 		t.Fatalf("callback without writeback: %v", err)
 	}
-	if _, err := flows.ExchangeAndCompleteCallback(t.Context(), "saml", "missing", authmodel.AuthProviderCallbackInput{}, assertionAdapter{}); err == nil {
+	if _, err := flows.ExchangeAndCompleteCallback(t.Context(), "workspace-a", "saml", "missing", authmodel.AuthProviderCallbackInput{}, assertionAdapter{}); err == nil {
 		t.Fatal("invalid callback state exchanged")
 	}
 	started, err := auth.BeginSAMLLogin(t.Context(), "workspace-a", "saml", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := flows.ExchangeAndCompleteCallback(t.Context(), "saml", started.State, authmodel.AuthProviderCallbackInput{}, assertionAdapter{assertion: authmodel.AuthExternalIdentityAssertion{}}); err == nil {
+	if _, err := flows.ExchangeAndCompleteCallback(t.Context(), "workspace-a", "saml", started.State, authmodel.AuthProviderCallbackInput{}, assertionAdapter{assertion: authmodel.AuthExternalIdentityAssertion{}}); err == nil {
 		t.Fatal("invalid exchanged assertion completed")
 	}
 }

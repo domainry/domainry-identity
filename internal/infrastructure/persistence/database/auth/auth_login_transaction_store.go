@@ -132,7 +132,11 @@ func (s AuthStore) claimAuthOTPDelivery(ctx context.Context, tx *sql.Tx, workspa
 	return changed == 1, nil
 }
 
-func (s AuthStore) ConsumeAuthLoginTransaction(ctx context.Context, provider, state string, now time.Time) (authmodel.AuthProviderChallenge, bool, error) {
+func (s AuthStore) ConsumeAuthLoginTransaction(ctx context.Context, workspaceID, provider, state string, now time.Time) (authmodel.AuthProviderChallenge, bool, error) {
+	workspaceID, err := authWorkspaceID(workspaceID)
+	if err != nil {
+		return authmodel.AuthProviderChallenge{}, false, err
+	}
 	provider, state = strings.ToLower(strings.TrimSpace(provider)), strings.TrimSpace(state)
 	if provider == "" || state == "" {
 		return authmodel.AuthProviderChallenge{}, false, nil
@@ -147,7 +151,14 @@ func (s AuthStore) ConsumeAuthLoginTransaction(ctx context.Context, provider, st
 		return authmodel.AuthProviderChallenge{}, false, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	result, err := tx.ExecContext(ctx, "UPDATE "+s.store.TableIdentifier("auth_login_transactions")+" SET "+s.store.Identifier("consumed_at")+" = "+s.store.Placeholder(1)+", "+s.store.Identifier("updated_at")+" = "+s.store.Placeholder(2)+" WHERE "+s.store.Identifier("state_hash")+" = "+s.store.Placeholder(3)+" AND "+s.store.Identifier("provider_key")+" = "+s.store.Placeholder(4)+" AND "+s.store.Identifier("consumed_at")+" IS NULL AND "+s.store.Identifier("expires_at")+" > "+s.store.Placeholder(5), nowText, nowText, stateHash, provider, nowText)
+	updateStatement, updateArgs, buildErr := ormbuilder.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "auth_login_transactions", workspaceID).
+		Set("consumed_at", nowText).Set("updated_at", nowText).Where(ormbuilder.And(
+		ormbuilder.Equal("state_hash", stateHash), ormbuilder.Equal("provider_key", provider), ormbuilder.IsNull("consumed_at"), ormbuilder.GreaterThan("expires_at", nowText),
+	)).Build()
+	if buildErr != nil {
+		return authmodel.AuthProviderChallenge{}, false, buildErr
+	}
+	result, err := tx.ExecContext(ctx, updateStatement, updateArgs...)
 	if err != nil {
 		return authmodel.AuthProviderChallenge{}, false, err
 	}
@@ -155,8 +166,13 @@ func (s AuthStore) ConsumeAuthLoginTransaction(ctx context.Context, provider, st
 	if err != nil || count != 1 {
 		return authmodel.AuthProviderChallenge{}, false, err
 	}
-	var workspaceID, envelope string
-	if err := tx.QueryRowContext(ctx, "SELECT "+s.store.IdentityColumns("workspace_id", "payload_json")+" FROM "+s.store.TableIdentifier("auth_login_transactions")+" WHERE "+s.store.Identifier("state_hash")+" = "+s.store.Placeholder(1)+" AND "+s.store.Identifier("provider_key")+" = "+s.store.Placeholder(2), stateHash, provider).Scan(&workspaceID, &envelope); err != nil {
+	selectStatement, selectArgs, buildErr := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "auth_login_transactions", workspaceID).
+		Columns("payload_json").Where(ormbuilder.And(ormbuilder.Equal("state_hash", stateHash), ormbuilder.Equal("provider_key", provider))).Limit(1).Build()
+	if buildErr != nil {
+		return authmodel.AuthProviderChallenge{}, false, buildErr
+	}
+	var envelope string
+	if err := tx.QueryRowContext(ctx, selectStatement, selectArgs...).Scan(&envelope); err != nil {
 		return authmodel.AuthProviderChallenge{}, false, err
 	}
 	plain, err := s.loginSecrets.Decrypt(ctx, workspaceID, stateHash, envelope)
@@ -182,9 +198,14 @@ func (s AuthStore) FederatedLoginWorkspace(ctx context.Context, provider, state 
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	query := "SELECT " + s.store.Identifier("workspace_id") + " FROM " + s.store.TableIdentifier("auth_login_transactions") + " WHERE " + s.store.Identifier("state_hash") + " = " + s.store.Placeholder(1) + " AND " + s.store.Identifier("provider_key") + " = " + s.store.Placeholder(2) + " AND " + s.store.Identifier("consumed_at") + " IS NULL AND " + s.store.Identifier("expires_at") + " > " + s.store.Placeholder(3)
+	query, args, buildErr := ormbuilder.NewSelectBuilder(s.store.SQLRenderer(), "auth_login_transactions").Columns("workspace_id").Where(ormbuilder.And(
+		ormbuilder.Equal("state_hash", authLoginStateHash(state)), ormbuilder.Equal("provider_key", provider), ormbuilder.IsNull("consumed_at"), ormbuilder.GreaterThan("expires_at", now.UTC().Format(time.RFC3339Nano)),
+	)).Limit(1).Build()
+	if buildErr != nil {
+		return "", false, buildErr
+	}
 	var workspaceID string
-	err := s.db.QueryRowContext(ctx, query, authLoginStateHash(state), provider, now.UTC().Format(time.RFC3339Nano)).Scan(&workspaceID)
+	err := s.db.QueryRowContext(ctx, query, args...).Scan(&workspaceID)
 	if err == sql.ErrNoRows {
 		return "", false, nil
 	}

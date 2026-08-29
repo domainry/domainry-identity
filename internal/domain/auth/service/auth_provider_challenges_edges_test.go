@@ -28,7 +28,10 @@ func TestProviderAndSAMLChallengeValidationLifecycle(t *testing.T) {
 			_, err := auth.BeginSAMLLogin(cancelled, "workspace-a", "saml", "https://id.example/sso", "entity", "https://app.example/acs")
 			return err
 		},
-		func() error { _, err := auth.ConsumeProviderChallenge(cancelled, "oidc", "state"); return err },
+		func() error {
+			_, err := auth.ConsumeProviderChallenge(cancelled, "workspace-a", "oidc", "state")
+			return err
+		},
 	} {
 		if err := call(); !errors.Is(err, context.Canceled) {
 			t.Fatalf("cancellation error=%v", err)
@@ -54,21 +57,21 @@ func TestProviderAndSAMLChallengeValidationLifecycle(t *testing.T) {
 	if err != nil || started.Provider != "oidc" || started.State == "" || started.Nonce == "" || !strings.Contains(started.AuthURL, "state=") || !strings.Contains(started.AuthURL, "nonce=") {
 		t.Fatalf("OIDC start=%+v err=%v", started, err)
 	}
-	if _, err := auth.ConsumeProviderChallenge(t.Context(), "saml", started.State); err == nil {
+	if _, err := auth.ConsumeProviderChallenge(t.Context(), "workspace-a", "saml", started.State); err == nil {
 		t.Fatal("provider mismatch accepted")
 	}
-	if _, err := auth.ConsumeProviderChallenge(t.Context(), "oidc", started.State); err == nil {
+	if _, err := auth.ConsumeProviderChallenge(t.Context(), "workspace-a", "oidc", started.State); err == nil {
 		t.Fatal("mismatched consume should invalidate the state")
 	}
 	saml, err := auth.BeginSAMLLogin(t.Context(), "workspace-a", "SAML", "https://id.example/sso", "entity", "https://app.example/acs")
 	if err != nil || saml.Provider != "saml" || saml.State == "" || saml.Nonce != "" || !strings.Contains(saml.AuthURL, "SAMLRequest=") {
 		t.Fatalf("SAML start=%+v err=%v", saml, err)
 	}
-	challenge, err := auth.ConsumeProviderChallenge(t.Context(), "saml", saml.State)
+	challenge, err := auth.ConsumeProviderChallenge(t.Context(), "workspace-a", "saml", saml.State)
 	if err != nil || challenge.WorkspaceID != "workspace-a" {
 		t.Fatalf("challenge=%+v err=%v", challenge, err)
 	}
-	if _, err := auth.ConsumeProviderChallenge(t.Context(), "saml", saml.State); err == nil {
+	if _, err := auth.ConsumeProviderChallenge(t.Context(), "workspace-a", "saml", saml.State); err == nil {
 		t.Fatal("consumed SAML state replayed")
 	}
 	for state, challenge := range map[string]authmodel.AuthProviderChallenge{
@@ -76,12 +79,12 @@ func TestProviderAndSAMLChallengeValidationLifecycle(t *testing.T) {
 		"bad-workspace": {Provider: "oidc", WorkspaceID: "", ExpiresAt: time.Now().UTC().Add(time.Minute).Format(time.RFC3339)},
 	} {
 		auth.challenges[state] = challenge
-		if _, err := auth.ConsumeProviderChallenge(t.Context(), "oidc", state); err == nil || auth.challenges[state].State != "" {
+		if _, err := auth.ConsumeProviderChallenge(t.Context(), "workspace-a", "oidc", state); err == nil || auth.challenges[state].State != "" {
 			t.Fatalf("invalid stored challenge %q accepted or retained", state)
 		}
 	}
 	for _, input := range []struct{ provider, state string }{{"", "state"}, {"oidc", ""}} {
-		if _, err := auth.ConsumeProviderChallenge(t.Context(), input.provider, input.state); err == nil {
+		if _, err := auth.ConsumeProviderChallenge(t.Context(), "workspace-a", input.provider, input.state); err == nil {
 			t.Fatalf("invalid consume input=%+v accepted", input)
 		}
 	}

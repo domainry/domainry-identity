@@ -113,7 +113,7 @@ func (s *AuthProviderFlowDomainService) ExchangeCode(ctx context.Context, worksp
 	}
 	return s.CompleteCallbackForApplication(ctx, workspaceID, config, assertion, applicationKey)
 }
-func (s *AuthProviderFlowDomainService) ConsumeCallbackChallenge(ctx context.Context, provider, state string) (authmodel.AuthProviderConfig, authmodel.AuthProviderChallenge, error) {
+func (s *AuthProviderFlowDomainService) ConsumeCallbackChallenge(ctx context.Context, workspaceID, provider, state string) (authmodel.AuthProviderConfig, authmodel.AuthProviderChallenge, error) {
 	config, ok := s.providers.Enabled(ctx, provider)
 	if !ok {
 		return authmodel.AuthProviderConfig{}, authmodel.AuthProviderChallenge{}, forbidden("auth.provider_not_configured")
@@ -121,7 +121,7 @@ func (s *AuthProviderFlowDomainService) ConsumeCallbackChallenge(ctx context.Con
 	if config.Type != "oidc" && config.Type != "oauth2" && config.Type != "saml" {
 		return authmodel.AuthProviderConfig{}, authmodel.AuthProviderChallenge{}, badRequest("auth.provider_callback_not_supported")
 	}
-	challenge, err := s.auth.ConsumeProviderChallenge(ctx, provider, state)
+	challenge, err := s.auth.ConsumeProviderChallenge(ctx, workspaceID, provider, state)
 	if err == nil {
 		if strings.TrimSpace(challenge.RedirectURL) != strings.TrimSpace(config.RedirectURL) {
 			return authmodel.AuthProviderConfig{}, authmodel.AuthProviderChallenge{}, forbidden("auth.provider_state_invalid")
@@ -145,13 +145,13 @@ func (s *AuthProviderFlowDomainService) CompleteCallbackForApplication(ctx conte
 	}
 	return result, nil
 }
-func (s *AuthProviderFlowDomainService) ExchangeAndCompleteCallback(ctx context.Context, provider, state string, input authmodel.AuthProviderCallbackInput, adapter authcontract.AuthProviderCallbackAdapter) (authmodel.AuthSession, error) {
-	result, _, err := s.ExchangeAndCompleteCallbackWithChallenge(ctx, provider, state, input, adapter)
+func (s *AuthProviderFlowDomainService) ExchangeAndCompleteCallback(ctx context.Context, workspaceID, provider, state string, input authmodel.AuthProviderCallbackInput, adapter authcontract.AuthProviderCallbackAdapter) (authmodel.AuthSession, error) {
+	result, _, err := s.ExchangeAndCompleteCallbackWithChallenge(ctx, workspaceID, provider, state, input, adapter)
 	return result, err
 }
 
-func (s *AuthProviderFlowDomainService) ExchangeAndCompleteCallbackWithChallenge(ctx context.Context, provider, state string, input authmodel.AuthProviderCallbackInput, adapter authcontract.AuthProviderCallbackAdapter) (authmodel.AuthSession, authmodel.AuthProviderChallenge, error) {
-	config, challenge, err := s.ConsumeCallbackChallenge(ctx, provider, state)
+func (s *AuthProviderFlowDomainService) ExchangeAndCompleteCallbackWithChallenge(ctx context.Context, workspaceID, provider, state string, input authmodel.AuthProviderCallbackInput, adapter authcontract.AuthProviderCallbackAdapter) (authmodel.AuthSession, authmodel.AuthProviderChallenge, error) {
+	config, challenge, err := s.ConsumeCallbackChallenge(ctx, workspaceID, provider, state)
 	if err != nil {
 		return authmodel.AuthSession{}, authmodel.AuthProviderChallenge{}, err
 	}

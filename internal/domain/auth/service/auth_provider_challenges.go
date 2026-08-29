@@ -200,7 +200,7 @@ func (s *AuthDomainService) otpDeliveryKey(workspaceID, provider, phone string) 
 	return base64.RawURLEncoding.EncodeToString(digest.Sum(nil))
 }
 
-func (s *AuthDomainService) ConsumeProviderChallenge(ctx context.Context, provider string, state string) (authmodel.AuthProviderChallenge, error) {
+func (s *AuthDomainService) ConsumeProviderChallenge(ctx context.Context, workspaceID, provider string, state string) (authmodel.AuthProviderChallenge, error) {
 	if err := ctx.Err(); err != nil {
 		return authmodel.AuthProviderChallenge{}, err
 	}
@@ -210,7 +210,7 @@ func (s *AuthDomainService) ConsumeProviderChallenge(ctx context.Context, provid
 		return authmodel.AuthProviderChallenge{}, forbidden("auth.provider_state_invalid")
 	}
 	if transactions, ok := s.identityStore.(authrepository.AuthLoginTransactionRepository); ok {
-		challenge, consumed, err := transactions.ConsumeAuthLoginTransaction(ctx, provider, state, time.Now().UTC())
+		challenge, consumed, err := transactions.ConsumeAuthLoginTransaction(ctx, workspaceID, provider, state, time.Now().UTC())
 		if err != nil {
 			return authmodel.AuthProviderChallenge{}, err
 		}

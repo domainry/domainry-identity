@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	authapplication "github.com/domainry/domainry-identity/internal/application/auth"
 	authcontract "github.com/domainry/domainry-identity/internal/domain/auth/contract"
@@ -56,7 +57,7 @@ func (s authProviderFlowStub) Start(context.Context, string, string, string, str
 func (s authProviderFlowStub) VerifyOTP(context.Context, string, string, string, string) (authmodel.AuthSession, error) {
 	return s.verifyResult, s.verifyErr
 }
-func (s authProviderFlowStub) ExchangeAndCompleteCallbackWithChallenge(context.Context, string, string, authmodel.AuthProviderCallbackInput, authcontract.AuthProviderCallbackAdapter) (authmodel.AuthSession, authmodel.AuthProviderChallenge, error) {
+func (s authProviderFlowStub) ExchangeAndCompleteCallbackWithChallenge(context.Context, string, string, string, authmodel.AuthProviderCallbackInput, authcontract.AuthProviderCallbackAdapter) (authmodel.AuthSession, authmodel.AuthProviderChallenge, error) {
 	return s.callbackResult, s.callbackChallenge, s.callbackErr
 }
 
@@ -91,6 +92,9 @@ func newAuthProviderFlowFixture(t *testing.T) *authProviderFlowFixture {
 	fixture := &authProviderFlowFixture{handler: handler, repository: repository, capture: capture, callback: callback}
 	handler.providerFlows = flows
 	handler.providerCallback = callback
+	handler.federatedLoginWorkspace = func(context.Context, string, string, time.Time) (string, bool, error) {
+		return "workspace-a", true, nil
+	}
 	handler.providerFailureAudit = func(_ *http.Request, provider, reason string) {
 		fixture.failureEvent, fixture.failureReason = provider, reason
 	}

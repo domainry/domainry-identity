@@ -40,7 +40,7 @@ func TestAuthProviderFlowServiceOwnsStartDispatchAndChallengeState(t *testing.T)
 	if err != nil || started.State == "" || started.AuthURL == "" {
 		t.Fatalf("oidc start=%#v err=%v", started, err)
 	}
-	config, challenge, err := flows.ConsumeCallbackChallenge(t.Context(), "oidc", started.State)
+	config, challenge, err := flows.ConsumeCallbackChallenge(t.Context(), "default", "oidc", started.State)
 	if err != nil || config.Key != "oidc" || challenge.Provider != "oidc" {
 		t.Fatalf("challenge=%#v config=%#v err=%v", challenge, config, err)
 	}
@@ -66,10 +66,10 @@ func TestAuthProviderFlowUsesNeutralCallbackAdapterAfterConsumingState(t *testin
 	}
 	probe := &authProviderCallbackAdapterProbe{}
 	input := authmodel.AuthProviderCallbackInput{Method: "POST", Values: map[string]string{"code": "code-1"}}
-	if _, err := flows.ExchangeAndCompleteCallback(t.Context(), "oidc", started.State, input, probe); err == nil || !probe.called || probe.input.Values["code"] != "code-1" {
+	if _, err := flows.ExchangeAndCompleteCallback(t.Context(), "default", "oidc", started.State, input, probe); err == nil || !probe.called || probe.input.Values["code"] != "code-1" {
 		t.Fatalf("adapter called=%v input=%#v err=%v", probe.called, probe.input, err)
 	}
-	if _, _, err := flows.ConsumeCallbackChallenge(t.Context(), "oidc", started.State); authProviderTestErrorCode(err) != "auth.provider_state_invalid" {
+	if _, _, err := flows.ConsumeCallbackChallenge(t.Context(), "default", "oidc", started.State); authProviderTestErrorCode(err) != "auth.provider_state_invalid" {
 		t.Fatalf("callback state was not consumed once: %v", err)
 	}
 }

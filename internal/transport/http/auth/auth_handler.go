@@ -18,7 +18,7 @@ import (
 type AuthProviderFlowApplication interface {
 	Start(context.Context, string, string, string, string) (authprojection.AuthProviderStartResponse, error)
 	VerifyOTP(context.Context, string, string, string, string) (authmodel.AuthSession, error)
-	ExchangeAndCompleteCallbackWithChallenge(context.Context, string, string, authmodel.AuthProviderCallbackInput, authcontract.AuthProviderCallbackAdapter) (authmodel.AuthSession, authmodel.AuthProviderChallenge, error)
+	ExchangeAndCompleteCallbackWithChallenge(context.Context, string, string, string, authmodel.AuthProviderCallbackInput, authcontract.AuthProviderCallbackAdapter) (authmodel.AuthSession, authmodel.AuthProviderChallenge, error)
 }
 
 type authProviderApplicationFlow interface {
@@ -133,18 +133,21 @@ func (h *AuthHandler) requireMutableWorkspace(w http.ResponseWriter, r *http.Req
 	return true
 }
 
-func (h *AuthHandler) requireMutableFederatedLogin(w http.ResponseWriter, r *http.Request, provider, state string) bool {
+func (h *AuthHandler) requireMutableFederatedLogin(w http.ResponseWriter, r *http.Request, provider, state string) (string, bool) {
 	if h == nil || h.federatedLoginWorkspace == nil {
-		return true
+		return "", false
 	}
 	workspaceID, found, err := h.federatedLoginWorkspace(r.Context(), provider, state, time.Now().UTC())
 	if err != nil {
 		h.writeError(w, r, http.StatusServiceUnavailable, "identity.login_transaction_unavailable")
-		return false
+		return "", false
 	}
 	if !found {
 		h.writeError(w, r, http.StatusForbidden, "auth.provider_state_invalid")
-		return false
+		return "", false
 	}
-	return h.requireMutableWorkspace(w, r, workspaceID)
+	if !h.requireMutableWorkspace(w, r, workspaceID) {
+		return "", false
+	}
+	return workspaceID, true
 }

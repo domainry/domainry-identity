@@ -199,7 +199,7 @@ func (adapter sdkAuthentication) CompleteFederatedLogin(ctx context.Context, req
 	if err := adapter.binding.requireMutableWorkspace(ctx, workspaceID); err != nil {
 		return identitysdk.FederatedLoginCompletion{}, err
 	}
-	session, challenge, err := adapter.binding.flows.ExchangeAndCompleteCallbackWithChallenge(ctx, request.Provider, state, authmodel.AuthProviderCallbackInput{Values: request.Values}, adapter.binding.providerCallback)
+	session, challenge, err := adapter.binding.flows.ExchangeAndCompleteCallbackWithChallenge(ctx, string(workspaceID), request.Provider, state, authmodel.AuthProviderCallbackInput{Values: request.Values}, adapter.binding.providerCallback)
 	if err != nil {
 		return identitysdk.FederatedLoginCompletion{}, sdkBoundaryError(err)
 	}

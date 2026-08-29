@@ -64,7 +64,7 @@ type AuthProviderCredentialRepository interface {
 // login state. Consume must be atomic across processes and replicas.
 type AuthLoginTransactionRepository interface {
 	CreateAuthLoginTransaction(context.Context, authmodel.AuthProviderChallenge) error
-	ConsumeAuthLoginTransaction(context.Context, string, string, time.Time) (authmodel.AuthProviderChallenge, bool, error)
+	ConsumeAuthLoginTransaction(context.Context, string, string, string, time.Time) (authmodel.AuthProviderChallenge, bool, error)
 }
 
 // AuthOTPTransactionRepository owns both delivery throttling and verification

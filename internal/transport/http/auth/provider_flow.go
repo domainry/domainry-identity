@@ -121,10 +121,11 @@ func (h *AuthHandler) authProviderCallback(w http.ResponseWriter, r *http.Reques
 	if state == "" {
 		state = strings.TrimSpace(input.Values["RelayState"])
 	}
-	if !h.requireMutableFederatedLogin(w, r, provider, state) {
+	workspaceID, allowed := h.requireMutableFederatedLogin(w, r, provider, state)
+	if !allowed {
 		return
 	}
-	result, challenge, err := h.providerFlows.ExchangeAndCompleteCallbackWithChallenge(r.Context(), provider, state, input, h.providerCallback)
+	result, challenge, err := h.providerFlows.ExchangeAndCompleteCallbackWithChallenge(r.Context(), workspaceID, provider, state, input, h.providerCallback)
 	code := apperror.CodeOf(err)
 	if err != nil && (code == "auth.provider_not_configured" || code == "auth.provider_callback_not_supported") {
 		h.writeServiceError(w, r, err)
