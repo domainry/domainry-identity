@@ -38,16 +38,8 @@ func BoolInt(value bool) int {
 	return 0
 }
 
-func (s *IdentityStore) InsertStatement(table string, columns []string) string {
-	return "INSERT INTO " + s.TableIdentifier(table) + " (" + strings.Join(QuotedColumns(s, columns), ", ") + ") VALUES (" + strings.Join(placeholders(s, len(columns)), ", ") + ")"
-}
-
 func (s *IdentityStore) InsertSystemRowContext(ctx context.Context, table string, columns []string, values []any) error {
 	return s.insertSystemRowContext(ctx, table, columns, values)
-}
-
-func QuotedColumns(store *IdentityStore, columns []string) []string {
-	return quotedColumns(store, columns)
 }
 
 func (s *IdentityStore) SecretMaterialKey() [32]byte            { return s.secretMaterialKey }

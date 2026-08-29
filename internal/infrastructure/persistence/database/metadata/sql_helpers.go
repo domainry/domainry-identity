@@ -2,17 +2,7 @@ package metadata
 
 import (
 	"strings"
-
-	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
 )
-
-func quotedColumns(store *database.IdentityStore, columns []string) []string {
-	values := make([]string, 0, len(columns))
-	for _, column := range columns {
-		values = append(values, store.Identifier(column))
-	}
-	return values
-}
 
 func dbValue(value any) any {
 	switch typed := value.(type) {
