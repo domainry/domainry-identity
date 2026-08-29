@@ -54,7 +54,7 @@ func (s *IdentityStore) EnsureSchema(ctx context.Context) error {
 		}
 		return s.EnsureWorkspaceRLS(ctx)
 	}
-	release, err := s.acquireMigrationLock(ctx, s.config)
+	release, err := s.LockManager.Acquire(ctx, s.config)
 	if err != nil {
 		return err
 	}
@@ -104,6 +104,7 @@ func (s *IdentityStore) identityMigrationStore() *IdentityStore {
 		ScopeValidator:       workspace.NewScopeValidator(s.migrationDB, s.engine, s.BuilderRenderer(), s.databaseSchema, s.relationPrefix),
 		StatusReader:         s.StatusReader,
 		BackupManager:        s.BackupManager,
+		LockManager:          s.LockManager,
 		db:                   s.migrationDB,
 		engine:               s.engine,
 		config:               s.config,
@@ -154,8 +155,8 @@ type identitySchemaAssembler interface {
 }
 
 func (s *IdentityStore) schemaDatabase() schemaDatabase {
-	if s.migrationConn != nil {
-		return s.migrationConn
+	if s.LockManager != nil && s.LockManager.Connection() != nil {
+		return s.LockManager.Connection()
 	}
 	if s.migrationDB != nil {
 		return s.migrationDB

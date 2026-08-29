@@ -10,12 +10,11 @@ import (
 	"time"
 
 	migrationcontract "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/migration"
-	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 )
 
 func (s *IdentityStore) applyMigrations(ctx context.Context, cfg config.Config) error {
-	release, err := s.acquireMigrationLock(ctx, cfg)
+	release, err := s.LockManager.Acquire(ctx, cfg)
 	if err != nil {
 		return err
 	}
@@ -217,32 +216,6 @@ func (s *IdentityStore) ensureMigrationLedger(ctx context.Context) error {
 		}
 	}
 	return nil
-}
-
-func (s *IdentityStore) acquireMigrationLock(ctx context.Context, cfg config.Config) (func(), error) {
-	lockDB := s.migrationDB
-	if lockDB == nil {
-		lockDB = s.db
-	}
-	started := time.Now()
-	base := s.sqlBase()
-	lock, err := base.Engine.AcquireMigrationLock(ctx, lockDB, base.SQLRenderer, driver.MigrationLockOptions{
-		DatabasePath: cfg.DBPath, DatabaseSchema: base.DatabaseSchema, Owner: migrationcontract.InstanceID(cfg),
-		LockTimeout: s.config.DatabaseLockTimeout, ConnectTimeout: s.config.DatabaseConnectTimeout,
-	})
-	if err != nil {
-		return nil, err
-	}
-	s.migrationConn = lock.Connection
-	if s.operationalMetrics != nil {
-		s.operationalMetrics.ObserveMigrationLock(time.Since(started), err)
-	}
-	return func() {
-		s.migrationConn = nil
-		if lock.Release != nil {
-			lock.Release()
-		}
-	}, nil
 }
 
 func migrationColumns(s *IdentityStore) string {

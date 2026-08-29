@@ -27,6 +27,7 @@ func identitySchemaStore(t *testing.T, state *databaseSQLState) *IdentityStore {
 	renderer := base.NewSQLDatabase(db, engine, "", "").SQLRenderer
 	store := &IdentityStore{db: db, engine: engine, ScopeValidator: workspace.NewScopeValidator(db, engine, renderer, "", ""), StatusReader: migrationowner.NewStatusReader(db, engine, renderer, config.Config{})}
 	attachBackupManager(store, nil)
+	attachLockManager(store)
 	return store
 }
 
@@ -57,16 +58,6 @@ func TestIdentitySchemaHelpersAndDatabaseSelection(t *testing.T) {
 	if store.schemaDatabase() != migrationDB {
 		t.Fatal("migration database not selected")
 	}
-	connection, err := migrationDB.Conn(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = connection.Close() })
-	store.migrationConn = connection
-	if store.schemaDatabase() != connection {
-		t.Fatal("migration connection not selected")
-	}
-
 	store = &IdentityStore{engine: sqlite.NewEngine(), config: config.Config{DBPath: filepath.Join("tmp", "identity.db")}}
 	if got := store.identityMigrationConfig().MigrationBackupDir; got != filepath.Join("tmp", "migration-backups") {
 		t.Fatalf("backup dir=%q", got)

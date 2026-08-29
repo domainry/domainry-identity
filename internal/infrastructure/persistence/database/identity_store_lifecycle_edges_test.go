@@ -27,16 +27,6 @@ func TestIdentityStoreCloseErrorsAndMigrationConnection(t *testing.T) {
 		t.Fatalf("close error=%v", err)
 	}
 
-	db := openDatabaseScriptedDB(&databaseSQLState{})
-	connection, err := db.Conn(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	store = &IdentityStore{db: db, migrationConn: connection}
-	if err := store.Close(); err != nil || store.migrationConn != nil {
-		t.Fatalf("connection close=%v", err)
-	}
-
 	primary = openDatabaseScriptedDB(&databaseSQLState{closeErr: errors.New("primary close")})
 	_ = primary.PingContext(t.Context())
 	store = &IdentityStore{db: primary}

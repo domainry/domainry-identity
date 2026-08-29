@@ -30,9 +30,9 @@ type IdentityStore struct {
 	*workspace.ScopeValidator
 	*migrationowner.StatusReader
 	*migrationowner.BackupManager
+	*migrationowner.LockManager
 	db                   *sql.DB
 	migrationDB          *sql.DB
-	migrationConn        *sql.Conn
 	engine               databaseEngine
 	config               config.Config
 	databaseSchema       string
@@ -91,7 +91,11 @@ func openContextWithDependencies(ctx context.Context, cfg config.Config, depende
 		migrationDatabase = migrationDB
 		backupDatabase = migrationDB
 	}
-	store := &IdentityStore{SQLDatabase: sqlDatabase, WriteFenceStore: workspace.NewWriteFenceStore(db, sqlDatabase.SQLRenderer), RLSManager: rlsManager, ScopeValidator: workspace.NewScopeValidator(db, engine, sqlDatabase.SQLRenderer, databaseSchema, ""), StatusReader: migrationowner.NewStatusReader(migrationDatabase, engine, sqlDatabase.SQLRenderer, cfg), BackupManager: migrationowner.NewBackupManager(migrationowner.BackupOptions{Database: backupDatabase, Engine: engine, Renderer: sqlDatabase.SQLRenderer, DatabaseSchema: databaseSchema, SecretMaterialKey: activeMaterial, Metrics: operationalMetrics}), db: db, migrationDB: migrationDB, engine: engine, config: cfg, databaseSchema: databaseSchema, postgresProfile: connectionState.PostgresProfile, postgresCapabilities: connectionState.PostgresCapabilities, migratorCapabilities: connectionState.MigratorCapabilities, secretMaterialKey: activeMaterial, secretKeyProvider: keyRing, idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096), sqlMetrics: sqlMetrics, operationalMetrics: operationalMetrics}
+	lockDatabase := db
+	if migrationDB != nil {
+		lockDatabase = migrationDB
+	}
+	store := &IdentityStore{SQLDatabase: sqlDatabase, WriteFenceStore: workspace.NewWriteFenceStore(db, sqlDatabase.SQLRenderer), RLSManager: rlsManager, ScopeValidator: workspace.NewScopeValidator(db, engine, sqlDatabase.SQLRenderer, databaseSchema, ""), StatusReader: migrationowner.NewStatusReader(migrationDatabase, engine, sqlDatabase.SQLRenderer, cfg), BackupManager: migrationowner.NewBackupManager(migrationowner.BackupOptions{Database: backupDatabase, Engine: engine, Renderer: sqlDatabase.SQLRenderer, DatabaseSchema: databaseSchema, SecretMaterialKey: activeMaterial, Metrics: operationalMetrics}), LockManager: migrationowner.NewLockManager(lockDatabase, engine, sqlDatabase.SQLRenderer, databaseSchema, cfg, operationalMetrics), db: db, migrationDB: migrationDB, engine: engine, config: cfg, databaseSchema: databaseSchema, postgresProfile: connectionState.PostgresProfile, postgresCapabilities: connectionState.PostgresCapabilities, migratorCapabilities: connectionState.MigratorCapabilities, secretMaterialKey: activeMaterial, secretKeyProvider: keyRing, idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096), sqlMetrics: sqlMetrics, operationalMetrics: operationalMetrics}
 	var migrationErr error
 	migrationStarted := time.Now()
 	if cfg.EffectiveDatabaseMigrationMode() == "verify" {
@@ -138,6 +142,7 @@ func OpenBorrowedContext(ctx context.Context, cfg config.Config, db *sql.DB) (*I
 		ScopeValidator: workspace.NewScopeValidator(db, engine, sqlDatabase.SQLRenderer, schema, "domainry_identity_"),
 		StatusReader:   migrationowner.NewStatusReader(db, engine, sqlDatabase.SQLRenderer, cfg),
 		BackupManager:  migrationowner.NewBackupManager(migrationowner.BackupOptions{Database: db, Engine: engine, Renderer: sqlDatabase.SQLRenderer, DatabaseSchema: schema, RelationPrefix: "domainry_identity_", SecretMaterialKey: activeMaterial, Metrics: operationalMetrics}),
+		LockManager:    migrationowner.NewLockManager(db, engine, sqlDatabase.SQLRenderer, schema, cfg, operationalMetrics),
 		db:             db, engine: engine, config: cfg, databaseSchema: schema,
 		secretMaterialKey: activeMaterial, secretKeyProvider: keyRing,
 		idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096),
@@ -194,9 +199,8 @@ func (s *IdentityStore) Close() error {
 		return nil
 	}
 	var first error
-	if s.migrationConn != nil {
-		first = s.migrationConn.Close()
-		s.migrationConn = nil
+	if s.LockManager != nil {
+		first = s.LockManager.Close()
 	}
 	if s.migrationDB != nil {
 		first = s.migrationDB.Close()

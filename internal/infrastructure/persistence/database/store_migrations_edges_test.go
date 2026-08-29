@@ -29,6 +29,7 @@ func openMigrationEdgeStore(t *testing.T) *IdentityStore {
 	t.Cleanup(func() { _ = db.Close() })
 	store := &IdentityStore{db: db, engine: sqlite.NewEngine()}
 	attachBackupManager(store, nil)
+	attachLockManager(store)
 	if err := store.ensureMigrationLedger(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -350,6 +351,7 @@ func TestApplyMigrationsOrchestrationErrorEdges(t *testing.T) {
 			t.Fatal(err)
 		}
 		store := &IdentityStore{db: db, engine: sqlite.NewEngine()}
+		attachLockManager(store)
 		_ = db.Close()
 		if err := store.applyMigrations(t.Context(), config.Config{DBPath: ":memory:"}); err == nil || !strings.Contains(err.Error(), "prepare schema migration table") {
 			t.Fatalf("closed ledger error=%v", err)

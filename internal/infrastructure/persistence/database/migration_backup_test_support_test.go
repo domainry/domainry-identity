@@ -17,3 +17,12 @@ func attachBackupManager(store *IdentityStore, checksum func(string) (string, er
 		Metrics: store.operationalMetrics, Checksum: checksum,
 	})
 }
+
+func attachLockManager(store *IdentityStore) {
+	database := store.db
+	if store.migrationDB != nil {
+		database = store.migrationDB
+	}
+	renderer := base.NewSQLDatabase(database, store.engine, store.databaseSchema, store.relationPrefix).SQLRenderer
+	store.LockManager = migration.NewLockManager(database, store.engine, renderer, store.databaseSchema, store.config, store.operationalMetrics)
+}
