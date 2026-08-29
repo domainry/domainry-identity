@@ -102,11 +102,7 @@ func (s *IdentityStore) identityMigrationStore() *IdentityStore {
 	return &IdentityStore{
 		RLSManager:           s.RLSManager,
 		ScopeValidator:       workspace.NewScopeValidator(s.migrationDB, s.engine, s.BuilderRenderer(), s.databaseSchema, s.relationPrefix),
-		StatusReader:         s.StatusReader,
-		BackupManager:        s.BackupManager,
-		LockManager:          s.LockManager,
-		Ledger:               s.Ledger,
-		PathResolver:         s.PathResolver,
+		Coordinator:          s.Coordinator,
 		db:                   s.migrationDB,
 		engine:               s.engine,
 		config:               s.config,

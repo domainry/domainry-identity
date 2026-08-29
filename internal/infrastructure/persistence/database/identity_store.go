@@ -19,6 +19,7 @@ import (
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/postgres"
 	"github.com/domainry/domainry-identity/internal/platform/config"
+	ormdialect "github.com/domainry/domainry-orm/dialect"
 )
 
 // IdentityStore owns a standalone connection or borrows a project-owned pool.
@@ -27,11 +28,7 @@ type IdentityStore struct {
 	*workspace.WriteFenceStore
 	*workspace.RLSManager
 	*workspace.ScopeValidator
-	*migrationowner.StatusReader
-	*migrationowner.BackupManager
-	*migrationowner.LockManager
-	*migrationowner.Ledger
-	*migrationowner.PathResolver
+	*migrationowner.Coordinator
 	db                   *sql.DB
 	migrationDB          *sql.DB
 	engine               databaseEngine
@@ -49,6 +46,24 @@ type IdentityStore struct {
 	schemaAssembler      identitySchemaAssembler
 	borrowedDatabase     bool
 	relationPrefix       string
+}
+
+func newMigrationCoordinator(queryDatabase, migrationPool *sql.DB, migrationDatabase driver.SchemaDatabase, backupDatabase, lockDatabase *sql.DB, engine databaseEngine, renderer ormdialect.Renderer, databaseSchema, relationPrefix string, cfg config.Config, secretMaterialKey [32]byte, metrics *observability.Metrics) *migrationowner.Coordinator {
+	managementDatabase := queryDatabase
+	if migrationPool != nil {
+		managementDatabase = migrationPool
+	}
+	statusReader := migrationowner.NewStatusReader(migrationDatabase, engine, renderer, cfg)
+	backupManager := migrationowner.NewBackupManager(migrationowner.BackupOptions{Database: backupDatabase, Engine: engine, Renderer: renderer, DatabaseSchema: databaseSchema, RelationPrefix: relationPrefix, SecretMaterialKey: secretMaterialKey, Metrics: metrics})
+	lockManager := migrationowner.NewLockManager(lockDatabase, engine, renderer, databaseSchema, cfg, metrics)
+	ledger := migrationowner.NewLedger(migrationDatabase, engine, renderer, databaseSchema)
+	pathResolver := migrationowner.NewPathResolver(engine, nil)
+	return migrationowner.NewCoordinator(migrationowner.CoordinatorOptions{
+		QueryDatabase: queryDatabase, ManagementDatabase: managementDatabase,
+		Engine: engine, Renderer: renderer, DatabaseSchema: databaseSchema, Config: cfg,
+		StatusReader: statusReader, BackupManager: backupManager, LockManager: lockManager,
+		Ledger: ledger, PathResolver: pathResolver,
+	})
 }
 
 func OpenContext(ctx context.Context, cfg config.Config) (*IdentityStore, error) {
@@ -95,13 +110,14 @@ func openContextWithDependencies(ctx context.Context, cfg config.Config, depende
 	if migrationDB != nil {
 		lockDatabase = migrationDB
 	}
-	store := &IdentityStore{SQLDatabase: sqlDatabase, WriteFenceStore: workspace.NewWriteFenceStore(db, sqlDatabase.SQLRenderer), RLSManager: rlsManager, ScopeValidator: workspace.NewScopeValidator(db, engine, sqlDatabase.SQLRenderer, databaseSchema, ""), StatusReader: migrationowner.NewStatusReader(migrationDatabase, engine, sqlDatabase.SQLRenderer, cfg), BackupManager: migrationowner.NewBackupManager(migrationowner.BackupOptions{Database: backupDatabase, Engine: engine, Renderer: sqlDatabase.SQLRenderer, DatabaseSchema: databaseSchema, SecretMaterialKey: activeMaterial, Metrics: operationalMetrics}), LockManager: migrationowner.NewLockManager(lockDatabase, engine, sqlDatabase.SQLRenderer, databaseSchema, cfg, operationalMetrics), Ledger: migrationowner.NewLedger(migrationDatabase, engine, sqlDatabase.SQLRenderer, databaseSchema), PathResolver: migrationowner.NewPathResolver(engine, nil), db: db, migrationDB: migrationDB, engine: engine, config: cfg, databaseSchema: databaseSchema, postgresProfile: connectionState.PostgresProfile, postgresCapabilities: connectionState.PostgresCapabilities, migratorCapabilities: connectionState.MigratorCapabilities, secretMaterialKey: activeMaterial, secretKeyProvider: keyRing, idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096), sqlMetrics: sqlMetrics, operationalMetrics: operationalMetrics}
+	coordinator := newMigrationCoordinator(db, migrationDB, migrationDatabase, backupDatabase, lockDatabase, engine, sqlDatabase.SQLRenderer, databaseSchema, "", cfg, activeMaterial, operationalMetrics)
+	store := &IdentityStore{SQLDatabase: sqlDatabase, WriteFenceStore: workspace.NewWriteFenceStore(db, sqlDatabase.SQLRenderer), RLSManager: rlsManager, ScopeValidator: workspace.NewScopeValidator(db, engine, sqlDatabase.SQLRenderer, databaseSchema, ""), Coordinator: coordinator, db: db, migrationDB: migrationDB, engine: engine, config: cfg, databaseSchema: databaseSchema, postgresProfile: connectionState.PostgresProfile, postgresCapabilities: connectionState.PostgresCapabilities, migratorCapabilities: connectionState.MigratorCapabilities, secretMaterialKey: activeMaterial, secretKeyProvider: keyRing, idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096), sqlMetrics: sqlMetrics, operationalMetrics: operationalMetrics}
 	var migrationErr error
 	migrationStarted := time.Now()
 	if cfg.EffectiveDatabaseMigrationMode() == "verify" {
-		migrationErr = store.verifyMigrations(ctx, cfg)
+		migrationErr = store.Coordinator.Verify(ctx, cfg)
 	} else {
-		migrationErr = store.applyMigrations(ctx, cfg)
+		migrationErr = store.Coordinator.Apply(ctx, cfg)
 	}
 	operationalMetrics.ObserveMigration(time.Since(migrationStarted), migrationErr)
 	if migrationErr != nil {
@@ -136,15 +152,12 @@ func OpenBorrowedContext(ctx context.Context, cfg config.Config, db *sql.DB) (*I
 	schema := engine.DatabaseSchema(cfg)
 	sqlDatabase := base.NewSQLDatabase(db, engine, schema, "domainry_identity_")
 	operationalMetrics := observability.NewMetrics(cfg.MigrationBackupLastSuccessAt, cfg.MigrationRestoreDrillSuccessAt)
+	coordinator := newMigrationCoordinator(db, nil, db, db, db, engine, sqlDatabase.SQLRenderer, schema, "domainry_identity_", cfg, activeMaterial, operationalMetrics)
 	store := &IdentityStore{
 		SQLDatabase: sqlDatabase, WriteFenceStore: workspace.NewWriteFenceStore(db, sqlDatabase.SQLRenderer),
 		RLSManager:     workspace.NewRLSManager(workspace.RLSOptions{Database: db, Engine: engine, Renderer: sqlDatabase.SQLRenderer, DatabaseSchema: schema, Enabled: cfg.DatabaseRLSEnabled, Apply: cfg.EffectiveDatabaseMigrationMode() == "apply"}),
 		ScopeValidator: workspace.NewScopeValidator(db, engine, sqlDatabase.SQLRenderer, schema, "domainry_identity_"),
-		StatusReader:   migrationowner.NewStatusReader(db, engine, sqlDatabase.SQLRenderer, cfg),
-		BackupManager:  migrationowner.NewBackupManager(migrationowner.BackupOptions{Database: db, Engine: engine, Renderer: sqlDatabase.SQLRenderer, DatabaseSchema: schema, RelationPrefix: "domainry_identity_", SecretMaterialKey: activeMaterial, Metrics: operationalMetrics}),
-		LockManager:    migrationowner.NewLockManager(db, engine, sqlDatabase.SQLRenderer, schema, cfg, operationalMetrics),
-		Ledger:         migrationowner.NewLedger(db, engine, sqlDatabase.SQLRenderer, schema),
-		PathResolver:   migrationowner.NewPathResolver(engine, nil),
+		Coordinator:    coordinator,
 		db:             db, engine: engine, config: cfg, databaseSchema: schema,
 		secretMaterialKey: activeMaterial, secretKeyProvider: keyRing,
 		idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096),
@@ -153,9 +166,9 @@ func OpenBorrowedContext(ctx context.Context, cfg config.Config, db *sql.DB) (*I
 		relationPrefix:   "domainry_identity_",
 	}
 	if cfg.EffectiveDatabaseMigrationMode() == "verify" {
-		err = store.verifyMigrations(ctx, cfg)
+		err = store.Coordinator.Verify(ctx, cfg)
 	} else {
-		err = store.applyMigrations(ctx, cfg)
+		err = store.Coordinator.Apply(ctx, cfg)
 	}
 	if err != nil {
 		return nil, err
@@ -201,7 +214,7 @@ func (s *IdentityStore) Close() error {
 		return nil
 	}
 	var first error
-	if s.LockManager != nil {
+	if s.Coordinator != nil && s.LockManager != nil {
 		first = s.LockManager.Close()
 	}
 	if s.migrationDB != nil {

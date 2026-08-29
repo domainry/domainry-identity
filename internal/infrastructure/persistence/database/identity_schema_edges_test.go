@@ -25,11 +25,13 @@ func identitySchemaStore(t *testing.T, state *databaseSQLState) *IdentityStore {
 	t.Cleanup(func() { _ = db.Close() })
 	engine := sqlite.NewEngine()
 	renderer := base.NewSQLDatabase(db, engine, "", "").SQLRenderer
-	store := &IdentityStore{db: db, engine: engine, ScopeValidator: workspace.NewScopeValidator(db, engine, renderer, "", ""), StatusReader: migrationowner.NewStatusReader(db, engine, renderer, config.Config{})}
+	store := &IdentityStore{db: db, engine: engine, ScopeValidator: workspace.NewScopeValidator(db, engine, renderer, "", "")}
+	store.Coordinator = migrationowner.NewCoordinator(migrationowner.CoordinatorOptions{QueryDatabase: db, ManagementDatabase: db, Engine: engine, Renderer: renderer, StatusReader: migrationowner.NewStatusReader(db, engine, renderer, config.Config{})})
 	attachBackupManager(store, nil)
 	attachLockManager(store)
 	attachLedger(store)
 	attachPathResolver(store, nil)
+	attachCoordinator(store)
 	return store
 }
 

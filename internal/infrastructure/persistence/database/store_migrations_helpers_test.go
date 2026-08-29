@@ -68,8 +68,8 @@ func TestMigrationHelpersCoverDialectAndFilesystemEdges(t *testing.T) {
 	}
 
 	missing := filepath.Join(dir, "missing.sql")
-	store := &IdentityStore{}
-	if err := store.setExpectedMigrations([]string{missing}); err == nil || !strings.Contains(err.Error(), "read migration checksum") {
+	store := &IdentityStore{Coordinator: &migrationcontract.Coordinator{}}
+	if err := store.Coordinator.SetExpected([]string{missing}); err == nil || !strings.Contains(err.Error(), "read migration checksum") {
 		t.Fatalf("setExpectedMigrations error=%v", err)
 	}
 }

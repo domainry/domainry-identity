@@ -39,7 +39,8 @@ func TestApplyMigrationFileSQLFailures(t *testing.T) {
 			if test.prepare != nil {
 				test.prepare(store)
 			}
-			if err := store.applyMigrationFile(t.Context(), path); err == nil || !strings.Contains(err.Error(), test.match) {
+			attachCoordinator(store)
+			if err := store.Coordinator.ApplyFile(t.Context(), path); err == nil || !strings.Contains(err.Error(), test.match) {
 				t.Fatalf("error=%v", err)
 			}
 		})
@@ -55,7 +56,8 @@ func TestApplyMigrationFilePostgresTimeoutSuccess(t *testing.T) {
 		store := identitySchemaStore(t, &databaseSQLState{})
 		store.engine = postgres.NewEngine()
 		store.config = cfg
-		if err := store.applyMigrationFile(t.Context(), path); err != nil {
+		attachCoordinator(store)
+		if err := store.Coordinator.ApplyFile(t.Context(), path); err != nil {
 			t.Fatalf("config=%+v error=%v", cfg, err)
 		}
 	}
@@ -99,11 +101,11 @@ func TestEnsureMigrationLedgerPostgresConditionOutcomes(t *testing.T) {
 func TestMigrationTopLevelPathAndStatusFailures(t *testing.T) {
 	store := identitySchemaStore(t, &databaseSQLState{})
 	blocked := writeMigrationEdgeFile(t, "not-a-directory", "x")
-	if err := store.applyMigrations(t.Context(), config.Config{MigrationDir: blocked}); err == nil || !strings.Contains(err.Error(), "list migrations") {
+	if err := store.Coordinator.Apply(t.Context(), config.Config{MigrationDir: blocked}); err == nil || !strings.Contains(err.Error(), "list migrations") {
 		t.Fatalf("apply path error=%v", err)
 	}
 	store = identitySchemaStore(t, &databaseSQLState{})
-	if err := store.verifyMigrations(t.Context(), config.Config{MigrationDir: blocked}); err == nil || !strings.Contains(err.Error(), "list migrations") {
+	if err := store.Coordinator.Verify(t.Context(), config.Config{MigrationDir: blocked}); err == nil || !strings.Contains(err.Error(), "list migrations") {
 		t.Fatalf("verify path error=%v", err)
 	}
 }

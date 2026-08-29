@@ -32,6 +32,7 @@ func openMigrationEdgeStore(t *testing.T) *IdentityStore {
 	attachLockManager(store)
 	attachLedger(store)
 	attachPathResolver(store, nil)
+	attachCoordinator(store)
 	if err := store.Ledger.Ensure(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -64,26 +65,26 @@ func TestMigrationVerificationAndPendingStateEdges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.verifyMigration(t.Context(), path); err == nil || !strings.Contains(err.Error(), "migration.pending") {
+	if err := store.Coordinator.VerifyFile(t.Context(), path); err == nil || !strings.Contains(err.Error(), "migration.pending") {
 		t.Fatalf("pending verification=%v", err)
 	}
-	if pending, err := store.migrationPending(t.Context(), path); err != nil || !pending {
+	if pending, err := store.Coordinator.Pending(t.Context(), path); err != nil || !pending {
 		t.Fatalf("pending=%v error=%v", pending, err)
 	}
 
 	insertMigrationEdgeLedger(t, store, path, checksum, true)
-	if err := store.verifyMigration(t.Context(), path); err == nil || !strings.Contains(err.Error(), "migration.dirty") {
+	if err := store.Coordinator.VerifyFile(t.Context(), path); err == nil || !strings.Contains(err.Error(), "migration.dirty") {
 		t.Fatalf("dirty verification=%v", err)
 	}
-	if _, err := store.migrationPending(t.Context(), path); err == nil || !strings.Contains(err.Error(), "migration.dirty") {
+	if _, err := store.Coordinator.Pending(t.Context(), path); err == nil || !strings.Contains(err.Error(), "migration.dirty") {
 		t.Fatalf("dirty pending error=%v", err)
 	}
 
 	insertMigrationEdgeLedger(t, store, path, "", false)
-	if err := store.verifyMigration(t.Context(), path); err == nil || !strings.Contains(err.Error(), "checksum missing") {
+	if err := store.Coordinator.VerifyFile(t.Context(), path); err == nil || !strings.Contains(err.Error(), "checksum missing") {
 		t.Fatalf("missing checksum verification=%v", err)
 	}
-	if pending, err := store.migrationPending(t.Context(), path); err != nil || pending {
+	if pending, err := store.Coordinator.Pending(t.Context(), path); err != nil || pending {
 		t.Fatalf("checksum backfill pending=%v error=%v", pending, err)
 	}
 	var backfilled string
@@ -92,29 +93,29 @@ func TestMigrationVerificationAndPendingStateEdges(t *testing.T) {
 	}
 
 	insertMigrationEdgeLedger(t, store, path, "drift", false)
-	if err := store.verifyMigration(t.Context(), path); err == nil || !strings.Contains(err.Error(), "checksum_drift") {
+	if err := store.Coordinator.VerifyFile(t.Context(), path); err == nil || !strings.Contains(err.Error(), "checksum_drift") {
 		t.Fatalf("drift verification=%v", err)
 	}
-	if _, err := store.migrationPending(t.Context(), path); err == nil || !strings.Contains(err.Error(), "checksum_drift") {
+	if _, err := store.Coordinator.Pending(t.Context(), path); err == nil || !strings.Contains(err.Error(), "checksum_drift") {
 		t.Fatalf("drift pending=%v", err)
 	}
 
 	insertMigrationEdgeLedger(t, store, path, checksum, false)
-	if err := store.verifyMigration(t.Context(), path); err != nil {
+	if err := store.Coordinator.VerifyFile(t.Context(), path); err != nil {
 		t.Fatalf("verified migration: %v", err)
 	}
-	if pending, err := store.migrationPending(t.Context(), path); err != nil || pending {
+	if pending, err := store.Coordinator.Pending(t.Context(), path); err != nil || pending {
 		t.Fatalf("applied pending=%v error=%v", pending, err)
 	}
-	if err := store.applyMigrationFile(t.Context(), path); err != nil {
+	if err := store.Coordinator.ApplyFile(t.Context(), path); err != nil {
 		t.Fatalf("already applied migration: %v", err)
 	}
 
 	missing := filepath.Join(t.TempDir(), "missing.sql")
-	if err := store.verifyMigration(t.Context(), missing); err == nil || !strings.Contains(err.Error(), "read migration checksum") {
+	if err := store.Coordinator.VerifyFile(t.Context(), missing); err == nil || !strings.Contains(err.Error(), "read migration checksum") {
 		t.Fatalf("missing checksum error=%v", err)
 	}
-	if _, err := store.migrationPending(t.Context(), missing); err == nil || !strings.Contains(err.Error(), "read migration checksum") {
+	if _, err := store.Coordinator.Pending(t.Context(), missing); err == nil || !strings.Contains(err.Error(), "read migration checksum") {
 		t.Fatalf("missing pending checksum error=%v", err)
 	}
 }
@@ -122,10 +123,10 @@ func TestMigrationVerificationAndPendingStateEdges(t *testing.T) {
 func TestMigrationApplicationLedgerAndContextEdges(t *testing.T) {
 	store := openMigrationEdgeStore(t)
 	path := writeMigrationEdgeFile(t, "002_apply.sql", "-- comment\nCREATE TABLE applied_edge (id TEXT);\n\nINSERT INTO applied_edge(id) VALUES ('one');")
-	if err := store.applyMigrationFile(t.Context(), path); err != nil {
+	if err := store.Coordinator.ApplyFile(t.Context(), path); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.applyMigrationFile(t.Context(), path); err != nil {
+	if err := store.Coordinator.ApplyFile(t.Context(), path); err != nil {
 		t.Fatalf("replay migration: %v", err)
 	}
 	var count int
@@ -134,10 +135,10 @@ func TestMigrationApplicationLedgerAndContextEdges(t *testing.T) {
 	}
 	cancelled, cancel := context.WithCancel(t.Context())
 	cancel()
-	if err := store.verifyMigration(cancelled, path); !errors.Is(err, context.Canceled) {
+	if err := store.Coordinator.VerifyFile(cancelled, path); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled verify=%v", err)
 	}
-	if _, err := store.migrationPending(cancelled, path); !errors.Is(err, context.Canceled) {
+	if _, err := store.Coordinator.Pending(cancelled, path); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled pending=%v", err)
 	}
 
@@ -169,6 +170,7 @@ func TestMigrationPathIdentityAndSQLHelperEdges(t *testing.T) {
 	}
 	store := &IdentityStore{engine: sqlite.NewEngine()}
 	attachPathResolver(store, nil)
+	attachCoordinator(store)
 	got, err := store.PathResolver.Paths(config.Config{MigrationDir: root})
 	if err != nil || !reflect.DeepEqual(got, []string{paths[1], paths[0]}) {
 		t.Fatalf("driver paths=%v error=%v", got, err)
@@ -177,7 +179,7 @@ func TestMigrationPathIdentityAndSQLHelperEdges(t *testing.T) {
 	if got, err := store.PathResolver.Paths(config.Config{MigrationSQL: " " + explicit + " "}); err != nil || !reflect.DeepEqual(got, []string{" " + explicit + " "}) {
 		t.Fatalf("explicit paths=%v error=%v", got, err)
 	}
-	if err := store.setExpectedMigrations(paths); err != nil {
+	if err := store.Coordinator.SetExpected(paths); err != nil {
 		t.Fatalf("set expected migrations: %v", err)
 	}
 	expectedPaths, expectedChecksums := store.StatusReader.Expected()
@@ -272,18 +274,18 @@ func TestMigrationScriptedSQLFailureEdges(t *testing.T) {
 		querySteps: []databaseSQLQueryStep{{columns: []string{"checksum", "dirty"}, rows: [][]driver.Value{{"", false}}}},
 		execSteps:  []databaseSQLExecStep{{err: errDatabaseSQL}},
 	})
-	if _, err := store.migrationPending(t.Context(), path); !errors.Is(err, errDatabaseSQL) {
+	if _, err := store.Coordinator.Pending(t.Context(), path); !errors.Is(err, errDatabaseSQL) {
 		t.Fatalf("backfill error=%v", err)
 	}
 	queryFailure := identitySchemaStore(t, &databaseSQLState{querySteps: []databaseSQLQueryStep{{err: errDatabaseSQL}}})
-	if err := queryFailure.applyMigrationFile(t.Context(), path); !errors.Is(err, errDatabaseSQL) {
+	if err := queryFailure.Coordinator.ApplyFile(t.Context(), path); !errors.Is(err, errDatabaseSQL) {
 		t.Fatalf("pending query error=%v", err)
 	}
 
 	removed := writeMigrationEdgeFile(t, "009_removed.sql", "SELECT 9;")
 	state := &databaseSQLState{queryHook: func() { _ = os.Remove(removed) }}
 	store = identitySchemaStore(t, state)
-	if err := store.applyMigrationFile(t.Context(), removed); err == nil || !strings.Contains(err.Error(), "read:") {
+	if err := store.Coordinator.ApplyFile(t.Context(), removed); err == nil || !strings.Contains(err.Error(), "read:") {
 		t.Fatalf("removed migration error=%v", err)
 	}
 
@@ -346,7 +348,7 @@ func TestMigrationBackupDiscoveryAndFailureEdges(t *testing.T) {
 func TestApplyMigrationsOrchestrationErrorEdges(t *testing.T) {
 	t.Run("lock", func(t *testing.T) {
 		store := openMigrationEdgeStore(t)
-		err := store.applyMigrations(t.Context(), config.Config{DBPath: filepath.Join("/dev/null", "runtime.db")})
+		err := store.Coordinator.Apply(t.Context(), config.Config{DBPath: filepath.Join("/dev/null", "runtime.db")})
 		if err == nil {
 			t.Fatal("invalid lock directory accepted")
 		}
@@ -360,28 +362,28 @@ func TestApplyMigrationsOrchestrationErrorEdges(t *testing.T) {
 		attachLockManager(store)
 		attachLedger(store)
 		_ = db.Close()
-		if err := store.applyMigrations(t.Context(), config.Config{DBPath: ":memory:"}); err == nil || !strings.Contains(err.Error(), "prepare schema migration table") {
+		if err := store.Coordinator.Apply(t.Context(), config.Config{DBPath: ":memory:"}); err == nil || !strings.Contains(err.Error(), "prepare schema migration table") {
 			t.Fatalf("closed ledger error=%v", err)
 		}
 	})
 	t.Run("migration directory", func(t *testing.T) {
 		store := openMigrationEdgeStore(t)
 		blocked := writeMigrationEdgeFile(t, "not-a-directory", "blocked")
-		if err := store.applyMigrations(t.Context(), config.Config{DBPath: ":memory:", MigrationDir: blocked}); err == nil || !strings.Contains(err.Error(), "list migrations") {
+		if err := store.Coordinator.Apply(t.Context(), config.Config{DBPath: ":memory:", MigrationDir: blocked}); err == nil || !strings.Contains(err.Error(), "list migrations") {
 			t.Fatalf("directory error=%v", err)
 		}
 	})
 	t.Run("expected checksum", func(t *testing.T) {
 		store := openMigrationEdgeStore(t)
 		missing := filepath.Join(t.TempDir(), "missing.sql")
-		if err := store.applyMigrations(t.Context(), config.Config{DBPath: ":memory:", MigrationSQL: missing}); err == nil || !strings.Contains(err.Error(), "read migration checksum") {
+		if err := store.Coordinator.Apply(t.Context(), config.Config{DBPath: ":memory:", MigrationSQL: missing}); err == nil || !strings.Contains(err.Error(), "read migration checksum") {
 			t.Fatalf("expected checksum error=%v", err)
 		}
 	})
 	t.Run("status query", func(t *testing.T) {
 		queries := append(make([]databaseSQLQueryStep, 10), databaseSQLQueryStep{err: errDatabaseSQL})
 		store := identitySchemaStore(t, &databaseSQLState{querySteps: queries})
-		if err := store.applyMigrations(t.Context(), config.Config{DBPath: ":memory:", MigrationDir: filepath.Join(t.TempDir(), "missing")}); !errors.Is(err, errDatabaseSQL) {
+		if err := store.Coordinator.Apply(t.Context(), config.Config{DBPath: ":memory:", MigrationDir: filepath.Join(t.TempDir(), "missing")}); !errors.Is(err, errDatabaseSQL) {
 			t.Fatalf("status query error=%v", err)
 		}
 	})
@@ -391,14 +393,14 @@ func TestApplyMigrationsOrchestrationErrorEdges(t *testing.T) {
 			t.Fatal(err)
 		}
 		path := writeMigrationEdgeFile(t, "003_backup.sql", "CREATE TABLE after_backup_edge(id TEXT);")
-		if err := store.applyMigrations(t.Context(), config.Config{DBPath: ":memory:", MigrationSQL: path}); err == nil || !strings.Contains(err.Error(), "not a copyable file path") {
+		if err := store.Coordinator.Apply(t.Context(), config.Config{DBPath: ":memory:", MigrationSQL: path}); err == nil || !strings.Contains(err.Error(), "not a copyable file path") {
 			t.Fatalf("backup error=%v", err)
 		}
 	})
 	t.Run("statement", func(t *testing.T) {
 		store := openMigrationEdgeStore(t)
 		path := writeMigrationEdgeFile(t, "004_invalid.sql", "CREATE TABLE")
-		if err := store.applyMigrations(t.Context(), config.Config{DBPath: ":memory:", MigrationSQL: path}); err == nil || !strings.Contains(err.Error(), "migration.failed") {
+		if err := store.Coordinator.Apply(t.Context(), config.Config{DBPath: ":memory:", MigrationSQL: path}); err == nil || !strings.Contains(err.Error(), "migration.failed") {
 			t.Fatalf("statement error=%v", err)
 		}
 	})
@@ -408,7 +410,7 @@ func TestApplyMigrationsOrchestrationErrorEdges(t *testing.T) {
 			t.Fatal(err)
 		}
 		path := writeMigrationEdgeFile(t, "005_current.sql", "CREATE TABLE current_edge(id TEXT);")
-		err := store.applyMigrations(t.Context(), config.Config{DBPath: ":memory:", MigrationSQL: path})
+		err := store.Coordinator.Apply(t.Context(), config.Config{DBPath: ":memory:", MigrationSQL: path})
 		if err == nil || !strings.Contains(err.Error(), "migration.schema_newer") {
 			t.Fatalf("status error=%v", err)
 		}
@@ -418,31 +420,31 @@ func TestApplyMigrationsOrchestrationErrorEdges(t *testing.T) {
 func TestVerifyMigrationsOrchestrationEdges(t *testing.T) {
 	store := openMigrationEdgeStore(t)
 	blocked := writeMigrationEdgeFile(t, "blocked-directory", "blocked")
-	if err := store.verifyMigrations(t.Context(), config.Config{MigrationDir: blocked}); err == nil || !strings.Contains(err.Error(), "list migrations") {
+	if err := store.Coordinator.Verify(t.Context(), config.Config{MigrationDir: blocked}); err == nil || !strings.Contains(err.Error(), "list migrations") {
 		t.Fatalf("directory error=%v", err)
 	}
 	missing := filepath.Join(t.TempDir(), "missing.sql")
-	if err := store.verifyMigrations(t.Context(), config.Config{MigrationSQL: missing}); err == nil || !strings.Contains(err.Error(), "read migration checksum") {
+	if err := store.Coordinator.Verify(t.Context(), config.Config{MigrationSQL: missing}); err == nil || !strings.Contains(err.Error(), "read migration checksum") {
 		t.Fatalf("checksum error=%v", err)
 	}
 	path := writeMigrationEdgeFile(t, "006_verify.sql", "CREATE TABLE verify_edge(id TEXT);")
-	if err := store.verifyMigrations(t.Context(), config.Config{MigrationSQL: path}); err == nil || !strings.Contains(err.Error(), "migration.pending") {
+	if err := store.Coordinator.Verify(t.Context(), config.Config{MigrationSQL: path}); err == nil || !strings.Contains(err.Error(), "migration.pending") {
 		t.Fatalf("pending error=%v", err)
 	}
-	if err := store.applyMigrationFile(t.Context(), path); err != nil {
+	if err := store.Coordinator.ApplyFile(t.Context(), path); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.verifyMigrations(t.Context(), config.Config{MigrationSQL: path}); err != nil {
+	if err := store.Coordinator.Verify(t.Context(), config.Config{MigrationSQL: path}); err != nil {
 		t.Fatalf("current verification=%v", err)
 	}
 	if _, err := store.db.ExecContext(t.Context(), `INSERT INTO _schema_migrations(path, checksum, dirty, applied_at) VALUES ('999_unknown.sql', 'unknown', FALSE, 'now')`); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.verifyMigrations(t.Context(), config.Config{MigrationSQL: path}); err == nil || !strings.Contains(err.Error(), "migration.schema_newer") {
+	if err := store.Coordinator.Verify(t.Context(), config.Config{MigrationSQL: path}); err == nil || !strings.Contains(err.Error(), "migration.schema_newer") {
 		t.Fatalf("non-current verification=%v", err)
 	}
 	statusFailure := identitySchemaStore(t, &databaseSQLState{querySteps: []databaseSQLQueryStep{{err: errDatabaseSQL}}})
-	if err := statusFailure.verifyMigrations(t.Context(), config.Config{MigrationDir: filepath.Join(t.TempDir(), "missing")}); !errors.Is(err, errDatabaseSQL) {
+	if err := statusFailure.Coordinator.Verify(t.Context(), config.Config{MigrationDir: filepath.Join(t.TempDir(), "missing")}); !errors.Is(err, errDatabaseSQL) {
 		t.Fatalf("status query error=%v", err)
 	}
 }
