@@ -1,27 +1,47 @@
-package database
+package workspace
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
+	ormdialect "github.com/domainry/domainry-orm/dialect"
 )
+
+type scopeDatabase interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+type ScopeValidator struct {
+	database       scopeDatabase
+	engine         driver.Engine
+	renderer       ormdialect.Renderer
+	databaseSchema string
+	relationPrefix string
+}
+
+func NewScopeValidator(database scopeDatabase, engine driver.Engine, renderer ormdialect.Renderer, databaseSchema, relationPrefix string) *ScopeValidator {
+	return &ScopeValidator{database: database, engine: engine, renderer: renderer, databaseSchema: databaseSchema, relationPrefix: relationPrefix}
+}
 
 // ValidateLegacyWorkspaceScopes inventories legacy tenant rows without
 // rewriting them. Missing and legacy-default scopes block the migration with
 // deterministic details; the migration path never guesses a replacement.
-func (s *IdentityStore) ValidateLegacyWorkspaceScopes(ctx context.Context) error {
-	db := s.schemaDatabase()
-	tables, err := s.inventoryWorkspaceTables(ctx, db)
+func (validator *ScopeValidator) ValidateLegacyWorkspaceScopes(ctx context.Context) error {
+	tables, err := validator.InventoryWorkspaceTables(ctx)
 	if err != nil {
 		return err
 	}
 	findings := []string{}
 	for _, table := range tables {
-		query := "SELECT COALESCE(" + s.identifier("workspace_id") + ", ''), COUNT(*) FROM " + s.tableIdentifier(table) +
-			" WHERE " + s.identifier("workspace_id") + " IS NULL OR TRIM(" + s.identifier("workspace_id") + ") = ''" +
-			" GROUP BY " + s.identifier("workspace_id")
-		rows, queryErr := db.QueryContext(ctx, query)
+		workspaceColumn := validator.renderer.Identifier("workspace_id")
+		query := "SELECT COALESCE(" + workspaceColumn + ", ''), COUNT(*) FROM " + validator.renderer.Table(table) +
+			" WHERE " + workspaceColumn + " IS NULL OR TRIM(" + workspaceColumn + ") = ''" +
+			" GROUP BY " + workspaceColumn
+		rows, queryErr := validator.database.QueryContext(ctx, query)
 		if queryErr != nil {
 			return fmt.Errorf("inspect legacy workspace values for %s: %w", table, queryErr)
 		}
@@ -56,13 +76,12 @@ func (s *IdentityStore) ValidateLegacyWorkspaceScopes(ctx context.Context) error
 	return nil
 }
 
-func (s *IdentityStore) inventoryWorkspaceTables(ctx context.Context, db schemaDatabase) ([]string, error) {
-	base := s.sqlBase()
-	query := base.Engine.WorkspaceTablesQuery(base.SQLRenderer, base.DatabaseSchema)
+func (validator *ScopeValidator) InventoryWorkspaceTables(ctx context.Context) ([]string, error) {
+	query := validator.engine.WorkspaceTablesQuery(validator.renderer, validator.databaseSchema)
 	if strings.TrimSpace(query.Statement) == "" {
 		return nil, fmt.Errorf("database engine does not support workspace table introspection")
 	}
-	rows, err := db.QueryContext(ctx, query.Statement, query.Arguments...)
+	rows, err := validator.database.QueryContext(ctx, query.Statement, query.Arguments...)
 	if err != nil {
 		return nil, fmt.Errorf("inventory workspace migration tables: %w", err)
 	}
@@ -77,11 +96,11 @@ func (s *IdentityStore) inventoryWorkspaceTables(ctx context.Context, db schemaD
 		// well as Identity's prefixed tables. Only inventory this module's
 		// relations; passing a Runtime table name through tableIdentifier would
 		// incorrectly prefix it and query a relation that does not exist.
-		if s.relationPrefix != "" {
-			if !strings.HasPrefix(table, s.relationPrefix) {
+		if validator.relationPrefix != "" {
+			if !strings.HasPrefix(table, validator.relationPrefix) {
 				continue
 			}
-			table = strings.TrimPrefix(table, s.relationPrefix)
+			table = strings.TrimPrefix(table, validator.relationPrefix)
 		}
 		tables = append(tables, table)
 	}

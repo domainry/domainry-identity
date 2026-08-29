@@ -11,6 +11,7 @@ import (
 	"time"
 
 	identityschema "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/schema"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/workspace"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
@@ -98,6 +99,8 @@ func (s *IdentityStore) EnsureSchema(ctx context.Context) error {
 
 func (s *IdentityStore) identityMigrationStore() *IdentityStore {
 	return &IdentityStore{
+		RLSManager:           s.RLSManager,
+		ScopeValidator:       workspace.NewScopeValidator(s.migrationDB, s.engine, s.BuilderRenderer(), s.databaseSchema, s.relationPrefix),
 		db:                   s.migrationDB,
 		engine:               s.engine,
 		config:               s.config,
@@ -115,7 +118,6 @@ func (s *IdentityStore) identityMigrationStore() *IdentityStore {
 		idempotencyMetrics:   s.idempotencyMetrics,
 		sqlMetrics:           s.sqlMetrics,
 		operationalMetrics:   s.operationalMetrics,
-		workspaceRLS:         s.workspaceRLS,
 		schemaAssembler:      s.schemaAssembler,
 		backupChecksum:       s.backupChecksum,
 		migrationReadDir:     s.migrationReadDir,

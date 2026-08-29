@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/base"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/workspace"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/mysql"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/postgres"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/sqlite"
@@ -63,7 +65,8 @@ func TestWorkspaceScopeInventoryAndValidationFailures(t *testing.T) {
 	for _, engine := range []databaseEngine{sqlite.NewEngine(), mysql.NewEngine(), postgres.NewEngine()} {
 		store := identitySchemaStore(t, &databaseSQLState{})
 		store.engine = engine
-		if tables, err := store.inventoryWorkspaceTables(t.Context(), store.db); err != nil || len(tables) != 0 {
+		store.ScopeValidator = workspace.NewScopeValidator(store.db, engine, base.NewSQLDatabase(store.db, engine, "", "").SQLRenderer, "", "")
+		if tables, err := store.InventoryWorkspaceTables(t.Context()); err != nil || len(tables) != 0 {
 			t.Fatalf("engine=%s tables=%#v err=%v", engine.Name(), tables, err)
 		}
 	}
@@ -73,7 +76,7 @@ func TestWorkspaceScopeInventoryAndValidationFailures(t *testing.T) {
 		{columns: []string{"table"}, nextErr: errDatabaseSQL},
 	} {
 		store := identitySchemaStore(t, &databaseSQLState{querySteps: []databaseSQLQueryStep{step}})
-		if _, err := store.inventoryWorkspaceTables(t.Context(), store.db); err == nil {
+		if _, err := store.InventoryWorkspaceTables(t.Context()); err == nil {
 			t.Fatal("expected inventory error")
 		}
 	}
@@ -121,8 +124,9 @@ func TestWorkspaceScopeInventoryIsolatesBorrowedIdentityRelations(t *testing.T) 
 			}}})
 			store.engine = engine
 			store.relationPrefix = "domainry_identity_"
+			store.ScopeValidator = workspace.NewScopeValidator(store.db, engine, base.NewSQLDatabase(store.db, engine, "", store.relationPrefix).SQLRenderer, "", store.relationPrefix)
 
-			tables, err := store.inventoryWorkspaceTables(t.Context(), store.db)
+			tables, err := store.InventoryWorkspaceTables(t.Context())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -145,6 +149,7 @@ func TestWorkspaceScopeValidationStillInspectsBorrowedIdentityRelations(t *testi
 		{columns: []string{"workspace", "count"}, rows: [][]driver.Value{{"", int64(3)}}},
 	}})
 	store.relationPrefix = "domainry_identity_"
+	store.ScopeValidator = workspace.NewScopeValidator(store.db, store.engine, base.NewSQLDatabase(store.db, store.engine, "", store.relationPrefix).SQLRenderer, "", store.relationPrefix)
 
 	err := store.ValidateLegacyWorkspaceScopes(t.Context())
 	if err == nil || !strings.Contains(err.Error(), "table=identity_users classification=missing_workspace row_count=3") {

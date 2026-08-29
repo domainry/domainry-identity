@@ -8,6 +8,7 @@ import (
 
 	"github.com/domainry/domainry-foundation/idempotency"
 	"github.com/domainry/domainry-foundation/secrets"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/workspace"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/postgres"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 )
@@ -86,7 +87,7 @@ func TestIdentityStoreReadinessFailurePriority(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			store := &IdentityStore{db: openReadinessTestDatabase(t), postgresProfile: &profile, postgresCapabilities: test.capability, migratorCapabilities: test.migrator, migrationCompatible: test.compatible, workspaceRLS: test.rls}
+			store := &IdentityStore{db: openReadinessTestDatabase(t), postgresProfile: &profile, postgresCapabilities: test.capability, migratorCapabilities: test.migrator, migrationCompatible: test.compatible, RLSManager: workspace.NewRLSManager(workspace.RLSOptions{Status: test.rls})}
 			if readiness := store.DatabaseReadiness(); readiness.Failure != test.failure || readiness.Ready != (test.failure == "") {
 				t.Fatalf("readiness=%#v", readiness)
 			}

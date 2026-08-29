@@ -25,6 +25,8 @@ import (
 type IdentityStore struct {
 	*base.SQLDatabase
 	*workspace.WriteFenceStore
+	*workspace.RLSManager
+	*workspace.ScopeValidator
 	db                   *sql.DB
 	migrationDB          *sql.DB
 	migrationConn        *sql.Conn
@@ -44,7 +46,6 @@ type IdentityStore struct {
 	idempotencyMetrics   *idempotency.MemoryMetricsCollector
 	sqlMetrics           *telemetry.SQLMetrics
 	operationalMetrics   *observability.Metrics
-	workspaceRLS         WorkspaceRLSStatus
 	schemaAssembler      identitySchemaAssembler
 	backupChecksum       func(string) (string, error)
 	migrationReadDir     func(string) ([]os.DirEntry, error)
@@ -85,7 +86,8 @@ func openContextWithDependencies(ctx context.Context, cfg config.Config, depende
 	}
 	databaseSchema := connectionState.DatabaseSchema
 	sqlDatabase := base.NewSQLDatabase(db, engine, databaseSchema, "")
-	store := &IdentityStore{SQLDatabase: sqlDatabase, WriteFenceStore: workspace.NewWriteFenceStore(db, sqlDatabase.SQLRenderer), db: db, migrationDB: migrationDB, engine: engine, config: cfg, databaseSchema: databaseSchema, postgresProfile: connectionState.PostgresProfile, postgresCapabilities: connectionState.PostgresCapabilities, migratorCapabilities: connectionState.MigratorCapabilities, secretMaterialKey: activeMaterial, secretKeyProvider: keyRing, idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096), sqlMetrics: sqlMetrics, operationalMetrics: operationalMetrics}
+	rlsManager := workspace.NewRLSManager(workspace.RLSOptions{Database: db, MigrationDatabase: migrationDB, Engine: engine, Renderer: sqlDatabase.SQLRenderer, DatabaseSchema: databaseSchema, ApplicationRole: connectionState.PostgresCapabilities.User, Enabled: cfg.DatabaseRLSEnabled, Apply: cfg.EffectiveDatabaseMigrationMode() == "apply", ConnectionProfileSet: connectionState.PostgresProfile != nil})
+	store := &IdentityStore{SQLDatabase: sqlDatabase, WriteFenceStore: workspace.NewWriteFenceStore(db, sqlDatabase.SQLRenderer), RLSManager: rlsManager, ScopeValidator: workspace.NewScopeValidator(db, engine, sqlDatabase.SQLRenderer, databaseSchema, ""), db: db, migrationDB: migrationDB, engine: engine, config: cfg, databaseSchema: databaseSchema, postgresProfile: connectionState.PostgresProfile, postgresCapabilities: connectionState.PostgresCapabilities, migratorCapabilities: connectionState.MigratorCapabilities, secretMaterialKey: activeMaterial, secretKeyProvider: keyRing, idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096), sqlMetrics: sqlMetrics, operationalMetrics: operationalMetrics}
 	var migrationErr error
 	migrationStarted := time.Now()
 	if cfg.EffectiveDatabaseMigrationMode() == "verify" {
@@ -127,7 +129,9 @@ func OpenBorrowedContext(ctx context.Context, cfg config.Config, db *sql.DB) (*I
 	sqlDatabase := base.NewSQLDatabase(db, engine, schema, "domainry_identity_")
 	store := &IdentityStore{
 		SQLDatabase: sqlDatabase, WriteFenceStore: workspace.NewWriteFenceStore(db, sqlDatabase.SQLRenderer),
-		db: db, engine: engine, config: cfg, databaseSchema: schema,
+		RLSManager:     workspace.NewRLSManager(workspace.RLSOptions{Database: db, Engine: engine, Renderer: sqlDatabase.SQLRenderer, DatabaseSchema: schema, Enabled: cfg.DatabaseRLSEnabled, Apply: cfg.EffectiveDatabaseMigrationMode() == "apply"}),
+		ScopeValidator: workspace.NewScopeValidator(db, engine, sqlDatabase.SQLRenderer, schema, "domainry_identity_"),
+		db:             db, engine: engine, config: cfg, databaseSchema: schema,
 		secretMaterialKey: activeMaterial, secretKeyProvider: keyRing,
 		idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096),
 		sqlMetrics:         telemetry.NewSQLMetrics(), operationalMetrics: observability.NewMetrics(cfg.MigrationBackupLastSuccessAt, cfg.MigrationRestoreDrillSuccessAt),
@@ -265,6 +269,10 @@ func (s *IdentityStore) DatabaseStatus() (postgres.SafeStatus, bool) {
 	return s.postgresProfile.SafeStatus(), true
 }
 
+type WorkspaceRLSStatus = workspace.WorkspaceRLSStatus
+
+const CurrentIdentityWorkspaceRLSPolicyVersion = workspace.CurrentIdentityWorkspaceRLSPolicyVersion
+
 type DatabaseReadiness struct {
 	Ready                    bool   `json:"ready"`
 	Failure                  string `json:"failure,omitempty"`
@@ -290,16 +298,17 @@ func (s *IdentityStore) DatabaseReadiness() DatabaseReadiness {
 	}
 	capability := s.postgresCapabilities
 	stats := s.db.Stats()
+	rlsStatus := s.WorkspaceRLSStatus(context.Background())
 	result := DatabaseReadiness{
 		SchemaExists:             capability.SchemaExists,
 		SchemaUsage:              capability.SchemaUsage,
 		ReadOnly:                 capability.ReadOnly || capability.InRecovery,
 		TLSVerified:              capability.TLS == s.postgresProfile.TLS,
 		MigrationConnectionReady: !s.postgresProfile.MigrationConfigured || s.migratorCapabilities.Database != "",
-		RLSEnabled:               s.workspaceRLS.Enabled,
-		RLSPolicyVersion:         s.workspaceRLS.PolicyVersion,
-		RLSCoveredTables:         len(s.workspaceRLS.CoveredTables),
-		RLSMissingTables:         len(s.workspaceRLS.MissingTables),
+		RLSEnabled:               rlsStatus.Enabled,
+		RLSPolicyVersion:         rlsStatus.PolicyVersion,
+		RLSCoveredTables:         len(rlsStatus.CoveredTables),
+		RLSMissingTables:         len(rlsStatus.MissingTables),
 		ReadReady:                capability.SchemaExists && capability.SchemaUsage,
 		WriteReady:               capability.SchemaExists && capability.SchemaUsage && !capability.ReadOnly && !capability.InRecovery,
 		MigrationCompatible:      s.migrationCompatible,

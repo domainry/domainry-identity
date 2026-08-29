@@ -10,7 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/base"
 	identityschema "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/schema"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/workspace"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/mysql"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/sqlite"
 	"github.com/domainry/domainry-identity/internal/platform/config"
@@ -20,7 +22,8 @@ func identitySchemaStore(t *testing.T, state *databaseSQLState) *IdentityStore {
 	t.Helper()
 	db := openDatabaseScriptedDB(state)
 	t.Cleanup(func() { _ = db.Close() })
-	return &IdentityStore{db: db, engine: sqlite.NewEngine()}
+	engine := sqlite.NewEngine()
+	return &IdentityStore{db: db, engine: engine, ScopeValidator: workspace.NewScopeValidator(db, engine, base.NewSQLDatabase(db, engine, "", "").SQLRenderer, "", "")}
 }
 
 func identitySchemaLedgerQueries(count int64, checksum string, dirty bool) []databaseSQLQueryStep {
