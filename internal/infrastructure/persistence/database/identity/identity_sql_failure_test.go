@@ -230,9 +230,6 @@ func TestSQLIdentityRequestAndMenuWriteStages(t *testing.T) {
 		{1, func(s *SQLIdentityStore) error {
 			return s.UpsertIdentityMenu(t.Context(), "default", identitymodel.IdentityMenu{ID: "menu"})
 		}},
-		{2, func(s *SQLIdentityStore) error {
-			return s.UpsertIdentityMenu(t.Context(), "default", identitymodel.IdentityMenu{ID: "menu"})
-		}},
 		{1, func(s *SQLIdentityStore) error {
 			return s.SetIdentityRoleMenus(t.Context(), "default", "role", []string{"menu"})
 		}},

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
 
 func (s *SQLIdentityStore) RemoveIdentityMenusAtomically(ctx context.Context, workspaceID string, menus []identitymodel.IdentityMenu) error {
@@ -20,17 +21,8 @@ func (s *SQLIdentityStore) RemoveIdentityMenusAtomically(ctx context.Context, wo
 	}
 	defer tx.Rollback()
 	for _, menu := range menus {
-		deleteAssignments := "DELETE FROM " + s.tableIdentifier("identity_role_menu_assignments") + " WHERE " + s.identifier("workspace_id") + " = " + s.placeholder(1) + " AND " + s.identifier("menu_id") + " IN (" + s.placeholder(2) + ", " + s.placeholder(3) + ")"
-		if _, err := tx.ExecContext(ctx, deleteAssignments, workspaceID, menu.ID, menu.Key); err != nil {
+		if err := s.removeIdentityMenuStatements(ctx, tx, workspaceID, menu, true); err != nil {
 			return err
-		}
-		updateMenu := "UPDATE " + s.tableIdentifier("identity_menus") + " SET " + s.identifier("status") + " = " + s.placeholder(1) + ", " + s.identifier("updated_at") + " = " + s.placeholder(2) + " WHERE " + s.identifier("workspace_id") + " = " + s.placeholder(3) + " AND " + s.identifier("id") + " = " + s.placeholder(4)
-		result, err := tx.ExecContext(ctx, updateMenu, string(identitymodel.IdentityStatusDeleted), nowString(), workspaceID, menu.ID)
-		if err != nil {
-			return err
-		}
-		if count, _ := result.RowsAffected(); count != 1 {
-			return fmt.Errorf("menu not found: %s", menu.ID)
 		}
 	}
 	if err := tx.Commit(); err != nil {
@@ -58,10 +50,11 @@ func (s *SQLIdentityStore) UpsertIdentityMenu(ctx context.Context, workspaceID s
 		menu.Status = identitymodel.IdentityStatusActive
 	}
 	var persistedStatus string
-	err = s.db.QueryRowContext(ctx,
-		"SELECT "+s.identifier("status")+" FROM "+s.tableIdentifier("identity_menus")+" WHERE "+s.identifier("workspace_id")+" = "+s.placeholder(1)+" AND "+s.identifier("id")+" = "+s.placeholder(2),
-		workspaceID, menu.ID,
-	).Scan(&persistedStatus)
+	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(s.sqlRenderer(), "identity_menus", workspaceID).Columns("status").Where(ormbuilder.Equal("id", menu.ID)).Build()
+	if err != nil {
+		return fmt.Errorf("build identity menu status query: %w", err)
+	}
+	err = s.db.QueryRowContext(ctx, statement, arguments...).Scan(&persistedStatus)
 	if err != nil && err != sql.ErrNoRows {
 		return err
 	}
@@ -69,11 +62,15 @@ func (s *SQLIdentityStore) UpsertIdentityMenu(ctx context.Context, workspaceID s
 		return nil
 	}
 	now := nowString()
-	if _, err := s.db.ExecContext(ctx, "DELETE FROM "+s.tableIdentifier("identity_menus")+" WHERE "+s.identifier("workspace_id")+" = "+s.placeholder(1)+" AND "+s.identifier("id")+" = "+s.placeholder(2), workspaceID, menu.ID); err != nil {
-		return err
+	insert := ormbuilder.NewWorkspaceInsertBuilder(s.sqlRenderer(), "identity_menus", workspaceID).
+		Columns("id", "menu_key", "label", "description", "route", "icon", "parent_id", "sort_order", "status", "created_at", "updated_at").
+		Values(menu.ID, menu.Key, menu.Label, menu.Description, menu.Route, menu.Icon, nullableText(menu.ParentID), menu.SortOrder, string(menu.Status), now, now)
+	s.engineProfile().ApplyUpsert(insert, []string{"workspace_id", "id"}, "menu_key", "label", "description", "route", "icon", "parent_id", "sort_order", "status", "updated_at")
+	statement, arguments, err = insert.Build()
+	if err != nil {
+		return fmt.Errorf("build identity menu upsert: %w", err)
 	}
-	query := "INSERT INTO " + s.tableIdentifier("identity_menus") + " (" + s.identityColumns("id", "workspace_id", "menu_key", "label", "description", "route", "icon", "parent_id", "sort_order", "status", "created_at", "updated_at") + ") VALUES (" + s.placeholders(12) + ")"
-	if _, err := s.db.ExecContext(ctx, query, menu.ID, workspaceID, menu.Key, menu.Label, menu.Description, menu.Route, menu.Icon, nullableText(menu.ParentID), menu.SortOrder, string(menu.Status), now, now); err != nil {
+	if _, err := s.db.ExecContext(ctx, statement, arguments...); err != nil {
 		return err
 	}
 	return nil
@@ -105,16 +102,41 @@ func (s *SQLIdentityStore) RemoveIdentityMenu(ctx context.Context, workspaceID, 
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	deleteAssignments := "DELETE FROM " + s.tableIdentifier("identity_role_menu_assignments") + " WHERE " + s.identifier("workspace_id") + " = " + s.placeholder(1) + " AND " + s.identifier("menu_id") + " IN (" + s.placeholder(2) + ", " + s.placeholder(3) + ")"
-	if _, err := tx.ExecContext(ctx, deleteAssignments, workspaceID, menu.ID, menu.Key); err != nil {
-		return err
-	}
-	updateMenu := "UPDATE " + s.tableIdentifier("identity_menus") + " SET " + s.identifier("status") + " = " + s.placeholder(1) + ", " + s.identifier("updated_at") + " = " + s.placeholder(2) + " WHERE " + s.identifier("workspace_id") + " = " + s.placeholder(3) + " AND " + s.identifier("id") + " = " + s.placeholder(4)
-	if _, err := tx.ExecContext(ctx, updateMenu, string(identitymodel.IdentityStatusDeleted), nowString(), workspaceID, menu.ID); err != nil {
+	if err := s.removeIdentityMenuStatements(ctx, tx, workspaceID, menu, false); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return err
+	}
+	return nil
+}
+
+func (s *SQLIdentityStore) removeIdentityMenuStatements(ctx context.Context, execer identityUserExecer, workspaceID string, menu identitymodel.IdentityMenu, requireAffected bool) error {
+	statement, arguments, err := ormbuilder.NewWorkspaceDeleteBuilder(s.sqlRenderer(), "identity_role_menu_assignments", workspaceID).
+		Where(ormbuilder.In("menu_id", menu.ID, menu.Key)).Build()
+	if err != nil {
+		return fmt.Errorf("build identity menu assignment delete: %w", err)
+	}
+	if _, err := execer.ExecContext(ctx, statement, arguments...); err != nil {
+		return err
+	}
+	statement, arguments, err = ormbuilder.NewWorkspaceUpdateBuilder(s.sqlRenderer(), "identity_menus", workspaceID).
+		Set("status", string(identitymodel.IdentityStatusDeleted)).Set("updated_at", nowString()).Where(ormbuilder.Equal("id", menu.ID)).Build()
+	if err != nil {
+		return fmt.Errorf("build identity menu soft delete: %w", err)
+	}
+	result, err := execer.ExecContext(ctx, statement, arguments...)
+	if err != nil {
+		return err
+	}
+	if requireAffected {
+		count, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if count != 1 {
+			return fmt.Errorf("menu not found: %s", menu.ID)
+		}
 	}
 	return nil
 }
@@ -124,17 +146,28 @@ func (s *SQLIdentityStore) SetIdentityRoleMenus(ctx context.Context, workspaceID
 	if err != nil {
 		return err
 	}
-	if _, err := s.db.ExecContext(ctx, "DELETE FROM "+s.tableIdentifier("identity_role_menu_assignments")+" WHERE "+s.identifier("workspace_id")+" = "+s.placeholder(1)+" AND "+s.identifier("role_id")+" = "+s.placeholder(2), workspaceID, roleID); err != nil {
+	statement, arguments, err := ormbuilder.NewWorkspaceDeleteBuilder(s.sqlRenderer(), "identity_role_menu_assignments", workspaceID).Where(ormbuilder.Equal("role_id", roleID)).Build()
+	if err != nil {
+		return fmt.Errorf("build identity role-menu reset: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, statement, arguments...); err != nil {
 		return err
 	}
 	now := nowString()
-	query := "INSERT INTO " + s.tableIdentifier("identity_role_menu_assignments") + " (" + s.identityColumns("id", "workspace_id", "role_id", "menu_id", "created_at", "updated_at") + ") VALUES (" + s.placeholders(6) + ")"
-	for _, menuID := range uniqueSortedStrings(menuIDs) {
-		if _, err := s.db.ExecContext(ctx, query, identityID("rolemenu", workspaceID, roleID, menuID), workspaceID, roleID, menuID, now, now); err != nil {
-			return err
-		}
+	menuIDs = uniqueSortedStrings(menuIDs)
+	if len(menuIDs) == 0 {
+		return nil
 	}
-	return nil
+	insert := ormbuilder.NewWorkspaceInsertBuilder(s.sqlRenderer(), "identity_role_menu_assignments", workspaceID).Columns("id", "role_id", "menu_id", "created_at", "updated_at")
+	for _, menuID := range menuIDs {
+		insert.Values(identityID("rolemenu", workspaceID, roleID, menuID), roleID, menuID, now, now)
+	}
+	statement, arguments, err = insert.Build()
+	if err != nil {
+		return fmt.Errorf("build identity role-menu insert: %w", err)
+	}
+	_, err = s.db.ExecContext(ctx, statement, arguments...)
+	return err
 }
 
 func (s *SQLIdentityStore) ListIdentityRoleMenuAssignments(ctx context.Context, workspaceID, roleID string) ([]identitymodel.IdentityRoleMenuAssignment, error) {
@@ -146,7 +179,13 @@ func (s *SQLIdentityStore) loadMenus(ctx context.Context, workspaceID string) ([
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.db.QueryContext(ctx, "SELECT "+s.identityColumns("id", "menu_key", "label", "description", "route", "icon", "parent_id", "sort_order", "status")+" FROM "+s.tableIdentifier("identity_menus")+" WHERE "+s.identifier("workspace_id")+" = "+s.placeholder(1)+" AND "+s.identifier("status")+" <> "+s.placeholder(2)+" ORDER BY "+s.identifier("sort_order")+", "+s.identifier("menu_key"), workspaceID, string(identitymodel.IdentityStatusDeleted))
+	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(s.sqlRenderer(), "identity_menus", workspaceID).
+		Columns("id", "menu_key", "label", "description", "route", "icon", "parent_id", "sort_order", "status").
+		Where(ormbuilder.NotEqual("status", string(identitymodel.IdentityStatusDeleted))).OrderBy(ormbuilder.Ascending("sort_order"), ormbuilder.Ascending("menu_key")).Build()
+	if err != nil {
+		return nil, fmt.Errorf("build identity menus query: %w", err)
+	}
+	rows, err := s.db.QueryContext(ctx, statement, arguments...)
 	if err != nil {
 		return nil, err
 	}
@@ -171,15 +210,15 @@ func (s *SQLIdentityStore) loadRoleMenuAssignments(ctx context.Context, workspac
 	if err != nil {
 		return nil, err
 	}
-	query := "SELECT " + s.identityColumns("role_id", "menu_id") + " FROM " + s.tableIdentifier("identity_role_menu_assignments")
-	args := []any{workspaceID}
-	query += " WHERE " + s.identifier("workspace_id") + " = " + s.placeholder(1)
+	builder := ormbuilder.NewWorkspaceSelectBuilder(s.sqlRenderer(), "identity_role_menu_assignments", workspaceID).Columns("role_id", "menu_id")
 	if strings.TrimSpace(roleID) != "" {
-		args = append(args, roleID)
-		query += " AND " + s.identifier("role_id") + " = " + s.placeholder(2)
+		builder.Where(ormbuilder.Equal("role_id", roleID))
 	}
-	query += " ORDER BY " + s.identifier("role_id") + ", " + s.identifier("menu_id")
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	statement, arguments, err := builder.OrderBy(ormbuilder.Ascending("role_id"), ormbuilder.Ascending("menu_id")).Build()
+	if err != nil {
+		return nil, fmt.Errorf("build identity role-menu assignments query: %w", err)
+	}
+	rows, err := s.db.QueryContext(ctx, statement, arguments...)
 	if err != nil {
 		return nil, err
 	}
