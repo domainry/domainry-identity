@@ -10,6 +10,7 @@ import (
 	"time"
 
 	portabilitymodel "github.com/domainry/domainry-identity/internal/domain/portability"
+	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
 
 const (
@@ -48,12 +49,20 @@ func (store *IdentityStore) FreezeIdentityWrites(ctx context.Context, workspaceI
 		}
 		return portabilitymodel.WriteFence{}, fmt.Errorf("identity.portability_write_fence_already_active")
 	}
-	if _, err := tx.ExecContext(ctx, "DELETE FROM "+store.tableIdentifier(identityWorkspaceWriteFenceTable)+" WHERE "+store.identifier("workspace_id")+" = "+store.placeholder(1), workspaceID); err != nil {
+	statement, arguments, err := ormbuilder.NewWorkspaceDeleteBuilder(store.BuilderRenderer(), identityWorkspaceWriteFenceTable, workspaceID).Build()
+	if err != nil {
+		return portabilitymodel.WriteFence{}, fmt.Errorf("build Identity write fence replacement: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
 		return portabilitymodel.WriteFence{}, err
 	}
-	columns := []string{"workspace_id", "state", "evidence_sha256", "frozen_by", "frozen_at", "released_by", "released_at", "updated_at"}
-	query := "INSERT INTO " + store.tableIdentifier(identityWorkspaceWriteFenceTable) + " (" + strings.Join(quotedColumns(store, columns), ", ") + ") VALUES (" + strings.Join(placeholders(store, len(columns)), ", ") + ")"
-	if _, err := tx.ExecContext(ctx, query, fence.WorkspaceID, fence.State, fence.EvidenceSHA256, fence.FrozenBy, fence.FrozenAt.Format(time.RFC3339Nano), "", nil, fence.FrozenAt.Format(time.RFC3339Nano)); err != nil {
+	statement, arguments, err = ormbuilder.NewWorkspaceInsertBuilder(store.BuilderRenderer(), identityWorkspaceWriteFenceTable, fence.WorkspaceID).
+		Columns("state", "evidence_sha256", "frozen_by", "frozen_at", "released_by", "released_at", "updated_at").
+		Values(fence.State, fence.EvidenceSHA256, fence.FrozenBy, fence.FrozenAt.Format(time.RFC3339Nano), "", nil, fence.FrozenAt.Format(time.RFC3339Nano)).Build()
+	if err != nil {
+		return portabilitymodel.WriteFence{}, fmt.Errorf("build Identity write fence insert: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
 		return portabilitymodel.WriteFence{}, err
 	}
 	if err := store.appendIdentityWriteFenceEvent(ctx, tx, fence.WorkspaceID, identityWriteFenceEventFrozen, fence.EvidenceSHA256, operator, fence.FrozenAt); err != nil {
@@ -83,8 +92,14 @@ func (store *IdentityStore) ReleaseIdentityWriteFence(ctx context.Context, works
 	if !found || fence.State != "frozen" {
 		return portabilitymodel.WriteFence{}, fmt.Errorf("identity.portability_write_fence_not_active")
 	}
-	query := "UPDATE " + store.tableIdentifier(identityWorkspaceWriteFenceTable) + " SET " + store.identifier("state") + " = 'released', " + store.identifier("released_by") + " = " + store.placeholder(1) + ", " + store.identifier("released_at") + " = " + store.placeholder(2) + ", " + store.identifier("updated_at") + " = " + store.placeholder(3) + " WHERE " + store.identifier("workspace_id") + " = " + store.placeholder(4) + " AND " + store.identifier("state") + " = 'frozen' AND " + store.identifier("evidence_sha256") + " = " + store.placeholder(5)
-	result, err := tx.ExecContext(ctx, query, operator, releasedAt.Format(time.RFC3339Nano), releasedAt.Format(time.RFC3339Nano), workspaceID, fence.EvidenceSHA256)
+	query, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(store.BuilderRenderer(), identityWorkspaceWriteFenceTable, workspaceID).
+		Set("state", "released").Set("released_by", operator).
+		Set("released_at", releasedAt.Format(time.RFC3339Nano)).Set("updated_at", releasedAt.Format(time.RFC3339Nano)).
+		Where(ormbuilder.And(ormbuilder.Equal("state", "frozen"), ormbuilder.Equal("evidence_sha256", fence.EvidenceSHA256))).Build()
+	if err != nil {
+		return portabilitymodel.WriteFence{}, fmt.Errorf("build Identity write fence release: %w", err)
+	}
+	result, err := tx.ExecContext(ctx, query, arguments...)
 	if err != nil {
 		return portabilitymodel.WriteFence{}, err
 	}
@@ -112,11 +127,15 @@ func (store *IdentityStore) IdentityWriteFence(ctx context.Context, workspaceID 
 }
 
 func (store *IdentityStore) identityWriteFence(ctx context.Context, queryer identityWriteFenceQueryer, workspaceID string) (portabilitymodel.WriteFence, bool, error) {
-	query := "SELECT " + strings.Join(quotedColumns(store, []string{"state", "evidence_sha256", "frozen_by", "frozen_at", "released_by", "released_at"}), ", ") + " FROM " + store.tableIdentifier(identityWorkspaceWriteFenceTable) + " WHERE " + store.identifier("workspace_id") + " = " + store.placeholder(1)
+	query, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(store.BuilderRenderer(), identityWorkspaceWriteFenceTable, strings.TrimSpace(workspaceID)).
+		Columns("state", "evidence_sha256", "frozen_by", "frozen_at", "released_by", "released_at").Build()
+	if err != nil {
+		return portabilitymodel.WriteFence{}, false, fmt.Errorf("build Identity write fence read: %w", err)
+	}
 	var fence portabilitymodel.WriteFence
 	var frozenAt string
 	var releasedAt sql.NullString
-	err := queryer.QueryRowContext(ctx, query, strings.TrimSpace(workspaceID)).Scan(&fence.State, &fence.EvidenceSHA256, &fence.FrozenBy, &frozenAt, &fence.ReleasedBy, &releasedAt)
+	err = queryer.QueryRowContext(ctx, query, arguments...).Scan(&fence.State, &fence.EvidenceSHA256, &fence.FrozenBy, &frozenAt, &fence.ReleasedBy, &releasedAt)
 	if err == sql.ErrNoRows {
 		return portabilitymodel.WriteFence{}, false, nil
 	}
@@ -140,9 +159,13 @@ func (store *IdentityStore) identityWriteFence(ctx context.Context, queryer iden
 
 func (store *IdentityStore) appendIdentityWriteFenceEvent(ctx context.Context, tx *sql.Tx, workspaceID, event, evidenceSHA256, operator string, occurredAt time.Time) error {
 	digest := sha256.Sum256([]byte(strings.Join([]string{workspaceID, event, evidenceSHA256, operator, occurredAt.UTC().Format(time.RFC3339Nano)}, "\x00")))
-	columns := []string{"event_id", "workspace_id", "event", "evidence_sha256", "operator", "occurred_at"}
-	query := "INSERT INTO " + store.tableIdentifier(identityPortabilityFenceEventTable) + " (" + strings.Join(quotedColumns(store, columns), ", ") + ") VALUES (" + strings.Join(placeholders(store, len(columns)), ", ") + ")"
-	if _, err := tx.ExecContext(ctx, query, hex.EncodeToString(digest[:]), workspaceID, event, evidenceSHA256, operator, occurredAt.UTC().Format(time.RFC3339Nano)); err != nil {
+	query, arguments, err := ormbuilder.NewWorkspaceInsertBuilder(store.BuilderRenderer(), identityPortabilityFenceEventTable, workspaceID).
+		Columns("event_id", "event", "evidence_sha256", "operator", "occurred_at").
+		Values(hex.EncodeToString(digest[:]), event, evidenceSHA256, operator, occurredAt.UTC().Format(time.RFC3339Nano)).Build()
+	if err != nil {
+		return fmt.Errorf("build Identity write-fence event: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, query, arguments...); err != nil {
 		return fmt.Errorf("append Identity write-fence event: %w", err)
 	}
 	return nil
@@ -154,9 +177,13 @@ func (store *IdentityStore) IdentityWritesFrozen(ctx context.Context, workspaceI
 }
 
 func (store *IdentityStore) AnyIdentityWritesFrozen(ctx context.Context) (bool, error) {
-	query := "SELECT COUNT(*) FROM " + store.tableIdentifier(identityWorkspaceWriteFenceTable) + " WHERE " + store.identifier("state") + " = 'frozen'"
+	query, arguments, err := ormbuilder.NewSelectBuilder(store.BuilderRenderer(), identityWorkspaceWriteFenceTable).
+		Projections(ormbuilder.Project(ormbuilder.CountAll())).Where(ormbuilder.Equal("state", "frozen")).Build()
+	if err != nil {
+		return false, fmt.Errorf("build active Identity write fence count: %w", err)
+	}
 	var count int64
-	if err := store.db.QueryRowContext(ctx, query).Scan(&count); err != nil {
+	if err := store.db.QueryRowContext(ctx, query, arguments...).Scan(&count); err != nil {
 		return false, err
 	}
 	return count > 0, nil
