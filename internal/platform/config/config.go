@@ -174,7 +174,7 @@ func FromEnv() Config {
 		DatabaseLockTimeout:                   durationEnv("DATABASE_LOCK_TIMEOUT", 5*time.Second),
 		DatabaseSSLRootCert:                   strings.TrimSpace(os.Getenv("DATABASE_SSL_ROOT_CERT")),
 		DatabaseRLSEnabled:                    boolEnv("DATABASE_RLS_ENABLED", false),
-		DBPath:                                env("APP_DB_PATH", "data/identity.db"),
+		DBPath:                                env("APP_DB_PATH", "data/runtime.db"),
 		ManifestPath:                          env("TEMPLATE_MANIFEST", "domainry.template.json"),
 		MigrationDir:                          env("MIGRATION_DIR", "migrations"),
 		MigrationSQL:                          strings.TrimSpace(os.Getenv("MIGRATION_SQL")),

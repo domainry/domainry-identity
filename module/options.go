@@ -17,7 +17,7 @@ import (
 // never borrows Runtime infrastructure.
 type Options struct {
 	// ProjectConfigurationPath optionally points to a Git-owned, non-secret
-// Identity project configuration file. Secrets remain environment-owned.
+	// Identity project configuration file. Secrets remain environment-owned.
 	ProjectConfigurationPath string
 	IdentityVersion          string
 	DatabaseDriver           string
@@ -40,7 +40,7 @@ func OptionsFromEnvironment() Options {
 		DatabaseDSN:              strings.TrimSpace(os.Getenv("IDENTITY_MODULE_DATABASE_DSN")),
 		DatabaseMigrationDSN:     strings.TrimSpace(os.Getenv("IDENTITY_MODULE_DATABASE_MIGRATION_DSN")),
 		DatabaseSchema:           strings.TrimSpace(os.Getenv("IDENTITY_MODULE_DATABASE_SCHEMA")),
-		DatabasePath:             moduleEnvironmentValue("IDENTITY_MODULE_DB_PATH", "data/identity-module.db"),
+		DatabasePath:             moduleEnvironmentValue("IDENTITY_MODULE_DB_PATH", "data/runtime.db"),
 	}
 }
 
@@ -61,7 +61,7 @@ func loadModuleConfig(options Options) (config.Config, config.Snapshot, error) {
 	cfg.DatabaseDSN = strings.TrimSpace(options.DatabaseDSN)
 	cfg.DatabaseMigrationDSN = strings.TrimSpace(options.DatabaseMigrationDSN)
 	cfg.DatabaseSchema = strings.TrimSpace(options.DatabaseSchema)
-	cfg.DBPath = moduleOptionValue(options.DatabasePath, "data/identity-module.db")
+	cfg.DBPath = moduleOptionValue(options.DatabasePath, "data/runtime.db")
 	return cfg, snapshot, nil
 }
 
