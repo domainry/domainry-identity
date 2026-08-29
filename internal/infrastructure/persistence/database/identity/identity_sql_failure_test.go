@@ -89,10 +89,8 @@ func TestSQLIdentityUserAndRoleWriteStages(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("assign role with expiration: %v", err)
 	}
-	for failAt := 1; failAt <= 2; failAt++ {
-		callWithFailure(t, failAt, func(s *SQLIdentityStore) error { return s.UpsertIdentityDepartment(t.Context(), "default", department) })
-		callWithFailure(t, failAt, func(s *SQLIdentityStore) error { return s.UpsertIdentityUser(t.Context(), "default", user) })
-	}
+	callWithFailure(t, 1, func(s *SQLIdentityStore) error { return s.UpsertIdentityDepartment(t.Context(), "default", department) })
+	callWithFailure(t, 1, func(s *SQLIdentityStore) error { return s.UpsertIdentityUser(t.Context(), "default", user) })
 	callWithFailure(t, 1, func(s *SQLIdentityStore) error { return s.AssignIdentityUserRole(t.Context(), "default", assignment) })
 	for failAt := 1; failAt <= 6; failAt++ {
 		callWithFailure(t, failAt, func(s *SQLIdentityStore) error { return s.RemoveIdentityUser(t.Context(), "default", "user") })
@@ -119,7 +117,7 @@ func TestSQLIdentityUserAndRoleWriteStages(t *testing.T) {
 func TestSQLIdentityAtomicUserStages(t *testing.T) {
 	wantErr := errors.New("atomic failure")
 	user := identitymodel.IdentityUser{ID: "user"}
-	for _, state := range []*identitySQLState{{beginErr: wantErr}, {execFailAt: 1, failure: wantErr}, {execFailAt: 2, failure: wantErr}, {commitErr: wantErr}} {
+	for _, state := range []*identitySQLState{{beginErr: wantErr}, {execFailAt: 1, failure: wantErr}, {commitErr: wantErr}} {
 		store, closeDB := scriptedSQLIdentity(state)
 		if err := store.UpsertIdentityUsersAtomically(t.Context(), "default", []identitymodel.IdentityUser{user}); err == nil {
 			t.Fatal("atomic user failure ignored")
@@ -159,7 +157,7 @@ func TestSQLIdentityUserProfileBindingAndRoleReconcileFailureStages(t *testing.T
 	for _, state := range []*identitySQLState{
 		{beginErr: wantErr},
 		{queryFailAt: 1, failure: wantErr},
-		{execFailAt: 3, failure: wantErr},
+		{execFailAt: 2, failure: wantErr},
 	} {
 		store, closeDB = scriptedSQLIdentity(state)
 		if err := store.UpsertIdentityUserWithRoleAssignmentsAtomically(t.Context(), "default", user, nil); err == nil {
@@ -337,7 +335,7 @@ func TestSQLIdentityBootstrapAndMenuAtomicStages(t *testing.T) {
 	department := identitymodel.IdentityDepartment{ID: "department"}
 	user := identitymodel.IdentityUser{ID: "user"}
 	assignment := identitymodel.IdentityUserRoleAssignment{UserID: "user", RoleID: "role"}
-	for _, state := range []*identitySQLState{{beginErr: wantErr}, {execFailAt: 1, failure: wantErr}, {execFailAt: 3, failure: wantErr}, {execFailAt: 5, failure: wantErr}, {commitErr: wantErr}} {
+	for _, state := range []*identitySQLState{{beginErr: wantErr}, {execFailAt: 1, failure: wantErr}, {execFailAt: 2, failure: wantErr}, {execFailAt: 3, failure: wantErr}, {commitErr: wantErr}} {
 		store, closeDB := scriptedSQLIdentity(state)
 		if err := store.ApplyIdentityBootstrapAtomically(t.Context(), "default", []identitymodel.IdentityDepartment{department}, []identitymodel.IdentityUser{user}, nil, nil, []identitymodel.IdentityUserRoleAssignment{assignment}); err == nil {
 			t.Fatal("bootstrap failure ignored")

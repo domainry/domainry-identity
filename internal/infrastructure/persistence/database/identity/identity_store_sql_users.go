@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
 
 func (s *SQLIdentityStore) ListIdentityDepartments(ctx context.Context, workspaceID string) ([]identitymodel.IdentityDepartment, error) {
@@ -33,11 +34,15 @@ func (s *SQLIdentityStore) writeIdentityDepartment(ctx context.Context, execer i
 	ancestorRaw, _ := json.Marshal(department.AncestorIDs)
 	parentID := nullableString(department.ParentID)
 	now := nowString()
-	if _, err := execer.ExecContext(ctx, "DELETE FROM "+s.tableIdentifier("identity_departments")+" WHERE "+s.identifier("workspace_id")+" = "+s.placeholder(1)+" AND "+s.identifier("id")+" = "+s.placeholder(2), workspaceID, department.ID); err != nil {
-		return err
+	insert := ormbuilder.NewWorkspaceInsertBuilder(s.sqlRenderer(), "identity_departments", workspaceID).
+		Columns("id", "name", "parent_id", "leader_workforce_profile_id", "path", "ancestor_ids", "depth", "sort_order", "status", "created_at", "updated_at").
+		Values(department.ID, department.Name, parentID, nullableText(department.LeaderWorkforceProfileID), department.Path, string(ancestorRaw), department.Depth, department.SortOrder, string(department.Status), now, now)
+	s.engineProfile().ApplyUpsert(insert, []string{"workspace_id", "id"}, "name", "parent_id", "leader_workforce_profile_id", "path", "ancestor_ids", "depth", "sort_order", "status", "updated_at")
+	statement, arguments, err := insert.Build()
+	if err != nil {
+		return fmt.Errorf("build identity department upsert: %w", err)
 	}
-	query := "INSERT INTO " + s.tableIdentifier("identity_departments") + " (" + s.identityColumns("id", "workspace_id", "name", "parent_id", "leader_workforce_profile_id", "path", "ancestor_ids", "depth", "sort_order", "status", "created_at", "updated_at") + ") VALUES (" + s.placeholders(12) + ")"
-	if _, err := execer.ExecContext(ctx, query, department.ID, workspaceID, department.Name, parentID, nullableText(department.LeaderWorkforceProfileID), department.Path, string(ancestorRaw), department.Depth, department.SortOrder, string(department.Status), now, now); err != nil {
+	if _, err := execer.ExecContext(ctx, statement, arguments...); err != nil {
 		return err
 	}
 	return nil
@@ -52,12 +57,13 @@ func (s *SQLIdentityStore) ListIdentityProfileBindingsByUser(ctx context.Context
 	if err != nil {
 		return nil, err
 	}
-	columns := s.identityColumns("workspace_id", "binding_key", "object_key", "profile_id", "identity_user_id", "status", "invitation_channel", "claim_proof_type", "version", "created_at", "updated_at")
-	query := "SELECT " + columns + " FROM " + s.tableIdentifier("identity_profile_bindings") +
-		" WHERE " + s.identifier("workspace_id") + " = " + s.placeholder(1) +
-		" AND " + s.identifier("identity_user_id") + " = " + s.placeholder(2) +
-		" ORDER BY " + s.identifier("object_key") + ", " + s.identifier("profile_id")
-	rows, err := s.reader(ctx).QueryContext(ctx, query, workspaceID, strings.TrimSpace(userID))
+	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(s.sqlRenderer(), "identity_profile_bindings", workspaceID).
+		Columns("workspace_id", "binding_key", "object_key", "profile_id", "identity_user_id", "status", "invitation_channel", "claim_proof_type", "version", "created_at", "updated_at").
+		Where(ormbuilder.Equal("identity_user_id", strings.TrimSpace(userID))).OrderBy(ormbuilder.Ascending("object_key"), ormbuilder.Ascending("profile_id")).Build()
+	if err != nil {
+		return nil, fmt.Errorf("build identity profile bindings by user query: %w", err)
+	}
+	rows, err := s.reader(ctx).QueryContext(ctx, statement, arguments...)
 	if err != nil {
 		return nil, err
 	}
@@ -78,14 +84,11 @@ func (s *SQLIdentityStore) GetIdentityUser(ctx context.Context, workspaceID, use
 	if err != nil {
 		return identitymodel.IdentityUser{}, false, err
 	}
-	columns := s.identityColumns(
-		"id", "name", "given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale",
-		"email", "phone", "account_type", "locale", "timezone", "status", "version", "created_at", "updated_at",
-	)
-	query := "SELECT " + columns + " FROM " + s.tableIdentifier("identity_users") +
-		" WHERE " + s.identifier("workspace_id") + " = " + s.placeholder(1) +
-		" AND " + s.identifier("id") + " = " + s.placeholder(2)
-	user, err := scanIdentityUser(s.reader(ctx).QueryRowContext(ctx, query, workspaceID, strings.TrimSpace(userID)))
+	statement, arguments, err := identityUserSelect(s, workspaceID).Where(ormbuilder.Equal("id", strings.TrimSpace(userID))).Build()
+	if err != nil {
+		return identitymodel.IdentityUser{}, false, fmt.Errorf("build identity user query: %w", err)
+	}
+	user, err := scanIdentityUser(s.reader(ctx).QueryRowContext(ctx, statement, arguments...))
 	if errors.Is(err, sql.ErrNoRows) {
 		return identitymodel.IdentityUser{}, false, nil
 	}
@@ -101,10 +104,13 @@ func (s *SQLIdentityStore) UpdateIdentityUserLocale(ctx context.Context, workspa
 	if err != nil {
 		return identitymodel.IdentityUser{}, false, err
 	}
-	result, err := s.db.ExecContext(ctx,
-		"UPDATE "+s.tableIdentifier("identity_users")+" SET "+s.identifier("locale")+" = "+s.placeholder(1)+", "+s.identifier("version")+" = "+s.identifier("version")+" + 1, "+s.identifier("updated_at")+" = "+s.placeholder(2)+" WHERE "+s.identifier("workspace_id")+" = "+s.placeholder(3)+" AND "+s.identifier("id")+" = "+s.placeholder(4)+" AND "+s.identifier("version")+" = "+s.placeholder(5),
-		locale, nowString(), workspaceID, userID, expectedVersion,
-	)
+	statement, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(s.sqlRenderer(), "identity_users", workspaceID).
+		Set("locale", locale).SetExpression("version", ormbuilder.Add(ormbuilder.Column("version"), ormbuilder.Value(1))).Set("updated_at", nowString()).
+		Where(ormbuilder.And(ormbuilder.Equal("id", userID), ormbuilder.Equal("version", expectedVersion))).Build()
+	if err != nil {
+		return identitymodel.IdentityUser{}, false, fmt.Errorf("build identity user locale update: %w", err)
+	}
+	result, err := s.db.ExecContext(ctx, statement, arguments...)
 	if err != nil {
 		return identitymodel.IdentityUser{}, false, err
 	}
@@ -161,12 +167,12 @@ func (s *SQLIdentityStore) writeIdentityUser(ctx context.Context, execer identit
 	now := nowString()
 	var existingVersion int64
 	var existingCreatedAt string
-	existingErr := execer.QueryRowContext(
-		ctx,
-		"SELECT "+s.identityColumns("version", "created_at")+" FROM "+s.tableIdentifier("identity_users")+
-			" WHERE "+s.identifier("workspace_id")+" = "+s.placeholder(1)+" AND "+s.identifier("id")+" = "+s.placeholder(2),
-		workspaceID, user.ID,
-	).Scan(&existingVersion, &existingCreatedAt)
+	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(s.sqlRenderer(), "identity_users", workspaceID).
+		Columns("version", "created_at").Where(ormbuilder.Equal("id", user.ID)).Build()
+	if err != nil {
+		return fmt.Errorf("build identity user version query: %w", err)
+	}
+	existingErr := execer.QueryRowContext(ctx, statement, arguments...).Scan(&existingVersion, &existingCreatedAt)
 	switch existingErr {
 	case nil:
 		user.Version = existingVersion + 1
@@ -178,18 +184,17 @@ func (s *SQLIdentityStore) writeIdentityUser(ctx context.Context, execer identit
 		return existingErr
 	}
 	user.UpdatedAt = now
-	if _, err := execer.ExecContext(ctx, "DELETE FROM "+s.tableIdentifier("identity_users")+" WHERE "+s.identifier("workspace_id")+" = "+s.placeholder(1)+" AND "+s.identifier("id")+" = "+s.placeholder(2), workspaceID, user.ID); err != nil {
-		return err
+	insert := ormbuilder.NewWorkspaceInsertBuilder(s.sqlRenderer(), "identity_users", workspaceID).
+		Columns("id", "name", "given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale", "email", "phone", "account_type", "locale", "timezone", "status", "version", "created_at", "updated_at").
+		Values(user.ID, user.Name, user.GivenName, user.MiddleName, user.FamilyName, user.NamePrefix, user.NameSuffix, user.NativeName, user.NameLocale,
+			user.Email, user.Phone, string(user.AccountType), user.Locale, user.Timezone, string(user.Status), user.Version, user.CreatedAt, user.UpdatedAt,
+		)
+	s.engineProfile().ApplyUpsert(insert, []string{"workspace_id", "id"}, "name", "given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale", "email", "phone", "account_type", "locale", "timezone", "status", "version", "updated_at")
+	statement, arguments, err = insert.Build()
+	if err != nil {
+		return fmt.Errorf("build identity user upsert: %w", err)
 	}
-	columns := s.identityColumns(
-		"id", "workspace_id", "name", "given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale",
-		"email", "phone", "account_type", "locale", "timezone", "status", "version", "created_at", "updated_at",
-	)
-	query := "INSERT INTO " + s.tableIdentifier("identity_users") + " (" + columns + ") VALUES (" + s.placeholders(19) + ")"
-	_, err = execer.ExecContext(ctx, query,
-		user.ID, workspaceID, user.Name, user.GivenName, user.MiddleName, user.FamilyName, user.NamePrefix, user.NameSuffix, user.NativeName, user.NameLocale,
-		user.Email, user.Phone, string(user.AccountType), user.Locale, user.Timezone, string(user.Status), user.Version, user.CreatedAt, user.UpdatedAt,
-	)
+	_, err = execer.ExecContext(ctx, statement, arguments...)
 	return err
 }
 
@@ -211,12 +216,11 @@ func (s *SQLIdentityStore) UpsertIdentityUserWithRoleAssignmentsAtomically(
 	if err := s.writeIdentityUser(ctx, tx, workspaceID, user); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx,
-		"DELETE FROM "+s.tableIdentifier("identity_user_role_assignments")+
-			" WHERE "+s.identifier("workspace_id")+" = "+s.placeholder(1)+
-			" AND "+s.identifier("user_id")+" = "+s.placeholder(2),
-		workspaceID, user.ID,
-	); err != nil {
+	statement, arguments, err := ormbuilder.NewWorkspaceDeleteBuilder(s.sqlRenderer(), "identity_user_role_assignments", workspaceID).Where(ormbuilder.Equal("user_id", user.ID)).Build()
+	if err != nil {
+		return fmt.Errorf("build identity user role reset: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
 		return err
 	}
 	for _, assignment := range assignments {
@@ -244,11 +248,19 @@ func (s *SQLIdentityStore) RemoveIdentityUser(ctx context.Context, workspaceID, 
 		"identity_mfa_factors",
 		"auth_refresh_tokens",
 	} {
-		if _, err := tx.ExecContext(ctx, "DELETE FROM "+s.tableIdentifier(table)+" WHERE "+s.identifier("workspace_id")+" = "+s.placeholder(1)+" AND "+s.identifier("user_id")+" = "+s.placeholder(2), workspaceID, userID); err != nil {
+		statement, arguments, buildErr := ormbuilder.NewWorkspaceDeleteBuilder(s.sqlRenderer(), table, workspaceID).Where(ormbuilder.Equal("user_id", userID)).Build()
+		if buildErr != nil {
+			return fmt.Errorf("build identity user relation delete: %w", buildErr)
+		}
+		if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
 			return err
 		}
 	}
-	if _, err := tx.ExecContext(ctx, "DELETE FROM "+s.tableIdentifier("identity_users")+" WHERE "+s.identifier("workspace_id")+" = "+s.placeholder(1)+" AND "+s.identifier("id")+" = "+s.placeholder(2), workspaceID, userID); err != nil {
+	statement, arguments, err := ormbuilder.NewWorkspaceDeleteBuilder(s.sqlRenderer(), "identity_users", workspaceID).Where(ormbuilder.Equal("id", userID)).Build()
+	if err != nil {
+		return fmt.Errorf("build identity user delete: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -259,7 +271,13 @@ func (s *SQLIdentityStore) SetIdentityUserStatus(ctx context.Context, workspaceI
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, "UPDATE "+s.tableIdentifier("identity_users")+" SET "+s.identifier("status")+" = "+s.placeholder(1)+", "+s.identifier("version")+" = "+s.identifier("version")+" + 1, "+s.identifier("updated_at")+" = "+s.placeholder(2)+" WHERE "+s.identifier("workspace_id")+" = "+s.placeholder(3)+" AND "+s.identifier("id")+" = "+s.placeholder(4), string(status), nowString(), workspaceID, userID)
+	statement, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(s.sqlRenderer(), "identity_users", workspaceID).
+		Set("status", string(status)).SetExpression("version", ormbuilder.Add(ormbuilder.Column("version"), ormbuilder.Value(1))).Set("updated_at", nowString()).
+		Where(ormbuilder.Equal("id", userID)).Build()
+	if err != nil {
+		return fmt.Errorf("build identity user status update: %w", err)
+	}
+	_, err = s.db.ExecContext(ctx, statement, arguments...)
 	return err
 }
 
@@ -268,7 +286,13 @@ func (s *SQLIdentityStore) loadDepartments(ctx context.Context, workspaceID stri
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.reader(ctx).QueryContext(ctx, "SELECT "+s.identityColumns("id", "name", "parent_id", "leader_workforce_profile_id", "path", "ancestor_ids", "depth", "sort_order", "status")+" FROM "+s.tableIdentifier("identity_departments")+" WHERE "+s.identifier("workspace_id")+" = "+s.placeholder(1)+" ORDER BY "+s.identifier("depth")+", "+s.identifier("parent_id")+", "+s.identifier("sort_order")+", "+s.identifier("id"), workspaceID)
+	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(s.sqlRenderer(), "identity_departments", workspaceID).
+		Columns("id", "name", "parent_id", "leader_workforce_profile_id", "path", "ancestor_ids", "depth", "sort_order", "status").
+		OrderBy(ormbuilder.Ascending("depth"), ormbuilder.Ascending("parent_id"), ormbuilder.Ascending("sort_order"), ormbuilder.Ascending("id")).Build()
+	if err != nil {
+		return nil, fmt.Errorf("build identity departments query: %w", err)
+	}
+	rows, err := s.reader(ctx).QueryContext(ctx, statement, arguments...)
 	if err != nil {
 		return nil, err
 	}
@@ -295,11 +319,11 @@ func (s *SQLIdentityStore) loadUsers(ctx context.Context, workspaceID string) ([
 	if err != nil {
 		return nil, err
 	}
-	columns := s.identityColumns(
-		"id", "name", "given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale",
-		"email", "phone", "account_type", "locale", "timezone", "status", "version", "created_at", "updated_at",
-	)
-	rows, err := s.reader(ctx).QueryContext(ctx, "SELECT "+columns+" FROM "+s.tableIdentifier("identity_users")+" WHERE "+s.identifier("workspace_id")+" = "+s.placeholder(1)+" ORDER BY "+s.identifier("id"), workspaceID)
+	statement, arguments, err := identityUserSelect(s, workspaceID).OrderBy(ormbuilder.Ascending("id")).Build()
+	if err != nil {
+		return nil, fmt.Errorf("build identity users query: %w", err)
+	}
+	rows, err := s.reader(ctx).QueryContext(ctx, statement, arguments...)
 	if err != nil {
 		return nil, err
 	}
@@ -313,6 +337,13 @@ func (s *SQLIdentityStore) loadUsers(ctx context.Context, workspaceID string) ([
 		out = append(out, user)
 	}
 	return out, rows.Err()
+}
+
+func identityUserSelect(s *SQLIdentityStore, workspaceID string) *ormbuilder.SelectBuilder {
+	return ormbuilder.NewWorkspaceSelectBuilder(s.sqlRenderer(), "identity_users", workspaceID).Columns(
+		"id", "name", "given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale",
+		"email", "phone", "account_type", "locale", "timezone", "status", "version", "created_at", "updated_at",
+	)
 }
 
 func scanIdentityUser(scanner interface{ Scan(...any) error }) (identitymodel.IdentityUser, error) {
