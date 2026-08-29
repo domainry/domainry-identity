@@ -7,11 +7,11 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"time"
 
 	authmodel "github.com/domainry/domainry-identity/internal/domain/auth/model"
+	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
 
 func authLoginStateHash(state string) string {
@@ -24,8 +24,7 @@ func (s AuthStore) CreateAuthLoginTransaction(ctx context.Context, challenge aut
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, "INSERT INTO "+s.store.TableIdentifier("auth_login_transactions")+" ("+s.store.IdentityColumns("state_hash", "workspace_id", "provider_key", "payload_json", "attempts", "expires_at", "consumed_at", "created_at", "updated_at")+") VALUES ("+s.store.Placeholders(9)+")", stateHash, workspaceID, provider, envelope, challenge.Attempts, challenge.ExpiresAt, nil, valueOrNow(challenge.CreatedAt, now), now)
-	return err
+	return s.insertAuthLoginTransaction(ctx, s.db, workspaceID, provider, stateHash, envelope, challenge, now)
 }
 
 func (s AuthStore) CreateAuthOTPTransaction(ctx context.Context, challenge authmodel.AuthProviderChallenge, subjectKeyHash string, nextAllowedAt, now time.Time) (bool, error) {
@@ -49,13 +48,28 @@ func (s AuthStore) CreateAuthOTPTransaction(ctx context.Context, challenge authm
 	if err != nil || !claimed {
 		return false, err
 	}
-	if _, err := tx.ExecContext(ctx, "INSERT INTO "+s.store.TableIdentifier("auth_login_transactions")+" ("+s.store.IdentityColumns("state_hash", "workspace_id", "provider_key", "payload_json", "attempts", "expires_at", "consumed_at", "created_at", "updated_at")+") VALUES ("+s.store.Placeholders(9)+")", stateHash, workspaceID, provider, envelope, challenge.Attempts, challenge.ExpiresAt, nil, valueOrNow(challenge.CreatedAt, nowText), nowText); err != nil {
+	if err := s.insertAuthLoginTransaction(ctx, tx, workspaceID, provider, stateHash, envelope, challenge, nowText); err != nil {
 		return false, err
 	}
 	if err := tx.Commit(); err != nil {
 		return false, err
 	}
 	return true, nil
+}
+
+type authLoginTransactionExecutor interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func (s AuthStore) insertAuthLoginTransaction(ctx context.Context, executor authLoginTransactionExecutor, workspaceID, provider, stateHash, envelope string, challenge authmodel.AuthProviderChallenge, now string) error {
+	statement, args, buildErr := ormbuilder.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "auth_login_transactions", workspaceID).
+		Columns("state_hash", "provider_key", "payload_json", "attempts", "expires_at", "consumed_at", "created_at", "updated_at").
+		Values(stateHash, provider, envelope, challenge.Attempts, challenge.ExpiresAt, nil, valueOrNow(challenge.CreatedAt, now), now).Build()
+	if buildErr != nil {
+		return buildErr
+	}
+	_, err := executor.ExecContext(ctx, statement, args...)
+	return err
 }
 
 func (s AuthStore) prepareAuthLoginTransaction(ctx context.Context, challenge authmodel.AuthProviderChallenge, now time.Time) (string, string, string, string, string, error) {
@@ -85,10 +99,14 @@ func (s AuthStore) prepareAuthLoginTransaction(ctx context.Context, challenge au
 }
 
 func (s AuthStore) claimAuthOTPDelivery(ctx context.Context, tx *sql.Tx, workspaceID, provider, subjectKeyHash string, now, nextAllowedAt time.Time) (bool, error) {
-	table := s.store.TableIdentifier("auth_otp_delivery_limits")
 	nowText, nextText := now.UTC().Format(time.RFC3339Nano), nextAllowedAt.UTC().Format(time.RFC3339Nano)
-	update := "UPDATE " + table + " SET " + s.store.Identifier("provider_key") + " = " + s.store.Placeholder(1) + ", " + s.store.Identifier("next_allowed_at") + " = " + s.store.Placeholder(2) + ", " + s.store.Identifier("updated_at") + " = " + s.store.Placeholder(3) + " WHERE " + s.store.Identifier("workspace_id") + " = " + s.store.Placeholder(4) + " AND " + s.store.Identifier("subject_key_hash") + " = " + s.store.Placeholder(5) + " AND " + s.store.Identifier("next_allowed_at") + " <= " + s.store.Placeholder(6)
-	result, err := tx.ExecContext(ctx, update, provider, nextText, nowText, workspaceID, subjectKeyHash, nowText)
+	update, updateArgs, buildErr := ormbuilder.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "auth_otp_delivery_limits", workspaceID).
+		Set("provider_key", provider).Set("next_allowed_at", nextText).Set("updated_at", nowText).
+		Where(ormbuilder.And(ormbuilder.Equal("subject_key_hash", subjectKeyHash), ormbuilder.LessThanOrEqual("next_allowed_at", nowText))).Build()
+	if buildErr != nil {
+		return false, buildErr
+	}
+	result, err := tx.ExecContext(ctx, update, updateArgs...)
 	if err != nil {
 		return false, err
 	}
@@ -97,16 +115,13 @@ func (s AuthStore) claimAuthOTPDelivery(ctx context.Context, tx *sql.Tx, workspa
 	} else if changed == 1 {
 		return true, nil
 	}
-	insert := "INSERT INTO " + table + " (" + s.store.IdentityColumns("subject_key_hash", "workspace_id", "provider_key", "next_allowed_at", "created_at", "updated_at") + ") VALUES (" + s.store.Placeholders(6) + ")"
-	switch s.store.Driver() {
-	case "mysql":
-		insert = strings.Replace(insert, "INSERT INTO", "INSERT IGNORE INTO", 1)
-	case "postgres", "sqlite":
-		insert += " ON CONFLICT (" + s.store.IdentityColumns("workspace_id", "subject_key_hash") + ") DO NOTHING"
-	default:
-		return false, fmt.Errorf("unsupported OTP delivery-limit database driver %q", s.store.Driver())
+	insert, insertArgs, buildErr := ormbuilder.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "auth_otp_delivery_limits", workspaceID).
+		Columns("subject_key_hash", "provider_key", "next_allowed_at", "created_at", "updated_at").
+		Values(subjectKeyHash, provider, nextText, nowText, nowText).OnConflictDoNothing("workspace_id", "subject_key_hash").Build()
+	if buildErr != nil {
+		return false, buildErr
 	}
-	result, err = tx.ExecContext(ctx, insert, subjectKeyHash, workspaceID, provider, nextText, nowText, nowText)
+	result, err = tx.ExecContext(ctx, insert, insertArgs...)
 	if err != nil {
 		return false, err
 	}
@@ -200,15 +215,22 @@ func (s AuthStore) ConsumeAuthOTPTransaction(ctx context.Context, workspaceID, p
 		return authmodel.AuthProviderChallenge{}, false, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	var storedWorkspace, envelope string
+	selectStatement, selectArgs, buildErr := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "auth_login_transactions", workspaceID).
+		Columns("payload_json", "attempts").Where(ormbuilder.And(
+		ormbuilder.Equal("state_hash", stateHash), ormbuilder.Equal("provider_key", provider), ormbuilder.IsNull("consumed_at"), ormbuilder.GreaterThan("expires_at", nowText),
+	)).Limit(1).Build()
+	if buildErr != nil {
+		return authmodel.AuthProviderChallenge{}, false, buildErr
+	}
+	var envelope string
 	var attempts int
-	if err := tx.QueryRowContext(ctx, "SELECT "+s.store.IdentityColumns("workspace_id", "payload_json", "attempts")+" FROM "+s.store.TableIdentifier("auth_login_transactions")+" WHERE "+s.store.Identifier("state_hash")+" = "+s.store.Placeholder(1)+" AND "+s.store.Identifier("provider_key")+" = "+s.store.Placeholder(2)+" AND "+s.store.Identifier("workspace_id")+" = "+s.store.Placeholder(3)+" AND "+s.store.Identifier("consumed_at")+" IS NULL AND "+s.store.Identifier("expires_at")+" > "+s.store.Placeholder(4), stateHash, provider, workspaceID, nowText).Scan(&storedWorkspace, &envelope, &attempts); err != nil {
+	if err := tx.QueryRowContext(ctx, selectStatement, selectArgs...).Scan(&envelope, &attempts); err != nil {
 		if err == sql.ErrNoRows {
 			return authmodel.AuthProviderChallenge{}, false, nil
 		}
 		return authmodel.AuthProviderChallenge{}, false, err
 	}
-	plain, err := s.loginSecrets.Decrypt(ctx, storedWorkspace, stateHash, envelope)
+	plain, err := s.loginSecrets.Decrypt(ctx, workspaceID, stateHash, envelope)
 	if err != nil {
 		return authmodel.AuthProviderChallenge{}, false, err
 	}
@@ -218,22 +240,27 @@ func (s AuthStore) ConsumeAuthOTPTransaction(ctx context.Context, workspaceID, p
 	}
 	challenge.State, challenge.Attempts = state, attempts
 	valid := subtle.ConstantTimeCompare([]byte(strings.TrimSpace(challenge.Code)), []byte(strings.TrimSpace(code))) == 1
-	query := "UPDATE " + s.store.TableIdentifier("auth_login_transactions") + " SET " + s.store.Identifier("attempts") + " = " + s.store.Placeholder(1) + ", " + s.store.Identifier("updated_at") + " = " + s.store.Placeholder(2)
-	args := []any{attempts, nowText}
+	updateBuilder := ormbuilder.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "auth_login_transactions", workspaceID).
+		Set("attempts", attempts).Set("updated_at", nowText)
 	if valid || attempts+1 >= maxAttempts {
-		query += ", " + s.store.Identifier("consumed_at") + " = " + s.store.Placeholder(3)
-		args = append(args, nowText)
+		updateBuilder.Set("consumed_at", nowText)
 	}
 	if !valid {
 		attempts++
-		args[0], challenge.Attempts = attempts, attempts
+		updateBuilder.Set("attempts", attempts)
+		challenge.Attempts = attempts
 	}
-	query += " WHERE " + s.store.Identifier("state_hash") + " = " + s.store.Placeholder(len(args)+1) + " AND " + s.store.Identifier("provider_key") + " = " + s.store.Placeholder(len(args)+2) + " AND " + s.store.Identifier("workspace_id") + " = " + s.store.Placeholder(len(args)+3) + " AND " + s.store.Identifier("attempts") + " = " + s.store.Placeholder(len(args)+4) + " AND " + s.store.Identifier("consumed_at") + " IS NULL"
-	args = append(args, stateHash, provider, workspaceID, challenge.Attempts)
+	expectedAttempts := challenge.Attempts
 	if !valid {
-		args[len(args)-1] = attempts - 1
+		expectedAttempts = attempts - 1
 	}
-	result, err := tx.ExecContext(ctx, query, args...)
+	updateStatement, updateArgs, buildErr := updateBuilder.Where(ormbuilder.And(
+		ormbuilder.Equal("state_hash", stateHash), ormbuilder.Equal("provider_key", provider), ormbuilder.Equal("attempts", expectedAttempts), ormbuilder.IsNull("consumed_at"),
+	)).Build()
+	if buildErr != nil {
+		return authmodel.AuthProviderChallenge{}, false, buildErr
+	}
+	result, err := tx.ExecContext(ctx, updateStatement, updateArgs...)
 	if err != nil {
 		return authmodel.AuthProviderChallenge{}, false, err
 	}
