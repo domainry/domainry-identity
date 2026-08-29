@@ -15,6 +15,11 @@ func (s *IdentityStore) sqlBase() *base.SQLDatabase {
 	return s.SQLDatabase
 }
 
+func (s *IdentityStore) EnsureCompositePrimaryKey(ctx context.Context, table string, columns ...string) error {
+	base := s.sqlBase()
+	return base.Engine.EnsureCompositePrimaryKey(ctx, s.schemaDatabase(), base.SQLRenderer, base.DatabaseSchema, base.RelationPrefix, table, columns...)
+}
+
 func (s *IdentityStore) insertSystemRowContext(ctx context.Context, table string, columns []string, values []any) error {
 	query, args, err := ormbuilder.NewInsertBuilder(s.sqlBase().SQLRenderer, table).Columns(columns...).Values(values...).Build()
 	if err != nil {

@@ -37,7 +37,7 @@ func identitySchemaLedgerQueries(count int64, checksum string, dirty bool) []dat
 
 func TestIdentitySchemaHelpersAndDatabaseSelection(t *testing.T) {
 	versions := SupportedIdentitySchemaVersions()
-	if len(versions) != 3 || versions[0] != IdentitySchemaVersionBaseline || versions[1] != IdentitySchemaVersionPortability || versions[2] != CurrentIdentitySchemaVersion {
+	if len(versions) != 4 || versions[0] != IdentitySchemaVersionBaseline || versions[1] != IdentitySchemaVersionPortability || versions[2] != IdentitySchemaVersionNoFrontend || versions[3] != CurrentIdentitySchemaVersion {
 		t.Fatalf("versions=%#v", versions)
 	}
 	store := identitySchemaStore(t, &databaseSQLState{})

@@ -27,6 +27,7 @@ type Store interface {
 	Placeholder(int) string
 	CreateIndexIfMissing(context.Context, string, string, bool, ...string) error
 	EnsureColumn(context.Context, string, string, string) error
+	EnsureCompositePrimaryKey(context.Context, string, ...string) error
 	MetadataIDColumnType() string
 	LocalizedTextKeyColumnType() string
 	ColumnDefinition(string) string

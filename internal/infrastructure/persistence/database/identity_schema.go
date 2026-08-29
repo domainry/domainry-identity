@@ -17,7 +17,8 @@ import (
 const (
 	IdentitySchemaVersionBaseline    = "001_identity_service_baseline"
 	IdentitySchemaVersionPortability = "002_identity_portability_cutover"
-	CurrentIdentitySchemaVersion     = "003_remove_frontend_capability_registry"
+	IdentitySchemaVersionNoFrontend  = "003_remove_frontend_capability_registry"
+	CurrentIdentitySchemaVersion     = "004_workspace_provider_credential_identity"
 )
 
 const (
@@ -25,11 +26,11 @@ const (
 	managedIdentityDatabaseTable           = "_domainry_managed_identity_database"
 	managedIdentityDatabaseContractVersion = "domainry-managed-identity-database-v1"
 	identitySchemaMigrationKind            = "identity_schema"
-	identitySchemaMigrationName            = "remove_frontend_capability_registry"
+	identitySchemaMigrationName            = "workspace_provider_credential_identity"
 )
 
 func SupportedIdentitySchemaVersions() []string {
-	return []string{IdentitySchemaVersionBaseline, IdentitySchemaVersionPortability, CurrentIdentitySchemaVersion}
+	return []string{IdentitySchemaVersionBaseline, IdentitySchemaVersionPortability, IdentitySchemaVersionNoFrontend, CurrentIdentitySchemaVersion}
 }
 
 func (s *IdentityStore) EnsureSchema(ctx context.Context) error {
@@ -260,7 +261,7 @@ func (s *IdentityStore) recordIdentitySchemaMigration(ctx context.Context, versi
 }
 
 func currentIdentitySchemaChecksum() string {
-	sum := sha256.Sum256([]byte(CurrentIdentitySchemaVersion + ":metadata,identity,audit,authentication,authorization_catalog,portability_receipts,workspace_write_fences,workspace_write_fence_events,managed_identity_database,no_frontend_capability_registry"))
+	sum := sha256.Sum256([]byte(CurrentIdentitySchemaVersion + ":metadata,identity,audit,authentication,authorization_catalog,workspace_provider_credential_identity,portability_receipts,workspace_write_fences,workspace_write_fence_events,managed_identity_database,no_frontend_capability_registry"))
 	return hex.EncodeToString(sum[:])
 }
 

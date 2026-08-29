@@ -3,6 +3,7 @@ package driver
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	"github.com/domainry/domainry-identity/internal/platform/config"
 	ormbuilder "github.com/domainry/domainry-orm/builder"
@@ -24,6 +25,13 @@ type EngineProfile interface {
 	TextKeyColumnType(int) string
 	ApplyUpdateLock(*ormbuilder.SelectBuilder) *ormbuilder.SelectBuilder
 	ApplyUpsert(*ormbuilder.InsertBuilder, []string, ...string) *ormbuilder.InsertBuilder
+	EnsureCompositePrimaryKey(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, ...string) error
+}
+
+type SchemaDatabase interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
 }
 
 type portableEngineProfile struct{}
@@ -38,6 +46,9 @@ func (portableEngineProfile) ApplyUpsert(builder *ormbuilder.InsertBuilder, conf
 		assignments[index] = ormbuilder.AssignExpression(column, ormbuilder.InsertedValue(column))
 	}
 	return builder.OnConflictDoUpdate(conflictColumns, assignments...)
+}
+func (portableEngineProfile) EnsureCompositePrimaryKey(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, ...string) error {
+	return fmt.Errorf("database engine does not support composite primary-key migration")
 }
 
 func ProfileFor(value Dialect) EngineProfile {

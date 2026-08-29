@@ -289,7 +289,7 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 		},
 		"auth_provider_credentials": {
 			"workspace_id " + text + " NOT NULL",
-			"provider_key " + text + " PRIMARY KEY",
+			"provider_key " + text + " NOT NULL",
 			"configuration_json TEXT NOT NULL",
 			"secret_envelope TEXT NOT NULL",
 			"updated_by " + text + " NOT NULL",
@@ -447,6 +447,9 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 		if _, err := s.SchemaDB().ExecContext(ctx, "CREATE TABLE IF NOT EXISTS "+s.TableIdentifier(table)+" ("+quotedColumnDefinitions(s, tables[table])+")"); err != nil {
 			return fmt.Errorf("create %s: %w", table, err)
 		}
+	}
+	if err := s.EnsureCompositePrimaryKey(ctx, "auth_provider_credentials", "workspace_id", "provider_key"); err != nil {
+		return fmt.Errorf("ensure workspace auth provider credential identity: %w", err)
 	}
 	if err := ensureWorkspaceScopedIdentities(ctx, s, workspaceIdentities); err != nil {
 		return err

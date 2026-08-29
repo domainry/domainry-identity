@@ -10,6 +10,7 @@ import (
 
 	authmodel "github.com/domainry/domainry-identity/internal/domain/auth/model"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
 
 type providerSecretPayload struct {
@@ -23,31 +24,22 @@ func (s AuthStore) ListAuthProviderCredentials(ctx context.Context, workspaceID 
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.db.QueryContext(ctx, "SELECT "+s.store.IdentityColumns("provider_key", "configuration_json", "secret_envelope", "updated_by", "created_at", "updated_at")+" FROM "+s.store.TableIdentifier("auth_provider_credentials")+" WHERE "+s.store.Identifier("workspace_id")+" = "+s.store.Placeholder(1)+" ORDER BY "+s.store.Identifier("provider_key"), workspaceID)
+	statement, args, buildErr := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "auth_provider_credentials", workspaceID).
+		Columns("provider_key", "configuration_json", "secret_envelope", "updated_by", "created_at", "updated_at").OrderBy(ormbuilder.Ascending("provider_key")).Build()
+	if buildErr != nil {
+		return nil, buildErr
+	}
+	rows, err := s.db.QueryContext(ctx, statement, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	result := []authmodel.AuthProviderCredential{}
 	for rows.Next() {
-		var credential authmodel.AuthProviderCredential
-		var configuration, envelope string
-		if err := rows.Scan(&credential.ProviderKey, &configuration, &envelope, &credential.UpdatedBy, &credential.CreatedAt, &credential.UpdatedAt); err != nil {
+		credential, err := s.scanAuthProviderCredential(ctx, workspaceID, rows)
+		if err != nil {
 			return nil, err
 		}
-		if err := json.Unmarshal([]byte(configuration), &credential); err != nil {
-			return nil, fmt.Errorf("decode auth provider credential %q: %w", credential.ProviderKey, err)
-		}
-		credential.WorkspaceID = workspaceID
-		plain, err := s.secrets.Decrypt(ctx, workspaceID, credential.ProviderKey, envelope)
-		if err != nil {
-			return nil, fmt.Errorf("decrypt auth provider credential %q: %w", credential.ProviderKey, err)
-		}
-		var secret providerSecretPayload
-		if err := json.Unmarshal(plain, &secret); err != nil {
-			return nil, fmt.Errorf("decode auth provider secret %q: %w", credential.ProviderKey, err)
-		}
-		credential.ClientSecret, credential.VerificationKey, credential.AccessToken = secret.ClientSecret, secret.VerificationKey, secret.AccessToken
 		result = append(result, credential)
 	}
 	return result, rows.Err()
@@ -101,33 +93,60 @@ func (s AuthStore) UpsertAuthProviderCredential(ctx context.Context, provider st
 	if err != nil {
 		return authmodel.AuthProviderCredential{}, fmt.Errorf("encrypt auth provider credential: %w", err)
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return authmodel.AuthProviderCredential{}, err
+	insert := ormbuilder.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "auth_provider_credentials", workspaceID).
+		Columns("provider_key", "configuration_json", "secret_envelope", "updated_by", "created_at", "updated_at").
+		Values(provider, string(configuration), envelope, credential.UpdatedBy, credential.CreatedAt, credential.UpdatedAt)
+	insert.OnConflictDoUpdate([]string{"workspace_id", "provider_key"},
+		ormbuilder.AssignExpression("configuration_json", ormbuilder.InsertedValue("configuration_json")),
+		ormbuilder.AssignExpression("secret_envelope", ormbuilder.InsertedValue("secret_envelope")),
+		ormbuilder.AssignExpression("updated_by", ormbuilder.InsertedValue("updated_by")),
+		ormbuilder.AssignExpression("created_at", ormbuilder.InsertedValue("created_at")),
+		ormbuilder.AssignExpression("updated_at", ormbuilder.InsertedValue("updated_at")),
+	)
+	statement, args, buildErr := insert.Build()
+	if buildErr != nil {
+		return authmodel.AuthProviderCredential{}, buildErr
 	}
-	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, "DELETE FROM "+s.store.TableIdentifier("auth_provider_credentials")+" WHERE "+s.store.Identifier("workspace_id")+" = "+s.store.Placeholder(1)+" AND "+s.store.Identifier("provider_key")+" = "+s.store.Placeholder(2), workspaceID, provider); err != nil {
-		return authmodel.AuthProviderCredential{}, err
-	}
-	query := "INSERT INTO " + s.store.TableIdentifier("auth_provider_credentials") + " (" + s.store.IdentityColumns("workspace_id", "provider_key", "configuration_json", "secret_envelope", "updated_by", "created_at", "updated_at") + ") VALUES (" + s.store.Placeholders(7) + ")"
-	if _, err := tx.ExecContext(ctx, query, workspaceID, provider, string(configuration), envelope, credential.UpdatedBy, credential.CreatedAt, credential.UpdatedAt); err != nil {
-		return authmodel.AuthProviderCredential{}, err
-	}
-	if err := tx.Commit(); err != nil {
+	if _, err := s.db.ExecContext(ctx, statement, args...); err != nil {
 		return authmodel.AuthProviderCredential{}, err
 	}
 	return credential, nil
 }
 
 func (s AuthStore) authProviderCredential(ctx context.Context, workspaceID, provider string) (authmodel.AuthProviderCredential, bool, error) {
-	values, err := s.ListAuthProviderCredentials(ctx, workspaceID)
-	if err != nil && err != sql.ErrNoRows {
-		return authmodel.AuthProviderCredential{}, false, err
+	statement, args, buildErr := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "auth_provider_credentials", workspaceID).
+		Columns("provider_key", "configuration_json", "secret_envelope", "updated_by", "created_at", "updated_at").
+		Where(ormbuilder.Equal("provider_key", provider)).Limit(1).Build()
+	if buildErr != nil {
+		return authmodel.AuthProviderCredential{}, false, buildErr
 	}
-	for _, value := range values {
-		if value.ProviderKey == provider {
-			return value, true, nil
-		}
+	credential, err := s.scanAuthProviderCredential(ctx, workspaceID, s.db.QueryRowContext(ctx, statement, args...))
+	if err == sql.ErrNoRows {
+		return authmodel.AuthProviderCredential{}, false, nil
 	}
-	return authmodel.AuthProviderCredential{}, false, nil
+	return credential, err == nil, err
+}
+
+type authProviderCredentialScanner interface{ Scan(...any) error }
+
+func (s AuthStore) scanAuthProviderCredential(ctx context.Context, workspaceID string, scanner authProviderCredentialScanner) (authmodel.AuthProviderCredential, error) {
+	var credential authmodel.AuthProviderCredential
+	var configuration, envelope string
+	if err := scanner.Scan(&credential.ProviderKey, &configuration, &envelope, &credential.UpdatedBy, &credential.CreatedAt, &credential.UpdatedAt); err != nil {
+		return credential, err
+	}
+	if err := json.Unmarshal([]byte(configuration), &credential); err != nil {
+		return credential, fmt.Errorf("decode auth provider credential %q: %w", credential.ProviderKey, err)
+	}
+	credential.WorkspaceID = workspaceID
+	plain, err := s.secrets.Decrypt(ctx, workspaceID, credential.ProviderKey, envelope)
+	if err != nil {
+		return credential, fmt.Errorf("decrypt auth provider credential %q: %w", credential.ProviderKey, err)
+	}
+	var secret providerSecretPayload
+	if err := json.Unmarshal(plain, &secret); err != nil {
+		return credential, fmt.Errorf("decode auth provider secret %q: %w", credential.ProviderKey, err)
+	}
+	credential.ClientSecret, credential.VerificationKey, credential.AccessToken = secret.ClientSecret, secret.VerificationKey, secret.AccessToken
+	return credential, nil
 }

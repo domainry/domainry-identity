@@ -21,6 +21,9 @@ func (schemaHelperStore) CreateIndexIfMissing(context.Context, string, string, b
 func (schemaHelperStore) EnsureColumn(context.Context, string, string, string) error {
 	return nil
 }
+func (schemaHelperStore) EnsureCompositePrimaryKey(context.Context, string, ...string) error {
+	return nil
+}
 func (schemaHelperStore) MetadataIDColumnType() string       { return "TEXT" }
 func (schemaHelperStore) LocalizedTextKeyColumnType() string { return "TEXT" }
 func (schemaHelperStore) ColumnDefinition(value string) string {

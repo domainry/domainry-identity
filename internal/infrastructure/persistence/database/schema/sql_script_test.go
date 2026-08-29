@@ -128,6 +128,9 @@ func (scriptedSchemaStore) CreateIndexIfMissing(context.Context, string, string,
 func (s scriptedSchemaStore) EnsureColumn(context.Context, string, string, string) error {
 	return s.ensureErr
 }
+func (scriptedSchemaStore) EnsureCompositePrimaryKey(context.Context, string, ...string) error {
+	return nil
+}
 func (scriptedSchemaStore) MetadataIDColumnType() string         { return "TEXT" }
 func (scriptedSchemaStore) LocalizedTextKeyColumnType() string   { return "TEXT" }
 func (scriptedSchemaStore) ColumnDefinition(value string) string { return value }
