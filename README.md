@@ -71,7 +71,7 @@ Runtime 切换到远程模式后只依赖 Identity SDK，通过 `IDENTITY_ENDPOI
 
 | 数据库 | `DATABASE_DRIVER` | 连接配置 |
 | --- | --- | --- |
-| SQLite | `sqlite`、`sqlite3`，空值也按 SQLite 处理 | `APP_DB_PATH`，默认 `data/identity.db`；也可使用 `DATABASE_DSN` |
+| SQLite | `sqlite`、`sqlite3`，空值也按 SQLite 处理 | `APP_DB_PATH`，默认 `data/runtime.db`；也可使用 `DATABASE_DSN` |
 | MySQL | `mysql` | 必须提供 `DATABASE_DSN`，且 DSN 必须选择 `identity` database |
 | PostgreSQL | `postgres`、`postgresql`、`pgx` | 必须提供 `DATABASE_DSN`，且 DSN 必须选择 `identity` database；`DATABASE_SCHEMA` 默认 `public` |
 
