@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/domainry/domainry-identity/internal/platform/config"
 	ormbuilder "github.com/domainry/domainry-orm/builder"
@@ -39,6 +40,9 @@ type EngineProfile interface {
 	ColumnDefinition(string) string
 	ApplicationTablesQuery(ormdialect.Renderer, string) SchemaQuery
 	WorkspaceTablesQuery(ormdialect.Renderer, string) SchemaQuery
+	MigrationLedgerTypes() MigrationLedgerTypes
+	EnsureMigrationNamespace(context.Context, SchemaDatabase, ormdialect.Renderer, string) error
+	ConfigureMigrationTransaction(context.Context, *sql.Tx, ormdialect.Renderer, string, time.Duration, time.Duration) error
 }
 
 type SchemaTypes struct {
@@ -53,6 +57,11 @@ type SchemaTypes struct {
 type SchemaQuery struct {
 	Statement string
 	Arguments []any
+}
+
+type MigrationLedgerTypes struct {
+	Key       string
+	Timestamp string
 }
 
 type SchemaDatabase interface {
@@ -106,6 +115,15 @@ func (portableEngineProfile) ApplicationTablesQuery(ormdialect.Renderer, string)
 }
 func (portableEngineProfile) WorkspaceTablesQuery(ormdialect.Renderer, string) SchemaQuery {
 	return SchemaQuery{}
+}
+func (portableEngineProfile) MigrationLedgerTypes() MigrationLedgerTypes {
+	return MigrationLedgerTypes{Key: "TEXT", Timestamp: "TEXT"}
+}
+func (portableEngineProfile) EnsureMigrationNamespace(context.Context, SchemaDatabase, ormdialect.Renderer, string) error {
+	return nil
+}
+func (portableEngineProfile) ConfigureMigrationTransaction(context.Context, *sql.Tx, ormdialect.Renderer, string, time.Duration, time.Duration) error {
+	return nil
 }
 
 func ProfileFor(value Dialect) EngineProfile {

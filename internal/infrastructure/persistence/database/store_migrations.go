@@ -168,20 +168,9 @@ func (s *IdentityStore) applyMigrationFile(ctx context.Context, path string) err
 		return fmt.Errorf("begin transaction: %w", err)
 	}
 	defer tx.Rollback()
-	if s.dialect.Name() == "postgres" {
-		if _, err := tx.ExecContext(ctx, "SELECT set_config('search_path', "+s.placeholder(1)+", true)", s.DatabaseSchema()); err != nil {
-			return fmt.Errorf("set migration schema search path: %w", err)
-		}
-		if s.config.DatabaseLockTimeout > 0 {
-			if _, err := tx.ExecContext(ctx, "SELECT set_config('lock_timeout', "+s.placeholder(1)+", true)", durationMilliseconds(s.config.DatabaseLockTimeout)); err != nil {
-				return fmt.Errorf("set migration lock timeout: %w", err)
-			}
-		}
-		if s.config.DatabaseStatementTimeout > 0 {
-			if _, err := tx.ExecContext(ctx, "SELECT set_config('statement_timeout', "+s.placeholder(1)+", true)", durationMilliseconds(s.config.DatabaseStatementTimeout)); err != nil {
-				return fmt.Errorf("set migration statement timeout: %w", err)
-			}
-		}
+	base := s.sqlBase()
+	if err := base.Engine.ConfigureMigrationTransaction(ctx, tx, base.SQLRenderer, base.DatabaseSchema, s.config.DatabaseLockTimeout, s.config.DatabaseStatementTimeout); err != nil {
+		return err
 	}
 	for _, statement := range splitSQLStatements(string(raw)) {
 		if _, err := tx.ExecContext(ctx, statement); err != nil {
@@ -200,29 +189,22 @@ func (s *IdentityStore) applyMigrationFile(ctx context.Context, path string) err
 }
 
 func (s *IdentityStore) schemaMigrationSQL() string {
-	pathType := "TEXT"
-	timeType := "TEXT"
-	if s.dialect.Name() == "mysql" {
-		pathType = "VARCHAR(255)"
-		timeType = "VARCHAR(64)"
-	}
+	types := s.sqlBase().Engine.MigrationLedgerTypes()
+	pathType := types.Key
+	timeType := types.Timestamp
 	return "CREATE TABLE IF NOT EXISTS " + s.tableIdentifier("_schema_migrations") + " (" + s.identifier("path") + " " + pathType + " PRIMARY KEY, " + s.identifier("version") + " " + pathType + " NOT NULL DEFAULT '', " + s.identifier("name") + " " + pathType + " NOT NULL DEFAULT '', " + s.identifier("kind") + " " + pathType + " NOT NULL DEFAULT 'schema', " + s.identifier("checksum") + " " + pathType + " NOT NULL DEFAULT '', " + s.identifier("dirty") + " BOOLEAN NOT NULL DEFAULT FALSE, " + s.identifier("applied_at") + " " + timeType + " NOT NULL, " + s.identifier("service_version") + " " + pathType + " NOT NULL DEFAULT '', " + s.identifier("duration_ms") + " BIGINT NOT NULL DEFAULT 0, " + s.identifier("operator") + " " + pathType + " NOT NULL DEFAULT '', " + s.identifier("instance_id") + " " + pathType + " NOT NULL DEFAULT '', " + s.identifier("backup_id") + " " + pathType + " NOT NULL DEFAULT '')"
 }
 
 func (s *IdentityStore) ensureMigrationLedger(ctx context.Context) error {
 	db := s.schemaDatabase()
-	if s.dialect.Name() == "postgres" && strings.TrimSpace(s.databaseSchema) != "" && !strings.EqualFold(s.databaseSchema, "public") {
-		if _, err := db.ExecContext(ctx, "CREATE SCHEMA IF NOT EXISTS "+s.identifier(s.databaseSchema)); err != nil {
-			return fmt.Errorf("prepare PostgreSQL Identity schema: %w", err)
-		}
+	base := s.sqlBase()
+	if err := base.Engine.EnsureMigrationNamespace(ctx, db, base.SQLRenderer, base.DatabaseSchema); err != nil {
+		return err
 	}
 	if _, err := db.ExecContext(ctx, s.schemaMigrationSQL()); err != nil {
 		return err
 	}
-	textType := "TEXT NOT NULL DEFAULT ''"
-	if s.dialect.Name() == "mysql" {
-		textType = "VARCHAR(255) NOT NULL DEFAULT ''"
-	}
+	textType := base.Engine.MigrationLedgerTypes().Key + " NOT NULL DEFAULT ''"
 	columns := []struct{ name, definition string }{
 		{"version", textType}, {"name", textType}, {"kind", textType}, {"checksum", textType},
 		{"dirty", "BOOLEAN NOT NULL DEFAULT FALSE"}, {"service_version", textType}, {"duration_ms", "BIGINT NOT NULL DEFAULT 0"},
