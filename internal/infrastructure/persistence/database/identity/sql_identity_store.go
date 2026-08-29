@@ -11,6 +11,7 @@ import (
 	identityrepository "github.com/domainry/domainry-identity/internal/domain/identity/repository"
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
 	identityschema "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/schema"
+	persistencedriver "github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 )
 
@@ -35,6 +36,7 @@ type SQLIdentityStore struct {
 	db                *sql.DB
 	schemaDB          identityschema.SQLDatabase
 	driver            string
+	engine            persistencedriver.EngineProfile
 	schema            string
 	relationPrefix    string
 	renderer          *ormdialect.Renderer
@@ -92,6 +94,18 @@ func (s *SQLIdentityStore) identityColumns(values ...string) string {
 	return strings.Join(quoted, ", ")
 }
 
+func (s *SQLIdentityStore) engineProfile() persistencedriver.EngineProfile {
+	if s.engine != nil {
+		return s.engine
+	}
+	profile, err := database.EngineProfileFor(s.driver)
+	if err != nil {
+		panic(err)
+	}
+	s.engine = profile
+	return profile
+}
+
 func NewSQLIdentityStore(ctx context.Context, db *sql.DB, driver string, schema ...string) (*SQLIdentityStore, error) {
 	return NewSQLIdentityStoreWithSchema(ctx, db, db, driver, schema...)
 }
@@ -109,6 +123,10 @@ func NewSQLIdentityStoreWithSchema(ctx context.Context, db *sql.DB, schemaDB ide
 	if err != nil {
 		return nil, err
 	}
+	engine, err := database.EngineProfileFor(driver)
+	if err != nil {
+		return nil, err
+	}
 	rendererSchema := ""
 	if dialect.Name() == ormdialect.Postgres {
 		rendererSchema = databaseSchema
@@ -118,7 +136,7 @@ func NewSQLIdentityStoreWithSchema(ctx context.Context, db *sql.DB, schemaDB ide
 		return nil, err
 	}
 	configuration := strings.Join([]string{driver, databaseSchema, relationPrefix}, "\x00")
-	store := &SQLIdentityStore{db: db, schemaDB: schemaDB, driver: driver, schema: databaseSchema, relationPrefix: relationPrefix, renderer: &renderer, rendererConfig: configuration, memory: NewMemoryIdentityStore()}
+	store := &SQLIdentityStore{db: db, schemaDB: schemaDB, driver: driver, engine: engine, schema: databaseSchema, relationPrefix: relationPrefix, renderer: &renderer, rendererConfig: configuration, memory: NewMemoryIdentityStore()}
 	if err := store.ensureRoleRequestsTable(ctx); err != nil {
 		return nil, err
 	}

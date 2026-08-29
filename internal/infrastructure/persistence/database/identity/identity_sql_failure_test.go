@@ -92,8 +92,8 @@ func TestSQLIdentityUserAndRoleWriteStages(t *testing.T) {
 	for failAt := 1; failAt <= 2; failAt++ {
 		callWithFailure(t, failAt, func(s *SQLIdentityStore) error { return s.UpsertIdentityDepartment(t.Context(), "default", department) })
 		callWithFailure(t, failAt, func(s *SQLIdentityStore) error { return s.UpsertIdentityUser(t.Context(), "default", user) })
-		callWithFailure(t, failAt, func(s *SQLIdentityStore) error { return s.AssignIdentityUserRole(t.Context(), "default", assignment) })
 	}
+	callWithFailure(t, 1, func(s *SQLIdentityStore) error { return s.AssignIdentityUserRole(t.Context(), "default", assignment) })
 	for failAt := 1; failAt <= 6; failAt++ {
 		callWithFailure(t, failAt, func(s *SQLIdentityStore) error { return s.RemoveIdentityUser(t.Context(), "default", "user") })
 	}
@@ -113,9 +113,7 @@ func TestSQLIdentityUserAndRoleWriteStages(t *testing.T) {
 	callWithFailure(t, 1, func(s *SQLIdentityStore) error {
 		return s.RemoveIdentityUserRole(t.Context(), "default", "user", "role")
 	})
-	for failAt := 1; failAt <= 2; failAt++ {
-		callWithFailure(t, failAt, func(s *SQLIdentityStore) error { return s.UpsertIdentityRole(t.Context(), "default", role) })
-	}
+	callWithFailure(t, 1, func(s *SQLIdentityStore) error { return s.UpsertIdentityRole(t.Context(), "default", role) })
 }
 
 func TestSQLIdentityAtomicUserStages(t *testing.T) {

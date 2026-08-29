@@ -26,6 +26,16 @@ func dialectFor(driver string) (dialect, error) {
 	}
 }
 
+// EngineProfileFor resolves database capabilities at the persistence assembly
+// boundary so repositories never branch on driver names.
+func EngineProfileFor(driverName string) (driver.EngineProfile, error) {
+	value, err := dialectFor(driverName)
+	if err != nil {
+		return nil, err
+	}
+	return driver.ProfileFor(value), nil
+}
+
 func validSQLIdentifier(value string) bool {
 	return ormdialect.ValidIdentifier(value)
 }

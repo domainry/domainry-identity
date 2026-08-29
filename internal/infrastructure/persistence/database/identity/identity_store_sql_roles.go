@@ -31,11 +31,15 @@ func (s *SQLIdentityStore) UpsertIdentityRole(ctx context.Context, workspaceID s
 		role.Status = identitymodel.IdentityStatusActive
 	}
 	now := nowString()
-	if _, err := s.db.ExecContext(ctx, "DELETE FROM "+s.tableIdentifier("identity_roles")+" WHERE "+s.identifier("workspace_id")+" = "+s.placeholder(1)+" AND "+s.identifier("id")+" = "+s.placeholder(2), workspaceID, role.ID); err != nil {
-		return err
+	insert := ormbuilder.NewWorkspaceInsertBuilder(s.sqlRenderer(), "identity_roles", workspaceID).
+		Columns("id", "role_key", "label", "description", "status", "created_at", "updated_at").
+		Values(role.ID, role.Key, role.Label, role.Description, string(role.Status), now, now)
+	s.engineProfile().ApplyUpsert(insert, []string{"workspace_id", "id"}, "role_key", "label", "description", "status", "updated_at")
+	statement, arguments, err := insert.Build()
+	if err != nil {
+		return fmt.Errorf("build identity role upsert: %w", err)
 	}
-	query := "INSERT INTO " + s.tableIdentifier("identity_roles") + " (" + s.identityColumns("id", "workspace_id", "role_key", "label", "description", "status", "created_at", "updated_at") + ") VALUES (" + s.placeholders(8) + ")"
-	if _, err := s.db.ExecContext(ctx, query, role.ID, workspaceID, role.Key, role.Label, role.Description, string(role.Status), now, now); err != nil {
+	if _, err := s.db.ExecContext(ctx, statement, arguments...); err != nil {
 		return err
 	}
 	return nil
@@ -50,11 +54,19 @@ func (s *SQLIdentityStore) RemoveIdentityRole(ctx context.Context, workspaceID, 
 		"identity_user_role_assignments",
 		"identity_role_menu_assignments",
 	} {
-		if _, err := s.db.ExecContext(ctx, "DELETE FROM "+s.tableIdentifier(table)+" WHERE "+s.identifier("workspace_id")+" = "+s.placeholder(1)+" AND "+s.identifier("role_id")+" = "+s.placeholder(2), workspaceID, roleID); err != nil {
+		statement, arguments, buildErr := ormbuilder.NewWorkspaceDeleteBuilder(s.sqlRenderer(), table, workspaceID).Where(ormbuilder.Equal("role_id", roleID)).Build()
+		if buildErr != nil {
+			return fmt.Errorf("build identity role relation delete: %w", buildErr)
+		}
+		if _, err := s.db.ExecContext(ctx, statement, arguments...); err != nil {
 			return err
 		}
 	}
-	if _, err := s.db.ExecContext(ctx, "DELETE FROM "+s.tableIdentifier("identity_roles")+" WHERE "+s.identifier("workspace_id")+" = "+s.placeholder(1)+" AND "+s.identifier("id")+" = "+s.placeholder(2), workspaceID, roleID); err != nil {
+	statement, arguments, err := ormbuilder.NewWorkspaceDeleteBuilder(s.sqlRenderer(), "identity_roles", workspaceID).Where(ormbuilder.Equal("id", roleID)).Build()
+	if err != nil {
+		return fmt.Errorf("build identity role delete: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, statement, arguments...); err != nil {
 		return err
 	}
 	return nil
@@ -73,11 +85,16 @@ func (s *SQLIdentityStore) writeIdentityUserRoleAssignment(ctx context.Context, 
 	if err != nil {
 		return err
 	}
-	if _, err := execer.ExecContext(ctx, "DELETE FROM "+s.tableIdentifier("identity_user_role_assignments")+" WHERE "+s.identifier("workspace_id")+" = "+s.placeholder(1)+" AND "+s.identifier("user_id")+" = "+s.placeholder(2)+" AND "+s.identifier("role_id")+" = "+s.placeholder(3), workspaceID, assignment.UserID, assignment.RoleID); err != nil {
-		return err
+	columns := append([]string{identityUserRoleAssignmentColumns[0]}, identityUserRoleAssignmentColumns[2:]...)
+	allValues := identityUserRoleAssignmentValues(workspaceID, assignment, nowString())
+	values := append([]any{allValues[0]}, allValues[2:]...)
+	insert := ormbuilder.NewWorkspaceInsertBuilder(s.sqlRenderer(), "identity_user_role_assignments", workspaceID).Columns(columns...).Values(values...)
+	s.engineProfile().ApplyUpsert(insert, []string{"workspace_id", "id"}, columns[1:]...)
+	statement, arguments, err := insert.Build()
+	if err != nil {
+		return fmt.Errorf("build identity user-role assignment upsert: %w", err)
 	}
-	query := "INSERT INTO " + s.tableIdentifier("identity_user_role_assignments") + " (" + s.identityColumns(identityUserRoleAssignmentColumns...) + ") VALUES (" + s.placeholders(len(identityUserRoleAssignmentColumns)) + ")"
-	_, err = execer.ExecContext(ctx, query, identityUserRoleAssignmentValues(workspaceID, assignment, nowString())...)
+	_, err = execer.ExecContext(ctx, statement, arguments...)
 	return err
 }
 
@@ -117,7 +134,12 @@ func (s *SQLIdentityStore) RemoveIdentityUserRole(ctx context.Context, workspace
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, "DELETE FROM "+s.tableIdentifier("identity_user_role_assignments")+" WHERE "+s.identifier("workspace_id")+" = "+s.placeholder(1)+" AND "+s.identifier("user_id")+" = "+s.placeholder(2)+" AND "+s.identifier("role_id")+" = "+s.placeholder(3), workspaceID, userID, roleID)
+	statement, arguments, err := ormbuilder.NewWorkspaceDeleteBuilder(s.sqlRenderer(), "identity_user_role_assignments", workspaceID).
+		Where(ormbuilder.And(ormbuilder.Equal("user_id", userID), ormbuilder.Equal("role_id", roleID))).Build()
+	if err != nil {
+		return fmt.Errorf("build identity user-role assignment delete: %w", err)
+	}
+	_, err = s.db.ExecContext(ctx, statement, arguments...)
 	return err
 }
 
@@ -240,7 +262,12 @@ func (s *SQLIdentityStore) loadRoles(ctx context.Context, workspaceID string) ([
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.reader(ctx).QueryContext(ctx, "SELECT "+s.identityColumns("id", "role_key", "label", "description", "status")+" FROM "+s.tableIdentifier("identity_roles")+" WHERE "+s.identifier("workspace_id")+" = "+s.placeholder(1)+" ORDER BY "+s.identifier("id"), workspaceID)
+	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(s.sqlRenderer(), "identity_roles", workspaceID).
+		Columns("id", "role_key", "label", "description", "status").OrderBy(ormbuilder.Ascending("id")).Build()
+	if err != nil {
+		return nil, fmt.Errorf("build identity role list: %w", err)
+	}
+	rows, err := s.reader(ctx).QueryContext(ctx, statement, arguments...)
 	if err != nil {
 		return nil, err
 	}
@@ -263,15 +290,17 @@ func (s *SQLIdentityStore) loadUserRoleAssignments(ctx context.Context, workspac
 	if err != nil {
 		return nil, err
 	}
-	query := "SELECT " + s.identityColumns("user_id", "role_id", "workforce_profile_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason", "expires_at", "created_at", "updated_at") + " FROM " + s.tableIdentifier("identity_user_role_assignments")
-	args := []any{workspaceID}
-	query += " WHERE " + s.identifier("workspace_id") + " = " + s.placeholder(1)
+	builder := ormbuilder.NewWorkspaceSelectBuilder(s.sqlRenderer(), "identity_user_role_assignments", workspaceID).
+		Columns("user_id", "role_id", "workforce_profile_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason", "expires_at", "created_at", "updated_at").
+		OrderBy(ormbuilder.Ascending("user_id"), ormbuilder.Ascending("role_id"))
 	if strings.TrimSpace(userID) != "" {
-		args = append(args, userID)
-		query += " AND " + s.identifier("user_id") + " = " + s.placeholder(2)
+		builder.Where(ormbuilder.Equal("user_id", userID))
 	}
-	query += " ORDER BY " + s.identifier("user_id") + ", " + s.identifier("role_id")
-	rows, err := s.reader(ctx).QueryContext(ctx, query, args...)
+	statement, arguments, err := builder.Build()
+	if err != nil {
+		return nil, fmt.Errorf("build identity user-role assignment list: %w", err)
+	}
+	rows, err := s.reader(ctx).QueryContext(ctx, statement, arguments...)
 	if err != nil {
 		return nil, err
 	}
