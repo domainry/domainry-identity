@@ -22,7 +22,7 @@ func (Dialect) Name() string { return "sqlite" }
 func (Dialect) MaxParameters() int           { return 999 }
 func (Dialect) TextKeyColumnType(int) string { return "TEXT" }
 func (Dialect) SchemaTypes() driver.SchemaTypes {
-	return driver.SchemaTypes{Boolean: "INTEGER", FalseLiteral: "0", DefaultText: "TEXT", IndexedText: "TEXT", AuditCursorText: "TEXT"}
+	return driver.SchemaTypes{Boolean: "INTEGER", FalseLiteral: "0", DefaultText: "TEXT", DocumentText: "TEXT", IndexedText: "TEXT", AuditCursorText: "TEXT"}
 }
 func (Dialect) ApplyUpdateLock(builder *ormbuilder.SelectBuilder) *ormbuilder.SelectBuilder {
 	return builder

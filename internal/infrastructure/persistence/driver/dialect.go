@@ -36,6 +36,7 @@ type SchemaTypes struct {
 	Boolean         string
 	FalseLiteral    string
 	DefaultText     string
+	DocumentText    string
 	IndexedText     string
 	AuditCursorText string
 }
@@ -51,7 +52,7 @@ type portableEngineProfile struct{}
 func (portableEngineProfile) MaxParameters() int           { return 999 }
 func (portableEngineProfile) TextKeyColumnType(int) string { return "TEXT" }
 func (portableEngineProfile) SchemaTypes() SchemaTypes {
-	return SchemaTypes{Boolean: "BOOLEAN", FalseLiteral: "FALSE", DefaultText: "TEXT", IndexedText: "TEXT", AuditCursorText: "TEXT"}
+	return SchemaTypes{Boolean: "BOOLEAN", FalseLiteral: "FALSE", DefaultText: "TEXT", DocumentText: "TEXT", IndexedText: "TEXT", AuditCursorText: "TEXT"}
 }
 func (portableEngineProfile) ApplyUpdateLock(builder *ormbuilder.SelectBuilder) *ormbuilder.SelectBuilder {
 	return builder

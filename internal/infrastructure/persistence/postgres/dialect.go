@@ -19,7 +19,7 @@ func (Dialect) Name() string { return "postgres" }
 func (Dialect) MaxParameters() int           { return 65535 }
 func (Dialect) TextKeyColumnType(int) string { return "TEXT" }
 func (Dialect) SchemaTypes() driver.SchemaTypes {
-	return driver.SchemaTypes{Boolean: "BOOLEAN", FalseLiteral: "FALSE", DefaultText: "TEXT", IndexedText: "TEXT", AuditCursorText: "TEXT"}
+	return driver.SchemaTypes{Boolean: "BOOLEAN", FalseLiteral: "FALSE", DefaultText: "TEXT", DocumentText: "TEXT", IndexedText: "TEXT", AuditCursorText: "TEXT"}
 }
 func (Dialect) ApplyUpdateLock(builder *ormbuilder.SelectBuilder) *ormbuilder.SelectBuilder {
 	return builder.ForUpdate()

@@ -22,7 +22,7 @@ func (Dialect) MaxParameters() int                     { return 65535 }
 func (Dialect) TextKeyColumnType(maxLength int) string { return fmt.Sprintf("VARCHAR(%d)", maxLength) }
 func (Dialect) SchemaTypes() driver.SchemaTypes {
 	return driver.SchemaTypes{
-		Boolean: "BOOLEAN", FalseLiteral: "0", DefaultText: "VARCHAR(255)",
+		Boolean: "BOOLEAN", FalseLiteral: "0", DefaultText: "VARCHAR(255)", DocumentText: "LONGTEXT",
 		IndexedText:     "VARCHAR(191) CHARACTER SET ascii COLLATE ascii_bin",
 		AuditCursorText: "VARCHAR(191) CHARACTER SET ascii COLLATE ascii_bin",
 	}

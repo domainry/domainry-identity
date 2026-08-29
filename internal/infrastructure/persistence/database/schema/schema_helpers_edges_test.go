@@ -32,7 +32,7 @@ func (schemaHelperStore) EnsureCompositePrimaryKey(context.Context, string, ...s
 func (schemaHelperStore) MetadataIDColumnType() string       { return "TEXT" }
 func (schemaHelperStore) LocalizedTextKeyColumnType() string { return "TEXT" }
 func (schemaHelperStore) SchemaTypes() persistencedriver.SchemaTypes {
-	return persistencedriver.SchemaTypes{Boolean: "INTEGER", FalseLiteral: "0", DefaultText: "TEXT", IndexedText: "TEXT", AuditCursorText: "TEXT"}
+	return persistencedriver.SchemaTypes{Boolean: "INTEGER", FalseLiteral: "0", DefaultText: "TEXT", DocumentText: "TEXT", IndexedText: "TEXT", AuditCursorText: "TEXT"}
 }
 func (schemaHelperStore) ColumnDefinition(value string) string {
 	return "normalized:" + value

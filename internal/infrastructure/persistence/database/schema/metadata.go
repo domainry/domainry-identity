@@ -9,10 +9,7 @@ import (
 // Identity Admin metadata editor. Business-runtime, notification, scheduler,
 // workflow and integration tables deliberately do not belong to this service.
 func EnsureMetadataSchema(ctx context.Context, s Store) error {
-	documentText := "TEXT"
-	if s.Driver() == "mysql" {
-		documentText = "LONGTEXT"
-	}
+	documentText := s.SchemaTypes().DocumentText
 	if _, err := s.SchemaDB().ExecContext(ctx, "CREATE TABLE IF NOT EXISTS "+s.TableIdentifier("metadata_catalog")+" ("+
 		s.Identifier("key")+" "+s.MetadataIDColumnType()+" PRIMARY KEY, "+
 		s.Identifier("value")+" "+documentText+" NOT NULL, "+
