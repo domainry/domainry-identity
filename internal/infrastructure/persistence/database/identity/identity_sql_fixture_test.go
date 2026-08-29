@@ -6,11 +6,14 @@ import (
 	"database/sql/driver"
 	"errors"
 	"io"
+
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/sqlite"
 )
 
 func scriptedSQLIdentity(state *identitySQLState) (*SQLIdentityStore, func()) {
 	db := sql.OpenDB(identitySQLConnector{state: state})
-	return &SQLIdentityStore{db: db, driver: "sqlite", memory: NewMemoryIdentityStore()}, func() { _ = db.Close() }
+	dialect := sqlite.Dialect{}
+	return &SQLIdentityStore{db: db, renderer: dialect.SQLDialect().WithSchema(""), engine: dialect, memory: NewMemoryIdentityStore()}, func() { _ = db.Close() }
 }
 
 type identitySQLState struct {

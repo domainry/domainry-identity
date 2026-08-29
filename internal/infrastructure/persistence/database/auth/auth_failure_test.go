@@ -204,7 +204,7 @@ func authFailureBase(t *testing.T) AuthStore {
 	t.Helper()
 	store := openStoreForGeneratedListTest(t)
 	t.Cleanup(func() { _ = store.Close() })
-	identity, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.Driver())
+	identity, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceDialect())
 	if err != nil {
 		t.Fatal(err)
 	}

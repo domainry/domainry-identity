@@ -7,24 +7,28 @@ import (
 	"testing"
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/mysql"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/postgres"
 )
 
 func TestSQLIdentityDialectAndConstructorEdges(t *testing.T) {
-	mysql := &SQLIdentityStore{driver: "mysql"}
-	if mysql.sqlRenderer().Identifier("id") != "`id`" || mysql.sqlRenderer().Placeholder(1) != "?" {
+	mysqlDialect := mysql.Dialect{}
+	mysqlStore := &SQLIdentityStore{renderer: mysqlDialect.SQLDialect().WithSchema(""), engine: mysqlDialect}
+	if mysqlStore.sqlRenderer().Identifier("id") != "`id`" || mysqlStore.sqlRenderer().Placeholder(1) != "?" {
 		t.Fatal("mysql dialect")
 	}
-	postgres := &SQLIdentityStore{driver: "postgres", schema: "tenant"}
-	if postgres.sqlRenderer().Placeholder(2) != "$2" || postgres.sqlRenderer().Table("users") != `"tenant"."users"` {
+	postgresDialect := postgres.Dialect{}
+	postgresRenderer, _ := postgresDialect.SQLDialect().WithNamespace("tenant", "")
+	postgresStore := &SQLIdentityStore{renderer: postgresRenderer, engine: postgresDialect}
+	if postgresStore.sqlRenderer().Placeholder(2) != "$2" || postgresStore.sqlRenderer().Table("users") != `"tenant"."users"` {
 		t.Fatal("postgres dialect")
 	}
-	postgres.schema = " "
-	if postgres.sqlRenderer().Table("users") != `"users"` {
+	if postgresDialect.SQLDialect().WithSchema("").Table("users") != `"users"` {
 		t.Fatal("empty postgres schema")
 	}
 	db := sql.OpenDB(identitySQLConnector{state: &identitySQLState{execFailAt: 1, failure: errors.New("schema")}})
 	defer db.Close()
-	if _, err := NewSQLIdentityStore(t.Context(), db, "mysql"); err == nil {
+	if _, err := NewSQLIdentityStore(t.Context(), db, mysqlDialect); err == nil {
 		t.Fatal("constructor schema failure ignored")
 	}
 }
@@ -38,7 +42,7 @@ func TestSQLIdentityRoleRequestSchemaUsesDedicatedDatabase(t *testing.T) {
 		_ = appDB.Close()
 		_ = schemaDB.Close()
 	})
-	store, err := NewSQLIdentityStoreWithSchema(t.Context(), appDB, schemaDB, "postgres", "public")
+	store, err := NewSQLIdentityStoreWithSchema(t.Context(), appDB, schemaDB, postgres.Dialect{}, "public")
 	if err != nil {
 		t.Fatal(err)
 	}

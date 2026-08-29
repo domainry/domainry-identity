@@ -24,7 +24,7 @@ func TestSQLIdentityStoreStopsCanceledUserWriteBeforeCacheMutation(t *testing.T)
 	if err := store.EnsureSchema(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	identity, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), "sqlite")
+	identity, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceDialect())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -25,7 +25,7 @@ func TestIdentityStoreWorkspaceIsolationContract(t *testing.T) {
 		if err := store.EnsureSchema(t.Context()); err != nil {
 			t.Fatal(err)
 		}
-		repository, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.Driver())
+		repository, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceDialect())
 		if err != nil {
 			t.Fatal(err)
 		}

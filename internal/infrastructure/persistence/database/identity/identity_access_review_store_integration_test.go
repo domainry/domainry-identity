@@ -20,7 +20,7 @@ func TestAccessReviewDecisionIsAtomicAuditableAndIdempotent(t *testing.T) {
 	if err := identityStore.EnsureSchema(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	store, err := identitypersistence.NewSQLIdentityStore(t.Context(), identityStore.DB(), identityStore.Driver())
+	store, err := identitypersistence.NewSQLIdentityStore(t.Context(), identityStore.DB(), identityStore.PersistenceDialect())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestAccessReviewStoreValidatesInputsAndSupportsEveryDecisionShape(t *testin
 	if err := identityStore.EnsureSchema(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	store, err := identitypersistence.NewSQLIdentityStore(t.Context(), identityStore.DB(), identityStore.Driver())
+	store, err := identitypersistence.NewSQLIdentityStore(t.Context(), identityStore.DB(), identityStore.PersistenceDialect())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -12,6 +12,7 @@ import (
 
 func (Dialect) ManagedDatabaseMarkerEnabled() bool        { return false }
 func (Dialect) ColumnDefinition(definition string) string { return strings.TrimSpace(definition) }
+func (Dialect) RendererSchema(string) string              { return "" }
 func (Dialect) ApplicationTablesQuery(ormdialect.Renderer, string) driver.SchemaQuery {
 	return driver.SchemaQuery{Statement: "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"}
 }

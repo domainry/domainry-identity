@@ -4,6 +4,7 @@ package identity
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 	"sync/atomic"
 
@@ -35,12 +36,8 @@ func (s *SQLIdentityStore) reader(ctx context.Context) identityReadExecutor {
 type SQLIdentityStore struct {
 	db                *sql.DB
 	schemaDB          identityschema.SQLDatabase
-	driver            string
 	engine            persistencedriver.EngineProfile
-	schema            string
-	relationPrefix    string
-	renderer          *ormdialect.Renderer
-	rendererConfig    string
+	renderer          ormdialect.Renderer
 	memory            *MemoryIdentityStore
 	roleRequestsReady atomic.Bool
 }
@@ -49,44 +46,21 @@ var _ identityrepository.IdentityRepository = (*SQLIdentityStore)(nil)
 var _ identityrepository.IdentityWorkforceRepository = (*SQLIdentityStore)(nil)
 
 func (s *SQLIdentityStore) sqlRenderer() ormdialect.Renderer {
-	configuration := strings.Join([]string{s.driver, strings.TrimSpace(s.schema), strings.TrimSpace(s.relationPrefix)}, "\x00")
-	if s.renderer != nil && s.rendererConfig == configuration {
-		return *s.renderer
-	}
-	dialect, err := ormdialect.Parse(s.driver)
-	if err != nil {
-		panic(err)
-	}
-	schema := ""
-	if dialect.Name() == ormdialect.Postgres {
-		schema = s.schema
-	}
-	value, err := dialect.WithNamespace(schema, s.relationPrefix)
-	if err != nil {
-		panic(err)
-	}
-	s.renderer = &value
-	s.rendererConfig = configuration
-	return value
+	return s.renderer
 }
 
 func (s *SQLIdentityStore) engineProfile() persistencedriver.EngineProfile {
 	if s.engine != nil {
 		return s.engine
 	}
-	profile, err := database.EngineProfileFor(s.driver)
-	if err != nil {
-		panic(err)
-	}
-	s.engine = profile
-	return profile
+	panic("identity SQL store requires an engine profile")
 }
 
-func NewSQLIdentityStore(ctx context.Context, db *sql.DB, driver string, schema ...string) (*SQLIdentityStore, error) {
-	return NewSQLIdentityStoreWithSchema(ctx, db, db, driver, schema...)
+func NewSQLIdentityStore(ctx context.Context, db *sql.DB, dialect persistencedriver.Dialect, schema ...string) (*SQLIdentityStore, error) {
+	return NewSQLIdentityStoreWithSchema(ctx, db, db, dialect, schema...)
 }
 
-func NewSQLIdentityStoreWithSchema(ctx context.Context, db *sql.DB, schemaDB identityschema.SQLDatabase, driver string, schema ...string) (*SQLIdentityStore, error) {
+func NewSQLIdentityStoreWithSchema(ctx context.Context, db *sql.DB, schemaDB identityschema.SQLDatabase, dialect persistencedriver.Dialect, schema ...string) (*SQLIdentityStore, error) {
 	databaseSchema := ""
 	if len(schema) > 0 {
 		databaseSchema = strings.TrimSpace(schema[0])
@@ -95,24 +69,15 @@ func NewSQLIdentityStoreWithSchema(ctx context.Context, db *sql.DB, schemaDB ide
 	if len(schema) > 1 {
 		relationPrefix = strings.TrimSpace(schema[1])
 	}
-	dialect, err := ormdialect.Parse(driver)
+	if dialect == nil {
+		return nil, fmt.Errorf("identity SQL store requires a database dialect")
+	}
+	engine := persistencedriver.ProfileFor(dialect)
+	renderer, err := dialect.SQLDialect().WithNamespace(engine.RendererSchema(databaseSchema), relationPrefix)
 	if err != nil {
 		return nil, err
 	}
-	engine, err := database.EngineProfileFor(driver)
-	if err != nil {
-		return nil, err
-	}
-	rendererSchema := ""
-	if dialect.Name() == ormdialect.Postgres {
-		rendererSchema = databaseSchema
-	}
-	renderer, err := dialect.WithNamespace(rendererSchema, relationPrefix)
-	if err != nil {
-		return nil, err
-	}
-	configuration := strings.Join([]string{driver, databaseSchema, relationPrefix}, "\x00")
-	store := &SQLIdentityStore{db: db, schemaDB: schemaDB, driver: driver, engine: engine, schema: databaseSchema, relationPrefix: relationPrefix, renderer: &renderer, rendererConfig: configuration, memory: NewMemoryIdentityStore()}
+	store := &SQLIdentityStore{db: db, schemaDB: schemaDB, engine: engine, renderer: renderer, memory: NewMemoryIdentityStore()}
 	if err := store.ensureRoleRequestsTable(ctx); err != nil {
 		return nil, err
 	}

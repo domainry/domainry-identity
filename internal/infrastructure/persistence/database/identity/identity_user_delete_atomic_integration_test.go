@@ -22,7 +22,7 @@ func TestIdentityUserRemovalRollsBackEveryOwnedTable(t *testing.T) {
 	if err := identityStore.EnsureSchema(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	repository, err := identitypersistence.NewSQLIdentityStore(t.Context(), identityStore.DB(), identityStore.Driver())
+	repository, err := identitypersistence.NewSQLIdentityStore(t.Context(), identityStore.DB(), identityStore.PersistenceDialect())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -240,8 +240,8 @@ func (s *IdentityStore) OperationalMetrics() *IdentityOperationalMetrics {
 	return s.operationalMetrics
 }
 
-func (s *IdentityStore) Driver() string {
-	return s.dialect.Name()
+func (s *IdentityStore) PersistenceDialect() driver.Dialect {
+	return s.dialect
 }
 
 func (s *IdentityStore) DatabaseSchema() string {

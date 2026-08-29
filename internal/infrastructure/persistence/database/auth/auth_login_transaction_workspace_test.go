@@ -14,7 +14,7 @@ func TestFederatedLoginWorkspaceResolvesWithoutConsumingTransaction(t *testing.T
 	if err := store.EnsureSchema(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	identityStore, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.Driver())
+	identityStore, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceDialect())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -14,6 +14,7 @@ import (
 
 func (Dialect) ManagedDatabaseMarkerEnabled() bool        { return true }
 func (Dialect) ColumnDefinition(definition string) string { return strings.TrimSpace(definition) }
+func (Dialect) RendererSchema(schema string) string       { return strings.TrimSpace(schema) }
 func (Dialect) ApplicationTablesQuery(renderer ormdialect.Renderer, databaseSchema string) driver.SchemaQuery {
 	return driver.SchemaQuery{
 		Statement: "SELECT table_name FROM information_schema.tables WHERE table_schema = " + renderer.Placeholder(1),

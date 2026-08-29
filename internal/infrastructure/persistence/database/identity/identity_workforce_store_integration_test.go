@@ -27,7 +27,7 @@ func TestIdentityWorkforceStoresPreserveWorkspaceAndAssignmentHistory(t *testing
 		if err := store.EnsureIdentitySchema(t.Context()); err != nil {
 			t.Fatal(err)
 		}
-		repository, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.Driver())
+		repository, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceDialect())
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -35,7 +35,7 @@ func TestIdentityDirectoriesPageAndSearchInSQLAtOneHundredThousandRows(t *testin
 	SELECT printf('workforce-%06d', i), 'default', 'org-1', printf('user-%06d', i), printf('E-%06d', i), 'employee', 'active', NULL, NULL, NULL, 1, 'now', 'now' FROM n`); err != nil {
 		t.Fatal(err)
 	}
-	repository, err := identitypersistence.NewSQLIdentityStore(t.Context(), identityStore.DB(), identityStore.Driver())
+	repository, err := identitypersistence.NewSQLIdentityStore(t.Context(), identityStore.DB(), identityStore.PersistenceDialect())
 	if err != nil {
 		t.Fatal(err)
 	}

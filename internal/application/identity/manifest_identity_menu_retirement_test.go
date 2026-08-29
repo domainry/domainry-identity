@@ -21,7 +21,7 @@ func TestRetireRemovedPlatformIdentityMenusDeletesLegacyTree(t *testing.T) {
 	if err := store.EnsureIdentitySchema(t.Context()); err != nil {
 		t.Fatalf("ensure identity schema: %v", err)
 	}
-	identityStore, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.Driver())
+	identityStore, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceDialect())
 	if err != nil {
 		t.Fatalf("open identity store: %v", err)
 	}
@@ -44,7 +44,7 @@ func TestRetireRemovedPlatformIdentityMenusDeletesLegacyTree(t *testing.T) {
 	if len(menus) != 1 || menus[0].ID != "org_roles" {
 		t.Fatalf("expected only unrelated menu to remain, got %#v", menus)
 	}
-	reloaded, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.Driver())
+	reloaded, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceDialect())
 	if err != nil {
 		t.Fatalf("reload identity store: %v", err)
 	}

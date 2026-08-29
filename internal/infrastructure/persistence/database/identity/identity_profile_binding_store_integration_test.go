@@ -143,7 +143,7 @@ func assertProfileBindingRole(t *testing.T, store *IdentityStore, userID, roleID
 
 func identitySQLStoreForProfileBindingTest(t *testing.T, store *IdentityStore) *identitypersistence.SQLIdentityStore {
 	t.Helper()
-	identityStore, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.Driver())
+	identityStore, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceDialect())
 	if err != nil {
 		t.Fatal(err)
 	}

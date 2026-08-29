@@ -11,6 +11,7 @@ import (
 )
 
 func (Dialect) ManagedDatabaseMarkerEnabled() bool { return true }
+func (Dialect) RendererSchema(string) string       { return "" }
 func (Dialect) ColumnDefinition(definition string) string {
 	definition = strings.TrimSpace(definition)
 	// MySQL accepts defaults for TEXT/BLOB values only as expressions.

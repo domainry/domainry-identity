@@ -50,7 +50,7 @@ func TestUnboundProfileCanBeClaimedAfterAccountRegistrationWithoutTrustingClient
 	if _, err := databaseStore.DB().ExecContext(t.Context(), `INSERT INTO member_profile VALUES ('default', 'member-1', NULL, 'member@example.com', 'now', 'now')`); err != nil {
 		t.Fatal(err)
 	}
-	identityStore, err := identitypersistence.NewSQLIdentityStore(t.Context(), databaseStore.DB(), databaseStore.Driver())
+	identityStore, err := identitypersistence.NewSQLIdentityStore(t.Context(), databaseStore.DB(), databaseStore.PersistenceDialect())
 	if err != nil {
 		t.Fatal(err)
 	}

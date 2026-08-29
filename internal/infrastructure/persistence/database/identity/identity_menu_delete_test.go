@@ -21,7 +21,7 @@ func TestSQLIdentityMenuDeletionSurvivesReloadAndSeedSync(t *testing.T) {
 	if err := store.EnsureIdentitySchema(t.Context()); err != nil {
 		t.Fatalf("ensure identity schema: %v", err)
 	}
-	identityStore, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.Driver())
+	identityStore, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceDialect())
 	if err != nil {
 		t.Fatalf("open identity store: %v", err)
 	}
@@ -35,7 +35,7 @@ func TestSQLIdentityMenuDeletionSurvivesReloadAndSeedSync(t *testing.T) {
 	if err := identityStore.UpsertIdentityMenu(t.Context(), identitymodel.InstallationWorkspaceID, menu); err != nil {
 		t.Fatalf("repeat manifest sync: %v", err)
 	}
-	reloaded, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.Driver())
+	reloaded, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceDialect())
 	if err != nil {
 		t.Fatalf("reload identity store: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestSQLIdentityAtomicMenuTreeRollback(t *testing.T) {
 	if err := store.EnsureIdentitySchema(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	identityStore, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.Driver())
+	identityStore, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceDialect())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestSQLIdentityAtomicMenuTreeRollback(t *testing.T) {
 	if err := identityStore.RemoveIdentityMenusAtomically(t.Context(), identitymodel.InstallationWorkspaceID, []identitymodel.IdentityMenu{child, parent, missing}); err == nil {
 		t.Fatal("expected missing menu to roll back tree deletion")
 	}
-	reloaded, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.Driver())
+	reloaded, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceDialect())
 	if err != nil {
 		t.Fatal(err)
 	}

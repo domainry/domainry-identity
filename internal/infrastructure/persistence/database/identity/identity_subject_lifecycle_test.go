@@ -26,7 +26,7 @@ func TestIdentitySubjectLifecycleContract(t *testing.T) {
 	if err := store.EnsureSchema(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	identity, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.Driver())
+	identity, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceDialect())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +150,7 @@ func TestIdentitySubjectEraseRollsBackAtEveryOwnedFactStage(t *testing.T) {
 			if err := store.EnsureSchema(t.Context()); err != nil {
 				t.Fatal(err)
 			}
-			identity, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.Driver())
+			identity, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceDialect())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -221,7 +221,7 @@ func TestIdentityExportHelpers(t *testing.T) {
 	if err := store.EnsureIdentitySchema(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	identity, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.Driver(), " schema ")
+	identity, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceDialect(), " schema ")
 	if err != nil {
 		t.Fatal(err)
 	}

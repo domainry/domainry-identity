@@ -47,6 +47,7 @@ type EngineProfile interface {
 	MigrationBackupPolicy() MigrationBackupPolicy
 	MigrationRollbackPolicy() MigrationRollbackPolicy
 	DatabaseSchema(config.Config) string
+	RendererSchema(string) string
 	WorkspaceRLSSupported() bool
 	ApplyWorkspaceRLS(context.Context, *sql.DB, ormdialect.Renderer, string, string, string) error
 	InspectWorkspaceRLS(context.Context, *sql.DB, ormdialect.Renderer, string, string, string) (WorkspaceRLSStatus, error)
@@ -178,6 +179,7 @@ func (portableEngineProfile) MigrationRollbackPolicy() MigrationRollbackPolicy {
 	return MigrationRollbackPolicy{Mode: "unsupported", RequiresVerifiedBackup: true}
 }
 func (portableEngineProfile) DatabaseSchema(config.Config) string { return "" }
+func (portableEngineProfile) RendererSchema(string) string        { return "" }
 func (portableEngineProfile) WorkspaceRLSSupported() bool         { return false }
 func (portableEngineProfile) ApplyWorkspaceRLS(context.Context, *sql.DB, ormdialect.Renderer, string, string, string) error {
 	return nil
