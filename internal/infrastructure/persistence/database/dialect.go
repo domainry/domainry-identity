@@ -47,6 +47,6 @@ func (s *IdentityStore) SetDialectForTesting(driver string) error {
 		return err
 	}
 	s.dialect = dialect
-	s.SQLStore = nil
+	s.SQLDatabase = nil
 	return nil
 }

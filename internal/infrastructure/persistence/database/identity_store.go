@@ -19,7 +19,7 @@ import (
 
 // IdentityStore owns a standalone connection or borrows a project-owned pool.
 type IdentityStore struct {
-	*base.SQLStore
+	*base.SQLDatabase
 	db                   *sql.DB
 	migrationDB          *sql.DB
 	migrationConn        *sql.Conn
@@ -137,7 +137,7 @@ func openContextWithDependencies(ctx context.Context, cfg config.Config, depende
 	if postgresProfile != nil {
 		databaseSchema = postgresProfile.Schema
 	}
-	store := &IdentityStore{SQLStore: base.NewSQLStore(db, dialect, databaseSchema, ""), db: db, migrationDB: migrationDB, dialect: dialect, config: cfg, databaseSchema: databaseSchema, postgresProfile: postgresProfile, postgresCapabilities: postgresCapabilities, migratorCapabilities: migratorCapabilities, secretMaterialKey: activeMaterial, secretKeyProvider: keyRing, idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096), sqlMetrics: sqlMetrics, operationalMetrics: operationalMetrics}
+	store := &IdentityStore{SQLDatabase: base.NewSQLDatabase(db, dialect, databaseSchema, ""), db: db, migrationDB: migrationDB, dialect: dialect, config: cfg, databaseSchema: databaseSchema, postgresProfile: postgresProfile, postgresCapabilities: postgresCapabilities, migratorCapabilities: migratorCapabilities, secretMaterialKey: activeMaterial, secretKeyProvider: keyRing, idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096), sqlMetrics: sqlMetrics, operationalMetrics: operationalMetrics}
 	var migrationErr error
 	migrationStarted := time.Now()
 	if cfg.EffectiveDatabaseMigrationMode() == "verify" {
@@ -183,8 +183,8 @@ func OpenBorrowedContext(ctx context.Context, cfg config.Config, db *sql.DB) (*I
 		}
 	}
 	store := &IdentityStore{
-		SQLStore: base.NewSQLStore(db, dialect, schema, "domainry_identity_"),
-		db:       db, dialect: dialect, config: cfg, databaseSchema: schema,
+		SQLDatabase: base.NewSQLDatabase(db, dialect, schema, "domainry_identity_"),
+		db:          db, dialect: dialect, config: cfg, databaseSchema: schema,
 		secretMaterialKey: activeMaterial, secretKeyProvider: keyRing,
 		idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096),
 		sqlMetrics:         telemetry.NewSQLMetrics(), operationalMetrics: NewIdentityOperationalMetrics(cfg.MigrationBackupLastSuccessAt, cfg.MigrationRestoreDrillSuccessAt),

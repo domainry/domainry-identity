@@ -8,11 +8,11 @@ import (
 	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
 
-func (s *IdentityStore) sqlBase() *base.SQLStore {
-	if s.SQLStore == nil {
-		s.SQLStore = base.NewSQLStore(s.db, s.dialect, s.databaseSchema, s.relationPrefix)
+func (s *IdentityStore) sqlBase() *base.SQLDatabase {
+	if s.SQLDatabase == nil {
+		s.SQLDatabase = base.NewSQLDatabase(s.db, s.dialect, s.databaseSchema, s.relationPrefix)
 	}
-	return s.SQLStore
+	return s.SQLDatabase
 }
 
 func (s *IdentityStore) insertSystemRowContext(ctx context.Context, table string, columns []string, values []any) error {

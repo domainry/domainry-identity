@@ -11,7 +11,7 @@ import (
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 )
 
-type SQLStore struct {
+type SQLDatabase struct {
 	DB             *sql.DB
 	SQLRenderer    ormdialect.Renderer
 	DatabaseSchema string
@@ -19,7 +19,7 @@ type SQLStore struct {
 	Engine         driver.EngineProfile
 }
 
-func NewSQLStore(database *sql.DB, engine driver.Dialect, schema, relationPrefix string) *SQLStore {
+func NewSQLDatabase(database *sql.DB, engine driver.Dialect, schema, relationPrefix string) *SQLDatabase {
 	schema, relationPrefix = strings.TrimSpace(schema), strings.TrimSpace(relationPrefix)
 	var renderer ormdialect.Renderer
 	if relationPrefix != "" {
@@ -27,7 +27,7 @@ func NewSQLStore(database *sql.DB, engine driver.Dialect, schema, relationPrefix
 	} else {
 		renderer = engine.SQLDialect().WithSchema(schema)
 	}
-	return &SQLStore{
+	return &SQLDatabase{
 		DB: database, SQLRenderer: renderer, DatabaseSchema: schema,
 		RelationPrefix: relationPrefix, Engine: driver.ProfileFor(engine),
 	}
