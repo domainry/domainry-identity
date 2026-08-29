@@ -278,14 +278,18 @@ func (s *IdentityStore) readMigrationDir(path string) ([]os.DirEntry, error) {
 }
 
 func (s *IdentityStore) setExpectedMigrations(paths []string) error {
-	s.expectedMigrations = migrationcontract.Names(paths)
-	s.expectedChecksums = make(map[string]string, len(paths))
+	expectedPaths := migrationcontract.Names(paths)
+	expectedChecksums := make(map[string]string, len(paths))
 	for _, path := range paths {
 		checksum, err := migrationcontract.Checksum(path)
 		if err != nil {
 			return err
 		}
-		s.expectedChecksums[filepath.Base(path)] = checksum
+		expectedChecksums[filepath.Base(path)] = checksum
 	}
+	if s.StatusReader == nil {
+		s.StatusReader = migrationcontract.NewStatusReader(s.schemaDatabase(), s.engine, s.BuilderRenderer(), s.config)
+	}
+	s.StatusReader.ReplaceExpected(expectedPaths, expectedChecksums)
 	return nil
 }

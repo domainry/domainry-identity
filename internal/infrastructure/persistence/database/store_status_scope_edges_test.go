@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/base"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/migration"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/workspace"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/mysql"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/postgres"
@@ -52,7 +53,8 @@ func TestMigrationStatusClassificationsAndVersionBounds(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			store := identitySchemaStore(t, &databaseSQLState{querySteps: []databaseSQLQueryStep{{columns: []string{"path", "checksum", "dirty", "at"}, rows: test.rows}}})
-			store.expectedMigrations, store.expectedChecksums, store.config = test.expected, test.checksums, test.cfg
+			store.StatusReader = migration.NewStatusReader(store.db, store.engine, base.NewSQLDatabase(store.db, store.engine, "", "").SQLRenderer, test.cfg)
+			store.StatusReader.ReplaceExpected(test.expected, test.checksums)
 			status, err := store.MigrationStatus(t.Context())
 			if err != nil || !strings.Contains(string(status.State), test.state) {
 				t.Fatalf("status=%#v err=%v", status, err)

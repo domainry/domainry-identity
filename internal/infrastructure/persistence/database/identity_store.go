@@ -14,6 +14,7 @@ import (
 	"github.com/domainry/domainry-foundation/telemetry"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/base"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/connection"
+	migrationowner "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/migration"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/observability"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/workspace"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
@@ -27,6 +28,7 @@ type IdentityStore struct {
 	*workspace.WriteFenceStore
 	*workspace.RLSManager
 	*workspace.ScopeValidator
+	*migrationowner.StatusReader
 	db                   *sql.DB
 	migrationDB          *sql.DB
 	migrationConn        *sql.Conn
@@ -36,8 +38,6 @@ type IdentityStore struct {
 	postgresProfile      *postgres.ConnectionProfile
 	postgresCapabilities postgres.Capabilities
 	migratorCapabilities postgres.Capabilities
-	expectedMigrations   []string
-	expectedChecksums    map[string]string
 	secretMaterialKey    [32]byte
 	secretKeyProvider    secrets.KeyProvider
 	migrationBackupReady bool
@@ -87,7 +87,11 @@ func openContextWithDependencies(ctx context.Context, cfg config.Config, depende
 	databaseSchema := connectionState.DatabaseSchema
 	sqlDatabase := base.NewSQLDatabase(db, engine, databaseSchema, "")
 	rlsManager := workspace.NewRLSManager(workspace.RLSOptions{Database: db, MigrationDatabase: migrationDB, Engine: engine, Renderer: sqlDatabase.SQLRenderer, DatabaseSchema: databaseSchema, ApplicationRole: connectionState.PostgresCapabilities.User, Enabled: cfg.DatabaseRLSEnabled, Apply: cfg.EffectiveDatabaseMigrationMode() == "apply", ConnectionProfileSet: connectionState.PostgresProfile != nil})
-	store := &IdentityStore{SQLDatabase: sqlDatabase, WriteFenceStore: workspace.NewWriteFenceStore(db, sqlDatabase.SQLRenderer), RLSManager: rlsManager, ScopeValidator: workspace.NewScopeValidator(db, engine, sqlDatabase.SQLRenderer, databaseSchema, ""), db: db, migrationDB: migrationDB, engine: engine, config: cfg, databaseSchema: databaseSchema, postgresProfile: connectionState.PostgresProfile, postgresCapabilities: connectionState.PostgresCapabilities, migratorCapabilities: connectionState.MigratorCapabilities, secretMaterialKey: activeMaterial, secretKeyProvider: keyRing, idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096), sqlMetrics: sqlMetrics, operationalMetrics: operationalMetrics}
+	migrationDatabase := driver.SchemaDatabase(db)
+	if migrationDB != nil {
+		migrationDatabase = migrationDB
+	}
+	store := &IdentityStore{SQLDatabase: sqlDatabase, WriteFenceStore: workspace.NewWriteFenceStore(db, sqlDatabase.SQLRenderer), RLSManager: rlsManager, ScopeValidator: workspace.NewScopeValidator(db, engine, sqlDatabase.SQLRenderer, databaseSchema, ""), StatusReader: migrationowner.NewStatusReader(migrationDatabase, engine, sqlDatabase.SQLRenderer, cfg), db: db, migrationDB: migrationDB, engine: engine, config: cfg, databaseSchema: databaseSchema, postgresProfile: connectionState.PostgresProfile, postgresCapabilities: connectionState.PostgresCapabilities, migratorCapabilities: connectionState.MigratorCapabilities, secretMaterialKey: activeMaterial, secretKeyProvider: keyRing, idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096), sqlMetrics: sqlMetrics, operationalMetrics: operationalMetrics}
 	var migrationErr error
 	migrationStarted := time.Now()
 	if cfg.EffectiveDatabaseMigrationMode() == "verify" {
@@ -131,6 +135,7 @@ func OpenBorrowedContext(ctx context.Context, cfg config.Config, db *sql.DB) (*I
 		SQLDatabase: sqlDatabase, WriteFenceStore: workspace.NewWriteFenceStore(db, sqlDatabase.SQLRenderer),
 		RLSManager:     workspace.NewRLSManager(workspace.RLSOptions{Database: db, Engine: engine, Renderer: sqlDatabase.SQLRenderer, DatabaseSchema: schema, Enabled: cfg.DatabaseRLSEnabled, Apply: cfg.EffectiveDatabaseMigrationMode() == "apply"}),
 		ScopeValidator: workspace.NewScopeValidator(db, engine, sqlDatabase.SQLRenderer, schema, "domainry_identity_"),
+		StatusReader:   migrationowner.NewStatusReader(db, engine, sqlDatabase.SQLRenderer, cfg),
 		db:             db, engine: engine, config: cfg, databaseSchema: schema,
 		secretMaterialKey: activeMaterial, secretKeyProvider: keyRing,
 		idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096),

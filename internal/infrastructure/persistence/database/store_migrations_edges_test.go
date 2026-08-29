@@ -170,8 +170,12 @@ func TestMigrationPathIdentityAndSQLHelperEdges(t *testing.T) {
 	if got, err := store.migrationPaths(config.Config{MigrationSQL: " " + explicit + " "}); err != nil || !reflect.DeepEqual(got, []string{" " + explicit + " "}) {
 		t.Fatalf("explicit paths=%v error=%v", got, err)
 	}
-	if err := store.setExpectedMigrations(paths); err != nil || len(store.expectedChecksums) != 2 {
-		t.Fatalf("expected migrations=%v checksums=%v error=%v", store.expectedMigrations, store.expectedChecksums, err)
+	if err := store.setExpectedMigrations(paths); err != nil {
+		t.Fatalf("set expected migrations: %v", err)
+	}
+	expectedPaths, expectedChecksums := store.StatusReader.Expected()
+	if len(expectedChecksums) != 2 {
+		t.Fatalf("expected migrations=%v checksums=%v", expectedPaths, expectedChecksums)
 	}
 	if got := migrationcontract.Names([]string{paths[0], paths[1]}); !reflect.DeepEqual(got, []string{"001_first.sql", "010_second.sql"}) {
 		t.Fatalf("migration names=%v", got)

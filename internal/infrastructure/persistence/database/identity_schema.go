@@ -102,6 +102,7 @@ func (s *IdentityStore) identityMigrationStore() *IdentityStore {
 	return &IdentityStore{
 		RLSManager:           s.RLSManager,
 		ScopeValidator:       workspace.NewScopeValidator(s.migrationDB, s.engine, s.BuilderRenderer(), s.databaseSchema, s.relationPrefix),
+		StatusReader:         s.StatusReader,
 		db:                   s.migrationDB,
 		engine:               s.engine,
 		config:               s.config,
@@ -109,8 +110,6 @@ func (s *IdentityStore) identityMigrationStore() *IdentityStore {
 		postgresProfile:      s.postgresProfile,
 		postgresCapabilities: s.postgresCapabilities,
 		migratorCapabilities: s.migratorCapabilities,
-		expectedMigrations:   s.expectedMigrations,
-		expectedChecksums:    s.expectedChecksums,
 		secretMaterialKey:    s.secretMaterialKey,
 		secretKeyProvider:    s.secretKeyProvider,
 		migrationBackupReady: s.migrationBackupReady,

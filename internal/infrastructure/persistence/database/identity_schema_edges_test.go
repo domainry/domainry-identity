@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/base"
+	migrationowner "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/migration"
 	identityschema "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/schema"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/workspace"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/mysql"
@@ -23,7 +24,8 @@ func identitySchemaStore(t *testing.T, state *databaseSQLState) *IdentityStore {
 	db := openDatabaseScriptedDB(state)
 	t.Cleanup(func() { _ = db.Close() })
 	engine := sqlite.NewEngine()
-	return &IdentityStore{db: db, engine: engine, ScopeValidator: workspace.NewScopeValidator(db, engine, base.NewSQLDatabase(db, engine, "", "").SQLRenderer, "", "")}
+	renderer := base.NewSQLDatabase(db, engine, "", "").SQLRenderer
+	return &IdentityStore{db: db, engine: engine, ScopeValidator: workspace.NewScopeValidator(db, engine, renderer, "", ""), StatusReader: migrationowner.NewStatusReader(db, engine, renderer, config.Config{})}
 }
 
 func identitySchemaLedgerQueries(count int64, checksum string, dirty bool) []databaseSQLQueryStep {
