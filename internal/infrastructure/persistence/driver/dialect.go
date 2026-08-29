@@ -67,6 +67,12 @@ type PrimaryKeyProfile interface {
 	EnsureCompositePrimaryKey(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, ...string) error
 }
 
+type WorkspaceRLSProfile interface {
+	WorkspaceRLSSupported() bool
+	ApplyWorkspaceRLS(context.Context, *sql.DB, ormdialect.Renderer, string, string, string) error
+	InspectWorkspaceRLS(context.Context, *sql.DB, ormdialect.Renderer, string, string, string) (WorkspaceRLSStatus, error)
+}
+
 type SchemaTypes struct {
 	Boolean         string
 	FalseLiteral    string
