@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+
+	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
 
 func (s MetadataStore) insertMetadataResource(ctx context.Context, tx *sql.Tx, seed metadataResourceSeed, now string) error {
@@ -12,7 +14,6 @@ func (s MetadataStore) insertMetadataResource(ctx context.Context, tx *sql.Tx, s
 	if err != nil {
 		return fmt.Errorf("encode %s %s: %w", seed.ResourceType, seed.Key, err)
 	}
-	columns := []string{"id", "resource_key", "object_key", "name", "payload_json", "schema_version", "schema_hash", "source_kind", "source_id", "disabled_at", "created_at", "updated_at"}
 	values := []any{
 		metadataResourceID(seed.ResourceType, seed.Key),
 		seed.Key,
@@ -27,11 +28,15 @@ func (s MetadataStore) insertMetadataResource(ctx context.Context, tx *sql.Tx, s
 		now,
 		now,
 	}
-	query := "INSERT INTO " + s.store.TableIdentifier(seed.Table) + " (" + strings.Join(quotedColumns(s.store, columns), ", ") + ") VALUES (" + strings.Join(placeholders(s.store, len(columns)), ", ") + ")"
-	if _, err := tx.ExecContext(ctx, query, values...); err != nil {
+	statement, arguments, err := ormbuilder.NewInsertBuilder(s.store.SQLRenderer, seed.Table).
+		Columns("id", "resource_key", "object_key", "name", "payload_json", "schema_version", "schema_hash", "source_kind", "source_id", "disabled_at", "created_at", "updated_at").
+		Values(values...).Build()
+	if err != nil {
+		return fmt.Errorf("build %s %s insert: %w", seed.ResourceType, seed.Key, err)
+	}
+	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
 		return fmt.Errorf("insert %s %s: %w", seed.ResourceType, seed.Key, err)
 	}
-	versionColumns := []string{"id", "resource_type", "resource_key", "schema_version", "schema_hash", "payload_json", "created_at"}
 	versionValues := []any{
 		metadataResourceID(seed.ResourceType+":version", seed.Key),
 		seed.ResourceType,
@@ -41,8 +46,11 @@ func (s MetadataStore) insertMetadataResource(ctx context.Context, tx *sql.Tx, s
 		string(raw),
 		now,
 	}
-	versionQuery := "INSERT INTO " + s.store.TableIdentifier("metadata_definition_versions") + " (" + strings.Join(quotedColumns(s.store, versionColumns), ", ") + ") VALUES (" + strings.Join(placeholders(s.store, len(versionColumns)), ", ") + ")"
-	if _, err := tx.ExecContext(ctx, versionQuery, versionValues...); err != nil {
+	statement, arguments, err = metadataVersionInsert(s, versionValues...).Build()
+	if err != nil {
+		return fmt.Errorf("build %s %s version insert: %w", seed.ResourceType, seed.Key, err)
+	}
+	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
 		return fmt.Errorf("insert %s %s version: %w", seed.ResourceType, seed.Key, err)
 	}
 	return nil
@@ -53,13 +61,15 @@ func (s MetadataStore) syncMetadataResource(ctx context.Context, tx *sql.Tx, see
 	if err != nil {
 		return fmt.Errorf("encode %s %s: %w", seed.ResourceType, seed.Key, err)
 	}
-	query := "SELECT " + strings.Join(quotedColumns(s.store, []string{"schema_hash", "source_kind", "disabled_at"}), ", ") +
-		" FROM " + s.store.TableIdentifier(seed.Table) +
-		" WHERE " + s.store.Identifier("resource_key") + " = " + s.store.Placeholder(1)
+	statement, arguments, err := ormbuilder.NewSelectBuilder(s.store.SQLRenderer, seed.Table).
+		Columns("schema_hash", "source_kind", "disabled_at").Where(ormbuilder.Equal("resource_key", seed.Key)).Build()
+	if err != nil {
+		return fmt.Errorf("build %s %s sync query: %w", seed.ResourceType, seed.Key, err)
+	}
 	var currentHash string
 	var sourceKind string
 	var disabledAt sql.NullString
-	err = tx.QueryRowContext(ctx, query, seed.Key).Scan(&currentHash, &sourceKind, &disabledAt)
+	err = tx.QueryRowContext(ctx, statement, arguments...).Scan(&currentHash, &sourceKind, &disabledAt)
 	if err == sql.ErrNoRows {
 		return s.insertMetadataResource(ctx, tx, seed, now)
 	}
@@ -72,28 +82,26 @@ func (s MetadataStore) syncMetadataResource(ctx context.Context, tx *sql.Tx, see
 	if currentHash == hash {
 		return nil
 	}
-	updateQuery := "UPDATE " + s.store.TableIdentifier(seed.Table) +
-		" SET " + s.store.Identifier("object_key") + " = " + s.store.Placeholder(1) +
-		", " + s.store.Identifier("name") + " = " + s.store.Placeholder(2) +
-		", " + s.store.Identifier("payload_json") + " = " + s.store.Placeholder(3) +
-		", " + s.store.Identifier("schema_version") + " = " + s.store.Placeholder(4) +
-		", " + s.store.Identifier("schema_hash") + " = " + s.store.Placeholder(5) +
-		", " + s.store.Identifier("source_id") + " = " + s.store.Placeholder(6) +
-		", " + s.store.Identifier("updated_at") + " = " + s.store.Placeholder(7) +
-		" WHERE " + s.store.Identifier("resource_key") + " = " + s.store.Placeholder(8)
-	if _, err := tx.ExecContext(ctx, updateQuery, seed.ObjectKey, seed.Name, string(raw), seed.SchemaVersion, hash, seed.SourceID, now, seed.Key); err != nil {
+	statement, arguments, err = ormbuilder.NewUpdateBuilder(s.store.SQLRenderer, seed.Table).
+		Set("object_key", seed.ObjectKey).Set("name", seed.Name).Set("payload_json", string(raw)).Set("schema_version", seed.SchemaVersion).
+		Set("schema_hash", hash).Set("source_id", seed.SourceID).Set("updated_at", now).Where(ormbuilder.Equal("resource_key", seed.Key)).Build()
+	if err != nil {
+		return fmt.Errorf("build %s %s sync update: %w", seed.ResourceType, seed.Key, err)
+	}
+	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
 		return fmt.Errorf("sync %s %s: %w", seed.ResourceType, seed.Key, err)
 	}
-	versionColumns := []string{"id", "resource_type", "resource_key", "schema_version", "schema_hash", "payload_json", "created_at"}
 	versionID := metadataResourceID(seed.ResourceType+":version", seed.Key+":"+seed.SchemaVersion+":"+metadataHashPrefix(hash))
 	var existingResourceType string
 	var existingResourceKey string
 	var existingSchemaVersion string
 	var existingHash string
-	versionLookupQuery := "SELECT " + strings.Join(quotedColumns(s.store, []string{"resource_type", "resource_key", "schema_version", "schema_hash"}), ", ") +
-		" FROM " + s.store.TableIdentifier("metadata_definition_versions") +
-		" WHERE " + s.store.Identifier("id") + " = " + s.store.Placeholder(1)
-	err = tx.QueryRowContext(ctx, versionLookupQuery, versionID).Scan(&existingResourceType, &existingResourceKey, &existingSchemaVersion, &existingHash)
+	statement, arguments, err = ormbuilder.NewSelectBuilder(s.store.SQLRenderer, "metadata_definition_versions").
+		Columns("resource_type", "resource_key", "schema_version", "schema_hash").Where(ormbuilder.Equal("id", versionID)).Build()
+	if err != nil {
+		return fmt.Errorf("build synced %s %s version query: %w", seed.ResourceType, seed.Key, err)
+	}
+	err = tx.QueryRowContext(ctx, statement, arguments...).Scan(&existingResourceType, &existingResourceKey, &existingSchemaVersion, &existingHash)
 	if err == nil {
 		if existingResourceType == seed.ResourceType && existingResourceKey == seed.Key && existingSchemaVersion == seed.SchemaVersion && existingHash == hash {
 			return nil
@@ -112,9 +120,17 @@ func (s MetadataStore) syncMetadataResource(ctx context.Context, tx *sql.Tx, see
 		string(raw),
 		now,
 	}
-	versionQuery := "INSERT INTO " + s.store.TableIdentifier("metadata_definition_versions") + " (" + strings.Join(quotedColumns(s.store, versionColumns), ", ") + ") VALUES (" + strings.Join(placeholders(s.store, len(versionColumns)), ", ") + ")"
-	if _, err := tx.ExecContext(ctx, versionQuery, versionValues...); err != nil {
+	statement, arguments, err = metadataVersionInsert(s, versionValues...).Build()
+	if err != nil {
+		return fmt.Errorf("build synced %s %s version insert: %w", seed.ResourceType, seed.Key, err)
+	}
+	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
 		return fmt.Errorf("insert synced %s %s version: %w", seed.ResourceType, seed.Key, err)
 	}
 	return nil
+}
+
+func metadataVersionInsert(s MetadataStore, values ...any) *ormbuilder.InsertBuilder {
+	return ormbuilder.NewInsertBuilder(s.store.SQLRenderer, "metadata_definition_versions").
+		Columns("id", "resource_type", "resource_key", "schema_version", "schema_hash", "payload_json", "created_at").Values(values...)
 }
