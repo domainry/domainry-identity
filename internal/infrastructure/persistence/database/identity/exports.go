@@ -4,6 +4,7 @@ import (
 	"database/sql"
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	ormbuilder "github.com/domainry/domainry-orm/builder"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 )
 
@@ -12,6 +13,10 @@ func (s *SQLIdentityStore) DB() *sql.DB { return s.db }
 func (s *SQLIdentityStore) Driver() string { return s.driver }
 
 func (s *SQLIdentityStore) SQLRenderer() ormdialect.Renderer { return s.sqlRenderer() }
+
+func (s *SQLIdentityStore) ApplyUpsert(insert *ormbuilder.InsertBuilder, conflictColumns []string, updateColumns ...string) *ormbuilder.InsertBuilder {
+	return s.engineProfile().ApplyUpsert(insert, conflictColumns, updateColumns...)
+}
 
 func (s *SQLIdentityStore) Identifier(value string) string { return s.identifier(value) }
 

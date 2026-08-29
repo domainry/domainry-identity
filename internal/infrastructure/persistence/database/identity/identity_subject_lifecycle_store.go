@@ -10,6 +10,8 @@ import (
 
 	identitypolicy "github.com/domainry/domainry-identity/internal/domain/identity/policy"
 	privacy "github.com/domainry/domainry-identity/internal/domain/privacy"
+	ormbuilder "github.com/domainry/domainry-orm/builder"
+	ormdialect "github.com/domainry/domainry-orm/dialect"
 )
 
 type lifecycleSQLStore interface {
@@ -17,6 +19,8 @@ type lifecycleSQLStore interface {
 	Identifier(string) string
 	TableIdentifier(string) string
 	Placeholder(int) string
+	SQLRenderer() ormdialect.Renderer
+	ApplyUpsert(*ormbuilder.InsertBuilder, []string, ...string) *ormbuilder.InsertBuilder
 }
 
 type IdentitySubjectLifecycleStore struct{ store lifecycleSQLStore }

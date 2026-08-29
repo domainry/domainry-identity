@@ -315,7 +315,7 @@ func TestIdentityProfileBindingWriteAndEventFailureHelpers(t *testing.T) {
 			t.Fatalf("no-write managed role operation %q failed: %v", operation, err)
 		}
 	}
-	for failAt := 1; failAt <= 5; failAt++ {
+	for failAt := 1; failAt <= 3; failAt++ {
 		state := &identitySQLState{execFailAt: failAt, failure: errProfileBindingSQL}
 		store, closeDB := scriptedProfileBindingStore(state)
 		tx, err := store.store.DB().BeginTx(t.Context(), nil)

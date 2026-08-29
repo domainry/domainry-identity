@@ -13,6 +13,7 @@ import (
 
 	"github.com/domainry/domainry-foundation/apperror"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
 
 type IdentityProfileBindingStore struct {
@@ -27,10 +28,12 @@ func (s *IdentityProfileBindingStore) GetIdentityProfileBinding(ctx context.Cont
 	if s == nil || s.store == nil {
 		return identitymodel.IdentityProfileBinding{}, false, profileBindingStoreError(apperror.KindInternal, "backend.identity.profile_binding_unavailable")
 	}
-	query := "SELECT " + joinProfileBindingColumns(s.store, "workspace_id", "binding_key", "object_key", "profile_id", "identity_user_id", "status", "invitation_channel", "claim_proof_type", "version", "created_at", "updated_at") +
-		" FROM " + s.store.TableIdentifier("identity_profile_bindings") + " WHERE " + s.store.Identifier("workspace_id") + " = " + s.store.Placeholder(1) +
-		" AND " + s.store.Identifier("object_key") + " = " + s.store.Placeholder(2) + " AND " + s.store.Identifier("profile_id") + " = " + s.store.Placeholder(3)
-	binding, err := scanIdentityProfileBinding(s.store.DB().QueryRowContext(ctx, query, workspaceID, objectKey, profileID))
+	statement, arguments, err := profileBindingSelect(s.store, workspaceID).
+		Where(ormbuilder.And(ormbuilder.Equal("object_key", objectKey), ormbuilder.Equal("profile_id", profileID))).Build()
+	if err != nil {
+		return identitymodel.IdentityProfileBinding{}, false, err
+	}
+	binding, err := scanIdentityProfileBinding(s.store.DB().QueryRowContext(ctx, statement, arguments...))
 	if errors.Is(err, sql.ErrNoRows) {
 		return identitymodel.IdentityProfileBinding{}, false, nil
 	}
@@ -41,14 +44,21 @@ func (s *IdentityProfileBindingStore) GetIdentityProfileBindingByKey(ctx context
 	if s == nil || s.store == nil {
 		return identitymodel.IdentityProfileBinding{}, false, profileBindingStoreError(apperror.KindInternal, "backend.identity.profile_binding_unavailable")
 	}
-	query := "SELECT " + joinProfileBindingColumns(s.store, "workspace_id", "binding_key", "object_key", "profile_id", "identity_user_id", "status", "invitation_channel", "claim_proof_type", "version", "created_at", "updated_at") +
-		" FROM " + s.store.TableIdentifier("identity_profile_bindings") + " WHERE " + s.store.Identifier("workspace_id") + " = " + s.store.Placeholder(1) +
-		" AND " + s.store.Identifier("binding_key") + " = " + s.store.Placeholder(2) + " AND " + s.store.Identifier("profile_id") + " = " + s.store.Placeholder(3)
-	binding, err := scanIdentityProfileBinding(s.store.DB().QueryRowContext(ctx, query, workspaceID, bindingKey, profileID))
+	statement, arguments, err := profileBindingSelect(s.store, workspaceID).
+		Where(ormbuilder.And(ormbuilder.Equal("binding_key", bindingKey), ormbuilder.Equal("profile_id", profileID))).Build()
+	if err != nil {
+		return identitymodel.IdentityProfileBinding{}, false, err
+	}
+	binding, err := scanIdentityProfileBinding(s.store.DB().QueryRowContext(ctx, statement, arguments...))
 	if errors.Is(err, sql.ErrNoRows) {
 		return identitymodel.IdentityProfileBinding{}, false, nil
 	}
 	return binding, err == nil, err
+}
+
+func profileBindingSelect(store lifecycleSQLStore, workspaceID string) *ormbuilder.SelectBuilder {
+	return ormbuilder.NewWorkspaceSelectBuilder(store.SQLRenderer(), "identity_profile_bindings", workspaceID).
+		Columns("workspace_id", "binding_key", "object_key", "profile_id", "identity_user_id", "status", "invitation_channel", "claim_proof_type", "version", "created_at", "updated_at")
 }
 
 func (s *IdentityProfileBindingStore) IdentityRoleBindingActive(ctx context.Context, workspaceID, bindingKey, profileID, userID string) (bool, error) {
@@ -173,13 +183,14 @@ func (s *IdentityProfileBindingStore) synchronizeSystemManagedRoles(ctx context.
 		return nil
 	}
 	if previousUserID != "" && (mutation.Operation == identitymodel.IdentityProfileBindingRebind || mutation.Operation == identitymodel.IdentityProfileBindingUnlink) {
-		query := "UPDATE " + s.store.TableIdentifier("identity_user_role_assignments") + " SET " +
-			s.store.Identifier("status") + " = " + s.store.Placeholder(1) + ", " + s.store.Identifier("revoked_by") + " = " + s.store.Placeholder(2) + ", " +
-			s.store.Identifier("revoked_at") + " = " + s.store.Placeholder(3) + ", " + s.store.Identifier("revoke_reason") + " = " + s.store.Placeholder(4) + ", " +
-			s.store.Identifier("updated_at") + " = " + s.store.Placeholder(5) + " WHERE " + s.store.Identifier("workspace_id") + " = " + s.store.Placeholder(6) +
-			" AND " + s.store.Identifier("user_id") + " = " + s.store.Placeholder(7) + " AND " + s.store.Identifier("binding_key") + " = " + s.store.Placeholder(8) +
-			" AND " + s.store.Identifier("profile_id") + " = " + s.store.Placeholder(9) + " AND " + s.store.Identifier("source") + " = " + s.store.Placeholder(10)
-		if _, err := tx.ExecContext(ctx, query, "revoked", mutation.ActorID, now, string(mutation.Operation), now, mutation.WorkspaceID, previousUserID, mutation.BindingKey, mutation.ProfileID, "profile_binding"); err != nil {
+		statement, arguments, buildErr := ormbuilder.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "identity_user_role_assignments", mutation.WorkspaceID).
+			Set("status", "revoked").Set("revoked_by", mutation.ActorID).Set("revoked_at", now).
+			Set("revoke_reason", string(mutation.Operation)).Set("updated_at", now).
+			Where(ormbuilder.And(ormbuilder.Equal("user_id", previousUserID), ormbuilder.Equal("binding_key", mutation.BindingKey), ormbuilder.Equal("profile_id", mutation.ProfileID), ormbuilder.Equal("source", "profile_binding"))).Build()
+		if buildErr != nil {
+			return buildErr
+		}
+		if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
 			return err
 		}
 	}
@@ -187,19 +198,15 @@ func (s *IdentityProfileBindingStore) synchronizeSystemManagedRoles(ctx context.
 		return nil
 	}
 	for _, roleID := range roleIDs {
-		deleteQuery := "DELETE FROM " + s.store.TableIdentifier("identity_user_role_assignments") + " WHERE " + s.store.Identifier("workspace_id") + " = " + s.store.Placeholder(1) +
-			" AND " + s.store.Identifier("user_id") + " = " + s.store.Placeholder(2) + " AND " + s.store.Identifier("role_id") + " = " + s.store.Placeholder(3)
-		if _, err := tx.ExecContext(ctx, deleteQuery,
-			mutation.WorkspaceID, nextUserID, roleID); err != nil {
-			return err
+		insert := ormbuilder.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "identity_user_role_assignments", mutation.WorkspaceID).
+			Columns("id", "user_id", "role_id", "workforce_profile_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason", "expires_at", "created_at", "updated_at").
+			Values(profileBindingStableID("profile_role", mutation.WorkspaceID, nextUserID, roleID), nextUserID, roleID, nil, mutation.BindingKey, mutation.ProfileID, "profile_binding", "active", nil, nil, mutation.ActorID, string(mutation.Operation), nil, nil, nil, nil, now, now)
+		s.store.ApplyUpsert(insert, []string{"workspace_id", "id"}, "binding_key", "profile_id", "source", "status", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason", "updated_at")
+		statement, arguments, buildErr := insert.Build()
+		if buildErr != nil {
+			return buildErr
 		}
-		columns := profileBindingColumnNames(s.store, "id", "workspace_id", "user_id", "role_id", "workforce_profile_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason", "expires_at", "created_at", "updated_at")
-		query := "INSERT INTO " + s.store.TableIdentifier("identity_user_role_assignments") + " (" + columns + ") VALUES (" + profileBindingPlaceholders(s.store, 19) + ")"
-		if _, err := tx.ExecContext(ctx, query,
-			profileBindingStableID("profile_role", mutation.WorkspaceID, nextUserID, roleID), mutation.WorkspaceID, nextUserID, roleID,
-			nil, mutation.BindingKey, mutation.ProfileID, "profile_binding", "active", nil, nil, mutation.ActorID, string(mutation.Operation),
-			nil, nil, nil, nil, now, now,
-		); err != nil {
+		if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
 			return err
 		}
 	}
@@ -222,11 +229,14 @@ func uniqueProfileBindingStrings(values []string) []string {
 }
 
 func (s *IdentityProfileBindingStore) ListIdentityProfileBindingEvents(ctx context.Context, workspaceID, objectKey, profileID string) ([]identitymodel.IdentityProfileBindingEvent, error) {
-	query := "SELECT " + joinProfileBindingColumns(s.store, "id", "workspace_id", "binding_key", "object_key", "profile_id", "operation", "previous_user_id", "identity_user_id", "binding_version", "idempotency_key", "actor_id", "reason", "approval_id", "status", "created_at") +
-		" FROM " + s.store.TableIdentifier("identity_profile_binding_events") + " WHERE " + s.store.Identifier("workspace_id") + " = " + s.store.Placeholder(1) +
-		" AND " + s.store.Identifier("object_key") + " = " + s.store.Placeholder(2) + " AND " + s.store.Identifier("profile_id") + " = " + s.store.Placeholder(3) +
-		" ORDER BY " + s.store.Identifier("created_at") + ", " + s.store.Identifier("id")
-	rows, err := s.store.DB().QueryContext(ctx, query, workspaceID, objectKey, profileID)
+	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "identity_profile_binding_events", workspaceID).
+		Columns("id", "workspace_id", "binding_key", "object_key", "profile_id", "operation", "previous_user_id", "identity_user_id", "binding_version", "idempotency_key", "actor_id", "reason", "approval_id", "status", "created_at").
+		Where(ormbuilder.And(ormbuilder.Equal("object_key", objectKey), ormbuilder.Equal("profile_id", profileID))).
+		OrderBy(ormbuilder.Ascending("created_at"), ormbuilder.Ascending("id")).Build()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.store.DB().QueryContext(ctx, statement, arguments...)
 	if err != nil {
 		return nil, err
 	}
@@ -235,11 +245,14 @@ func (s *IdentityProfileBindingStore) ListIdentityProfileBindingEvents(ctx conte
 	for rows.Next() {
 		var event identitymodel.IdentityProfileBindingEvent
 		var operation string
-		var approvalID sql.NullString
-		if err := rows.Scan(&event.ID, &event.WorkspaceID, &event.BindingKey, &event.ObjectKey, &event.ProfileID, &operation, &event.PreviousUserID, &event.IdentityUserID, &event.BindingVersion, &event.IdempotencyKey, &event.ActorID, &event.Reason, &approvalID, &event.Status, &event.CreatedAt); err != nil {
+		var previousUserID, identityUserID, reason, approvalID sql.NullString
+		if err := rows.Scan(&event.ID, &event.WorkspaceID, &event.BindingKey, &event.ObjectKey, &event.ProfileID, &operation, &previousUserID, &identityUserID, &event.BindingVersion, &event.IdempotencyKey, &event.ActorID, &reason, &approvalID, &event.Status, &event.CreatedAt); err != nil {
 			return nil, err
 		}
 		event.Operation = identitymodel.IdentityProfileBindingOperation(operation)
+		event.PreviousUserID = previousUserID.String
+		event.IdentityUserID = identityUserID.String
+		event.Reason = reason.String
 		event.ApprovalID = approvalID.String
 		out = append(out, event)
 	}
@@ -251,13 +264,15 @@ type identityProfileBindingQuerier interface {
 }
 
 func (s *IdentityProfileBindingStore) loadReceipt(ctx context.Context, queryer identityProfileBindingQuerier, mutation identitymodel.IdentityProfileBindingMutation) (identitymodel.IdentityProfileBindingReceipt, bool, error) {
-	query := "SELECT " + joinProfileBindingColumns(s.store, "id", "workspace_id", "binding_key", "object_key", "profile_id", "operation", "idempotency_key", "request_fingerprint", "binding_json", "created_at") +
-		" FROM " + s.store.TableIdentifier("identity_profile_binding_receipts") + " WHERE " + s.store.Identifier("workspace_id") + " = " + s.store.Placeholder(1) +
-		" AND " + s.store.Identifier("object_key") + " = " + s.store.Placeholder(2) + " AND " + s.store.Identifier("profile_id") + " = " + s.store.Placeholder(3) +
-		" AND " + s.store.Identifier("operation") + " = " + s.store.Placeholder(4) + " AND " + s.store.Identifier("idempotency_key") + " = " + s.store.Placeholder(5)
+	statement, arguments, buildErr := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "identity_profile_binding_receipts", mutation.WorkspaceID).
+		Columns("id", "workspace_id", "binding_key", "object_key", "profile_id", "operation", "idempotency_key", "request_fingerprint", "binding_json", "created_at").
+		Where(ormbuilder.And(ormbuilder.Equal("object_key", mutation.ObjectKey), ormbuilder.Equal("profile_id", mutation.ProfileID), ormbuilder.Equal("operation", string(mutation.Operation)), ormbuilder.Equal("idempotency_key", mutation.IdempotencyKey))).Build()
+	if buildErr != nil {
+		return identitymodel.IdentityProfileBindingReceipt{}, false, buildErr
+	}
 	var receipt identitymodel.IdentityProfileBindingReceipt
 	var operation, bindingJSON string
-	err := queryer.QueryRowContext(ctx, query, mutation.WorkspaceID, mutation.ObjectKey, mutation.ProfileID, string(mutation.Operation), mutation.IdempotencyKey).
+	err := queryer.QueryRowContext(ctx, statement, arguments...).
 		Scan(&receipt.ID, &receipt.WorkspaceID, &receipt.BindingKey, &receipt.ObjectKey, &receipt.ProfileID, &operation, &receipt.IdempotencyKey, &receipt.RequestFingerprint, &bindingJSON, &receipt.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return identitymodel.IdentityProfileBindingReceipt{}, false, nil
@@ -273,18 +288,24 @@ func (s *IdentityProfileBindingStore) loadReceipt(ctx context.Context, queryer i
 }
 
 func (s *IdentityProfileBindingStore) loadProfileIdentityUser(ctx context.Context, tx *sql.Tx, mutation identitymodel.IdentityProfileBindingMutation) (string, error) {
-	query := "SELECT COALESCE(" + s.store.Identifier(mutation.IdentityField) + ", '') FROM " + s.store.TableIdentifier(mutation.ObjectKey) +
-		" WHERE " + s.store.Identifier("workspace_id") + " = " + s.store.Placeholder(1) + " AND " + s.store.Identifier("id") + " = " + s.store.Placeholder(2)
+	statement, arguments, buildErr := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), mutation.ObjectKey, mutation.WorkspaceID).
+		Projections(ormbuilder.Project(ormbuilder.Coalesce(ormbuilder.Column(mutation.IdentityField), ormbuilder.Value("")))).
+		Where(ormbuilder.Equal("id", mutation.ProfileID)).Build()
+	if buildErr != nil {
+		return "", buildErr
+	}
 	var userID string
-	err := tx.QueryRowContext(ctx, query, mutation.WorkspaceID, mutation.ProfileID).Scan(&userID)
+	err := tx.QueryRowContext(ctx, statement, arguments...).Scan(&userID)
 	return strings.TrimSpace(userID), err
 }
 
 func (s *IdentityProfileBindingStore) loadBinding(ctx context.Context, queryer identityProfileBindingQuerier, workspaceID, objectKey, profileID string) (identitymodel.IdentityProfileBinding, bool, error) {
-	query := "SELECT " + joinProfileBindingColumns(s.store, "workspace_id", "binding_key", "object_key", "profile_id", "identity_user_id", "status", "invitation_channel", "claim_proof_type", "version", "created_at", "updated_at") +
-		" FROM " + s.store.TableIdentifier("identity_profile_bindings") + " WHERE " + s.store.Identifier("workspace_id") + " = " + s.store.Placeholder(1) +
-		" AND " + s.store.Identifier("object_key") + " = " + s.store.Placeholder(2) + " AND " + s.store.Identifier("profile_id") + " = " + s.store.Placeholder(3)
-	binding, err := scanIdentityProfileBinding(queryer.QueryRowContext(ctx, query, workspaceID, objectKey, profileID))
+	statement, arguments, buildErr := profileBindingSelect(s.store, workspaceID).
+		Where(ormbuilder.And(ormbuilder.Equal("object_key", objectKey), ormbuilder.Equal("profile_id", profileID))).Build()
+	if buildErr != nil {
+		return identitymodel.IdentityProfileBinding{}, false, buildErr
+	}
+	binding, err := scanIdentityProfileBinding(queryer.QueryRowContext(ctx, statement, arguments...))
 	if errors.Is(err, sql.ErrNoRows) {
 		return identitymodel.IdentityProfileBinding{}, false, nil
 	}
@@ -292,10 +313,13 @@ func (s *IdentityProfileBindingStore) loadBinding(ctx context.Context, queryer i
 }
 
 func (s *IdentityProfileBindingStore) updateProfileIdentityUser(ctx context.Context, tx *sql.Tx, mutation identitymodel.IdentityProfileBindingMutation, currentUserID, desiredUserID, now string) error {
-	query := "UPDATE " + s.store.TableIdentifier(mutation.ObjectKey) + " SET " + s.store.Identifier(mutation.IdentityField) + " = " + s.store.Placeholder(1) +
-		", " + s.store.Identifier("updated_at") + " = " + s.store.Placeholder(2) + " WHERE " + s.store.Identifier("workspace_id") + " = " + s.store.Placeholder(3) +
-		" AND " + s.store.Identifier("id") + " = " + s.store.Placeholder(4) + " AND COALESCE(" + s.store.Identifier(mutation.IdentityField) + ", '') = " + s.store.Placeholder(5)
-	result, err := tx.ExecContext(ctx, query, nullableProfileBindingUser(desiredUserID), now, mutation.WorkspaceID, mutation.ProfileID, currentUserID)
+	statement, arguments, buildErr := ormbuilder.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), mutation.ObjectKey, mutation.WorkspaceID).
+		Set(mutation.IdentityField, nullableProfileBindingUser(desiredUserID)).Set("updated_at", now).
+		Where(ormbuilder.And(ormbuilder.Equal("id", mutation.ProfileID), ormbuilder.EqualExpressions(ormbuilder.Coalesce(ormbuilder.Column(mutation.IdentityField), ormbuilder.Value("")), ormbuilder.Value(currentUserID)))).Build()
+	if buildErr != nil {
+		return buildErr
+	}
+	result, err := tx.ExecContext(ctx, statement, arguments...)
 	if err != nil {
 		return normalizeProfileBindingWriteError(err)
 	}
@@ -311,34 +335,48 @@ func (s *IdentityProfileBindingStore) updateProfileIdentityUser(ctx context.Cont
 
 func (s *IdentityProfileBindingStore) writeBinding(ctx context.Context, tx *sql.Tx, binding identitymodel.IdentityProfileBinding, found bool) error {
 	if found {
-		query := "UPDATE " + s.store.TableIdentifier("identity_profile_bindings") + " SET " +
-			s.store.Identifier("binding_key") + " = " + s.store.Placeholder(1) + ", " + s.store.Identifier("identity_user_id") + " = " + s.store.Placeholder(2) + ", " +
-			s.store.Identifier("status") + " = " + s.store.Placeholder(3) + ", " + s.store.Identifier("invitation_channel") + " = " + s.store.Placeholder(4) + ", " +
-			s.store.Identifier("claim_proof_type") + " = " + s.store.Placeholder(5) + ", " + s.store.Identifier("version") + " = " + s.store.Placeholder(6) + ", " +
-			s.store.Identifier("updated_at") + " = " + s.store.Placeholder(7) + " WHERE " + s.store.Identifier("workspace_id") + " = " + s.store.Placeholder(8) +
-			" AND " + s.store.Identifier("object_key") + " = " + s.store.Placeholder(9) + " AND " + s.store.Identifier("profile_id") + " = " + s.store.Placeholder(10)
-		_, err := tx.ExecContext(ctx, query, binding.BindingKey, nullableProfileBindingUser(binding.IdentityUserID), string(binding.Status), nullableProfileBindingText(binding.InvitationChannel), nullableProfileBindingText(binding.ClaimProofType), binding.Version, binding.UpdatedAt, binding.WorkspaceID, binding.ObjectKey, binding.ProfileID)
+		statement, arguments, buildErr := ormbuilder.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "identity_profile_bindings", binding.WorkspaceID).
+			Set("binding_key", binding.BindingKey).Set("identity_user_id", nullableProfileBindingUser(binding.IdentityUserID)).
+			Set("status", string(binding.Status)).Set("invitation_channel", nullableProfileBindingText(binding.InvitationChannel)).
+			Set("claim_proof_type", nullableProfileBindingText(binding.ClaimProofType)).Set("version", binding.Version).Set("updated_at", binding.UpdatedAt).
+			Where(ormbuilder.And(ormbuilder.Equal("object_key", binding.ObjectKey), ormbuilder.Equal("profile_id", binding.ProfileID))).Build()
+		if buildErr != nil {
+			return buildErr
+		}
+		_, err := tx.ExecContext(ctx, statement, arguments...)
 		return err
 	}
-	columns := profileBindingColumnNames(s.store, "id", "workspace_id", "binding_key", "object_key", "profile_id", "identity_user_id", "status", "invitation_channel", "claim_proof_type", "version", "created_at", "updated_at")
-	query := "INSERT INTO " + s.store.TableIdentifier("identity_profile_bindings") + " (" + columns + ") VALUES (" + profileBindingPlaceholders(s.store, 12) + ")"
-	_, err := tx.ExecContext(ctx, query, profileBindingStableID("binding", binding.WorkspaceID, binding.ObjectKey, binding.ProfileID), binding.WorkspaceID, binding.BindingKey, binding.ObjectKey, binding.ProfileID, nullableProfileBindingUser(binding.IdentityUserID), string(binding.Status), nullableProfileBindingText(binding.InvitationChannel), nullableProfileBindingText(binding.ClaimProofType), binding.Version, binding.CreatedAt, binding.UpdatedAt)
+	statement, arguments, buildErr := ormbuilder.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "identity_profile_bindings", binding.WorkspaceID).
+		Columns("id", "binding_key", "object_key", "profile_id", "identity_user_id", "status", "invitation_channel", "claim_proof_type", "version", "created_at", "updated_at").
+		Values(profileBindingStableID("binding", binding.WorkspaceID, binding.ObjectKey, binding.ProfileID), binding.BindingKey, binding.ObjectKey, binding.ProfileID, nullableProfileBindingUser(binding.IdentityUserID), string(binding.Status), nullableProfileBindingText(binding.InvitationChannel), nullableProfileBindingText(binding.ClaimProofType), binding.Version, binding.CreatedAt, binding.UpdatedAt).Build()
+	if buildErr != nil {
+		return buildErr
+	}
+	_, err := tx.ExecContext(ctx, statement, arguments...)
 	return err
 }
 
 func (s *IdentityProfileBindingStore) writeReceipt(ctx context.Context, tx *sql.Tx, receipt identitymodel.IdentityProfileBindingReceipt) error {
 	// This concrete binding contains only JSON-safe scalar fields.
 	bindingJSON, _ := json.Marshal(receipt.Binding)
-	columns := profileBindingColumnNames(s.store, "id", "workspace_id", "binding_key", "object_key", "profile_id", "operation", "idempotency_key", "request_fingerprint", "binding_json", "created_at")
-	query := "INSERT INTO " + s.store.TableIdentifier("identity_profile_binding_receipts") + " (" + columns + ") VALUES (" + profileBindingPlaceholders(s.store, 10) + ")"
-	_, err := tx.ExecContext(ctx, query, receipt.ID, receipt.WorkspaceID, receipt.BindingKey, receipt.ObjectKey, receipt.ProfileID, string(receipt.Operation), receipt.IdempotencyKey, receipt.RequestFingerprint, string(bindingJSON), receipt.CreatedAt)
+	statement, arguments, buildErr := ormbuilder.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "identity_profile_binding_receipts", receipt.WorkspaceID).
+		Columns("id", "binding_key", "object_key", "profile_id", "operation", "idempotency_key", "request_fingerprint", "binding_json", "created_at").
+		Values(receipt.ID, receipt.BindingKey, receipt.ObjectKey, receipt.ProfileID, string(receipt.Operation), receipt.IdempotencyKey, receipt.RequestFingerprint, string(bindingJSON), receipt.CreatedAt).Build()
+	if buildErr != nil {
+		return buildErr
+	}
+	_, err := tx.ExecContext(ctx, statement, arguments...)
 	return err
 }
 
 func (s *IdentityProfileBindingStore) writeEvent(ctx context.Context, tx *sql.Tx, event identitymodel.IdentityProfileBindingEvent) error {
-	columns := profileBindingColumnNames(s.store, "id", "workspace_id", "binding_key", "object_key", "profile_id", "operation", "previous_user_id", "identity_user_id", "binding_version", "idempotency_key", "actor_id", "reason", "approval_id", "status", "created_at")
-	query := "INSERT INTO " + s.store.TableIdentifier("identity_profile_binding_events") + " (" + columns + ") VALUES (" + profileBindingPlaceholders(s.store, 15) + ")"
-	_, err := tx.ExecContext(ctx, query, event.ID, event.WorkspaceID, event.BindingKey, event.ObjectKey, event.ProfileID, string(event.Operation), nullableProfileBindingText(event.PreviousUserID), nullableProfileBindingText(event.IdentityUserID), event.BindingVersion, event.IdempotencyKey, event.ActorID, nullableProfileBindingText(event.Reason), nullableProfileBindingText(event.ApprovalID), event.Status, event.CreatedAt)
+	statement, arguments, buildErr := ormbuilder.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "identity_profile_binding_events", event.WorkspaceID).
+		Columns("id", "binding_key", "object_key", "profile_id", "operation", "previous_user_id", "identity_user_id", "binding_version", "idempotency_key", "actor_id", "reason", "approval_id", "status", "created_at").
+		Values(event.ID, event.BindingKey, event.ObjectKey, event.ProfileID, string(event.Operation), nullableProfileBindingText(event.PreviousUserID), nullableProfileBindingText(event.IdentityUserID), event.BindingVersion, event.IdempotencyKey, event.ActorID, nullableProfileBindingText(event.Reason), nullableProfileBindingText(event.ApprovalID), event.Status, event.CreatedAt).Build()
+	if buildErr != nil {
+		return buildErr
+	}
+	_, err := tx.ExecContext(ctx, statement, arguments...)
 	return err
 }
 
@@ -397,34 +435,6 @@ func validateIdentityProfileBindingMutation(mutation identitymodel.IdentityProfi
 		return profileBindingStoreError(apperror.KindBadRequest, "backend.identity.profile_binding_command_invalid")
 	}
 	return nil
-}
-
-func joinProfileBindingColumns(store lifecycleSQLStore, columns ...string) string {
-	out := make([]string, 0, len(columns))
-	for _, column := range columns {
-		if column == "identity_user_id" || column == "invitation_channel" || column == "claim_proof_type" || column == "previous_user_id" || column == "reason" {
-			out = append(out, "COALESCE("+store.Identifier(column)+", '')")
-		} else {
-			out = append(out, store.Identifier(column))
-		}
-	}
-	return strings.Join(out, ", ")
-}
-
-func profileBindingColumnNames(store lifecycleSQLStore, columns ...string) string {
-	out := make([]string, 0, len(columns))
-	for _, column := range columns {
-		out = append(out, store.Identifier(column))
-	}
-	return strings.Join(out, ", ")
-}
-
-func profileBindingPlaceholders(store lifecycleSQLStore, count int) string {
-	values := make([]string, count)
-	for index := range values {
-		values[index] = store.Placeholder(index + 1)
-	}
-	return strings.Join(values, ", ")
 }
 
 func profileBindingStableID(parts ...string) string {
