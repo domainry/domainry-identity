@@ -18,6 +18,9 @@ import (
 func (Dialect) MigrationLedgerTypes() driver.MigrationLedgerTypes {
 	return driver.MigrationLedgerTypes{Key: "TEXT", Timestamp: "TEXT"}
 }
+func (Dialect) MigrationBackupPolicy() driver.MigrationBackupPolicy {
+	return driver.MigrationBackupPolicy{LocalSnapshot: true, EvidenceEngine: "sqlite", BackupIDPrefix: "sqlite-"}
+}
 func (Dialect) EnsureMigrationNamespace(context.Context, driver.SchemaDatabase, ormdialect.Renderer, string) error {
 	return nil
 }

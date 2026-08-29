@@ -28,7 +28,8 @@ func (s *IdentityStore) ensureMigrationBackupForExistingData(ctx context.Context
 		s.migrationBackupID = "bootstrap-empty"
 		return nil
 	}
-	if s.dialect.Name() == "sqlite" {
+	policy := s.sqlBase().Engine.MigrationBackupPolicy()
+	if policy.LocalSnapshot {
 		backupPath, err := s.createSQLiteMigrationBackup(ctx, cfg)
 		if err != nil {
 			return err
@@ -38,18 +39,21 @@ func (s *IdentityStore) ensureMigrationBackupForExistingData(ctx context.Context
 		if checksumErr != nil {
 			return checksumErr
 		}
-		s.migrationBackupID = "sqlite-" + checksum[:16]
+		s.migrationBackupID = policy.BackupIDPrefix + checksum[:16]
 		logging.FromContext(ctx).Info(
 			"database migration backup created",
 			zap.String("backup_id", s.migrationBackupID),
-			zap.String("database_engine", "sqlite"),
+			zap.String("database_engine", policy.EvidenceEngine),
 		)
 		if s.operationalMetrics != nil {
 			s.operationalMetrics.ObserveBackupSuccess(time.Now().UTC())
 		}
 		return nil
 	}
-	evidence, err := validateExternalMigrationBackup(s.dialect.Name(), cfg.MigrationBackupEvidencePath)
+	if strings.TrimSpace(policy.EvidenceEngine) == "" {
+		return fmt.Errorf("database engine does not define a migration backup policy")
+	}
+	evidence, err := validateExternalMigrationBackup(policy.EvidenceEngine, cfg.MigrationBackupEvidencePath)
 	if err != nil {
 		return err
 	}
@@ -157,7 +161,7 @@ func (s *IdentityStore) createSQLiteMigrationBackup(ctx context.Context, cfg con
 		dbPath = strings.TrimSpace(cfg.DBPath)
 	}
 	if dbPath == "" || dbPath == ":memory:" || strings.HasPrefix(dbPath, "file:") {
-		return "", fmt.Errorf("existing SQLite data detected but APP_DB_PATH is not a copyable file path; provide a file-backed database so Runtime can create a verified encrypted backup")
+		return "", fmt.Errorf("existing SQLite data detected but APP_DB_PATH is not a copyable file path; provide a file-backed database so Identity can create a verified encrypted backup")
 	}
 	if err := os.MkdirAll(cfg.MigrationBackupDir, 0o755); err != nil {
 		return "", fmt.Errorf("create migration backup directory: %w", err)

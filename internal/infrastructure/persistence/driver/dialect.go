@@ -44,6 +44,7 @@ type EngineProfile interface {
 	EnsureMigrationNamespace(context.Context, SchemaDatabase, ormdialect.Renderer, string) error
 	ConfigureMigrationTransaction(context.Context, *sql.Tx, ormdialect.Renderer, string, time.Duration, time.Duration) error
 	AcquireMigrationLock(context.Context, *sql.DB, ormdialect.Renderer, MigrationLockOptions) (MigrationLock, error)
+	MigrationBackupPolicy() MigrationBackupPolicy
 }
 
 type SchemaTypes struct {
@@ -76,6 +77,12 @@ type MigrationLockOptions struct {
 type MigrationLock struct {
 	Connection *sql.Conn
 	Release    func()
+}
+
+type MigrationBackupPolicy struct {
+	LocalSnapshot  bool
+	EvidenceEngine string
+	BackupIDPrefix string
 }
 
 type SchemaDatabase interface {
@@ -141,6 +148,9 @@ func (portableEngineProfile) ConfigureMigrationTransaction(context.Context, *sql
 }
 func (portableEngineProfile) AcquireMigrationLock(context.Context, *sql.DB, ormdialect.Renderer, MigrationLockOptions) (MigrationLock, error) {
 	return MigrationLock{}, fmt.Errorf("database engine does not support migration locking")
+}
+func (portableEngineProfile) MigrationBackupPolicy() MigrationBackupPolicy {
+	return MigrationBackupPolicy{}
 }
 
 func ProfileFor(value Dialect) EngineProfile {

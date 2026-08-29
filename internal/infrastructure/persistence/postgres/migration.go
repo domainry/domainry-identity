@@ -15,6 +15,9 @@ import (
 func (Dialect) MigrationLedgerTypes() driver.MigrationLedgerTypes {
 	return driver.MigrationLedgerTypes{Key: "TEXT", Timestamp: "TEXT"}
 }
+func (Dialect) MigrationBackupPolicy() driver.MigrationBackupPolicy {
+	return driver.MigrationBackupPolicy{EvidenceEngine: "postgres"}
+}
 func (Dialect) EnsureMigrationNamespace(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, databaseSchema string) error {
 	if strings.TrimSpace(databaseSchema) == "" || strings.EqualFold(databaseSchema, "public") {
 		return nil

@@ -14,6 +14,9 @@ import (
 func (Dialect) MigrationLedgerTypes() driver.MigrationLedgerTypes {
 	return driver.MigrationLedgerTypes{Key: "VARCHAR(255)", Timestamp: "VARCHAR(64)"}
 }
+func (Dialect) MigrationBackupPolicy() driver.MigrationBackupPolicy {
+	return driver.MigrationBackupPolicy{EvidenceEngine: "mysql"}
+}
 func (Dialect) EnsureMigrationNamespace(context.Context, driver.SchemaDatabase, ormdialect.Renderer, string) error {
 	return nil
 }
