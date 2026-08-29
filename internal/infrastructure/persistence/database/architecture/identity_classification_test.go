@@ -133,6 +133,22 @@ func TestIdentitySubjectLifecycleRootFileRemainsFacade(t *testing.T) {
 	}
 }
 
+func TestIdentityMenuRootFileRemainsFacade(t *testing.T) {
+	source, err := os.ReadFile(filepath.Join(identityPersistenceRoot(t), "identity_store_sql_permissions.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	for _, forbidden := range []string{"ormbuilder", ".BeginTx(", ".ExecContext(", ".QueryContext("} {
+		if strings.Contains(text, forbidden) {
+			t.Errorf("Identity menu facade owns persistence implementation %q", forbidden)
+		}
+	}
+	if !strings.Contains(text, "menupersistence.New") {
+		t.Error("Identity menu facade lost classified owner delegation")
+	}
+}
+
 func identityPersistenceRoot(t *testing.T) string {
 	t.Helper()
 	_, sourceFile, _, ok := runtime.Caller(0)
