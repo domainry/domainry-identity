@@ -1,15 +1,11 @@
 package identity
 
 import (
-	"fmt"
 	"strings"
 )
 
 func (s *SQLIdentityStore) placeholder(position int) string {
-	if s.driver == "postgres" {
-		return fmt.Sprintf("$%d", position)
-	}
-	return "?"
+	return s.sqlRenderer().Placeholder(position)
 }
 
 func (s *SQLIdentityStore) placeholders(count int) string {

@@ -9,6 +9,7 @@ import (
 
 	"github.com/domainry/domainry-foundation/apperror"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
 
 func (s *SQLIdentityStore) ListIdentityRoles(ctx context.Context, workspaceID string) ([]identitymodel.IdentityRole, error) {
@@ -341,28 +342,27 @@ func (s *SQLIdentityStore) ensureRoleRequestsTable(ctx context.Context) error {
 	if schemaDB == nil {
 		return fmt.Errorf("identity role request schema database unavailable")
 	}
-	textType := "TEXT"
-	if s.driver == "mysql" {
-		textType = "VARCHAR(255)"
+	key := func(name string) ormbuilder.SchemaColumn {
+		return ormbuilder.DefineColumn(name, ormbuilder.TextKeyType(255))
 	}
-	if _, err := schemaDB.ExecContext(ctx, "CREATE TABLE IF NOT EXISTS "+s.tableIdentifier("identity_role_requests")+" ("+
-		s.identifier("id")+" "+textType+" PRIMARY KEY, "+
-		s.identifier("workspace_id")+" "+textType+" NOT NULL, "+
-		s.identifier("user_id")+" "+textType+" NOT NULL, "+
-		s.identifier("requested_by")+" "+textType+", "+
-		s.identifier("provider")+" "+textType+", "+
-		s.identifier("provider_subject")+" "+textType+", "+
-		s.identifier("role_ids_json")+" TEXT NOT NULL, "+
-		s.identifier("status")+" "+textType+" NOT NULL, "+
-		s.identifier("reason")+" TEXT, "+
-		s.identifier("created_at")+" "+textType+" NOT NULL, "+
-		s.identifier("updated_at")+" "+textType+" NOT NULL, "+
-		s.identifier("reviewed_by")+" "+textType+", "+
-		s.identifier("reviewed_at")+" "+textType+", "+
-		s.identifier("review_note")+" TEXT)"); err != nil {
+	text := func(name string) ormbuilder.SchemaColumn { return ormbuilder.DefineColumn(name, ormbuilder.TextType()) }
+	create, _, err := ormbuilder.NewCreateTableBuilder(s.sqlRenderer(), "identity_role_requests").IfNotExists().WithoutSystemColumns().Columns(
+		key("id").NotNull(), key("workspace_id").NotNull(), key("user_id").NotNull(), key("requested_by"),
+		key("provider"), key("provider_subject"), text("role_ids_json").NotNull(), key("status").NotNull(),
+		text("reason"), key("created_at").NotNull(), key("updated_at").NotNull(), key("reviewed_by"),
+		key("reviewed_at"), text("review_note"),
+	).PrimaryKey("workspace_id", "id").Build()
+	if err != nil {
+		return fmt.Errorf("build identity role-request schema: %w", err)
+	}
+	if _, err := schemaDB.ExecContext(ctx, create); err != nil {
 		return err
 	}
-	if _, err := schemaDB.ExecContext(ctx, "ALTER TABLE "+s.tableIdentifier("identity_role_requests")+" ADD COLUMN "+s.identifier("requested_by")+" "+textType); err != nil {
+	addRequestedBy, _, err := ormbuilder.NewAddColumnBuilder(s.sqlRenderer(), "identity_role_requests", key("requested_by")).Build()
+	if err != nil {
+		return fmt.Errorf("build identity role-request requested-by migration: %w", err)
+	}
+	if _, err := schemaDB.ExecContext(ctx, addRequestedBy); err != nil {
 		message := strings.ToLower(err.Error())
 		if !strings.Contains(message, "duplicate") && !strings.Contains(message, "already exists") {
 			return err
