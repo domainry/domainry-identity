@@ -16,9 +16,6 @@ import (
 
 type lifecycleSQLStore interface {
 	DB() *sql.DB
-	Identifier(string) string
-	TableIdentifier(string) string
-	Placeholder(int) string
 	SQLRenderer() ormdialect.Renderer
 	ApplyUpsert(*ormbuilder.InsertBuilder, []string, ...string) *ormbuilder.InsertBuilder
 }
@@ -34,9 +31,13 @@ func (s *IdentitySubjectLifecycleStore) ResolveSubject(ctx context.Context, work
 	if subjectType != "user" {
 		return "", fmt.Errorf("unsupported subject type %s", subjectType)
 	}
-	query := "SELECT " + s.store.Identifier("id") + " FROM " + s.store.TableIdentifier("identity_users") + " WHERE " + s.store.Identifier("workspace_id") + " = " + s.store.Placeholder(1) + " AND (" + s.store.Identifier("id") + " = " + s.store.Placeholder(2) + " OR " + s.store.Identifier("email") + " = " + s.store.Placeholder(3) + ")"
+	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "identity_users", workspaceID).
+		Columns("id").Where(ormbuilder.Or(ormbuilder.Equal("id", subjectID), ormbuilder.Equal("email", subjectID))).Build()
+	if err != nil {
+		return "", fmt.Errorf("build identity subject resolution query: %w", err)
+	}
 	var userID string
-	if err := s.store.DB().QueryRowContext(ctx, query, workspaceID, subjectID, subjectID).Scan(&userID); errors.Is(err, sql.ErrNoRows) {
+	if err := s.store.DB().QueryRowContext(ctx, statement, arguments...).Scan(&userID); errors.Is(err, sql.ErrNoRows) {
 		return "", fmt.Errorf("subject identity not found")
 	} else if err != nil {
 		return "", err
@@ -51,9 +52,13 @@ func (s *IdentitySubjectLifecycleStore) PreviewSubject(ctx context.Context, work
 		if table == "identity_users" {
 			column = "id"
 		}
-		query := "SELECT COUNT(*) FROM " + s.store.TableIdentifier(table) + " WHERE " + s.store.Identifier("workspace_id") + " = " + s.store.Placeholder(1) + " AND " + s.store.Identifier(column) + " = " + s.store.Placeholder(2)
+		statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), table, workspaceID).
+			Projections(ormbuilder.Project(ormbuilder.CountAll())).Where(ormbuilder.Equal(column, userID)).Build()
+		if err != nil {
+			return nil, fmt.Errorf("build identity subject preview query: %w", err)
+		}
 		var count int64
-		if err := s.store.DB().QueryRowContext(ctx, query, workspaceID, userID).Scan(&count); err != nil {
+		if err := s.store.DB().QueryRowContext(ctx, statement, arguments...).Scan(&count); err != nil {
 			return nil, err
 		}
 		counts[name] = count
@@ -63,14 +68,18 @@ func (s *IdentitySubjectLifecycleStore) PreviewSubject(ctx context.Context, work
 }
 
 func (s *IdentitySubjectLifecycleStore) ExportSubject(ctx context.Context, workspaceID, userID string) (json.RawMessage, error) {
-	query := "SELECT " + joinIdentityColumns(s.store, []string{
-		"id", "name", "given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale",
-		"email", "phone", "account_type", "locale", "timezone", "status",
-	}) + ", " + s.store.Identifier("version") + ", " + joinIdentityColumns(s.store, []string{"created_at", "updated_at"}) +
-		" FROM " + s.store.TableIdentifier("identity_users") + " WHERE " + s.store.Identifier("workspace_id") + " = " + s.store.Placeholder(1) + " AND " + s.store.Identifier("id") + " = " + s.store.Placeholder(2)
+	stringColumns := []string{"id", "name", "given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale", "email", "phone", "account_type", "locale", "timezone", "status"}
+	projections := coalescedIdentityProjections(stringColumns...)
+	projections = append(projections, ormbuilder.Project(ormbuilder.Column("version")))
+	projections = append(projections, coalescedIdentityProjections("created_at", "updated_at")...)
+	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "identity_users", workspaceID).
+		Projections(projections...).Where(ormbuilder.Equal("id", userID)).Build()
+	if err != nil {
+		return nil, fmt.Errorf("build identity subject export query: %w", err)
+	}
 	var values [17]string
 	var version int64
-	if err := s.store.DB().QueryRowContext(ctx, query, workspaceID, userID).Scan(
+	if err := s.store.DB().QueryRowContext(ctx, statement, arguments...).Scan(
 		&values[0], &values[1], &values[2], &values[3], &values[4], &values[5], &values[6], &values[7], &values[8],
 		&values[9], &values[10], &values[11], &values[12], &values[13], &values[14], &version, &values[15], &values[16],
 	); err != nil {
@@ -99,54 +108,29 @@ func (s *IdentitySubjectLifecycleStore) ExportSubject(ctx context.Context, works
 }
 
 func (s *IdentitySubjectLifecycleStore) exportSubjectRelationships(ctx context.Context, workspaceID, userID string) (map[string]any, error) {
-	queries := []struct {
+	profileIDs := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "identity_workforce_profiles", workspaceID).
+		Columns("id").Where(ormbuilder.Equal("identity_user_id", userID))
+	definitions := []struct {
 		key     string
 		columns []string
-		query   string
+		builder *ormbuilder.SelectBuilder
 	}{
-		{
-			key: "workforce_profiles", columns: []string{"id", "organization_id", "worker_no", "worker_type", "work_status", "start_date", "end_date", "primary_assignment_id"},
-			query: "SELECT " + joinIdentityColumns(s.store, []string{"id", "organization_id", "worker_no", "worker_type", "work_status", "start_date", "end_date", "primary_assignment_id"}) +
-				" FROM " + s.store.TableIdentifier("identity_workforce_profiles") +
-				" WHERE " + s.store.Identifier("workspace_id") + " = " + s.store.Placeholder(1) +
-				" AND " + s.store.Identifier("identity_user_id") + " = " + s.store.Placeholder(2) +
-				" ORDER BY " + s.store.Identifier("id"),
-		},
-		{
-			key: "workforce_assignments", columns: []string{"id", "workforce_profile_id", "organization_unit_id", "position_id", "manager_workforce_profile_id", "assignment_type", "effective_from", "effective_to", "status"},
-			query: "SELECT " + joinIdentityColumns(s.store, []string{"id", "workforce_profile_id", "organization_unit_id", "position_id", "manager_workforce_profile_id", "assignment_type", "effective_from", "effective_to", "status"}) +
-				" FROM " + s.store.TableIdentifier("identity_workforce_assignments") +
-				" WHERE " + s.store.Identifier("workspace_id") + " = " + s.store.Placeholder(1) +
-				" AND " + s.store.Identifier("workforce_profile_id") + " IN (SELECT " + s.store.Identifier("id") +
-				" FROM " + s.store.TableIdentifier("identity_workforce_profiles") +
-				" WHERE " + s.store.Identifier("workspace_id") + " = " + s.store.Placeholder(2) +
-				" AND " + s.store.Identifier("identity_user_id") + " = " + s.store.Placeholder(3) + ")" +
-				" ORDER BY " + s.store.Identifier("id"),
-		},
-		{
-			key: "role_assignments", columns: []string{"id", "role_id", "workforce_profile_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason"},
-			query: "SELECT " + joinIdentityColumns(s.store, []string{"id", "role_id", "workforce_profile_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason"}) +
-				" FROM " + s.store.TableIdentifier("identity_user_role_assignments") +
-				" WHERE " + s.store.Identifier("workspace_id") + " = " + s.store.Placeholder(1) +
-				" AND " + s.store.Identifier("user_id") + " = " + s.store.Placeholder(2) +
-				" ORDER BY " + s.store.Identifier("id"),
-		},
-		{
-			key: "profile_relations", columns: []string{"id", "binding_key", "object_key", "profile_id", "status", "invitation_channel", "claim_proof_type"},
-			query: "SELECT " + joinIdentityColumns(s.store, []string{"id", "binding_key", "object_key", "profile_id", "status", "invitation_channel", "claim_proof_type"}) +
-				" FROM " + s.store.TableIdentifier("identity_profile_bindings") +
-				" WHERE " + s.store.Identifier("workspace_id") + " = " + s.store.Placeholder(1) +
-				" AND " + s.store.Identifier("identity_user_id") + " = " + s.store.Placeholder(2) +
-				" ORDER BY " + s.store.Identifier("id"),
-		},
+		{"workforce_profiles", []string{"id", "organization_id", "worker_no", "worker_type", "work_status", "start_date", "end_date", "primary_assignment_id"},
+			identityRelationshipSelect(s.store.SQLRenderer(), "identity_workforce_profiles", workspaceID, []string{"id", "organization_id", "worker_no", "worker_type", "work_status", "start_date", "end_date", "primary_assignment_id"}).Where(ormbuilder.Equal("identity_user_id", userID))},
+		{"workforce_assignments", []string{"id", "workforce_profile_id", "organization_unit_id", "position_id", "manager_workforce_profile_id", "assignment_type", "effective_from", "effective_to", "status"},
+			identityRelationshipSelect(s.store.SQLRenderer(), "identity_workforce_assignments", workspaceID, []string{"id", "workforce_profile_id", "organization_unit_id", "position_id", "manager_workforce_profile_id", "assignment_type", "effective_from", "effective_to", "status"}).Where(ormbuilder.InSubquery("workforce_profile_id", profileIDs))},
+		{"role_assignments", []string{"id", "role_id", "workforce_profile_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason"},
+			identityRelationshipSelect(s.store.SQLRenderer(), "identity_user_role_assignments", workspaceID, []string{"id", "role_id", "workforce_profile_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason"}).Where(ormbuilder.Equal("user_id", userID))},
+		{"profile_relations", []string{"id", "binding_key", "object_key", "profile_id", "status", "invitation_channel", "claim_proof_type"},
+			identityRelationshipSelect(s.store.SQLRenderer(), "identity_profile_bindings", workspaceID, []string{"id", "binding_key", "object_key", "profile_id", "status", "invitation_channel", "claim_proof_type"}).Where(ormbuilder.Equal("identity_user_id", userID))},
 	}
-	result := make(map[string]any, len(queries))
-	for _, definition := range queries {
-		args := []any{workspaceID, userID}
-		if definition.key == "workforce_assignments" {
-			args = []any{workspaceID, workspaceID, userID}
+	result := make(map[string]any, len(definitions))
+	for _, definition := range definitions {
+		statement, arguments, err := definition.builder.OrderBy(ormbuilder.Ascending("id")).Build()
+		if err != nil {
+			return nil, fmt.Errorf("build identity subject %s export query: %w", definition.key, err)
 		}
-		rows, err := s.store.DB().QueryContext(ctx, definition.query, args...)
+		rows, err := s.store.DB().QueryContext(ctx, statement, arguments...)
 		if err != nil {
 			return nil, err
 		}
@@ -177,6 +161,18 @@ func (s *IdentitySubjectLifecycleStore) exportSubjectRelationships(ctx context.C
 	return result, nil
 }
 
+func identityRelationshipSelect(renderer ormdialect.Renderer, table, workspaceID string, columns []string) *ormbuilder.SelectBuilder {
+	return ormbuilder.NewWorkspaceSelectBuilder(renderer, table, workspaceID).Projections(coalescedIdentityProjections(columns...)...)
+}
+
+func coalescedIdentityProjections(columns ...string) []ormbuilder.Projection {
+	projections := make([]ormbuilder.Projection, len(columns))
+	for index, column := range columns {
+		projections[index] = ormbuilder.Project(ormbuilder.Coalesce(ormbuilder.Column(column), ormbuilder.Value("")))
+	}
+	return projections
+}
+
 func (s *IdentitySubjectLifecycleStore) EraseSubject(ctx context.Context, workspaceID, userID string, _ []privacy.LegalHold) (json.RawMessage, error) {
 	tx, err := s.store.DB().BeginTx(ctx, nil)
 	if err != nil {
@@ -184,21 +180,26 @@ func (s *IdentitySubjectLifecycleStore) EraseSubject(ctx context.Context, worksp
 	}
 	defer tx.Rollback()
 	for _, table := range []string{"auth_refresh_tokens", "identity_credentials", "identity_external_accounts", "identity_mfa_factors", "identity_user_role_assignments"} {
-		if _, err := tx.ExecContext(ctx, "DELETE FROM "+s.store.TableIdentifier(table)+" WHERE "+s.store.Identifier("workspace_id")+" = "+s.store.Placeholder(1)+" AND "+s.store.Identifier("user_id")+" = "+s.store.Placeholder(2), workspaceID, userID); err != nil {
+		statement, arguments, buildErr := ormbuilder.NewWorkspaceDeleteBuilder(s.store.SQLRenderer(), table, workspaceID).Where(ormbuilder.Equal("user_id", userID)).Build()
+		if buildErr != nil {
+			return nil, fmt.Errorf("build identity subject relation erase: %w", buildErr)
+		}
+		if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
 			return nil, err
 		}
 	}
 	anonymized := identitypolicy.IdentityAnonymizedSubject(workspaceID, userID)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	query := "UPDATE " + s.store.TableIdentifier("identity_users") + " SET " +
-		s.store.Identifier("name") + " = " + s.store.Placeholder(1) + ", " +
-		s.store.Identifier("given_name") + " = '', " + s.store.Identifier("middle_name") + " = '', " + s.store.Identifier("family_name") + " = '', " +
-		s.store.Identifier("name_prefix") + " = '', " + s.store.Identifier("name_suffix") + " = '', " + s.store.Identifier("native_name") + " = '', " + s.store.Identifier("name_locale") + " = '', " +
-		s.store.Identifier("email") + " = " + s.store.Placeholder(2) + ", " + s.store.Identifier("phone") + " = '', " +
-		s.store.Identifier("locale") + " = '', " + s.store.Identifier("timezone") + " = '', " +
-		s.store.Identifier("status") + " = 'erased', " + s.store.Identifier("version") + " = " + s.store.Identifier("version") + " + 1, " + s.store.Identifier("updated_at") + " = " + s.store.Placeholder(3) +
-		" WHERE " + s.store.Identifier("workspace_id") + " = " + s.store.Placeholder(4) + " AND " + s.store.Identifier("id") + " = " + s.store.Placeholder(5)
-	result, err := tx.ExecContext(ctx, query, anonymized.Name, anonymized.Email, now, workspaceID, userID)
+	statement, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "identity_users", workspaceID).
+		Set("name", anonymized.Name).Set("given_name", "").Set("middle_name", "").Set("family_name", "").
+		Set("name_prefix", "").Set("name_suffix", "").Set("native_name", "").Set("name_locale", "").
+		Set("email", anonymized.Email).Set("phone", "").Set("locale", "").Set("timezone", "").Set("status", "erased").
+		SetExpression("version", ormbuilder.Add(ormbuilder.Column("version"), ormbuilder.Value(1))).Set("updated_at", now).
+		Where(ormbuilder.Equal("id", userID)).Build()
+	if err != nil {
+		return nil, fmt.Errorf("build identity subject anonymization: %w", err)
+	}
+	result, err := tx.ExecContext(ctx, statement, arguments...)
 	if err != nil {
 		return nil, err
 	}
@@ -213,15 +214,4 @@ func (s *IdentitySubjectLifecycleStore) EraseSubject(ctx context.Context, worksp
 		return nil, err
 	}
 	return json.RawMessage(`{"anonymized":1,"credentials_deleted":true}`), nil
-}
-
-func joinIdentityColumns(store lifecycleSQLStore, columns []string) string {
-	result := ""
-	for index, column := range columns {
-		if index > 0 {
-			result += ", "
-		}
-		result += "COALESCE(" + store.Identifier(column) + ", '')"
-	}
-	return result
 }
