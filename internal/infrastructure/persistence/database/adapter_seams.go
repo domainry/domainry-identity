@@ -85,7 +85,7 @@ func ValidateExternalMigrationBackup(driverName, evidencePath string) error {
 }
 
 func MigrationPathsForEngine(cfg config.Config, engine driver.Engine) ([]string, error) {
-	return (&IdentityStore{engine: engine}).migrationPaths(cfg)
+	return migrationcontract.NewPathResolver(engine, nil).Paths(cfg)
 }
 
 func NonNilMap(value map[string]any) map[string]any {

@@ -22,7 +22,7 @@ func (s *IdentityStore) applyMigrations(ctx context.Context, cfg config.Config) 
 	if err := s.Ledger.Ensure(ctx); err != nil {
 		return fmt.Errorf("prepare schema migration table: %w", err)
 	}
-	paths, err := s.migrationPaths(cfg)
+	paths, err := s.PathResolver.Paths(cfg)
 	if err != nil {
 		return fmt.Errorf("list migrations: %w", err)
 	}
@@ -56,7 +56,7 @@ func (s *IdentityStore) applyMigrations(ctx context.Context, cfg config.Config) 
 }
 
 func (s *IdentityStore) verifyMigrations(ctx context.Context, cfg config.Config) error {
-	paths, err := s.migrationPaths(cfg)
+	paths, err := s.PathResolver.Paths(cfg)
 	if err != nil {
 		return fmt.Errorf("list migrations: %w", err)
 	}
@@ -181,33 +181,6 @@ func (s *IdentityStore) applyMigrationFile(ctx context.Context, path string) err
 		return fmt.Errorf("commit transaction: %w", err)
 	}
 	return nil
-}
-
-func (s *IdentityStore) migrationPaths(cfg config.Config) ([]string, error) {
-	if strings.TrimSpace(cfg.MigrationSQL) != "" {
-		return []string{cfg.MigrationSQL}, nil
-	}
-	driverDir := filepath.Join(cfg.MigrationDir, s.engine.Name())
-	if entries, err := s.readMigrationDir(driverDir); err == nil {
-		return migrationcontract.SQLPaths(driverDir, entries), nil
-	} else if !os.IsNotExist(err) {
-		return nil, err
-	}
-	entries, err := s.readMigrationDir(cfg.MigrationDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return migrationcontract.SQLPaths(cfg.MigrationDir, entries), nil
-}
-
-func (s *IdentityStore) readMigrationDir(path string) ([]os.DirEntry, error) {
-	if s.migrationReadDir != nil {
-		return s.migrationReadDir(path)
-	}
-	return os.ReadDir(path)
 }
 
 func (s *IdentityStore) setExpectedMigrations(paths []string) error {

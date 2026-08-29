@@ -106,6 +106,7 @@ func (s *IdentityStore) identityMigrationStore() *IdentityStore {
 		BackupManager:        s.BackupManager,
 		LockManager:          s.LockManager,
 		Ledger:               s.Ledger,
+		PathResolver:         s.PathResolver,
 		db:                   s.migrationDB,
 		engine:               s.engine,
 		config:               s.config,
@@ -120,7 +121,6 @@ func (s *IdentityStore) identityMigrationStore() *IdentityStore {
 		sqlMetrics:           s.sqlMetrics,
 		operationalMetrics:   s.operationalMetrics,
 		schemaAssembler:      s.schemaAssembler,
-		migrationReadDir:     s.migrationReadDir,
 	}
 }
 

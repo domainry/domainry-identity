@@ -29,6 +29,7 @@ func identitySchemaStore(t *testing.T, state *databaseSQLState) *IdentityStore {
 	attachBackupManager(store, nil)
 	attachLockManager(store)
 	attachLedger(store)
+	attachPathResolver(store, nil)
 	return store
 }
 

@@ -42,14 +42,14 @@ func TestMigrationHelpersCoverDialectAndFilesystemEdges(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	if paths, err := (&IdentityStore{engine: sqlite.NewEngine()}).migrationPaths(config.Config{MigrationDir: filepath.Join(dir, "missing")}); err != nil || paths != nil {
+	if paths, err := migrationcontract.NewPathResolver(sqlite.NewEngine(), nil).Paths(config.Config{MigrationDir: filepath.Join(dir, "missing")}); err != nil || paths != nil {
 		t.Fatalf("missing migration directory paths=%v err=%v", paths, err)
 	}
 	blocked := filepath.Join(dir, "not-a-directory")
 	if err := os.WriteFile(blocked, []byte("file"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := (&IdentityStore{engine: sqlite.NewEngine()}).migrationPaths(config.Config{MigrationDir: blocked}); err == nil {
+	if _, err := migrationcontract.NewPathResolver(sqlite.NewEngine(), nil).Paths(config.Config{MigrationDir: blocked}); err == nil {
 		t.Fatal("file used as migration directory was accepted")
 	}
 	entriesDir := filepath.Join(dir, "entries")

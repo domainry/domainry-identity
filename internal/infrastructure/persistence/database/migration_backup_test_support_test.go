@@ -35,3 +35,7 @@ func attachLedger(store *IdentityStore) {
 	renderer := base.NewSQLDatabase(database, store.engine, store.databaseSchema, store.relationPrefix).SQLRenderer
 	store.Ledger = migration.NewLedger(database, store.engine, renderer, store.databaseSchema)
 }
+
+func attachPathResolver(store *IdentityStore, readDir migration.ReadDirFunc) {
+	store.PathResolver = migration.NewPathResolver(store.engine, readDir)
+}

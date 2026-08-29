@@ -31,6 +31,7 @@ func openMigrationEdgeStore(t *testing.T) *IdentityStore {
 	attachBackupManager(store, nil)
 	attachLockManager(store)
 	attachLedger(store)
+	attachPathResolver(store, nil)
 	if err := store.Ledger.Ensure(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -167,12 +168,13 @@ func TestMigrationPathIdentityAndSQLHelperEdges(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := &IdentityStore{engine: sqlite.NewEngine()}
-	got, err := store.migrationPaths(config.Config{MigrationDir: root})
+	attachPathResolver(store, nil)
+	got, err := store.PathResolver.Paths(config.Config{MigrationDir: root})
 	if err != nil || !reflect.DeepEqual(got, []string{paths[1], paths[0]}) {
 		t.Fatalf("driver paths=%v error=%v", got, err)
 	}
 	explicit := writeMigrationEdgeFile(t, "explicit.sql", "SELECT 1;")
-	if got, err := store.migrationPaths(config.Config{MigrationSQL: " " + explicit + " "}); err != nil || !reflect.DeepEqual(got, []string{" " + explicit + " "}) {
+	if got, err := store.PathResolver.Paths(config.Config{MigrationSQL: " " + explicit + " "}); err != nil || !reflect.DeepEqual(got, []string{" " + explicit + " "}) {
 		t.Fatalf("explicit paths=%v error=%v", got, err)
 	}
 	if err := store.setExpectedMigrations(paths); err != nil {
@@ -208,16 +210,17 @@ func TestMigrationPathIdentityAndSQLHelperEdges(t *testing.T) {
 	}
 	rootOnly := t.TempDir()
 	rootPath := writeNamedMigrationEdgeFile(t, rootOnly, "007_root.sql", "SELECT 7;")
-	if got, err := store.migrationPaths(config.Config{MigrationDir: rootOnly}); err != nil || !reflect.DeepEqual(got, []string{rootPath}) {
+	if got, err := store.PathResolver.Paths(config.Config{MigrationDir: rootOnly}); err != nil || !reflect.DeepEqual(got, []string{rootPath}) {
 		t.Fatalf("root paths=%v error=%v", got, err)
 	}
-	rootFailure := &IdentityStore{engine: sqlite.NewEngine(), migrationReadDir: func(path string) ([]os.DirEntry, error) {
+	rootFailure := &IdentityStore{engine: sqlite.NewEngine()}
+	attachPathResolver(rootFailure, func(path string) ([]os.DirEntry, error) {
 		if strings.HasSuffix(path, "sqlite") {
 			return nil, os.ErrNotExist
 		}
 		return nil, errDatabaseSQL
-	}}
-	if _, err := rootFailure.migrationPaths(config.Config{MigrationDir: "migrations"}); !errors.Is(err, errDatabaseSQL) {
+	})
+	if _, err := rootFailure.PathResolver.Paths(config.Config{MigrationDir: "migrations"}); !errors.Is(err, errDatabaseSQL) {
 		t.Fatalf("root directory error=%v", err)
 	}
 }
