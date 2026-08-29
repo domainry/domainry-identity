@@ -46,6 +46,9 @@ type EngineProfile interface {
 	AcquireMigrationLock(context.Context, *sql.DB, ormdialect.Renderer, MigrationLockOptions) (MigrationLock, error)
 	MigrationBackupPolicy() MigrationBackupPolicy
 	MigrationRollbackPolicy() MigrationRollbackPolicy
+	WorkspaceRLSSupported() bool
+	ApplyWorkspaceRLS(context.Context, *sql.DB, ormdialect.Renderer, string, string, string) error
+	InspectWorkspaceRLS(context.Context, *sql.DB, ormdialect.Renderer, string, string, string) (WorkspaceRLSStatus, error)
 }
 
 type SchemaTypes struct {
@@ -90,6 +93,17 @@ type MigrationRollbackPolicy struct {
 	Mode                   string
 	RequiresVerifiedBackup bool
 	Procedure              []string
+}
+
+type WorkspaceRLSStatus struct {
+	Enabled         bool     `json:"enabled"`
+	Forced          bool     `json:"forced"`
+	ApplicationRole string   `json:"application_role,omitempty"`
+	RoleOwnsTable   bool     `json:"role_owns_table"`
+	RoleBypassRLS   bool     `json:"role_bypass_rls"`
+	PolicyVersion   string   `json:"policy_version,omitempty"`
+	CoveredTables   []string `json:"covered_tables,omitempty"`
+	MissingTables   []string `json:"missing_tables,omitempty"`
 }
 
 type SchemaDatabase interface {
@@ -161,6 +175,13 @@ func (portableEngineProfile) MigrationBackupPolicy() MigrationBackupPolicy {
 }
 func (portableEngineProfile) MigrationRollbackPolicy() MigrationRollbackPolicy {
 	return MigrationRollbackPolicy{Mode: "unsupported", RequiresVerifiedBackup: true}
+}
+func (portableEngineProfile) WorkspaceRLSSupported() bool { return false }
+func (portableEngineProfile) ApplyWorkspaceRLS(context.Context, *sql.DB, ormdialect.Renderer, string, string, string) error {
+	return nil
+}
+func (portableEngineProfile) InspectWorkspaceRLS(context.Context, *sql.DB, ormdialect.Renderer, string, string, string) (WorkspaceRLSStatus, error) {
+	return WorkspaceRLSStatus{}, nil
 }
 
 func ProfileFor(value Dialect) EngineProfile {

@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 
@@ -16,6 +17,13 @@ func (Dialect) ApplicationTablesQuery(ormdialect.Renderer, string) driver.Schema
 }
 func (Dialect) WorkspaceTablesQuery(ormdialect.Renderer, string) driver.SchemaQuery {
 	return driver.SchemaQuery{Statement: "SELECT DISTINCT m.name FROM sqlite_master m JOIN pragma_table_info(m.name) p WHERE m.type = 'table' AND p.name = 'workspace_id' ORDER BY m.name"}
+}
+func (Dialect) WorkspaceRLSSupported() bool { return false }
+func (Dialect) ApplyWorkspaceRLS(context.Context, *sql.DB, ormdialect.Renderer, string, string, string) error {
+	return nil
+}
+func (Dialect) InspectWorkspaceRLS(context.Context, *sql.DB, ormdialect.Renderer, string, string, string) (driver.WorkspaceRLSStatus, error) {
+	return driver.WorkspaceRLSStatus{}, nil
 }
 
 func (Dialect) CreateIndexIfMissing(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _ string, relationPrefix, table, index string, unique bool, columns ...string) error {

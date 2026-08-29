@@ -122,7 +122,6 @@ func TestWorkspaceRLSInspectionFailuresAndMissingCoverage(t *testing.T) {
 }
 
 func TestWorkspaceTablesScanAndRowsErrors(t *testing.T) {
-	postgresDialect, _ := dialectFor("postgres")
 	for _, test := range []struct {
 		name   string
 		script *workspaceRLSScript
@@ -133,8 +132,8 @@ func TestWorkspaceTablesScanAndRowsErrors(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			db := sql.OpenDB(workspaceRLSConnector{script: test.script})
 			defer db.Close()
-			store := newWorkspaceRLSTestStore(postgresDialect, db, nil, "verify")
-			if _, err := store.workspaceTables(t.Context(), db); err == nil {
+			renderer := postgrespersistence.Dialect{}.SQLDialect().WithSchema("public")
+			if _, err := (postgrespersistence.Dialect{}).InspectWorkspaceRLS(t.Context(), db, renderer, "public", "runtime_user", CurrentIdentityWorkspaceRLSPolicyVersion); err == nil {
 				t.Fatal("expected workspace table error")
 			}
 		})
@@ -142,7 +141,8 @@ func TestWorkspaceTablesScanAndRowsErrors(t *testing.T) {
 }
 
 func TestSetLocalWorkspaceRLSContext(t *testing.T) {
-	if err := SetLocalWorkspaceRLSContext(t.Context(), nil); err == nil {
+	renderer := postgrespersistence.Dialect{}.SQLDialect().WithSchema("public")
+	if err := postgrespersistence.SetLocalWorkspaceRLSContext(t.Context(), nil, renderer, "workspace-1", "actor-1"); err == nil {
 		t.Fatal("expected nil transaction error")
 	}
 	script := &workspaceRLSScript{}
@@ -153,7 +153,7 @@ func TestSetLocalWorkspaceRLSContext(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := requestcontext.WithActorID(requestcontext.WithWorkspaceID(t.Context(), "workspace-1"), "actor-1")
-	if err := SetLocalWorkspaceRLSContext(ctx, tx); err != nil {
+	if err := postgrespersistence.SetLocalWorkspaceRLSContext(ctx, tx, renderer, requestcontext.WorkspaceID(ctx), requestcontext.ActorID(ctx)); err != nil {
 		t.Fatalf("set context: %v", err)
 	}
 	_ = tx.Rollback()
@@ -166,7 +166,7 @@ func TestSetLocalWorkspaceRLSContext(t *testing.T) {
 	defer db.Close()
 	tx, _ = db.BeginTx(t.Context(), nil)
 	defer tx.Rollback()
-	if err := SetLocalWorkspaceRLSContext(ctx, tx); err == nil || !strings.Contains(err.Error(), "transaction-local") {
+	if err := postgrespersistence.SetLocalWorkspaceRLSContext(ctx, tx, renderer, requestcontext.WorkspaceID(ctx), requestcontext.ActorID(ctx)); err == nil || !strings.Contains(err.Error(), "transaction-local") {
 		t.Fatalf("set context error=%v", err)
 	}
 }
@@ -245,7 +245,7 @@ func (c *workspaceRLSConn) QueryContext(_ context.Context, query string, args []
 		policy := c.script.policies[table]
 		return &workspaceRLSRows{columns: []string{"enabled", "forced", "owner", "bypass", "policy"}, values: [][]driver.Value{{policy.enabled, policy.forced, policy.owner, policy.bypass, policy.policy}}}, nil
 	}
-	if strings.Contains(query, identityWorkspaceRLSPolicyLedger) {
+	if strings.Contains(query, "_identity_rls_policies") {
 		if c.script.ledgerErr != nil {
 			return nil, c.script.ledgerErr
 		}

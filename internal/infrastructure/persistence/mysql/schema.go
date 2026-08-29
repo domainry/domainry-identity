@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 
@@ -26,6 +27,13 @@ func (Dialect) WorkspaceTablesQuery(renderer ormdialect.Renderer, databaseSchema
 		Statement: "SELECT DISTINCT table_name FROM information_schema.columns WHERE table_schema = " + renderer.Placeholder(1) + " AND column_name = 'workspace_id' ORDER BY table_name",
 		Arguments: []any{databaseSchema},
 	}
+}
+func (Dialect) WorkspaceRLSSupported() bool { return false }
+func (Dialect) ApplyWorkspaceRLS(context.Context, *sql.DB, ormdialect.Renderer, string, string, string) error {
+	return nil
+}
+func (Dialect) InspectWorkspaceRLS(context.Context, *sql.DB, ormdialect.Renderer, string, string, string) (driver.WorkspaceRLSStatus, error) {
+	return driver.WorkspaceRLSStatus{}, nil
 }
 
 func (Dialect) CreateIndexIfMissing(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _ string, relationPrefix, table, index string, unique bool, columns ...string) error {
