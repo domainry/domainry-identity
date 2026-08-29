@@ -12,6 +12,8 @@ func (s *SQLIdentityStore) DB() *sql.DB { return s.db }
 
 func (s *SQLIdentityStore) Driver() string { return s.driver }
 
+func (s *SQLIdentityStore) MaxParameters() int { return s.engineProfile().MaxParameters() }
+
 func (s *SQLIdentityStore) SQLRenderer() ormdialect.Renderer { return s.sqlRenderer() }
 
 func (s *SQLIdentityStore) ApplyUpsert(insert *ormbuilder.InsertBuilder, conflictColumns []string, updateColumns ...string) *ormbuilder.InsertBuilder {

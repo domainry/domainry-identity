@@ -78,18 +78,9 @@ func TestAuthStoreTransactionAndRowsFailures(t *testing.T) {
 		state *authDBState
 		call  func(AuthStore) error
 	}{
-		{name: "credential begin", state: &authDBState{beginErr: wantErr}, call: func(s AuthStore) error { return s.UpsertIdentityCredential(t.Context(), "default", credential) }},
-		{name: "credential delete", state: &authDBState{execSteps: []authExecStep{{err: wantErr}}}, call: func(s AuthStore) error { return s.UpsertIdentityCredential(t.Context(), "default", credential) }},
-		{name: "credential insert", state: &authDBState{execSteps: []authExecStep{{rows: 1}, {err: wantErr}}}, call: func(s AuthStore) error { return s.UpsertIdentityCredential(t.Context(), "default", credential) }},
-		{name: "credential commit", state: &authDBState{execSteps: []authExecStep{{rows: 1}, {rows: 1}}, commitErr: wantErr}, call: func(s AuthStore) error { return s.UpsertIdentityCredential(t.Context(), "default", credential) }},
-		{name: "external begin", state: &authDBState{beginErr: wantErr}, call: func(s AuthStore) error { return s.UpsertIdentityExternalAccount(t.Context(), "default", account) }},
-		{name: "external delete", state: &authDBState{execSteps: []authExecStep{{err: wantErr}}}, call: func(s AuthStore) error { return s.UpsertIdentityExternalAccount(t.Context(), "default", account) }},
-		{name: "external insert", state: &authDBState{execSteps: []authExecStep{{rows: 1}, {err: wantErr}}}, call: func(s AuthStore) error { return s.UpsertIdentityExternalAccount(t.Context(), "default", account) }},
-		{name: "external commit", state: &authDBState{execSteps: []authExecStep{{rows: 1}, {rows: 1}}, commitErr: wantErr}, call: func(s AuthStore) error { return s.UpsertIdentityExternalAccount(t.Context(), "default", account) }},
-		{name: "MFA begin", state: &authDBState{beginErr: wantErr}, call: func(s AuthStore) error { return s.UpsertIdentityMFAFactor(t.Context(), "default", factor) }},
-		{name: "MFA delete", state: &authDBState{execSteps: []authExecStep{{err: wantErr}}}, call: func(s AuthStore) error { return s.UpsertIdentityMFAFactor(t.Context(), "default", factor) }},
-		{name: "MFA insert", state: &authDBState{execSteps: []authExecStep{{rows: 1}, {err: wantErr}}}, call: func(s AuthStore) error { return s.UpsertIdentityMFAFactor(t.Context(), "default", factor) }},
-		{name: "MFA commit", state: &authDBState{execSteps: []authExecStep{{rows: 1}, {rows: 1}}, commitErr: wantErr}, call: func(s AuthStore) error { return s.UpsertIdentityMFAFactor(t.Context(), "default", factor) }},
+		{name: "credential upsert", state: &authDBState{execSteps: []authExecStep{{err: wantErr}}}, call: func(s AuthStore) error { return s.UpsertIdentityCredential(t.Context(), "default", credential) }},
+		{name: "external upsert", state: &authDBState{execSteps: []authExecStep{{err: wantErr}}}, call: func(s AuthStore) error { return s.UpsertIdentityExternalAccount(t.Context(), "default", account) }},
+		{name: "MFA upsert", state: &authDBState{execSteps: []authExecStep{{err: wantErr}}}, call: func(s AuthStore) error { return s.UpsertIdentityMFAFactor(t.Context(), "default", factor) }},
 		{name: "MFA revoke exec", state: &authDBState{execSteps: []authExecStep{{err: wantErr}}}, call: func(s AuthStore) error { return s.RevokeIdentityMFAFactor(t.Context(), "default", "user", "factor") }},
 		{name: "MFA revoke rows", state: &authDBState{execSteps: []authExecStep{{rowsErr: wantErr}}}, call: func(s AuthStore) error { return s.RevokeIdentityMFAFactor(t.Context(), "default", "user", "factor") }},
 		{name: "MFA revoke missing", state: &authDBState{execSteps: []authExecStep{{rows: 0}}}, call: func(s AuthStore) error { return s.RevokeIdentityMFAFactor(t.Context(), "default", "user", "factor") }},
