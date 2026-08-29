@@ -25,7 +25,7 @@ func TestIdentityDirectorySearchUsers(t *testing.T) {
 	}}
 	service := directorySearchService(t, repository)
 	page, err := service.SearchUsers(t.Context(), identitymodel.IdentityListQuery{
-		Page: 1, PageSize: 1, Search: "ali", SearchFields: []string{"name"},
+		PageSize: 1, Search: "ali", SearchFields: []string{"name"},
 		Filters: map[string]any{"status": "ACTIVE"},
 		Sort:    []identitymodel.IdentitySortRule{{Field: "email", Direction: "desc"}},
 	})
@@ -35,8 +35,8 @@ func TestIdentityDirectorySearchUsers(t *testing.T) {
 	if page.Total != 2 || len(page.Items) != 1 || page.Items[0].ID != "u-3" || !page.HasNext {
 		t.Fatalf("unexpected page: %#v", page)
 	}
-	page, err = service.SearchUsers(t.Context(), identitymodel.IdentityListQuery{Page: 9, PageSize: 999})
-	if err != nil || page.PageSize != identityDirectoryMaximumPageSize || len(page.Items) != 0 || page.HasNext {
+	page, err = service.SearchUsers(t.Context(), identitymodel.IdentityListQuery{PageSize: 999})
+	if err != nil || page.PageSize != identityDirectoryMaximumPageSize || len(page.Items) != 3 || page.HasNext {
 		t.Fatalf("unexpected bounded page: %#v, %v", page, err)
 	}
 	if page, err = service.SearchUsers(t.Context(), identitymodel.IdentityListQuery{Search: "alice", Filters: map[string]any{"status": "disabled"}}); err != nil || page.Total != 0 {
@@ -111,8 +111,8 @@ func TestIdentityDirectorySearchWorkforceAndAssignments(t *testing.T) {
 }
 
 func TestIdentityDirectorySearchHelpersAndValidation(t *testing.T) {
-	if page, size := identityDirectoryPage(identitymodel.IdentityListQuery{Page: -1, PageSize: -1}); page != 1 || size != 20 {
-		t.Fatalf("unexpected defaults: %d/%d", page, size)
+	if size := identityDirectoryPageSize(identitymodel.IdentityListQuery{PageSize: -1}); size != 20 {
+		t.Fatalf("unexpected default: %d", size)
 	}
 	if !identityDirectoryMatchesSearch("", nil, func(string) string { return "" }) {
 		t.Fatal("empty search must match")

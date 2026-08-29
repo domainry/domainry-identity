@@ -24,12 +24,12 @@ func TestIdentitySearchRolesNormalizesPaginationAndFields(t *testing.T) {
 	if err != nil || len(listed) != len(repository.roles) {
 		t.Fatalf("listed=%#v err=%v", listed, err)
 	}
-	page, err := service.SearchRoles(t.Context(), identitymodel.IdentityListQuery{Search: "view", SearchFields: []string{"key"}, Page: -1, PageSize: 500})
-	if err != nil || page.Page != 1 || page.PageSize != 200 || page.Total != 1 || page.Items[0].Key != "viewer" || page.HasNext {
+	page, err := service.SearchRoles(t.Context(), identitymodel.IdentityListQuery{Search: "view", SearchFields: []string{"key"}, PageSize: 500})
+	if err != nil || page.PageSize != 200 || page.Total != 1 || page.Items[0].Key != "viewer" || page.HasNext {
 		t.Fatalf("page=%#v err=%v", page, err)
 	}
-	page, err = service.SearchRoles(t.Context(), identitymodel.IdentityListQuery{Search: "member", SearchFields: []string{"description"}, Page: 20})
-	if err != nil || page.PageSize != 10 || len(page.Items) != 0 {
+	page, err = service.SearchRoles(t.Context(), identitymodel.IdentityListQuery{Search: "member", SearchFields: []string{"description"}})
+	if err != nil || page.PageSize != 20 || len(page.Items) != 0 {
 		t.Fatalf("page=%#v err=%v", page, err)
 	}
 	if _, err := service.SearchRoles(t.Context(), identitymodel.IdentityListQuery{SearchFields: []string{"unknown"}}); apperror.CodeOf(err) != "backend.identity.role_search_field_invalid" {

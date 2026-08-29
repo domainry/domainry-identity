@@ -11,7 +11,7 @@ import (
 func identityListQuery(r *http.Request) identitymodel.IdentityListQuery {
 	values := r.URL.Query()
 	query := identitymodel.IdentityListQuery{
-		Page:         intQuery(values.Get("page")),
+		AfterID:      strings.TrimSpace(values.Get("after_id")),
 		PageSize:     intQuery(values.Get("page_size")),
 		Search:       strings.TrimSpace(values.Get("search")),
 		SearchFields: identityQueryCSV(values.Get("search_fields")),

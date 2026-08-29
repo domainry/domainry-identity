@@ -28,7 +28,7 @@ func identityDirectoryUserRow() []driver.Value {
 }
 
 func TestSearchIdentityUsersRemainingSQLFailures(t *testing.T) {
-	query := identitymodel.IdentityListQuery{Page: 1, PageSize: 2}
+	query := identitymodel.IdentityListQuery{PageSize: 2, Sort: []identitymodel.IdentitySortRule{{Field: "id", Direction: "asc"}}}
 	store, closeDB := scriptedSQLIdentity(&identitySQLState{})
 	if _, err := store.SearchIdentityUsers(t.Context(), "", query); err == nil {
 		t.Fatal("blank workspace accepted")
@@ -62,14 +62,14 @@ func TestSearchIdentityUsersRemainingSQLFailures(t *testing.T) {
 		{columns: identityDirectoryUserColumns(), rows: [][]driver.Value{identityDirectoryUserRow()}},
 	}})
 	page, err := store.SearchIdentityUsers(t.Context(), "workspace", query)
-	if err != nil || len(page.Items) != 1 || page.Items[0].ID != "user" || !page.HasNext || page.Total != 3 {
+	if err != nil || len(page.Items) != 1 || page.Items[0].ID != "user" || page.HasNext || page.Total != 3 {
 		t.Fatalf("user page=%#v error=%v", page, err)
 	}
 	closeDB()
 }
 
 func TestSearchIdentityWorkforceProfilesRemainingSQLFailures(t *testing.T) {
-	query := identitymodel.IdentityListQuery{Page: 1, PageSize: 2}
+	query := identitymodel.IdentityListQuery{PageSize: 2, Sort: []identitymodel.IdentitySortRule{{Field: "id", Direction: "asc"}}}
 	store, closeDB := scriptedSQLIdentity(&identitySQLState{})
 	if _, err := store.SearchIdentityWorkforceProfiles(t.Context(), "", query); err == nil {
 		t.Fatal("blank workspace accepted")
@@ -129,16 +129,10 @@ func TestIdentityDirectoryQueryCompositionAndStableOrdering(t *testing.T) {
 		"id": "id", "name": "name", "email": "email",
 		"status": "status", "account_type": "account_type",
 	}
-	where, args := store.identityDirectoryWhere("workspace", query, columns)
-	if !strings.Contains(where, `"name"`) || !strings.Contains(where, `"email"`) ||
-		!strings.Contains(where, `"account_type"`) || !strings.Contains(where, `"status"`) {
-		t.Fatalf("where=%q", where)
-	}
-	if !reflect.DeepEqual(args, []any{"workspace", "%user%", "%user%", "human", "active"}) {
-		t.Fatalf("args=%#v", args)
-	}
-	if order := store.identityDirectoryOrder(query.Sort, columns); order != ` ORDER BY "name" DESC, "id" ASC` {
-		t.Fatalf("order=%q", order)
+	conditions := identityDirectoryPredicates(query, columns)
+	statement, args, err := store.identityDirectoryPageSQL(t.Context(), "workspace", "identity_users", []string{"id"}, identitymodel.IdentityListQuery{PageSize: 20, Sort: query.Sort}, conditions)
+	if err != nil || !strings.Contains(statement, `"workspace_id" = ?`) || !strings.Contains(statement, `ORDER BY "name" DESC, "id" ASC LIMIT ?`) {
+		t.Fatalf("statement=%q args=%#v err=%v", statement, args, err)
 	}
 	if keys := sortedStringKeys(map[string]any{"z": true, "a": true, "m": true}); !reflect.DeepEqual(keys, []string{"a", "m", "z"}) {
 		t.Fatalf("keys=%#v", keys)

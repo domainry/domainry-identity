@@ -33,10 +33,10 @@ type IdentityWorkforceProfile struct {
 
 type IdentityWorkforceProfilePage struct {
 	Items    []IdentityWorkforceProfile `json:"items"`
-	Page     int                        `json:"page"`
 	PageSize int                        `json:"page_size"`
 	Total    int                        `json:"total"`
 	HasNext  bool                       `json:"has_next"`
+	NextID   string                     `json:"next_id,omitempty"`
 }
 
 // IdentityWorkforceProjectionItem is the stable read projection consumed by
@@ -79,14 +79,14 @@ type IdentityWorkforceManager struct {
 
 type IdentityWorkforceProjectionPage struct {
 	Items    []IdentityWorkforceProjectionItem `json:"items"`
-	Page     int                               `json:"page"`
 	PageSize int                               `json:"page_size"`
 	Total    int                               `json:"total"`
 	HasNext  bool                              `json:"has_next"`
+	NextID   string                            `json:"next_id,omitempty"`
 }
 
 type IdentityWorkforceProjectionQuery struct {
-	Page         int
+	AfterID      string
 	PageSize     int
 	Search       string
 	DepartmentID string

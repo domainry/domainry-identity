@@ -53,10 +53,10 @@ type IdentityUser struct {
 
 type IdentityUserPage struct {
 	Items    []IdentityUser `json:"items"`
-	Page     int            `json:"page"`
 	PageSize int            `json:"page_size"`
 	Total    int            `json:"total"`
 	HasNext  bool           `json:"has_next"`
+	NextID   string         `json:"next_id,omitempty"`
 }
 
 type IdentityUserDeletionImpact struct {
@@ -131,10 +131,10 @@ type IdentityRole struct {
 
 type IdentityRolePage struct {
 	Items    []IdentityRole `json:"items"`
-	Page     int            `json:"page"`
 	PageSize int            `json:"page_size"`
 	Total    int            `json:"total"`
 	HasNext  bool           `json:"has_next"`
+	NextID   string         `json:"next_id,omitempty"`
 }
 
 type IdentityMenu struct {
@@ -192,10 +192,10 @@ type IdentityUserRoleAssignment struct {
 
 type IdentityUserRoleAssignmentPage struct {
 	Items    []IdentityUserRoleAssignment `json:"items"`
-	Page     int                          `json:"page"`
 	PageSize int                          `json:"page_size"`
 	Total    int                          `json:"total"`
 	HasNext  bool                         `json:"has_next"`
+	NextID   string                       `json:"next_id,omitempty"`
 }
 
 type IdentityRoleRequest struct {

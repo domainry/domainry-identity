@@ -19,17 +19,7 @@ func (s *IdentityDomainService) SearchRoles(ctx context.Context, query identitym
 	if err != nil {
 		return identitymodel.IdentityRolePage{}, err
 	}
-	page := query.Page
-	if page < 1 {
-		page = 1
-	}
-	pageSize := query.PageSize
-	if pageSize < 1 {
-		pageSize = 10
-	}
-	if pageSize > 200 {
-		pageSize = 200
-	}
+	pageSize := identityDirectoryPageSize(query)
 	fields := query.SearchFields
 	if len(fields) == 0 {
 		fields = []string{"label", "key"}
@@ -63,20 +53,16 @@ func (s *IdentityDomainService) SearchRoles(ctx context.Context, query identitym
 		}
 	}
 	total := len(filtered)
-	start := (page - 1) * pageSize
-	if start > total {
-		start = total
-	}
-	end := start + pageSize
-	if end > total {
-		end = total
+	items, hasNext, nextID, err := identityDirectorySlice(filtered, query.AfterID, pageSize, func(role identitymodel.IdentityRole) string { return role.ID })
+	if err != nil {
+		return identitymodel.IdentityRolePage{}, err
 	}
 	return identitymodel.IdentityRolePage{
-		Items:    filtered[start:end],
-		Page:     page,
+		Items:    items,
 		PageSize: pageSize,
 		Total:    total,
-		HasNext:  end < total,
+		HasNext:  hasNext,
+		NextID:   nextID,
 	}, nil
 }
 

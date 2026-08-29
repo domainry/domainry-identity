@@ -11,11 +11,7 @@ import (
 
 const identityDirectoryMaximumPageSize = 200
 
-func identityDirectoryPage(query identitymodel.IdentityListQuery) (int, int) {
-	page := query.Page
-	if page < 1 {
-		page = 1
-	}
+func identityDirectoryPageSize(query identitymodel.IdentityListQuery) int {
 	pageSize := query.PageSize
 	if pageSize < 1 {
 		pageSize = 20
@@ -23,7 +19,7 @@ func identityDirectoryPage(query identitymodel.IdentityListQuery) (int, int) {
 	if pageSize > identityDirectoryMaximumPageSize {
 		pageSize = identityDirectoryMaximumPageSize
 	}
-	return page, pageSize
+	return pageSize
 }
 
 func identityDirectoryFields(requested, defaults []string, allowed map[string]bool, errorCode string) ([]string, error) {
@@ -103,16 +99,32 @@ func identityDirectoryLess(rules []identitymodel.IdentitySortRule, left, right f
 	return false
 }
 
-func identityDirectorySlice[T any](items []T, page, pageSize int) ([]T, bool) {
-	start := (page - 1) * pageSize
-	if start > len(items) {
-		start = len(items)
+func identityDirectorySlice[T any](items []T, afterID string, pageSize int, itemID func(T) string) ([]T, bool, string, error) {
+	start := 0
+	afterID = strings.TrimSpace(afterID)
+	if afterID != "" {
+		found := false
+		for index, item := range items {
+			if strings.TrimSpace(itemID(item)) == afterID {
+				start, found = index+1, true
+				break
+			}
+		}
+		if !found {
+			return nil, false, "", badRequest("backend.identity.directory_cursor_invalid", "after_id", afterID)
+		}
 	}
 	end := start + pageSize
 	if end > len(items) {
 		end = len(items)
 	}
-	return items[start:end], end < len(items)
+	page := items[start:end]
+	hasNext := end < len(items)
+	nextID := ""
+	if hasNext && len(page) > 0 {
+		nextID = strings.TrimSpace(itemID(page[len(page)-1]))
+	}
+	return page, hasNext, nextID, nil
 }
 
 func identityUserValue(user identitymodel.IdentityUser, field string) string {
@@ -170,8 +182,8 @@ func (s *IdentityDomainService) SearchUsers(ctx context.Context, query identitym
 	if err != nil {
 		return identitymodel.IdentityUserPage{}, err
 	}
-	page, pageSize := identityDirectoryPage(query)
-	query.Page, query.PageSize, query.SearchFields, query.Filters, query.Sort = page, pageSize, fields, mapStringAny(filters), rules
+	pageSize := identityDirectoryPageSize(query)
+	query.PageSize, query.SearchFields, query.Filters, query.Sort = pageSize, fields, mapStringAny(filters), rules
 	if repository, ok := s.repo.(interface {
 		SearchIdentityUsers(context.Context, string, identitymodel.IdentityListQuery) (identitymodel.IdentityUserPage, error)
 	}); ok {
@@ -194,8 +206,11 @@ func (s *IdentityDomainService) SearchUsers(ctx context.Context, query identitym
 			func(field string) string { return identityUserValue(filtered[left], field) },
 			func(field string) string { return identityUserValue(filtered[right], field) })
 	})
-	items, hasNext := identityDirectorySlice(filtered, page, pageSize)
-	return identitymodel.IdentityUserPage{Items: items, Page: page, PageSize: pageSize, Total: len(filtered), HasNext: hasNext}, nil
+	items, hasNext, nextID, err := identityDirectorySlice(filtered, query.AfterID, pageSize, func(user identitymodel.IdentityUser) string { return user.ID })
+	if err != nil {
+		return identitymodel.IdentityUserPage{}, err
+	}
+	return identitymodel.IdentityUserPage{Items: items, PageSize: pageSize, Total: len(filtered), HasNext: hasNext, NextID: nextID}, nil
 }
 
 func identityWorkforceValue(profile identitymodel.IdentityWorkforceProfile, field string) string {
@@ -241,8 +256,8 @@ func (s *IdentityDomainService) SearchWorkforceProfiles(ctx context.Context, que
 	if err != nil {
 		return identitymodel.IdentityWorkforceProfilePage{}, err
 	}
-	page, pageSize := identityDirectoryPage(query)
-	query.Page, query.PageSize, query.SearchFields, query.Filters, query.Sort = page, pageSize, fields, mapStringAny(filters), rules
+	pageSize := identityDirectoryPageSize(query)
+	query.PageSize, query.SearchFields, query.Filters, query.Sort = pageSize, fields, mapStringAny(filters), rules
 	if repository, ok := s.repo.(interface {
 		SearchIdentityWorkforceProfiles(context.Context, string, identitymodel.IdentityListQuery) (identitymodel.IdentityWorkforceProfilePage, error)
 	}); ok && (strings.TrimSpace(query.Scope) == "" || strings.TrimSpace(query.Scope) == "all_records") {
@@ -272,8 +287,11 @@ func (s *IdentityDomainService) SearchWorkforceProfiles(ctx context.Context, que
 			func(field string) string { return identityWorkforceValue(filtered[left], field) },
 			func(field string) string { return identityWorkforceValue(filtered[right], field) })
 	})
-	items, hasNext := identityDirectorySlice(filtered, page, pageSize)
-	return identitymodel.IdentityWorkforceProfilePage{Items: items, Page: page, PageSize: pageSize, Total: len(filtered), HasNext: hasNext}, nil
+	items, hasNext, nextID, err := identityDirectorySlice(filtered, query.AfterID, pageSize, func(profile identitymodel.IdentityWorkforceProfile) string { return profile.ID })
+	if err != nil {
+		return identitymodel.IdentityWorkforceProfilePage{}, err
+	}
+	return identitymodel.IdentityWorkforceProfilePage{Items: items, PageSize: pageSize, Total: len(filtered), HasNext: hasNext, NextID: nextID}, nil
 }
 
 func (s *IdentityDomainService) identityWorkforceScopedProfileIDs(ctx context.Context, query identitymodel.IdentityListQuery, profiles []identitymodel.IdentityWorkforceProfile) (map[string]bool, error) {
@@ -421,7 +439,10 @@ func (s *IdentityDomainService) SearchUserRoleAssignments(ctx context.Context, u
 			func(field string) string { return identityRoleAssignmentValue(filtered[left], field) },
 			func(field string) string { return identityRoleAssignmentValue(filtered[right], field) })
 	})
-	page, pageSize := identityDirectoryPage(query)
-	items, hasNext := identityDirectorySlice(filtered, page, pageSize)
-	return identitymodel.IdentityUserRoleAssignmentPage{Items: items, Page: page, PageSize: pageSize, Total: len(filtered), HasNext: hasNext}, nil
+	pageSize := identityDirectoryPageSize(query)
+	items, hasNext, nextID, err := identityDirectorySlice(filtered, query.AfterID, pageSize, func(assignment identitymodel.IdentityUserRoleAssignment) string { return assignment.RoleID })
+	if err != nil {
+		return identitymodel.IdentityUserRoleAssignmentPage{}, err
+	}
+	return identitymodel.IdentityUserRoleAssignmentPage{Items: items, PageSize: pageSize, Total: len(filtered), HasNext: hasNext, NextID: nextID}, nil
 }

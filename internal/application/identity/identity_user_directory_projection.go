@@ -163,25 +163,37 @@ func (s *IdentityApplicationService) ListWorkforceApplicationProjection(ctx cont
 		return items[left].Profile.WorkerNo < items[right].Profile.WorkerNo
 	})
 	total := len(items)
-	page, pageSize := query.Page, query.PageSize
-	if page <= 0 {
-		page = 1
-	}
+	pageSize := query.PageSize
 	if pageSize <= 0 || pageSize > total && total > 0 {
 		pageSize = total
 	}
 	if pageSize == 0 {
 		pageSize = 50
 	}
-	start := (page - 1) * pageSize
-	if start > total {
-		start = total
+	start := 0
+	if afterID := strings.TrimSpace(query.AfterID); afterID != "" {
+		found := false
+		for index := range items {
+			if items[index].Profile.ID == afterID {
+				start, found = index+1, true
+				break
+			}
+		}
+		if !found {
+			return identitymodel.IdentityWorkforceProjectionPage{}, apperror.New(apperror.KindBadRequest, "backend.identity.workforce_projection_cursor_invalid", nil, map[string]string{"after_id": afterID})
+		}
 	}
 	end := start + pageSize
 	if end > total {
 		end = total
 	}
-	return identitymodel.IdentityWorkforceProjectionPage{Items: items[start:end], Page: page, PageSize: pageSize, Total: total, HasNext: end < total}, nil
+	pageItems := items[start:end]
+	hasNext := end < total
+	nextID := ""
+	if hasNext && len(pageItems) > 0 {
+		nextID = pageItems[len(pageItems)-1].Profile.ID
+	}
+	return identitymodel.IdentityWorkforceProjectionPage{Items: pageItems, PageSize: pageSize, Total: total, HasNext: hasNext, NextID: nextID}, nil
 }
 
 func filterWorkforceApplicationProjection(items []identitymodel.IdentityWorkforceProjectionItem, query identitymodel.IdentityWorkforceProjectionQuery) []identitymodel.IdentityWorkforceProjectionItem {
@@ -246,10 +258,10 @@ type IdentityUserDirectoryEntry struct {
 
 type IdentityUserDirectoryPage struct {
 	Items    []IdentityUserDirectoryEntry `json:"items"`
-	Page     int                          `json:"page"`
 	PageSize int                          `json:"page_size"`
 	Total    int                          `json:"total"`
 	HasNext  bool                         `json:"has_next"`
+	NextID   string                       `json:"next_id,omitempty"`
 }
 
 func (s *IdentityApplicationService) SearchUserDirectory(ctx context.Context, query identitymodel.IdentityListQuery, security IdentityUserDirectorySecurityReader) (IdentityUserDirectoryPage, error) {
@@ -378,6 +390,6 @@ func (s *IdentityApplicationService) searchUserDirectory(ctx context.Context, qu
 		items = append(items, entry)
 	}
 	return IdentityUserDirectoryPage{
-		Items: items, Page: users.Page, PageSize: users.PageSize, Total: users.Total, HasNext: users.HasNext,
+		Items: items, PageSize: users.PageSize, Total: users.Total, HasNext: users.HasNext, NextID: users.NextID,
 	}, nil
 }

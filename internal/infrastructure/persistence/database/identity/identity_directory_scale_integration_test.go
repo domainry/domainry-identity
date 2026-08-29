@@ -42,7 +42,7 @@ func TestIdentityDirectoriesPageAndSearchInSQLAtOneHundredThousandRows(t *testin
 	service := identityapplication.NewIdentityApplicationService(repository, nil)
 	ctx := requestcontext.WithWorkspaceID(t.Context(), "default")
 	users, err := service.SearchUsers(ctx, identitymodel.IdentityListQuery{
-		Page: 5000, PageSize: 20, Sort: []identitymodel.IdentitySortRule{{Field: "id", Direction: "asc"}},
+		AfterID: "user-099980", PageSize: 20, Sort: []identitymodel.IdentitySortRule{{Field: "id", Direction: "asc"}},
 	})
 	if err != nil || users.Total != 100000 || len(users.Items) != 20 || users.Items[0].ID != "user-099981" || users.HasNext {
 		t.Fatalf("users page=%+v err=%v", users, err)

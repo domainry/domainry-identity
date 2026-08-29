@@ -22,9 +22,9 @@ func (s *identityHTTPBatchSecurity) UserDirectorySecurityProfiles(context.Contex
 }
 
 func TestIdentityListQueryParsesPaginationSearchFiltersAndSort(t *testing.T) {
-	request := httptest.NewRequest(http.MethodGet, "/?page=2&page_size=25&search=%20alice%20&search_fields=name,%20email,,&filters=%7B%22status%22%3A%22active%22%7D&sort=-created_at,name:DESC,empty", nil)
+	request := httptest.NewRequest(http.MethodGet, "/?after_id=user-25&page_size=25&search=%20alice%20&search_fields=name,%20email,,&filters=%7B%22status%22%3A%22active%22%7D&sort=-created_at,name:DESC,empty", nil)
 	query := identityListQuery(request)
-	if query.Page != 2 || query.PageSize != 25 || query.Search != "alice" ||
+	if query.AfterID != "user-25" || query.PageSize != 25 || query.Search != "alice" ||
 		len(query.SearchFields) != 2 || query.SearchFields[1] != "email" ||
 		query.Filters["status"] != "active" || len(query.Sort) != 3 ||
 		query.Sort[0].Field != "created_at" || query.Sort[0].Direction != "desc" ||

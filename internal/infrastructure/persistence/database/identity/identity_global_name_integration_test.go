@@ -46,7 +46,7 @@ func TestIdentityUserGlobalNameFieldsRoundTripAndRemainSearchable(t *testing.T) 
 	}
 	for field, search := range map[string]string{"family_name": "Quiñones", "native_name": "카레뇨", "given_name": "María"} {
 		page, searchErr := store.SearchIdentityUsers(t.Context(), "default", identitymodel.IdentityListQuery{
-			Page: 1, PageSize: 20, Search: search, SearchFields: []string{field},
+			PageSize: 20, Search: search, SearchFields: []string{field},
 			Sort: []identitymodel.IdentitySortRule{{Field: "id", Direction: "asc"}},
 		})
 		if searchErr != nil || page.Total != 1 || page.Items[0].ID != want.ID {

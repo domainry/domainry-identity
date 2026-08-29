@@ -37,6 +37,8 @@ type SQLIdentityStore struct {
 	driver            string
 	schema            string
 	relationPrefix    string
+	renderer          *ormdialect.Renderer
+	rendererConfig    string
 	memory            *MemoryIdentityStore
 	roleRequestsReady atomic.Bool
 }
@@ -45,7 +47,7 @@ var _ identityrepository.IdentityRepository = (*SQLIdentityStore)(nil)
 var _ identityrepository.IdentityWorkforceRepository = (*SQLIdentityStore)(nil)
 
 func (s *SQLIdentityStore) identifier(value string) string {
-	return s.sqlDialect().Identifier(value)
+	return s.sqlRenderer().Identifier(value)
 }
 
 func (s *SQLIdentityStore) sqlDialect() ormdialect.Dialect {
@@ -57,10 +59,29 @@ func (s *SQLIdentityStore) sqlDialect() ormdialect.Dialect {
 }
 
 func (s *SQLIdentityStore) tableIdentifier(value string) string {
-	if s.relationPrefix != "" && !strings.HasPrefix(value, s.relationPrefix) {
-		value = s.relationPrefix + value
+	return s.sqlRenderer().Table(value)
+}
+
+func (s *SQLIdentityStore) sqlRenderer() ormdialect.Renderer {
+	configuration := strings.Join([]string{s.driver, strings.TrimSpace(s.schema), strings.TrimSpace(s.relationPrefix)}, "\x00")
+	if s.renderer != nil && s.rendererConfig == configuration {
+		return *s.renderer
 	}
-	return s.sqlDialect().Table(strings.TrimSpace(s.schema), value)
+	dialect, err := ormdialect.Parse(s.driver)
+	if err != nil {
+		panic(err)
+	}
+	schema := ""
+	if dialect.Name() == ormdialect.Postgres {
+		schema = s.schema
+	}
+	value, err := dialect.WithNamespace(schema, s.relationPrefix)
+	if err != nil {
+		panic(err)
+	}
+	s.renderer = &value
+	s.rendererConfig = configuration
+	return value
 }
 
 func (s *SQLIdentityStore) identityColumns(values ...string) string {
@@ -84,7 +105,20 @@ func NewSQLIdentityStoreWithSchema(ctx context.Context, db *sql.DB, schemaDB ide
 	if len(schema) > 1 {
 		relationPrefix = strings.TrimSpace(schema[1])
 	}
-	store := &SQLIdentityStore{db: db, schemaDB: schemaDB, driver: driver, schema: databaseSchema, relationPrefix: relationPrefix, memory: NewMemoryIdentityStore()}
+	dialect, err := ormdialect.Parse(driver)
+	if err != nil {
+		return nil, err
+	}
+	rendererSchema := ""
+	if dialect.Name() == ormdialect.Postgres {
+		rendererSchema = databaseSchema
+	}
+	renderer, err := dialect.WithNamespace(rendererSchema, relationPrefix)
+	if err != nil {
+		return nil, err
+	}
+	configuration := strings.Join([]string{driver, databaseSchema, relationPrefix}, "\x00")
+	store := &SQLIdentityStore{db: db, schemaDB: schemaDB, driver: driver, schema: databaseSchema, relationPrefix: relationPrefix, renderer: &renderer, rendererConfig: configuration, memory: NewMemoryIdentityStore()}
 	if err := store.ensureRoleRequestsTable(ctx); err != nil {
 		return nil, err
 	}

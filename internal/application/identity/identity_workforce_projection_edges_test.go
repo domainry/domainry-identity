@@ -78,7 +78,7 @@ func workforceProjectionFixture() (*IdentityApplicationService, *directoryProjec
 func TestWorkforceApplicationProjectionComposesAndPagesFacts(t *testing.T) {
 	service, _, principal, ctx := workforceProjectionFixture()
 	page, err := service.ListWorkforceApplicationProjection(ctx, principal)
-	if err != nil || page.Total != 4 || page.Page != 1 || page.PageSize != 4 || page.HasNext {
+	if err != nil || page.Total != 4 || page.PageSize != 4 || page.HasNext {
 		t.Fatalf("page=%+v err=%v", page, err)
 	}
 	if page.Items[0].Profile.ID != "profile-manager" || page.Items[1].DisplayName != "Alice" || page.Items[1].Department.ID != "sales" ||
@@ -88,9 +88,9 @@ func TestWorkforceApplicationProjectionComposesAndPagesFacts(t *testing.T) {
 		t.Fatalf("items=%+v", page.Items)
 	}
 	filtered, err := service.ListWorkforceApplicationProjection(ctx, principal, identitymodel.IdentityWorkforceProjectionQuery{
-		Page: 3, PageSize: 1, Search: "sales", DepartmentID: "sales", WorkStatus: identitymodel.IdentityWorkActive,
+		AfterID: "profile-a", PageSize: 1, Search: "sales", DepartmentID: "sales", WorkStatus: identitymodel.IdentityWorkActive,
 	})
-	if err != nil || filtered.Total != 1 || len(filtered.Items) != 0 || filtered.Page != 3 || filtered.PageSize != 1 {
+	if err != nil || filtered.Total != 1 || len(filtered.Items) != 0 || filtered.PageSize != 1 {
 		t.Fatalf("filtered=%+v err=%v", filtered, err)
 	}
 	if empty, err := service.ListWorkforceApplicationProjection(ctx, principal, identitymodel.IdentityWorkforceProjectionQuery{PageSize: 1, Search: "not-present"}); err != nil || empty.Total != 0 || empty.PageSize != 1 {

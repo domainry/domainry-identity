@@ -147,7 +147,7 @@ func directoryProjectionFixture() (*IdentityApplicationService, *directoryProjec
 func TestSearchUserDirectoryProjectsRolesSecurityAndIdentityBadges(t *testing.T) {
 	service, _ := directoryProjectionFixture()
 	ctx := requestcontext.WithWorkspaceID(t.Context(), "default")
-	page, err := service.SearchUserDirectory(ctx, identitymodel.IdentityListQuery{Page: 1, PageSize: 1}, func(_ context.Context, workspaceID, userID string) (IdentityUserDirectorySecuritySummary, error) {
+	page, err := service.SearchUserDirectory(ctx, identitymodel.IdentityListQuery{PageSize: 1}, func(_ context.Context, workspaceID, userID string) (IdentityUserDirectorySecuritySummary, error) {
 		if workspaceID != "default" || userID != "user-1" {
 			t.Fatalf("unexpected security lookup %q/%q", workspaceID, userID)
 		}

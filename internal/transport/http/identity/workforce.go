@@ -3,7 +3,6 @@ package identity
 import (
 	"context"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/domainry/domainry-foundation/apperror"
@@ -298,12 +297,12 @@ func (h *IdentityHandler) listIdentityWorkforceAssignments(w http.ResponseWriter
 
 func identityWorkforceProjectionQuery(r *http.Request) identitymodel.IdentityWorkforceProjectionQuery {
 	query := identitymodel.IdentityWorkforceProjectionQuery{
+		AfterID:      strings.TrimSpace(r.URL.Query().Get("after_id")),
 		Search:       strings.TrimSpace(r.URL.Query().Get("search")),
 		DepartmentID: strings.TrimSpace(r.URL.Query().Get("department_id")),
 		WorkStatus:   identitymodel.IdentityWorkStatus(strings.TrimSpace(r.URL.Query().Get("work_status"))),
 	}
-	query.Page, _ = strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("page")))
-	query.PageSize, _ = strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("page_size")))
+	query.PageSize = intQuery(r.URL.Query().Get("page_size"))
 	if query.PageSize > 200 {
 		query.PageSize = 200
 	}

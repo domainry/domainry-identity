@@ -10,7 +10,7 @@ type IdentitySortRule struct {
 // workforce, role, and assignment searches. It is intentionally independent
 // from host business-record filtering and transaction semantics.
 type IdentityListQuery struct {
-	Page                      int                `json:"page"`
+	AfterID                   string             `json:"after_id,omitempty"`
 	PageSize                  int                `json:"page_size"`
 	Search                    string             `json:"search,omitempty"`
 	SearchFields              []string           `json:"search_fields,omitempty"`

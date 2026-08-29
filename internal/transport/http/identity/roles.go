@@ -29,7 +29,7 @@ func (h *IdentityHandler) searchIdentityRoles(w http.ResponseWriter, r *http.Req
 		}
 	}
 	page, err := h.roles.SearchRoles(r.Context(), identitymodel.IdentityListQuery{
-		Page:         intQuery(values.Get("page")),
+		AfterID:      strings.TrimSpace(values.Get("after_id")),
 		PageSize:     intQuery(values.Get("page_size")),
 		Search:       values.Get("search"),
 		SearchFields: searchFields,
