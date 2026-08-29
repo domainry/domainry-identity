@@ -73,3 +73,37 @@ func TestIdentityDirectoryPaginationRemainsWorkspaceKeysetOnly(t *testing.T) {
 		}
 	}
 }
+
+func TestPersistenceDoesNotBranchOnDatabaseEngine(t *testing.T) {
+	_, sourceFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("resolve Identity persistence source root")
+	}
+	root := filepath.Dir(filepath.Dir(sourceFile))
+	forbidden := []string{
+		"driver ==", "driver !=", "dialect ==", "dialect !=",
+		"switch driver", "switch dialect", "switch s.driver", "switch s.dialect",
+	}
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
+			return nil
+		}
+		source, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		text := strings.ToLower(string(source))
+		for _, pattern := range forbidden {
+			if strings.Contains(text, pattern) {
+				t.Errorf("Identity persistence source %s branches on database engine with %q", path, pattern)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}

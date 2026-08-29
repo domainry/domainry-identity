@@ -125,9 +125,10 @@ type MigrationLock struct {
 }
 
 type MigrationBackupPolicy struct {
-	LocalSnapshot  bool
-	EvidenceEngine string
-	BackupIDPrefix string
+	LocalSnapshot    bool
+	ExternalEvidence bool
+	EvidenceEngine   string
+	BackupIDPrefix   string
 }
 
 type MigrationRollbackPolicy struct {

@@ -19,7 +19,7 @@ func (Profile) MigrationLedgerTypes() driver.MigrationLedgerTypes {
 	return driver.MigrationLedgerTypes{Key: "VARCHAR(255)", Timestamp: "VARCHAR(64)"}
 }
 func (Profile) MigrationBackupPolicy() driver.MigrationBackupPolicy {
-	return driver.MigrationBackupPolicy{EvidenceEngine: "mysql"}
+	return driver.MigrationBackupPolicy{ExternalEvidence: true, EvidenceEngine: "mysql"}
 }
 func (Profile) MigrationRollbackPolicy() driver.MigrationRollbackPolicy {
 	return driver.MigrationRollbackPolicy{Mode: "restore_external_backup", RequiresVerifiedBackup: true, Procedure: []string{"stop_identity", "restore_verified_database_backup", "restart_identity", "verify_migration_status"}}

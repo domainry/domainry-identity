@@ -111,7 +111,7 @@ func (manager *BackupManager) EnsureForExistingData(ctx context.Context, cfg con
 	if strings.TrimSpace(policy.EvidenceEngine) == "" {
 		return fmt.Errorf("database engine does not define a migration backup policy")
 	}
-	evidence, err := ValidateExternalBackup(policy.EvidenceEngine, cfg.MigrationBackupEvidencePath)
+	evidence, err := ValidateExternalBackupPolicy(policy, cfg.MigrationBackupEvidencePath)
 	if err != nil {
 		return err
 	}
@@ -130,19 +130,32 @@ func (manager *BackupManager) backupChecksum(path string) (string, error) {
 	return Checksum(path)
 }
 
-func ValidateExternalBackup(driver, evidencePath string) (BackupEvidence, error) {
-	if driver != "postgres" && driver != "mysql" {
-		return BackupEvidence{}, fmt.Errorf("unsupported database driver %q", driver)
+func ValidateExternalBackup(engineName, evidencePath string) (BackupEvidence, error) {
+	policies := map[string]driver.MigrationBackupPolicy{
+		"mysql":    {ExternalEvidence: true, EvidenceEngine: "mysql"},
+		"postgres": {ExternalEvidence: true, EvidenceEngine: "postgres"},
+	}
+	policy, supported := policies[strings.TrimSpace(engineName)]
+	if !supported {
+		return BackupEvidence{}, fmt.Errorf("unsupported database driver %q", engineName)
+	}
+	return ValidateExternalBackupPolicy(policy, evidencePath)
+}
+
+func ValidateExternalBackupPolicy(policy driver.MigrationBackupPolicy, evidencePath string) (BackupEvidence, error) {
+	engine := strings.TrimSpace(policy.EvidenceEngine)
+	if !policy.ExternalEvidence || engine == "" {
+		return BackupEvidence{}, fmt.Errorf("database engine %q does not support external backup evidence", engine)
 	}
 	if strings.TrimSpace(evidencePath) == "" {
-		return BackupEvidence{}, fmt.Errorf("existing %s application data detected before pending migrations; MIGRATION_BACKUP_EVIDENCE_PATH with a verified backup_id is required", driver)
+		return BackupEvidence{}, fmt.Errorf("existing %s application data detected before pending migrations; MIGRATION_BACKUP_EVIDENCE_PATH with a verified backup_id is required", engine)
 	}
 	evidence, err := ReadBackupEvidence(evidencePath)
 	if err != nil {
 		return BackupEvidence{}, err
 	}
-	if evidence.Engine != driver {
-		return BackupEvidence{}, fmt.Errorf("backup evidence engine %q does not match %q", evidence.Engine, driver)
+	if evidence.Engine != engine {
+		return BackupEvidence{}, fmt.Errorf("backup evidence engine %q does not match %q", evidence.Engine, engine)
 	}
 	return evidence, nil
 }

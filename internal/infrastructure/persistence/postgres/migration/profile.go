@@ -20,7 +20,7 @@ func (Profile) MigrationLedgerTypes() driver.MigrationLedgerTypes {
 	return driver.MigrationLedgerTypes{Key: "TEXT", Timestamp: "TEXT"}
 }
 func (Profile) MigrationBackupPolicy() driver.MigrationBackupPolicy {
-	return driver.MigrationBackupPolicy{EvidenceEngine: "postgres"}
+	return driver.MigrationBackupPolicy{ExternalEvidence: true, EvidenceEngine: "postgres"}
 }
 func (Profile) MigrationRollbackPolicy() driver.MigrationRollbackPolicy {
 	return driver.MigrationRollbackPolicy{Mode: "restore_external_backup_or_pitr", RequiresVerifiedBackup: true, Procedure: []string{"stop_identity", "restore_verified_database_backup_or_pitr", "restart_identity", "verify_migration_status"}}
