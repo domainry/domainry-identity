@@ -117,6 +117,22 @@ func TestIdentityProfileBindingRootFileRemainsFacade(t *testing.T) {
 	}
 }
 
+func TestIdentitySubjectLifecycleRootFileRemainsFacade(t *testing.T) {
+	source, err := os.ReadFile(filepath.Join(identityPersistenceRoot(t), "identity_subject_lifecycle_store.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	for _, forbidden := range []string{"NewWorkspaceSelectBuilder", "NewWorkspaceUpdateBuilder", "NewWorkspaceDeleteBuilder", ".BeginTx(", ".ExecContext("} {
+		if strings.Contains(text, forbidden) {
+			t.Errorf("Identity subject lifecycle facade owns persistence implementation %q", forbidden)
+		}
+	}
+	if !strings.Contains(text, "subjectpersistence.New") {
+		t.Error("Identity subject lifecycle facade lost classified owner delegation")
+	}
+}
+
 func identityPersistenceRoot(t *testing.T) string {
 	t.Helper()
 	_, sourceFile, _, ok := runtime.Caller(0)
