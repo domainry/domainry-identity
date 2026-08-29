@@ -36,10 +36,7 @@ func SQLIdentifier(value string) string {
 }
 
 func (s *IdentityStore) metadataIDColumnType() string {
-	if s.dialect.Name() == "mysql" {
-		return "VARCHAR(191)"
-	}
-	return "TEXT"
+	return s.sqlBase().Engine.TextKeyColumnType(191)
 }
 
 // SetDialectForTesting exercises SQL generation contracts against the shared
@@ -50,5 +47,6 @@ func (s *IdentityStore) SetDialectForTesting(driver string) error {
 		return err
 	}
 	s.dialect = dialect
+	s.SQLStore = nil
 	return nil
 }

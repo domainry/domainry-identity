@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/domainry/domainry-identity/internal/platform/config"
+	ormbuilder "github.com/domainry/domainry-orm/builder"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 	_ "modernc.org/sqlite"
 )
@@ -16,6 +17,18 @@ import (
 type Dialect struct{}
 
 func (Dialect) Name() string { return "sqlite" }
+
+func (Dialect) TextKeyColumnType(int) string { return "TEXT" }
+func (Dialect) ApplyUpdateLock(builder *ormbuilder.SelectBuilder) *ormbuilder.SelectBuilder {
+	return builder
+}
+func (Dialect) ApplyUpsert(builder *ormbuilder.InsertBuilder, conflictColumns []string, updateColumns ...string) *ormbuilder.InsertBuilder {
+	assignments := make([]ormbuilder.Assignment, len(updateColumns))
+	for index, column := range updateColumns {
+		assignments[index] = ormbuilder.AssignExpression(column, ormbuilder.InsertedValue(column))
+	}
+	return builder.OnConflictDoUpdate(conflictColumns, assignments...)
+}
 
 func (Dialect) SQLDriver() string { return "sqlite" }
 

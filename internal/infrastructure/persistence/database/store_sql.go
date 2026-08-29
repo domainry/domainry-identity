@@ -3,25 +3,39 @@ package database
 import (
 	"context"
 	"fmt"
-	"strings"
+
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/base"
+	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
 
+func (s *IdentityStore) sqlBase() *base.SQLStore {
+	if s.SQLStore == nil {
+		s.SQLStore = base.NewSQLStore(s.db, s.dialect, s.databaseSchema, s.relationPrefix)
+	}
+	return s.SQLStore
+}
+
 func (s *IdentityStore) insertSystemRowContext(ctx context.Context, table string, columns []string, values []any) error {
-	query := "INSERT INTO " + s.tableIdentifier(table) + " (" + strings.Join(quotedColumns(s, columns), ", ") + ") VALUES (" + strings.Join(placeholders(s, len(columns)), ", ") + ")"
-	if _, err := s.db.ExecContext(ctx, query, values...); err != nil {
+	query, args, err := ormbuilder.NewInsertBuilder(s.sqlBase().SQLRenderer, table).Columns(columns...).Values(values...).Build()
+	if err != nil {
+		return fmt.Errorf("build insert %s: %w", table, err)
+	}
+	if _, err := s.db.ExecContext(ctx, query, args...); err != nil {
 		return fmt.Errorf("insert %s: %w", table, err)
 	}
 	return nil
 }
 
 func (s *IdentityStore) updateSystemRowContext(ctx context.Context, table, id string, columns []string, values []any) error {
-	assignments := make([]string, 0, len(columns))
+	builder := ormbuilder.NewUpdateBuilder(s.sqlBase().SQLRenderer, table)
 	for index, column := range columns {
-		assignments = append(assignments, s.identifier(column)+" = "+s.placeholder(index+1))
+		builder.Set(column, values[index])
 	}
-	values = append(values, id)
-	query := "UPDATE " + s.tableIdentifier(table) + " SET " + strings.Join(assignments, ", ") + " WHERE " + s.identifier("id") + " = " + s.placeholder(len(values))
-	if _, err := s.db.ExecContext(ctx, query, values...); err != nil {
+	query, args, err := builder.Where(ormbuilder.Equal("id", id)).Build()
+	if err != nil {
+		return fmt.Errorf("build update %s: %w", table, err)
+	}
+	if _, err := s.db.ExecContext(ctx, query, args...); err != nil {
 		return fmt.Errorf("update %s: %w", table, err)
 	}
 	return nil
@@ -44,14 +58,11 @@ func placeholders(s *IdentityStore, count int) []string {
 }
 
 func (s *IdentityStore) identifier(value string) string {
-	return s.dialect.SQLDialect().Identifier(value)
+	return s.sqlBase().SQLRenderer.Identifier(value)
 }
 
 func (s *IdentityStore) tableIdentifier(value string) string {
-	if s.relationPrefix != "" && !strings.HasPrefix(value, s.relationPrefix) {
-		value = s.relationPrefix + value
-	}
-	return s.dialect.SQLDialect().Table(strings.TrimSpace(s.databaseSchema), value)
+	return s.sqlBase().SQLRenderer.Table(value)
 }
 
 // Identifier exposes the database-specific quoting policy to domain-owned
@@ -67,7 +78,7 @@ func (s *IdentityStore) TableIdentifier(value string) string {
 }
 
 func (s *IdentityStore) placeholder(position int) string {
-	return s.dialect.SQLDialect().Placeholder(position)
+	return s.sqlBase().SQLRenderer.Placeholder(position)
 }
 
 // Placeholder exposes the database-specific placeholder syntax to

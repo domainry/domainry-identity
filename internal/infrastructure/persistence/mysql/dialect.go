@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/domainry/domainry-identity/internal/platform/config"
+	ormbuilder "github.com/domainry/domainry-orm/builder"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 
 	mysqldriver "github.com/go-sql-driver/mysql"
@@ -15,6 +16,18 @@ import (
 type Dialect struct{}
 
 func (Dialect) Name() string { return "mysql" }
+
+func (Dialect) TextKeyColumnType(maxLength int) string { return fmt.Sprintf("VARCHAR(%d)", maxLength) }
+func (Dialect) ApplyUpdateLock(builder *ormbuilder.SelectBuilder) *ormbuilder.SelectBuilder {
+	return builder.ForUpdate()
+}
+func (Dialect) ApplyUpsert(builder *ormbuilder.InsertBuilder, _ []string, updateColumns ...string) *ormbuilder.InsertBuilder {
+	assignments := make([]ormbuilder.Assignment, len(updateColumns))
+	for index, column := range updateColumns {
+		assignments[index] = ormbuilder.AssignExpression(column, ormbuilder.InsertedValue(column))
+	}
+	return builder.OnDuplicateKeyUpdate(assignments...)
+}
 
 func (Dialect) SQLDriver() string { return "mysql" }
 
