@@ -2,100 +2,19 @@ package identity
 
 import (
 	"context"
-	"database/sql"
-	"encoding/json"
-	"errors"
-	"fmt"
-	"strings"
 
-	"github.com/domainry/domainry-foundation/apperror"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
-	ormbuilder "github.com/domainry/domainry-orm/builder"
+	transferbatchpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/workforce/transferbatch"
 )
 
+func (s *SQLIdentityStore) workforceTransferBatchStore() transferbatchpersistence.Store {
+	return transferbatchpersistence.New(s, nowString, s.applyIdentityWorkforceLifecycleTx)
+}
+
 func (s *SQLIdentityStore) GetIdentityWorkforceTransferBatchReceipt(ctx context.Context, workspaceID, idempotencyKey string) (identitymodel.IdentityWorkforceTransferBatchReceipt, bool, error) {
-	workspaceID, err := identityWorkspaceID(workspaceID)
-	if err != nil {
-		return identitymodel.IdentityWorkforceTransferBatchReceipt{}, false, err
-	}
-	return s.loadIdentityWorkforceTransferBatchReceipt(ctx, s.db, workspaceID, strings.TrimSpace(idempotencyKey))
+	return s.workforceTransferBatchStore().GetReceipt(ctx, workspaceID, idempotencyKey)
 }
 
 func (s *SQLIdentityStore) ApplyIdentityWorkforceTransferBatch(ctx context.Context, mutation identitymodel.IdentityWorkforceTransferBatchMutation) (identitymodel.IdentityWorkforceTransferBatchReceipt, error) {
-	workspaceID, err := identityWorkspaceID(mutation.WorkspaceID)
-	if err != nil {
-		return identitymodel.IdentityWorkforceTransferBatchReceipt{}, err
-	}
-	mutation.ActorID = strings.TrimSpace(mutation.ActorID)
-	mutation.IdempotencyKey = strings.TrimSpace(mutation.IdempotencyKey)
-	mutation.RequestFingerprint = strings.TrimSpace(mutation.RequestFingerprint)
-	if mutation.ActorID == "" || mutation.IdempotencyKey == "" || mutation.RequestFingerprint == "" || len(mutation.Items) == 0 || len(mutation.Items) != len(mutation.Mutations) {
-		return identitymodel.IdentityWorkforceTransferBatchReceipt{}, fmt.Errorf("identity workforce transfer batch mutation is invalid")
-	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return identitymodel.IdentityWorkforceTransferBatchReceipt{}, err
-	}
-	defer tx.Rollback()
-	if receipt, found, loadErr := s.loadIdentityWorkforceTransferBatchReceipt(ctx, tx, workspaceID, mutation.IdempotencyKey); loadErr != nil {
-		return identitymodel.IdentityWorkforceTransferBatchReceipt{}, loadErr
-	} else if found {
-		if receipt.RequestFingerprint != mutation.RequestFingerprint {
-			return identitymodel.IdentityWorkforceTransferBatchReceipt{}, &apperror.AppError{Kind: apperror.KindConflict, Code: "backend.idempotency_key_reused"}
-		}
-		receipt.Replayed = true
-		return receipt, nil
-	}
-	for _, lifecycle := range mutation.Mutations {
-		if _, err := s.applyIdentityWorkforceLifecycleTx(ctx, tx, workspaceID, lifecycle); err != nil {
-			return identitymodel.IdentityWorkforceTransferBatchReceipt{}, err
-		}
-	}
-	receipt := identitymodel.IdentityWorkforceTransferBatchReceipt{
-		ID:          identityID("identity_workforce_transfer_batch", workspaceID, mutation.IdempotencyKey),
-		WorkspaceID: workspaceID, ActorID: mutation.ActorID, IdempotencyKey: mutation.IdempotencyKey,
-		RequestFingerprint: mutation.RequestFingerprint, Items: mutation.Items, CreatedAt: nowString(),
-	}
-	// The receipt contains only strings and typed Workforce values, so it is
-	// always JSON-encodable.
-	resultJSON, _ := json.Marshal(receipt)
-	statement, arguments, err := ormbuilder.NewWorkspaceInsertBuilder(s.sqlRenderer(), "identity_workforce_transfer_batch_receipts", workspaceID).
-		Columns("id", "actor_id", "idempotency_key", "request_fingerprint", "result_json", "created_at").
-		Values(receipt.ID, receipt.ActorID, receipt.IdempotencyKey, receipt.RequestFingerprint, string(resultJSON), receipt.CreatedAt).Build()
-	if err != nil {
-		return identitymodel.IdentityWorkforceTransferBatchReceipt{}, fmt.Errorf("build identity workforce transfer batch receipt: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
-		return identitymodel.IdentityWorkforceTransferBatchReceipt{}, err
-	}
-	if err := tx.Commit(); err != nil {
-		return identitymodel.IdentityWorkforceTransferBatchReceipt{}, err
-	}
-	return receipt, nil
-}
-
-type identityWorkforceTransferBatchQueryer interface {
-	QueryRowContext(context.Context, string, ...any) *sql.Row
-}
-
-func (s *SQLIdentityStore) loadIdentityWorkforceTransferBatchReceipt(ctx context.Context, queryer identityWorkforceTransferBatchQueryer, workspaceID, idempotencyKey string) (identitymodel.IdentityWorkforceTransferBatchReceipt, bool, error) {
-	statement, arguments, buildErr := ormbuilder.NewWorkspaceSelectBuilder(s.sqlRenderer(), "identity_workforce_transfer_batch_receipts", workspaceID).
-		Columns("result_json", "request_fingerprint").Where(ormbuilder.Equal("idempotency_key", idempotencyKey)).Build()
-	if buildErr != nil {
-		return identitymodel.IdentityWorkforceTransferBatchReceipt{}, false, buildErr
-	}
-	var resultJSON, fingerprint string
-	err := queryer.QueryRowContext(ctx, statement, arguments...).Scan(&resultJSON, &fingerprint)
-	if errors.Is(err, sql.ErrNoRows) {
-		return identitymodel.IdentityWorkforceTransferBatchReceipt{}, false, nil
-	}
-	if err != nil {
-		return identitymodel.IdentityWorkforceTransferBatchReceipt{}, false, err
-	}
-	var receipt identitymodel.IdentityWorkforceTransferBatchReceipt
-	if err := json.Unmarshal([]byte(resultJSON), &receipt); err != nil {
-		return identitymodel.IdentityWorkforceTransferBatchReceipt{}, false, err
-	}
-	receipt.RequestFingerprint = fingerprint
-	return receipt, true, nil
+	return s.workforceTransferBatchStore().Apply(ctx, mutation)
 }
