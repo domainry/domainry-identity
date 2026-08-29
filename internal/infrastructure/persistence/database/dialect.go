@@ -13,17 +13,22 @@ import (
 
 type dialect = driver.Dialect
 
-func dialectFor(driver string) (dialect, error) {
-	switch strings.ToLower(strings.TrimSpace(driver)) {
-	case "", "sqlite", "sqlite3":
-		return sqlite.Dialect{}, nil
-	case "mysql":
-		return mysql.Dialect{}, nil
-	case "postgres", "postgresql", "pgx":
-		return postgres.Dialect{}, nil
-	default:
-		return nil, fmt.Errorf("unsupported database driver %q", driver)
+var dialectRegistry = map[string]func() dialect{
+	"":           func() dialect { return sqlite.Dialect{} },
+	"sqlite":     func() dialect { return sqlite.Dialect{} },
+	"sqlite3":    func() dialect { return sqlite.Dialect{} },
+	"mysql":      func() dialect { return mysql.Dialect{} },
+	"postgres":   func() dialect { return postgres.Dialect{} },
+	"postgresql": func() dialect { return postgres.Dialect{} },
+	"pgx":        func() dialect { return postgres.Dialect{} },
+}
+
+func dialectFor(driverName string) (dialect, error) {
+	factory, found := dialectRegistry[strings.ToLower(strings.TrimSpace(driverName))]
+	if !found {
+		return nil, fmt.Errorf("unsupported database driver %q", driverName)
 	}
+	return factory(), nil
 }
 
 // EngineProfileFor resolves database capabilities at the persistence assembly

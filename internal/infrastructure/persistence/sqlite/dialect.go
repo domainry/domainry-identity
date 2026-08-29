@@ -35,7 +35,8 @@ func (Dialect) ApplyUpsert(builder *ormbuilder.InsertBuilder, conflictColumns []
 	return builder.OnConflictDoUpdate(conflictColumns, assignments...)
 }
 
-func (Dialect) SQLDriver() string { return "sqlite" }
+func (Dialect) SQLDriver() string                   { return "sqlite" }
+func (Dialect) DatabaseSchema(config.Config) string { return "" }
 
 func (Dialect) DSN(cfg config.Config) (string, error) {
 	if strings.TrimSpace(cfg.DatabaseDSN) != "" {

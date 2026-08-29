@@ -13,6 +13,7 @@ import (
 	"github.com/domainry/domainry-foundation/secrets"
 	"github.com/domainry/domainry-foundation/telemetry"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/base"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/postgres"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 )
@@ -175,13 +176,7 @@ func OpenBorrowedContext(ctx context.Context, cfg config.Config, db *sql.DB) (*I
 	if err != nil {
 		return nil, fmt.Errorf("initialize Identity data key ring: %w", err)
 	}
-	schema := ""
-	if dialect.Name() == "postgres" {
-		schema = strings.TrimSpace(cfg.DatabaseSchema)
-		if schema == "" {
-			schema = "public"
-		}
-	}
+	schema := driver.ProfileFor(dialect).DatabaseSchema(cfg)
 	store := &IdentityStore{
 		SQLDatabase: base.NewSQLDatabase(db, dialect, schema, "domainry_identity_"),
 		db:          db, dialect: dialect, config: cfg, databaseSchema: schema,

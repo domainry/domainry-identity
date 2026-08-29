@@ -38,7 +38,8 @@ func (Dialect) ApplyUpsert(builder *ormbuilder.InsertBuilder, _ []string, update
 	return builder.OnDuplicateKeyUpdate(assignments...)
 }
 
-func (Dialect) SQLDriver() string { return "mysql" }
+func (Dialect) SQLDriver() string                   { return "mysql" }
+func (Dialect) DatabaseSchema(config.Config) string { return "" }
 
 func (Dialect) DSN(cfg config.Config) (string, error) {
 	dsn := strings.TrimSpace(cfg.DatabaseDSN)

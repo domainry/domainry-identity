@@ -33,6 +33,12 @@ func (Dialect) ApplyUpsert(builder *ormbuilder.InsertBuilder, conflictColumns []
 }
 
 func (Dialect) SQLDriver() string { return "pgx" }
+func (Dialect) DatabaseSchema(cfg config.Config) string {
+	if schema := strings.TrimSpace(cfg.DatabaseSchema); schema != "" {
+		return schema
+	}
+	return "public"
+}
 
 func (Dialect) DSN(cfg config.Config) (string, error) {
 	if strings.TrimSpace(cfg.DatabaseDSN) == "" {
