@@ -1,4 +1,4 @@
-package postgres
+package primarykey
 
 import (
 	"context"
@@ -9,7 +9,11 @@ import (
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 )
 
-func (Dialect) EnsureCompositePrimaryKey(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, schema, relationPrefix, table string, columns ...string) error {
+type Profile struct{}
+
+func NewProfile() Profile { return Profile{} }
+
+func (Profile) EnsureCompositePrimaryKey(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, schema, relationPrefix, table string, columns ...string) error {
 	if strings.TrimSpace(schema) == "" {
 		schema = "public"
 	}
@@ -31,7 +35,7 @@ func (Dialect) EnsureCompositePrimaryKey(ctx context.Context, database driver.Sc
 	if err := rows.Close(); err != nil {
 		return err
 	}
-	if postgresPrimaryKeyColumnsEqual(current, columns) {
+	if columnsEqual(current, columns) {
 		return nil
 	}
 	quoted := make([]string, len(columns))
@@ -47,7 +51,7 @@ func (Dialect) EnsureCompositePrimaryKey(ctx context.Context, database driver.Sc
 	return err
 }
 
-func postgresPrimaryKeyColumnsEqual(current, expected []string) bool {
+func columnsEqual(current, expected []string) bool {
 	if len(current) != len(expected) {
 		return false
 	}

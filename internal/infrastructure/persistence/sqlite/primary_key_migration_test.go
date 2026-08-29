@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"testing"
 
+	persistencedriver "github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 )
 
@@ -33,7 +34,7 @@ func TestEnsureCompositePrimaryKeyMigratesWorkspaceCredentialIdentity(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := (Dialect{}).EnsureCompositePrimaryKey(t.Context(), database, renderer, "", "identity_", "auth_provider_credentials", "workspace_id", "provider_key"); err != nil {
+	if err := persistencedriver.ProfileFor(Dialect{}).EnsureCompositePrimaryKey(t.Context(), database, renderer, "", "identity_", "auth_provider_credentials", "workspace_id", "provider_key"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := database.Exec(`INSERT INTO identity_auth_provider_credentials VALUES (?, ?, '{}', 'secret', 'user', 'created', 'updated')`, "workspace-b", "oidc"); err != nil {

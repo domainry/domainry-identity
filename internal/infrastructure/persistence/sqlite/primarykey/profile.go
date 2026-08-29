@@ -1,4 +1,4 @@
-package sqlite
+package primarykey
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 )
 
-type sqliteColumnDefinition struct {
+type columnDefinition struct {
 	position     int
 	name         string
 	typeName     string
@@ -20,15 +20,19 @@ type sqliteColumnDefinition struct {
 	primaryOrder int
 }
 
-func (Dialect) EnsureCompositePrimaryKey(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _, relationPrefix, table string, columns ...string) error {
+type Profile struct{}
+
+func NewProfile() Profile { return Profile{} }
+
+func (Profile) EnsureCompositePrimaryKey(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _, relationPrefix, table string, columns ...string) error {
 	physicalTable := relationPrefix + table
 	rows, err := database.QueryContext(ctx, "PRAGMA table_info("+renderer.Identifier(physicalTable)+")")
 	if err != nil {
 		return fmt.Errorf("inspect SQLite primary key for %s: %w", table, err)
 	}
-	definitions := []sqliteColumnDefinition{}
+	definitions := []columnDefinition{}
 	for rows.Next() {
-		var column sqliteColumnDefinition
+		var column columnDefinition
 		var notNull int
 		if err := rows.Scan(&column.position, &column.name, &column.typeName, &notNull, &column.defaultValue, &column.primaryOrder); err != nil {
 			_ = rows.Close()
@@ -40,7 +44,7 @@ func (Dialect) EnsureCompositePrimaryKey(ctx context.Context, database driver.Sc
 	if err := rows.Close(); err != nil {
 		return err
 	}
-	current := sqlitePrimaryKeyColumns(definitions)
+	current := primaryKeyColumns(definitions)
 	if equalPrimaryKey(current, columns) {
 		return nil
 	}
@@ -93,8 +97,8 @@ func (Dialect) EnsureCompositePrimaryKey(ctx context.Context, database driver.Sc
 	return tx.Commit()
 }
 
-func sqlitePrimaryKeyColumns(columns []sqliteColumnDefinition) []string {
-	key := make([]sqliteColumnDefinition, 0)
+func primaryKeyColumns(columns []columnDefinition) []string {
+	key := make([]columnDefinition, 0)
 	for _, column := range columns {
 		if column.primaryOrder > 0 {
 			key = append(key, column)

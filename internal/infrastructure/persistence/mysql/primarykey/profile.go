@@ -1,4 +1,4 @@
-package mysql
+package primarykey
 
 import (
 	"context"
@@ -9,7 +9,11 @@ import (
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 )
 
-func (Dialect) EnsureCompositePrimaryKey(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _, relationPrefix, table string, columns ...string) error {
+type Profile struct{}
+
+func NewProfile() Profile { return Profile{} }
+
+func (Profile) EnsureCompositePrimaryKey(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _, relationPrefix, table string, columns ...string) error {
 	physicalTable := relationPrefix + table
 	rows, err := database.QueryContext(ctx, "SELECT COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND CONSTRAINT_NAME = 'PRIMARY' ORDER BY ORDINAL_POSITION", physicalTable)
 	if err != nil {
@@ -27,7 +31,7 @@ func (Dialect) EnsureCompositePrimaryKey(ctx context.Context, database driver.Sc
 	if err := rows.Close(); err != nil {
 		return err
 	}
-	if primaryKeyColumnsEqual(current, columns) {
+	if columnsEqual(current, columns) {
 		return nil
 	}
 	quoted := make([]string, len(columns))
@@ -43,7 +47,7 @@ func (Dialect) EnsureCompositePrimaryKey(ctx context.Context, database driver.Sc
 	return err
 }
 
-func primaryKeyColumnsEqual(current, expected []string) bool {
+func columnsEqual(current, expected []string) bool {
 	if len(current) != len(expected) {
 		return false
 	}

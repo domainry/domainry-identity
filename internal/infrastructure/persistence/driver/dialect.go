@@ -63,6 +63,10 @@ type MigrationProfile interface {
 	MigrationRollbackPolicy() MigrationRollbackPolicy
 }
 
+type PrimaryKeyProfile interface {
+	EnsureCompositePrimaryKey(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, ...string) error
+}
+
 type SchemaTypes struct {
 	Boolean         string
 	FalseLiteral    string
