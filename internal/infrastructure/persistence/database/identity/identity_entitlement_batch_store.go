@@ -10,12 +10,15 @@ import (
 
 	"github.com/domainry/domainry-foundation/apperror"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	roleassignmentpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/roleassignment"
 	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
 
 type identityEntitlementReceiptQueryer interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
+
+const identityUserRoleAssignmentInsertBatchSize = roleassignmentpersistence.InsertBatchSize
 
 func (s *SQLIdentityStore) GetIdentityEntitlementBatchReceipt(ctx context.Context, workspaceID, idempotencyKey string) (identitymodel.IdentityEntitlementBatchReceipt, bool, error) {
 	workspaceID, err := identityWorkspaceID(workspaceID)
@@ -81,43 +84,8 @@ func (s *SQLIdentityStore) ApplyIdentityEntitlementBatch(ctx context.Context, mu
 	return receipt, nil
 }
 
-const identityUserRoleAssignmentInsertBatchSize = 40
-
 func (s *SQLIdentityStore) writeIdentityUserRoleAssignmentBatch(ctx context.Context, tx *sql.Tx, workspaceID string, assignments []identitymodel.IdentityUserRoleAssignment) error {
-	normalized := make([]identitymodel.IdentityUserRoleAssignment, 0, len(assignments))
-	positions := make(map[string]int, len(assignments))
-	for _, assignment := range assignments {
-		value, err := normalizeIdentityUserRoleAssignment(assignment)
-		if err != nil {
-			return err
-		}
-		key := value.UserID + "\x00" + value.RoleID
-		if position, ok := positions[key]; ok {
-			normalized[position] = value
-			continue
-		}
-		positions[key] = len(normalized)
-		normalized = append(normalized, value)
-	}
-	now := nowString()
-	columns := append([]string{identityUserRoleAssignmentColumns[0]}, identityUserRoleAssignmentColumns[2:]...)
-	for start := 0; start < len(normalized); start += identityUserRoleAssignmentInsertBatchSize {
-		end := min(start+identityUserRoleAssignmentInsertBatchSize, len(normalized))
-		insert := ormbuilder.NewWorkspaceInsertBuilder(s.sqlRenderer(), "identity_user_role_assignments", workspaceID).Columns(columns...)
-		for _, assignment := range normalized[start:end] {
-			allValues := identityUserRoleAssignmentValues(workspaceID, assignment, now)
-			insert.Values(append([]any{allValues[0]}, allValues[2:]...)...)
-		}
-		s.engineProfile().ApplyUpsert(insert, []string{"workspace_id", "id"}, columns[1:]...)
-		statement, arguments, err := insert.Build()
-		if err != nil {
-			return fmt.Errorf("build identity entitlement assignment batch: %w", err)
-		}
-		if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
-			return err
-		}
-	}
-	return nil
+	return roleassignmentpersistence.New(s, nowString).UpsertBatch(ctx, tx, workspaceID, assignments)
 }
 
 func (s *SQLIdentityStore) loadIdentityEntitlementBatchReceipt(ctx context.Context, queryer identityEntitlementReceiptQueryer, workspaceID, idempotencyKey string) (identitymodel.IdentityEntitlementBatchReceipt, bool, error) {

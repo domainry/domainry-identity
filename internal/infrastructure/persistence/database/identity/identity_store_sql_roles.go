@@ -9,6 +9,7 @@ import (
 
 	"github.com/domainry/domainry-foundation/apperror"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	roleassignmentpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/roleassignment"
 	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
 
@@ -77,56 +78,7 @@ func (s *SQLIdentityStore) AssignIdentityUserRole(ctx context.Context, workspace
 }
 
 func (s *SQLIdentityStore) writeIdentityUserRoleAssignment(ctx context.Context, execer identityUserExecer, workspaceID string, assignment identitymodel.IdentityUserRoleAssignment) error {
-	workspaceID, err := identityWorkspaceID(workspaceID)
-	if err != nil {
-		return err
-	}
-	assignment, err = normalizeIdentityUserRoleAssignment(assignment)
-	if err != nil {
-		return err
-	}
-	columns := append([]string{identityUserRoleAssignmentColumns[0]}, identityUserRoleAssignmentColumns[2:]...)
-	allValues := identityUserRoleAssignmentValues(workspaceID, assignment, nowString())
-	values := append([]any{allValues[0]}, allValues[2:]...)
-	insert := ormbuilder.NewWorkspaceInsertBuilder(s.sqlRenderer(), "identity_user_role_assignments", workspaceID).Columns(columns...).Values(values...)
-	s.engineProfile().ApplyUpsert(insert, []string{"workspace_id", "id"}, columns[1:]...)
-	statement, arguments, err := insert.Build()
-	if err != nil {
-		return fmt.Errorf("build identity user-role assignment upsert: %w", err)
-	}
-	_, err = execer.ExecContext(ctx, statement, arguments...)
-	return err
-}
-
-var identityUserRoleAssignmentColumns = []string{"id", "workspace_id", "user_id", "role_id", "workforce_profile_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason", "expires_at", "created_at", "updated_at"}
-
-func normalizeIdentityUserRoleAssignment(assignment identitymodel.IdentityUserRoleAssignment) (identitymodel.IdentityUserRoleAssignment, error) {
-	if assignment.UserID == "" || assignment.RoleID == "" {
-		return assignment, fmt.Errorf("user id and role id are required")
-	}
-	assignment.Source = strings.TrimSpace(assignment.Source)
-	if assignment.Source == "" {
-		assignment.Source = "manual"
-	}
-	assignment.Status = strings.TrimSpace(assignment.Status)
-	if assignment.Status == "" {
-		assignment.Status = "active"
-	}
-	if assignment.ValidUntil == "" && assignment.ExpiresAt != nil {
-		assignment.ValidUntil = strings.TrimSpace(*assignment.ExpiresAt)
-	}
-	return assignment, nil
-}
-
-func identityUserRoleAssignmentValues(workspaceID string, assignment identitymodel.IdentityUserRoleAssignment, now string) []any {
-	createdAt := strings.TrimSpace(assignment.CreatedAt)
-	if createdAt == "" {
-		createdAt = now
-	}
-	return []any{identityID("identity_user_role", workspaceID, assignment.UserID, assignment.RoleID), workspaceID, assignment.UserID, assignment.RoleID,
-		nullIfBlank(assignment.WorkforceProfileID), nullIfBlank(assignment.BindingKey), nullIfBlank(assignment.ProfileID), assignment.Source, assignment.Status,
-		nullIfBlank(assignment.ValidFrom), nullIfBlank(assignment.ValidUntil), nullIfBlank(assignment.GrantedBy), nullIfBlank(assignment.GrantReason),
-		nullIfBlank(assignment.RevokedBy), nullIfBlank(assignment.RevokedAt), nullIfBlank(assignment.RevokeReason), nullableString(assignment.ExpiresAt), createdAt, now}
+	return roleassignmentpersistence.New(s, nowString).Upsert(ctx, execer, workspaceID, assignment)
 }
 
 func (s *SQLIdentityStore) RemoveIdentityUserRole(ctx context.Context, workspaceID, userID string, roleID string) error {
