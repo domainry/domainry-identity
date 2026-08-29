@@ -6,7 +6,14 @@ import (
 
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/base"
 	ormbuilder "github.com/domainry/domainry-orm/builder"
+	ormdialect "github.com/domainry/domainry-orm/dialect"
 )
+
+// BuilderRenderer exposes only the structured SQL rendering contract to
+// repository adapters that deliberately hide the concrete database owner.
+func (s *IdentityStore) BuilderRenderer() ormdialect.Renderer {
+	return s.sqlBase().SQLRenderer
+}
 
 func (s *IdentityStore) sqlBase() *base.SQLDatabase {
 	if s.SQLDatabase == nil {

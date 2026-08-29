@@ -11,6 +11,7 @@ import (
 	auditmodel "github.com/domainry/domainry-identity/internal/domain/audit/model"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
+	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
 
 type AuditStore struct {
@@ -50,16 +51,25 @@ func (r AuditStore) InsertAuditEvent(ctx context.Context, workspaceID string, ev
 	if err != nil {
 		return fmt.Errorf("encode audit metadata: %w", err)
 	}
-	columns := []string{"id", "workspace_id", "event", "object_key", "record_id", "actor_id", "role_key", "summary", "metadata_json", "before_json", "after_json", "created_at"}
-	query := "INSERT INTO " + r.store.TableIdentifier("_audit_events") + " (" + strings.Join(quotedColumns(r.store, columns), ", ") + ") VALUES (" + strings.Join(placeholders(r.store, len(columns)), ", ") + ")"
-	_, err = r.executor(ctx).ExecContext(ctx, query, event.ID, workspaceID, event.Event, event.ObjectKey, event.RecordID, event.ActorID, event.RoleKey, event.Summary, string(metadataJSON), string(beforeJSON), string(afterJSON), event.CreatedAt)
+	query, arguments, buildErr := ormbuilder.NewWorkspaceInsertBuilder(r.store.BuilderRenderer(), "_audit_events", workspaceID).
+		Columns("id", "event", "object_key", "record_id", "actor_id", "role_key", "summary", "metadata_json", "before_json", "after_json", "created_at").
+		Values(event.ID, event.Event, event.ObjectKey, event.RecordID, event.ActorID, event.RoleKey, event.Summary, string(metadataJSON), string(beforeJSON), string(afterJSON), event.CreatedAt).Build()
+	if buildErr != nil {
+		return fmt.Errorf("build audit event insert: %w", buildErr)
+	}
+	_, err = r.executor(ctx).ExecContext(ctx, query, arguments...)
 	if err != nil {
 		// A deterministic idempotent event may race or be replayed after the
 		// business mutation committed. Only the exact previously stored payload
 		// is accepted; the same key with different facts remains a hard error.
 		var storedEvent, objectKey, recordID, actorID, roleKey, summary, storedMetadata, storedBefore, storedAfter string
-		lookup := "SELECT " + strings.Join(quotedColumns(r.store, []string{"event", "object_key", "record_id", "actor_id", "role_key", "summary", "metadata_json", "before_json", "after_json"}), ", ") + " FROM " + r.store.TableIdentifier("_audit_events") + " WHERE " + r.store.Identifier("workspace_id") + " = " + r.store.Placeholder(1) + " AND " + r.store.Identifier("id") + " = " + r.store.Placeholder(2)
-		lookupErr := r.executor(ctx).QueryRowContext(ctx, lookup, workspaceID, event.ID).Scan(&storedEvent, &objectKey, &recordID, &actorID, &roleKey, &summary, &storedMetadata, &storedBefore, &storedAfter)
+		lookup, lookupArguments, lookupBuildErr := ormbuilder.NewWorkspaceSelectBuilder(r.store.BuilderRenderer(), "_audit_events", workspaceID).
+			Columns("event", "object_key", "record_id", "actor_id", "role_key", "summary", "metadata_json", "before_json", "after_json").
+			Where(ormbuilder.Equal("id", event.ID)).Build()
+		if lookupBuildErr != nil {
+			return fmt.Errorf("build audit event replay read: %w", lookupBuildErr)
+		}
+		lookupErr := r.executor(ctx).QueryRowContext(ctx, lookup, lookupArguments...).Scan(&storedEvent, &objectKey, &recordID, &actorID, &roleKey, &summary, &storedMetadata, &storedBefore, &storedAfter)
 		if lookupErr == nil && storedEvent == event.Event && objectKey == event.ObjectKey && recordID == event.RecordID && actorID == event.ActorID && roleKey == event.RoleKey && summary == event.Summary && storedMetadata == string(metadataJSON) && storedBefore == string(beforeJSON) && storedAfter == string(afterJSON) {
 			return nil
 		}
@@ -68,35 +78,18 @@ func (r AuditStore) InsertAuditEvent(ctx context.Context, workspaceID string, ev
 	return nil
 }
 
-func quotedColumns(store *database.IdentityStore, columns []string) []string {
-	quoted := make([]string, 0, len(columns))
-	for _, column := range columns {
-		quoted = append(quoted, store.Identifier(column))
-	}
-	return quoted
-}
-
-func placeholders(store *database.IdentityStore, count int) []string {
-	values := make([]string, 0, count)
-	for index := 0; index < count; index++ {
-		values = append(values, store.Placeholder(index+1))
-	}
-	return values
-}
-
 func escapeSQLLike(value string) string {
 	value = strings.ReplaceAll(value, "~", "~~")
 	value = strings.ReplaceAll(value, "%", "~%")
 	return strings.ReplaceAll(value, "_", "~_")
 }
 
-func (r AuditStore) eventClassValue() string {
-	event := "COALESCE(" + r.store.Identifier("event") + ", '')"
-	objectKey := "COALESCE(" + r.store.Identifier("object_key") + ", '')"
-	if r.store.Driver() == "mysql" {
-		return "LOWER(CONCAT(" + event + ", ' ', " + objectKey + "))"
-	}
-	return "LOWER(" + event + " || ' ' || " + objectKey + ")"
+func auditEventClassExpression() ormbuilder.Expression {
+	return ormbuilder.Lower(ormbuilder.Concat(
+		ormbuilder.Coalesce(ormbuilder.Column("event"), ormbuilder.Value("")),
+		ormbuilder.Value(" "),
+		ormbuilder.Coalesce(ormbuilder.Column("object_key"), ormbuilder.Value("")),
+	))
 }
 
 func (r AuditStore) ListAuditEvents(ctx context.Context, workspaceID string, query auditmodel.AuditEventQuery) ([]auditmodel.AuditEvent, error) {
@@ -121,15 +114,10 @@ func (r AuditStore) listAuditEvents(ctx context.Context, workspaceID string, sco
 	} else if limit > 1000 {
 		limit = 1000
 	}
-	clauses, args := []string{}, []any{}
-	if scoped {
-		clauses = append(clauses, r.store.Identifier("workspace_id")+" = "+r.store.Placeholder(1))
-		args = append(args, workspaceID)
-	}
+	predicates := []ormbuilder.Predicate{}
 	addEqual := func(column, value string) {
 		if value = strings.TrimSpace(value); value != "" {
-			args = append(args, value)
-			clauses = append(clauses, r.store.Identifier(column)+" = "+r.store.Placeholder(len(args)))
+			predicates = append(predicates, ormbuilder.Equal(column, value))
 		}
 	}
 	addEqual("object_key", query.ObjectKey)
@@ -137,50 +125,55 @@ func (r AuditStore) listAuditEvents(ctx context.Context, workspaceID string, sco
 	addEqual("event", query.Event)
 	addEqual("actor_id", query.ActorID)
 	addEqual("role_key", query.RoleKey)
-	eventClassValue := r.eventClassValue()
+	eventClassValue := auditEventClassExpression()
 	switch strings.TrimSpace(query.Class) {
 	case auditmodel.AuditEventClassOperations:
-		clauses = append(clauses, r.classMarkerExpression(eventClassValue, auditmodel.AuditEventClassMarkers(auditmodel.AuditEventClassOperations), &args))
+		predicates = append(predicates, auditClassMarkerPredicate(eventClassValue, auditmodel.AuditEventClassMarkers(auditmodel.AuditEventClassOperations)))
 	case auditmodel.AuditEventClassGovernance:
-		operations := r.classMarkerExpression(eventClassValue, auditmodel.AuditEventClassMarkers(auditmodel.AuditEventClassOperations), &args)
-		governance := r.classMarkerExpression(eventClassValue, auditmodel.AuditEventClassMarkers(auditmodel.AuditEventClassGovernance), &args)
-		clauses = append(clauses, "NOT "+operations+" AND "+governance)
+		operations := auditClassMarkerPredicate(eventClassValue, auditmodel.AuditEventClassMarkers(auditmodel.AuditEventClassOperations))
+		governance := auditClassMarkerPredicate(eventClassValue, auditmodel.AuditEventClassMarkers(auditmodel.AuditEventClassGovernance))
+		predicates = append(predicates, ormbuilder.And(ormbuilder.Not(operations), governance))
 	case auditmodel.AuditEventClassBusiness:
-		operations := r.classMarkerExpression(eventClassValue, auditmodel.AuditEventClassMarkers(auditmodel.AuditEventClassOperations), &args)
-		governance := r.classMarkerExpression(eventClassValue, auditmodel.AuditEventClassMarkers(auditmodel.AuditEventClassGovernance), &args)
-		clauses = append(clauses, "NOT "+operations+" AND NOT "+governance)
+		operations := auditClassMarkerPredicate(eventClassValue, auditmodel.AuditEventClassMarkers(auditmodel.AuditEventClassOperations))
+		governance := auditClassMarkerPredicate(eventClassValue, auditmodel.AuditEventClassMarkers(auditmodel.AuditEventClassGovernance))
+		predicates = append(predicates, ormbuilder.And(ormbuilder.Not(operations), ormbuilder.Not(governance)))
 	}
 	if value := strings.TrimSpace(query.CreatedFrom); value != "" {
-		args = append(args, value)
-		clauses = append(clauses, r.store.Identifier("created_at")+" >= "+r.store.Placeholder(len(args)))
+		predicates = append(predicates, ormbuilder.GreaterThanOrEqual("created_at", value))
 	}
 	if value := strings.TrimSpace(query.CreatedTo); value != "" {
-		args = append(args, value)
-		clauses = append(clauses, r.store.Identifier("created_at")+" <= "+r.store.Placeholder(len(args)))
+		predicates = append(predicates, ormbuilder.LessThanOrEqual("created_at", value))
 	}
 	if value := strings.TrimSpace(query.RequestID); value != "" {
 		encodedRequestID, _ := json.Marshal(value)
-		args = append(args, "%"+escapeSQLLike(`"request_id":`+string(encodedRequestID))+"%")
-		clauses = append(clauses, r.store.Identifier("metadata_json")+" LIKE "+r.store.Placeholder(len(args))+" ESCAPE '~'")
+		predicates = append(predicates, ormbuilder.LikeEscaped("metadata_json", "%"+escapeSQLLike(`"request_id":`+string(encodedRequestID))+"%"))
 	}
 	if value := strings.TrimSpace(query.Cursor); value != "" {
 		cursor, err := auditmodel.DecodeAuditEventCursor(value)
 		if err != nil {
 			return nil, fmt.Errorf("decode audit event cursor: %w", err)
 		}
-		args = append(args, cursor.CreatedAt, cursor.CreatedAt, cursor.ID)
-		createdAtFirst := r.store.Placeholder(len(args) - 2)
-		createdAtEqual := r.store.Placeholder(len(args) - 1)
-		idBefore := r.store.Placeholder(len(args))
-		clauses = append(clauses, "("+r.store.Identifier("created_at")+" < "+createdAtFirst+" OR ("+r.store.Identifier("created_at")+" = "+createdAtEqual+" AND "+r.store.Identifier("id")+" < "+idBefore+"))")
+		predicates = append(predicates, ormbuilder.Or(
+			ormbuilder.LessThan("created_at", cursor.CreatedAt),
+			ormbuilder.And(ormbuilder.Equal("created_at", cursor.CreatedAt), ormbuilder.LessThan("id", cursor.ID)),
+		))
 	}
-	whereSQL := ""
-	if len(clauses) > 0 {
-		whereSQL = " WHERE " + strings.Join(clauses, " AND ")
-	}
-	args = append(args, limit)
 	columns := []string{"id", "workspace_id", "event", "object_key", "record_id", "actor_id", "role_key", "summary", "metadata_json", "before_json", "after_json", "created_at"}
-	rows, err := r.executor(ctx).QueryContext(ctx, "SELECT "+strings.Join(quotedColumns(r.store, columns), ", ")+" FROM "+r.store.TableIdentifier("_audit_events")+whereSQL+" ORDER BY "+r.store.Identifier("created_at")+" DESC, "+r.store.Identifier("id")+" DESC LIMIT "+r.store.Placeholder(len(args)), args...)
+	var selectBuilder *ormbuilder.SelectBuilder
+	if scoped {
+		selectBuilder = ormbuilder.NewWorkspaceSelectBuilder(r.store.BuilderRenderer(), "_audit_events", workspaceID)
+	} else {
+		selectBuilder = ormbuilder.NewSelectBuilder(r.store.BuilderRenderer(), "_audit_events")
+	}
+	selectBuilder.Columns(columns...).OrderBy(ormbuilder.Descending("created_at"), ormbuilder.Descending("id")).Limit(limit)
+	if len(predicates) > 0 {
+		selectBuilder.Where(ormbuilder.And(predicates...))
+	}
+	statement, arguments, err := selectBuilder.Build()
+	if err != nil {
+		return nil, fmt.Errorf("build audit event list: %w", err)
+	}
+	rows, err := r.executor(ctx).QueryContext(ctx, statement, arguments...)
 	if err != nil {
 		return nil, fmt.Errorf("list audit events: %w", err)
 	}
@@ -203,16 +196,15 @@ func (r AuditStore) listAuditEvents(ctx context.Context, workspaceID string, sco
 	return events, nil
 }
 
-func (r AuditStore) classMarkerExpression(eventClassValue string, markers []string, args *[]any) string {
-	parts := make([]string, 0, len(markers))
+func auditClassMarkerPredicate(eventClassValue ormbuilder.Expression, markers []string) ormbuilder.Predicate {
+	parts := make([]ormbuilder.Predicate, 0, len(markers))
 	for _, marker := range markers {
-		*args = append(*args, "%"+escapeSQLLike(strings.ToLower(marker))+"%")
-		parts = append(parts, eventClassValue+" LIKE "+r.store.Placeholder(len(*args))+" ESCAPE '~'")
+		parts = append(parts, ormbuilder.LikeValueEscaped(eventClassValue, "%"+escapeSQLLike(strings.ToLower(marker))+"%"))
 	}
 	if len(parts) == 0 {
-		return "0 = 1"
+		return ormbuilder.Equal("id", nil)
 	}
-	return "(" + strings.Join(parts, " OR ") + ")"
+	return ormbuilder.Or(parts...)
 }
 
 func (r AuditStore) ListAuditOptions(ctx context.Context, workspaceID string, query auditmodel.AuditOptionQuery) ([]auditmodel.AuditOption, error) {
@@ -233,20 +225,30 @@ func (r AuditStore) ListAuditOptions(ctx context.Context, workspaceID string, qu
 	} else if limit > 50 {
 		limit = 50
 	}
-	clauses := []string{r.store.Identifier("workspace_id") + " = " + r.store.Placeholder(1), r.store.Identifier(field) + " <> ''"}
-	args := []any{workspaceID}
+	predicates := []ormbuilder.Predicate{ormbuilder.NotEqual(field, "")}
 	for _, filter := range []struct{ column, value, operator string }{{"object_key", query.ObjectKey, " = "}, {"created_at", query.CreatedFrom, " >= "}, {"created_at", query.CreatedTo, " <= "}} {
 		if value := strings.TrimSpace(filter.value); value != "" {
-			args = append(args, value)
-			clauses = append(clauses, r.store.Identifier(filter.column)+filter.operator+r.store.Placeholder(len(args)))
+			switch filter.operator {
+			case " >= ":
+				predicates = append(predicates, ormbuilder.GreaterThanOrEqual(filter.column, value))
+			case " <= ":
+				predicates = append(predicates, ormbuilder.LessThanOrEqual(filter.column, value))
+			default:
+				predicates = append(predicates, ormbuilder.Equal(filter.column, value))
+			}
 		}
 	}
 	if value := strings.TrimSpace(query.Query); value != "" {
-		args = append(args, "%"+escapeSQLLike(value)+"%")
-		clauses = append(clauses, r.store.Identifier(field)+" LIKE "+r.store.Placeholder(len(args))+" ESCAPE '~'")
+		predicates = append(predicates, ormbuilder.LikeEscaped(field, "%"+escapeSQLLike(value)+"%"))
 	}
-	args = append(args, limit)
-	rows, err := r.executor(ctx).QueryContext(ctx, "SELECT "+r.store.Identifier(field)+", COUNT(*) FROM "+r.store.TableIdentifier("_audit_events")+" WHERE "+strings.Join(clauses, " AND ")+" GROUP BY "+r.store.Identifier(field)+" ORDER BY COUNT(*) DESC, "+r.store.Identifier(field)+" ASC LIMIT "+r.store.Placeholder(len(args)), args...)
+	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(r.store.BuilderRenderer(), "_audit_events", workspaceID).
+		Projections(ormbuilder.Project(ormbuilder.Column(field)), ormbuilder.Project(ormbuilder.CountAll())).
+		Where(ormbuilder.And(predicates...)).GroupBy(ormbuilder.Column(field)).
+		OrderBy(ormbuilder.DescendingExpression(ormbuilder.CountAll()), ormbuilder.Ascending(field)).Limit(limit).Build()
+	if err != nil {
+		return nil, fmt.Errorf("build audit option list: %w", err)
+	}
+	rows, err := r.executor(ctx).QueryContext(ctx, statement, arguments...)
 	if err != nil {
 		return nil, fmt.Errorf("list audit options: %w", err)
 	}

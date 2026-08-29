@@ -11,6 +11,7 @@ import (
 
 	auditmodel "github.com/domainry/domainry-identity/internal/domain/audit/model"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
+	ormdialect "github.com/domainry/domainry-orm/dialect"
 )
 
 func TestAuditListAndOptionStagedSQLFailures(t *testing.T) {
@@ -98,12 +99,12 @@ func TestAuditCursorSQLMatchesExactIndexPrefixAndStableOrder(t *testing.T) {
 func TestAuditFilterSQLUsesDialectConcatAndPortableLikeEscape(t *testing.T) {
 	for _, test := range []struct {
 		driver       string
-		classValue   string
+		classPrefix  string
 		forbiddenSQL string
 	}{
-		{driver: "mysql", classValue: "LOWER(CONCAT(COALESCE(`event`, ''), ' ', COALESCE(`object_key`, '')))", forbiddenSQL: " || "},
-		{driver: "sqlite", classValue: "LOWER(COALESCE(\"event\", '') || ' ' || COALESCE(\"object_key\", ''))", forbiddenSQL: "CONCAT("},
-		{driver: "postgres", classValue: "LOWER(COALESCE(\"event\", '') || ' ' || COALESCE(\"object_key\", ''))", forbiddenSQL: "CONCAT("},
+		{driver: "mysql", classPrefix: "LOWER(CONCAT(COALESCE(`event`, ?), ?, COALESCE(`object_key`, ?)))", forbiddenSQL: " || "},
+		{driver: "sqlite", classPrefix: "LOWER((COALESCE(\"event\", ?) || ? || COALESCE(\"object_key\", ?)))", forbiddenSQL: "CONCAT("},
+		{driver: "postgres", classPrefix: "LOWER((COALESCE(\"event\", $", forbiddenSQL: "CONCAT("},
 	} {
 		t.Run(test.driver, func(t *testing.T) {
 			base := openAuditEdgeStore(t)
@@ -124,7 +125,7 @@ func TestAuditFilterSQLUsesDialectConcatAndPortableLikeEscape(t *testing.T) {
 				t.Fatalf("queries=%v", state.queries)
 			}
 			generated := state.queries[0]
-			if !strings.Contains(generated, test.classValue) || !strings.Contains(generated, "ESCAPE '~'") {
+			if !strings.Contains(generated, test.classPrefix) || !strings.Contains(generated, "ESCAPE '~'") {
 				t.Fatalf("dialect-safe audit filters missing from query: %s", generated)
 			}
 			if strings.Contains(generated, test.forbiddenSQL) || strings.Contains(generated, "ESCAPE '\\\\'") {
@@ -162,13 +163,9 @@ type auditLifecycleTestStore struct {
 	db   *sql.DB
 }
 
-func (s auditLifecycleTestStore) DB() *sql.DB                    { return s.db }
-func (s auditLifecycleTestStore) Identifier(value string) string { return s.base.Identifier(value) }
-func (s auditLifecycleTestStore) TableIdentifier(value string) string {
-	return s.base.TableIdentifier(value)
-}
-func (s auditLifecycleTestStore) Placeholder(position int) string {
-	return s.base.Placeholder(position)
+func (s auditLifecycleTestStore) DB() *sql.DB { return s.db }
+func (s auditLifecycleTestStore) BuilderRenderer() ormdialect.Renderer {
+	return s.base.BuilderRenderer()
 }
 
 type auditQueryStep struct {
