@@ -44,11 +44,11 @@ func TestDialectContract(t *testing.T) {
 	if _, err := dialect.DSN(config.Config{DatabaseDSN: "user:password@tcp(localhost:3306)/business"}); err == nil {
 		t.Fatal("non-Identity database accepted")
 	}
-	if got := dialect.Identifier("order_item"); got != "`order_item`" {
+	if got := dialect.SQLDialect().Identifier("order_item"); got != "`order_item`" {
 		t.Fatalf("identifier=%q", got)
 	}
-	assertMySQLIdentifierPanics(t, func() { dialect.Identifier("order`item") })
-	if got := dialect.Placeholder(7); got != "?" {
+	assertMySQLIdentifierPanics(t, func() { dialect.SQLDialect().Identifier("order`item") })
+	if got := dialect.SQLDialect().Placeholder(7); got != "?" {
 		t.Fatalf("placeholder=%q", got)
 	}
 	if sql := dialect.SchemaMigrationSQL(); !strings.Contains(sql, "`_schema_migrations`") || !strings.Contains(sql, "PRIMARY KEY") {

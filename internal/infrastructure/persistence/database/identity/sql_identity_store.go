@@ -11,8 +11,7 @@ import (
 	identityrepository "github.com/domainry/domainry-identity/internal/domain/identity/repository"
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
 	identityschema "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/schema"
-	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/mysql"
-	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/sqlite"
+	ormdialect "github.com/domainry/domainry-orm/dialect"
 )
 
 // identityReadExecutor is the read-only SQL surface shared by the pooled
@@ -46,20 +45,22 @@ var _ identityrepository.IdentityRepository = (*SQLIdentityStore)(nil)
 var _ identityrepository.IdentityWorkforceRepository = (*SQLIdentityStore)(nil)
 
 func (s *SQLIdentityStore) identifier(value string) string {
-	if s.driver == "mysql" {
-		return mysql.Dialect{}.Identifier(value)
+	return s.sqlDialect().Identifier(value)
+}
+
+func (s *SQLIdentityStore) sqlDialect() ormdialect.Dialect {
+	value, err := ormdialect.Parse(s.driver)
+	if err != nil {
+		panic(err)
 	}
-	return sqlite.Dialect{}.Identifier(value)
+	return value
 }
 
 func (s *SQLIdentityStore) tableIdentifier(value string) string {
 	if s.relationPrefix != "" && !strings.HasPrefix(value, s.relationPrefix) {
 		value = s.relationPrefix + value
 	}
-	if s.driver == "postgres" && strings.TrimSpace(s.schema) != "" {
-		return sqlite.Dialect{}.Identifier(s.schema) + "." + sqlite.Dialect{}.Identifier(value)
-	}
-	return s.identifier(value)
+	return s.sqlDialect().Table(strings.TrimSpace(s.schema), value)
 }
 
 func (s *SQLIdentityStore) identityColumns(values ...string) string {

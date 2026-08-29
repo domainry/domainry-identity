@@ -44,17 +44,14 @@ func placeholders(s *IdentityStore, count int) []string {
 }
 
 func (s *IdentityStore) identifier(value string) string {
-	return s.dialect.Identifier(value)
+	return s.dialect.SQLDialect().Identifier(value)
 }
 
 func (s *IdentityStore) tableIdentifier(value string) string {
 	if s.relationPrefix != "" && !strings.HasPrefix(value, s.relationPrefix) {
 		value = s.relationPrefix + value
 	}
-	if s.dialect.Name() == "postgres" && strings.TrimSpace(s.databaseSchema) != "" {
-		return s.dialect.Identifier(s.databaseSchema) + "." + s.dialect.Identifier(value)
-	}
-	return s.dialect.Identifier(value)
+	return s.dialect.SQLDialect().Table(strings.TrimSpace(s.databaseSchema), value)
 }
 
 // Identifier exposes the database-specific quoting policy to domain-owned
@@ -70,7 +67,7 @@ func (s *IdentityStore) TableIdentifier(value string) string {
 }
 
 func (s *IdentityStore) placeholder(position int) string {
-	return s.dialect.Placeholder(position)
+	return s.dialect.SQLDialect().Placeholder(position)
 }
 
 // Placeholder exposes the database-specific placeholder syntax to
