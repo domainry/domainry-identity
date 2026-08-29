@@ -40,8 +40,8 @@ func TestApplyIdentityEntitlementBatchUsesChunkedWrites(t *testing.T) {
 	if _, err := store.ApplyIdentityEntitlementBatch(t.Context(), mutation); err != nil {
 		t.Fatal(err)
 	}
-	if state.execCount != 4 {
-		t.Fatalf("expected one delete batch, two insert batches, and one receipt insert; got %d execs", state.execCount)
+	if state.execCount != 3 {
+		t.Fatalf("expected two assignment upsert batches and one receipt insert; got %d execs", state.execCount)
 	}
 }
 
@@ -87,7 +87,7 @@ func TestApplyIdentityEntitlementBatchValidationAndFailureStages(t *testing.T) {
 		{beginErr: errProfileBindingSQL},
 		{queryFailAt: 1, failure: errProfileBindingSQL},
 		{execFailAt: 1, failure: errProfileBindingSQL},
-		{execFailAt: 3, failure: errProfileBindingSQL},
+		{execFailAt: 2, failure: errProfileBindingSQL},
 		{commitErr: errProfileBindingSQL},
 	} {
 		store, closeDB := scriptedSQLIdentity(state)

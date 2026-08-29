@@ -10,6 +10,7 @@ import (
 
 	"github.com/domainry/domainry-foundation/apperror"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
 
 type identityEntitlementReceiptQueryer interface {
@@ -65,10 +66,13 @@ func (s *SQLIdentityStore) ApplyIdentityEntitlementBatch(ctx context.Context, mu
 	// The receipt contains only strings and typed entitlement values, so it is
 	// always JSON-encodable.
 	resultJSON, _ := json.Marshal(receipt)
-	query := "INSERT INTO " + s.tableIdentifier("identity_entitlement_batch_receipts") + " (" +
-		s.identityColumns("id", "workspace_id", "actor_id", "idempotency_key", "request_fingerprint", "result_json", "created_at") +
-		") VALUES (" + s.placeholders(7) + ")"
-	if _, err := tx.ExecContext(ctx, query, receipt.ID, receipt.WorkspaceID, receipt.ActorID, receipt.IdempotencyKey, receipt.RequestFingerprint, string(resultJSON), receipt.CreatedAt); err != nil {
+	statement, arguments, err := ormbuilder.NewWorkspaceInsertBuilder(s.sqlRenderer(), "identity_entitlement_batch_receipts", workspaceID).
+		Columns("id", "actor_id", "idempotency_key", "request_fingerprint", "result_json", "created_at").
+		Values(receipt.ID, receipt.ActorID, receipt.IdempotencyKey, receipt.RequestFingerprint, string(resultJSON), receipt.CreatedAt).Build()
+	if err != nil {
+		return identitymodel.IdentityEntitlementBatchReceipt{}, fmt.Errorf("build identity entitlement batch receipt: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
 		return identitymodel.IdentityEntitlementBatchReceipt{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -78,7 +82,6 @@ func (s *SQLIdentityStore) ApplyIdentityEntitlementBatch(ctx context.Context, mu
 }
 
 const identityUserRoleAssignmentInsertBatchSize = 40
-const identityUserRoleAssignmentDeleteBatchSize = 200
 
 func (s *SQLIdentityStore) writeIdentityUserRoleAssignmentBatch(ctx context.Context, tx *sql.Tx, workspaceID string, assignments []identitymodel.IdentityUserRoleAssignment) error {
 	normalized := make([]identitymodel.IdentityUserRoleAssignment, 0, len(assignments))
@@ -96,35 +99,21 @@ func (s *SQLIdentityStore) writeIdentityUserRoleAssignmentBatch(ctx context.Cont
 		positions[key] = len(normalized)
 		normalized = append(normalized, value)
 	}
-	for start := 0; start < len(normalized); start += identityUserRoleAssignmentDeleteBatchSize {
-		end := min(start+identityUserRoleAssignmentDeleteBatchSize, len(normalized))
-		args := []any{workspaceID}
-		pairs := make([]string, 0, end-start)
-		for _, assignment := range normalized[start:end] {
-			args = append(args, assignment.UserID, assignment.RoleID)
-			pairs = append(pairs, "("+s.identifier("user_id")+" = "+s.placeholder(len(args)-1)+" AND "+s.identifier("role_id")+" = "+s.placeholder(len(args))+")")
-		}
-		query := "DELETE FROM " + s.tableIdentifier("identity_user_role_assignments") + " WHERE " + s.identifier("workspace_id") + " = " + s.placeholder(1) + " AND (" + strings.Join(pairs, " OR ") + ")"
-		if _, err := tx.ExecContext(ctx, query, args...); err != nil {
-			return err
-		}
-	}
 	now := nowString()
+	columns := append([]string{identityUserRoleAssignmentColumns[0]}, identityUserRoleAssignmentColumns[2:]...)
 	for start := 0; start < len(normalized); start += identityUserRoleAssignmentInsertBatchSize {
 		end := min(start+identityUserRoleAssignmentInsertBatchSize, len(normalized))
-		args := make([]any, 0, (end-start)*len(identityUserRoleAssignmentColumns))
-		rows := make([]string, 0, end-start)
+		insert := ormbuilder.NewWorkspaceInsertBuilder(s.sqlRenderer(), "identity_user_role_assignments", workspaceID).Columns(columns...)
 		for _, assignment := range normalized[start:end] {
-			values := identityUserRoleAssignmentValues(workspaceID, assignment, now)
-			placeholders := make([]string, len(values))
-			for index := range values {
-				placeholders[index] = s.placeholder(len(args) + index + 1)
-			}
-			rows = append(rows, "("+strings.Join(placeholders, ", ")+")")
-			args = append(args, values...)
+			allValues := identityUserRoleAssignmentValues(workspaceID, assignment, now)
+			insert.Values(append([]any{allValues[0]}, allValues[2:]...)...)
 		}
-		query := "INSERT INTO " + s.tableIdentifier("identity_user_role_assignments") + " (" + s.identityColumns(identityUserRoleAssignmentColumns...) + ") VALUES " + strings.Join(rows, ", ")
-		if _, err := tx.ExecContext(ctx, query, args...); err != nil {
+		s.engineProfile().ApplyUpsert(insert, []string{"workspace_id", "id"}, columns[1:]...)
+		statement, arguments, err := insert.Build()
+		if err != nil {
+			return fmt.Errorf("build identity entitlement assignment batch: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
 			return err
 		}
 	}
@@ -132,12 +121,13 @@ func (s *SQLIdentityStore) writeIdentityUserRoleAssignmentBatch(ctx context.Cont
 }
 
 func (s *SQLIdentityStore) loadIdentityEntitlementBatchReceipt(ctx context.Context, queryer identityEntitlementReceiptQueryer, workspaceID, idempotencyKey string) (identitymodel.IdentityEntitlementBatchReceipt, bool, error) {
-	query := "SELECT " + s.identityColumns("result_json", "request_fingerprint") + " FROM " +
-		s.tableIdentifier("identity_entitlement_batch_receipts") + " WHERE " +
-		s.identifier("workspace_id") + " = " + s.placeholder(1) + " AND " +
-		s.identifier("idempotency_key") + " = " + s.placeholder(2)
+	statement, arguments, buildErr := ormbuilder.NewWorkspaceSelectBuilder(s.sqlRenderer(), "identity_entitlement_batch_receipts", workspaceID).
+		Columns("result_json", "request_fingerprint").Where(ormbuilder.Equal("idempotency_key", idempotencyKey)).Build()
+	if buildErr != nil {
+		return identitymodel.IdentityEntitlementBatchReceipt{}, false, buildErr
+	}
 	var resultJSON, fingerprint string
-	err := queryer.QueryRowContext(ctx, query, workspaceID, idempotencyKey).Scan(&resultJSON, &fingerprint)
+	err := queryer.QueryRowContext(ctx, statement, arguments...).Scan(&resultJSON, &fingerprint)
 	if errors.Is(err, sql.ErrNoRows) {
 		return identitymodel.IdentityEntitlementBatchReceipt{}, false, nil
 	}
