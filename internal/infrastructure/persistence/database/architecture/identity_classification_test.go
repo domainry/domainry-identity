@@ -149,6 +149,24 @@ func TestIdentityMenuRootFileRemainsFacade(t *testing.T) {
 	}
 }
 
+func TestIdentityRoleRootFileRemainsFacade(t *testing.T) {
+	source, err := os.ReadFile(filepath.Join(identityPersistenceRoot(t), "identity_store_sql_roles.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	for _, forbidden := range []string{"ormbuilder", ".BeginTx(", ".ExecContext(", ".QueryContext("} {
+		if strings.Contains(text, forbidden) {
+			t.Errorf("Identity role facade owns persistence implementation %q", forbidden)
+		}
+	}
+	for _, owner := range []string{"rolepersistence.New", "rolerequestpersistence.New", "roleassignmentpersistence.New"} {
+		if !strings.Contains(text, owner) {
+			t.Errorf("Identity role facade lost classified owner delegation %q", owner)
+		}
+	}
+}
+
 func identityPersistenceRoot(t *testing.T) string {
 	t.Helper()
 	_, sourceFile, _, ok := runtime.Caller(0)
