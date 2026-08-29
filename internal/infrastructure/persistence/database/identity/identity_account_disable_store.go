@@ -3,6 +3,8 @@ package identity
 import (
 	"context"
 	"fmt"
+
+	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
 
 func (s *SQLIdentityStore) DisableIdentityAccount(ctx context.Context, workspaceID, userID string) (int, error) {
@@ -15,8 +17,16 @@ func (s *SQLIdentityStore) DisableIdentityAccount(ctx context.Context, workspace
 		return 0, err
 	}
 	defer tx.Rollback()
-	result, err := tx.ExecContext(ctx, "UPDATE "+s.tableIdentifier("identity_users")+" SET "+s.identifier("status")+" = 'disabled', "+s.identifier("version")+" = "+s.identifier("version")+" + 1, "+s.identifier("updated_at")+" = "+s.placeholder(1)+
-		" WHERE "+s.identifier("workspace_id")+" = "+s.placeholder(2)+" AND "+s.identifier("id")+" = "+s.placeholder(3), nowString(), workspaceID, userID)
+	statement, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(s.sqlRenderer(), "identity_users", workspaceID).
+		Set("status", "disabled").
+		SetExpression("version", ormbuilder.Add(ormbuilder.Column("version"), ormbuilder.Value(1))).
+		Set("updated_at", nowString()).
+		Where(ormbuilder.Equal("id", userID)).
+		Build()
+	if err != nil {
+		return 0, fmt.Errorf("build identity account disable: %w", err)
+	}
+	result, err := tx.ExecContext(ctx, statement, arguments...)
 	if err != nil {
 		return 0, err
 	}
@@ -28,8 +38,15 @@ func (s *SQLIdentityStore) DisableIdentityAccount(ctx context.Context, workspace
 		return 0, fmt.Errorf("identity user %q not found", userID)
 	}
 	now := nowString()
-	revoked, err := tx.ExecContext(ctx, "UPDATE "+s.tableIdentifier("auth_refresh_tokens")+" SET "+s.identifier("revoked_at")+" = "+s.placeholder(1)+", "+s.identifier("updated_at")+" = "+s.placeholder(2)+
-		" WHERE "+s.identifier("workspace_id")+" = "+s.placeholder(3)+" AND "+s.identifier("user_id")+" = "+s.placeholder(4)+" AND "+s.identifier("revoked_at")+" IS NULL", now, now, workspaceID, userID)
+	statement, arguments, err = ormbuilder.NewWorkspaceUpdateBuilder(s.sqlRenderer(), "auth_refresh_tokens", workspaceID).
+		Set("revoked_at", now).
+		Set("updated_at", now).
+		Where(ormbuilder.And(ormbuilder.Equal("user_id", userID), ormbuilder.IsNull("revoked_at"))).
+		Build()
+	if err != nil {
+		return 0, fmt.Errorf("build identity refresh-token revocation: %w", err)
+	}
+	revoked, err := tx.ExecContext(ctx, statement, arguments...)
 	if err != nil {
 		return 0, err
 	}
