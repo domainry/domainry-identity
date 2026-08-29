@@ -2,7 +2,7 @@ package identity
 
 import (
 	"database/sql/driver"
-	"reflect"
+	"fmt"
 	"testing"
 )
 
@@ -129,14 +129,18 @@ func TestListIdentityUserDirectoryFactsBindingFailuresAndSuccess(t *testing.T) {
 	closeDB()
 }
 
-func TestIdentityUserDirectoryPlaceholderAndJoinHelpers(t *testing.T) {
-	store, closeDB := scriptedSQLIdentity(&identitySQLState{})
+func TestIdentityUserDirectoryFactsBatchesByParameterBudget(t *testing.T) {
+	state := &identitySQLState{}
+	store, closeDB := scriptedSQLIdentity(state)
 	defer closeDB()
-	in, args := store.identityUserDirectoryIN("workspace", []string{"user-a", "user-b"})
-	if in != "?, ?" || !reflect.DeepEqual(args, []any{"workspace", "user-a", "user-b"}) {
-		t.Fatalf("in=%q args=%#v", in, args)
+	userIDs := make([]string, identityDirectoryBatchMaxItems+1)
+	for index := range userIDs {
+		userIDs[index] = fmt.Sprintf("user-%04d", index)
 	}
-	if joinComma(nil) != "" || joinComma([]string{"one"}) != "one" || joinComma([]string{"one", "two", "three"}) != "one, two, three" {
-		t.Fatal("joinComma mismatch")
+	if _, err := store.ListIdentityUserDirectoryFacts(t.Context(), "workspace", userIDs); err != nil {
+		t.Fatal(err)
+	}
+	if state.queryCount != 6 {
+		t.Fatalf("query count=%d, want 6 for two batches across three fact owners", state.queryCount)
 	}
 }

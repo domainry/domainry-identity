@@ -22,6 +22,7 @@ type Dialect interface {
 }
 
 type EngineProfile interface {
+	MaxParameters() int
 	TextKeyColumnType(int) string
 	ApplyUpdateLock(*ormbuilder.SelectBuilder) *ormbuilder.SelectBuilder
 	ApplyUpsert(*ormbuilder.InsertBuilder, []string, ...string) *ormbuilder.InsertBuilder
@@ -36,6 +37,7 @@ type SchemaDatabase interface {
 
 type portableEngineProfile struct{}
 
+func (portableEngineProfile) MaxParameters() int           { return 999 }
 func (portableEngineProfile) TextKeyColumnType(int) string { return "TEXT" }
 func (portableEngineProfile) ApplyUpdateLock(builder *ormbuilder.SelectBuilder) *ormbuilder.SelectBuilder {
 	return builder

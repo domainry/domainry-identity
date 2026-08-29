@@ -15,6 +15,7 @@ type Dialect struct{}
 
 func (Dialect) Name() string { return "postgres" }
 
+func (Dialect) MaxParameters() int           { return 65535 }
 func (Dialect) TextKeyColumnType(int) string { return "TEXT" }
 func (Dialect) ApplyUpdateLock(builder *ormbuilder.SelectBuilder) *ormbuilder.SelectBuilder {
 	return builder.ForUpdate()

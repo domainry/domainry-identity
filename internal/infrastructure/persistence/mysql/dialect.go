@@ -17,6 +17,7 @@ type Dialect struct{}
 
 func (Dialect) Name() string { return "mysql" }
 
+func (Dialect) MaxParameters() int                     { return 65535 }
 func (Dialect) TextKeyColumnType(maxLength int) string { return fmt.Sprintf("VARCHAR(%d)", maxLength) }
 func (Dialect) ApplyUpdateLock(builder *ormbuilder.SelectBuilder) *ormbuilder.SelectBuilder {
 	return builder.ForUpdate()

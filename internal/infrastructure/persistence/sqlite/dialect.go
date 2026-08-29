@@ -18,6 +18,7 @@ type Dialect struct{}
 
 func (Dialect) Name() string { return "sqlite" }
 
+func (Dialect) MaxParameters() int           { return 999 }
 func (Dialect) TextKeyColumnType(int) string { return "TEXT" }
 func (Dialect) ApplyUpdateLock(builder *ormbuilder.SelectBuilder) *ormbuilder.SelectBuilder {
 	return builder
