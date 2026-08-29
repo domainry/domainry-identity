@@ -101,7 +101,7 @@ func TestIdentitySchemaUpgradeRemovesFrontendCapabilityRegistry(t *testing.T) {
 		_ = store.Close()
 		t.Fatal(err)
 	}
-	if _, err := store.DB().ExecContext(t.Context(), `DELETE FROM _identity_schema_migrations WHERE version = ?`, CurrentIdentitySchemaVersion); err != nil {
+	if _, err := store.DB().ExecContext(t.Context(), `DELETE FROM _schema_materializations WHERE version = ?`, CurrentIdentitySchemaVersion); err != nil {
 		_ = store.Close()
 		t.Fatal(err)
 	}
@@ -121,7 +121,7 @@ func TestIdentitySchemaUpgradeRemovesFrontendCapabilityRegistry(t *testing.T) {
 	if err := upgraded.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'frontend_capability_manifests'`).Scan(&tableCount); err != nil {
 		t.Fatal(err)
 	}
-	if err := upgraded.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _identity_schema_migrations WHERE version = ? AND dirty = FALSE`, CurrentIdentitySchemaVersion).Scan(&migrationCount); err != nil {
+	if err := upgraded.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _schema_materializations WHERE version = ? AND dirty = FALSE`, CurrentIdentitySchemaVersion).Scan(&migrationCount); err != nil {
 		t.Fatal(err)
 	}
 	if tableCount != 0 || migrationCount != 1 {

@@ -64,7 +64,7 @@ func TestTwoSQLiteInstancesExecuteMigrationOnce(t *testing.T) {
 	}
 	defer store.Close()
 	var count int
-	if err := store.DB().QueryRow(`SELECT COUNT(*) FROM _identity_file_migrations WHERE path = ?`, filepath.Base(migrationPath)).Scan(&count); err != nil || count != 1 {
+	if err := store.DB().QueryRow(`SELECT COUNT(*) FROM _schema_migrations WHERE path = ?`, filepath.Base(migrationPath)).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("ledger count=%d err=%v", count, err)
 	}
 }
@@ -99,7 +99,7 @@ func TestMigrationLedgerRecordsStableReleaseIdentity(t *testing.T) {
 	defer store.Close()
 	var version, name, kind, checksum, serviceVersion, operator, instance, backupID string
 	var duration int64
-	if err := store.DB().QueryRowContext(t.Context(), `SELECT version, name, kind, checksum, service_version, duration_ms, operator, instance_id, backup_id FROM _identity_file_migrations WHERE path = ?`, filepath.Base(migrationPath)).Scan(&version, &name, &kind, &checksum, &serviceVersion, &duration, &operator, &instance, &backupID); err != nil {
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT version, name, kind, checksum, service_version, duration_ms, operator, instance_id, backup_id FROM _schema_migrations WHERE path = ?`, filepath.Base(migrationPath)).Scan(&version, &name, &kind, &checksum, &serviceVersion, &duration, &operator, &instance, &backupID); err != nil {
 		t.Fatal(err)
 	}
 	if version != "004" || name != "expand_customer" || kind != "schema" || len(checksum) != 64 || serviceVersion != "2.4.0" || duration < 0 || operator != "release-bot" || instance != "identity-2" || backupID == "" {
@@ -119,7 +119,7 @@ func TestSchemaAndMetadataMigrationsShareOrderedLedger(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	rows, err := store.DB().Query(`SELECT version, kind FROM _identity_file_migrations ORDER BY path`)
+	rows, err := store.DB().Query(`SELECT version, kind FROM _schema_migrations ORDER BY path`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +146,7 @@ func TestMigrationStatusReportsChecksumDrift(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	if _, err := store.DB().ExecContext(t.Context(), `UPDATE _identity_file_migrations SET checksum = ? WHERE path = ?`, strings.Repeat("0", 64), filepath.Base(migrationPath)); err != nil {
+	if _, err := store.DB().ExecContext(t.Context(), `UPDATE _schema_migrations SET checksum = ? WHERE path = ?`, strings.Repeat("0", 64), filepath.Base(migrationPath)); err != nil {
 		t.Fatal(err)
 	}
 	status, err := store.MigrationStatus(t.Context())
@@ -167,7 +167,7 @@ func TestMigrationStatusAndVerifyRejectDirtyLedger(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.DB().ExecContext(t.Context(), `UPDATE _identity_file_migrations SET dirty = TRUE WHERE path = ?`, filepath.Base(migrationPath)); err != nil {
+	if _, err := store.DB().ExecContext(t.Context(), `UPDATE _schema_migrations SET dirty = TRUE WHERE path = ?`, filepath.Base(migrationPath)); err != nil {
 		t.Fatal(err)
 	}
 	status, err := store.MigrationStatus(t.Context())
@@ -196,7 +196,7 @@ func TestMigrationStatusRejectsUnknownAndNewerAppliedVersions(t *testing.T) {
 	}
 	defer store.Close()
 	for _, row := range []struct{ path, checksum string }{{"003_unpublished.sql", strings.Repeat("3", 64)}, {"005_future.sql", strings.Repeat("5", 64)}} {
-		if _, err := store.DB().Exec(`INSERT INTO _identity_file_migrations (path,version,name,kind,checksum,dirty,applied_at,service_version,duration_ms,operator,instance_id,backup_id) VALUES (?,?,?,?,?,FALSE,?,?,?,?,?,?)`, row.path, strings.SplitN(row.path, "_", 2)[0], row.path, "schema", row.checksum, time.Now().UTC().Format(time.RFC3339), "future", 1, "test", "test", "backup"); err != nil {
+		if _, err := store.DB().Exec(`INSERT INTO _schema_migrations (path,version,name,kind,checksum,dirty,applied_at,service_version,duration_ms,operator,instance_id,backup_id) VALUES (?,?,?,?,?,FALSE,?,?,?,?,?,?)`, row.path, strings.SplitN(row.path, "_", 2)[0], row.path, "schema", row.checksum, time.Now().UTC().Format(time.RFC3339), "future", 1, "test", "test", "backup"); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -258,7 +258,7 @@ func TestApplyModeUpgradesLegacyLedgerWithChecksum(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO _identity_file_migrations (path, checksum, applied_at) VALUES (?, ?, ?)`, filepath.Base(migrationPath), "", "2026-07-19T00:00:00Z"); err != nil {
+	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO _schema_migrations (path, checksum, applied_at) VALUES (?, ?, ?)`, filepath.Base(migrationPath), "", "2026-07-19T00:00:00Z"); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Close(); err != nil {
@@ -271,7 +271,7 @@ func TestApplyModeUpgradesLegacyLedgerWithChecksum(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = upgraded.Close() })
 	var checksum string
-	if err := upgraded.DB().QueryRowContext(t.Context(), `SELECT checksum FROM _identity_file_migrations WHERE path = ?`, filepath.Base(migrationPath)).Scan(&checksum); err != nil {
+	if err := upgraded.DB().QueryRowContext(t.Context(), `SELECT checksum FROM _schema_migrations WHERE path = ?`, filepath.Base(migrationPath)).Scan(&checksum); err != nil {
 		t.Fatal(err)
 	}
 	if len(checksum) != 64 {

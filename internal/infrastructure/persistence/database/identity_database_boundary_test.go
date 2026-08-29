@@ -18,7 +18,6 @@ func TestIdentityPersistenceDoesNotReintroducePlaneRuntimeOwnership(t *testing.T
 	forbidden := []string{
 		"RuntimeStore",
 		"RuntimeOperationalMetrics",
-		"_runtime_schema_migrations",
 		"_runtime_rls_policies",
 		"_domainry_managed_runtime_database",
 		"domainry_runtime_",

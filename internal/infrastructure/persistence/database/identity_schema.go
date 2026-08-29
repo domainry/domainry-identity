@@ -21,7 +21,7 @@ const (
 )
 
 const (
-	identitySchemaMigrationTable           = "_identity_schema_migrations"
+	identitySchemaMigrationTable           = "_schema_materializations"
 	managedIdentityDatabaseTable           = "_domainry_managed_identity_database"
 	managedIdentityDatabaseContractVersion = "domainry-managed-identity-database-v1"
 	identitySchemaMigrationKind            = "identity_schema"

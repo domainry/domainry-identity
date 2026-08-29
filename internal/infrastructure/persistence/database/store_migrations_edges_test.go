@@ -43,10 +43,10 @@ func writeMigrationEdgeFile(t *testing.T, name, contents string) string {
 
 func insertMigrationEdgeLedger(t *testing.T, store *IdentityStore, path, checksum string, dirty bool) {
 	t.Helper()
-	if _, err := store.db.ExecContext(t.Context(), `DELETE FROM _identity_file_migrations`); err != nil {
+	if _, err := store.db.ExecContext(t.Context(), `DELETE FROM _schema_migrations`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.db.ExecContext(t.Context(), `INSERT INTO _identity_file_migrations(path, checksum, dirty, applied_at) VALUES (?, ?, ?, ?)`, filepath.Base(path), checksum, dirty, time.Now().UTC().Format(time.RFC3339)); err != nil {
+	if _, err := store.db.ExecContext(t.Context(), `INSERT INTO _schema_migrations(path, checksum, dirty, applied_at) VALUES (?, ?, ?, ?)`, filepath.Base(path), checksum, dirty, time.Now().UTC().Format(time.RFC3339)); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -81,7 +81,7 @@ func TestMigrationVerificationAndPendingStateEdges(t *testing.T) {
 		t.Fatalf("checksum backfill pending=%v error=%v", pending, err)
 	}
 	var backfilled string
-	if err := store.db.QueryRowContext(t.Context(), `SELECT checksum FROM _identity_file_migrations WHERE path = ?`, filepath.Base(path)).Scan(&backfilled); err != nil || backfilled != checksum {
+	if err := store.db.QueryRowContext(t.Context(), `SELECT checksum FROM _schema_migrations WHERE path = ?`, filepath.Base(path)).Scan(&backfilled); err != nil || backfilled != checksum {
 		t.Fatalf("backfilled=%q error=%v", backfilled, err)
 	}
 
@@ -280,7 +280,7 @@ func TestMigrationScriptedSQLFailureEdges(t *testing.T) {
 
 func TestMigrationBackupDiscoveryAndFailureEdges(t *testing.T) {
 	store := openMigrationEdgeStore(t)
-	if _, err := store.db.ExecContext(t.Context(), `CREATE TABLE _identity_schema_migrations(id TEXT); CREATE TABLE customer(id TEXT); INSERT INTO customer(id) VALUES ('one')`); err != nil {
+	if _, err := store.db.ExecContext(t.Context(), `CREATE TABLE _schema_materializations(id TEXT); CREATE TABLE customer(id TEXT); INSERT INTO customer(id) VALUES ('one')`); err != nil {
 		t.Fatal(err)
 	}
 	tables, err := store.applicationTables(t.Context())
@@ -290,7 +290,7 @@ func TestMigrationBackupDiscoveryAndFailureEdges(t *testing.T) {
 	if hasData, err := store.hasExistingApplicationData(t.Context()); err != nil || !hasData {
 		t.Fatalf("hasData=%v error=%v", hasData, err)
 	}
-	if !isMigrationSystemTable("") || !isMigrationSystemTable(" _identity_file_migrations ") || isMigrationSystemTable("customer") {
+	if !isMigrationSystemTable("") || !isMigrationSystemTable(" _schema_migrations ") || isMigrationSystemTable("customer") {
 		t.Fatal("migration system table classification changed")
 	}
 
@@ -384,7 +384,7 @@ func TestApplyMigrationsOrchestrationErrorEdges(t *testing.T) {
 	})
 	t.Run("non-current status", func(t *testing.T) {
 		store := openMigrationEdgeStore(t)
-		if _, err := store.db.ExecContext(t.Context(), `INSERT INTO _identity_file_migrations(path, checksum, dirty, applied_at) VALUES ('999_unknown.sql', 'unknown', FALSE, 'now')`); err != nil {
+		if _, err := store.db.ExecContext(t.Context(), `INSERT INTO _schema_migrations(path, checksum, dirty, applied_at) VALUES ('999_unknown.sql', 'unknown', FALSE, 'now')`); err != nil {
 			t.Fatal(err)
 		}
 		path := writeMigrationEdgeFile(t, "005_current.sql", "CREATE TABLE current_edge(id TEXT);")
@@ -415,7 +415,7 @@ func TestVerifyMigrationsOrchestrationEdges(t *testing.T) {
 	if err := store.verifyMigrations(t.Context(), config.Config{MigrationSQL: path}); err != nil {
 		t.Fatalf("current verification=%v", err)
 	}
-	if _, err := store.db.ExecContext(t.Context(), `INSERT INTO _identity_file_migrations(path, checksum, dirty, applied_at) VALUES ('999_unknown.sql', 'unknown', FALSE, 'now')`); err != nil {
+	if _, err := store.db.ExecContext(t.Context(), `INSERT INTO _schema_migrations(path, checksum, dirty, applied_at) VALUES ('999_unknown.sql', 'unknown', FALSE, 'now')`); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.verifyMigrations(t.Context(), config.Config{MigrationSQL: path}); err == nil || !strings.Contains(err.Error(), "migration.schema_newer") {

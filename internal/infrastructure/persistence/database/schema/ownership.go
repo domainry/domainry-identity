@@ -36,9 +36,9 @@ type TableOwnership struct {
 var identityTableOwnership = []TableOwnership{
 	{Name: "_audit_events", Boundary: TableBoundaryEvidence, MigrationDisposition: MigrationEvidenceOnly},
 	{Name: "_domainry_managed_identity_database", Boundary: TableBoundarySchemaControl, MigrationDisposition: MigrationExcluded},
-	{Name: "_identity_file_migrations", Boundary: TableBoundarySchemaControl, MigrationDisposition: MigrationExcluded},
+	{Name: "_schema_migrations", Boundary: TableBoundarySchemaControl, MigrationDisposition: MigrationExcluded},
 	{Name: "_identity_rls_policies", Boundary: TableBoundarySchemaControl, MigrationDisposition: MigrationExcluded},
-	{Name: "_identity_schema_migrations", Boundary: TableBoundarySchemaControl, MigrationDisposition: MigrationExcluded},
+	{Name: "_schema_materializations", Boundary: TableBoundarySchemaControl, MigrationDisposition: MigrationExcluded},
 	{Name: "action_definitions", Boundary: TableBoundaryMetadata, MigrationDisposition: MigrationPortable},
 	{Name: "auth_assertion_replays", Boundary: TableBoundaryAuthentication, MigrationDisposition: MigrationExcluded, ContainsSecret: true},
 	{Name: "auth_authorization_codes", Boundary: TableBoundaryAuthentication, MigrationDisposition: MigrationExcluded, ContainsSecret: true},

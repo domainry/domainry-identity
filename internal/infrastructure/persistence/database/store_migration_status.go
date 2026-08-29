@@ -28,7 +28,7 @@ func (s *IdentityStore) MigrationStatus(ctx context.Context) (migration.Migratio
 	status.Expected = len(status.ExpectedPaths)
 	applied := map[string]struct{}{}
 	currentSchemaVersion := ""
-	rows, err := s.schemaDatabase().QueryContext(ctx, "SELECT "+s.identifier("path")+", "+s.identifier("checksum")+", "+s.identifier("dirty")+", "+s.identifier("applied_at")+" FROM "+s.tableIdentifier("_identity_file_migrations")+" ORDER BY "+s.identifier("path")+" ASC")
+	rows, err := s.schemaDatabase().QueryContext(ctx, "SELECT "+s.identifier("path")+", "+s.identifier("checksum")+", "+s.identifier("dirty")+", "+s.identifier("applied_at")+" FROM "+s.tableIdentifier("_schema_migrations")+" ORDER BY "+s.identifier("path")+" ASC")
 	if err != nil {
 		status.Current = false
 		return status, fmt.Errorf("read migration status: %w", err)

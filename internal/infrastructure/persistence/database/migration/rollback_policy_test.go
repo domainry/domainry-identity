@@ -101,11 +101,11 @@ func TestFailedSQLiteMigrationRollsBackSchemaAndLedger(t *testing.T) {
 	if err := db.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'should_rollback'").Scan(&tableCount); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM _identity_file_migrations WHERE path = ?", filepath.Base(migration)).Scan(&ledgerCount); err != nil {
+	if err := db.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM _schema_migrations WHERE path = ?", filepath.Base(migration)).Scan(&ledgerCount); err != nil {
 		t.Fatal(err)
 	}
 	var dirty bool
-	if err := db.QueryRowContext(t.Context(), "SELECT dirty FROM _identity_file_migrations WHERE path = ?", filepath.Base(migration)).Scan(&dirty); err != nil {
+	if err := db.QueryRowContext(t.Context(), "SELECT dirty FROM _schema_migrations WHERE path = ?", filepath.Base(migration)).Scan(&dirty); err != nil {
 		t.Fatal(err)
 	}
 	if tableCount != 0 || ledgerCount != 1 || !dirty {

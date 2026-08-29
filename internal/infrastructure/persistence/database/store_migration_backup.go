@@ -149,7 +149,7 @@ func (s *IdentityStore) applicationTables(ctx context.Context) ([]string, error)
 
 func isMigrationSystemTable(name string) bool {
 	switch strings.TrimSpace(name) {
-	case "", "_identity_file_migrations", "_identity_schema_migrations":
+	case "", "_schema_migrations", "_schema_materializations":
 		return true
 	default:
 		return false

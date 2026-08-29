@@ -90,7 +90,7 @@ func (s *IdentityStore) verifyMigration(ctx context.Context, path string) error 
 	}
 	var applied string
 	var dirty bool
-	query := "SELECT " + s.identifier("checksum") + ", " + s.identifier("dirty") + " FROM " + s.tableIdentifier("_identity_file_migrations") + " WHERE " + s.identifier("path") + " = " + s.placeholder(1)
+	query := "SELECT " + s.identifier("checksum") + ", " + s.identifier("dirty") + " FROM " + s.tableIdentifier("_schema_migrations") + " WHERE " + s.identifier("path") + " = " + s.placeholder(1)
 	err = s.db.QueryRowContext(ctx, query, name).Scan(&applied, &dirty)
 	if err == sql.ErrNoRows {
 		return fmt.Errorf("migration.pending: %s", name)
@@ -118,7 +118,7 @@ func (s *IdentityStore) migrationPending(ctx context.Context, path string) (bool
 	}
 	var applied string
 	var dirty bool
-	query := "SELECT " + s.identifier("checksum") + ", " + s.identifier("dirty") + " FROM " + s.tableIdentifier("_identity_file_migrations") + " WHERE " + s.identifier("path") + " = " + s.placeholder(1)
+	query := "SELECT " + s.identifier("checksum") + ", " + s.identifier("dirty") + " FROM " + s.tableIdentifier("_schema_migrations") + " WHERE " + s.identifier("path") + " = " + s.placeholder(1)
 	err = s.schemaDatabase().QueryRowContext(ctx, query, name).Scan(&applied, &dirty)
 	if err == sql.ErrNoRows {
 		return true, nil
@@ -130,7 +130,7 @@ func (s *IdentityStore) migrationPending(ctx context.Context, path string) (bool
 		return false, fmt.Errorf("migration.dirty: %s", name)
 	}
 	if strings.TrimSpace(applied) == "" {
-		update := "UPDATE " + s.tableIdentifier("_identity_file_migrations") + " SET " + s.identifier("checksum") + " = " + s.placeholder(1) + " WHERE " + s.identifier("path") + " = " + s.placeholder(2)
+		update := "UPDATE " + s.tableIdentifier("_schema_migrations") + " SET " + s.identifier("checksum") + " = " + s.placeholder(1) + " WHERE " + s.identifier("path") + " = " + s.placeholder(2)
 		if _, err := s.schemaDatabase().ExecContext(ctx, update, expected, name); err != nil {
 			return false, fmt.Errorf("backfill migration checksum: %w", err)
 		}
@@ -159,7 +159,7 @@ func (s *IdentityStore) applyMigrationFile(ctx context.Context, path string) err
 	checksumBytes := sha256.Sum256(raw)
 	checksum := hex.EncodeToString(checksumBytes[:])
 	version, migrationName := migrationIdentity(name)
-	insertDirty := "INSERT INTO " + s.tableIdentifier("_identity_file_migrations") + " (" + migrationColumns(s) + ") VALUES (" + strings.Join(placeholders(s, 12), ", ") + ")"
+	insertDirty := "INSERT INTO " + s.tableIdentifier("_schema_migrations") + " (" + migrationColumns(s) + ") VALUES (" + strings.Join(placeholders(s, 12), ", ") + ")"
 	if _, err := s.schemaDatabase().ExecContext(ctx, insertDirty, name, version, migrationName, migrationKind(migrationName), checksum, true, time.Now().UTC().Format(time.RFC3339), strings.TrimSpace(s.config.ServiceVersion), 0, migrationOperator(s.config), migrationInstanceID(s.config), strings.TrimSpace(s.migrationBackupID)); err != nil {
 		return fmt.Errorf("record dirty migration: %w", err)
 	}
@@ -189,7 +189,7 @@ func (s *IdentityStore) applyMigrationFile(ctx context.Context, path string) err
 		}
 	}
 	duration := time.Since(startedAt)
-	completeMigration := "UPDATE " + s.tableIdentifier("_identity_file_migrations") + " SET " + s.identifier("dirty") + " = FALSE, " + s.identifier("duration_ms") + " = " + s.placeholder(1) + ", " + s.identifier("applied_at") + " = " + s.placeholder(2) + " WHERE " + s.identifier("path") + " = " + s.placeholder(3) + " AND " + s.identifier("checksum") + " = " + s.placeholder(4)
+	completeMigration := "UPDATE " + s.tableIdentifier("_schema_migrations") + " SET " + s.identifier("dirty") + " = FALSE, " + s.identifier("duration_ms") + " = " + s.placeholder(1) + ", " + s.identifier("applied_at") + " = " + s.placeholder(2) + " WHERE " + s.identifier("path") + " = " + s.placeholder(3) + " AND " + s.identifier("checksum") + " = " + s.placeholder(4)
 	if _, err := tx.ExecContext(ctx, completeMigration, duration.Milliseconds(), time.Now().UTC().Format(time.RFC3339), name, checksum); err != nil {
 		return fmt.Errorf("record migration: %w", err)
 	}
@@ -206,7 +206,7 @@ func (s *IdentityStore) schemaMigrationSQL() string {
 		pathType = "VARCHAR(255)"
 		timeType = "VARCHAR(64)"
 	}
-	return "CREATE TABLE IF NOT EXISTS " + s.tableIdentifier("_identity_file_migrations") + " (" + s.identifier("path") + " " + pathType + " PRIMARY KEY, " + s.identifier("version") + " " + pathType + " NOT NULL DEFAULT '', " + s.identifier("name") + " " + pathType + " NOT NULL DEFAULT '', " + s.identifier("kind") + " " + pathType + " NOT NULL DEFAULT 'schema', " + s.identifier("checksum") + " " + pathType + " NOT NULL DEFAULT '', " + s.identifier("dirty") + " BOOLEAN NOT NULL DEFAULT FALSE, " + s.identifier("applied_at") + " " + timeType + " NOT NULL, " + s.identifier("service_version") + " " + pathType + " NOT NULL DEFAULT '', " + s.identifier("duration_ms") + " BIGINT NOT NULL DEFAULT 0, " + s.identifier("operator") + " " + pathType + " NOT NULL DEFAULT '', " + s.identifier("instance_id") + " " + pathType + " NOT NULL DEFAULT '', " + s.identifier("backup_id") + " " + pathType + " NOT NULL DEFAULT '')"
+	return "CREATE TABLE IF NOT EXISTS " + s.tableIdentifier("_schema_migrations") + " (" + s.identifier("path") + " " + pathType + " PRIMARY KEY, " + s.identifier("version") + " " + pathType + " NOT NULL DEFAULT '', " + s.identifier("name") + " " + pathType + " NOT NULL DEFAULT '', " + s.identifier("kind") + " " + pathType + " NOT NULL DEFAULT 'schema', " + s.identifier("checksum") + " " + pathType + " NOT NULL DEFAULT '', " + s.identifier("dirty") + " BOOLEAN NOT NULL DEFAULT FALSE, " + s.identifier("applied_at") + " " + timeType + " NOT NULL, " + s.identifier("service_version") + " " + pathType + " NOT NULL DEFAULT '', " + s.identifier("duration_ms") + " BIGINT NOT NULL DEFAULT 0, " + s.identifier("operator") + " " + pathType + " NOT NULL DEFAULT '', " + s.identifier("instance_id") + " " + pathType + " NOT NULL DEFAULT '', " + s.identifier("backup_id") + " " + pathType + " NOT NULL DEFAULT '')"
 }
 
 func (s *IdentityStore) ensureMigrationLedger(ctx context.Context) error {
@@ -229,12 +229,12 @@ func (s *IdentityStore) ensureMigrationLedger(ctx context.Context) error {
 		{"operator", textType}, {"instance_id", textType}, {"backup_id", textType},
 	}
 	for _, column := range columns {
-		rows, queryErr := db.QueryContext(ctx, "SELECT "+s.identifier(column.name)+" FROM "+s.tableIdentifier("_identity_file_migrations")+" WHERE 1 = 0")
+		rows, queryErr := db.QueryContext(ctx, "SELECT "+s.identifier(column.name)+" FROM "+s.tableIdentifier("_schema_migrations")+" WHERE 1 = 0")
 		if queryErr == nil {
 			_ = rows.Close()
 			continue
 		}
-		if _, alterErr := db.ExecContext(ctx, "ALTER TABLE "+s.tableIdentifier("_identity_file_migrations")+" ADD COLUMN "+s.identifier(column.name)+" "+column.definition); alterErr != nil {
+		if _, alterErr := db.ExecContext(ctx, "ALTER TABLE "+s.tableIdentifier("_schema_migrations")+" ADD COLUMN "+s.identifier(column.name)+" "+column.definition); alterErr != nil {
 			return alterErr
 		}
 	}

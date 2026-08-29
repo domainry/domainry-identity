@@ -33,7 +33,7 @@ func TestMigrationHelpersCoverDialectAndFilesystemEdges(t *testing.T) {
 		t.Fatalf("mysql ledger SQL=%q", sql)
 	}
 	postgresStore := &IdentityStore{dialect: postgres.Dialect{}, databaseSchema: "runtime"}
-	if sql := postgresStore.schemaMigrationSQL(); strings.Contains(sql, "VARCHAR(255)") || !strings.Contains(sql, `"_identity_file_migrations"`) {
+	if sql := postgresStore.schemaMigrationSQL(); strings.Contains(sql, "VARCHAR(255)") || !strings.Contains(sql, `"_schema_migrations"`) {
 		t.Fatalf("postgres ledger SQL=%q", sql)
 	}
 
