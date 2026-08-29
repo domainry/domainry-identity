@@ -60,7 +60,7 @@ func TestIdentityWorkforceProfileSQLRemainingFailures(t *testing.T) {
 	}{
 		"workspace": {workspace: "", profile: valid, state: &identitySQLState{}},
 		"id":        {workspace: "workspace", state: &identitySQLState{}},
-		"insert":    {workspace: "workspace", profile: valid, state: &identitySQLState{execFailAt: 2, failure: errProfileBindingSQL}},
+		"upsert":    {workspace: "workspace", profile: valid, state: &identitySQLState{execFailAt: 1, failure: errProfileBindingSQL}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			store, closeDB := scriptedSQLIdentity(test.state)
@@ -125,7 +125,7 @@ func TestIdentityWorkforceAssignmentSQLRemainingFailures(t *testing.T) {
 	}{
 		"workspace": {workspace: "", assignment: valid, state: &identitySQLState{}},
 		"id":        {workspace: "workspace", state: &identitySQLState{}},
-		"insert":    {workspace: "workspace", assignment: valid, state: &identitySQLState{execFailAt: 2, failure: errProfileBindingSQL}},
+		"upsert":    {workspace: "workspace", assignment: valid, state: &identitySQLState{execFailAt: 1, failure: errProfileBindingSQL}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			store, closeDB := scriptedSQLIdentity(test.state)

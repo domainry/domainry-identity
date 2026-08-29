@@ -6,15 +6,22 @@ import (
 	"fmt"
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
+
+var identityWorkforceProfileColumns = []string{"id", "organization_id", "identity_user_id", "worker_no", "worker_type", "work_status", "start_date", "end_date", "primary_assignment_id", "version"}
+var identityWorkforceAssignmentColumns = []string{"id", "workforce_profile_id", "organization_unit_id", "position_id", "manager_workforce_profile_id", "assignment_type", "effective_from", "effective_to", "status", "version"}
 
 func (s *SQLIdentityStore) ListIdentityWorkforceProfiles(ctx context.Context, workspaceID string) ([]identitymodel.IdentityWorkforceProfile, error) {
 	workspaceID, err := identityWorkspaceID(workspaceID)
 	if err != nil {
 		return nil, err
 	}
-	columns := s.identityColumns("id", "organization_id", "identity_user_id", "worker_no", "worker_type", "work_status", "start_date", "end_date", "primary_assignment_id", "version")
-	rows, err := s.reader(ctx).QueryContext(ctx, "SELECT "+columns+" FROM "+s.tableIdentifier("identity_workforce_profiles")+" WHERE "+s.identifier("workspace_id")+" = "+s.placeholder(1)+" ORDER BY "+s.identifier("id"), workspaceID)
+	statement, arguments, err := identityWorkforceProfileSelect(s, workspaceID).OrderBy(ormbuilder.Ascending("id")).Build()
+	if err != nil {
+		return nil, fmt.Errorf("build identity workforce profiles query: %w", err)
+	}
+	rows, err := s.reader(ctx).QueryContext(ctx, statement, arguments...)
 	if err != nil {
 		return nil, err
 	}
@@ -35,8 +42,11 @@ func (s *SQLIdentityStore) GetIdentityWorkforceProfile(ctx context.Context, work
 	if err != nil {
 		return identitymodel.IdentityWorkforceProfile{}, false, err
 	}
-	columns := s.identityColumns("id", "organization_id", "identity_user_id", "worker_no", "worker_type", "work_status", "start_date", "end_date", "primary_assignment_id", "version")
-	row := s.reader(ctx).QueryRowContext(ctx, "SELECT "+columns+" FROM "+s.tableIdentifier("identity_workforce_profiles")+" WHERE "+s.identifier("workspace_id")+" = "+s.placeholder(1)+" AND "+s.identifier("id")+" = "+s.placeholder(2), workspaceID, profileID)
+	statement, arguments, err := identityWorkforceProfileSelect(s, workspaceID).Where(ormbuilder.Equal("id", profileID)).Build()
+	if err != nil {
+		return identitymodel.IdentityWorkforceProfile{}, false, fmt.Errorf("build identity workforce profile query: %w", err)
+	}
+	row := s.reader(ctx).QueryRowContext(ctx, statement, arguments...)
 	profile, err := scanIdentityWorkforceProfile(row)
 	if err == sql.ErrNoRows {
 		return identitymodel.IdentityWorkforceProfile{}, false, nil
@@ -77,16 +87,17 @@ func (s *SQLIdentityStore) writeIdentityWorkforceProfile(ctx context.Context, ex
 	if profile.Version == 0 {
 		profile.Version = 1
 	}
-	if _, err := execer.ExecContext(ctx, "DELETE FROM "+s.tableIdentifier("identity_workforce_profiles")+" WHERE "+s.identifier("workspace_id")+" = "+s.placeholder(1)+" AND "+s.identifier("id")+" = "+s.placeholder(2), workspaceID, profile.ID); err != nil {
-		return err
+	now := nowString()
+	insert := ormbuilder.NewWorkspaceInsertBuilder(s.sqlRenderer(), "identity_workforce_profiles", workspaceID).
+		Columns("id", "organization_id", "identity_user_id", "worker_no", "worker_type", "work_status", "start_date", "end_date", "primary_assignment_id", "version", "created_at", "updated_at").
+		Values(profile.ID, profile.OrganizationID, profile.IdentityUserID, profile.WorkerNo, string(profile.WorkerType), string(profile.WorkStatus), nullIfBlank(profile.StartDate), nullIfBlank(profile.EndDate), nullIfBlank(profile.PrimaryAssignmentID), profile.Version, now, now)
+	s.engineProfile().ApplyUpsert(insert, []string{"workspace_id", "id"}, "organization_id", "identity_user_id", "worker_no", "worker_type", "work_status", "start_date", "end_date", "primary_assignment_id", "version", "updated_at")
+	statement, arguments, err := insert.Build()
+	if err != nil {
+		return fmt.Errorf("build identity workforce profile upsert: %w", err)
 	}
-	columns := s.identityColumns("id", "workspace_id", "organization_id", "identity_user_id", "worker_no", "worker_type", "work_status", "start_date", "end_date", "primary_assignment_id", "version", "created_at", "updated_at")
-	if _, err = execer.ExecContext(ctx, "INSERT INTO "+s.tableIdentifier("identity_workforce_profiles")+" ("+columns+") VALUES ("+s.placeholders(13)+")",
-		profile.ID, workspaceID, profile.OrganizationID, profile.IdentityUserID, profile.WorkerNo, string(profile.WorkerType), string(profile.WorkStatus),
-		nullIfBlank(profile.StartDate), nullIfBlank(profile.EndDate), nullIfBlank(profile.PrimaryAssignmentID), profile.Version, nowString(), nowString()); err != nil {
-		return err
-	}
-	return nil
+	_, err = execer.ExecContext(ctx, statement, arguments...)
+	return err
 }
 
 func (s *SQLIdentityStore) ListIdentityWorkforceAssignments(ctx context.Context, workspaceID, profileID string) ([]identitymodel.IdentityWorkforceAssignment, error) {
@@ -94,15 +105,15 @@ func (s *SQLIdentityStore) ListIdentityWorkforceAssignments(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	columns := s.identityColumns("id", "workforce_profile_id", "organization_unit_id", "position_id", "manager_workforce_profile_id", "assignment_type", "effective_from", "effective_to", "status", "version")
-	query := "SELECT " + columns + " FROM " + s.tableIdentifier("identity_workforce_assignments") + " WHERE " + s.identifier("workspace_id") + " = " + s.placeholder(1)
-	args := []any{workspaceID}
+	builder := identityWorkforceAssignmentSelect(s, workspaceID)
 	if profileID != "" {
-		query += " AND " + s.identifier("workforce_profile_id") + " = " + s.placeholder(2)
-		args = append(args, profileID)
+		builder.Where(ormbuilder.Equal("workforce_profile_id", profileID))
 	}
-	query += " ORDER BY " + s.identifier("id")
-	rows, err := s.reader(ctx).QueryContext(ctx, query, args...)
+	statement, arguments, err := builder.OrderBy(ormbuilder.Ascending("id")).Build()
+	if err != nil {
+		return nil, fmt.Errorf("build identity workforce assignments query: %w", err)
+	}
+	rows, err := s.reader(ctx).QueryContext(ctx, statement, arguments...)
 	if err != nil {
 		return nil, err
 	}
@@ -123,8 +134,11 @@ func (s *SQLIdentityStore) GetIdentityWorkforceAssignment(ctx context.Context, w
 	if err != nil {
 		return identitymodel.IdentityWorkforceAssignment{}, false, err
 	}
-	columns := s.identityColumns("id", "workforce_profile_id", "organization_unit_id", "position_id", "manager_workforce_profile_id", "assignment_type", "effective_from", "effective_to", "status", "version")
-	row := s.reader(ctx).QueryRowContext(ctx, "SELECT "+columns+" FROM "+s.tableIdentifier("identity_workforce_assignments")+" WHERE "+s.identifier("workspace_id")+" = "+s.placeholder(1)+" AND "+s.identifier("id")+" = "+s.placeholder(2), workspaceID, assignmentID)
+	statement, arguments, err := identityWorkforceAssignmentSelect(s, workspaceID).Where(ormbuilder.Equal("id", assignmentID)).Build()
+	if err != nil {
+		return identitymodel.IdentityWorkforceAssignment{}, false, fmt.Errorf("build identity workforce assignment query: %w", err)
+	}
+	row := s.reader(ctx).QueryRowContext(ctx, statement, arguments...)
 	assignment, err := scanIdentityWorkforceAssignment(row)
 	if err == sql.ErrNoRows {
 		return identitymodel.IdentityWorkforceAssignment{}, false, nil
@@ -165,17 +179,25 @@ func (s *SQLIdentityStore) writeIdentityWorkforceAssignment(ctx context.Context,
 	if assignment.Version == 0 {
 		assignment.Version = 1
 	}
-	if _, err := execer.ExecContext(ctx, "DELETE FROM "+s.tableIdentifier("identity_workforce_assignments")+" WHERE "+s.identifier("workspace_id")+" = "+s.placeholder(1)+" AND "+s.identifier("id")+" = "+s.placeholder(2), workspaceID, assignment.ID); err != nil {
-		return err
+	now := nowString()
+	insert := ormbuilder.NewWorkspaceInsertBuilder(s.sqlRenderer(), "identity_workforce_assignments", workspaceID).
+		Columns("id", "workforce_profile_id", "organization_unit_id", "position_id", "manager_workforce_profile_id", "assignment_type", "effective_from", "effective_to", "status", "version", "created_at", "updated_at").
+		Values(assignment.ID, assignment.WorkforceProfileID, assignment.OrganizationUnitID, nullIfBlank(assignment.PositionID), nullIfBlank(assignment.ManagerWorkforceProfileID), string(assignment.AssignmentType), nullIfBlank(assignment.EffectiveFrom), nullIfBlank(assignment.EffectiveTo), string(assignment.Status), assignment.Version, now, now)
+	s.engineProfile().ApplyUpsert(insert, []string{"workspace_id", "id"}, "workforce_profile_id", "organization_unit_id", "position_id", "manager_workforce_profile_id", "assignment_type", "effective_from", "effective_to", "status", "version", "updated_at")
+	statement, arguments, err := insert.Build()
+	if err != nil {
+		return fmt.Errorf("build identity workforce assignment upsert: %w", err)
 	}
-	columns := s.identityColumns("id", "workspace_id", "workforce_profile_id", "organization_unit_id", "position_id", "manager_workforce_profile_id", "assignment_type", "effective_from", "effective_to", "status", "version", "created_at", "updated_at")
-	if _, err = execer.ExecContext(ctx, "INSERT INTO "+s.tableIdentifier("identity_workforce_assignments")+" ("+columns+") VALUES ("+s.placeholders(13)+")",
-		assignment.ID, workspaceID, assignment.WorkforceProfileID, assignment.OrganizationUnitID, nullIfBlank(assignment.PositionID),
-		nullIfBlank(assignment.ManagerWorkforceProfileID), string(assignment.AssignmentType), nullIfBlank(assignment.EffectiveFrom),
-		nullIfBlank(assignment.EffectiveTo), string(assignment.Status), assignment.Version, nowString(), nowString()); err != nil {
-		return err
-	}
-	return nil
+	_, err = execer.ExecContext(ctx, statement, arguments...)
+	return err
+}
+
+func identityWorkforceProfileSelect(s *SQLIdentityStore, workspaceID string) *ormbuilder.SelectBuilder {
+	return ormbuilder.NewWorkspaceSelectBuilder(s.sqlRenderer(), "identity_workforce_profiles", workspaceID).Columns(identityWorkforceProfileColumns...)
+}
+
+func identityWorkforceAssignmentSelect(s *SQLIdentityStore, workspaceID string) *ormbuilder.SelectBuilder {
+	return ormbuilder.NewWorkspaceSelectBuilder(s.sqlRenderer(), "identity_workforce_assignments", workspaceID).Columns(identityWorkforceAssignmentColumns...)
 }
 
 type identityWorkforceScanner interface {
