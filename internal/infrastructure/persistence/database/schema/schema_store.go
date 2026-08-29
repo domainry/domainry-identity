@@ -22,7 +22,6 @@ type SQLDatabase interface {
 // Store is the schema migration persistence contract.
 type Store interface {
 	SchemaDB() SQLDatabase
-	Driver() string
 	DatabaseSchema() string
 	Identifier(string) string
 	TableIdentifier(string) string

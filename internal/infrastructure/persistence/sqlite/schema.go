@@ -9,6 +9,9 @@ import (
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 )
 
+func (Dialect) ManagedDatabaseMarkerEnabled() bool        { return false }
+func (Dialect) ColumnDefinition(definition string) string { return strings.TrimSpace(definition) }
+
 func (Dialect) CreateIndexIfMissing(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _ string, relationPrefix, table, index string, unique bool, columns ...string) error {
 	indexes, err := (Dialect{}).TableIndexes(ctx, database, renderer, "", relationPrefix, table)
 	if err != nil || indexes[index] {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 
 	"github.com/domainry/domainry-identity/internal/platform/config"
 	ormbuilder "github.com/domainry/domainry-orm/builder"
@@ -33,6 +34,9 @@ type EngineProfile interface {
 	TableIndexes(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string) (map[string]bool, error)
 	DropIndex(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, string) error
 	EnsureCompositePrimaryKey(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, ...string) error
+	MigrationDatabasePath(config.Config) string
+	ManagedDatabaseMarkerEnabled() bool
+	ColumnDefinition(string) string
 }
 
 type SchemaTypes struct {
@@ -84,6 +88,11 @@ func (portableEngineProfile) DropIndex(context.Context, SchemaDatabase, ormdiale
 }
 func (portableEngineProfile) EnsureCompositePrimaryKey(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, ...string) error {
 	return fmt.Errorf("database engine does not support composite primary-key migration")
+}
+func (portableEngineProfile) MigrationDatabasePath(config.Config) string { return "" }
+func (portableEngineProfile) ManagedDatabaseMarkerEnabled() bool         { return true }
+func (portableEngineProfile) ColumnDefinition(definition string) string {
+	return strings.TrimSpace(definition)
 }
 
 func ProfileFor(value Dialect) EngineProfile {

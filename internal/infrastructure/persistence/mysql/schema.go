@@ -9,6 +9,16 @@ import (
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 )
 
+func (Dialect) ManagedDatabaseMarkerEnabled() bool { return true }
+func (Dialect) ColumnDefinition(definition string) string {
+	definition = strings.TrimSpace(definition)
+	// MySQL accepts defaults for TEXT/BLOB values only as expressions.
+	definition = strings.ReplaceAll(definition, "TEXT NOT NULL DEFAULT '[]'", "TEXT NOT NULL DEFAULT ('[]')")
+	definition = strings.ReplaceAll(definition, "TEXT NOT NULL DEFAULT '{}'", "TEXT NOT NULL DEFAULT ('{}')")
+	definition = strings.ReplaceAll(definition, "TEXT NOT NULL DEFAULT ''", "TEXT NOT NULL DEFAULT ('')")
+	return definition
+}
+
 func (Dialect) CreateIndexIfMissing(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _ string, relationPrefix, table, index string, unique bool, columns ...string) error {
 	indexes, err := (Dialect{}).TableIndexes(ctx, database, renderer, "", relationPrefix, table)
 	if err != nil || indexes[index] {

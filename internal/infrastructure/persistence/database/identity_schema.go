@@ -12,6 +12,7 @@ import (
 
 	identityschema "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/schema"
 	"github.com/domainry/domainry-identity/internal/platform/config"
+	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
 
 const (
@@ -192,10 +193,7 @@ func (s *IdentityStore) EnsureEvidenceSchema(ctx context.Context) error {
 func (s *IdentityStore) identityMigrationConfig() config.Config {
 	cfg := s.config
 	if strings.TrimSpace(cfg.MigrationBackupDir) == "" {
-		dbPath := strings.TrimSpace(cfg.DBPath)
-		if dbPath == "" && s.dialect.Name() == "sqlite" {
-			dbPath = strings.TrimSpace(cfg.DatabaseDSN)
-		}
+		dbPath := s.sqlBase().Engine.MigrationDatabasePath(cfg)
 		if dbPath != "" && dbPath != ":memory:" {
 			cfg.MigrationBackupDir = filepath.Join(filepath.Dir(dbPath), "migration-backups")
 		}
@@ -266,7 +264,7 @@ func currentIdentitySchemaChecksum() string {
 }
 
 func (s *IdentityStore) ensureManagedIdentityDatabaseMarker(ctx context.Context) error {
-	if s.dialect.Name() == "sqlite" {
+	if !s.sqlBase().Engine.ManagedDatabaseMarkerEnabled() {
 		return nil
 	}
 	database := s.schemaDatabase()
@@ -280,20 +278,22 @@ func (s *IdentityStore) ensureManagedIdentityDatabaseMarker(ctx context.Context)
 		return fmt.Errorf("generate managed database cohort marker: %w", err)
 	}
 	identity := sha256.Sum256(seed)
-	insert := "INSERT INTO " + table + " (" + s.identifier("marker_id") + ", " + s.identifier("contract_version") + ", " + s.identifier("database_identity_sha256") + ") VALUES (1, " + s.placeholder(1) + ", " + s.placeholder(2) + ")"
-	if s.dialect.Name() == "mysql" {
-		insert = strings.Replace(insert, "INSERT INTO", "INSERT IGNORE INTO", 1)
-	} else {
-		insert += " ON CONFLICT (" + s.identifier("marker_id") + ") DO NOTHING"
+	insert, arguments, err := ormbuilder.NewInsertBuilder(s.sqlBase().SQLRenderer, managedIdentityDatabaseTable).
+		Columns("marker_id", "contract_version", "database_identity_sha256").
+		Values(1, managedIdentityDatabaseContractVersion, hex.EncodeToString(identity[:])).
+		OnConflictDoNothing("marker_id").
+		Build()
+	if err != nil {
+		return fmt.Errorf("build managed database cohort marker: %w", err)
 	}
-	if _, err := database.ExecContext(ctx, insert, managedIdentityDatabaseContractVersion, hex.EncodeToString(identity[:])); err != nil {
+	if _, err := database.ExecContext(ctx, insert, arguments...); err != nil {
 		return fmt.Errorf("initialize managed database cohort marker: %w", err)
 	}
 	return s.verifyManagedIdentityDatabaseMarkerWith(ctx, database)
 }
 
 func (s *IdentityStore) verifyManagedIdentityDatabaseMarker(ctx context.Context) error {
-	if s.dialect.Name() == "sqlite" {
+	if !s.sqlBase().Engine.ManagedDatabaseMarkerEnabled() {
 		return nil
 	}
 	return s.verifyManagedIdentityDatabaseMarkerWith(ctx, s.db)
@@ -328,13 +328,5 @@ func (s *IdentityStore) ensureColumn(ctx context.Context, table, column, definit
 }
 
 func (s *IdentityStore) columnDefinition(definition string) string {
-	if s.dialect.Name() != "mysql" {
-		return definition
-	}
-	// MySQL accepts defaults for TEXT/BLOB values only as expressions. Keep the
-	// unbounded storage type while making schema creation portable.
-	definition = strings.ReplaceAll(definition, "TEXT NOT NULL DEFAULT '[]'", "TEXT NOT NULL DEFAULT ('[]')")
-	definition = strings.ReplaceAll(definition, "TEXT NOT NULL DEFAULT '{}'", "TEXT NOT NULL DEFAULT ('{}')")
-	definition = strings.ReplaceAll(definition, "TEXT NOT NULL DEFAULT ''", "TEXT NOT NULL DEFAULT ('')")
-	return definition
+	return s.sqlBase().Engine.ColumnDefinition(definition)
 }
