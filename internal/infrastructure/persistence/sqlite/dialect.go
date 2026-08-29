@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	"github.com/domainry/domainry-identity/internal/platform/config"
+	ormdialect "github.com/domainry/domainry-orm/dialect"
 	_ "modernc.org/sqlite"
 )
 
@@ -46,11 +46,11 @@ func (Dialect) Configure(ctx context.Context, db *sql.DB, dsn string) error {
 }
 
 func (Dialect) Identifier(value string) string {
-	return database.QuoteIdentifier(value, `"`)
+	return ormdialect.QuoteIdentifier(value, `"`)
 }
 
 func (Dialect) Placeholder(position int) string {
-	return database.QuestionPlaceholder(position)
+	return ormdialect.QuestionPlaceholder(position)
 }
 
 func (Dialect) SchemaMigrationSQL() string {

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	"github.com/domainry/domainry-identity/internal/platform/config"
+	ormdialect "github.com/domainry/domainry-orm/dialect"
 )
 
 type Dialect struct{}
@@ -31,7 +31,7 @@ func (Dialect) Configure(ctx context.Context, db *sql.DB, _ string) error {
 }
 
 func (Dialect) Identifier(value string) string {
-	return database.QuoteIdentifier(value, `"`)
+	return ormdialect.QuoteIdentifier(value, `"`)
 }
 
 func (Dialect) Placeholder(position int) string {
