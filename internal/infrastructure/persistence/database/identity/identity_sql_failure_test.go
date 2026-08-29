@@ -26,14 +26,14 @@ func TestSQLIdentityDialectAndConstructorEdges(t *testing.T) {
 	if postgresEngine.SQLDialect().WithSchema("").Table("users") != `"users"` {
 		t.Fatal("empty postgres schema")
 	}
-	db := sql.OpenDB(identitySQLConnector{state: &identitySQLState{execFailAt: 1, failure: errors.New("schema")}})
+	db := sql.OpenDB(identitySQLConnector{state: &identitySQLState{execFailAt: 1, failure: errors.New("unexpected repository schema write")}})
 	defer db.Close()
-	if _, err := NewSQLIdentityStore(t.Context(), db, mysqlEngine); err == nil {
-		t.Fatal("constructor schema failure ignored")
+	if _, err := NewSQLIdentityStore(t.Context(), db, mysqlEngine); err != nil {
+		t.Fatalf("repository constructor performed schema IO: %v", err)
 	}
 }
 
-func TestSQLIdentityRoleRequestSchemaUsesDedicatedDatabase(t *testing.T) {
+func TestSQLIdentityStoreConstructorDoesNotMutateSchema(t *testing.T) {
 	appState := &identitySQLState{}
 	schemaState := &identitySQLState{}
 	appDB := sql.OpenDB(identitySQLConnector{state: appState})
@@ -46,14 +46,11 @@ func TestSQLIdentityRoleRequestSchemaUsesDedicatedDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if appState.execCount != 0 || schemaState.execCount != 2 {
+	if appState.execCount != 0 || schemaState.execCount != 0 {
 		t.Fatalf("application execs=%d schema execs=%d", appState.execCount, schemaState.execCount)
 	}
-	if err := store.ensureRoleRequestsTable(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	if appState.execCount != 0 || schemaState.execCount != 2 {
-		t.Fatalf("repeated ensure application execs=%d schema execs=%d", appState.execCount, schemaState.execCount)
+	if store == nil {
+		t.Fatal("nil Identity store")
 	}
 }
 
@@ -220,14 +217,6 @@ func TestSQLIdentityRequestAndMenuWriteStages(t *testing.T) {
 			_, err := s.CreateIdentityRoleRequest(t.Context(), "default", validRequest)
 			return err
 		}},
-		{2, func(s *SQLIdentityStore) error {
-			_, err := s.CreateIdentityRoleRequest(t.Context(), "default", validRequest)
-			return err
-		}},
-		{3, func(s *SQLIdentityStore) error {
-			_, err := s.CreateIdentityRoleRequest(t.Context(), "default", validRequest)
-			return err
-		}},
 		{1, func(s *SQLIdentityStore) error {
 			return s.UpdateIdentityRoleRequest(t.Context(), "default", validRequest)
 		}},
@@ -262,8 +251,9 @@ func TestSQLIdentityRoleRequestDecisionFailureStages(t *testing.T) {
 	for _, state := range []*identitySQLState{
 		{execFailAt: 1, failure: wantErr},
 		{beginErr: wantErr},
-		{execFailAt: 3, failure: wantErr},
-		{rowsFailAt: 3, failure: wantErr},
+		{rowsFailAt: 1, failure: wantErr},
+		{rowsZeroAt: 1},
+		{commitErr: wantErr},
 	} {
 		store, closeDB = scriptedSQLIdentity(state)
 		if err := store.ApplyIdentityRoleRequestDecision(t.Context(), "default", request, nil, "pending"); err == nil {
@@ -272,11 +262,6 @@ func TestSQLIdentityRoleRequestDecisionFailureStages(t *testing.T) {
 		closeDB()
 	}
 
-	store, closeDB = scriptedSQLIdentity(&identitySQLState{execFailAt: 2, failure: errors.New("column already exists")})
-	if err := store.ensureRoleRequestsTable(t.Context()); err != nil {
-		t.Fatalf("already-existing requested_by column should be accepted: %v", err)
-	}
-	closeDB()
 }
 
 func TestSQLIdentityLoaderFailureStages(t *testing.T) {
@@ -438,9 +423,9 @@ func TestSQLIdentityRemainingWriteAndMenuStages(t *testing.T) {
 		t.Fatal(err)
 	}
 	closeDB()
-	store, closeDB = scriptedSQLIdentity(&identitySQLState{execFailAt: 1, failure: wantErr})
+	store, closeDB = scriptedSQLIdentity(&identitySQLState{queryFailAt: 1, failure: wantErr})
 	if _, err := store.loadRoleRequests(t.Context(), "default", "", ""); err == nil {
-		t.Fatal("role request schema failure ignored")
+		t.Fatal("role request query failure ignored")
 	}
 	closeDB()
 

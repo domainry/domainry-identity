@@ -107,9 +107,6 @@ func (s *SQLIdentityStore) CreateIdentityRoleRequest(ctx context.Context, worksp
 	if request.ID == "" || request.UserID == "" || len(request.RoleIDs) == 0 {
 		return identitymodel.IdentityRoleRequest{}, fmt.Errorf("role request id, user id, and roles are required")
 	}
-	if err := s.ensureRoleRequestsTable(ctx); err != nil {
-		return identitymodel.IdentityRoleRequest{}, err
-	}
 	now := nowString()
 	if request.CreatedAt == "" {
 		request.CreatedAt = now
@@ -161,9 +158,6 @@ func (s *SQLIdentityStore) UpdateIdentityRoleRequest(ctx context.Context, worksp
 func (s *SQLIdentityStore) ApplyIdentityRoleRequestDecision(ctx context.Context, workspaceID string, request identitymodel.IdentityRoleRequest, assignments []identitymodel.IdentityUserRoleAssignment, expectedStatus string) error {
 	workspaceID, err := identityWorkspaceID(workspaceID)
 	if err != nil {
-		return err
-	}
-	if err := s.ensureRoleRequestsTable(ctx); err != nil {
 		return err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -285,9 +279,6 @@ func (s *SQLIdentityStore) loadRoleRequests(ctx context.Context, workspaceID, st
 	if err != nil {
 		return nil, err
 	}
-	if err := s.ensureRoleRequestsTable(ctx); err != nil {
-		return nil, err
-	}
 	predicates := []ormbuilder.Predicate{}
 	if strings.TrimSpace(status) != "" {
 		predicates = append(predicates, ormbuilder.Equal("status", status))
@@ -335,47 +326,6 @@ func (s *SQLIdentityStore) loadRoleRequests(ctx context.Context, workspaceID, st
 		out = append(out, request)
 	}
 	return out, rows.Err()
-}
-
-func (s *SQLIdentityStore) ensureRoleRequestsTable(ctx context.Context) error {
-	if s.roleRequestsReady.Load() {
-		return nil
-	}
-	schemaDB := s.schemaDB
-	if schemaDB == nil {
-		schemaDB = s.db
-	}
-	if schemaDB == nil {
-		return fmt.Errorf("identity role request schema database unavailable")
-	}
-	key := func(name string) ormbuilder.SchemaColumn {
-		return ormbuilder.DefineColumn(name, ormbuilder.TextKeyType(255))
-	}
-	text := func(name string) ormbuilder.SchemaColumn { return ormbuilder.DefineColumn(name, ormbuilder.TextType()) }
-	create, _, err := ormbuilder.NewCreateTableBuilder(s.sqlRenderer(), "identity_role_requests").IfNotExists().WithoutSystemColumns().Columns(
-		key("id").NotNull(), key("workspace_id").NotNull(), key("user_id").NotNull(), key("requested_by"),
-		key("provider"), key("provider_subject"), text("role_ids_json").NotNull(), key("status").NotNull(),
-		text("reason"), key("created_at").NotNull(), key("updated_at").NotNull(), key("reviewed_by"),
-		key("reviewed_at"), text("review_note"),
-	).PrimaryKey("workspace_id", "id").Build()
-	if err != nil {
-		return fmt.Errorf("build identity role-request schema: %w", err)
-	}
-	if _, err := schemaDB.ExecContext(ctx, create); err != nil {
-		return err
-	}
-	addRequestedBy, _, err := ormbuilder.NewAddColumnBuilder(s.sqlRenderer(), "identity_role_requests", key("requested_by")).Build()
-	if err != nil {
-		return fmt.Errorf("build identity role-request requested-by migration: %w", err)
-	}
-	if _, err := schemaDB.ExecContext(ctx, addRequestedBy); err != nil {
-		message := strings.ToLower(err.Error())
-		if !strings.Contains(message, "duplicate") && !strings.Contains(message, "already exists") {
-			return err
-		}
-	}
-	s.roleRequestsReady.Store(true)
-	return nil
 }
 
 func (s *SQLIdentityStore) memoryRole(ctx context.Context, workspaceID, roleID string) (identitymodel.IdentityRole, bool, error) {

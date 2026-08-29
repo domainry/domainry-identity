@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
-	"sync/atomic"
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	identityrepository "github.com/domainry/domainry-identity/internal/domain/identity/repository"
@@ -34,12 +33,11 @@ func (s *SQLIdentityStore) reader(ctx context.Context) identityReadExecutor {
 }
 
 type SQLIdentityStore struct {
-	db                *sql.DB
-	schemaDB          identityschema.SQLDatabase
-	engine            persistencedriver.EngineProfile
-	renderer          ormdialect.Renderer
-	memory            *MemoryIdentityStore
-	roleRequestsReady atomic.Bool
+	db       *sql.DB
+	schemaDB identityschema.SQLDatabase
+	engine   persistencedriver.EngineProfile
+	renderer ormdialect.Renderer
+	memory   *MemoryIdentityStore
 }
 
 var _ identityrepository.IdentityRepository = (*SQLIdentityStore)(nil)
@@ -77,9 +75,6 @@ func NewSQLIdentityStoreWithSchema(ctx context.Context, db *sql.DB, schemaDB ide
 		return nil, err
 	}
 	store := &SQLIdentityStore{db: db, schemaDB: schemaDB, engine: engine, renderer: renderer, memory: NewMemoryIdentityStore()}
-	if err := store.ensureRoleRequestsTable(ctx); err != nil {
-		return nil, err
-	}
 	return store, nil
 }
 

@@ -95,6 +95,22 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"created_at " + text + " NOT NULL",
 			"updated_at " + text + " NOT NULL",
 		},
+		"identity_role_requests": {
+			"id " + text + " PRIMARY KEY",
+			"workspace_id " + text + " NOT NULL",
+			"user_id " + text + " NOT NULL",
+			"requested_by " + text,
+			"provider " + text,
+			"provider_subject " + text,
+			"role_ids_json TEXT NOT NULL",
+			"status " + text + " NOT NULL",
+			"reason TEXT",
+			"created_at " + text + " NOT NULL",
+			"updated_at " + text + " NOT NULL",
+			"reviewed_by " + text,
+			"reviewed_at " + text,
+			"review_note TEXT",
+		},
 		"identity_user_role_assignments": {
 			"id " + text + " PRIMARY KEY",
 			"workspace_id " + text + " NOT NULL",
@@ -518,6 +534,9 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 		}
 	}
 	if err := s.EnsureColumn(ctx, "identity_user_role_assignments", "workforce_profile_id", text); err != nil {
+		return err
+	}
+	if err := s.EnsureColumn(ctx, "identity_role_requests", "requested_by", text); err != nil {
 		return err
 	}
 	for column, definition := range map[string]string{

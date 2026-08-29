@@ -107,3 +107,33 @@ func TestPersistenceDoesNotBranchOnDatabaseEngine(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestIdentityBusinessPersistenceDoesNotOwnSchemaDDL(t *testing.T) {
+	_, sourceFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("resolve Identity persistence source root")
+	}
+	root := filepath.Join(filepath.Dir(filepath.Dir(sourceFile)), "identity")
+	forbidden := []string{"NewCreateTableBuilder", "NewAddColumnBuilder", "NewDropColumnBuilder", "NewRenameColumnBuilder", "NewCreateIndexBuilder"}
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
+			return nil
+		}
+		source, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		for _, token := range forbidden {
+			if strings.Contains(string(source), token) {
+				t.Errorf("Identity business persistence source %s owns schema DDL %q", path, token)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
