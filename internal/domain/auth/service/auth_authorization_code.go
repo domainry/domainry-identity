@@ -36,15 +36,15 @@ func (s *AuthDomainService) IssueAuthorizationCode(ctx context.Context, applicat
 	return code, err
 }
 
-func (s *AuthDomainService) ExchangeAuthorizationCode(ctx context.Context, code, applicationKey, redirectURL string) (authmodel.AuthSession, error) {
+func (s *AuthDomainService) ExchangeAuthorizationCode(ctx context.Context, workspaceID, code, applicationKey, redirectURL string) (authmodel.AuthSession, error) {
 	repository, ok := s.identityStore.(authrepository.AuthAuthorizationCodeRepository)
 	if !ok {
 		return authmodel.AuthSession{}, internalError("authorization code store unavailable", nil)
 	}
-	if strings.TrimSpace(code) == "" || strings.TrimSpace(applicationKey) == "" || !validAuthorizationRedirectURL(redirectURL) {
+	if strings.TrimSpace(workspaceID) == "" || strings.TrimSpace(code) == "" || strings.TrimSpace(applicationKey) == "" || !validAuthorizationRedirectURL(redirectURL) {
 		return authmodel.AuthSession{}, badRequest("auth.authorization_code_request_invalid")
 	}
-	session, consumed, err := repository.ConsumeAuthAuthorizationCode(ctx, code, applicationKey, redirectURL, time.Now().UTC())
+	session, consumed, err := repository.ConsumeAuthAuthorizationCode(ctx, workspaceID, code, applicationKey, redirectURL, time.Now().UTC())
 	if err != nil {
 		return authmodel.AuthSession{}, err
 	}

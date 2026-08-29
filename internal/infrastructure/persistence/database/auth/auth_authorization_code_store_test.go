@@ -29,17 +29,20 @@ func TestAuthorizationCodeIsBoundAndConsumedExactlyOnce(t *testing.T) {
 	if err := repository.CreateAuthAuthorizationCode(t.Context(), value); err != nil {
 		t.Fatal(err)
 	}
-	if _, consumed, err := repository.ConsumeAuthAuthorizationCode(t.Context(), value.Code, "other-app", value.RedirectURL, now); err != nil || consumed {
+	if _, consumed, err := repository.ConsumeAuthAuthorizationCode(t.Context(), value.WorkspaceID, value.Code, "other-app", value.RedirectURL, now); err != nil || consumed {
 		t.Fatalf("wrong application consumed=%v err=%v", consumed, err)
 	}
-	if _, consumed, err := repository.ConsumeAuthAuthorizationCode(t.Context(), value.Code, value.ApplicationKey, "https://other.example.com/callback", now); err != nil || consumed {
+	if _, consumed, err := repository.ConsumeAuthAuthorizationCode(t.Context(), value.WorkspaceID, value.Code, value.ApplicationKey, "https://other.example.com/callback", now); err != nil || consumed {
 		t.Fatalf("wrong redirect consumed=%v err=%v", consumed, err)
 	}
-	session, consumed, err := repository.ConsumeAuthAuthorizationCode(t.Context(), value.Code, value.ApplicationKey, value.RedirectURL, now)
+	if _, consumed, err := repository.ConsumeAuthAuthorizationCode(t.Context(), "workspace-b", value.Code, value.ApplicationKey, value.RedirectURL, now); err != nil || consumed {
+		t.Fatalf("wrong workspace consumed=%v err=%v", consumed, err)
+	}
+	session, consumed, err := repository.ConsumeAuthAuthorizationCode(t.Context(), value.WorkspaceID, value.Code, value.ApplicationKey, value.RedirectURL, now)
 	if err != nil || !consumed || session.RefreshToken != "refresh" {
 		t.Fatalf("session=%#v consumed=%v err=%v", session, consumed, err)
 	}
-	if _, consumed, err := repository.ConsumeAuthAuthorizationCode(t.Context(), value.Code, value.ApplicationKey, value.RedirectURL, now); err != nil || consumed {
+	if _, consumed, err := repository.ConsumeAuthAuthorizationCode(t.Context(), value.WorkspaceID, value.Code, value.ApplicationKey, value.RedirectURL, now); err != nil || consumed {
 		t.Fatalf("replay consumed=%v err=%v", consumed, err)
 	}
 	var persisted string

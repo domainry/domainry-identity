@@ -180,7 +180,7 @@ func (adapter sdkAuthentication) ExchangeAuthorizationCode(ctx context.Context, 
 	if err := adapter.binding.validateApplicationRedirect(ctx, identitysdk.ApplicationRef{WorkspaceID: request.WorkspaceID, ApplicationKey: request.ApplicationKey}, request.ReturnURL); err != nil {
 		return identitysdk.AuthSession{}, sdkBoundaryError(err)
 	}
-	session, err := adapter.binding.auth.ExchangeAuthorizationCode(ctx, request.Code, string(request.ApplicationKey), request.ReturnURL)
+	session, err := adapter.binding.auth.ExchangeAuthorizationCode(ctx, string(request.WorkspaceID), request.Code, string(request.ApplicationKey), request.ReturnURL)
 	return sdkAuthSession(session), sdkBoundaryError(err)
 }
 

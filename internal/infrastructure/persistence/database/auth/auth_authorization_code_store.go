@@ -9,6 +9,7 @@ import (
 	"time"
 
 	authmodel "github.com/domainry/domainry-identity/internal/domain/auth/model"
+	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
 
 func authAuthorizationCodeHash(code string) string {
@@ -31,14 +32,25 @@ func (s AuthStore) CreateAuthAuthorizationCode(ctx context.Context, value authmo
 		return err
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	_, err = s.db.ExecContext(ctx, "INSERT INTO "+s.store.TableIdentifier("auth_authorization_codes")+" ("+s.store.IdentityColumns("code_hash", "workspace_id", "application_key", "session_json", "redirect_url", "expires_at", "consumed_at", "created_at")+") VALUES ("+s.store.Placeholders(8)+")", codeHash, workspaceID, strings.TrimSpace(value.ApplicationKey), envelope, strings.TrimSpace(value.RedirectURL), value.ExpiresAt, nil, valueOrNow(value.CreatedAt, now))
+	statement, args, buildErr := ormbuilder.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "auth_authorization_codes", workspaceID).
+		Columns("code_hash", "application_key", "session_json", "redirect_url", "expires_at", "consumed_at", "created_at").
+		Values(codeHash, strings.TrimSpace(value.ApplicationKey), envelope, strings.TrimSpace(value.RedirectURL), value.ExpiresAt, nil, valueOrNow(value.CreatedAt, now)).Build()
+	if buildErr != nil {
+		return buildErr
+	}
+	_, err = s.db.ExecContext(ctx, statement, args...)
 	return err
 }
 
-func (s AuthStore) ConsumeAuthAuthorizationCode(ctx context.Context, code, applicationKey, redirectURL string, now time.Time) (authmodel.AuthSession, bool, error) {
+func (s AuthStore) ConsumeAuthAuthorizationCode(ctx context.Context, workspaceID, code, applicationKey, redirectURL string, now time.Time) (authmodel.AuthSession, bool, error) {
+	workspaceID, err := authWorkspaceID(workspaceID)
+	if err != nil {
+		return authmodel.AuthSession{}, false, err
+	}
+	code = strings.TrimSpace(code)
 	codeHash := authAuthorizationCodeHash(code)
 	applicationKey, redirectURL = strings.TrimSpace(applicationKey), strings.TrimSpace(redirectURL)
-	if codeHash == "" || applicationKey == "" || redirectURL == "" {
+	if code == "" || applicationKey == "" || redirectURL == "" {
 		return authmodel.AuthSession{}, false, nil
 	}
 	if now.IsZero() {
@@ -50,7 +62,15 @@ func (s AuthStore) ConsumeAuthAuthorizationCode(ctx context.Context, code, appli
 		return authmodel.AuthSession{}, false, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	result, err := tx.ExecContext(ctx, "UPDATE "+s.store.TableIdentifier("auth_authorization_codes")+" SET "+s.store.Identifier("consumed_at")+" = "+s.store.Placeholder(1)+" WHERE "+s.store.Identifier("code_hash")+" = "+s.store.Placeholder(2)+" AND "+s.store.Identifier("application_key")+" = "+s.store.Placeholder(3)+" AND "+s.store.Identifier("redirect_url")+" = "+s.store.Placeholder(4)+" AND "+s.store.Identifier("consumed_at")+" IS NULL AND "+s.store.Identifier("expires_at")+" > "+s.store.Placeholder(5), nowText, codeHash, applicationKey, redirectURL, nowText)
+	updateStatement, updateArgs, buildErr := ormbuilder.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "auth_authorization_codes", workspaceID).
+		Set("consumed_at", nowText).Where(ormbuilder.And(
+		ormbuilder.Equal("code_hash", codeHash), ormbuilder.Equal("application_key", applicationKey), ormbuilder.Equal("redirect_url", redirectURL),
+		ormbuilder.IsNull("consumed_at"), ormbuilder.GreaterThan("expires_at", nowText),
+	)).Build()
+	if buildErr != nil {
+		return authmodel.AuthSession{}, false, buildErr
+	}
+	result, err := tx.ExecContext(ctx, updateStatement, updateArgs...)
 	if err != nil {
 		return authmodel.AuthSession{}, false, err
 	}
@@ -58,8 +78,13 @@ func (s AuthStore) ConsumeAuthAuthorizationCode(ctx context.Context, code, appli
 	if err != nil || count != 1 {
 		return authmodel.AuthSession{}, false, err
 	}
-	var workspaceID, envelope string
-	if err := tx.QueryRowContext(ctx, "SELECT "+s.store.IdentityColumns("workspace_id", "session_json")+" FROM "+s.store.TableIdentifier("auth_authorization_codes")+" WHERE "+s.store.Identifier("code_hash")+" = "+s.store.Placeholder(1), codeHash).Scan(&workspaceID, &envelope); err != nil {
+	selectStatement, selectArgs, buildErr := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "auth_authorization_codes", workspaceID).
+		Columns("session_json").Where(ormbuilder.Equal("code_hash", codeHash)).Limit(1).Build()
+	if buildErr != nil {
+		return authmodel.AuthSession{}, false, buildErr
+	}
+	var envelope string
+	if err := tx.QueryRowContext(ctx, selectStatement, selectArgs...).Scan(&envelope); err != nil {
 		return authmodel.AuthSession{}, false, err
 	}
 	plain, err := s.codeSecrets.Decrypt(ctx, workspaceID, codeHash, envelope)
