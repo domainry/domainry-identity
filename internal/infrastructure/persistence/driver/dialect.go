@@ -67,6 +67,19 @@ type PrimaryKeyProfile interface {
 	EnsureCompositePrimaryKey(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, ...string) error
 }
 
+type SchemaProfile interface {
+	ManagedDatabaseMarkerEnabled() bool
+	RendererSchema(string) string
+	ColumnDefinition(string) string
+	ApplicationTablesQuery(ormdialect.Renderer, string) SchemaQuery
+	WorkspaceTablesQuery(ormdialect.Renderer, string) SchemaQuery
+	CreateIndexIfMissing(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, string, bool, ...string) error
+	NormalizeAuditCursorColumns(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, ...string) error
+	TableColumns(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string) (map[string]bool, error)
+	TableIndexes(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string) (map[string]bool, error)
+	DropIndex(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, string) error
+}
+
 type WorkspaceRLSProfile interface {
 	WorkspaceRLSSupported() bool
 	ApplyWorkspaceRLS(context.Context, *sql.DB, ormdialect.Renderer, string, string, string) error

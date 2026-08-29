@@ -1,4 +1,4 @@
-package postgres
+package schema
 
 import (
 	"context"
@@ -9,23 +9,27 @@ import (
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 )
 
-func (Dialect) ManagedDatabaseMarkerEnabled() bool        { return true }
-func (Dialect) ColumnDefinition(definition string) string { return strings.TrimSpace(definition) }
-func (Dialect) RendererSchema(schema string) string       { return strings.TrimSpace(schema) }
-func (Dialect) ApplicationTablesQuery(renderer ormdialect.Renderer, databaseSchema string) driver.SchemaQuery {
+type Profile struct{}
+
+func NewProfile() Profile { return Profile{} }
+
+func (Profile) ManagedDatabaseMarkerEnabled() bool        { return true }
+func (Profile) ColumnDefinition(definition string) string { return strings.TrimSpace(definition) }
+func (Profile) RendererSchema(schema string) string       { return strings.TrimSpace(schema) }
+func (Profile) ApplicationTablesQuery(renderer ormdialect.Renderer, databaseSchema string) driver.SchemaQuery {
 	return driver.SchemaQuery{
 		Statement: "SELECT table_name FROM information_schema.tables WHERE table_schema = " + renderer.Placeholder(1),
 		Arguments: []any{databaseSchema},
 	}
 }
-func (Dialect) WorkspaceTablesQuery(renderer ormdialect.Renderer, databaseSchema string) driver.SchemaQuery {
+func (Profile) WorkspaceTablesQuery(renderer ormdialect.Renderer, databaseSchema string) driver.SchemaQuery {
 	return driver.SchemaQuery{
 		Statement: "SELECT DISTINCT table_name FROM information_schema.columns WHERE table_schema = " + renderer.Placeholder(1) + " AND column_name = 'workspace_id' ORDER BY table_name",
 		Arguments: []any{databaseSchema},
 	}
 }
-func (Dialect) CreateIndexIfMissing(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, databaseSchema, relationPrefix, table, index string, unique bool, columns ...string) error {
-	indexes, err := (Dialect{}).TableIndexes(ctx, database, renderer, databaseSchema, relationPrefix, table)
+func (profile Profile) CreateIndexIfMissing(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, databaseSchema, relationPrefix, table, index string, unique bool, columns ...string) error {
+	indexes, err := profile.TableIndexes(ctx, database, renderer, databaseSchema, relationPrefix, table)
 	if err != nil || indexes[index] {
 		return err
 	}
@@ -39,7 +43,7 @@ func (Dialect) CreateIndexIfMissing(ctx context.Context, database driver.SchemaD
 	return nil
 }
 
-func (Dialect) TableColumns(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, databaseSchema, relationPrefix, table string) (map[string]bool, error) {
+func (Profile) TableColumns(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, databaseSchema, relationPrefix, table string) (map[string]bool, error) {
 	query := "SELECT column_name FROM information_schema.columns WHERE table_schema = " + renderer.Placeholder(1) + " AND table_name = " + renderer.Placeholder(2)
 	rows, err := database.QueryContext(ctx, query, databaseSchema, relationPrefix+table)
 	if err != nil {
@@ -48,7 +52,7 @@ func (Dialect) TableColumns(ctx context.Context, database driver.SchemaDatabase,
 	return postgresNames(rows, "column")
 }
 
-func (Dialect) TableIndexes(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, databaseSchema, relationPrefix, table string) (map[string]bool, error) {
+func (Profile) TableIndexes(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, databaseSchema, relationPrefix, table string) (map[string]bool, error) {
 	query := "SELECT indexname FROM pg_indexes WHERE schemaname = " + renderer.Placeholder(1) + " AND tablename = " + renderer.Placeholder(2)
 	rows, err := database.QueryContext(ctx, query, databaseSchema, relationPrefix+table)
 	if err != nil {
@@ -57,12 +61,12 @@ func (Dialect) TableIndexes(ctx context.Context, database driver.SchemaDatabase,
 	return postgresNames(rows, "index")
 }
 
-func (Dialect) DropIndex(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _, _, _, index string) error {
+func (Profile) DropIndex(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _, _, _, index string) error {
 	_, err := database.ExecContext(ctx, "DROP INDEX IF EXISTS "+renderer.Identifier(index))
 	return err
 }
 
-func (Dialect) NormalizeAuditCursorColumns(context.Context, driver.SchemaDatabase, ormdialect.Renderer, string, string, string, ...string) error {
+func (Profile) NormalizeAuditCursorColumns(context.Context, driver.SchemaDatabase, ormdialect.Renderer, string, string, string, ...string) error {
 	return nil
 }
 

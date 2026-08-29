@@ -1,4 +1,4 @@
-package sqlite
+package schema
 
 import (
 	"context"
@@ -9,17 +9,21 @@ import (
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 )
 
-func (Dialect) ManagedDatabaseMarkerEnabled() bool        { return false }
-func (Dialect) ColumnDefinition(definition string) string { return strings.TrimSpace(definition) }
-func (Dialect) RendererSchema(string) string              { return "" }
-func (Dialect) ApplicationTablesQuery(ormdialect.Renderer, string) driver.SchemaQuery {
+type Profile struct{}
+
+func NewProfile() Profile { return Profile{} }
+
+func (Profile) ManagedDatabaseMarkerEnabled() bool        { return false }
+func (Profile) ColumnDefinition(definition string) string { return strings.TrimSpace(definition) }
+func (Profile) RendererSchema(string) string              { return "" }
+func (Profile) ApplicationTablesQuery(ormdialect.Renderer, string) driver.SchemaQuery {
 	return driver.SchemaQuery{Statement: "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"}
 }
-func (Dialect) WorkspaceTablesQuery(ormdialect.Renderer, string) driver.SchemaQuery {
+func (Profile) WorkspaceTablesQuery(ormdialect.Renderer, string) driver.SchemaQuery {
 	return driver.SchemaQuery{Statement: "SELECT DISTINCT m.name FROM sqlite_master m JOIN pragma_table_info(m.name) p WHERE m.type = 'table' AND p.name = 'workspace_id' ORDER BY m.name"}
 }
-func (Dialect) CreateIndexIfMissing(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _ string, relationPrefix, table, index string, unique bool, columns ...string) error {
-	indexes, err := (Dialect{}).TableIndexes(ctx, database, renderer, "", relationPrefix, table)
+func (profile Profile) CreateIndexIfMissing(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _ string, relationPrefix, table, index string, unique bool, columns ...string) error {
+	indexes, err := profile.TableIndexes(ctx, database, renderer, "", relationPrefix, table)
 	if err != nil || indexes[index] {
 		return err
 	}
@@ -33,7 +37,7 @@ func (Dialect) CreateIndexIfMissing(ctx context.Context, database driver.SchemaD
 	return nil
 }
 
-func (Dialect) TableColumns(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _ string, relationPrefix, table string) (map[string]bool, error) {
+func (Profile) TableColumns(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _ string, relationPrefix, table string) (map[string]bool, error) {
 	rows, err := database.QueryContext(ctx, "PRAGMA table_info("+renderer.Identifier(relationPrefix+table)+")")
 	if err != nil {
 		return nil, err
@@ -52,7 +56,7 @@ func (Dialect) TableColumns(ctx context.Context, database driver.SchemaDatabase,
 	return columns, rows.Err()
 }
 
-func (Dialect) TableIndexes(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _ string, relationPrefix, table string) (map[string]bool, error) {
+func (Profile) TableIndexes(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _ string, relationPrefix, table string) (map[string]bool, error) {
 	physicalTable := relationPrefix + table
 	rows, err := database.QueryContext(ctx, "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = "+renderer.Placeholder(1), physicalTable)
 	if err != nil {
@@ -61,12 +65,12 @@ func (Dialect) TableIndexes(ctx context.Context, database driver.SchemaDatabase,
 	return sqliteIndexNames(rows)
 }
 
-func (Dialect) DropIndex(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _, _, _, index string) error {
+func (Profile) DropIndex(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _, _, _, index string) error {
 	_, err := database.ExecContext(ctx, "DROP INDEX IF EXISTS "+renderer.Identifier(index))
 	return err
 }
 
-func (Dialect) NormalizeAuditCursorColumns(context.Context, driver.SchemaDatabase, ormdialect.Renderer, string, string, string, ...string) error {
+func (Profile) NormalizeAuditCursorColumns(context.Context, driver.SchemaDatabase, ormdialect.Renderer, string, string, string, ...string) error {
 	return nil
 }
 

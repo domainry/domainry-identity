@@ -1,4 +1,4 @@
-package mysql
+package schema
 
 import (
 	"context"
@@ -9,9 +9,13 @@ import (
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 )
 
-func (Dialect) ManagedDatabaseMarkerEnabled() bool { return true }
-func (Dialect) RendererSchema(string) string       { return "" }
-func (Dialect) ColumnDefinition(definition string) string {
+type Profile struct{}
+
+func NewProfile() Profile { return Profile{} }
+
+func (Profile) ManagedDatabaseMarkerEnabled() bool { return true }
+func (Profile) RendererSchema(string) string       { return "" }
+func (Profile) ColumnDefinition(definition string) string {
 	definition = strings.TrimSpace(definition)
 	// MySQL accepts defaults for TEXT/BLOB values only as expressions.
 	definition = strings.ReplaceAll(definition, "TEXT NOT NULL DEFAULT '[]'", "TEXT NOT NULL DEFAULT ('[]')")
@@ -19,17 +23,17 @@ func (Dialect) ColumnDefinition(definition string) string {
 	definition = strings.ReplaceAll(definition, "TEXT NOT NULL DEFAULT ''", "TEXT NOT NULL DEFAULT ('')")
 	return definition
 }
-func (Dialect) ApplicationTablesQuery(ormdialect.Renderer, string) driver.SchemaQuery {
+func (Profile) ApplicationTablesQuery(ormdialect.Renderer, string) driver.SchemaQuery {
 	return driver.SchemaQuery{Statement: "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE()"}
 }
-func (Dialect) WorkspaceTablesQuery(renderer ormdialect.Renderer, databaseSchema string) driver.SchemaQuery {
+func (Profile) WorkspaceTablesQuery(renderer ormdialect.Renderer, databaseSchema string) driver.SchemaQuery {
 	return driver.SchemaQuery{
 		Statement: "SELECT DISTINCT table_name FROM information_schema.columns WHERE table_schema = " + renderer.Placeholder(1) + " AND column_name = 'workspace_id' ORDER BY table_name",
 		Arguments: []any{databaseSchema},
 	}
 }
-func (Dialect) CreateIndexIfMissing(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _ string, relationPrefix, table, index string, unique bool, columns ...string) error {
-	indexes, err := (Dialect{}).TableIndexes(ctx, database, renderer, "", relationPrefix, table)
+func (profile Profile) CreateIndexIfMissing(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _ string, relationPrefix, table, index string, unique bool, columns ...string) error {
+	indexes, err := profile.TableIndexes(ctx, database, renderer, "", relationPrefix, table)
 	if err != nil || indexes[index] {
 		return err
 	}
@@ -43,7 +47,7 @@ func (Dialect) CreateIndexIfMissing(ctx context.Context, database driver.SchemaD
 	return nil
 }
 
-func (Dialect) TableColumns(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _ string, relationPrefix, table string) (map[string]bool, error) {
+func (Profile) TableColumns(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _ string, relationPrefix, table string) (map[string]bool, error) {
 	rows, err := database.QueryContext(ctx, "SELECT column_name FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = "+renderer.Placeholder(1), relationPrefix+table)
 	if err != nil {
 		return nil, err
@@ -51,7 +55,7 @@ func (Dialect) TableColumns(ctx context.Context, database driver.SchemaDatabase,
 	return mysqlNames(rows, "column")
 }
 
-func (Dialect) TableIndexes(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _ string, relationPrefix, table string) (map[string]bool, error) {
+func (Profile) TableIndexes(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _ string, relationPrefix, table string) (map[string]bool, error) {
 	query := "SELECT DISTINCT INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = " + renderer.Placeholder(1)
 	rows, err := database.QueryContext(ctx, query, relationPrefix+table)
 	if err != nil {
@@ -60,12 +64,12 @@ func (Dialect) TableIndexes(ctx context.Context, database driver.SchemaDatabase,
 	return mysqlNames(rows, "index")
 }
 
-func (Dialect) DropIndex(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _, _, table, index string) error {
+func (Profile) DropIndex(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _, _, table, index string) error {
 	_, err := database.ExecContext(ctx, "DROP INDEX "+renderer.Identifier(index)+" ON "+renderer.Table(table))
 	return err
 }
 
-func (Dialect) NormalizeAuditCursorColumns(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _ string, relationPrefix, table string, columns ...string) error {
+func (Profile) NormalizeAuditCursorColumns(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _ string, relationPrefix, table string, columns ...string) error {
 	if len(columns) == 0 {
 		return nil
 	}
@@ -98,7 +102,7 @@ func (Dialect) NormalizeAuditCursorColumns(ctx context.Context, database driver.
 		return fmt.Errorf("iterate MySQL audit cursor columns: %w", err)
 	}
 	_ = rows.Close()
-	cursorType := (Dialect{}).SchemaTypes().AuditCursorText
+	cursorType := "VARCHAR(191) CHARACTER SET ascii COLLATE ascii_bin"
 	modifications := make([]string, 0, len(columns))
 	for _, column := range columns {
 		state, exists := states[column]
