@@ -13,6 +13,7 @@ import (
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
 	metadatarepository "github.com/domainry/domainry-identity/internal/domain/metadata/repository"
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
+	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
 
 type MetadataStore struct {
@@ -42,12 +43,17 @@ func (r MetadataStore) SnapshotRevision(ctx context.Context, scope identitymodel
 		executor = actionExecutor
 	}
 	var revision string
-	err := executor.QueryRowContext(ctx, "SELECT "+r.store.Identifier("value")+" FROM "+r.store.TableIdentifier("metadata_catalog")+" WHERE "+r.store.Identifier("key")+" = "+r.store.Placeholder(1), "schema_hash").Scan(&revision)
+	statement, arguments, err := ormbuilder.NewSelectBuilder(r.store.SQLRenderer, "metadata_catalog").
+		Columns("value").Where(ormbuilder.Equal("key", "schema_hash")).Build()
+	if err != nil {
+		return "", fmt.Errorf("build metadata snapshot revision read: %w", err)
+	}
+	err = executor.QueryRowContext(ctx, statement, arguments...).Scan(&revision)
 	if err == sql.ErrNoRows {
 		if refreshErr := r.refreshCatalogHashWithExecutor(ctx, executor); refreshErr != nil {
 			return "", refreshErr
 		}
-		err = executor.QueryRowContext(ctx, "SELECT "+r.store.Identifier("value")+" FROM "+r.store.TableIdentifier("metadata_catalog")+" WHERE "+r.store.Identifier("key")+" = "+r.store.Placeholder(1), "schema_hash").Scan(&revision)
+		err = executor.QueryRowContext(ctx, statement, arguments...).Scan(&revision)
 	}
 	if err != nil {
 		return "", fmt.Errorf("load metadata snapshot revision: %w", err)
@@ -79,24 +85,4 @@ func (r MetadataStore) SyncManifest(ctx context.Context, scope identitymodel.Sys
 
 func recordMutationTxOptions() *sql.TxOptions {
 	return &sql.TxOptions{Isolation: sql.LevelSerializable}
-}
-
-func placeholders(store *database.IdentityStore, count int) []string {
-	values := make([]string, 0, count)
-	for position := 1; position <= count; position++ {
-		values = append(values, store.Placeholder(position))
-	}
-	return values
-}
-
-func stringsJoinIdentifiers(store *database.IdentityStore, columns ...string) string {
-	return strings.Join(database.QuotedColumns(store, columns), ", ")
-}
-
-func joinIdentifiers(store *database.IdentityStore, columns ...string) string {
-	return stringsJoinIdentifiers(store, columns...)
-}
-
-func joinPlaceholders(store *database.IdentityStore, count int) string {
-	return strings.Join(placeholders(store, count), ", ")
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/domainry/domainry-foundation/requestcontext"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	manifestmodel "github.com/domainry/domainry-identity/internal/domain/manifest/model"
+	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
 
 var disableRemovedGeneratedActionsForManifest = func(ctx context.Context, store MetadataStore, tx *sql.Tx, manifest manifestmodel.ManifestSchema, now string) error {
@@ -144,11 +145,13 @@ func manifestGeneratedSourceID(manifest manifestmodel.ManifestSchema) string {
 }
 
 func (s MetadataStore) disableRemovedGeneratedDefinitions(ctx context.Context, tx *sql.Tx, table, sourceID string, activeKeys map[string]bool, now string) error {
-	query := "SELECT " + s.store.Identifier("resource_key") + " FROM " + s.store.TableIdentifier(table) +
-		" WHERE " + s.store.Identifier("source_kind") + " = " + s.store.Placeholder(1) +
-		" AND " + s.store.Identifier("source_id") + " = " + s.store.Placeholder(2) +
-		" AND " + s.store.Identifier("disabled_at") + " IS NULL"
-	rows, err := tx.QueryContext(ctx, query, "generated", sourceID)
+	query, arguments, err := ormbuilder.NewSelectBuilder(s.store.SQLRenderer, table).
+		Columns("resource_key").
+		Where(ormbuilder.And(ormbuilder.Equal("source_kind", "generated"), ormbuilder.Equal("source_id", sourceID), ormbuilder.IsNull("disabled_at"))).Build()
+	if err != nil {
+		return fmt.Errorf("build generated %s manifest sync list: %w", table, err)
+	}
+	rows, err := tx.QueryContext(ctx, query, arguments...)
 	if err != nil {
 		return fmt.Errorf("list generated %s for manifest sync: %w", table, err)
 	}
@@ -170,14 +173,25 @@ func (s MetadataStore) disableRemovedGeneratedDefinitions(ctx context.Context, t
 	if err := closeGeneratedActionRows(rows); err != nil {
 		return fmt.Errorf("close generated %s for manifest sync: %w", table, err)
 	}
-	update := "UPDATE " + s.store.TableIdentifier(table) +
-		" SET " + s.store.Identifier("disabled_at") + " = " + s.store.Placeholder(1) +
-		", " + s.store.Identifier("updated_at") + " = " + s.store.Placeholder(2) +
-		" WHERE " + s.store.Identifier("resource_key") + " = " + s.store.Placeholder(3)
-	for _, key := range removedKeys {
-		if _, err := tx.ExecContext(ctx, update, now, now, key); err != nil {
-			return fmt.Errorf("disable removed generated %s entry %s: %w", table, key, err)
-		}
+	if len(removedKeys) == 0 {
+		return nil
+	}
+	update, updateArguments, err := ormbuilder.NewUpdateBuilder(s.store.SQLRenderer, table).
+		Set("disabled_at", now).Set("updated_at", now).
+		Where(ormbuilder.In("resource_key", stringValues(removedKeys)...)).Build()
+	if err != nil {
+		return fmt.Errorf("build removed generated %s disable: %w", table, err)
+	}
+	if _, err := tx.ExecContext(ctx, update, updateArguments...); err != nil {
+		return fmt.Errorf("disable removed generated %s entries: %w", table, err)
 	}
 	return nil
+}
+
+func stringValues(values []string) []any {
+	result := make([]any, len(values))
+	for index, value := range values {
+		result[index] = value
+	}
+	return result
 }
