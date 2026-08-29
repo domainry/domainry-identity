@@ -5,11 +5,22 @@ import (
 	"database/sql"
 	"encoding/json"
 	"strings"
+
+	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
 
 func (s AuthStore) AuthorizationRedirectRegistered(ctx context.Context, workspaceID, applicationKey, redirectURL string) (bool, error) {
+	workspaceID, err := authWorkspaceID(workspaceID)
+	if err != nil {
+		return false, err
+	}
+	statement, args, buildErr := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "identity_authorization_catalogs", workspaceID).
+		Columns("catalog_json").Where(ormbuilder.Equal("application_key", strings.TrimSpace(applicationKey))).Limit(1).Build()
+	if buildErr != nil {
+		return false, buildErr
+	}
 	var payload []byte
-	err := s.db.QueryRowContext(ctx, "SELECT "+s.store.Identifier("catalog_json")+" FROM "+s.store.TableIdentifier("identity_authorization_catalogs")+" WHERE "+s.store.Identifier("workspace_id")+" = "+s.store.Placeholder(1)+" AND "+s.store.Identifier("application_key")+" = "+s.store.Placeholder(2), strings.TrimSpace(workspaceID), strings.TrimSpace(applicationKey)).Scan(&payload)
+	err = s.db.QueryRowContext(ctx, statement, args...).Scan(&payload)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return false, nil

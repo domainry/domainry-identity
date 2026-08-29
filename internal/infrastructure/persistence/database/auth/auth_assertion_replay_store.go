@@ -6,6 +6,8 @@ import (
 	"encoding/base64"
 	"strings"
 	"time"
+
+	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
 
 func authAssertionReplayHash(workspaceID, provider, issuer, assertionID string) string {
@@ -33,12 +35,27 @@ func (s AuthStore) ClaimAuthAssertion(ctx context.Context, workspaceID, provider
 	}
 	// Expired replay markers are only housekeeping. Correctness comes from the
 	// unique replay hash and the fact that an active marker is never updated.
-	_, _ = s.db.ExecContext(ctx, "DELETE FROM "+s.store.TableIdentifier("auth_assertion_replays")+" WHERE "+s.store.Identifier("expires_at")+" <= "+s.store.Placeholder(1), now.Format(time.RFC3339Nano))
+	deleteStatement, deleteArgs, deleteBuildErr := ormbuilder.NewWorkspaceDeleteBuilder(s.store.SQLRenderer(), "auth_assertion_replays", workspaceID).
+		Where(ormbuilder.LessThanOrEqual("expires_at", now.Format(time.RFC3339Nano))).Build()
+	if deleteBuildErr == nil {
+		_, _ = s.db.ExecContext(ctx, deleteStatement, deleteArgs...)
+	}
 	replayHash := authAssertionReplayHash(workspaceID, provider, issuer, assertionID)
-	_, err = s.db.ExecContext(ctx, "INSERT INTO "+s.store.TableIdentifier("auth_assertion_replays")+" ("+s.store.IdentityColumns("replay_hash", "workspace_id", "provider_key", "expires_at", "created_at")+") VALUES ("+s.store.Placeholders(5)+")", replayHash, workspaceID, provider, expiresAt.UTC().Format(time.RFC3339Nano), now.Format(time.RFC3339Nano))
+	insertStatement, insertArgs, buildErr := ormbuilder.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "auth_assertion_replays", workspaceID).
+		Columns("replay_hash", "provider_key", "expires_at", "created_at").
+		Values(replayHash, provider, expiresAt.UTC().Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)).Build()
+	if buildErr != nil {
+		return false, buildErr
+	}
+	_, err = s.db.ExecContext(ctx, insertStatement, insertArgs...)
 	if err != nil {
 		var existing int
-		lookupErr := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+s.store.TableIdentifier("auth_assertion_replays")+" WHERE "+s.store.Identifier("replay_hash")+" = "+s.store.Placeholder(1), replayHash).Scan(&existing)
+		lookupStatement, lookupArgs, lookupBuildErr := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "auth_assertion_replays", workspaceID).
+			Projections(ormbuilder.Project(ormbuilder.CountAll())).Where(ormbuilder.Equal("replay_hash", replayHash)).Build()
+		if lookupBuildErr != nil {
+			return false, lookupBuildErr
+		}
+		lookupErr := s.db.QueryRowContext(ctx, lookupStatement, lookupArgs...).Scan(&existing)
 		if lookupErr == nil && existing > 0 {
 			return false, nil
 		}

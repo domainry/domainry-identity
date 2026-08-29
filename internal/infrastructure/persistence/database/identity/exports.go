@@ -4,11 +4,14 @@ import (
 	"database/sql"
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	ormdialect "github.com/domainry/domainry-orm/dialect"
 )
 
 func (s *SQLIdentityStore) DB() *sql.DB { return s.db }
 
 func (s *SQLIdentityStore) Driver() string { return s.driver }
+
+func (s *SQLIdentityStore) SQLRenderer() ormdialect.Renderer { return s.sqlRenderer() }
 
 func (s *SQLIdentityStore) Identifier(value string) string { return s.identifier(value) }
 
