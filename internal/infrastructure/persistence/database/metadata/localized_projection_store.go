@@ -10,6 +10,7 @@ import (
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
+	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
 
 type metadataLocalizedProjection struct {
@@ -30,26 +31,25 @@ func (s MetadataStore) syncMetadataLocalizedTextTx(ctx context.Context, tx *sql.
 	projections := metadataLocalizedProjections(rawI18n)
 	workspaceID := identitymodel.InstallationWorkspaceID
 	entityType, entityKey := strings.TrimSpace(resourceType), strings.TrimSpace(resourceKey)
-	if _, err := tx.ExecContext(ctx, "DELETE FROM "+s.store.TableIdentifier("identity_localized_text")+" WHERE "+s.store.Identifier("workspace_id")+" = "+s.store.Placeholder(1)+" AND "+s.store.Identifier("entity_type")+" = "+s.store.Placeholder(2)+" AND "+s.store.Identifier("entity_key")+" = "+s.store.Placeholder(3)+" AND "+s.store.Identifier("source_kind")+" = "+s.store.Placeholder(4), workspaceID, entityType, entityKey, "metadata_definition"); err != nil {
+	statement, arguments, err := ormbuilder.NewWorkspaceDeleteBuilder(s.store.SQLRenderer, "identity_localized_text", workspaceID).
+		Where(ormbuilder.And(ormbuilder.Equal("entity_type", entityType), ormbuilder.Equal("entity_key", entityKey), ormbuilder.Equal("source_kind", "metadata_definition"))).Build()
+	if err != nil {
+		return fmt.Errorf("build metadata localized text projection clear: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
 		return fmt.Errorf("clear metadata localized text projection: %w", err)
 	}
 	for _, projection := range projections {
-		update := "UPDATE " + s.store.TableIdentifier("identity_localized_text") + " SET " + s.store.Identifier("text") + " = " + s.store.Placeholder(1) + ", " + s.store.Identifier("source_kind") + " = " + s.store.Placeholder(2) + ", " + s.store.Identifier("source_id") + " = " + s.store.Placeholder(3) + ", " + s.store.Identifier("updated_at") + " = " + s.store.Placeholder(4) + " WHERE " + s.store.Identifier("workspace_id") + " = " + s.store.Placeholder(5) + " AND " + s.store.Identifier("entity_type") + " = " + s.store.Placeholder(6) + " AND " + s.store.Identifier("entity_key") + " = " + s.store.Placeholder(7) + " AND " + s.store.Identifier("property") + " = " + s.store.Placeholder(8) + " AND " + s.store.Identifier("locale") + " = " + s.store.Placeholder(9)
-		result, err := tx.ExecContext(ctx, update, projection.Text, "metadata_definition", sourceID, now, workspaceID, entityType, entityKey, projection.Property, projection.Locale)
-		if err != nil {
-			return fmt.Errorf("update metadata localized text projection: %w", err)
-		}
-		affected, err := result.RowsAffected()
-		if err != nil {
-			return fmt.Errorf("read updated metadata localized text projection rows: %w", err)
-		}
-		if affected == 1 {
-			continue
-		}
 		localized := metadatamodel.LocalizedText{WorkspaceID: workspaceID, EntityType: entityType, EntityKey: entityKey, Property: projection.Property, Locale: projection.Locale, Text: projection.Text}
-		columns := []string{"id", "workspace_id", "entity_type", "entity_key", "property", "locale", "text", "source_kind", "source_id", "created_at", "updated_at"}
-		values := []any{localizedTextID(localized), workspaceID, entityType, entityKey, projection.Property, projection.Locale, projection.Text, "metadata_definition", sourceID, now, now}
-		if _, err := tx.ExecContext(ctx, "INSERT INTO "+s.store.TableIdentifier("identity_localized_text")+" ("+joinIdentifiers(s.store, columns...)+") VALUES ("+joinPlaceholders(s.store, len(values))+")", values...); err != nil {
+		insert := ormbuilder.NewWorkspaceInsertBuilder(s.store.SQLRenderer, "identity_localized_text", workspaceID).
+			Columns("id", "entity_type", "entity_key", "property", "locale", "text", "source_kind", "source_id", "created_at", "updated_at").
+			Values(localizedTextID(localized), entityType, entityKey, projection.Property, projection.Locale, projection.Text, "metadata_definition", sourceID, now, now)
+		s.store.Engine.ApplyUpsert(insert, []string{"workspace_id", "entity_type", "entity_key", "property", "locale"}, "text", "source_kind", "source_id", "updated_at")
+		statement, arguments, err = insert.Build()
+		if err != nil {
+			return fmt.Errorf("build metadata localized text projection upsert: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
 			return fmt.Errorf("insert metadata localized text projection: %w", err)
 		}
 	}

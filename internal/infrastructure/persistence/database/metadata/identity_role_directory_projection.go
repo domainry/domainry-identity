@@ -10,6 +10,7 @@ import (
 	changeplanmodel "github.com/domainry/domainry-identity/internal/domain/changeplan/model"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
+	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
 
 // applyIdentityRoleDirectoryMutation keeps the operational role directory and
@@ -49,8 +50,13 @@ func (r MetadataStore) applyIdentityRoleDirectoryMutation(ctx context.Context, t
 		if label == "" {
 			label = roleKey
 		}
-		update := "UPDATE " + r.store.TableIdentifier("identity_roles") + " SET " + r.store.Identifier("label") + " = " + r.store.Placeholder(1) + ", " + r.store.Identifier("status") + " = " + r.store.Placeholder(2) + ", " + r.store.Identifier("updated_at") + " = " + r.store.Placeholder(3) + " WHERE " + r.store.Identifier("workspace_id") + " = " + r.store.Placeholder(4) + " AND " + r.store.Identifier("role_key") + " = " + r.store.Placeholder(5)
-		result, err := tx.ExecContext(ctx, update, label, string(identitymodel.IdentityStatusActive), now, workspaceID.String(), roleKey)
+		statement, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(r.store.SQLRenderer, "identity_roles", workspaceID.String()).
+			Set("label", label).Set("status", string(identitymodel.IdentityStatusActive)).Set("updated_at", now).
+			Where(ormbuilder.Equal("role_key", roleKey)).Build()
+		if err != nil {
+			return fmt.Errorf("build role directory projection %s update: %w", roleKey, err)
+		}
+		result, err := tx.ExecContext(ctx, statement, arguments...)
 		if err != nil {
 			return fmt.Errorf("update role directory projection %s: %w", roleKey, err)
 		}
@@ -64,16 +70,23 @@ func (r MetadataStore) applyIdentityRoleDirectoryMutation(ctx context.Context, t
 		if affected != 0 {
 			return fmt.Errorf("role directory projection %s is not unique", roleKey)
 		}
-		columns := []string{"id", "workspace_id", "role_key", "label", "description", "status", "created_at", "updated_at"}
-		values := []any{roleKey, workspaceID.String(), roleKey, label, "", string(identitymodel.IdentityStatusActive), now, now}
-		query := "INSERT INTO " + r.store.TableIdentifier("identity_roles") + " (" + joinIdentifiers(r.store, columns...) + ") VALUES (" + joinPlaceholders(r.store, len(values)) + ")"
-		if _, err := tx.ExecContext(ctx, query, values...); err != nil {
+		statement, arguments, err = ormbuilder.NewWorkspaceInsertBuilder(r.store.SQLRenderer, "identity_roles", workspaceID.String()).
+			Columns("id", "role_key", "label", "description", "status", "created_at", "updated_at").
+			Values(roleKey, roleKey, label, "", string(identitymodel.IdentityStatusActive), now, now).Build()
+		if err != nil {
+			return fmt.Errorf("build role directory projection %s insert: %w", roleKey, err)
+		}
+		if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
 			return fmt.Errorf("insert role directory projection %s: %w", roleKey, err)
 		}
 		return nil
 	case "archive", "delete":
-		query := "UPDATE " + r.store.TableIdentifier("identity_roles") + " SET " + r.store.Identifier("status") + " = " + r.store.Placeholder(1) + ", " + r.store.Identifier("updated_at") + " = " + r.store.Placeholder(2) + " WHERE " + r.store.Identifier("workspace_id") + " = " + r.store.Placeholder(3) + " AND " + r.store.Identifier("role_key") + " = " + r.store.Placeholder(4)
-		result, err := tx.ExecContext(ctx, query, string(identitymodel.IdentityStatusDisabled), now, workspaceID.String(), roleKey)
+		statement, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(r.store.SQLRenderer, "identity_roles", workspaceID.String()).
+			Set("status", string(identitymodel.IdentityStatusDisabled)).Set("updated_at", now).Where(ormbuilder.Equal("role_key", roleKey)).Build()
+		if err != nil {
+			return fmt.Errorf("build role directory projection %s disable: %w", roleKey, err)
+		}
+		result, err := tx.ExecContext(ctx, statement, arguments...)
 		if err != nil {
 			return fmt.Errorf("disable role directory projection %s: %w", roleKey, err)
 		}
