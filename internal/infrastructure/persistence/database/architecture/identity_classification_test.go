@@ -185,6 +185,22 @@ func TestIdentityUserRootFileOnlyCoordinatesClassifiedOwners(t *testing.T) {
 	}
 }
 
+func TestIdentityWorkforceRootFileRemainsFacade(t *testing.T) {
+	source, err := os.ReadFile(filepath.Join(identityPersistenceRoot(t), "identity_store_sql_workforce.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	for _, forbidden := range []string{"ormbuilder", ".BeginTx(", ".ExecContext(", ".QueryContext("} {
+		if strings.Contains(text, forbidden) {
+			t.Errorf("Identity workforce facade owns persistence implementation %q", forbidden)
+		}
+	}
+	if !strings.Contains(text, "workforcepersistence.New") {
+		t.Error("Identity workforce facade lost classified owner delegation")
+	}
+}
+
 func identityPersistenceRoot(t *testing.T) string {
 	t.Helper()
 	_, sourceFile, _, ok := runtime.Caller(0)
