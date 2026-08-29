@@ -11,6 +11,7 @@ import (
 
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	identitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity"
+	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
 
 type Store struct {
@@ -43,11 +44,21 @@ func (store *Store) Save(ctx context.Context, catalog identitysdk.AuthorizationC
 	historyID := applicationKey + ":" + string(receipt.Revision)
 	var existingPayload []byte
 	var existingRevision, existingSHA256, existingPublishedAt string
-	historyQuery := "SELECT " + store.identity.IdentityColumns("catalog_json", "revision", "sha256", "published_at") + " FROM " + store.identity.TableIdentifier("identity_authorization_catalog_revisions") + " WHERE " + store.identity.Identifier("workspace_id") + " = " + store.identity.Placeholder(1) + " AND " + store.identity.Identifier("id") + " = " + store.identity.Placeholder(2)
-	historyErr := tx.QueryRowContext(ctx, historyQuery, workspaceID, historyID).Scan(&existingPayload, &existingRevision, &existingSHA256, &existingPublishedAt)
+	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(store.identity.SQLRenderer(), "identity_authorization_catalog_revisions", workspaceID).
+		Columns("catalog_json", "revision", "sha256", "published_at").Where(ormbuilder.Equal("id", historyID)).Build()
+	if err != nil {
+		return err
+	}
+	historyErr := tx.QueryRowContext(ctx, statement, arguments...).Scan(&existingPayload, &existingRevision, &existingSHA256, &existingPublishedAt)
 	switch {
 	case historyErr == sql.ErrNoRows:
-		if _, err := tx.ExecContext(ctx, "INSERT INTO "+store.identity.TableIdentifier("identity_authorization_catalog_revisions")+" ("+store.identity.IdentityColumns("id", "workspace_id", "application_key", "catalog_json", "revision", "sha256", "published_at", "created_at")+") VALUES ("+store.identity.Placeholders(8)+")", historyID, workspaceID, applicationKey, payload, string(receipt.Revision), receipt.SHA256, receipt.PublishedAt, receipt.PublishedAt); err != nil {
+		statement, arguments, err = ormbuilder.NewWorkspaceInsertBuilder(store.identity.SQLRenderer(), "identity_authorization_catalog_revisions", workspaceID).
+			Columns("id", "application_key", "catalog_json", "revision", "sha256", "published_at", "created_at").
+			Values(historyID, applicationKey, payload, string(receipt.Revision), receipt.SHA256, receipt.PublishedAt, receipt.PublishedAt).Build()
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
 			return err
 		}
 	case historyErr != nil:
@@ -55,10 +66,15 @@ func (store *Store) Save(ctx context.Context, catalog identitysdk.AuthorizationC
 	case !bytes.Equal(existingPayload, payload) || existingRevision != string(receipt.Revision) || existingSHA256 != receipt.SHA256 || existingPublishedAt != receipt.PublishedAt:
 		return &identitysdk.Error{Code: "identity.catalog_revision_immutable_conflict"}
 	}
-	if _, err := tx.ExecContext(ctx, "DELETE FROM "+store.identity.TableIdentifier("identity_authorization_catalogs")+" WHERE "+store.identity.Identifier("workspace_id")+" = "+store.identity.Placeholder(1)+" AND "+store.identity.Identifier("application_key")+" = "+store.identity.Placeholder(2), workspaceID, applicationKey); err != nil {
+	insert := ormbuilder.NewWorkspaceInsertBuilder(store.identity.SQLRenderer(), "identity_authorization_catalogs", workspaceID).
+		Columns("application_key", "catalog_json", "revision", "sha256", "published_at", "updated_at").
+		Values(applicationKey, payload, string(receipt.Revision), receipt.SHA256, receipt.PublishedAt, receipt.PublishedAt)
+	store.identity.ApplyUpsert(insert, []string{"workspace_id", "application_key"}, "catalog_json", "revision", "sha256", "published_at", "updated_at")
+	statement, arguments, err = insert.Build()
+	if err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, "INSERT INTO "+store.identity.TableIdentifier("identity_authorization_catalogs")+" ("+store.identity.IdentityColumns("application_key", "workspace_id", "catalog_json", "revision", "sha256", "published_at", "updated_at")+") VALUES ("+store.identity.Placeholders(7)+")", applicationKey, workspaceID, payload, string(receipt.Revision), receipt.SHA256, receipt.PublishedAt, receipt.PublishedAt); err != nil {
+	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -70,7 +86,12 @@ func (store *Store) Load(ctx context.Context, application identitysdk.Applicatio
 	if workspaceID == "" || applicationKey == "" {
 		return identitysdk.AuthorizationCatalog{}, identitysdk.CatalogReceipt{}, false, &identitysdk.Error{Code: "identity.application_scope_invalid"}
 	}
-	row := store.db.QueryRowContext(ctx, "SELECT "+store.identity.IdentityColumns("catalog_json", "revision", "sha256", "published_at")+" FROM "+store.identity.TableIdentifier("identity_authorization_catalogs")+" WHERE "+store.identity.Identifier("workspace_id")+" = "+store.identity.Placeholder(1)+" AND "+store.identity.Identifier("application_key")+" = "+store.identity.Placeholder(2), workspaceID, applicationKey)
+	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(store.identity.SQLRenderer(), "identity_authorization_catalogs", workspaceID).
+		Columns("catalog_json", "revision", "sha256", "published_at").Where(ormbuilder.Equal("application_key", applicationKey)).Build()
+	if err != nil {
+		return identitysdk.AuthorizationCatalog{}, identitysdk.CatalogReceipt{}, false, err
+	}
+	row := store.db.QueryRowContext(ctx, statement, arguments...)
 	var payload []byte
 	var revision, sha256Value, publishedAt string
 	if err := row.Scan(&payload, &revision, &sha256Value, &publishedAt); err != nil {
@@ -93,7 +114,12 @@ func (store *Store) LoadRevision(ctx context.Context, application identitysdk.Ap
 	if workspaceID == "" || applicationKey == "" || !revision.Valid() {
 		return identitysdk.AuthorizationCatalog{}, identitysdk.CatalogReceipt{}, false, &identitysdk.Error{Code: "identity.application_scope_invalid"}
 	}
-	row := store.db.QueryRowContext(ctx, "SELECT "+store.identity.IdentityColumns("catalog_json", "sha256", "published_at")+" FROM "+store.identity.TableIdentifier("identity_authorization_catalog_revisions")+" WHERE "+store.identity.Identifier("workspace_id")+" = "+store.identity.Placeholder(1)+" AND "+store.identity.Identifier("application_key")+" = "+store.identity.Placeholder(2)+" AND "+store.identity.Identifier("revision")+" = "+store.identity.Placeholder(3), workspaceID, applicationKey, string(revision))
+	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(store.identity.SQLRenderer(), "identity_authorization_catalog_revisions", workspaceID).
+		Columns("catalog_json", "sha256", "published_at").Where(ormbuilder.And(ormbuilder.Equal("application_key", applicationKey), ormbuilder.Equal("revision", string(revision)))).Build()
+	if err != nil {
+		return identitysdk.AuthorizationCatalog{}, identitysdk.CatalogReceipt{}, false, err
+	}
+	row := store.db.QueryRowContext(ctx, statement, arguments...)
 	var payload []byte
 	var sha256Value, publishedAt string
 	if err := row.Scan(&payload, &sha256Value, &publishedAt); err != nil {
