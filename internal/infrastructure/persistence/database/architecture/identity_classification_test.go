@@ -64,6 +64,27 @@ func TestIdentityBusinessPersistenceUsesStructuredBuilders(t *testing.T) {
 	}
 }
 
+func TestIdentityWorkforceLifecycleRootFilesRemainFacades(t *testing.T) {
+	identityRoot := identityPersistenceRoot(t)
+	files := []string{
+		"identity_workforce_lifecycle_store.go",
+		"identity_workforce_onboarding_store.go",
+		"identity_workforce_termination_store.go",
+	}
+	for _, name := range files {
+		source, err := os.ReadFile(filepath.Join(identityRoot, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := string(source)
+		for _, forbidden := range []string{"ormbuilder", ".BeginTx(", ".ExecContext(", ".QueryRowContext("} {
+			if strings.Contains(text, forbidden) {
+				t.Errorf("Identity workforce facade %s owns persistence implementation %q", name, forbidden)
+			}
+		}
+	}
+}
+
 func identityPersistenceRoot(t *testing.T) string {
 	t.Helper()
 	_, sourceFile, _, ok := runtime.Caller(0)
