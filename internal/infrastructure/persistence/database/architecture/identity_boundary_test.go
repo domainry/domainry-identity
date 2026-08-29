@@ -56,7 +56,7 @@ func TestIdentityDirectoryPaginationRemainsWorkspaceKeysetOnly(t *testing.T) {
 	if !ok {
 		t.Fatal("resolve Identity persistence source root")
 	}
-	path := filepath.Join(filepath.Dir(filepath.Dir(sourceFile)), "identity", "identity_directory_page_store.go")
+	path := filepath.Join(filepath.Dir(filepath.Dir(sourceFile)), "identity", "directory", "store.go")
 	source, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
