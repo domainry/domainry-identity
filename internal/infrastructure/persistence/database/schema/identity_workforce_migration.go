@@ -57,7 +57,7 @@ type legacyIdentityUserWorkforceTarget struct {
 }
 
 func migrateLegacyIdentityUserWorkforceFacts(ctx context.Context, store Store) error {
-	columns, err := identityMigrationTableColumns(ctx, store, "identity_users")
+	columns, err := store.TableColumns(ctx, "identity_users")
 	if err != nil {
 		return fmt.Errorf("inspect identity_users for workforce migration: %w", err)
 	}
@@ -259,7 +259,7 @@ func ensureLegacyWorkforceMigrationReceipt(ctx context.Context, tx *sql.Tx, stor
 }
 
 func dropLegacyIdentityUserWorkforceIndexes(ctx context.Context, store Store) error {
-	indexes, err := identityMigrationTableIndexes(ctx, store, "identity_users")
+	indexes, err := store.TableIndexes(ctx, "identity_users")
 	if err != nil {
 		return fmt.Errorf("inspect identity_users indexes for workforce migration: %w", err)
 	}
@@ -267,76 +267,11 @@ func dropLegacyIdentityUserWorkforceIndexes(ctx context.Context, store Store) er
 		if !indexes[index] {
 			continue
 		}
-		query := "DROP INDEX " + store.Identifier(index)
-		if store.Driver() == "mysql" {
-			query += " ON " + store.TableIdentifier("identity_users")
-		}
-		if _, err := store.SchemaDB().ExecContext(ctx, query); err != nil {
+		if err := store.DropIndex(ctx, "identity_users", index); err != nil {
 			return fmt.Errorf("drop migrated identity_users index %s: %w", index, err)
 		}
 	}
 	return nil
-}
-
-func identityMigrationTableColumns(ctx context.Context, store Store, table string) (map[string]bool, error) {
-	query := "PRAGMA table_info(" + store.Identifier(table) + ")"
-	args := []any{}
-	if store.Driver() == "mysql" {
-		query = "SELECT column_name FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = " + store.Placeholder(1)
-		args = []any{table}
-	} else if store.Driver() == "postgres" {
-		query = "SELECT column_name FROM information_schema.columns WHERE table_schema = " + store.Placeholder(1) + " AND table_name = " + store.Placeholder(2)
-		args = []any{store.DatabaseSchema(), table}
-	}
-	rows, err := store.SchemaDB().QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	columns := map[string]bool{}
-	for rows.Next() {
-		if store.Driver() == "sqlite" {
-			var cid, notNull, primaryKey int
-			var name, dataType string
-			var defaultValue any
-			if err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &primaryKey); err != nil {
-				return nil, err
-			}
-			columns[name] = true
-			continue
-		}
-		var name string
-		if err := rows.Scan(&name); err != nil {
-			return nil, err
-		}
-		columns[name] = true
-	}
-	return columns, rows.Err()
-}
-
-func identityMigrationTableIndexes(ctx context.Context, store Store, table string) (map[string]bool, error) {
-	query := "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = " + store.Placeholder(1)
-	args := []any{table}
-	if store.Driver() == "mysql" {
-		query = "SELECT DISTINCT index_name FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = " + store.Placeholder(1)
-	} else if store.Driver() == "postgres" {
-		query = "SELECT indexname FROM pg_indexes WHERE schemaname = " + store.Placeholder(1) + " AND tablename = " + store.Placeholder(2)
-		args = []any{store.DatabaseSchema(), table}
-	}
-	rows, err := store.SchemaDB().QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	indexes := map[string]bool{}
-	for rows.Next() {
-		var name string
-		if err := rows.Scan(&name); err != nil {
-			return nil, err
-		}
-		indexes[name] = true
-	}
-	return indexes, rows.Err()
 }
 
 func identityMigrationWorkerNo(fact legacyIdentityUserWorkforceFacts) string {

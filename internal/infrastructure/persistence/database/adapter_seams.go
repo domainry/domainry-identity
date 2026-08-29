@@ -52,6 +52,18 @@ func (s *IdentityStore) NormalizeAuditCursorColumns(ctx context.Context, table s
 	base := s.sqlBase()
 	return base.Engine.NormalizeAuditCursorColumns(ctx, s.schemaDatabase(), base.SQLRenderer, base.DatabaseSchema, base.RelationPrefix, table, columns...)
 }
+func (s *IdentityStore) TableColumns(ctx context.Context, table string) (map[string]bool, error) {
+	base := s.sqlBase()
+	return base.Engine.TableColumns(ctx, s.schemaDatabase(), base.SQLRenderer, base.DatabaseSchema, base.RelationPrefix, table)
+}
+func (s *IdentityStore) TableIndexes(ctx context.Context, table string) (map[string]bool, error) {
+	base := s.sqlBase()
+	return base.Engine.TableIndexes(ctx, s.schemaDatabase(), base.SQLRenderer, base.DatabaseSchema, base.RelationPrefix, table)
+}
+func (s *IdentityStore) DropIndex(ctx context.Context, table, index string) error {
+	base := s.sqlBase()
+	return base.Engine.DropIndex(ctx, s.schemaDatabase(), base.SQLRenderer, base.DatabaseSchema, base.RelationPrefix, table, index)
+}
 
 func (s *IdentityStore) EnsureColumn(ctx context.Context, table, column, definition string) error {
 	return s.ensureColumn(ctx, table, column, definition)

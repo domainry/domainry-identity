@@ -10,14 +10,8 @@ import (
 )
 
 func (Dialect) CreateIndexIfMissing(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _ string, relationPrefix, table, index string, unique bool, columns ...string) error {
-	physicalTable := relationPrefix + table
-	query := "SELECT DISTINCT INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = " + renderer.Placeholder(1)
-	rows, err := database.QueryContext(ctx, query, physicalTable)
-	if err != nil {
-		return fmt.Errorf("list MySQL indexes for %s: %w", table, err)
-	}
-	exists, err := mysqlIndexExists(rows, index)
-	if err != nil || exists {
+	indexes, err := (Dialect{}).TableIndexes(ctx, database, renderer, "", relationPrefix, table)
+	if err != nil || indexes[index] {
 		return err
 	}
 	prefix := "CREATE INDEX "
@@ -28,6 +22,28 @@ func (Dialect) CreateIndexIfMissing(ctx context.Context, database driver.SchemaD
 		return fmt.Errorf("create MySQL index %s: %w", index, err)
 	}
 	return nil
+}
+
+func (Dialect) TableColumns(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _ string, relationPrefix, table string) (map[string]bool, error) {
+	rows, err := database.QueryContext(ctx, "SELECT column_name FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = "+renderer.Placeholder(1), relationPrefix+table)
+	if err != nil {
+		return nil, err
+	}
+	return mysqlNames(rows, "column")
+}
+
+func (Dialect) TableIndexes(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _ string, relationPrefix, table string) (map[string]bool, error) {
+	query := "SELECT DISTINCT INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = " + renderer.Placeholder(1)
+	rows, err := database.QueryContext(ctx, query, relationPrefix+table)
+	if err != nil {
+		return nil, fmt.Errorf("list MySQL indexes for %s: %w", table, err)
+	}
+	return mysqlNames(rows, "index")
+}
+
+func (Dialect) DropIndex(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _, _, table, index string) error {
+	_, err := database.ExecContext(ctx, "DROP INDEX "+renderer.Identifier(index)+" ON "+renderer.Table(table))
+	return err
 }
 
 func (Dialect) NormalizeAuditCursorColumns(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _ string, relationPrefix, table string, columns ...string) error {
@@ -84,23 +100,22 @@ func (Dialect) NormalizeAuditCursorColumns(ctx context.Context, database driver.
 	return nil
 }
 
-func mysqlIndexExists(rows interface {
+func mysqlNames(rows interface {
 	Next() bool
 	Scan(...any) error
 	Err() error
 	Close() error
-}, index string) (bool, error) {
+}, kind string) (map[string]bool, error) {
 	defer rows.Close()
+	values := map[string]bool{}
 	for rows.Next() {
 		var name string
 		if err := rows.Scan(&name); err != nil {
-			return false, fmt.Errorf("scan MySQL index: %w", err)
+			return nil, fmt.Errorf("scan MySQL %s: %w", kind, err)
 		}
-		if name == index {
-			return true, nil
-		}
+		values[name] = true
 	}
-	return false, rows.Err()
+	return values, rows.Err()
 }
 
 func mysqlSchemaColumnList(renderer ormdialect.Renderer, columns []string) string {

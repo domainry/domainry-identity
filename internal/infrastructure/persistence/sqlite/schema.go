@@ -10,13 +10,8 @@ import (
 )
 
 func (Dialect) CreateIndexIfMissing(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _ string, relationPrefix, table, index string, unique bool, columns ...string) error {
-	physicalTable := relationPrefix + table
-	rows, err := database.QueryContext(ctx, "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = "+renderer.Placeholder(1), physicalTable)
-	if err != nil {
-		return fmt.Errorf("list SQLite indexes for %s: %w", table, err)
-	}
-	exists, err := sqliteIndexExists(rows, index)
-	if err != nil || exists {
+	indexes, err := (Dialect{}).TableIndexes(ctx, database, renderer, "", relationPrefix, table)
+	if err != nil || indexes[index] {
 		return err
 	}
 	prefix := "CREATE INDEX IF NOT EXISTS "
@@ -29,27 +24,59 @@ func (Dialect) CreateIndexIfMissing(ctx context.Context, database driver.SchemaD
 	return nil
 }
 
+func (Dialect) TableColumns(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _ string, relationPrefix, table string) (map[string]bool, error) {
+	rows, err := database.QueryContext(ctx, "PRAGMA table_info("+renderer.Identifier(relationPrefix+table)+")")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	columns := map[string]bool{}
+	for rows.Next() {
+		var cid, notNull, primaryKey int
+		var name, dataType string
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &primaryKey); err != nil {
+			return nil, err
+		}
+		columns[name] = true
+	}
+	return columns, rows.Err()
+}
+
+func (Dialect) TableIndexes(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _ string, relationPrefix, table string) (map[string]bool, error) {
+	physicalTable := relationPrefix + table
+	rows, err := database.QueryContext(ctx, "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = "+renderer.Placeholder(1), physicalTable)
+	if err != nil {
+		return nil, fmt.Errorf("list SQLite indexes for %s: %w", table, err)
+	}
+	return sqliteIndexNames(rows)
+}
+
+func (Dialect) DropIndex(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _, _, _, index string) error {
+	_, err := database.ExecContext(ctx, "DROP INDEX IF EXISTS "+renderer.Identifier(index))
+	return err
+}
+
 func (Dialect) NormalizeAuditCursorColumns(context.Context, driver.SchemaDatabase, ormdialect.Renderer, string, string, string, ...string) error {
 	return nil
 }
 
-func sqliteIndexExists(rows interface {
+func sqliteIndexNames(rows interface {
 	Next() bool
 	Scan(...any) error
 	Err() error
 	Close() error
-}, index string) (bool, error) {
+}) (map[string]bool, error) {
 	defer rows.Close()
+	indexes := map[string]bool{}
 	for rows.Next() {
 		var name string
 		if err := rows.Scan(&name); err != nil {
-			return false, fmt.Errorf("scan SQLite index: %w", err)
+			return nil, fmt.Errorf("scan SQLite index: %w", err)
 		}
-		if name == index {
-			return true, nil
-		}
+		indexes[name] = true
 	}
-	return false, rows.Err()
+	return indexes, rows.Err()
 }
 
 func schemaColumnList(renderer ormdialect.Renderer, columns []string) string {

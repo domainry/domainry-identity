@@ -10,14 +10,8 @@ import (
 )
 
 func (Dialect) CreateIndexIfMissing(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, databaseSchema, relationPrefix, table, index string, unique bool, columns ...string) error {
-	physicalTable := relationPrefix + table
-	query := "SELECT indexname FROM pg_indexes WHERE schemaname = " + renderer.Placeholder(1) + " AND tablename = " + renderer.Placeholder(2)
-	rows, err := database.QueryContext(ctx, query, databaseSchema, physicalTable)
-	if err != nil {
-		return fmt.Errorf("list PostgreSQL indexes for %s: %w", table, err)
-	}
-	exists, err := postgresIndexExists(rows, index)
-	if err != nil || exists {
+	indexes, err := (Dialect{}).TableIndexes(ctx, database, renderer, databaseSchema, relationPrefix, table)
+	if err != nil || indexes[index] {
 		return err
 	}
 	prefix := "CREATE INDEX IF NOT EXISTS "
@@ -30,27 +24,49 @@ func (Dialect) CreateIndexIfMissing(ctx context.Context, database driver.SchemaD
 	return nil
 }
 
+func (Dialect) TableColumns(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, databaseSchema, relationPrefix, table string) (map[string]bool, error) {
+	query := "SELECT column_name FROM information_schema.columns WHERE table_schema = " + renderer.Placeholder(1) + " AND table_name = " + renderer.Placeholder(2)
+	rows, err := database.QueryContext(ctx, query, databaseSchema, relationPrefix+table)
+	if err != nil {
+		return nil, err
+	}
+	return postgresNames(rows, "column")
+}
+
+func (Dialect) TableIndexes(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, databaseSchema, relationPrefix, table string) (map[string]bool, error) {
+	query := "SELECT indexname FROM pg_indexes WHERE schemaname = " + renderer.Placeholder(1) + " AND tablename = " + renderer.Placeholder(2)
+	rows, err := database.QueryContext(ctx, query, databaseSchema, relationPrefix+table)
+	if err != nil {
+		return nil, fmt.Errorf("list PostgreSQL indexes for %s: %w", table, err)
+	}
+	return postgresNames(rows, "index")
+}
+
+func (Dialect) DropIndex(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _, _, _, index string) error {
+	_, err := database.ExecContext(ctx, "DROP INDEX IF EXISTS "+renderer.Identifier(index))
+	return err
+}
+
 func (Dialect) NormalizeAuditCursorColumns(context.Context, driver.SchemaDatabase, ormdialect.Renderer, string, string, string, ...string) error {
 	return nil
 }
 
-func postgresIndexExists(rows interface {
+func postgresNames(rows interface {
 	Next() bool
 	Scan(...any) error
 	Err() error
 	Close() error
-}, index string) (bool, error) {
+}, kind string) (map[string]bool, error) {
 	defer rows.Close()
+	values := map[string]bool{}
 	for rows.Next() {
 		var name string
 		if err := rows.Scan(&name); err != nil {
-			return false, fmt.Errorf("scan PostgreSQL index: %w", err)
+			return nil, fmt.Errorf("scan PostgreSQL %s: %w", kind, err)
 		}
-		if name == index {
-			return true, nil
-		}
+		values[name] = true
 	}
-	return false, rows.Err()
+	return values, rows.Err()
 }
 
 func postgresSchemaColumnList(renderer ormdialect.Renderer, columns []string) string {

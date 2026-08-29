@@ -8,7 +8,7 @@ import (
 // migrateLegacyIdentityMenuAudience performs the one-way schema cleanup for
 // installations created before menus became independent from product surfaces.
 func migrateLegacyIdentityMenuAudience(ctx context.Context, store Store) error {
-	columns, err := identityMigrationTableColumns(ctx, store, "identity_menus")
+	columns, err := store.TableColumns(ctx, "identity_menus")
 	if err != nil {
 		return fmt.Errorf("inspect identity_menus for audience migration: %w", err)
 	}

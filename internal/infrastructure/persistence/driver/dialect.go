@@ -29,6 +29,9 @@ type EngineProfile interface {
 	ApplyUpsert(*ormbuilder.InsertBuilder, []string, ...string) *ormbuilder.InsertBuilder
 	CreateIndexIfMissing(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, string, bool, ...string) error
 	NormalizeAuditCursorColumns(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, ...string) error
+	TableColumns(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string) (map[string]bool, error)
+	TableIndexes(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string) (map[string]bool, error)
+	DropIndex(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, string) error
 	EnsureCompositePrimaryKey(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, ...string) error
 }
 
@@ -69,6 +72,15 @@ func (portableEngineProfile) CreateIndexIfMissing(context.Context, SchemaDatabas
 }
 func (portableEngineProfile) NormalizeAuditCursorColumns(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, ...string) error {
 	return nil
+}
+func (portableEngineProfile) TableColumns(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string) (map[string]bool, error) {
+	return nil, fmt.Errorf("database engine does not support column introspection")
+}
+func (portableEngineProfile) TableIndexes(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string) (map[string]bool, error) {
+	return nil, fmt.Errorf("database engine does not support index introspection")
+}
+func (portableEngineProfile) DropIndex(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, string) error {
+	return fmt.Errorf("database engine does not support index deletion")
 }
 func (portableEngineProfile) EnsureCompositePrimaryKey(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, ...string) error {
 	return fmt.Errorf("database engine does not support composite primary-key migration")

@@ -8,6 +8,10 @@ import (
 	"io"
 
 	persistencedriver "github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
+	mysqlpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/mysql"
+	postgrespersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/postgres"
+	sqlitepersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/sqlite"
+	ormdialect "github.com/domainry/domainry-orm/dialect"
 )
 
 var errSchemaSQL = errors.New("scripted schema SQL failure")
@@ -130,6 +134,15 @@ func (scriptedSchemaStore) CreateIndexIfMissing(context.Context, string, string,
 func (scriptedSchemaStore) NormalizeAuditCursorColumns(context.Context, string, ...string) error {
 	return nil
 }
+func (s scriptedSchemaStore) TableColumns(ctx context.Context, table string) (map[string]bool, error) {
+	return s.engineProfile().TableColumns(ctx, s.db, s.renderer(), s.DatabaseSchema(), "", table)
+}
+func (s scriptedSchemaStore) TableIndexes(ctx context.Context, table string) (map[string]bool, error) {
+	return s.engineProfile().TableIndexes(ctx, s.db, s.renderer(), s.DatabaseSchema(), "", table)
+}
+func (s scriptedSchemaStore) DropIndex(ctx context.Context, table, index string) error {
+	return s.engineProfile().DropIndex(ctx, s.db, s.renderer(), s.DatabaseSchema(), "", table, index)
+}
 func (s scriptedSchemaStore) EnsureColumn(context.Context, string, string, string) error {
 	return s.ensureErr
 }
@@ -145,3 +158,25 @@ func (s scriptedSchemaStore) SchemaTypes() persistencedriver.SchemaTypes {
 	return persistencedriver.SchemaTypes{Boolean: "INTEGER", FalseLiteral: "0", DefaultText: "TEXT", DocumentText: "TEXT", IndexedText: "TEXT", AuditCursorText: "TEXT"}
 }
 func (scriptedSchemaStore) ColumnDefinition(value string) string { return value }
+
+func (s scriptedSchemaStore) engineProfile() persistencedriver.EngineProfile {
+	switch s.Driver() {
+	case "mysql":
+		return mysqlpersistence.Dialect{}
+	case "postgres":
+		return postgrespersistence.Dialect{}
+	default:
+		return sqlitepersistence.Dialect{}
+	}
+}
+
+func (s scriptedSchemaStore) renderer() ormdialect.Renderer {
+	dialect, _ := ormdialect.Parse(s.Driver())
+	renderer, _ := dialect.WithNamespace(func() string {
+		if s.Driver() == "postgres" {
+			return s.DatabaseSchema()
+		}
+		return ""
+	}(), "")
+	return renderer
+}

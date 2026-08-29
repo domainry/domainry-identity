@@ -23,6 +23,13 @@ func (schemaHelperStore) CreateIndexIfMissing(context.Context, string, string, b
 func (schemaHelperStore) NormalizeAuditCursorColumns(context.Context, string, ...string) error {
 	return nil
 }
+func (schemaHelperStore) TableColumns(context.Context, string) (map[string]bool, error) {
+	return map[string]bool{}, nil
+}
+func (schemaHelperStore) TableIndexes(context.Context, string) (map[string]bool, error) {
+	return map[string]bool{}, nil
+}
+func (schemaHelperStore) DropIndex(context.Context, string, string) error { return nil }
 func (schemaHelperStore) EnsureColumn(context.Context, string, string, string) error {
 	return nil
 }
