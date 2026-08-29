@@ -2,17 +2,14 @@ package database
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
-	"strconv"
 	"strings"
 	"time"
 
+	migrationcontract "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/migration"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 )
@@ -84,7 +81,7 @@ func (s *IdentityStore) verifyMigrations(ctx context.Context, cfg config.Config)
 
 func (s *IdentityStore) verifyMigration(ctx context.Context, path string) error {
 	name := filepath.Base(path)
-	expected, err := migrationChecksum(path)
+	expected, err := migrationcontract.Checksum(path)
 	if err != nil {
 		return err
 	}
@@ -112,7 +109,7 @@ func (s *IdentityStore) verifyMigration(ctx context.Context, path string) error 
 
 func (s *IdentityStore) migrationPending(ctx context.Context, path string) (bool, error) {
 	name := filepath.Base(path)
-	expected, err := migrationChecksum(path)
+	expected, err := migrationcontract.Checksum(path)
 	if err != nil {
 		return false, err
 	}
@@ -156,11 +153,10 @@ func (s *IdentityStore) applyMigrationFile(ctx context.Context, path string) err
 	if err != nil {
 		return fmt.Errorf("read: %w", err)
 	}
-	checksumBytes := sha256.Sum256(raw)
-	checksum := hex.EncodeToString(checksumBytes[:])
-	version, migrationName := migrationIdentity(name)
+	checksum := migrationcontract.ChecksumBytes(raw)
+	version, migrationName := migrationcontract.Identity(name)
 	insertDirty := "INSERT INTO " + s.tableIdentifier("_schema_migrations") + " (" + migrationColumns(s) + ") VALUES (" + strings.Join(placeholders(s, 12), ", ") + ")"
-	if _, err := s.schemaDatabase().ExecContext(ctx, insertDirty, name, version, migrationName, migrationKind(migrationName), checksum, true, time.Now().UTC().Format(time.RFC3339), strings.TrimSpace(s.config.ServiceVersion), 0, migrationOperator(s.config), migrationInstanceID(s.config), strings.TrimSpace(s.migrationBackupID)); err != nil {
+	if _, err := s.schemaDatabase().ExecContext(ctx, insertDirty, name, version, migrationName, migrationcontract.Kind(migrationName), checksum, true, time.Now().UTC().Format(time.RFC3339), strings.TrimSpace(s.config.ServiceVersion), 0, migrationcontract.Operator(s.config), migrationcontract.InstanceID(s.config), strings.TrimSpace(s.migrationBackupID)); err != nil {
 		return fmt.Errorf("record dirty migration: %w", err)
 	}
 	tx, err := s.schemaDatabase().BeginTx(ctx, nil)
@@ -172,7 +168,7 @@ func (s *IdentityStore) applyMigrationFile(ctx context.Context, path string) err
 	if err := base.Engine.ConfigureMigrationTransaction(ctx, tx, base.SQLRenderer, base.DatabaseSchema, s.config.DatabaseLockTimeout, s.config.DatabaseStatementTimeout); err != nil {
 		return err
 	}
-	for _, statement := range splitSQLStatements(string(raw)) {
+	for _, statement := range migrationcontract.SplitSQLStatements(string(raw)) {
 		if _, err := tx.ExecContext(ctx, statement); err != nil {
 			return fmt.Errorf("migration.failed: execute %s: %w", name, err)
 		}
@@ -231,7 +227,7 @@ func (s *IdentityStore) acquireMigrationLock(ctx context.Context, cfg config.Con
 	started := time.Now()
 	base := s.sqlBase()
 	lock, err := base.Engine.AcquireMigrationLock(ctx, lockDB, base.SQLRenderer, driver.MigrationLockOptions{
-		DatabasePath: cfg.DBPath, DatabaseSchema: base.DatabaseSchema, Owner: migrationInstanceID(cfg),
+		DatabasePath: cfg.DBPath, DatabaseSchema: base.DatabaseSchema, Owner: migrationcontract.InstanceID(cfg),
 		LockTimeout: s.config.DatabaseLockTimeout, ConnectTimeout: s.config.DatabaseConnectTimeout,
 	})
 	if err != nil {
@@ -249,54 +245,9 @@ func (s *IdentityStore) acquireMigrationLock(ctx context.Context, cfg config.Con
 	}, nil
 }
 
-func migrationIdentity(path string) (string, string) {
-	base := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
-	parts := strings.SplitN(base, "_", 2)
-	if len(parts) == 1 {
-		return parts[0], parts[0]
-	}
-	return parts[0], parts[1]
-}
-
-func migrationKind(name string) string {
-	name = strings.ToLower(strings.TrimSpace(name))
-	if strings.HasPrefix(name, "data_") || strings.HasPrefix(name, "metadata_") || strings.HasPrefix(name, "manifest_") {
-		return "metadata_data"
-	}
-	return "schema"
-}
-
-func migrationOperator(cfg config.Config) string {
-	if value := strings.TrimSpace(cfg.MigrationOperator); value != "" {
-		return value
-	}
-	return "runtime"
-}
-
-func migrationInstanceID(cfg config.Config) string {
-	if value := strings.TrimSpace(cfg.MigrationInstanceID); value != "" {
-		return value
-	}
-	host, _ := os.Hostname()
-	return strings.TrimSpace(host) + ":" + strconv.Itoa(os.Getpid())
-}
-
 func migrationColumns(s *IdentityStore) string {
 	columns := []string{"path", "version", "name", "kind", "checksum", "dirty", "applied_at", "service_version", "duration_ms", "operator", "instance_id", "backup_id"}
 	return strings.Join(quotedColumns(s, columns), ", ")
-}
-
-func migrationChecksum(path string) (string, error) {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return "", fmt.Errorf("read migration checksum: %w", err)
-	}
-	sum := sha256.Sum256(raw)
-	return hex.EncodeToString(sum[:]), nil
-}
-
-func durationMilliseconds(value time.Duration) string {
-	return fmt.Sprintf("%dms", value.Milliseconds())
 }
 
 func (s *IdentityStore) migrationPaths(cfg config.Config) ([]string, error) {
@@ -305,7 +256,7 @@ func (s *IdentityStore) migrationPaths(cfg config.Config) ([]string, error) {
 	}
 	driverDir := filepath.Join(cfg.MigrationDir, s.engine.Name())
 	if entries, err := s.readMigrationDir(driverDir); err == nil {
-		return sqlPaths(driverDir, entries)
+		return migrationcontract.SQLPaths(driverDir, entries), nil
 	} else if !os.IsNotExist(err) {
 		return nil, err
 	}
@@ -316,7 +267,7 @@ func (s *IdentityStore) migrationPaths(cfg config.Config) ([]string, error) {
 		}
 		return nil, err
 	}
-	return sqlPaths(cfg.MigrationDir, entries)
+	return migrationcontract.SQLPaths(cfg.MigrationDir, entries), nil
 }
 
 func (s *IdentityStore) readMigrationDir(path string) ([]os.DirEntry, error) {
@@ -326,59 +277,15 @@ func (s *IdentityStore) readMigrationDir(path string) ([]os.DirEntry, error) {
 	return os.ReadDir(path)
 }
 
-func sqlPaths(dir string, entries []os.DirEntry) ([]string, error) {
-	paths := []string{}
-	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".sql" {
-			continue
-		}
-		paths = append(paths, filepath.Join(dir, entry.Name()))
-	}
-	sort.Strings(paths)
-	if len(paths) == 0 {
-		return nil, nil
-	}
-	return paths, nil
-}
-
-func migrationNames(paths []string) []string {
-	names := make([]string, 0, len(paths))
-	for _, path := range paths {
-		names = append(names, filepath.Base(path))
-	}
-	sort.Strings(names)
-	return names
-}
-
 func (s *IdentityStore) setExpectedMigrations(paths []string) error {
-	s.expectedMigrations = migrationNames(paths)
+	s.expectedMigrations = migrationcontract.Names(paths)
 	s.expectedChecksums = make(map[string]string, len(paths))
 	for _, path := range paths {
-		checksum, err := migrationChecksum(path)
+		checksum, err := migrationcontract.Checksum(path)
 		if err != nil {
 			return err
 		}
 		s.expectedChecksums[filepath.Base(path)] = checksum
 	}
 	return nil
-}
-
-func splitSQLStatements(raw string) []string {
-	sqlLines := []string{}
-	for _, line := range strings.Split(raw, "\n") {
-		if strings.HasPrefix(strings.TrimSpace(line), "--") {
-			continue
-		}
-		sqlLines = append(sqlLines, line)
-	}
-	parts := strings.Split(strings.Join(sqlLines, "\n"), ";")
-	statements := make([]string, 0, len(parts))
-	for _, part := range parts {
-		statement := strings.TrimSpace(part)
-		if statement == "" {
-			continue
-		}
-		statements = append(statements, statement)
-	}
-	return statements
 }

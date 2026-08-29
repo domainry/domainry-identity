@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	migrationcontract "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/migration"
 	identityschema "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/schema"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/workspace"
 	"github.com/domainry/domainry-identity/internal/platform/config"
@@ -248,7 +249,7 @@ func (s *IdentityStore) identitySchemaMigrationPending(ctx context.Context, vers
 func (s *IdentityStore) startIdentitySchemaMigration(ctx context.Context, version string) error {
 	columns := []string{"version", "name", "kind", "checksum", "dirty", "applied_at", "service_version", "duration_ms", "operator", "instance_id", "backup_id"}
 	query := "INSERT INTO " + s.tableIdentifier(identitySchemaMigrationTable) + " (" + strings.Join(quotedColumns(s, columns), ", ") + ") VALUES (" + strings.Join(placeholders(s, len(columns)), ", ") + ")"
-	_, err := s.schemaDatabase().ExecContext(ctx, query, version, identitySchemaMigrationName, identitySchemaMigrationKind, currentIdentitySchemaChecksum(), true, time.Now().UTC().Format(time.RFC3339), s.config.ServiceVersion, 0, migrationOperator(s.config), migrationInstanceID(s.config), s.migrationBackupID)
+	_, err := s.schemaDatabase().ExecContext(ctx, query, version, identitySchemaMigrationName, identitySchemaMigrationKind, currentIdentitySchemaChecksum(), true, time.Now().UTC().Format(time.RFC3339), s.config.ServiceVersion, 0, migrationcontract.Operator(s.config), migrationcontract.InstanceID(s.config), s.migrationBackupID)
 	return err
 }
 

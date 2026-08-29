@@ -69,7 +69,7 @@ func (s *IdentityStore) migrationBackupChecksum(path string) (string, error) {
 	if s.backupChecksum != nil {
 		return s.backupChecksum(path)
 	}
-	return migrationChecksum(path)
+	return migrationcontract.Checksum(path)
 }
 
 func validateExternalMigrationBackup(driver, evidencePath string) (migrationcontract.BackupEvidence, error) {

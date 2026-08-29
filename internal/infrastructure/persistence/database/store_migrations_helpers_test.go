@@ -23,10 +23,10 @@ import (
 )
 
 func TestMigrationHelpersCoverDialectAndFilesystemEdges(t *testing.T) {
-	if got := durationMilliseconds(1500 * time.Millisecond); got != "1500ms" {
+	if got := migrationcontract.DurationMilliseconds(1500 * time.Millisecond); got != "1500ms" {
 		t.Fatalf("durationMilliseconds=%q", got)
 	}
-	if version, name := migrationIdentity("plain.sql"); version != "plain" || name != "plain" {
+	if version, name := migrationcontract.Identity("plain.sql"); version != "plain" || name != "plain" {
 		t.Fatalf("migrationIdentity=%q,%q", version, name)
 	}
 
@@ -61,8 +61,8 @@ func TestMigrationHelpersCoverDialectAndFilesystemEdges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if paths, err := sqlPaths(entriesDir, entries); err != nil || paths != nil {
-		t.Fatalf("non-SQL entries paths=%v err=%v", paths, err)
+	if paths := migrationcontract.SQLPaths(entriesDir, entries); paths != nil {
+		t.Fatalf("non-SQL entries paths=%v", paths)
 	}
 
 	missing := filepath.Join(dir, "missing.sql")

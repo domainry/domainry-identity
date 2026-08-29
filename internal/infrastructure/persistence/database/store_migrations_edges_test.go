@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	migrationcontract "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/migration"
 	persistencedriver "github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/mysql"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/sqlite"
@@ -55,7 +56,7 @@ func insertMigrationEdgeLedger(t *testing.T, store *IdentityStore, path, checksu
 func TestMigrationVerificationAndPendingStateEdges(t *testing.T) {
 	store := openMigrationEdgeStore(t)
 	path := writeMigrationEdgeFile(t, "001_edge.sql", "CREATE TABLE edge_record (id TEXT PRIMARY KEY);")
-	checksum, err := migrationChecksum(path)
+	checksum, err := migrationcontract.Checksum(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,29 +173,29 @@ func TestMigrationPathIdentityAndSQLHelperEdges(t *testing.T) {
 	if err := store.setExpectedMigrations(paths); err != nil || len(store.expectedChecksums) != 2 {
 		t.Fatalf("expected migrations=%v checksums=%v error=%v", store.expectedMigrations, store.expectedChecksums, err)
 	}
-	if got := migrationNames([]string{paths[0], paths[1]}); !reflect.DeepEqual(got, []string{"001_first.sql", "010_second.sql"}) {
+	if got := migrationcontract.Names([]string{paths[0], paths[1]}); !reflect.DeepEqual(got, []string{"001_first.sql", "010_second.sql"}) {
 		t.Fatalf("migration names=%v", got)
 	}
-	if version, name := migrationIdentity("003_data_seed.sql"); version != "003" || name != "data_seed" {
+	if version, name := migrationcontract.Identity("003_data_seed.sql"); version != "003" || name != "data_seed" {
 		t.Fatalf("identity=%q/%q", version, name)
 	}
 	for name, want := range map[string]string{"data_seed": "metadata_data", " metadata_seed ": "metadata_data", "manifest_seed": "metadata_data", "schema": "schema"} {
-		if got := migrationKind(name); got != want {
+		if got := migrationcontract.Kind(name); got != want {
 			t.Fatalf("migration kind(%q)=%q", name, got)
 		}
 	}
-	if migrationOperator(config.Config{MigrationOperator: " operator "}) != "operator" || migrationOperator(config.Config{}) != "runtime" {
+	if migrationcontract.Operator(config.Config{MigrationOperator: " operator "}) != "operator" || migrationcontract.Operator(config.Config{}) != "runtime" {
 		t.Fatal("migration operator normalization changed")
 	}
-	if migrationInstanceID(config.Config{MigrationInstanceID: " instance "}) != "instance" || migrationInstanceID(config.Config{}) == "" {
+	if migrationcontract.InstanceID(config.Config{MigrationInstanceID: " instance "}) != "instance" || migrationcontract.InstanceID(config.Config{}) == "" {
 		t.Fatal("migration instance normalization changed")
 	}
-	statements := splitSQLStatements("-- comment\n SELECT 1;\n; SELECT 2 ;")
+	statements := migrationcontract.SplitSQLStatements("-- comment\n SELECT 1;\n; SELECT 2 ;")
 	if !reflect.DeepEqual(statements, []string{"SELECT 1", "SELECT 2"}) {
 		t.Fatalf("statements=%v", statements)
 	}
-	if got, err := sqlPaths(root, nil); err != nil || got != nil {
-		t.Fatalf("empty sql paths=%v error=%v", got, err)
+	if got := migrationcontract.SQLPaths(root, nil); got != nil {
+		t.Fatalf("empty sql paths=%v", got)
 	}
 	rootOnly := t.TempDir()
 	rootPath := writeNamedMigrationEdgeFile(t, rootOnly, "007_root.sql", "SELECT 7;")

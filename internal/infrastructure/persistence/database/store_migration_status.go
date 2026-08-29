@@ -21,8 +21,8 @@ func (s *IdentityStore) MigrationStatus(ctx context.Context) (migration.Migratio
 	status := migration.MigrationStatus{Current: true, State: migration.StateCurrent, ServiceVersion: s.config.ServiceVersion, ExpectedPaths: append([]string(nil), s.expectedMigrations...), Rollback: rollback}
 	sort.Strings(status.ExpectedPaths)
 	if len(status.ExpectedPaths) > 0 {
-		status.MinSchemaVersion, _ = migrationIdentity(status.ExpectedPaths[0])
-		status.MaxSchemaVersion, _ = migrationIdentity(status.ExpectedPaths[len(status.ExpectedPaths)-1])
+		status.MinSchemaVersion, _ = migration.Identity(status.ExpectedPaths[0])
+		status.MaxSchemaVersion, _ = migration.Identity(status.ExpectedPaths[len(status.ExpectedPaths)-1])
 	}
 	if value := strings.TrimSpace(s.config.DatabaseMinSchemaVersion); value != "" {
 		status.MinSchemaVersion = value
@@ -49,7 +49,7 @@ func (s *IdentityStore) MigrationStatus(ctx context.Context) (migration.Migratio
 		status.AppliedPaths = append(status.AppliedPaths, path)
 		applied[path] = struct{}{}
 		if expected, tracked := s.expectedChecksums[path]; tracked {
-			version, _ := migrationIdentity(filepath.Base(path))
+			version, _ := migration.Identity(filepath.Base(path))
 			if currentSchemaVersion == "" || migration.CompareVersions(version, currentSchemaVersion) > 0 {
 				currentSchemaVersion = version
 			}
@@ -57,7 +57,7 @@ func (s *IdentityStore) MigrationStatus(ctx context.Context) (migration.Migratio
 				status.DriftPaths = append(status.DriftPaths, path)
 			}
 		} else {
-			version, _ := migrationIdentity(filepath.Base(path))
+			version, _ := migration.Identity(filepath.Base(path))
 			if status.MaxSchemaVersion != "" && migration.CompareVersions(version, status.MaxSchemaVersion) > 0 {
 				status.NewerPaths = append(status.NewerPaths, path)
 			} else {
