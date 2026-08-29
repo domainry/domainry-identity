@@ -1,4 +1,4 @@
-package database
+package migration_test
 
 import (
 	"os"
@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/domainry/domainry-foundation/filelock"
+	identitydatabase "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 )
 
@@ -18,7 +19,7 @@ func TestMigrationChecksumRejectsEditedAppliedFile(t *testing.T) {
 	migrationPath := filepath.Join(dir, "001_create_sample.sql")
 	writeMigrationFixture(t, migrationPath, `CREATE TABLE sample (id TEXT PRIMARY KEY);`)
 	cfg := config.Config{DatabaseDriver: "sqlite", DBPath: dbPath, MigrationSQL: migrationPath, DatabaseMigrationMode: "apply", MigrationBackupDir: filepath.Join(dir, "backups")}
-	store, err := OpenContext(t.Context(), cfg)
+	store, err := identitydatabase.OpenContext(t.Context(), cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +28,7 @@ func TestMigrationChecksumRejectsEditedAppliedFile(t *testing.T) {
 	}
 
 	writeMigrationFixture(t, migrationPath, `CREATE TABLE sample (id TEXT PRIMARY KEY, changed TEXT);`)
-	if _, err := OpenContext(t.Context(), cfg); err == nil || !strings.Contains(err.Error(), "migration.checksum_drift") {
+	if _, err := identitydatabase.OpenContext(t.Context(), cfg); err == nil || !strings.Contains(err.Error(), "migration.checksum_drift") {
 		t.Fatalf("expected checksum mismatch, got %v", err)
 	}
 }
@@ -44,7 +45,7 @@ func TestTwoSQLiteInstancesExecuteMigrationOnce(t *testing.T) {
 		wait.Add(1)
 		go func() {
 			defer wait.Done()
-			store, err := OpenContext(t.Context(), cfg)
+			store, err := identitydatabase.OpenContext(t.Context(), cfg)
 			if err == nil {
 				err = store.Close()
 			}
@@ -58,7 +59,7 @@ func TestTwoSQLiteInstancesExecuteMigrationOnce(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	store, err := OpenContext(t.Context(), cfg)
+	store, err := identitydatabase.OpenContext(t.Context(), cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +82,7 @@ func TestSQLiteMigrationLockTimeoutHasStableCode(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer filelock.Unlock(lock)
-	_, err = OpenContext(t.Context(), config.Config{DatabaseDriver: "sqlite", DBPath: dbPath, DatabaseLockTimeout: 100 * time.Millisecond})
+	_, err = identitydatabase.OpenContext(t.Context(), config.Config{DatabaseDriver: "sqlite", DBPath: dbPath, DatabaseLockTimeout: 100 * time.Millisecond})
 	if err == nil || !strings.Contains(err.Error(), "migration.lock_timeout") {
 		t.Fatalf("lock timeout error=%v", err)
 	}
@@ -92,7 +93,7 @@ func TestMigrationLedgerRecordsStableReleaseIdentity(t *testing.T) {
 	migrationPath := filepath.Join(dir, "004_expand_customer.sql")
 	writeMigrationFixture(t, migrationPath, `CREATE TABLE customer_release_identity (id TEXT PRIMARY KEY);`)
 	cfg := config.Config{DatabaseDriver: "sqlite", DBPath: filepath.Join(dir, "identity.db"), MigrationSQL: migrationPath, DatabaseMigrationMode: "apply", ServiceVersion: "2.4.0", MigrationOperator: "release-bot", MigrationInstanceID: "identity-2"}
-	store, err := OpenContext(t.Context(), cfg)
+	store, err := identitydatabase.OpenContext(t.Context(), cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +115,7 @@ func TestSchemaAndMetadataMigrationsShareOrderedLedger(t *testing.T) {
 	}
 	writeMigrationFixture(t, filepath.Join(dir, "sqlite", "010_expand_customer.sql"), `CREATE TABLE ordered_customer (id TEXT PRIMARY KEY, label TEXT);`)
 	writeMigrationFixture(t, filepath.Join(dir, "sqlite", "011_metadata_customer.sql"), `INSERT INTO ordered_customer (id, label) VALUES ('seed', 'metadata');`)
-	store, err := OpenContext(t.Context(), config.Config{DatabaseDriver: "sqlite", DBPath: filepath.Join(dir, "runtime.db"), MigrationDir: dir})
+	store, err := identitydatabase.OpenContext(t.Context(), config.Config{DatabaseDriver: "sqlite", DBPath: filepath.Join(dir, "runtime.db"), MigrationDir: dir})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +142,7 @@ func TestMigrationStatusReportsChecksumDrift(t *testing.T) {
 	dir := t.TempDir()
 	migrationPath := filepath.Join(dir, "001_status.sql")
 	writeMigrationFixture(t, migrationPath, `CREATE TABLE migration_status_sample (id TEXT PRIMARY KEY);`)
-	store, err := OpenContext(t.Context(), config.Config{DatabaseDriver: "sqlite", DBPath: filepath.Join(dir, "runtime.db"), MigrationSQL: migrationPath, DatabaseMigrationMode: "apply"})
+	store, err := identitydatabase.OpenContext(t.Context(), config.Config{DatabaseDriver: "sqlite", DBPath: filepath.Join(dir, "runtime.db"), MigrationSQL: migrationPath, DatabaseMigrationMode: "apply"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +164,7 @@ func TestMigrationStatusAndVerifyRejectDirtyLedger(t *testing.T) {
 	migrationPath := filepath.Join(dir, "001_dirty.sql")
 	writeMigrationFixture(t, migrationPath, `CREATE TABLE dirty_sample (id TEXT PRIMARY KEY);`)
 	cfg := config.Config{DatabaseDriver: "sqlite", DBPath: filepath.Join(dir, "runtime.db"), MigrationSQL: migrationPath, DatabaseMigrationMode: "apply"}
-	store, err := OpenContext(t.Context(), cfg)
+	store, err := identitydatabase.OpenContext(t.Context(), cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +182,7 @@ func TestMigrationStatusAndVerifyRejectDirtyLedger(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg.DatabaseMigrationMode = "verify"
-	if _, err := OpenContext(t.Context(), cfg); err == nil || !strings.Contains(err.Error(), "migration.dirty") {
+	if _, err := identitydatabase.OpenContext(t.Context(), cfg); err == nil || !strings.Contains(err.Error(), "migration.dirty") {
 		t.Fatalf("verify-only accepted dirty migration: %v", err)
 	}
 }
@@ -190,7 +191,7 @@ func TestMigrationStatusRejectsUnknownAndNewerAppliedVersions(t *testing.T) {
 	dir := t.TempDir()
 	migrationPath := filepath.Join(dir, "004_current.sql")
 	writeMigrationFixture(t, migrationPath, `CREATE TABLE current_schema (id TEXT PRIMARY KEY);`)
-	store, err := OpenContext(t.Context(), config.Config{DatabaseDriver: "sqlite", DBPath: filepath.Join(dir, "runtime.db"), MigrationSQL: migrationPath})
+	store, err := identitydatabase.OpenContext(t.Context(), config.Config{DatabaseDriver: "sqlite", DBPath: filepath.Join(dir, "runtime.db"), MigrationSQL: migrationPath})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +214,7 @@ func TestIdentitySchemaCompatibilityRangeBlocksNewerRelease(t *testing.T) {
 	dir := t.TempDir()
 	migrationPath := filepath.Join(dir, "004_current.sql")
 	writeMigrationFixture(t, migrationPath, `CREATE TABLE compatibility_range (id TEXT PRIMARY KEY);`)
-	_, err := OpenContext(t.Context(), config.Config{DatabaseDriver: "sqlite", DBPath: filepath.Join(dir, "runtime.db"), MigrationSQL: migrationPath, DatabaseMaxSchemaVersion: "003"})
+	_, err := identitydatabase.OpenContext(t.Context(), config.Config{DatabaseDriver: "sqlite", DBPath: filepath.Join(dir, "runtime.db"), MigrationSQL: migrationPath, DatabaseMaxSchemaVersion: "003"})
 	if err == nil || !strings.Contains(err.Error(), "migration.schema_newer") {
 		t.Fatalf("compatibility range error=%v", err)
 	}
@@ -225,7 +226,7 @@ func TestVerifyOnlyModeChecksFileAndRuntimeSchemaWithoutDDL(t *testing.T) {
 	migrationPath := filepath.Join(dir, "001_verify.sql")
 	writeMigrationFixture(t, migrationPath, `CREATE TABLE verify_sample (id TEXT PRIMARY KEY);`)
 	applyConfig := config.Config{DatabaseDriver: "sqlite", DBPath: dbPath, MigrationSQL: migrationPath, DatabaseMigrationMode: "apply", MigrationBackupDir: filepath.Join(dir, "backups")}
-	store, err := OpenContext(t.Context(), applyConfig)
+	store, err := identitydatabase.OpenContext(t.Context(), applyConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -238,7 +239,7 @@ func TestVerifyOnlyModeChecksFileAndRuntimeSchemaWithoutDDL(t *testing.T) {
 
 	verifyConfig := applyConfig
 	verifyConfig.DatabaseMigrationMode = "verify"
-	verified, err := OpenContext(t.Context(), verifyConfig)
+	verified, err := identitydatabase.OpenContext(t.Context(), verifyConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +255,7 @@ func TestApplyModeUpgradesLegacyLedgerWithChecksum(t *testing.T) {
 	migrationPath := filepath.Join(dir, "001_legacy.sql")
 	writeMigrationFixture(t, migrationPath, `CREATE TABLE legacy_sample (id TEXT PRIMARY KEY);`)
 
-	store, err := OpenContext(t.Context(), config.Config{DatabaseDriver: "sqlite", DBPath: dbPath})
+	store, err := identitydatabase.OpenContext(t.Context(), config.Config{DatabaseDriver: "sqlite", DBPath: dbPath})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -265,7 +266,7 @@ func TestApplyModeUpgradesLegacyLedgerWithChecksum(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	upgraded, err := OpenContext(t.Context(), config.Config{DatabaseDriver: "sqlite", DBPath: dbPath, MigrationSQL: migrationPath, DatabaseMigrationMode: "apply"})
+	upgraded, err := identitydatabase.OpenContext(t.Context(), config.Config{DatabaseDriver: "sqlite", DBPath: dbPath, MigrationSQL: migrationPath, DatabaseMigrationMode: "apply"})
 	if err != nil {
 		t.Fatal(err)
 	}
