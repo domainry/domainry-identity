@@ -43,6 +43,7 @@ type EngineProfile interface {
 	MigrationLedgerTypes() MigrationLedgerTypes
 	EnsureMigrationNamespace(context.Context, SchemaDatabase, ormdialect.Renderer, string) error
 	ConfigureMigrationTransaction(context.Context, *sql.Tx, ormdialect.Renderer, string, time.Duration, time.Duration) error
+	AcquireMigrationLock(context.Context, *sql.DB, ormdialect.Renderer, MigrationLockOptions) (MigrationLock, error)
 }
 
 type SchemaTypes struct {
@@ -62,6 +63,19 @@ type SchemaQuery struct {
 type MigrationLedgerTypes struct {
 	Key       string
 	Timestamp string
+}
+
+type MigrationLockOptions struct {
+	DatabasePath   string
+	DatabaseSchema string
+	Owner          string
+	LockTimeout    time.Duration
+	ConnectTimeout time.Duration
+}
+
+type MigrationLock struct {
+	Connection *sql.Conn
+	Release    func()
 }
 
 type SchemaDatabase interface {
@@ -124,6 +138,9 @@ func (portableEngineProfile) EnsureMigrationNamespace(context.Context, SchemaDat
 }
 func (portableEngineProfile) ConfigureMigrationTransaction(context.Context, *sql.Tx, ormdialect.Renderer, string, time.Duration, time.Duration) error {
 	return nil
+}
+func (portableEngineProfile) AcquireMigrationLock(context.Context, *sql.DB, ormdialect.Renderer, MigrationLockOptions) (MigrationLock, error) {
+	return MigrationLock{}, fmt.Errorf("database engine does not support migration locking")
 }
 
 func ProfileFor(value Dialect) EngineProfile {
