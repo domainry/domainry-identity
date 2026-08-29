@@ -2,6 +2,8 @@ module github.com/domainry/domainry-identity
 
 go 1.26.0
 
+replace github.com/domainry/domainry-foundation => ../domainry-foundation
+
 require (
 	github.com/beevik/etree v1.6.0
 	github.com/coreos/go-oidc/v3 v3.20.0
