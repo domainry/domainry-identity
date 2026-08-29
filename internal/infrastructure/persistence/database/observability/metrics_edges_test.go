@@ -1,4 +1,4 @@
-package database
+package observability
 
 import (
 	"errors"
@@ -8,15 +8,15 @@ import (
 )
 
 func TestIdentityOperationalMetricsNilAndAgeEdges(t *testing.T) {
-	var metrics *IdentityOperationalMetrics
-	if metrics.AgeSnapshot() != (OperationalAgeSnapshot{}) || metrics.OpenMetrics(t.Context(), time.Time{}) != "" {
+	var metrics *Metrics
+	if metrics.AgeSnapshot() != (AgeSnapshot{}) || metrics.OpenMetrics(t.Context(), time.Time{}) != "" {
 		t.Fatal("nil metrics returned state")
 	}
 	metrics.ObserveMigrationLock(time.Second, errors.New("ignored"))
 	metrics.ObserveMigration(time.Second, errors.New("ignored"))
 	metrics.ObserveBackupSuccess(time.Now())
 
-	metrics = NewIdentityOperationalMetrics("", "")
+	metrics = NewMetrics("", "")
 	metrics.ObserveBackupSuccess(time.Time{})
 	metrics.ObserveMigrationLock(time.Millisecond, errors.New("lock"))
 	metrics.ObserveMigration(time.Nanosecond, nil)

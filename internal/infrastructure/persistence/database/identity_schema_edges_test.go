@@ -320,7 +320,7 @@ func TestEnsureIdentitySchemaOrchestrationFailures(t *testing.T) {
 	}
 }
 
-func TestIdentitySchemaPendingRecordAndActionExecutionContextEdges(t *testing.T) {
+func TestIdentitySchemaPendingRecordEdges(t *testing.T) {
 	store := identitySchemaStore(t, &databaseSQLState{execSteps: []databaseSQLExecStep{{err: errDatabaseSQL}}})
 	if err := store.recordIdentitySchemaMigrationIfPending(t.Context(), false, time.Now()); err != nil {
 		t.Fatal(err)
@@ -331,22 +331,6 @@ func TestIdentitySchemaPendingRecordAndActionExecutionContextEdges(t *testing.T)
 	success := identitySchemaStore(t, &databaseSQLState{execSteps: []databaseSQLExecStep{{rows: 1}}})
 	if err := success.recordIdentitySchemaMigrationIfPending(t.Context(), true, time.Now()); err != nil {
 		t.Fatalf("successful record error=%v", err)
-	}
-	if WithActionExecutionTransaction(nil, store.DB()) != nil {
-		t.Fatal("nil context changed")
-	}
-	if got := WithActionExecutionTransaction(t.Context(), nil); got != t.Context() {
-		t.Fatal("nil executor changed context")
-	}
-	if ActionExecutionTransaction(nil) != nil {
-		t.Fatal("nil context returned executor")
-	}
-	ctx := WithActionExecutionTransaction(t.Context(), store.DB())
-	if ActionExecutionTransaction(ctx) != store.DB() {
-		t.Fatal("transaction executor was not preserved")
-	}
-	if ActionExecutionTransaction(t.Context()) != nil {
-		t.Fatal("plain context returned executor")
 	}
 }
 

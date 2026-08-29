@@ -11,6 +11,7 @@ import (
 	auditmodel "github.com/domainry/domainry-identity/internal/domain/audit/model"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/transaction"
 	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
 
@@ -23,9 +24,9 @@ func NewAuditStore(store *database.IdentityStore) AuditStore {
 	return AuditStore{store: store, db: store.DB()}
 }
 
-func (r AuditStore) executor(ctx context.Context) database.ActionExecutionExecutor {
-	if transaction := database.ActionExecutionTransaction(ctx); transaction != nil {
-		return transaction
+func (r AuditStore) executor(ctx context.Context) transaction.Executor {
+	if executor := transaction.ExecutorFromContext(ctx); executor != nil {
+		return executor
 	}
 	return r.db
 }

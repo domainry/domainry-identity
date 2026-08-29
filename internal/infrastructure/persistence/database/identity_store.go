@@ -13,6 +13,7 @@ import (
 	"github.com/domainry/domainry-foundation/secrets"
 	"github.com/domainry/domainry-foundation/telemetry"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/base"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/observability"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/postgres"
 	"github.com/domainry/domainry-identity/internal/platform/config"
@@ -39,7 +40,7 @@ type IdentityStore struct {
 	migrationBackupID    string
 	idempotencyMetrics   *idempotency.MemoryMetricsCollector
 	sqlMetrics           *telemetry.SQLMetrics
-	operationalMetrics   *IdentityOperationalMetrics
+	operationalMetrics   *observability.Metrics
 	workspaceRLS         WorkspaceRLSStatus
 	schemaAssembler      identitySchemaAssembler
 	backupChecksum       func(string) (string, error)
@@ -61,7 +62,7 @@ func openContextWithDependencies(ctx context.Context, cfg config.Config, depende
 		return nil, err
 	}
 	sqlMetrics := telemetry.NewSQLMetrics()
-	operationalMetrics := NewIdentityOperationalMetrics(cfg.MigrationBackupLastSuccessAt, cfg.MigrationRestoreDrillSuccessAt)
+	operationalMetrics := observability.NewMetrics(cfg.MigrationBackupLastSuccessAt, cfg.MigrationRestoreDrillSuccessAt)
 	connection, err := identityConnectionStrategyFor(engine).Open(ctx, cfg, engine, dependencies, sqlMetrics)
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
@@ -124,7 +125,7 @@ func OpenBorrowedContext(ctx context.Context, cfg config.Config, db *sql.DB) (*I
 		db:          db, engine: engine, config: cfg, databaseSchema: schema,
 		secretMaterialKey: activeMaterial, secretKeyProvider: keyRing,
 		idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096),
-		sqlMetrics:         telemetry.NewSQLMetrics(), operationalMetrics: NewIdentityOperationalMetrics(cfg.MigrationBackupLastSuccessAt, cfg.MigrationRestoreDrillSuccessAt),
+		sqlMetrics:         telemetry.NewSQLMetrics(), operationalMetrics: observability.NewMetrics(cfg.MigrationBackupLastSuccessAt, cfg.MigrationRestoreDrillSuccessAt),
 		borrowedDatabase: true,
 		relationPrefix:   "domainry_identity_",
 	}
@@ -233,7 +234,7 @@ func (s *IdentityStore) SQLMetrics() *telemetry.SQLMetrics {
 	return s.sqlMetrics
 }
 
-func (s *IdentityStore) OperationalMetrics() *IdentityOperationalMetrics {
+func (s *IdentityStore) OperationalMetrics() *observability.Metrics {
 	if s == nil {
 		return nil
 	}

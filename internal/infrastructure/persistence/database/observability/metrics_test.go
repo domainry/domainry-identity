@@ -1,4 +1,4 @@
-package database
+package observability
 
 import (
 	"errors"
@@ -8,7 +8,7 @@ import (
 )
 
 func TestIdentityOperationalMetricsExposeMigrationBackupAndRestoreState(t *testing.T) {
-	metrics := NewIdentityOperationalMetrics("2026-07-18T12:00:00Z", "2026-07-10T12:00:00Z")
+	metrics := NewMetrics("2026-07-18T12:00:00Z", "2026-07-10T12:00:00Z")
 	metrics.ObserveMigration(125*time.Millisecond, nil)
 	metrics.ObserveMigration(2*time.Second, errors.New("migration SQL and DSN must not escape"))
 	metrics.ObserveMigrationLock(25*time.Millisecond, nil)
@@ -34,7 +34,7 @@ func TestIdentityOperationalMetricsExposeMigrationBackupAndRestoreState(t *testi
 }
 
 func TestIdentityOperationalMetricsUseUnknownAgeForMissingEvidence(t *testing.T) {
-	metrics := NewIdentityOperationalMetrics("", "invalid")
+	metrics := NewMetrics("", "invalid")
 	output := metrics.OpenMetrics(t.Context(), time.Now().UTC())
 	if !strings.Contains(output, "domainry_identity_backup_age_seconds -1.000000000") || !strings.Contains(output, "domainry_identity_restore_drill_age_seconds -1.000000000") {
 		t.Fatalf("missing evidence was not represented as unknown: %s", output)

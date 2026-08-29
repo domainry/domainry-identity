@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"testing"
 
-	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/transaction"
 )
 
 type recordingActionExecutor struct {
@@ -42,7 +42,7 @@ func TestIdentityReadsUseActionExecutionTransaction(t *testing.T) {
 	defer executorDB.Close()
 	executor := &recordingActionExecutor{inner: executorDB}
 
-	ctx := database.WithActionExecutionTransaction(context.Background(), executor)
+	ctx := transaction.WithExecutor(context.Background(), executor)
 
 	if got := store.reader(ctx); got != identityReadExecutor(executor) {
 		t.Fatalf("reader must return the ctx action execution executor, got %T", got)

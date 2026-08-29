@@ -13,6 +13,7 @@ import (
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
 	metadatarepository "github.com/domainry/domainry-identity/internal/domain/metadata/repository"
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/transaction"
 	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
 
@@ -38,8 +39,8 @@ func (r MetadataStore) SnapshotRevision(ctx context.Context, scope identitymodel
 	if err := requireMetadataInstallationScope(scope); err != nil {
 		return "", err
 	}
-	executor := database.ActionExecutionExecutor(r.database())
-	if actionExecutor := database.ActionExecutionTransaction(ctx); actionExecutor != nil {
+	executor := transaction.Executor(r.database())
+	if actionExecutor := transaction.ExecutorFromContext(ctx); actionExecutor != nil {
 		executor = actionExecutor
 	}
 	var revision string

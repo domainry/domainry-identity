@@ -14,6 +14,7 @@ import (
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 
 	migrationcontract "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/migration"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/observability"
 	persistencedriver "github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/mysql"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/postgres"
@@ -133,7 +134,7 @@ func TestValidateExternalMigrationBackupAcceptsMatchingEvidence(t *testing.T) {
 	}}
 	store := identitySchemaStore(t, state)
 	store.engine = postgres.NewEngine()
-	store.operationalMetrics = NewIdentityOperationalMetrics("", "")
+	store.operationalMetrics = observability.NewMetrics("", "")
 	if err := store.ensureMigrationBackupForExistingData(t.Context(), config.Config{MigrationBackupEvidencePath: path}); err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +178,7 @@ func TestEnsureMigrationBackupCoversEmptyAndExistingSQLiteDatabases(t *testing.T
 	if _, err := db.ExecContext(t.Context(), `CREATE TABLE customer (id TEXT PRIMARY KEY); INSERT INTO customer (id) VALUES ('one')`); err != nil {
 		t.Fatal(err)
 	}
-	store := &IdentityStore{db: db, engine: sqlite.NewEngine(), operationalMetrics: NewIdentityOperationalMetrics("", "")}
+	store := &IdentityStore{db: db, engine: sqlite.NewEngine(), operationalMetrics: observability.NewMetrics("", "")}
 	if err := store.ensureMigrationBackupForExistingData(t.Context(), config.Config{DBPath: dbPath, MigrationBackupDir: filepath.Join(dir, "backups")}); err != nil {
 		t.Fatal(err)
 	}

@@ -7,7 +7,7 @@ import (
 	"encoding/hex"
 	"time"
 
-	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/transaction"
 	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
 
@@ -17,7 +17,7 @@ func (r MetadataStore) refreshCatalogHashTx(ctx context.Context, tx *sql.Tx, now
 
 func (r MetadataStore) refreshCatalogHashWithExecutor(
 	ctx context.Context,
-	executor database.ActionExecutionExecutor,
+	executor transaction.Executor,
 ) error {
 	return r.refreshCatalogHashWithExecutorAt(
 		ctx,
@@ -28,7 +28,7 @@ func (r MetadataStore) refreshCatalogHashWithExecutor(
 
 func (r MetadataStore) refreshCatalogHashWithExecutorAt(
 	ctx context.Context,
-	executor database.ActionExecutionExecutor,
+	executor transaction.Executor,
 	now string,
 ) error {
 	tables := metadataCatalogDefinitionTables()

@@ -1,4 +1,4 @@
-package database
+package observability
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 
 var migrationDurationBuckets = [...]float64{0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 300}
 
-type IdentityOperationalMetrics struct {
+type Metrics struct {
 	mu                       sync.RWMutex
 	migrationCount           uint64
 	migrationFailures        uint64
@@ -25,22 +25,22 @@ type IdentityOperationalMetrics struct {
 	restoreDrillLastSuccess  time.Time
 }
 
-type OperationalAgeSnapshot struct {
+type AgeSnapshot struct {
 	MigrationLastSuccess time.Time `json:"migration_last_success,omitempty"`
 	BackupLastSuccess    time.Time `json:"backup_last_success,omitempty"`
 	RestoreLastSuccess   time.Time `json:"restore_drill_last_success,omitempty"`
 }
 
-func (m *IdentityOperationalMetrics) AgeSnapshot() OperationalAgeSnapshot {
+func (m *Metrics) AgeSnapshot() AgeSnapshot {
 	if m == nil {
-		return OperationalAgeSnapshot{}
+		return AgeSnapshot{}
 	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return OperationalAgeSnapshot{MigrationLastSuccess: m.migrationLastSuccess, BackupLastSuccess: m.backupLastSuccess, RestoreLastSuccess: m.restoreDrillLastSuccess}
+	return AgeSnapshot{MigrationLastSuccess: m.migrationLastSuccess, BackupLastSuccess: m.backupLastSuccess, RestoreLastSuccess: m.restoreDrillLastSuccess}
 }
 
-func (m *IdentityOperationalMetrics) ObserveMigrationLock(wait time.Duration, err error) {
+func (m *Metrics) ObserveMigrationLock(wait time.Duration, err error) {
 	if m == nil {
 		return
 	}
@@ -53,15 +53,15 @@ func (m *IdentityOperationalMetrics) ObserveMigrationLock(wait time.Duration, er
 	m.mu.Unlock()
 }
 
-func NewIdentityOperationalMetrics(backupLastSuccess, restoreDrillLastSuccess string) *IdentityOperationalMetrics {
-	return &IdentityOperationalMetrics{
+func NewMetrics(backupLastSuccess, restoreDrillLastSuccess string) *Metrics {
+	return &Metrics{
 		migrationDurationBuckets: make([]uint64, len(migrationDurationBuckets)),
 		backupLastSuccess:        parseOperationalTimestamp(backupLastSuccess),
 		restoreDrillLastSuccess:  parseOperationalTimestamp(restoreDrillLastSuccess),
 	}
 }
 
-func (m *IdentityOperationalMetrics) ObserveMigration(duration time.Duration, err error) {
+func (m *Metrics) ObserveMigration(duration time.Duration, err error) {
 	if m == nil {
 		return
 	}
@@ -81,7 +81,7 @@ func (m *IdentityOperationalMetrics) ObserveMigration(duration time.Duration, er
 	}
 }
 
-func (m *IdentityOperationalMetrics) ObserveBackupSuccess(at time.Time) {
+func (m *Metrics) ObserveBackupSuccess(at time.Time) {
 	if m == nil || at.IsZero() {
 		return
 	}
@@ -90,7 +90,7 @@ func (m *IdentityOperationalMetrics) ObserveBackupSuccess(at time.Time) {
 	m.mu.Unlock()
 }
 
-func (m *IdentityOperationalMetrics) OpenMetrics(_ context.Context, now time.Time) string {
+func (m *Metrics) OpenMetrics(_ context.Context, now time.Time) string {
 	if m == nil {
 		return ""
 	}

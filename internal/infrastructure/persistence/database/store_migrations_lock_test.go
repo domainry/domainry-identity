@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/observability"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/mysql"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/postgres"
 	"github.com/domainry/domainry-identity/internal/platform/config"
@@ -124,7 +125,7 @@ func TestAcquireMigrationLockCoversExternalDialectsAndRelease(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			script := &migrationLockScript{results: []driver.Value{test.result}}
 			db := openMigrationLockScript(t, script)
-			store := &IdentityStore{db: db, engine: test.engine, databaseSchema: "runtime", operationalMetrics: NewIdentityOperationalMetrics("", "")}
+			store := &IdentityStore{db: db, engine: test.engine, databaseSchema: "runtime", operationalMetrics: observability.NewMetrics("", "")}
 			ctx, cancel := context.WithCancel(t.Context())
 			release, err := store.acquireMigrationLock(ctx, config.Config{MigrationInstanceID: "test-instance"})
 			if err != nil {

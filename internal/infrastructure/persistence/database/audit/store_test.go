@@ -10,6 +10,7 @@ import (
 	auditmodel "github.com/domainry/domainry-identity/internal/domain/audit/model"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/transaction"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 )
 
@@ -84,7 +85,7 @@ func TestAuditStoreUsesActiveActionExecutionTransaction(t *testing.T) {
 	defer connection.ExecContext(context.Background(), "ROLLBACK")
 
 	ctx, cancel := context.WithTimeout(
-		database.WithActionExecutionTransaction(t.Context(), connection),
+		transaction.WithExecutor(t.Context(), connection),
 		time.Second,
 	)
 	defer cancel()

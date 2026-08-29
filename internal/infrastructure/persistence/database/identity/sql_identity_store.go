@@ -10,8 +10,8 @@ import (
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	identityrepository "github.com/domainry/domainry-identity/internal/domain/identity/repository"
-	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
 	identityschema "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/schema"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/transaction"
 	persistencedriver "github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 )
@@ -27,7 +27,7 @@ type identityReadExecutor interface {
 // inside an Action execution, so identity reads reuse the transaction
 // connection instead of blocking on the (possibly single-connection) pool.
 func (s *SQLIdentityStore) reader(ctx context.Context) identityReadExecutor {
-	if tx := database.ActionExecutionTransaction(ctx); tx != nil {
+	if tx := transaction.ExecutorFromContext(ctx); tx != nil {
 		return tx
 	}
 	return s.db
