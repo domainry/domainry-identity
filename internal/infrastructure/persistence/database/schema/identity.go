@@ -7,18 +7,9 @@ import (
 
 func EnsureIdentitySchema(ctx context.Context, s Store) error {
 	text := s.MetadataIDColumnType()
-	boolType := "BOOLEAN"
-	boolFalse := "FALSE"
-	defaultText := "TEXT"
-	identityIndexText := text
-	if s.Driver() == "sqlite" {
-		boolType = "INTEGER"
-		boolFalse = "0"
-	} else if s.Driver() == "mysql" {
-		boolFalse = "0"
-		defaultText = "VARCHAR(255)"
-		identityIndexText = "VARCHAR(191) CHARACTER SET ascii COLLATE ascii_bin"
-	}
+	types := s.SchemaTypes()
+	boolType, boolFalse := types.Boolean, types.FalseLiteral
+	defaultText, identityIndexText := types.DefaultText, types.IndexedText
 	tables := map[string][]string{
 		"identity_departments": {
 			"id " + text + " PRIMARY KEY",

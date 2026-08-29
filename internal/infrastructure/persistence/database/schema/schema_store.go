@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"sort"
 	"strings"
+
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 )
 
 // SQLDatabase is the transaction/connection-neutral DDL surface used by the
@@ -30,6 +32,7 @@ type Store interface {
 	EnsureCompositePrimaryKey(context.Context, string, ...string) error
 	MetadataIDColumnType() string
 	LocalizedTextKeyColumnType() string
+	SchemaTypes() driver.SchemaTypes
 	ColumnDefinition(string) string
 }
 

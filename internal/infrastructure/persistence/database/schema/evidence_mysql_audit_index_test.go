@@ -10,6 +10,7 @@ import (
 )
 
 const mysqlInnoDBMaxIndexBytes = 3072
+const mysqlAuditCursorType = "VARCHAR(191) CHARACTER SET ascii COLLATE ascii_bin"
 
 var mysqlVarcharLengthPattern = regexp.MustCompile(`(?i)VARCHAR\(([0-9]+)\)`)
 
@@ -19,7 +20,7 @@ func TestAuditEventMySQLCursorIndexesStayWithinInnoDBKeyLimit(t *testing.T) {
 		t.Fatalf("regression fixture no longer reproduces the original 3820-byte oversized key: bytes=%d", got)
 	}
 
-	definitions := auditEventColumnDefinitions("VARCHAR(191)", mysqlAuditCursorColumnType)
+	definitions := auditEventColumnDefinitions("VARCHAR(191)", mysqlAuditCursorType)
 	for _, test := range []struct {
 		name      string
 		columns   []string
@@ -61,8 +62,8 @@ func TestMySQLAuditCursorColumnNormalizationRepairsPartialBootstrap(t *testing.T
 	statement := state.execQueries[0]
 	for _, fragment := range []string{
 		`ALTER TABLE "_audit_events"`,
-		`MODIFY COLUMN "id" ` + mysqlAuditCursorColumnType + ` NOT NULL`,
-		`MODIFY COLUMN "created_at" ` + mysqlAuditCursorColumnType + ` NOT NULL`,
+		`MODIFY COLUMN "id" ` + mysqlAuditCursorType + ` NOT NULL`,
+		`MODIFY COLUMN "created_at" ` + mysqlAuditCursorType + ` NOT NULL`,
 	} {
 		if !strings.Contains(statement, fragment) {
 			t.Fatalf("normalization DDL missing %q: %s", fragment, statement)

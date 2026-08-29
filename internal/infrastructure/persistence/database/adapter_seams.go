@@ -55,11 +55,9 @@ func (s *IdentityStore) EnsureColumn(ctx context.Context, table, column, definit
 
 func (s *IdentityStore) MetadataIDColumnType() string { return s.metadataIDColumnType() }
 func (s *IdentityStore) LocalizedTextKeyColumnType() string {
-	if s.Driver() == "mysql" {
-		return "VARCHAR(128)"
-	}
-	return "TEXT"
+	return s.sqlBase().Engine.TextKeyColumnType(128)
 }
+func (s *IdentityStore) SchemaTypes() driver.SchemaTypes { return s.sqlBase().Engine.SchemaTypes() }
 func (s *IdentityStore) ColumnDefinition(definition string) string {
 	return s.columnDefinition(definition)
 }

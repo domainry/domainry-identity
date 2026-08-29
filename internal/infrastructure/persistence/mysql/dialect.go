@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 	ormbuilder "github.com/domainry/domainry-orm/builder"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
@@ -19,6 +20,13 @@ func (Dialect) Name() string { return "mysql" }
 
 func (Dialect) MaxParameters() int                     { return 65535 }
 func (Dialect) TextKeyColumnType(maxLength int) string { return fmt.Sprintf("VARCHAR(%d)", maxLength) }
+func (Dialect) SchemaTypes() driver.SchemaTypes {
+	return driver.SchemaTypes{
+		Boolean: "BOOLEAN", FalseLiteral: "0", DefaultText: "VARCHAR(255)",
+		IndexedText:     "VARCHAR(191) CHARACTER SET ascii COLLATE ascii_bin",
+		AuditCursorText: "VARCHAR(191) CHARACTER SET ascii COLLATE ascii_bin",
+	}
+}
 func (Dialect) ApplyUpdateLock(builder *ormbuilder.SelectBuilder) *ormbuilder.SelectBuilder {
 	return builder.ForUpdate()
 }

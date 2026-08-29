@@ -6,6 +6,8 @@ import (
 	"database/sql/driver"
 	"errors"
 	"io"
+
+	persistencedriver "github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 )
 
 var errSchemaSQL = errors.New("scripted schema SQL failure")
@@ -131,6 +133,12 @@ func (s scriptedSchemaStore) EnsureColumn(context.Context, string, string, strin
 func (scriptedSchemaStore) EnsureCompositePrimaryKey(context.Context, string, ...string) error {
 	return nil
 }
-func (scriptedSchemaStore) MetadataIDColumnType() string         { return "TEXT" }
-func (scriptedSchemaStore) LocalizedTextKeyColumnType() string   { return "TEXT" }
+func (scriptedSchemaStore) MetadataIDColumnType() string       { return "TEXT" }
+func (scriptedSchemaStore) LocalizedTextKeyColumnType() string { return "TEXT" }
+func (s scriptedSchemaStore) SchemaTypes() persistencedriver.SchemaTypes {
+	if s.Driver() == "mysql" {
+		return persistencedriver.SchemaTypes{Boolean: "BOOLEAN", FalseLiteral: "0", DefaultText: "VARCHAR(255)", IndexedText: mysqlAuditCursorType, AuditCursorText: mysqlAuditCursorType}
+	}
+	return persistencedriver.SchemaTypes{Boolean: "INTEGER", FalseLiteral: "0", DefaultText: "TEXT", IndexedText: "TEXT", AuditCursorText: "TEXT"}
+}
 func (scriptedSchemaStore) ColumnDefinition(value string) string { return value }

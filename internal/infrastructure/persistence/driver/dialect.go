@@ -24,9 +24,18 @@ type Dialect interface {
 type EngineProfile interface {
 	MaxParameters() int
 	TextKeyColumnType(int) string
+	SchemaTypes() SchemaTypes
 	ApplyUpdateLock(*ormbuilder.SelectBuilder) *ormbuilder.SelectBuilder
 	ApplyUpsert(*ormbuilder.InsertBuilder, []string, ...string) *ormbuilder.InsertBuilder
 	EnsureCompositePrimaryKey(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, ...string) error
+}
+
+type SchemaTypes struct {
+	Boolean         string
+	FalseLiteral    string
+	DefaultText     string
+	IndexedText     string
+	AuditCursorText string
 }
 
 type SchemaDatabase interface {
@@ -39,6 +48,9 @@ type portableEngineProfile struct{}
 
 func (portableEngineProfile) MaxParameters() int           { return 999 }
 func (portableEngineProfile) TextKeyColumnType(int) string { return "TEXT" }
+func (portableEngineProfile) SchemaTypes() SchemaTypes {
+	return SchemaTypes{Boolean: "BOOLEAN", FalseLiteral: "FALSE", DefaultText: "TEXT", IndexedText: "TEXT", AuditCursorText: "TEXT"}
+}
 func (portableEngineProfile) ApplyUpdateLock(builder *ormbuilder.SelectBuilder) *ormbuilder.SelectBuilder {
 	return builder
 }

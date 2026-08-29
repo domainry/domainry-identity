@@ -3,6 +3,8 @@ package schema
 import (
 	"context"
 	"testing"
+
+	persistencedriver "github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 )
 
 type schemaHelperStore struct{}
@@ -26,6 +28,9 @@ func (schemaHelperStore) EnsureCompositePrimaryKey(context.Context, string, ...s
 }
 func (schemaHelperStore) MetadataIDColumnType() string       { return "TEXT" }
 func (schemaHelperStore) LocalizedTextKeyColumnType() string { return "TEXT" }
+func (schemaHelperStore) SchemaTypes() persistencedriver.SchemaTypes {
+	return persistencedriver.SchemaTypes{Boolean: "INTEGER", FalseLiteral: "0", DefaultText: "TEXT", IndexedText: "TEXT", AuditCursorText: "TEXT"}
+}
 func (schemaHelperStore) ColumnDefinition(value string) string {
 	return "normalized:" + value
 }

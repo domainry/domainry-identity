@@ -5,15 +5,10 @@ import (
 	"fmt"
 )
 
-const mysqlAuditCursorColumnType = "VARCHAR(191) CHARACTER SET ascii COLLATE ascii_bin"
-
 // EnsureEvidenceSchema owns Identity's immutable audit evidence.
 func EnsureEvidenceSchema(ctx context.Context, s Store) error {
 	text := s.MetadataIDColumnType()
-	cursorText := text
-	if s.Driver() == "mysql" {
-		cursorText = mysqlAuditCursorColumnType
-	}
+	cursorText := s.SchemaTypes().AuditCursorText
 	tables := map[string][]string{
 		"_audit_events": auditEventColumnDefinitions(text, cursorText),
 	}

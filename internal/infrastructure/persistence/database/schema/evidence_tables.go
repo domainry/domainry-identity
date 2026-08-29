@@ -57,6 +57,7 @@ func ensureMySQLAuditCursorColumns(ctx context.Context, s Store) error {
 	}
 	_ = rows.Close()
 	modifications := make([]string, 0, len(specs))
+	cursorType := s.SchemaTypes().AuditCursorText
 	for _, spec := range specs {
 		state, exists := states[spec.name]
 		if !exists {
@@ -65,7 +66,7 @@ func ensureMySQLAuditCursorColumns(ctx context.Context, s Store) error {
 		if strings.EqualFold(state.columnType, "varchar(191)") && strings.EqualFold(state.characterSet, "ascii") && strings.EqualFold(state.collation, "ascii_bin") {
 			continue
 		}
-		modifications = append(modifications, "MODIFY COLUMN "+s.Identifier(spec.name)+" "+mysqlAuditCursorColumnType+" "+spec.nullability)
+		modifications = append(modifications, "MODIFY COLUMN "+s.Identifier(spec.name)+" "+cursorType+" "+spec.nullability)
 	}
 	if len(modifications) == 0 {
 		return nil
