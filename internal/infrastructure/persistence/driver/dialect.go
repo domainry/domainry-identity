@@ -16,7 +16,7 @@ type Dialect interface {
 	Name() string
 	SQLDriver() string
 	DSN(config.Config) (string, error)
-	Configure(context.Context, *sql.DB, string) error
+	Configure(context.Context, *sql.DB, config.Config) error
 	SQLDialect() ormdialect.Dialect
 	SchemaMigrationSQL() string
 }

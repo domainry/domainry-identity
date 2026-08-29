@@ -56,7 +56,7 @@ func (Dialect) DSN(cfg config.Config) (string, error) {
 	return dsn, nil
 }
 
-func (Dialect) Configure(ctx context.Context, db *sql.DB, _ string) error {
+func (Dialect) Configure(ctx context.Context, db *sql.DB, _ config.Config) error {
 	if err := db.PingContext(ctx); err != nil {
 		return fmt.Errorf("connect mysql database: %w", err)
 	}

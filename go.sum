@@ -17,10 +17,8 @@ github.com/domainry/domainry-foundation v0.1.0-dev.4 h1:xVOExX3LJjQEFhmTkIQSHFDg
 github.com/domainry/domainry-foundation v0.1.0-dev.4/go.mod h1:WvgF05kjXLik+UZR46PpG5bbbt/gDp2WeUo4o7H7NjA=
 github.com/domainry/domainry-identity-sdk v0.1.0-dev8 h1:EXhMdCHaxl4mQSx83r9lAAhqPzd9JiCPYDlNOf4YlQ4=
 github.com/domainry/domainry-identity-sdk v0.1.0-dev8/go.mod h1:6DLdAWQS3aTU5D87w8UIS4HSK/Lj9f7/qFslLJR0Gxw=
-github.com/domainry/domainry-orm v0.1.21 h1:ibwLJjHL3pKxEOqrriK5a/jwoRt6PPQXBHns1s4YTiE=
-github.com/domainry/domainry-orm v0.1.21/go.mod h1:NKMojLuridkYCS4i5L7BO7LMTMsf/uOkWQ9OQ+9Vdn4=
-github.com/domainry/domainry-orm v0.1.24 h1:h6L2vlZyvd4IjXOoV66zO8PapntbWh2KyWYZ/gezOAA=
-github.com/domainry/domainry-orm v0.1.24/go.mod h1:NKMojLuridkYCS4i5L7BO7LMTMsf/uOkWQ9OQ+9Vdn4=
+github.com/domainry/domainry-orm v0.1.25-0.20260829222221-e316e284305e h1:tkgChNx9r73y0Zb5l47O4yjzh3o3WwmdjJLLsHoD2SY=
+github.com/domainry/domainry-orm v0.1.25-0.20260829222221-e316e284305e/go.mod h1:NKMojLuridkYCS4i5L7BO7LMTMsf/uOkWQ9OQ+9Vdn4=
 github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=
 github.com/dustin/go-humanize v1.0.1/go.mod h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+mFykh5fBlto=
 github.com/go-jose/go-jose/v4 v4.1.4 h1:moDMcTHmvE6Groj34emNPLs/qtYXRVcd6S7NHbHz3kA=

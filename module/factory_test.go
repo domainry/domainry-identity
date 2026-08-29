@@ -390,6 +390,8 @@ func TestFactoryBorrowsProjectPoolWithoutClosingOrColliding(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	db.SetMaxOpenConns(3)
+	db.SetMaxIdleConns(1)
 	if _, err := db.ExecContext(t.Context(), `CREATE TABLE metadata_catalog (owner TEXT NOT NULL); INSERT INTO metadata_catalog (owner) VALUES ('runtime'); CREATE TABLE _audit_events (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL); INSERT INTO _audit_events (id, workspace_id) VALUES ('runtime-event', 'default')`); err != nil {
 		t.Fatal(err)
 	}
@@ -400,6 +402,9 @@ func TestFactoryBorrowsProjectPoolWithoutClosingOrColliding(t *testing.T) {
 	}
 	if err := binding.Close(t.Context()); err != nil {
 		t.Fatal(err)
+	}
+	if stats := db.Stats(); stats.MaxOpenConnections != 3 {
+		t.Fatalf("Identity Module reinitialized host pool: max open=%d", stats.MaxOpenConnections)
 	}
 	var owner string
 	if err := db.QueryRowContext(t.Context(), `SELECT owner FROM metadata_catalog`).Scan(&owner); err != nil || owner != "runtime" {

@@ -85,7 +85,7 @@ func openContextWithDependencies(ctx context.Context, cfg config.Config, depende
 		return nil, fmt.Errorf("open database: %w", err)
 	}
 	db, migrationDB := connectionState.Database, connectionState.MigrationDatabase
-	if err := engine.Configure(ctx, db, connectionState.DSN); err != nil {
+	if err := engine.Configure(ctx, db, cfg); err != nil {
 		if migrationDB != nil {
 			_ = migrationDB.Close()
 		}

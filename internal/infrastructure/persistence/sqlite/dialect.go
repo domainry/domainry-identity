@@ -4,14 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 	ormbuilder "github.com/domainry/domainry-orm/builder"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
+	ormsqlite "github.com/domainry/domainry-orm/sqlite"
 	_ "modernc.org/sqlite"
 )
 
@@ -39,29 +38,47 @@ func (Dialect) SQLDriver() string                   { return "sqlite" }
 func (Dialect) DatabaseSchema(config.Config) string { return "" }
 
 func (Dialect) DSN(cfg config.Config) (string, error) {
-	if strings.TrimSpace(cfg.DatabaseDSN) != "" {
-		return strings.TrimSpace(cfg.DatabaseDSN), nil
+	connection, err := identitySQLiteConnectionConfig(cfg)
+	if err != nil {
+		return "", err
 	}
-	if strings.TrimSpace(cfg.DBPath) == "" {
-		return "data/runtime.db", nil
-	}
-	return strings.TrimSpace(cfg.DBPath), nil
+	return connection.DSN()
 }
 
-func (Dialect) Configure(ctx context.Context, db *sql.DB, dsn string) error {
-	if dsn != ":memory:" && !strings.HasPrefix(dsn, "file:") {
-		if err := os.MkdirAll(filepath.Dir(dsn), 0o755); err != nil {
-			return fmt.Errorf("create sqlite database directory: %w", err)
-		}
+func (Dialect) Configure(ctx context.Context, db *sql.DB, cfg config.Config) error {
+	connection, err := identitySQLiteConnectionConfig(cfg)
+	if err != nil {
+		return err
 	}
-	db.SetMaxOpenConns(1)
-	if _, err := db.ExecContext(ctx, "PRAGMA busy_timeout = 5000"); err != nil {
-		return fmt.Errorf("configure sqlite busy timeout: %w", err)
+	return ormsqlite.InitializeOwned(ctx, db, connection)
+}
+
+func identitySQLiteConnectionConfig(cfg config.Config) (ormsqlite.OwnedConnectionConfig, error) {
+	dataSource := strings.TrimSpace(cfg.DatabaseDSN)
+	if dataSource == "" {
+		dataSource = strings.TrimSpace(cfg.DBPath)
 	}
-	if _, err := db.ExecContext(ctx, "PRAGMA foreign_keys = ON"); err != nil {
-		return fmt.Errorf("configure sqlite database: %w", err)
+	if dataSource == "" {
+		dataSource = "data/runtime.db"
 	}
-	return nil
+	normalized := strings.ToLower(dataSource)
+	if normalized == ":memory:" || strings.Contains(normalized, "mode=memory") {
+		return ormsqlite.OwnedConnectionConfig{}, fmt.Errorf("Identity SQLite requires a file database")
+	}
+	connection := ormsqlite.DefaultOwnedConnectionConfig(dataSource)
+	if cfg.DatabaseLockTimeout > 0 {
+		connection.BusyTimeout = cfg.DatabaseLockTimeout
+	}
+	if cfg.DatabaseMaxOpenConns > 0 {
+		connection.MaxOpenConnections = cfg.DatabaseMaxOpenConns
+	}
+	if cfg.DatabaseMaxIdleConns > 0 {
+		connection.MaxIdleConnections = cfg.DatabaseMaxIdleConns
+	}
+	if connection.MaxIdleConnections > connection.MaxOpenConnections {
+		connection.MaxIdleConnections = connection.MaxOpenConnections
+	}
+	return connection, nil
 }
 
 func (Dialect) SQLDialect() ormdialect.Dialect {
