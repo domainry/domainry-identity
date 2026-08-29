@@ -19,7 +19,7 @@ func TestRemoveIdentityUserRollsBackEveryOwnedSecurityFact(t *testing.T) {
 	if err := identityStore.EnsureSchema(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	store, err := identitypersistence.NewSQLIdentityStore(t.Context(), identityStore.DB(), identityStore.PersistenceDialect())
+	store, err := identitypersistence.NewSQLIdentityStore(t.Context(), identityStore.DB(), identityStore.PersistenceEngine())
 	if err != nil {
 		t.Fatal(err)
 	}

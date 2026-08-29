@@ -46,7 +46,7 @@ type identityOpenDependencies struct {
 
 func defaultIdentityOpenDependencies() identityOpenDependencies {
 	return identityOpenDependencies{
-		dialect: dialectFor,
+		dialect: engineFor,
 		postgresProfile: func(cfg config.Config) (identityPostgresProfile, error) {
 			profile, err := postgres.NewConnectionProfile(cfg)
 			if err != nil {

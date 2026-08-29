@@ -27,7 +27,7 @@ func TestSystemManagedBusinessRoleReconciliationPersistsInSQLite(t *testing.T) {
 	if err := store.EnsureSchema(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	repository, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceDialect())
+	repository, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceEngine())
 	if err != nil {
 		t.Fatal(err)
 	}

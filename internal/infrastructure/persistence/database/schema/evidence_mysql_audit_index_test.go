@@ -56,7 +56,7 @@ func TestMySQLAuditCursorColumnNormalizationRepairsPartialBootstrap(t *testing.T
 	t.Cleanup(func() { _ = database.Close() })
 	dialect, _ := ormdialect.New(ormdialect.MySQL)
 	renderer, _ := dialect.WithNamespace("", "")
-	if err := (mysqlpersistence.Dialect{}).NormalizeAuditCursorColumns(t.Context(), database, renderer, "", "", "_audit_events", "id", "created_at"); err != nil {
+	if err := mysqlpersistence.NewEngine().NormalizeAuditCursorColumns(t.Context(), database, renderer, "", "", "_audit_events", "id", "created_at"); err != nil {
 		t.Fatal(err)
 	}
 	if len(state.execQueries) != 1 {

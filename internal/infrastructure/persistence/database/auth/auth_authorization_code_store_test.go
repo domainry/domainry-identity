@@ -15,7 +15,7 @@ func TestAuthorizationCodeIsBoundAndConsumedExactlyOnce(t *testing.T) {
 	if err := store.EnsureSchema(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	identityStore, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceDialect())
+	identityStore, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceEngine())
 	if err != nil {
 		t.Fatal(err)
 	}

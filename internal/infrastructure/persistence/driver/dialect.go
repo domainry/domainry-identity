@@ -3,8 +3,6 @@ package driver
 import (
 	"context"
 	"database/sql"
-	"fmt"
-	"strings"
 	"time"
 
 	"github.com/domainry/domainry-identity/internal/platform/config"
@@ -51,6 +49,14 @@ type EngineProfile interface {
 	WorkspaceRLSSupported() bool
 	ApplyWorkspaceRLS(context.Context, *sql.DB, ormdialect.Renderer, string, string, string) error
 	InspectWorkspaceRLS(context.Context, *sql.DB, ormdialect.Renderer, string, string, string) (WorkspaceRLSStatus, error)
+}
+
+// Engine is the complete database-engine strategy selected once at assembly.
+// Persistence code receives this object directly and never resolves a second
+// profile from a dialect at call time.
+type Engine interface {
+	Dialect
+	EngineProfile
 }
 
 type MigrationProfile interface {
@@ -145,90 +151,4 @@ type SchemaDatabase interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 	BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
-}
-
-type portableEngineProfile struct{}
-
-func (portableEngineProfile) MaxParameters() int           { return 999 }
-func (portableEngineProfile) TextKeyColumnType(int) string { return "TEXT" }
-func (portableEngineProfile) SchemaTypes() SchemaTypes {
-	return SchemaTypes{Boolean: "BOOLEAN", FalseLiteral: "FALSE", DefaultText: "TEXT", DocumentText: "TEXT", IndexedText: "TEXT", AuditCursorText: "TEXT"}
-}
-func (portableEngineProfile) ApplyUpdateLock(builder *ormbuilder.SelectBuilder) *ormbuilder.SelectBuilder {
-	return builder
-}
-func (portableEngineProfile) ApplyUpsert(builder *ormbuilder.InsertBuilder, conflictColumns []string, updateColumns ...string) *ormbuilder.InsertBuilder {
-	assignments := make([]ormbuilder.Assignment, len(updateColumns))
-	for index, column := range updateColumns {
-		assignments[index] = ormbuilder.AssignExpression(column, ormbuilder.InsertedValue(column))
-	}
-	return builder.OnConflictDoUpdate(conflictColumns, assignments...)
-}
-func (portableEngineProfile) CreateIndexIfMissing(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, string, bool, ...string) error {
-	return fmt.Errorf("database engine does not support index creation")
-}
-func (portableEngineProfile) NormalizeAuditCursorColumns(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, ...string) error {
-	return nil
-}
-func (portableEngineProfile) TableColumns(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string) (map[string]bool, error) {
-	return nil, fmt.Errorf("database engine does not support column introspection")
-}
-func (portableEngineProfile) TableIndexes(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string) (map[string]bool, error) {
-	return nil, fmt.Errorf("database engine does not support index introspection")
-}
-func (portableEngineProfile) DropIndex(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, string) error {
-	return fmt.Errorf("database engine does not support index deletion")
-}
-func (portableEngineProfile) EnsureCompositePrimaryKey(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, ...string) error {
-	return fmt.Errorf("database engine does not support composite primary-key migration")
-}
-func (portableEngineProfile) MigrationDatabasePath(config.Config) string { return "" }
-func (portableEngineProfile) ManagedDatabaseMarkerEnabled() bool         { return true }
-func (portableEngineProfile) ColumnDefinition(definition string) string {
-	return strings.TrimSpace(definition)
-}
-func (portableEngineProfile) ApplicationTablesQuery(ormdialect.Renderer, string) SchemaQuery {
-	return SchemaQuery{}
-}
-func (portableEngineProfile) WorkspaceTablesQuery(ormdialect.Renderer, string) SchemaQuery {
-	return SchemaQuery{}
-}
-func (portableEngineProfile) MigrationLedgerTypes() MigrationLedgerTypes {
-	return MigrationLedgerTypes{Key: "TEXT", Timestamp: "TEXT"}
-}
-func (portableEngineProfile) EnsureMigrationNamespace(context.Context, SchemaDatabase, ormdialect.Renderer, string) error {
-	return nil
-}
-func (portableEngineProfile) ConfigureMigrationTransaction(context.Context, *sql.Tx, ormdialect.Renderer, string, time.Duration, time.Duration) error {
-	return nil
-}
-func (portableEngineProfile) AcquireMigrationLock(context.Context, *sql.DB, ormdialect.Renderer, MigrationLockOptions) (MigrationLock, error) {
-	return MigrationLock{}, fmt.Errorf("database engine does not support migration locking")
-}
-func (portableEngineProfile) MigrationBackupPolicy() MigrationBackupPolicy {
-	return MigrationBackupPolicy{}
-}
-func (portableEngineProfile) MigrationRollbackPolicy() MigrationRollbackPolicy {
-	return MigrationRollbackPolicy{Mode: "unsupported", RequiresVerifiedBackup: true}
-}
-func (portableEngineProfile) DatabaseSchema(config.Config) string { return "" }
-func (portableEngineProfile) RendererSchema(string) string        { return "" }
-func (portableEngineProfile) WorkspaceRLSSupported() bool         { return false }
-func (portableEngineProfile) ApplyWorkspaceRLS(context.Context, *sql.DB, ormdialect.Renderer, string, string, string) error {
-	return nil
-}
-func (portableEngineProfile) InspectWorkspaceRLS(context.Context, *sql.DB, ormdialect.Renderer, string, string, string) (WorkspaceRLSStatus, error) {
-	return WorkspaceRLSStatus{}, nil
-}
-
-type engineProfileProvider interface{ EngineProfile() EngineProfile }
-
-func ProfileFor(value Dialect) EngineProfile {
-	if provider, ok := value.(engineProfileProvider); ok {
-		return provider.EngineProfile()
-	}
-	if profile, ok := value.(EngineProfile); ok {
-		return profile
-	}
-	return portableEngineProfile{}
 }

@@ -8,7 +8,7 @@ import (
 	sqliteschema "github.com/domainry/domainry-identity/internal/infrastructure/persistence/sqlite/schema"
 )
 
-type engineProfile struct {
+type Engine struct {
 	Dialect
 	driver.MigrationProfile
 	driver.PrimaryKeyProfile
@@ -16,8 +16,6 @@ type engineProfile struct {
 	driver.SchemaProfile
 }
 
-func newEngineProfile() engineProfile {
-	return engineProfile{Dialect: Dialect{}, MigrationProfile: sqlitemigration.NewProfile(), PrimaryKeyProfile: sqliteprimarykey.NewProfile(), WorkspaceRLSProfile: sqliterls.NewProfile(), SchemaProfile: sqliteschema.NewProfile()}
+func NewEngine() Engine {
+	return Engine{Dialect: Dialect{}, MigrationProfile: sqlitemigration.NewProfile(), PrimaryKeyProfile: sqliteprimarykey.NewProfile(), WorkspaceRLSProfile: sqliterls.NewProfile(), SchemaProfile: sqliteschema.NewProfile()}
 }
-
-func (Dialect) EngineProfile() driver.EngineProfile { return newEngineProfile() }

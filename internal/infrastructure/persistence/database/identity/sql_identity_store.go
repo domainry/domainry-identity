@@ -56,11 +56,11 @@ func (s *SQLIdentityStore) engineProfile() persistencedriver.EngineProfile {
 	panic("identity SQL store requires an engine profile")
 }
 
-func NewSQLIdentityStore(ctx context.Context, db *sql.DB, dialect persistencedriver.Dialect, schema ...string) (*SQLIdentityStore, error) {
-	return NewSQLIdentityStoreWithSchema(ctx, db, db, dialect, schema...)
+func NewSQLIdentityStore(ctx context.Context, db *sql.DB, engine persistencedriver.Engine, schema ...string) (*SQLIdentityStore, error) {
+	return NewSQLIdentityStoreWithSchema(ctx, db, db, engine, schema...)
 }
 
-func NewSQLIdentityStoreWithSchema(ctx context.Context, db *sql.DB, schemaDB identityschema.SQLDatabase, dialect persistencedriver.Dialect, schema ...string) (*SQLIdentityStore, error) {
+func NewSQLIdentityStoreWithSchema(ctx context.Context, db *sql.DB, schemaDB identityschema.SQLDatabase, engine persistencedriver.Engine, schema ...string) (*SQLIdentityStore, error) {
 	databaseSchema := ""
 	if len(schema) > 0 {
 		databaseSchema = strings.TrimSpace(schema[0])
@@ -69,11 +69,10 @@ func NewSQLIdentityStoreWithSchema(ctx context.Context, db *sql.DB, schemaDB ide
 	if len(schema) > 1 {
 		relationPrefix = strings.TrimSpace(schema[1])
 	}
-	if dialect == nil {
-		return nil, fmt.Errorf("identity SQL store requires a database dialect")
+	if engine == nil {
+		return nil, fmt.Errorf("identity SQL store requires a database engine")
 	}
-	engine := persistencedriver.ProfileFor(dialect)
-	renderer, err := dialect.SQLDialect().WithNamespace(engine.RendererSchema(databaseSchema), relationPrefix)
+	renderer, err := engine.SQLDialect().WithNamespace(engine.RendererSchema(databaseSchema), relationPrefix)
 	if err != nil {
 		return nil, err
 	}

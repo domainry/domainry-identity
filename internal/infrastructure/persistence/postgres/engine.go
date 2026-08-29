@@ -8,7 +8,7 @@ import (
 	postgresschema "github.com/domainry/domainry-identity/internal/infrastructure/persistence/postgres/schema"
 )
 
-type engineProfile struct {
+type Engine struct {
 	Dialect
 	driver.MigrationProfile
 	driver.PrimaryKeyProfile
@@ -16,8 +16,6 @@ type engineProfile struct {
 	driver.SchemaProfile
 }
 
-func newEngineProfile() engineProfile {
-	return engineProfile{Dialect: Dialect{}, MigrationProfile: postgresmigration.NewProfile(), PrimaryKeyProfile: postgresprimarykey.NewProfile(), WorkspaceRLSProfile: postgresrls.NewProfile(), SchemaProfile: postgresschema.NewProfile()}
+func NewEngine() Engine {
+	return Engine{Dialect: Dialect{}, MigrationProfile: postgresmigration.NewProfile(), PrimaryKeyProfile: postgresprimarykey.NewProfile(), WorkspaceRLSProfile: postgresrls.NewProfile(), SchemaProfile: postgresschema.NewProfile()}
 }
-
-func (Dialect) EngineProfile() driver.EngineProfile { return newEngineProfile() }

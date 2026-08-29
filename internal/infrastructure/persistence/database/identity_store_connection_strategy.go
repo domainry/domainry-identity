@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/domainry/domainry-foundation/telemetry"
-	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/postgres"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 )
@@ -36,7 +35,7 @@ func (standardIdentityConnectionStrategy) Open(_ context.Context, cfg config.Con
 	if err != nil {
 		return identityConnectionState{}, err
 	}
-	return identityConnectionState{Database: database, DSN: dsn, DatabaseSchema: driver.ProfileFor(dialect).DatabaseSchema(cfg)}, nil
+	return identityConnectionState{Database: database, DSN: dsn, DatabaseSchema: dialect.DatabaseSchema(cfg)}, nil
 }
 
 type postgresIdentityConnectionStrategy struct{}

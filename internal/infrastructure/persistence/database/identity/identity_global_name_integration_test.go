@@ -22,7 +22,7 @@ func TestIdentityUserGlobalNameFieldsRoundTripAndRemainSearchable(t *testing.T) 
 	if err := identityStore.EnsureIdentitySchema(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	store, err := identitypersistence.NewSQLIdentityStore(t.Context(), identityStore.DB(), identityStore.PersistenceDialect(), identityStore.DatabaseSchema())
+	store, err := identitypersistence.NewSQLIdentityStore(t.Context(), identityStore.DB(), identityStore.PersistenceEngine(), identityStore.DatabaseSchema())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -8,7 +8,7 @@ import (
 	mysqlschema "github.com/domainry/domainry-identity/internal/infrastructure/persistence/mysql/schema"
 )
 
-type engineProfile struct {
+type Engine struct {
 	Dialect
 	driver.MigrationProfile
 	driver.PrimaryKeyProfile
@@ -16,8 +16,6 @@ type engineProfile struct {
 	driver.SchemaProfile
 }
 
-func newEngineProfile() engineProfile {
-	return engineProfile{Dialect: Dialect{}, MigrationProfile: mysqlmigration.NewProfile(), PrimaryKeyProfile: mysqlprimarykey.NewProfile(), WorkspaceRLSProfile: mysqlrls.NewProfile(), SchemaProfile: mysqlschema.NewProfile()}
+func NewEngine() Engine {
+	return Engine{Dialect: Dialect{}, MigrationProfile: mysqlmigration.NewProfile(), PrimaryKeyProfile: mysqlprimarykey.NewProfile(), WorkspaceRLSProfile: mysqlrls.NewProfile(), SchemaProfile: mysqlschema.NewProfile()}
 }
-
-func (Dialect) EngineProfile() driver.EngineProfile { return newEngineProfile() }

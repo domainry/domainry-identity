@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/domainry/domainry-foundation/requestcontext"
-	persistencedriver "github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	postgrespersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/postgres"
 	postgresrls "github.com/domainry/domainry-identity/internal/infrastructure/persistence/postgres/rls"
 	"github.com/domainry/domainry-identity/internal/platform/config"
@@ -29,12 +28,12 @@ func TestEnsureWorkspaceRLSGuardsAndSuccess(t *testing.T) {
 	if err := (*IdentityStore)(nil).EnsureWorkspaceRLS(t.Context()); err != nil {
 		t.Fatalf("nil store: %v", err)
 	}
-	sqliteDialect, _ := dialectFor("sqlite")
+	sqliteDialect, _ := engineFor("sqlite")
 	store := &IdentityStore{dialect: sqliteDialect, config: config.Config{DatabaseRLSEnabled: true}, workspaceRLS: WorkspaceRLSStatus{Enabled: true}}
 	if err := store.EnsureWorkspaceRLS(t.Context()); err != nil || store.workspaceRLS.Enabled {
 		t.Fatalf("sqlite status=%#v err=%v", store.workspaceRLS, err)
 	}
-	postgresDialect, _ := dialectFor("postgres")
+	postgresDialect, _ := engineFor("postgres")
 	store = &IdentityStore{dialect: postgresDialect, workspaceRLS: WorkspaceRLSStatus{Enabled: true}}
 	if err := store.EnsureWorkspaceRLS(t.Context()); err != nil || store.workspaceRLS.Enabled {
 		t.Fatalf("disabled status=%#v err=%v", store.workspaceRLS, err)
@@ -71,7 +70,7 @@ func TestEnsureWorkspaceRLSGuardsAndSuccess(t *testing.T) {
 }
 
 func TestWorkspaceRLSApplyFailures(t *testing.T) {
-	postgresDialect, _ := dialectFor("postgres")
+	postgresDialect, _ := engineFor("postgres")
 	for _, test := range []struct {
 		name         string
 		queryErr     error
@@ -96,7 +95,7 @@ func TestWorkspaceRLSApplyFailures(t *testing.T) {
 }
 
 func TestWorkspaceRLSInspectionFailuresAndMissingCoverage(t *testing.T) {
-	postgresDialect, _ := dialectFor("postgres")
+	postgresDialect, _ := engineFor("postgres")
 	for _, test := range []struct {
 		name   string
 		script *workspaceRLSScript
@@ -135,7 +134,7 @@ func TestWorkspaceTablesScanAndRowsErrors(t *testing.T) {
 			db := sql.OpenDB(workspaceRLSConnector{script: test.script})
 			defer db.Close()
 			renderer := postgrespersistence.Dialect{}.SQLDialect().WithSchema("public")
-			if _, err := persistencedriver.ProfileFor(postgrespersistence.Dialect{}).InspectWorkspaceRLS(t.Context(), db, renderer, "public", "runtime_user", CurrentIdentityWorkspaceRLSPolicyVersion); err == nil {
+			if _, err := postgrespersistence.NewEngine().InspectWorkspaceRLS(t.Context(), db, renderer, "public", "runtime_user", CurrentIdentityWorkspaceRLSPolicyVersion); err == nil {
 				t.Fatal("expected workspace table error")
 			}
 		})

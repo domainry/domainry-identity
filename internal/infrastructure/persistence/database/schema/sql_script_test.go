@@ -162,11 +162,11 @@ func (scriptedSchemaStore) ColumnDefinition(value string) string { return value 
 func (s scriptedSchemaStore) engineProfile() persistencedriver.EngineProfile {
 	switch s.Driver() {
 	case "mysql":
-		return persistencedriver.ProfileFor(mysqlpersistence.Dialect{})
+		return mysqlpersistence.NewEngine()
 	case "postgres":
-		return persistencedriver.ProfileFor(postgrespersistence.Dialect{})
+		return postgrespersistence.NewEngine()
 	default:
-		return persistencedriver.ProfileFor(sqlitepersistence.Dialect{})
+		return sqlitepersistence.NewEngine()
 	}
 }
 

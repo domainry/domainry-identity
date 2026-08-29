@@ -110,7 +110,7 @@ func OpenBorrowedContext(ctx context.Context, cfg config.Config, db *sql.DB) (*I
 	if db == nil {
 		return nil, fmt.Errorf("borrowed database pool is required")
 	}
-	dialect, err := dialectFor(cfg.DatabaseDriver)
+	dialect, err := engineFor(cfg.DatabaseDriver)
 	if err != nil {
 		return nil, err
 	}
@@ -118,7 +118,7 @@ func OpenBorrowedContext(ctx context.Context, cfg config.Config, db *sql.DB) (*I
 	if err != nil {
 		return nil, fmt.Errorf("initialize Identity data key ring: %w", err)
 	}
-	schema := driver.ProfileFor(dialect).DatabaseSchema(cfg)
+	schema := dialect.DatabaseSchema(cfg)
 	store := &IdentityStore{
 		SQLDatabase: base.NewSQLDatabase(db, dialect, schema, "domainry_identity_"),
 		db:          db, dialect: dialect, config: cfg, databaseSchema: schema,
@@ -240,7 +240,7 @@ func (s *IdentityStore) OperationalMetrics() *IdentityOperationalMetrics {
 	return s.operationalMetrics
 }
 
-func (s *IdentityStore) PersistenceDialect() driver.Dialect {
+func (s *IdentityStore) PersistenceEngine() driver.Engine {
 	return s.dialect
 }
 

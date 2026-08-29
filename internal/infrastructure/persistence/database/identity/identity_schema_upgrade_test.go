@@ -189,7 +189,7 @@ func TestLegacyWorkforceBackfillPreservesDepartmentManagerAndSubordinateScope(t 
 	if err := store.EnsureIdentitySchema(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	identity, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceDialect())
+	identity, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceEngine())
 	if err != nil {
 		t.Fatal(err)
 	}

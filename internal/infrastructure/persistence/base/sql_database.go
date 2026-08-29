@@ -16,10 +16,10 @@ type SQLDatabase struct {
 	SQLRenderer    ormdialect.Renderer
 	DatabaseSchema string
 	RelationPrefix string
-	Engine         driver.EngineProfile
+	Engine         driver.Engine
 }
 
-func NewSQLDatabase(database *sql.DB, engine driver.Dialect, schema, relationPrefix string) *SQLDatabase {
+func NewSQLDatabase(database *sql.DB, engine driver.Engine, schema, relationPrefix string) *SQLDatabase {
 	schema, relationPrefix = strings.TrimSpace(schema), strings.TrimSpace(relationPrefix)
 	var renderer ormdialect.Renderer
 	if relationPrefix != "" {
@@ -29,6 +29,6 @@ func NewSQLDatabase(database *sql.DB, engine driver.Dialect, schema, relationPre
 	}
 	return &SQLDatabase{
 		DB: database, SQLRenderer: renderer, DatabaseSchema: schema,
-		RelationPrefix: relationPrefix, Engine: driver.ProfileFor(engine),
+		RelationPrefix: relationPrefix, Engine: engine,
 	}
 }

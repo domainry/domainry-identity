@@ -21,7 +21,7 @@ func TestApplyIdentityBootstrapAtomicallyRollsBackPartialGraph(t *testing.T) {
 	if err := store.EnsureIdentitySchema(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	identityStore, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceDialect())
+	identityStore, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceEngine())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestApplyIdentityBootstrapAtomicallyPersistsWorkforceBoundRole(t *testing.T
 	if err := store.EnsureIdentitySchema(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	identityStore, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceDialect())
+	identityStore, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceEngine())
 	if err != nil {
 		t.Fatal(err)
 	}

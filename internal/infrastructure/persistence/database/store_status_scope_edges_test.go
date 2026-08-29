@@ -60,7 +60,7 @@ func TestMigrationStatusClassificationsAndVersionBounds(t *testing.T) {
 }
 
 func TestWorkspaceScopeInventoryAndValidationFailures(t *testing.T) {
-	for _, dialect := range []dialect{sqlite.Dialect{}, mysql.Dialect{}, postgres.Dialect{}} {
+	for _, dialect := range []dialect{sqlite.NewEngine(), mysql.NewEngine(), postgres.NewEngine()} {
 		store := identitySchemaStore(t, &databaseSQLState{})
 		store.dialect = dialect
 		if tables, err := store.inventoryWorkspaceTables(t.Context(), store.db); err != nil || len(tables) != 0 {
@@ -108,7 +108,7 @@ func TestWorkspaceScopeInventoryAndValidationFailures(t *testing.T) {
 }
 
 func TestWorkspaceScopeInventoryIsolatesBorrowedIdentityRelations(t *testing.T) {
-	for _, dialect := range []dialect{sqlite.Dialect{}, mysql.Dialect{}, postgres.Dialect{}} {
+	for _, dialect := range []dialect{sqlite.NewEngine(), mysql.NewEngine(), postgres.NewEngine()} {
 		t.Run(dialect.Name(), func(t *testing.T) {
 			store := identitySchemaStore(t, &databaseSQLState{querySteps: []databaseSQLQueryStep{{
 				columns: []string{"table"},

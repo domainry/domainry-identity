@@ -34,7 +34,7 @@ func TestAuthSessionStateRevocationConcurrencyAndRestartPersistence(t *testing.T
 			store.Close()
 			t.Fatal(err)
 		}
-		identity, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceDialect())
+		identity, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceEngine())
 		if err != nil {
 			store.Close()
 			t.Fatal(err)
@@ -120,7 +120,7 @@ func TestRefreshTokenRotationIsAtomicUnderConcurrency(t *testing.T) {
 	if err := store.EnsureSchema(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	identity, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceDialect())
+	identity, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceEngine())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +163,7 @@ func TestLoginFailureCounterIsAtomicUnderConcurrency(t *testing.T) {
 	if err := store.EnsureIdentitySchema(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	identity, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceDialect())
+	identity, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceEngine())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +197,7 @@ func TestAuthMutationCompletionMapsOwnerAndFencingMismatchToLeaseLost(t *testing
 	if err := store.EnsureSchema(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	identity, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceDialect())
+	identity, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceEngine())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +219,7 @@ func TestAuthStoreContractAndCancellation(t *testing.T) {
 	if err := store.EnsureIdentitySchema(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	identity, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceDialect())
+	identity, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceEngine())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,7 +262,7 @@ func TestAuthStoreWorkspaceIsolationContract(t *testing.T) {
 	if err := store.EnsureIdentitySchema(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	identity, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceDialect())
+	identity, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceEngine())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -332,7 +332,7 @@ func TestAuthStoreMFAFactorLifecycleAndWorkspaceIsolation(t *testing.T) {
 	if err := store.EnsureIdentitySchema(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	identity, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceDialect())
+	identity, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceEngine())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -378,7 +378,7 @@ func TestAuthStoreRejectsMissingWorkspaceContract(t *testing.T) {
 	if err := store.EnsureIdentitySchema(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	identity, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceDialect())
+	identity, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceEngine())
 	if err != nil {
 		t.Fatal(err)
 	}
