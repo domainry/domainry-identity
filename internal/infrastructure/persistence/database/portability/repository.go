@@ -14,6 +14,7 @@ import (
 	portabilityapplication "github.com/domainry/domainry-identity/internal/application/portability"
 	portabilitymodel "github.com/domainry/domainry-identity/internal/domain/portability"
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
+	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
 
 type SQLRepository struct {
@@ -57,11 +58,12 @@ func (repository *SQLRepository) Inventory(ctx context.Context, workspaceID stri
 		}
 		inventory.ExcludedCounts[name] = count
 	}
-	rows, err := repository.store.DB().QueryContext(ctx,
-		"SELECT "+repository.store.Identifier("provider_key")+" FROM "+repository.store.TableIdentifier("auth_provider_credentials")+
-			" WHERE "+repository.store.Identifier("workspace_id")+" = "+repository.store.Placeholder(1)+" ORDER BY "+repository.store.Identifier("provider_key"),
-		workspaceID,
-	)
+	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(repository.store.SQLRenderer, "auth_provider_credentials", workspaceID).
+		Columns("provider_key").OrderBy(ormbuilder.Ascending("provider_key")).Build()
+	if err != nil {
+		return portabilitymodel.Inventory{}, fmt.Errorf("build Identity provider inventory: %w", err)
+	}
+	rows, err := repository.store.DB().QueryContext(ctx, statement, arguments...)
 	if err != nil {
 		return portabilitymodel.Inventory{}, err
 	}
@@ -78,8 +80,12 @@ func (repository *SQLRepository) Inventory(ctx context.Context, workspaceID stri
 
 func (repository *SQLRepository) MetadataSchemaSHA256(ctx context.Context) (string, error) {
 	var digest string
-	query := "SELECT " + repository.store.Identifier("value") + " FROM " + repository.store.TableIdentifier("metadata_catalog") + " WHERE " + repository.store.Identifier("key") + " = " + repository.store.Placeholder(1)
-	if err := repository.store.DB().QueryRowContext(ctx, query, "schema_hash").Scan(&digest); err != nil {
+	query, arguments, err := ormbuilder.NewSelectBuilder(repository.store.SQLRenderer, "metadata_catalog").
+		Columns("value").Where(ormbuilder.Equal("key", "schema_hash")).Build()
+	if err != nil {
+		return "", fmt.Errorf("build Identity metadata schema hash read: %w", err)
+	}
+	if err := repository.store.DB().QueryRowContext(ctx, query, arguments...).Scan(&digest); err != nil {
 		if err == sql.ErrNoRows {
 			return "", fmt.Errorf("identity.portability_metadata_schema_hash_missing")
 		}
@@ -126,15 +132,23 @@ func (repository *SQLRepository) RecordExport(ctx context.Context, bundle portab
 		return err
 	}
 	freezeHash := sha256.Sum256([]byte(bundle.FreezeEvidence))
-	columns := []string{"export_id", "workspace_id", "content_sha256", "freeze_evidence_sha256", "dataset_counts_json", "source_mode", "exported_at"}
-	query := "INSERT INTO " + repository.store.TableIdentifier("identity_portability_export_receipts") + " (" + strings.Join(database.QuotedColumns(repository.store, columns), ", ") + ") VALUES (" + strings.Join(repository.placeholders(len(columns)), ", ") + ")"
-	_, err = repository.store.DB().ExecContext(ctx, query, bundle.ExportID, bundle.WorkspaceID, bundle.ContentSHA256, hex.EncodeToString(freezeHash[:]), string(countsJSON), bundle.SourceMode, bundle.ExportedAt.UTC().Format(time.RFC3339Nano))
+	query, arguments, buildErr := ormbuilder.NewWorkspaceInsertBuilder(repository.store.SQLRenderer, "identity_portability_export_receipts", bundle.WorkspaceID).
+		Columns("export_id", "content_sha256", "freeze_evidence_sha256", "dataset_counts_json", "source_mode", "exported_at").
+		Values(bundle.ExportID, bundle.ContentSHA256, hex.EncodeToString(freezeHash[:]), string(countsJSON), bundle.SourceMode, bundle.ExportedAt.UTC().Format(time.RFC3339Nano)).Build()
+	if buildErr != nil {
+		return fmt.Errorf("build Identity portability export receipt: %w", buildErr)
+	}
+	_, err = repository.store.DB().ExecContext(ctx, query, arguments...)
 	if err == nil {
 		return nil
 	}
 	var existing string
-	lookup := "SELECT " + repository.store.Identifier("content_sha256") + " FROM " + repository.store.TableIdentifier("identity_portability_export_receipts") + " WHERE " + repository.store.Identifier("export_id") + " = " + repository.store.Placeholder(1)
-	if lookupErr := repository.store.DB().QueryRowContext(ctx, lookup, bundle.ExportID).Scan(&existing); lookupErr == nil && existing == bundle.ContentSHA256 {
+	lookup, lookupArguments, buildErr := ormbuilder.NewWorkspaceSelectBuilder(repository.store.SQLRenderer, "identity_portability_export_receipts", bundle.WorkspaceID).
+		Columns("content_sha256").Where(ormbuilder.Equal("export_id", bundle.ExportID)).Build()
+	if buildErr != nil {
+		return fmt.Errorf("build Identity portability export replay read: %w", buildErr)
+	}
+	if lookupErr := repository.store.DB().QueryRowContext(ctx, lookup, lookupArguments...).Scan(&existing); lookupErr == nil && existing == bundle.ContentSHA256 {
 		return nil
 	}
 	return fmt.Errorf("record Identity portability export: %w", err)
@@ -154,9 +168,13 @@ func (repository *SQLRepository) VerifyWriteFreeze(ctx context.Context, workspac
 
 func (repository *SQLRepository) VerifyProviderReadiness(ctx context.Context, workspaceID string, references []portabilitymodel.ProviderReference) error {
 	for _, reference := range references {
-		query := "SELECT " + strings.Join(database.QuotedColumns(repository.store, []string{"configuration_json", "secret_envelope"}), ", ") + " FROM " + repository.store.TableIdentifier("auth_provider_credentials") + " WHERE " + repository.store.Identifier("workspace_id") + " = " + repository.store.Placeholder(1) + " AND " + repository.store.Identifier("provider_key") + " = " + repository.store.Placeholder(2)
+		query, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(repository.store.SQLRenderer, "auth_provider_credentials", workspaceID).
+			Columns("configuration_json", "secret_envelope").Where(ormbuilder.Equal("provider_key", reference.ProviderKey)).Build()
+		if err != nil {
+			return fmt.Errorf("build Identity provider readiness read: %w", err)
+		}
 		var configuration, secretEnvelope string
-		if err := repository.store.DB().QueryRowContext(ctx, query, workspaceID, reference.ProviderKey).Scan(&configuration, &secretEnvelope); err != nil {
+		if err := repository.store.DB().QueryRowContext(ctx, query, arguments...).Scan(&configuration, &secretEnvelope); err != nil {
 			if err == sql.ErrNoRows {
 				return fmt.Errorf("identity.portability_provider_not_ready: %s", reference.ProviderKey)
 			}
@@ -228,8 +246,16 @@ func (repository *SQLRepository) Import(ctx context.Context, bundle portabilitym
 			if valuesErr != nil {
 				return portabilitymodel.ImportReceipt{}, valuesErr
 			}
-			query := "INSERT INTO " + repository.store.TableIdentifier(spec.table) + " (" + strings.Join(database.QuotedColumns(repository.store, spec.columns), ", ") + ") VALUES (" + strings.Join(repository.placeholders(len(spec.columns)), ", ") + ")"
-			if _, insertErr := tx.ExecContext(ctx, query, values...); insertErr != nil {
+			columns, workspaceValues, fieldsErr := workspaceDatasetFields(spec, values)
+			if fieldsErr != nil {
+				return portabilitymodel.ImportReceipt{}, fieldsErr
+			}
+			query, arguments, buildErr := ormbuilder.NewWorkspaceInsertBuilder(repository.store.SQLRenderer, spec.table, bundle.WorkspaceID).
+				Columns(columns...).Values(workspaceValues...).Build()
+			if buildErr != nil {
+				return portabilitymodel.ImportReceipt{}, fmt.Errorf("build Identity dataset %s import: %w", dataset.Name, buildErr)
+			}
+			if _, insertErr := tx.ExecContext(ctx, query, arguments...); insertErr != nil {
 				return portabilitymodel.ImportReceipt{}, fmt.Errorf("import Identity dataset %s: %w", dataset.Name, insertErr)
 			}
 			counts[dataset.Name]++
@@ -250,9 +276,13 @@ func (repository *SQLRepository) Import(ctx context.Context, bundle portabilitym
 	if err != nil {
 		return portabilitymodel.ImportReceipt{}, err
 	}
-	columns := []string{"receipt_id", "workspace_id", "content_sha256", "idempotency_key", "imported_counts_json", "imported_at"}
-	query := "INSERT INTO " + repository.store.TableIdentifier("identity_portability_import_receipts") + " (" + strings.Join(database.QuotedColumns(repository.store, columns), ", ") + ") VALUES (" + strings.Join(repository.placeholders(len(columns)), ", ") + ")"
-	if _, err := tx.ExecContext(ctx, query, receipt.ReceiptID, receipt.WorkspaceID, receipt.ContentSHA256, receipt.IdempotencyKey, string(countsJSON), receipt.ImportedAt.Format(time.RFC3339Nano)); err != nil {
+	query, arguments, err := ormbuilder.NewWorkspaceInsertBuilder(repository.store.SQLRenderer, "identity_portability_import_receipts", receipt.WorkspaceID).
+		Columns("receipt_id", "content_sha256", "idempotency_key", "imported_counts_json", "imported_at").
+		Values(receipt.ReceiptID, receipt.ContentSHA256, receipt.IdempotencyKey, string(countsJSON), receipt.ImportedAt.Format(time.RFC3339Nano)).Build()
+	if err != nil {
+		return portabilitymodel.ImportReceipt{}, fmt.Errorf("build Identity portability import receipt: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, query, arguments...); err != nil {
 		return portabilitymodel.ImportReceipt{}, fmt.Errorf("record Identity portability import: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -266,11 +296,22 @@ func (repository *SQLRepository) exportDataset(ctx context.Context, spec dataset
 }
 
 func (repository *SQLRepository) exportDatasetFrom(ctx context.Context, queryer datasetQueryer, spec datasetSpec, workspaceID string) (portabilitymodel.Dataset, error) {
-	query := "SELECT " + strings.Join(database.QuotedColumns(repository.store, spec.columns), ", ") + " FROM " + repository.store.TableIdentifier(spec.table) + " WHERE " + repository.store.Identifier(spec.workspace) + " = " + repository.store.Placeholder(1)
-	if len(spec.orderBy) > 0 {
-		query += " ORDER BY " + strings.Join(database.QuotedColumns(repository.store, spec.orderBy), ", ")
+	if spec.workspace != ormbuilder.WorkspaceIDColumn {
+		return portabilitymodel.Dataset{}, fmt.Errorf("Identity portability dataset %s has unsupported workspace column %s", spec.name, spec.workspace)
 	}
-	rows, err := queryer.QueryContext(ctx, query, workspaceID)
+	selectBuilder := ormbuilder.NewWorkspaceSelectBuilder(repository.store.SQLRenderer, spec.table, workspaceID).Columns(spec.columns...)
+	if len(spec.orderBy) > 0 {
+		orders := make([]ormbuilder.Order, 0, len(spec.orderBy))
+		for _, column := range spec.orderBy {
+			orders = append(orders, ormbuilder.Ascending(column))
+		}
+		selectBuilder.OrderBy(orders...)
+	}
+	query, arguments, err := selectBuilder.Build()
+	if err != nil {
+		return portabilitymodel.Dataset{}, fmt.Errorf("build Identity dataset %s export: %w", spec.name, err)
+	}
+	rows, err := queryer.QueryContext(ctx, query, arguments...)
 	if err != nil {
 		return portabilitymodel.Dataset{}, fmt.Errorf("export Identity dataset %s: %w", spec.name, err)
 	}
@@ -318,8 +359,12 @@ func (repository *SQLRepository) verifyAuthorizationState(ctx context.Context, q
 }
 
 func (repository *SQLRepository) providerReferences(ctx context.Context, workspaceID string) ([]portabilitymodel.ProviderReference, error) {
-	query := "SELECT " + strings.Join(database.QuotedColumns(repository.store, []string{"provider_key", "configuration_json"}), ", ") + " FROM " + repository.store.TableIdentifier("auth_provider_credentials") + " WHERE " + repository.store.Identifier("workspace_id") + " = " + repository.store.Placeholder(1) + " ORDER BY " + repository.store.Identifier("provider_key")
-	rows, err := repository.store.DB().QueryContext(ctx, query, workspaceID)
+	query, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(repository.store.SQLRenderer, "auth_provider_credentials", workspaceID).
+		Columns("provider_key", "configuration_json").OrderBy(ormbuilder.Ascending("provider_key")).Build()
+	if err != nil {
+		return nil, fmt.Errorf("build Identity provider reference list: %w", err)
+	}
+	rows, err := repository.store.DB().QueryContext(ctx, query, arguments...)
 	if err != nil {
 		return nil, err
 	}
@@ -347,27 +392,31 @@ func (repository *SQLRepository) providerReferences(ctx context.Context, workspa
 func (repository *SQLRepository) workspaceCount(ctx context.Context, queryer interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }, table, workspaceColumn, workspaceID string) (int64, error) {
+	if workspaceColumn != ormbuilder.WorkspaceIDColumn {
+		return 0, fmt.Errorf("inventory Identity table %s has unsupported workspace column %s", table, workspaceColumn)
+	}
+	query, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(repository.store.SQLRenderer, table, workspaceID).
+		Projections(ormbuilder.Project(ormbuilder.CountAll())).Build()
+	if err != nil {
+		return 0, fmt.Errorf("build inventory Identity table %s count: %w", table, err)
+	}
 	var count int64
-	query := "SELECT COUNT(*) FROM " + repository.store.TableIdentifier(table) + " WHERE " + repository.store.Identifier(workspaceColumn) + " = " + repository.store.Placeholder(1)
-	if err := queryer.QueryRowContext(ctx, query, workspaceID).Scan(&count); err != nil {
+	if err := queryer.QueryRowContext(ctx, query, arguments...).Scan(&count); err != nil {
 		return 0, fmt.Errorf("inventory Identity table %s: %w", table, err)
 	}
 	return count, nil
 }
 
-func (repository *SQLRepository) placeholders(count int) []string {
-	result := make([]string, 0, count)
-	for position := 1; position <= count; position++ {
-		result = append(result, repository.store.Placeholder(position))
-	}
-	return result
-}
-
 func (repository *SQLRepository) importReceipt(ctx context.Context, workspaceID, idempotencyKey string) (portabilitymodel.ImportReceipt, bool, error) {
-	query := "SELECT " + strings.Join(database.QuotedColumns(repository.store, []string{"receipt_id", "content_sha256", "imported_counts_json", "imported_at"}), ", ") + " FROM " + repository.store.TableIdentifier("identity_portability_import_receipts") + " WHERE " + repository.store.Identifier("workspace_id") + " = " + repository.store.Placeholder(1) + " AND " + repository.store.Identifier("idempotency_key") + " = " + repository.store.Placeholder(2)
+	query, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(repository.store.SQLRenderer, "identity_portability_import_receipts", workspaceID).
+		Columns("receipt_id", "content_sha256", "imported_counts_json", "imported_at").
+		Where(ormbuilder.Equal("idempotency_key", idempotencyKey)).Build()
+	if err != nil {
+		return portabilitymodel.ImportReceipt{}, false, fmt.Errorf("build Identity portability import receipt read: %w", err)
+	}
 	var receipt portabilitymodel.ImportReceipt
 	var countsJSON, importedAt string
-	err := repository.store.DB().QueryRowContext(ctx, query, workspaceID, idempotencyKey).Scan(&receipt.ReceiptID, &receipt.ContentSHA256, &countsJSON, &importedAt)
+	err = repository.store.DB().QueryRowContext(ctx, query, arguments...).Scan(&receipt.ReceiptID, &receipt.ContentSHA256, &countsJSON, &importedAt)
 	if err == sql.ErrNoRows {
 		return portabilitymodel.ImportReceipt{}, false, nil
 	}
@@ -380,6 +429,27 @@ func (repository *SQLRepository) importReceipt(ctx context.Context, workspaceID,
 	}
 	receipt.ImportedAt, err = time.Parse(time.RFC3339Nano, importedAt)
 	return receipt, true, err
+}
+
+func workspaceDatasetFields(spec datasetSpec, values []any) ([]string, []any, error) {
+	if len(values) != len(spec.columns) {
+		return nil, nil, fmt.Errorf("Identity portability dataset %s column/value count mismatch", spec.name)
+	}
+	columns := make([]string, 0, len(spec.columns)-1)
+	workspaceValues := make([]any, 0, len(values)-1)
+	workspaceFound := false
+	for index, column := range spec.columns {
+		if column == spec.workspace {
+			workspaceFound = true
+			continue
+		}
+		columns = append(columns, column)
+		workspaceValues = append(workspaceValues, values[index])
+	}
+	if spec.workspace != ormbuilder.WorkspaceIDColumn || !workspaceFound {
+		return nil, nil, fmt.Errorf("Identity portability dataset %s must declare workspace_id", spec.name)
+	}
+	return columns, workspaceValues, nil
 }
 
 func validateImportDatasets(bundle portabilitymodel.Bundle) error {
