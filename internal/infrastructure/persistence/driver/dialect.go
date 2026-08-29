@@ -53,6 +53,16 @@ type EngineProfile interface {
 	InspectWorkspaceRLS(context.Context, *sql.DB, ormdialect.Renderer, string, string, string) (WorkspaceRLSStatus, error)
 }
 
+type MigrationProfile interface {
+	MigrationDatabasePath(config.Config) string
+	MigrationLedgerTypes() MigrationLedgerTypes
+	EnsureMigrationNamespace(context.Context, SchemaDatabase, ormdialect.Renderer, string) error
+	ConfigureMigrationTransaction(context.Context, *sql.Tx, ormdialect.Renderer, string, time.Duration, time.Duration) error
+	AcquireMigrationLock(context.Context, *sql.DB, ormdialect.Renderer, MigrationLockOptions) (MigrationLock, error)
+	MigrationBackupPolicy() MigrationBackupPolicy
+	MigrationRollbackPolicy() MigrationRollbackPolicy
+}
+
 type SchemaTypes struct {
 	Boolean         string
 	FalseLiteral    string
@@ -188,7 +198,12 @@ func (portableEngineProfile) InspectWorkspaceRLS(context.Context, *sql.DB, ormdi
 	return WorkspaceRLSStatus{}, nil
 }
 
+type engineProfileProvider interface{ EngineProfile() EngineProfile }
+
 func ProfileFor(value Dialect) EngineProfile {
+	if provider, ok := value.(engineProfileProvider); ok {
+		return provider.EngineProfile()
+	}
 	if profile, ok := value.(EngineProfile); ok {
 		return profile
 	}

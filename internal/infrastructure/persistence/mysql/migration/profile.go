@@ -1,4 +1,4 @@
-package mysql
+package migration
 
 import (
 	"context"
@@ -11,25 +11,26 @@ import (
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 )
 
-func (Dialect) MigrationLedgerTypes() driver.MigrationLedgerTypes {
+type Profile struct{}
+
+func NewProfile() Profile { return Profile{} }
+
+func (Profile) MigrationLedgerTypes() driver.MigrationLedgerTypes {
 	return driver.MigrationLedgerTypes{Key: "VARCHAR(255)", Timestamp: "VARCHAR(64)"}
 }
-func (Dialect) MigrationBackupPolicy() driver.MigrationBackupPolicy {
+func (Profile) MigrationBackupPolicy() driver.MigrationBackupPolicy {
 	return driver.MigrationBackupPolicy{EvidenceEngine: "mysql"}
 }
-func (Dialect) MigrationRollbackPolicy() driver.MigrationRollbackPolicy {
-	return driver.MigrationRollbackPolicy{
-		Mode: "restore_external_backup", RequiresVerifiedBackup: true,
-		Procedure: []string{"stop_identity", "restore_verified_database_backup", "restart_identity", "verify_migration_status"},
-	}
+func (Profile) MigrationRollbackPolicy() driver.MigrationRollbackPolicy {
+	return driver.MigrationRollbackPolicy{Mode: "restore_external_backup", RequiresVerifiedBackup: true, Procedure: []string{"stop_identity", "restore_verified_database_backup", "restart_identity", "verify_migration_status"}}
 }
-func (Dialect) EnsureMigrationNamespace(context.Context, driver.SchemaDatabase, ormdialect.Renderer, string) error {
+func (Profile) EnsureMigrationNamespace(context.Context, driver.SchemaDatabase, ormdialect.Renderer, string) error {
 	return nil
 }
-func (Dialect) ConfigureMigrationTransaction(context.Context, *sql.Tx, ormdialect.Renderer, string, time.Duration, time.Duration) error {
+func (Profile) ConfigureMigrationTransaction(context.Context, *sql.Tx, ormdialect.Renderer, string, time.Duration, time.Duration) error {
 	return nil
 }
-func (Dialect) AcquireMigrationLock(ctx context.Context, database *sql.DB, renderer ormdialect.Renderer, options driver.MigrationLockOptions) (driver.MigrationLock, error) {
+func (Profile) AcquireMigrationLock(ctx context.Context, database *sql.DB, renderer ormdialect.Renderer, options driver.MigrationLockOptions) (driver.MigrationLock, error) {
 	conn, err := database.Conn(ctx)
 	if err != nil {
 		return driver.MigrationLock{}, fmt.Errorf("acquire migration connection: %w", err)
@@ -69,4 +70,4 @@ func (Dialect) AcquireMigrationLock(ctx context.Context, database *sql.DB, rende
 	}}, nil
 }
 
-func (Dialect) MigrationDatabasePath(config.Config) string { return "" }
+func (Profile) MigrationDatabasePath(config.Config) string { return "" }

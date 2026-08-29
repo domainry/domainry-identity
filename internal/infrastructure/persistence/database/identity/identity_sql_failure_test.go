@@ -7,19 +7,20 @@ import (
 	"testing"
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	persistencedriver "github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/mysql"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/postgres"
 )
 
 func TestSQLIdentityDialectAndConstructorEdges(t *testing.T) {
 	mysqlDialect := mysql.Dialect{}
-	mysqlStore := &SQLIdentityStore{renderer: mysqlDialect.SQLDialect().WithSchema(""), engine: mysqlDialect}
+	mysqlStore := &SQLIdentityStore{renderer: mysqlDialect.SQLDialect().WithSchema(""), engine: persistencedriver.ProfileFor(mysqlDialect)}
 	if mysqlStore.sqlRenderer().Identifier("id") != "`id`" || mysqlStore.sqlRenderer().Placeholder(1) != "?" {
 		t.Fatal("mysql dialect")
 	}
 	postgresDialect := postgres.Dialect{}
 	postgresRenderer, _ := postgresDialect.SQLDialect().WithNamespace("tenant", "")
-	postgresStore := &SQLIdentityStore{renderer: postgresRenderer, engine: postgresDialect}
+	postgresStore := &SQLIdentityStore{renderer: postgresRenderer, engine: persistencedriver.ProfileFor(postgresDialect)}
 	if postgresStore.sqlRenderer().Placeholder(2) != "$2" || postgresStore.sqlRenderer().Table("users") != `"tenant"."users"` {
 		t.Fatal("postgres dialect")
 	}

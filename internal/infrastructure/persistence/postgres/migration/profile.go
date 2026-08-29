@@ -1,4 +1,4 @@
-package postgres
+package migration
 
 import (
 	"context"
@@ -12,19 +12,20 @@ import (
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 )
 
-func (Dialect) MigrationLedgerTypes() driver.MigrationLedgerTypes {
+type Profile struct{}
+
+func NewProfile() Profile { return Profile{} }
+
+func (Profile) MigrationLedgerTypes() driver.MigrationLedgerTypes {
 	return driver.MigrationLedgerTypes{Key: "TEXT", Timestamp: "TEXT"}
 }
-func (Dialect) MigrationBackupPolicy() driver.MigrationBackupPolicy {
+func (Profile) MigrationBackupPolicy() driver.MigrationBackupPolicy {
 	return driver.MigrationBackupPolicy{EvidenceEngine: "postgres"}
 }
-func (Dialect) MigrationRollbackPolicy() driver.MigrationRollbackPolicy {
-	return driver.MigrationRollbackPolicy{
-		Mode: "restore_external_backup_or_pitr", RequiresVerifiedBackup: true,
-		Procedure: []string{"stop_identity", "restore_verified_database_backup_or_pitr", "restart_identity", "verify_migration_status"},
-	}
+func (Profile) MigrationRollbackPolicy() driver.MigrationRollbackPolicy {
+	return driver.MigrationRollbackPolicy{Mode: "restore_external_backup_or_pitr", RequiresVerifiedBackup: true, Procedure: []string{"stop_identity", "restore_verified_database_backup_or_pitr", "restart_identity", "verify_migration_status"}}
 }
-func (Dialect) EnsureMigrationNamespace(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, databaseSchema string) error {
+func (Profile) EnsureMigrationNamespace(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, databaseSchema string) error {
 	if strings.TrimSpace(databaseSchema) == "" || strings.EqualFold(databaseSchema, "public") {
 		return nil
 	}
@@ -33,7 +34,7 @@ func (Dialect) EnsureMigrationNamespace(ctx context.Context, database driver.Sch
 	}
 	return nil
 }
-func (Dialect) ConfigureMigrationTransaction(ctx context.Context, transaction *sql.Tx, renderer ormdialect.Renderer, databaseSchema string, lockTimeout, statementTimeout time.Duration) error {
+func (Profile) ConfigureMigrationTransaction(ctx context.Context, transaction *sql.Tx, renderer ormdialect.Renderer, databaseSchema string, lockTimeout, statementTimeout time.Duration) error {
 	if _, err := transaction.ExecContext(ctx, "SELECT set_config('search_path', "+renderer.Placeholder(1)+", true)", databaseSchema); err != nil {
 		return fmt.Errorf("set migration schema search path: %w", err)
 	}
@@ -49,7 +50,7 @@ func (Dialect) ConfigureMigrationTransaction(ctx context.Context, transaction *s
 	}
 	return nil
 }
-func (Dialect) AcquireMigrationLock(ctx context.Context, database *sql.DB, renderer ormdialect.Renderer, options driver.MigrationLockOptions) (driver.MigrationLock, error) {
+func (Profile) AcquireMigrationLock(ctx context.Context, database *sql.DB, renderer ormdialect.Renderer, options driver.MigrationLockOptions) (driver.MigrationLock, error) {
 	conn, err := database.Conn(ctx)
 	if err != nil {
 		return driver.MigrationLock{}, fmt.Errorf("acquire migration connection: %w", err)
@@ -89,5 +90,4 @@ func (Dialect) AcquireMigrationLock(ctx context.Context, database *sql.DB, rende
 		_ = conn.Close()
 	}}, nil
 }
-
-func (Dialect) MigrationDatabasePath(config.Config) string { return "" }
+func (Profile) MigrationDatabasePath(config.Config) string { return "" }

@@ -22,9 +22,9 @@ func TestMigrationRollbackPolicyCoversEveryRuntimeDatabase(t *testing.T) {
 		profile driver.EngineProfile
 		mode    string
 	}{
-		{name: "sqlite", profile: sqlite.Dialect{}, mode: "restore_sqlite_backup"},
-		{name: "postgres", profile: postgres.Dialect{}, mode: "restore_external_backup_or_pitr"},
-		{name: "mysql", profile: mysql.Dialect{}, mode: "restore_external_backup"},
+		{name: "sqlite", profile: driver.ProfileFor(sqlite.Dialect{}), mode: "restore_sqlite_backup"},
+		{name: "postgres", profile: driver.ProfileFor(postgres.Dialect{}), mode: "restore_external_backup_or_pitr"},
+		{name: "mysql", profile: driver.ProfileFor(mysql.Dialect{}), mode: "restore_external_backup"},
 	}
 	wantProcedure := []string{"stop_identity", "restart_identity", "verify_migration_status"}
 	for _, test := range tests {

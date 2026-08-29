@@ -222,8 +222,9 @@ func writeNamedMigrationEdgeFile(t *testing.T, directory, name, contents string)
 }
 
 func TestSQLiteMigrationLockShortCircuitSuccessAndTimeout(t *testing.T) {
-	profile := sqlite.Dialect{}
-	renderer := profile.SQLDialect().WithSchema("")
+	dialect := sqlite.Dialect{}
+	profile := persistencedriver.ProfileFor(dialect)
+	renderer := dialect.SQLDialect().WithSchema("")
 	for _, path := range []string{"", ":memory:", "file:memory"} {
 		lock, err := profile.AcquireMigrationLock(t.Context(), nil, renderer, persistencedriver.MigrationLockOptions{DatabasePath: path})
 		if err != nil {
