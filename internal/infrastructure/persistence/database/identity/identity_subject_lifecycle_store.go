@@ -7,8 +7,8 @@ import (
 
 	privacy "github.com/domainry/domainry-identity/internal/domain/privacy"
 	subjectpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/lifecycle/subject"
-	ormbuilder "github.com/domainry/domainry-orm/builder"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
+	ormbuilder "github.com/domainry/domainry-orm/query"
 )
 
 type lifecycleSQLStore interface {

@@ -12,8 +12,8 @@ import (
 	auditmodel "github.com/domainry/domainry-audit-sdk/contract"
 	auditmoduleimpl "github.com/domainry/domainry-audit/module"
 	portabilitymodel "github.com/domainry/domainry-identity/internal/domain/portability"
-	ormbuilder "github.com/domainry/domainry-orm/builder"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
+	ormbuilder "github.com/domainry/domainry-orm/query"
 )
 
 type WriteFenceStore struct {

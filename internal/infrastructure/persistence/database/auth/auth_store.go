@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/domainry/domainry-orm/batch"
 	"strings"
 	"time"
 
@@ -16,7 +17,7 @@ import (
 	"github.com/domainry/domainry-foundation/idempotency"
 	"github.com/domainry/domainry-foundation/secrets"
 	identitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity"
-	ormbuilder "github.com/domainry/domainry-orm/builder"
+	ormbuilder "github.com/domainry/domainry-orm/query"
 )
 
 // AuthStore is the credential/session/external-account
@@ -84,7 +85,7 @@ func (s AuthStore) ListUserDirectorySecurityFacts(ctx context.Context, workspace
 		return []authmodel.UserDirectorySecurityFact{}, err
 	}
 	userIDs = normalizedAuthUserIDs(userIDs)
-	ranges, err := (ormbuilder.ParameterBatch{MaxParameters: s.store.MaxParameters(), FixedParameters: 9, ParametersPerItem: 1, MaxItems: 500}).Ranges(len(userIDs))
+	ranges, err := (batch.Parameters{Max: s.store.MaxParameters(), Fixed: 9, PerItem: 1, MaxItems: 500}).Ranges(len(userIDs))
 	if err != nil {
 		return nil, fmt.Errorf("build auth directory security batches: %w", err)
 	}

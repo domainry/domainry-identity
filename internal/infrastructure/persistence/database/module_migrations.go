@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/domainry/domainry-audit-sdk/modulehost"
-	ormbuilder "github.com/domainry/domainry-orm/builder"
 	ormmigration "github.com/domainry/domainry-orm/migration"
+	ormbuilder "github.com/domainry/domainry-orm/query"
 )
 
 var moduleMigrationIdentityPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)

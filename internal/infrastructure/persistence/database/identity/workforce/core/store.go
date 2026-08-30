@@ -6,8 +6,8 @@ import (
 	"fmt"
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
-	ormbuilder "github.com/domainry/domainry-orm/builder"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
+	ormbuilder "github.com/domainry/domainry-orm/query"
 )
 
 var profileColumns = []string{"id", "organization_id", "identity_user_id", "worker_no", "worker_type", "work_status", "start_date", "end_date", "primary_assignment_id", "version"}

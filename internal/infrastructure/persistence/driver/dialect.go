@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/domainry/domainry-identity/internal/platform/config"
-	ormbuilder "github.com/domainry/domainry-orm/builder"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
+	ormbuilder "github.com/domainry/domainry-orm/query"
 )
 
 // Dialect combines the shared SQL renderer with Identity-owned connection and

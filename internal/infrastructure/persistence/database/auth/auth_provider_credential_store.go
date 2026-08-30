@@ -10,7 +10,7 @@ import (
 
 	authmodel "github.com/domainry/domainry-identity/internal/domain/auth/model"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
-	ormbuilder "github.com/domainry/domainry-orm/builder"
+	ormbuilder "github.com/domainry/domainry-orm/query"
 )
 
 type providerSecretPayload struct {

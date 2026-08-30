@@ -14,7 +14,7 @@ import (
 	portabilityapplication "github.com/domainry/domainry-identity/internal/application/portability"
 	portabilitymodel "github.com/domainry/domainry-identity/internal/domain/portability"
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
-	ormbuilder "github.com/domainry/domainry-orm/builder"
+	ormbuilder "github.com/domainry/domainry-orm/query"
 )
 
 type SQLRepository struct {

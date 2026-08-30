@@ -14,7 +14,7 @@ import (
 	"github.com/domainry/domainry-foundation/mutation"
 	authmodel "github.com/domainry/domainry-identity/internal/domain/auth/model"
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
-	ormbuilder "github.com/domainry/domainry-orm/builder"
+	ormbuilder "github.com/domainry/domainry-orm/query"
 )
 
 func (s AuthStore) TryBeginAuthMutation(ctx context.Context, workspaceID string, request authmodel.AuthMutationClaimRequest) (authmodel.AuthMutationClaimResult, error) {

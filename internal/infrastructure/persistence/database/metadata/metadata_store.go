@@ -14,7 +14,7 @@ import (
 	metadatarepository "github.com/domainry/domainry-identity/internal/domain/metadata/repository"
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/transaction"
-	ormbuilder "github.com/domainry/domainry-orm/builder"
+	ormbuilder "github.com/domainry/domainry-orm/query"
 )
 
 type MetadataStore struct {

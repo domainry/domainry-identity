@@ -5,7 +5,7 @@ import (
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	directorypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/directory"
-	ormbuilder "github.com/domainry/domainry-orm/builder"
+	ormbuilder "github.com/domainry/domainry-orm/query"
 )
 
 // Directory is a separate persistence owner. SQLIdentityStore retains the

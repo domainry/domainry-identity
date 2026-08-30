@@ -5,8 +5,8 @@ import (
 	"database/sql"
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
-	ormbuilder "github.com/domainry/domainry-orm/builder"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
+	ormbuilder "github.com/domainry/domainry-orm/query"
 )
 
 func (s *SQLIdentityStore) DB() *sql.DB { return s.db }

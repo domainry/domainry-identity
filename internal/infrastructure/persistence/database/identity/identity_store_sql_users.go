@@ -8,7 +8,7 @@ import (
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	departmentpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/directory/department"
 	userpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/directory/user"
-	ormbuilder "github.com/domainry/domainry-orm/builder"
+	ormbuilder "github.com/domainry/domainry-orm/query"
 )
 
 func (s *SQLIdentityStore) departmentStore() *departmentpersistence.Store {

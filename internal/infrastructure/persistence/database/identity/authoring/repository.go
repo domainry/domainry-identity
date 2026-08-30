@@ -9,8 +9,8 @@ import (
 
 	"github.com/domainry/domainry-foundation/idempotency"
 	identityauthoring "github.com/domainry/domainry-identity/internal/application/authoring"
-	ormbuilder "github.com/domainry/domainry-orm/builder"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
+	ormbuilder "github.com/domainry/domainry-orm/query"
 )
 
 type Backend interface {

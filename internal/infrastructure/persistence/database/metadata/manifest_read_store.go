@@ -15,7 +15,7 @@ import (
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
 
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
-	ormbuilder "github.com/domainry/domainry-orm/builder"
+	ormbuilder "github.com/domainry/domainry-orm/query"
 )
 
 // MetadataStore is the request-aware storage boundary for metadata.

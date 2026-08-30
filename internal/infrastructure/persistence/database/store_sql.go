@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/base"
-	ormbuilder "github.com/domainry/domainry-orm/builder"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
+	ormbuilder "github.com/domainry/domainry-orm/query"
 )
 
 // BuilderRenderer exposes only the structured SQL rendering contract to

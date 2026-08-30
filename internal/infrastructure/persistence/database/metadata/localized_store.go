@@ -15,7 +15,7 @@ import (
 	"time"
 
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
-	ormbuilder "github.com/domainry/domainry-orm/builder"
+	ormbuilder "github.com/domainry/domainry-orm/query"
 )
 
 func manifestLocalizedTextSeeds(seed manifestmodel.ManifestSchema) []metadatamodel.LocalizedText {

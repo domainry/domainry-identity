@@ -27,8 +27,8 @@ github.com/domainry/domainry-metadata v0.1.0 h1:ZUV2RLAPNf6ORhm+slohB3YY6eeLCYlT
 github.com/domainry/domainry-metadata v0.1.0/go.mod h1:LwqhiTD1qUQPdVXiUhO8Uy2C5DI4t8qQSxzFRuqWCVU=
 github.com/domainry/domainry-metadata-sdk v0.1.0 h1:xHnTwwVvkIh7SEhRnAUwzYuGN4seTtXKtmEbz3Q7bbk=
 github.com/domainry/domainry-metadata-sdk v0.1.0/go.mod h1:5UsehfM1lMTDu/YYi7Swc4rZ8PolMwSNQ/r1119PccI=
-github.com/domainry/domainry-orm v0.1.25 h1:Q/FRU/3sbJU6G2lnZ1laufD+7k2hwDtHzakQd4h6oq0=
-github.com/domainry/domainry-orm v0.1.25/go.mod h1:NKMojLuridkYCS4i5L7BO7LMTMsf/uOkWQ9OQ+9Vdn4=
+github.com/domainry/domainry-orm v0.1.27 h1:bXpjvroFrwaj8tgI2zKmXeX4RCaSqCzfRs1AAkpCeHE=
+github.com/domainry/domainry-orm v0.1.27/go.mod h1:NKMojLuridkYCS4i5L7BO7LMTMsf/uOkWQ9OQ+9Vdn4=
 github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=
 github.com/dustin/go-humanize v1.0.1/go.mod h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+mFykh5fBlto=
 github.com/go-jose/go-jose/v4 v4.1.4 h1:moDMcTHmvE6Groj34emNPLs/qtYXRVcd6S7NHbHz3kA=

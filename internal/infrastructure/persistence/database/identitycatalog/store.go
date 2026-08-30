@@ -11,7 +11,7 @@ import (
 
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	identitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity"
-	ormbuilder "github.com/domainry/domainry-orm/builder"
+	ormbuilder "github.com/domainry/domainry-orm/query"
 )
 
 type Store struct {

@@ -4,10 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/domainry/domainry-orm/batch"
 	"sort"
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
-	ormbuilder "github.com/domainry/domainry-orm/builder"
+	ormbuilder "github.com/domainry/domainry-orm/query"
 )
 
 const BatchMaxItems = 500
@@ -22,7 +23,7 @@ func (s Store) ListUserFacts(ctx context.Context, workspaceID string, userIDs []
 	if len(userIDs) == 0 {
 		return facts, nil
 	}
-	ranges, err := (ormbuilder.ParameterBatch{MaxParameters: s.backend.MaxParameters(), FixedParameters: 1, ParametersPerItem: 1, MaxItems: BatchMaxItems}).Ranges(len(userIDs))
+	ranges, err := (batch.Parameters{Max: s.backend.MaxParameters(), Fixed: 1, PerItem: 1, MaxItems: BatchMaxItems}).Ranges(len(userIDs))
 	if err != nil {
 		return facts, fmt.Errorf("build identity directory query batches: %w", err)
 	}
