@@ -21,9 +21,9 @@ type metadataDefinitionPayloadShape struct {
 func metadataDefinitionTable(resourceType string) (string, error) {
 	switch strings.TrimSpace(resourceType) {
 	case "role":
-		return "role_definitions", nil
+		return "_metadata_role_definitions", nil
 	case "identity_profile_binding":
-		return "identity_profile_binding_definitions", nil
+		return "_identity_profile_binding_definitions", nil
 	default:
 		return "", fmt.Errorf("unsupported Identity metadata resource type %q", resourceType)
 	}

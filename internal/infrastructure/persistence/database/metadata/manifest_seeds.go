@@ -51,12 +51,12 @@ func manifestMetadataSeeds(seed manifestmodel.ManifestSchema) ([]metadataResourc
 	roles := append([]identitymodel.RoleSchema(nil), seed.Roles...)
 	roles = appendSystemRoleDefinition(roles, "identity_effective", "Identity Effective")
 	for _, role := range roles {
-		if err := appendSeed("role", "role_definitions", role.Key, "", role.Name, role); err != nil {
+		if err := appendSeed("role", "_metadata_role_definitions", role.Key, "", role.Name, role); err != nil {
 			return nil, err
 		}
 	}
 	for _, binding := range seed.IdentityProfileExtensions {
-		if err := appendSeed("identity_profile_binding", "identity_profile_binding_definitions", binding.ObjectKey, binding.ObjectKey, binding.BusinessIdentity.Key, binding); err != nil {
+		if err := appendSeed("identity_profile_binding", "_identity_profile_binding_definitions", binding.ObjectKey, binding.ObjectKey, binding.BusinessIdentity.Key, binding); err != nil {
 			return nil, err
 		}
 	}

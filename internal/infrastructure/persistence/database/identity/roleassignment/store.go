@@ -74,7 +74,7 @@ func (s Store) UpsertBatch(ctx context.Context, execer Execer, workspaceID strin
 
 func (s Store) write(ctx context.Context, execer Execer, workspaceID string, assignments []identitymodel.IdentityUserRoleAssignment) error {
 	insertColumns := append([]string{columns[0]}, columns[2:]...)
-	insert := ormbuilder.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "identity_user_role_assignments", workspaceID).Columns(insertColumns...)
+	insert := ormbuilder.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_user_role_assignments", workspaceID).Columns(insertColumns...)
 	now := s.now()
 	for _, assignment := range assignments {
 		allValues := values(workspaceID, assignment, now)

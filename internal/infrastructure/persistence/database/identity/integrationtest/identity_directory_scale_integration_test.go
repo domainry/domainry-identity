@@ -24,13 +24,13 @@ func TestIdentityDirectoriesPageAndSearchInSQLAtOneHundredThousandRows(t *testin
 	}
 	if _, err := identityStore.DB().ExecContext(t.Context(), `WITH RECURSIVE n(i) AS (
 		SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 100000
-	) INSERT INTO identity_users (id, workspace_id, name, email, phone, status, created_at, updated_at)
+	) INSERT INTO _identity_users (id, workspace_id, name, email, phone, status, created_at, updated_at)
 	SELECT printf('user-%06d', i), 'default', printf('User %06d', i), printf('user-%06d@example.test', i), '', 'active', 'now', 'now' FROM n`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := identityStore.DB().ExecContext(t.Context(), `WITH RECURSIVE n(i) AS (
 		SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 100000
-	) INSERT INTO identity_workforce_profiles
+	) INSERT INTO _identity_workforce_profiles
 	(id, workspace_id, organization_id, identity_user_id, worker_no, worker_type, work_status, start_date, end_date, primary_assignment_id, version, created_at, updated_at)
 	SELECT printf('workforce-%06d', i), 'default', 'org-1', printf('user-%06d', i), printf('E-%06d', i), 'employee', 'active', NULL, NULL, NULL, 1, 'now', 'now' FROM n`); err != nil {
 		t.Fatal(err)

@@ -23,7 +23,7 @@ func TestEnsureIdentitySchemaAddsDepartmentSortOrderToExistingSQLiteDatabase(t *
 		t.Fatalf("open store: %v", err)
 	}
 	defer store.Close()
-	if _, err := store.DB().Exec(`CREATE TABLE identity_departments (
+	if _, err := store.DB().Exec(`CREATE TABLE _identity_departments (
     id TEXT PRIMARY KEY,
     workspace_id TEXT NOT NULL DEFAULT 'default',
     name TEXT NOT NULL,
@@ -40,7 +40,7 @@ func TestEnsureIdentitySchemaAddsDepartmentSortOrderToExistingSQLiteDatabase(t *
 	if err := store.EnsureIdentitySchema(t.Context()); err != nil {
 		t.Fatalf("upgrade identity schema: %v", err)
 	}
-	if _, err := store.DB().Exec(`INSERT INTO identity_departments
+	if _, err := store.DB().Exec(`INSERT INTO _identity_departments
     (id, workspace_id, name, path, ancestor_ids, depth, sort_order, status, created_at, updated_at)
     VALUES ('sales', 'default', 'Sales', '/sales', '[]', 0, 20, 'active', 'now', 'now')`); err != nil {
 		t.Fatalf("expected upgraded table to accept sort_order: %v", err)
@@ -53,7 +53,7 @@ func TestEnsureIdentitySchemaMigratesLegacyUserWorkforceFactsAndDropsColumns(t *
 		t.Fatalf("open store: %v", err)
 	}
 	defer store.Close()
-	if _, err := store.DB().Exec(`CREATE TABLE identity_users (
+	if _, err := store.DB().Exec(`CREATE TABLE _identity_users (
     id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL DEFAULT 'default', name TEXT NOT NULL,
     email TEXT NOT NULL, employee_no TEXT NOT NULL DEFAULT '', phone TEXT NOT NULL DEFAULT '',
     gender TEXT NOT NULL DEFAULT '', hire_date TEXT NOT NULL DEFAULT '', job_title TEXT NOT NULL DEFAULT '',
@@ -65,10 +65,10 @@ func TestEnsureIdentitySchemaMigratesLegacyUserWorkforceFactsAndDropsColumns(t *
   )`); err != nil {
 		t.Fatalf("create legacy identity users table: %v", err)
 	}
-	if _, err := store.DB().Exec(`CREATE INDEX idx_identity_users_department ON identity_users(workspace_id, department_id);
-CREATE INDEX idx_identity_users_manager ON identity_users(workspace_id, manager_id);
-CREATE INDEX idx_identity_users_manager_path ON identity_users(workspace_id, manager_path);
-INSERT INTO identity_users
+	if _, err := store.DB().Exec(`CREATE INDEX idx_identity_users_department ON _identity_users(workspace_id, department_id);
+CREATE INDEX idx_identity_users_manager ON _identity_users(workspace_id, manager_id);
+CREATE INDEX idx_identity_users_manager_path ON _identity_users(workspace_id, manager_path);
+INSERT INTO _identity_users
   (id, workspace_id, name, email, employee_no, phone, gender, hire_date, job_title, job_level, employment_type, employment_status, department_id, department_path, manager_id, manager_path, manager_ancestor_ids, manager_depth, status, created_at, updated_at)
 VALUES
   ('manager', 'default', 'Manager', 'manager@example.com', 'M001', '', '', '2025-01-01', 'Director', 'L7', 'full_time', 'active', 'executive', '/executive', NULL, '', '[]', 0, 'active', 'now', 'now'),
@@ -81,7 +81,7 @@ VALUES
 	if err := store.EnsureIdentitySchema(t.Context()); err != nil {
 		t.Fatalf("repeat identity schema upgrade: %v", err)
 	}
-	rows, err := store.DB().Query(`PRAGMA table_info(identity_users)`)
+	rows, err := store.DB().Query(`PRAGMA table_info(_identity_users)`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ VALUES
 	_ = rows.Close()
 	for _, removed := range []string{"employee_no", "gender", "hire_date", "job_title", "job_level", "employment_type", "employment_status", "department_id", "department_path", "manager_id", "manager_path", "manager_ancestor_ids", "manager_depth"} {
 		if columns[removed] {
-			t.Errorf("legacy identity_users column %q still exists", removed)
+			t.Errorf("legacy _identity_users column %q still exists", removed)
 		}
 	}
 	for _, retained := range []string{"id", "workspace_id", "name", "email", "phone", "status", "created_at", "updated_at"} {
@@ -108,7 +108,7 @@ VALUES
 	}
 	var workerProfileID, workerNo, workerType, workStatus, startDate, primaryAssignmentID string
 	if err := store.DB().QueryRow(`SELECT id, worker_no, worker_type, work_status, start_date, primary_assignment_id
-FROM identity_workforce_profiles WHERE workspace_id = 'default' AND identity_user_id = 'worker'`).
+FROM _identity_workforce_profiles WHERE workspace_id = 'default' AND identity_user_id = 'worker'`).
 		Scan(&workerProfileID, &workerNo, &workerType, &workStatus, &startDate, &primaryAssignmentID); err != nil {
 		t.Fatalf("read migrated worker profile: %v", err)
 	}
@@ -117,19 +117,19 @@ FROM identity_workforce_profiles WHERE workspace_id = 'default' AND identity_use
 	}
 	var unitID, managerProfileID, positionID, assignmentStatus string
 	if err := store.DB().QueryRow(`SELECT organization_unit_id, manager_workforce_profile_id, position_id, status
-FROM identity_workforce_assignments WHERE workspace_id = 'default' AND id = ?`, primaryAssignmentID).
+FROM _identity_workforce_assignments WHERE workspace_id = 'default' AND id = ?`, primaryAssignmentID).
 		Scan(&unitID, &managerProfileID, &positionID, &assignmentStatus); err != nil {
 		t.Fatalf("read migrated worker assignment: %v", err)
 	}
 	var expectedManagerProfileID string
-	if err := store.DB().QueryRow(`SELECT id FROM identity_workforce_profiles WHERE workspace_id = 'default' AND identity_user_id = 'manager'`).Scan(&expectedManagerProfileID); err != nil {
+	if err := store.DB().QueryRow(`SELECT id FROM _identity_workforce_profiles WHERE workspace_id = 'default' AND identity_user_id = 'manager'`).Scan(&expectedManagerProfileID); err != nil {
 		t.Fatal(err)
 	}
 	if unitID != "engineering" || managerProfileID != expectedManagerProfileID || !strings.HasPrefix(positionID, "legacy-position-") || assignmentStatus != "disabled" {
 		t.Fatalf("migrated assignment unit=%q manager=%q position=%q status=%q", unitID, managerProfileID, positionID, assignmentStatus)
 	}
 	var receiptRaw string
-	if err := store.DB().QueryRow(`SELECT legacy_facts_json FROM identity_workforce_legacy_migration_receipts WHERE workspace_id = 'default' AND identity_user_id = 'worker'`).Scan(&receiptRaw); err != nil {
+	if err := store.DB().QueryRow(`SELECT legacy_facts_json FROM _identity_workforce_migration_receipts WHERE workspace_id = 'default' AND identity_user_id = 'worker'`).Scan(&receiptRaw); err != nil {
 		t.Fatalf("read migration receipt: %v", err)
 	}
 	var receipt map[string]any
@@ -140,9 +140,9 @@ FROM identity_workforce_assignments WHERE workspace_id = 'default' AND id = ?`, 
 		t.Fatalf("migration receipt lost legacy facts: %#v", receipt)
 	}
 	for table, want := range map[string]int{
-		"identity_workforce_profiles":                  2,
-		"identity_workforce_assignments":               2,
-		"identity_workforce_legacy_migration_receipts": 2,
+		"_identity_workforce_profiles":           2,
+		"_identity_workforce_assignments":        2,
+		"_identity_workforce_migration_receipts": 2,
 	} {
 		var count int
 		if err := store.DB().QueryRow("SELECT COUNT(*) FROM " + table + " WHERE workspace_id = 'default'").Scan(&count); err != nil || count != want {
@@ -161,7 +161,7 @@ func TestLegacyWorkforceBackfillPreservesDepartmentManagerAndSubordinateScope(t 
 		t.Fatal(err)
 	}
 	defer store.Close()
-	if _, err := store.DB().Exec(`CREATE TABLE identity_users (
+	if _, err := store.DB().Exec(`CREATE TABLE _identity_users (
 		id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL DEFAULT 'default', name TEXT NOT NULL,
 		email TEXT NOT NULL, employee_no TEXT NOT NULL DEFAULT '', phone TEXT NOT NULL DEFAULT '',
 		hire_date TEXT NOT NULL DEFAULT '', job_title TEXT NOT NULL DEFAULT '', job_level TEXT NOT NULL DEFAULT '',
@@ -170,7 +170,7 @@ func TestLegacyWorkforceBackfillPreservesDepartmentManagerAndSubordinateScope(t 
 		manager_ancestor_ids TEXT NOT NULL DEFAULT '[]', manager_depth INTEGER NOT NULL DEFAULT 0,
 		status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 	);
-	INSERT INTO identity_users
+	INSERT INTO _identity_users
 		(id,workspace_id,name,email,employee_no,hire_date,employment_status,department_id,department_path,manager_id,manager_path,manager_ancestor_ids,manager_depth,status,created_at,updated_at)
 	VALUES
 		('manager','default','Manager','manager@example.test','M-1','2020-01-01','active','executive','/executive',NULL,'/manager','[]',0,'active','now','now'),

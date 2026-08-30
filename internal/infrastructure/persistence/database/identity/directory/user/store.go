@@ -90,7 +90,7 @@ func (s *Store) Upsert(ctx context.Context, execer Execer, workspaceID string, i
 	now := s.now()
 	var version int64
 	var createdAt string
-	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "identity_users", workspaceID).Columns("version", "created_at").Where(ormbuilder.Equal("id", item.ID)).Build()
+	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_users", workspaceID).Columns("version", "created_at").Where(ormbuilder.Equal("id", item.ID)).Build()
 	if err != nil {
 		return fmt.Errorf("build identity user version query: %w", err)
 	}
@@ -103,7 +103,7 @@ func (s *Store) Upsert(ctx context.Context, execer Execer, workspaceID string, i
 		return existingErr
 	}
 	item.UpdatedAt = now
-	insert := ormbuilder.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "identity_users", workspaceID).Columns("id", "name", "given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale", "email", "phone", "account_type", "locale", "timezone", "status", "version", "created_at", "updated_at").Values(item.ID, item.Name, item.GivenName, item.MiddleName, item.FamilyName, item.NamePrefix, item.NameSuffix, item.NativeName, item.NameLocale, item.Email, item.Phone, string(item.AccountType), item.Locale, item.Timezone, string(item.Status), item.Version, item.CreatedAt, item.UpdatedAt)
+	insert := ormbuilder.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_users", workspaceID).Columns("id", "name", "given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale", "email", "phone", "account_type", "locale", "timezone", "status", "version", "created_at", "updated_at").Values(item.ID, item.Name, item.GivenName, item.MiddleName, item.FamilyName, item.NamePrefix, item.NameSuffix, item.NativeName, item.NameLocale, item.Email, item.Phone, string(item.AccountType), item.Locale, item.Timezone, string(item.Status), item.Version, item.CreatedAt, item.UpdatedAt)
 	s.backend.ApplyUpsert(insert, []string{"workspace_id", "id"}, "name", "given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale", "email", "phone", "account_type", "locale", "timezone", "status", "version", "updated_at")
 	statement, arguments, err = insert.Build()
 	if err != nil {
@@ -118,7 +118,7 @@ func (s *Store) UpdateLocale(ctx context.Context, workspaceID, userID, locale st
 	if err != nil {
 		return identitymodel.IdentityUser{}, false, err
 	}
-	statement, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "identity_users", workspaceID).Set("locale", locale).SetExpression("version", ormbuilder.Add(ormbuilder.Column("version"), ormbuilder.Value(1))).Set("updated_at", s.now()).Where(ormbuilder.And(ormbuilder.Equal("id", userID), ormbuilder.Equal("version", expectedVersion))).Build()
+	statement, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_users", workspaceID).Set("locale", locale).SetExpression("version", ormbuilder.Add(ormbuilder.Column("version"), ormbuilder.Value(1))).Set("updated_at", s.now()).Where(ormbuilder.And(ormbuilder.Equal("id", userID), ormbuilder.Equal("version", expectedVersion))).Build()
 	if err != nil {
 		return identitymodel.IdentityUser{}, false, fmt.Errorf("build identity user locale update: %w", err)
 	}
@@ -164,7 +164,7 @@ func (s *Store) Remove(ctx context.Context, workspaceID, userID string) error {
 		return err
 	}
 	defer tx.Rollback()
-	for _, table := range []string{"identity_user_role_assignments", "identity_credentials", "identity_external_accounts", "identity_mfa_factors", "auth_refresh_tokens"} {
+	for _, table := range []string{"_identity_user_role_assignments", "_identity_credentials", "_identity_external_accounts", "_identity_mfa_factors", "_identity_auth_refresh_tokens"} {
 		statement, arguments, buildErr := ormbuilder.NewWorkspaceDeleteBuilder(s.backend.SQLRenderer(), table, workspaceID).Where(ormbuilder.Equal("user_id", userID)).Build()
 		if buildErr != nil {
 			return fmt.Errorf("build identity user relation delete: %w", buildErr)
@@ -173,7 +173,7 @@ func (s *Store) Remove(ctx context.Context, workspaceID, userID string) error {
 			return err
 		}
 	}
-	statement, arguments, err := ormbuilder.NewWorkspaceDeleteBuilder(s.backend.SQLRenderer(), "identity_users", workspaceID).Where(ormbuilder.Equal("id", userID)).Build()
+	statement, arguments, err := ormbuilder.NewWorkspaceDeleteBuilder(s.backend.SQLRenderer(), "_identity_users", workspaceID).Where(ormbuilder.Equal("id", userID)).Build()
 	if err != nil {
 		return fmt.Errorf("build identity user delete: %w", err)
 	}
@@ -188,7 +188,7 @@ func (s *Store) SetStatus(ctx context.Context, workspaceID, userID string, statu
 	if err != nil {
 		return err
 	}
-	statement, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "identity_users", workspaceID).Set("status", string(status)).SetExpression("version", ormbuilder.Add(ormbuilder.Column("version"), ormbuilder.Value(1))).Set("updated_at", s.now()).Where(ormbuilder.Equal("id", userID)).Build()
+	statement, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_users", workspaceID).Set("status", string(status)).SetExpression("version", ormbuilder.Add(ormbuilder.Column("version"), ormbuilder.Value(1))).Set("updated_at", s.now()).Where(ormbuilder.Equal("id", userID)).Build()
 	if err != nil {
 		return fmt.Errorf("build identity user status update: %w", err)
 	}
@@ -197,7 +197,7 @@ func (s *Store) SetStatus(ctx context.Context, workspaceID, userID string, statu
 }
 
 func selectUsers(renderer ormdialect.Renderer, workspaceID string) *ormbuilder.SelectBuilder {
-	return ormbuilder.NewWorkspaceSelectBuilder(renderer, "identity_users", workspaceID).Columns("id", "name", "given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale", "email", "phone", "account_type", "locale", "timezone", "status", "version", "created_at", "updated_at")
+	return ormbuilder.NewWorkspaceSelectBuilder(renderer, "_identity_users", workspaceID).Columns("id", "name", "given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale", "email", "phone", "account_type", "locale", "timezone", "status", "version", "created_at", "updated_at")
 }
 func scan(scanner interface{ Scan(...any) error }) (identitymodel.IdentityUser, error) {
 	var item identitymodel.IdentityUser

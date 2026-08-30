@@ -35,7 +35,7 @@ func TestEntitlementBatchUsesOneTransactionAndStableIdempotencyReceipt(t *testin
 			{UserID: "target", RoleID: "role-2", Source: "manual", Status: "active", GrantedBy: "grant-admin"},
 		},
 	}
-	if _, err := identityStore.DB().ExecContext(t.Context(), `CREATE TRIGGER fail_second_batch_entitlement BEFORE INSERT ON identity_user_role_assignments
+	if _, err := identityStore.DB().ExecContext(t.Context(), `CREATE TRIGGER fail_second_batch_entitlement BEFORE INSERT ON _identity_user_role_assignments
 		WHEN NEW.role_id = 'role-2' BEGIN SELECT RAISE(ABORT, 'injected second entitlement failure'); END`); err != nil {
 		t.Fatal(err)
 	}

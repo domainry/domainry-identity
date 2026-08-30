@@ -70,11 +70,11 @@ func authWorkspaceID(value string) (string, error) {
 }
 
 func authRefreshTokenSelect(s AuthStore, workspaceID string) *ormbuilder.SelectBuilder {
-	return ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "auth_refresh_tokens", workspaceID).Columns(authRefreshTokenColumns...)
+	return ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_auth_refresh_tokens", workspaceID).Columns(authRefreshTokenColumns...)
 }
 
 func authRefreshTokenInsert(s AuthStore, workspaceID string, token identitymodel.AuthRefreshToken, updatedAt string) *ormbuilder.InsertBuilder {
-	return ormbuilder.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "auth_refresh_tokens", workspaceID).
+	return ormbuilder.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_auth_refresh_tokens", workspaceID).
 		Columns("id", "user_id", "session_id", "audience", "token_hash", "expires_at", "revoked_at", "replaced_by_id", "last_used_at", "created_at", "updated_at").
 		Values(token.ID, token.UserID, token.SessionID, token.Audience, token.TokenHash, token.ExpiresAt, database.NullableText(token.RevokedAt), database.NullableText(token.ReplacedByID), database.NullableText(token.LastUsedAt), token.CreatedAt, updatedAt)
 }
@@ -117,13 +117,13 @@ func (s AuthStore) queryUserDirectorySecurityFacts(ctx context.Context, workspac
 	credentialPredicate := ormbuilder.And(ormbuilder.Equal("workspace_id", workspaceID), ormbuilder.EqualExpressions(ormbuilder.Column("user_id"), outerUserID))
 	refreshPredicate := ormbuilder.And(ormbuilder.Equal("workspace_id", workspaceID), ormbuilder.EqualExpressions(ormbuilder.Column("user_id"), outerUserID), ormbuilder.IsNull("revoked_at"), ormbuilder.GreaterThan("expires_at", identitypersistence.NowString()))
 	mfaPredicate := ormbuilder.And(ormbuilder.Equal("workspace_id", workspaceID), ormbuilder.EqualExpressions(ormbuilder.Column("user_id"), outerUserID), ormbuilder.Equal("status", "active"), ormbuilder.NotEqualExpressions(ormbuilder.Coalesce(ormbuilder.Column("verified_at"), ormbuilder.Value("")), ormbuilder.Value("")))
-	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "identity_users", workspaceID).Alias("u").
+	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_users", workspaceID).Alias("u").
 		Projections(
 			ormbuilder.Project(outerUserID),
-			ormbuilder.Project(ormbuilder.Coalesce(ormbuilder.ScalarSubquery("identity_credentials", ormbuilder.Column("locked_until"), credentialPredicate), ormbuilder.Value(""))),
-			ormbuilder.Project(ormbuilder.Coalesce(ormbuilder.ScalarSubquery("identity_credentials", ormbuilder.Column("last_login_at"), credentialPredicate), ormbuilder.Value(""))),
-			ormbuilder.Project(ormbuilder.ScalarSubquery("auth_refresh_tokens", ormbuilder.CountAll(), refreshPredicate)),
-			ormbuilder.Project(ormbuilder.CaseWhen(ormbuilder.Exists("identity_mfa_factors", mfaPredicate), 1).Else(0)),
+			ormbuilder.Project(ormbuilder.Coalesce(ormbuilder.ScalarSubquery("_identity_credentials", ormbuilder.Column("locked_until"), credentialPredicate), ormbuilder.Value(""))),
+			ormbuilder.Project(ormbuilder.Coalesce(ormbuilder.ScalarSubquery("_identity_credentials", ormbuilder.Column("last_login_at"), credentialPredicate), ormbuilder.Value(""))),
+			ormbuilder.Project(ormbuilder.ScalarSubquery("_identity_auth_refresh_tokens", ormbuilder.CountAll(), refreshPredicate)),
+			ormbuilder.Project(ormbuilder.CaseWhen(ormbuilder.Exists("_identity_mfa_factors", mfaPredicate), 1).Else(0)),
 		).
 		Where(ormbuilder.In("id", authStringValues(userIDs)...)).Build()
 	if err != nil {
@@ -162,7 +162,7 @@ func (s AuthStore) GetIdentityCredential(ctx context.Context, workspaceID, userI
 	if err != nil {
 		return identitymodel.IdentityCredential{}, false, err
 	}
-	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "identity_credentials", workspaceID).
+	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_credentials", workspaceID).
 		Columns("user_id", "password_hash", "password_updated_at", "failed_login_count", "locked_until", "last_login_at", "must_change_password").
 		Where(ormbuilder.Equal("user_id", userID)).Build()
 	if err != nil {
@@ -196,7 +196,7 @@ func (s AuthStore) UpsertIdentityCredential(ctx context.Context, workspaceID str
 	if credential.PasswordUpdatedAt == "" {
 		credential.PasswordUpdatedAt = now
 	}
-	insert := ormbuilder.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "identity_credentials", workspaceID).
+	insert := ormbuilder.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_credentials", workspaceID).
 		Columns("user_id", "password_hash", "password_updated_at", "failed_login_count", "locked_until", "last_login_at", "must_change_password", "created_at", "updated_at").
 		Values(credential.UserID, credential.PasswordHash, credential.PasswordUpdatedAt, credential.FailedLoginCount, database.NullableText(credential.LockedUntil), database.NullableText(credential.LastLoginAt), credential.MustChangePassword, now, now)
 	s.store.ApplyUpsert(insert, []string{"workspace_id", "user_id"}, "password_hash", "password_updated_at", "failed_login_count", "locked_until", "last_login_at", "must_change_password", "updated_at")
@@ -216,7 +216,7 @@ func (s AuthStore) RecordIdentityLoginSuccess(ctx context.Context, workspaceID, 
 	if at == "" {
 		at = identitypersistence.NowString()
 	}
-	statement, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "identity_credentials", workspaceID).
+	statement, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_credentials", workspaceID).
 		Set("failed_login_count", 0).Set("locked_until", nil).Set("last_login_at", at).Set("updated_at", at).Where(ormbuilder.Equal("user_id", userID)).Build()
 	if err != nil {
 		return fmt.Errorf("build identity login success update: %w", err)
@@ -240,7 +240,7 @@ func (s AuthStore) RecordIdentityLoginFailure(ctx context.Context, workspaceID, 
 	if at == "" {
 		at = identitypersistence.NowString()
 	}
-	update := ormbuilder.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "identity_credentials", workspaceID).
+	update := ormbuilder.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_credentials", workspaceID).
 		SetExpression("failed_login_count", ormbuilder.Add(ormbuilder.Column("failed_login_count"), ormbuilder.Value(1)))
 	if maxFailures > 0 {
 		if strings.TrimSpace(lockedUntil) == "" {
@@ -317,7 +317,7 @@ func (s AuthStore) RevokeAuthRefreshToken(ctx context.Context, workspaceID, toke
 	if revokedAt == "" {
 		revokedAt = identitypersistence.NowString()
 	}
-	statement, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "auth_refresh_tokens", workspaceID).
+	statement, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_auth_refresh_tokens", workspaceID).
 		Set("revoked_at", revokedAt).Set("replaced_by_id", database.NullableText(replacedByID)).Set("last_used_at", revokedAt).Set("updated_at", revokedAt).
 		Where(ormbuilder.Equal("id", tokenID)).Build()
 	if err != nil {
@@ -346,7 +346,7 @@ func (s AuthStore) RotateAuthRefreshToken(ctx context.Context, workspaceID, toke
 		return false, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	statement, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "auth_refresh_tokens", workspaceID).
+	statement, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_auth_refresh_tokens", workspaceID).
 		Set("revoked_at", revokedAt).Set("replaced_by_id", replacement.ID).Set("last_used_at", revokedAt).Set("updated_at", revokedAt).
 		Where(ormbuilder.And(ormbuilder.Equal("id", tokenID), ormbuilder.IsNull("revoked_at"))).Build()
 	if err != nil {
@@ -415,7 +415,7 @@ func (s AuthStore) RevokeAuthRefreshTokensForUser(ctx context.Context, workspace
 	}
 	defer func() { _ = tx.Rollback() }()
 	predicate := ormbuilder.And(ormbuilder.Equal("user_id", userID), ormbuilder.IsNull("revoked_at"))
-	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "auth_refresh_tokens", workspaceID).
+	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_auth_refresh_tokens", workspaceID).
 		Columns("session_id", "expires_at").Where(predicate).Build()
 	if err != nil {
 		return 0, fmt.Errorf("build active auth sessions query: %w", err)
@@ -448,7 +448,7 @@ func (s AuthStore) RevokeAuthRefreshTokensForUser(ctx context.Context, workspace
 	if err := rows.Close(); err != nil {
 		return 0, err
 	}
-	statement, arguments, err = ormbuilder.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "auth_refresh_tokens", workspaceID).
+	statement, arguments, err = ormbuilder.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_auth_refresh_tokens", workspaceID).
 		Set("revoked_at", revokedAt).Set("last_used_at", revokedAt).Set("updated_at", revokedAt).Where(predicate).Build()
 	if err != nil {
 		return 0, fmt.Errorf("build auth sessions revoke: %w", err)
@@ -467,7 +467,7 @@ func (s AuthStore) AuthSessionState(ctx context.Context, workspaceID, userID, se
 	if err != nil {
 		return authrepository.AuthSessionStateMissing, err
 	}
-	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "auth_refresh_tokens", workspaceID).
+	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_auth_refresh_tokens", workspaceID).
 		Columns("expires_at", "revoked_at").Where(ormbuilder.And(ormbuilder.Equal("user_id", userID), ormbuilder.Equal("session_id", sessionID))).Build()
 	if err != nil {
 		return authrepository.AuthSessionStateMissing, fmt.Errorf("build auth session state query: %w", err)
@@ -538,7 +538,7 @@ func (s AuthStore) revokeLogicalSessions(ctx context.Context, workspaceID, userI
 		sessionPredicate = ormbuilder.NotEqual("session_id", sessionID)
 	}
 	predicate := ormbuilder.And(ormbuilder.Equal("user_id", userID), sessionPredicate, ormbuilder.IsNull("revoked_at"))
-	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "auth_refresh_tokens", workspaceID).
+	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_auth_refresh_tokens", workspaceID).
 		Columns("session_id", "expires_at").Where(predicate).Build()
 	if err != nil {
 		return 0, fmt.Errorf("build logical auth sessions query: %w", err)
@@ -571,7 +571,7 @@ func (s AuthStore) revokeLogicalSessions(ctx context.Context, workspaceID, userI
 	if err := rows.Close(); err != nil {
 		return 0, err
 	}
-	statement, arguments, err = ormbuilder.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "auth_refresh_tokens", workspaceID).
+	statement, arguments, err = ormbuilder.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_auth_refresh_tokens", workspaceID).
 		Set("revoked_at", revokedAt).Set("last_used_at", revokedAt).Set("updated_at", revokedAt).Where(predicate).Build()
 	if err != nil {
 		return 0, fmt.Errorf("build logical auth sessions revoke: %w", err)
@@ -590,7 +590,7 @@ func (s AuthStore) ListIdentityExternalAccounts(ctx context.Context, workspaceID
 	if err != nil {
 		return nil, err
 	}
-	builder := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "identity_external_accounts", workspaceID).
+	builder := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_external_accounts", workspaceID).
 		Columns("id", "user_id", "provider", "provider_subject", "email", "phone", "display_name", "avatar_url", "metadata", "linked_at")
 	if strings.TrimSpace(userID) != "" {
 		builder.Where(ormbuilder.Equal("user_id", userID))
@@ -633,7 +633,7 @@ func (s AuthStore) UpsertIdentityExternalAccount(ctx context.Context, workspaceI
 	if account.LinkedAt == "" {
 		account.LinkedAt = now
 	}
-	insert := ormbuilder.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "identity_external_accounts", workspaceID).
+	insert := ormbuilder.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_external_accounts", workspaceID).
 		Columns("id", "user_id", "provider", "provider_subject", "email", "phone", "display_name", "avatar_url", "metadata", "linked_at", "created_at", "updated_at").
 		Values(account.ID, account.UserID, account.Provider, account.ProviderSubject, database.NullableText(account.Email), database.NullableText(account.Phone), database.NullableText(account.DisplayName), database.NullableText(account.AvatarURL), database.NullableText(account.Metadata), account.LinkedAt, now, now)
 	s.store.ApplyUpsert(insert, []string{"workspace_id", "id"}, "user_id", "provider", "provider_subject", "email", "phone", "display_name", "avatar_url", "metadata", "linked_at", "updated_at")
@@ -657,7 +657,7 @@ func (s AuthStore) ListIdentityMFAFactors(ctx context.Context, workspaceID, user
 	if userID == "" {
 		return nil, fmt.Errorf("MFA factor user id is required")
 	}
-	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "identity_mfa_factors", workspaceID).
+	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_mfa_factors", workspaceID).
 		Columns("id", "user_id", "factor_type", "label", "provider", "provider_ref", "status", "verified_at", "last_used_at", "created_at", "updated_at").
 		Where(ormbuilder.Equal("user_id", userID)).OrderBy(ormbuilder.Ascending("created_at"), ormbuilder.Ascending("id")).Build()
 	if err != nil {
@@ -703,7 +703,7 @@ func (s AuthStore) UpsertIdentityMFAFactor(ctx context.Context, workspaceID stri
 		factor.CreatedAt = now
 	}
 	factor.UpdatedAt = now
-	insert := ormbuilder.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "identity_mfa_factors", workspaceID).
+	insert := ormbuilder.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_mfa_factors", workspaceID).
 		Columns("id", "user_id", "factor_type", "label", "provider", "provider_ref", "status", "verified_at", "last_used_at", "created_at", "updated_at").
 		Values(factor.ID, factor.UserID, factor.Type, database.NullableText(factor.Label), database.NullableText(factor.Provider), database.NullableText(factor.ProviderRef), factor.Status, database.NullableText(factor.VerifiedAt), database.NullableText(factor.LastUsedAt), factor.CreatedAt, factor.UpdatedAt)
 	s.store.ApplyUpsert(insert, []string{"workspace_id", "id"}, "user_id", "factor_type", "label", "provider", "provider_ref", "status", "verified_at", "last_used_at", "updated_at")
@@ -724,7 +724,7 @@ func (s AuthStore) RevokeIdentityMFAFactor(ctx context.Context, workspaceID, use
 	if userID == "" || factorID == "" {
 		return fmt.Errorf("MFA factor user id and factor id are required")
 	}
-	statement, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "identity_mfa_factors", workspaceID).
+	statement, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_mfa_factors", workspaceID).
 		Set("status", "disabled").Set("updated_at", identitypersistence.NowString()).
 		Where(ormbuilder.And(ormbuilder.Equal("user_id", userID), ormbuilder.Equal("id", factorID))).Build()
 	if err != nil {
@@ -749,7 +749,7 @@ func (s AuthStore) RemoveIdentityExternalAccount(ctx context.Context, workspaceI
 	if err != nil {
 		return err
 	}
-	statement, arguments, err := ormbuilder.NewWorkspaceDeleteBuilder(s.store.SQLRenderer(), "identity_external_accounts", workspaceID).Where(ormbuilder.Equal("id", accountID)).Build()
+	statement, arguments, err := ormbuilder.NewWorkspaceDeleteBuilder(s.store.SQLRenderer(), "_identity_external_accounts", workspaceID).Where(ormbuilder.Equal("id", accountID)).Build()
 	if err != nil {
 		return fmt.Errorf("build identity external account delete: %w", err)
 	}

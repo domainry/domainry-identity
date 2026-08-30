@@ -215,7 +215,7 @@ func (manager *BackupManager) ApplicationTables(ctx context.Context) ([]string, 
 
 func IsSystemTable(name string) bool {
 	switch strings.TrimSpace(name) {
-	case "", "_schema_migrations", "_schema_materializations":
+	case "", "_schema_migrations":
 		return true
 	default:
 		return false

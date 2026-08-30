@@ -33,10 +33,10 @@ func TestIdentityUserRemovalRollsBackEveryOwnedTable(t *testing.T) {
 	if err := repository.AssignIdentityUserRole(t.Context(), "default", identitymodel.IdentityUserRoleAssignment{UserID: user.ID, RoleID: "role-1"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := identityStore.DB().ExecContext(t.Context(), "INSERT INTO identity_mfa_factors (id, workspace_id, user_id, factor_type, status, verified_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", "factor-1", "default", user.ID, "totp", "active", "now", "now", "now"); err != nil {
+	if _, err := identityStore.DB().ExecContext(t.Context(), "INSERT INTO _identity_mfa_factors (id, workspace_id, user_id, factor_type, status, verified_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", "factor-1", "default", user.ID, "totp", "active", "now", "now", "now"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := identityStore.DB().ExecContext(t.Context(), `CREATE TRIGGER reject_identity_user_delete BEFORE DELETE ON identity_users
+	if _, err := identityStore.DB().ExecContext(t.Context(), `CREATE TRIGGER reject_identity_user_delete BEFORE DELETE ON _identity_users
 		WHEN OLD.id = 'user-1' BEGIN SELECT RAISE(ABORT, 'injected user delete failure'); END`); err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func TestIdentityUserRemovalRollsBackEveryOwnedTable(t *testing.T) {
 		t.Fatalf("role assignment was partially removed: assignments=%+v err=%v", assignments, err)
 	}
 	var mfaCount int
-	if err := identityStore.DB().QueryRowContext(t.Context(), "SELECT COUNT(*) FROM identity_mfa_factors WHERE workspace_id = ? AND user_id = ?", "default", user.ID).Scan(&mfaCount); err != nil || mfaCount != 1 {
+	if err := identityStore.DB().QueryRowContext(t.Context(), "SELECT COUNT(*) FROM _identity_mfa_factors WHERE workspace_id = ? AND user_id = ?", "default", user.ID).Scan(&mfaCount); err != nil || mfaCount != 1 {
 		t.Fatalf("MFA factor was partially removed: count=%d err=%v", mfaCount, err)
 	}
 
@@ -65,7 +65,7 @@ func TestIdentityUserRemovalRollsBackEveryOwnedTable(t *testing.T) {
 	if _, found, err := repository.GetIdentityUser(t.Context(), "default", user.ID); err != nil || found {
 		t.Fatalf("committed removal found=%v err=%v", found, err)
 	}
-	if err := identityStore.DB().QueryRowContext(t.Context(), "SELECT COUNT(*) FROM identity_mfa_factors WHERE workspace_id = ? AND user_id = ?", "default", user.ID).Scan(&mfaCount); err != nil || mfaCount != 0 {
+	if err := identityStore.DB().QueryRowContext(t.Context(), "SELECT COUNT(*) FROM _identity_mfa_factors WHERE workspace_id = ? AND user_id = ?", "default", user.ID).Scan(&mfaCount); err != nil || mfaCount != 0 {
 		t.Fatalf("committed removal retained MFA factor: count=%d err=%v", mfaCount, err)
 	}
 }

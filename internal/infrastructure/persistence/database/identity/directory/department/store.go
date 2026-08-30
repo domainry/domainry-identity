@@ -42,7 +42,7 @@ func (s *Store) Upsert(ctx context.Context, execer Execer, workspaceID string, i
 		item.Status = identitymodel.IdentityStatusActive
 	}
 	ancestors, _ := json.Marshal(item.AncestorIDs)
-	insert := ormbuilder.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "identity_departments", workspace.String()).
+	insert := ormbuilder.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_departments", workspace.String()).
 		Columns("id", "name", "parent_id", "leader_workforce_profile_id", "path", "ancestor_ids", "depth", "sort_order", "status", "created_at", "updated_at").
 		Values(item.ID, item.Name, nullablePointer(item.ParentID), nullable(item.LeaderWorkforceProfileID), item.Path, string(ancestors), item.Depth, item.SortOrder, string(item.Status), s.now(), s.now())
 	s.backend.ApplyUpsert(insert, []string{"workspace_id", "id"}, "name", "parent_id", "leader_workforce_profile_id", "path", "ancestor_ids", "depth", "sort_order", "status", "updated_at")
@@ -59,7 +59,7 @@ func (s *Store) List(ctx context.Context, workspaceID string) ([]identitymodel.I
 	if err != nil {
 		return nil, err
 	}
-	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "identity_departments", workspace.String()).
+	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_departments", workspace.String()).
 		Columns("id", "name", "parent_id", "leader_workforce_profile_id", "path", "ancestor_ids", "depth", "sort_order", "status").
 		OrderBy(ormbuilder.Ascending("depth"), ormbuilder.Ascending("parent_id"), ormbuilder.Ascending("sort_order"), ormbuilder.Ascending("id")).Build()
 	if err != nil {

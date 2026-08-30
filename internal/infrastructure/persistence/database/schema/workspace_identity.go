@@ -48,9 +48,9 @@ func ensureWorkspaceScopedIdentities(ctx context.Context, s Store, identities ma
 
 func workspaceIdentityIndexName(table string) string {
 	switch table {
-	case "identity_workforce_legacy_migration_receipts":
+	case "_identity_workforce_migration_receipts":
 		return "uniq_identity_workforce_legacy_receipt_workspace"
-	case "identity_workforce_transfer_batch_receipts":
+	case "_identity_workforce_transfer_batch_receipts":
 		return "uniq_identity_workforce_transfer_receipt_workspace"
 	default:
 		return "uniq_" + strings.TrimPrefix(table, "_") + "_workspace_identity"

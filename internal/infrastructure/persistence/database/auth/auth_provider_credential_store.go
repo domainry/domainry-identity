@@ -24,7 +24,7 @@ func (s AuthStore) ListAuthProviderCredentials(ctx context.Context, workspaceID 
 	if err != nil {
 		return nil, err
 	}
-	statement, args, buildErr := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "auth_provider_credentials", workspaceID).
+	statement, args, buildErr := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_auth_provider_credentials", workspaceID).
 		Columns("provider_key", "configuration_json", "secret_envelope", "updated_by", "created_at", "updated_at").OrderBy(ormbuilder.Ascending("provider_key")).Build()
 	if buildErr != nil {
 		return nil, buildErr
@@ -93,7 +93,7 @@ func (s AuthStore) UpsertAuthProviderCredential(ctx context.Context, provider st
 	if err != nil {
 		return authmodel.AuthProviderCredential{}, fmt.Errorf("encrypt auth provider credential: %w", err)
 	}
-	insert := ormbuilder.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "auth_provider_credentials", workspaceID).
+	insert := ormbuilder.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_auth_provider_credentials", workspaceID).
 		Columns("provider_key", "configuration_json", "secret_envelope", "updated_by", "created_at", "updated_at").
 		Values(provider, string(configuration), envelope, credential.UpdatedBy, credential.CreatedAt, credential.UpdatedAt)
 	insert.OnConflictDoUpdate([]string{"workspace_id", "provider_key"},
@@ -114,7 +114,7 @@ func (s AuthStore) UpsertAuthProviderCredential(ctx context.Context, provider st
 }
 
 func (s AuthStore) authProviderCredential(ctx context.Context, workspaceID, provider string) (authmodel.AuthProviderCredential, bool, error) {
-	statement, args, buildErr := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "auth_provider_credentials", workspaceID).
+	statement, args, buildErr := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_auth_provider_credentials", workspaceID).
 		Columns("provider_key", "configuration_json", "secret_envelope", "updated_by", "created_at", "updated_at").
 		Where(ormbuilder.Equal("provider_key", provider)).Limit(1).Build()
 	if buildErr != nil {

@@ -106,10 +106,10 @@ func TestEmbeddedWorkspaceExportImportIsDeterministicAndSecretFree(t *testing.T)
 	}
 	var users, credentials, sessions, providerCredentials int
 	for query, countDestination := range map[string]*int{
-		`SELECT COUNT(*) FROM identity_users WHERE workspace_id='workspace-a'`:            &users,
-		`SELECT COUNT(*) FROM identity_credentials WHERE workspace_id='workspace-a'`:      &credentials,
-		`SELECT COUNT(*) FROM auth_refresh_tokens WHERE workspace_id='workspace-a'`:       &sessions,
-		`SELECT COUNT(*) FROM auth_provider_credentials WHERE workspace_id='workspace-a'`: &providerCredentials,
+		`SELECT COUNT(*) FROM _identity_users WHERE workspace_id='workspace-a'`:                     &users,
+		`SELECT COUNT(*) FROM _identity_credentials WHERE workspace_id='workspace-a'`:               &credentials,
+		`SELECT COUNT(*) FROM _identity_auth_refresh_tokens WHERE workspace_id='workspace-a'`:       &sessions,
+		`SELECT COUNT(*) FROM _identity_auth_provider_credentials WHERE workspace_id='workspace-a'`: &providerCredentials,
 	} {
 		if err := target.DB().QueryRowContext(t.Context(), query).Scan(countDestination); err != nil {
 			t.Fatal(err)
@@ -122,7 +122,7 @@ func TestEmbeddedWorkspaceExportImportIsDeterministicAndSecretFree(t *testing.T)
 	if err != nil || replay.Receipt == nil || !replay.Receipt.Replayed {
 		t.Fatalf("replay=%+v err=%v", replay.Receipt, err)
 	}
-	if _, err := target.DB().ExecContext(t.Context(), `UPDATE identity_roles SET label='Tampered' WHERE workspace_id='workspace-a' AND id='role-1'`); err != nil {
+	if _, err := target.DB().ExecContext(t.Context(), `UPDATE _identity_roles SET label='Tampered' WHERE workspace_id='workspace-a' AND id='role-1'`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := targetService.Import(t.Context(), request); err == nil || !strings.Contains(err.Error(), "authorization_parity_failed") {
@@ -137,14 +137,14 @@ func TestEmbeddedWorkspaceExportImportIsDeterministicAndSecretFree(t *testing.T)
 func assertWriteFenceEvents(t *testing.T, store *database.IdentityStore, wantCount int, wantEvent string) {
 	t.Helper()
 	var count int
-	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _audit_events WHERE workspace_id='workspace-a' AND object_key='identity_workspace_write_fences'`).Scan(&count); err != nil {
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _audit_events WHERE workspace_id='workspace-a' AND object_key='_identity_workspace_write_fences'`).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
 	if count != wantCount {
 		t.Fatalf("write-fence event count=%d want=%d", count, wantCount)
 	}
 	var matching int
-	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _audit_events WHERE workspace_id='workspace-a' AND object_key='identity_workspace_write_fences' AND event=?`, "identity.portability_write_fence."+wantEvent).Scan(&matching); err != nil {
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _audit_events WHERE workspace_id='workspace-a' AND object_key='_identity_workspace_write_fences' AND event=?`, "identity.portability_write_fence."+wantEvent).Scan(&matching); err != nil {
 		t.Fatal(err)
 	}
 	if matching != 1 {
@@ -179,36 +179,36 @@ func seedPortableWorkspace(t *testing.T, store *database.IdentityStore, now time
 	t.Helper()
 	timestamp := now.Format(time.RFC3339Nano)
 	seedMetadataSchemaHash(t, store)
-	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO identity_users
+	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO _identity_users
         (id, workspace_id, name, given_name, middle_name, family_name, name_prefix, name_suffix, native_name, name_locale, email, phone, account_type, locale, timezone, status, version, created_at, updated_at)
         VALUES (?, ?, ?, '', '', '', '', '', '', '', ?, '', 'human', '', '', 'active', 1, ?, ?)`,
 		"user-1", "workspace-a", "User One", "user@example.com", timestamp, timestamp); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO identity_roles
+	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO _identity_roles
         (id, workspace_id, role_key, label, description, status, created_at, updated_at)
         VALUES (?, ?, ?, ?, '', 'active', ?, ?)`, "role-1", "workspace-a", "reader", "Reader", timestamp, timestamp); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO identity_user_role_assignments
+	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO _identity_user_role_assignments
         (id, workspace_id, user_id, role_id, workforce_profile_id, binding_key, profile_id, source, status, valid_from, valid_until, granted_by, grant_reason, revoked_by, revoked_at, revoke_reason, expires_at, created_at, updated_at)
         VALUES (?, ?, ?, ?, NULL, NULL, NULL, 'manual', 'active', NULL, NULL, 'admin', '', NULL, NULL, NULL, NULL, ?, ?)`,
 		"assignment-1", "workspace-a", "user-1", "role-1", timestamp, timestamp); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO identity_credentials
+	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO _identity_credentials
         (user_id, workspace_id, password_hash, password_updated_at, failed_login_count, locked_until, last_login_at, must_change_password, created_at, updated_at)
         VALUES (?, ?, ?, ?, 0, NULL, NULL, 0, ?, ?)`, "user-1", "workspace-a", "password_hash", timestamp, timestamp, timestamp); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO auth_refresh_tokens
+	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO _identity_auth_refresh_tokens
         (id, workspace_id, user_id, session_id, audience, token_hash, expires_at, revoked_at, replaced_by_id, last_used_at, created_at, updated_at)
         VALUES (?, ?, ?, ?, 'runtime', ?, ?, NULL, NULL, NULL, ?, ?)`,
 		"refresh-1", "workspace-a", "user-1", "session-1", "refresh-token-secret", now.Add(time.Hour).Format(time.RFC3339Nano), timestamp, timestamp); err != nil {
 		t.Fatal(err)
 	}
 	providerConfiguration := `{"provider_key":"oidc","workspace_id":"workspace-a","type":"oidc","issuer":"https://issuer.example","client_id":"client-a","auto_create_users":false}`
-	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO auth_provider_credentials
+	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO _identity_auth_provider_credentials
         (workspace_id, provider_key, configuration_json, secret_envelope, updated_by, created_at, updated_at)
         VALUES (?, 'oidc', ?, 'provider-secret-envelope', 'admin', ?, ?)`, "workspace-a", providerConfiguration, timestamp, timestamp); err != nil {
 		t.Fatal(err)
@@ -220,7 +220,7 @@ func seedTargetProvider(t *testing.T, store *database.IdentityStore, now time.Ti
 	seedMetadataSchemaHash(t, store)
 	timestamp := now.Format(time.RFC3339Nano)
 	providerConfiguration := `{"provider_key":"oidc","workspace_id":"workspace-a","type":"oidc","issuer":"https://issuer.example","client_id":"saas-client","auto_create_users":false}`
-	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO auth_provider_credentials
+	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO _identity_auth_provider_credentials
         (workspace_id, provider_key, configuration_json, secret_envelope, updated_by, created_at, updated_at)
         VALUES (?, 'oidc', ?, 'target-provider-secret-envelope', 'operator', ?, ?)`, "workspace-a", providerConfiguration, timestamp, timestamp); err != nil {
 		t.Fatal(err)
@@ -229,7 +229,7 @@ func seedTargetProvider(t *testing.T, store *database.IdentityStore, now time.Ti
 
 func seedMetadataSchemaHash(t *testing.T, store *database.IdentityStore) {
 	t.Helper()
-	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO application_schema_catalog (key, value, updated_at) VALUES ('schema_hash', ?, '2026-08-27T12:00:00Z')`, strings.Repeat("a", 64)); err != nil {
+	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO _identity_manifest_catalog (key, value, updated_at) VALUES ('schema_hash', ?, '2026-08-27T12:00:00Z')`, strings.Repeat("a", 64)); err != nil {
 		t.Fatal(err)
 	}
 }

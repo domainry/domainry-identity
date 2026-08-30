@@ -38,10 +38,10 @@ func TestIdentitySubjectLifecycleContract(t *testing.T) {
 	if err := identity.UpsertIdentityUser(t.Context(), "default", user); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.DB().ExecContext(t.Context(), "INSERT INTO identity_credentials (user_id, workspace_id, password_hash, password_updated_at, failed_login_count, must_change_password, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", "user", "default", "hash", "now", 0, false, "now", "now"); err != nil {
+	if _, err := store.DB().ExecContext(t.Context(), "INSERT INTO _identity_credentials (user_id, workspace_id, password_hash, password_updated_at, failed_login_count, must_change_password, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", "user", "default", "hash", "now", 0, false, "now", "now"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.DB().ExecContext(t.Context(), "INSERT INTO identity_mfa_factors (id, workspace_id, user_id, factor_type, status, verified_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", "factor", "default", "user", "totp", "active", "now", "now", "now"); err != nil {
+	if _, err := store.DB().ExecContext(t.Context(), "INSERT INTO _identity_mfa_factors (id, workspace_id, user_id, factor_type, status, verified_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", "factor", "default", "user", "totp", "active", "now", "now", "now"); err != nil {
 		t.Fatal(err)
 	}
 	if err := identity.UpsertIdentityWorkforceProfile(t.Context(), "default", identitymodel.IdentityWorkforceProfile{
@@ -61,7 +61,7 @@ func TestIdentitySubjectLifecycleContract(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO identity_profile_bindings
+	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO _identity_profile_bindings
 		(id,workspace_id,binding_key,object_key,profile_id,identity_user_id,status,version,created_at,updated_at)
 		VALUES ('binding','default','member','member_profile','member-1','user','active',1,'now','now')`); err != nil {
 		t.Fatal(err)
@@ -106,7 +106,7 @@ func TestIdentitySubjectLifecycleContract(t *testing.T) {
 		t.Fatalf("loaded=%#v found=%v err=%v", loaded, found, err)
 	}
 	var factorCount int
-	if err := store.DB().QueryRowContext(t.Context(), "SELECT COUNT(*) FROM identity_mfa_factors WHERE workspace_id = ? AND user_id = ?", "default", "user").Scan(&factorCount); err != nil || factorCount != 0 {
+	if err := store.DB().QueryRowContext(t.Context(), "SELECT COUNT(*) FROM _identity_mfa_factors WHERE workspace_id = ? AND user_id = ?", "default", "user").Scan(&factorCount); err != nil || factorCount != 0 {
 		t.Fatalf("MFA factors retained: count=%d err=%v", factorCount, err)
 	}
 	if _, err := lifecycle.EraseSubject(t.Context(), "default", "missing", nil); err == nil {
@@ -133,12 +133,12 @@ func TestIdentitySubjectEraseRollsBackAtEveryOwnedFactStage(t *testing.T) {
 	stages := []struct {
 		name, table, operation string
 	}{
-		{"refresh tokens", "auth_refresh_tokens", "DELETE"},
-		{"credentials", "identity_credentials", "DELETE"},
-		{"external accounts", "identity_external_accounts", "DELETE"},
-		{"mfa factors", "identity_mfa_factors", "DELETE"},
-		{"role assignments", "identity_user_role_assignments", "DELETE"},
-		{"identity anonymization", "identity_users", "UPDATE"},
+		{"refresh tokens", "_identity_auth_refresh_tokens", "DELETE"},
+		{"credentials", "_identity_credentials", "DELETE"},
+		{"external accounts", "_identity_external_accounts", "DELETE"},
+		{"mfa factors", "_identity_mfa_factors", "DELETE"},
+		{"role assignments", "_identity_user_role_assignments", "DELETE"},
+		{"identity anonymization", "_identity_users", "UPDATE"},
 	}
 	for _, stage := range stages {
 		t.Run(stage.name, func(t *testing.T) {
@@ -165,16 +165,16 @@ func TestIdentitySubjectEraseRollsBackAtEveryOwnedFactStage(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, statement := range []string{
-				`INSERT INTO identity_credentials
+				`INSERT INTO _identity_credentials
 					(user_id, workspace_id, password_hash, password_updated_at, failed_login_count, must_change_password, created_at, updated_at)
 					VALUES ('user','default','hash','now',0,0,'now','now')`,
-				`INSERT INTO identity_external_accounts
+				`INSERT INTO _identity_external_accounts
 					(id, workspace_id, user_id, provider, provider_subject, email, phone, display_name, avatar_url, metadata, linked_at, created_at, updated_at)
 					VALUES ('external','default','user','oidc','subject','original@example.test','100','Original','','{}','now','now','now')`,
-				`INSERT INTO identity_mfa_factors
+				`INSERT INTO _identity_mfa_factors
 					(id, workspace_id, user_id, factor_type, status, verified_at, created_at, updated_at)
 					VALUES ('factor','default','user','totp','active','now','now','now')`,
-				`INSERT INTO auth_refresh_tokens
+				`INSERT INTO _identity_auth_refresh_tokens
 					(id, workspace_id, user_id, session_id, token_hash, expires_at, created_at, updated_at)
 					VALUES ('token','default','user','session','hash','2999-01-01T00:00:00Z','now','now')`,
 			} {
@@ -192,8 +192,8 @@ func TestIdentitySubjectEraseRollsBackAtEveryOwnedFactStage(t *testing.T) {
 				t.Fatal("injected erase failure was ignored")
 			}
 			for _, table := range []string{
-				"identity_credentials", "identity_external_accounts", "identity_mfa_factors",
-				"auth_refresh_tokens", "identity_user_role_assignments",
+				"_identity_credentials", "_identity_external_accounts", "_identity_mfa_factors",
+				"_identity_auth_refresh_tokens", "_identity_user_role_assignments",
 			} {
 				var count int
 				if err := store.DB().QueryRowContext(t.Context(), "SELECT COUNT(*) FROM "+table+" WHERE workspace_id='default' AND user_id='user'").Scan(&count); err != nil || count != 1 {
@@ -201,7 +201,7 @@ func TestIdentitySubjectEraseRollsBackAtEveryOwnedFactStage(t *testing.T) {
 				}
 			}
 			var name, email, phone, status string
-			if err := store.DB().QueryRowContext(t.Context(), `SELECT name,email,phone,status FROM identity_users
+			if err := store.DB().QueryRowContext(t.Context(), `SELECT name,email,phone,status FROM _identity_users
 				WHERE workspace_id='default' AND id='user'`).Scan(&name, &email, &phone, &status); err != nil {
 				t.Fatal(err)
 			}

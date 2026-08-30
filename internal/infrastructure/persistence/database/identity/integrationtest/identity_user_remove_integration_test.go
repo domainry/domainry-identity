@@ -29,12 +29,12 @@ func TestRemoveIdentityUserRollsBackEveryOwnedSecurityFact(t *testing.T) {
 	if err := store.AssignIdentityUserRole(t.Context(), "default", identitymodel.IdentityUserRoleAssignment{UserID: "user-1", RoleID: "role-1"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := identityStore.DB().ExecContext(t.Context(), `INSERT INTO auth_refresh_tokens
+	if _, err := identityStore.DB().ExecContext(t.Context(), `INSERT INTO _identity_auth_refresh_tokens
 		(id, workspace_id, user_id, session_id, token_hash, expires_at, created_at, updated_at)
 		VALUES ('token-1','default','user-1','session-1','hash','2999-01-01T00:00:00Z','now','now')`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := identityStore.DB().ExecContext(t.Context(), `CREATE TRIGGER fail_identity_user_delete BEFORE DELETE ON identity_users
+	if _, err := identityStore.DB().ExecContext(t.Context(), `CREATE TRIGGER fail_identity_user_delete BEFORE DELETE ON _identity_users
 		BEGIN SELECT RAISE(ABORT, 'injected identity delete failure'); END`); err != nil {
 		t.Fatal(err)
 	}
@@ -54,9 +54,9 @@ func TestRemoveIdentityUserRollsBackEveryOwnedSecurityFact(t *testing.T) {
 func assertIdentityUserOwnedRows(t *testing.T, store *persistence.IdentityStore, expected int) {
 	t.Helper()
 	for _, query := range []string{
-		`SELECT COUNT(*) FROM identity_users WHERE id='user-1'`,
-		`SELECT COUNT(*) FROM identity_user_role_assignments WHERE user_id='user-1'`,
-		`SELECT COUNT(*) FROM auth_refresh_tokens WHERE user_id='user-1'`,
+		`SELECT COUNT(*) FROM _identity_users WHERE id='user-1'`,
+		`SELECT COUNT(*) FROM _identity_user_role_assignments WHERE user_id='user-1'`,
+		`SELECT COUNT(*) FROM _identity_auth_refresh_tokens WHERE user_id='user-1'`,
 	} {
 		var count int
 		if err := store.DB().QueryRowContext(t.Context(), query).Scan(&count); err != nil || count != expected {

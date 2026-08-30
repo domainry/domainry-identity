@@ -18,15 +18,14 @@ func TestIdentityPersistenceDoesNotReintroducePlaneRuntimeOwnership(t *testing.T
 	forbidden := []string{
 		"RuntimeStore",
 		"RuntimeOperationalMetrics",
-		"_runtime_rls_policies",
 		"_domainry_managed_runtime_database",
 		"domainry_runtime_",
-		"automation_instruction_executions",
-		"workflow_execution_receipts",
-		"business_action_executions",
-		"record_mutation_executions",
-		"integration_outbox_messages",
-		"transaction_boundary_intents",
+		"_automation_instruction_executions",
+		"_workflow_execution_receipts",
+		"_action_executions",
+		"_record_mutation_executions",
+		"_publication_outbox",
+		"_transaction_boundary_intents",
 	}
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {

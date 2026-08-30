@@ -14,7 +14,7 @@ func TestEnsureCompositePrimaryKeyMigratesWorkspaceCredentialIdentity(t *testing
 		t.Fatal(err)
 	}
 	defer database.Close()
-	if _, err := database.Exec(`CREATE TABLE identity_auth_provider_credentials (
+	if _, err := database.Exec(`CREATE TABLE identity__identity_auth_provider_credentials (
 		workspace_id TEXT NOT NULL,
 		provider_key TEXT PRIMARY KEY,
 		configuration_json TEXT NOT NULL,
@@ -25,7 +25,7 @@ func TestEnsureCompositePrimaryKeyMigratesWorkspaceCredentialIdentity(t *testing
 	)`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.Exec(`INSERT INTO identity_auth_provider_credentials VALUES (?, ?, '{}', 'secret', 'user', 'created', 'updated')`, "workspace-a", "oidc"); err != nil {
+	if _, err := database.Exec(`INSERT INTO identity__identity_auth_provider_credentials VALUES (?, ?, '{}', 'secret', 'user', 'created', 'updated')`, "workspace-a", "oidc"); err != nil {
 		t.Fatal(err)
 	}
 	dialect, _ := ormdialect.New(ormdialect.SQLite)
@@ -33,13 +33,13 @@ func TestEnsureCompositePrimaryKeyMigratesWorkspaceCredentialIdentity(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := NewEngine().EnsureCompositePrimaryKey(t.Context(), database, renderer, "", "identity_", "auth_provider_credentials", "workspace_id", "provider_key"); err != nil {
+	if err := NewEngine().EnsureCompositePrimaryKey(t.Context(), database, renderer, "", "identity_", "_identity_auth_provider_credentials", "workspace_id", "provider_key"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.Exec(`INSERT INTO identity_auth_provider_credentials VALUES (?, ?, '{}', 'secret', 'user', 'created', 'updated')`, "workspace-b", "oidc"); err != nil {
+	if _, err := database.Exec(`INSERT INTO identity__identity_auth_provider_credentials VALUES (?, ?, '{}', 'secret', 'user', 'created', 'updated')`, "workspace-b", "oidc"); err != nil {
 		t.Fatalf("same provider must coexist across workspaces: %v", err)
 	}
-	rows, err := database.Query(`PRAGMA table_info("identity_auth_provider_credentials")`)
+	rows, err := database.Query(`PRAGMA table_info("identity__identity_auth_provider_credentials")`)
 	if err != nil {
 		t.Fatal(err)
 	}

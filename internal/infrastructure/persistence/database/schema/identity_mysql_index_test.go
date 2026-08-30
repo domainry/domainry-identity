@@ -13,7 +13,7 @@ func TestIdentityProfileBindingMySQLIndexColumnsUseASCII(t *testing.T) {
 	if err := EnsureIdentitySchema(t.Context(), scriptedSchemaStore{db: database, driver: "mysql"}); err != nil {
 		t.Fatal(err)
 	}
-	for _, table := range []string{"identity_profile_bindings", "identity_profile_binding_receipts", "identity_profile_binding_events"} {
+	for _, table := range []string{"_identity_profile_bindings", "_identity_profile_binding_receipts", "_identity_profile_binding_events"} {
 		var ddl string
 		for _, query := range state.execQueries {
 			if strings.Contains(query, `"`+table+`"`) {

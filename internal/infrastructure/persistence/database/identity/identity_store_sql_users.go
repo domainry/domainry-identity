@@ -86,7 +86,7 @@ func (s *SQLIdentityStore) UpsertIdentityUserWithRoleAssignmentsAtomically(
 	if err := s.writeIdentityUser(ctx, tx, workspaceID, user); err != nil {
 		return err
 	}
-	statement, arguments, err := ormbuilder.NewWorkspaceDeleteBuilder(s.sqlRenderer(), "identity_user_role_assignments", workspaceID).Where(ormbuilder.Equal("user_id", user.ID)).Build()
+	statement, arguments, err := ormbuilder.NewWorkspaceDeleteBuilder(s.sqlRenderer(), "_identity_user_role_assignments", workspaceID).Where(ormbuilder.Equal("user_id", user.ID)).Build()
 	if err != nil {
 		return fmt.Errorf("build identity user role reset: %w", err)
 	}

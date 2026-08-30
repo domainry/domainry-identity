@@ -28,15 +28,15 @@ func TestSQLiteBackupRestorePreservesAccountAndWorkforceGraph(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, statement := range []string{
-		`INSERT INTO identity_users (id, workspace_id, name, email, phone, status, created_at, updated_at)
+		`INSERT INTO _identity_users (id, workspace_id, name, email, phone, status, created_at, updated_at)
 		 VALUES ('user-1', 'workspace-a', 'Account One', 'one@example.com', '', 'active', '2026-07-25T00:00:00Z', '2026-07-25T00:00:00Z')`,
-		`INSERT INTO identity_workforce_profiles
+		`INSERT INTO _identity_workforce_profiles
 		 (id, workspace_id, organization_id, identity_user_id, worker_no, worker_type, work_status, start_date, version, created_at, updated_at)
 		 VALUES ('workforce-1', 'workspace-a', 'organization-1', 'user-1', 'E-001', 'employee', 'active', '2026-01-01', 1, '2026-07-25T00:00:00Z', '2026-07-25T00:00:00Z')`,
-		`INSERT INTO identity_workforce_assignments
+		`INSERT INTO _identity_workforce_assignments
 		 (id, workspace_id, workforce_profile_id, organization_unit_id, manager_workforce_profile_id, assignment_type, effective_from, status, version, created_at, updated_at)
 		 VALUES ('assignment-1', 'workspace-a', 'workforce-1', 'department-1', 'manager-1', 'primary', '2026-01-01', 'active', 1, '2026-07-25T00:00:00Z', '2026-07-25T00:00:00Z')`,
-		`INSERT INTO identity_workforce_legacy_migration_receipts
+		`INSERT INTO _identity_workforce_migration_receipts
 		 (id, workspace_id, identity_user_id, workforce_profile_id, workforce_assignment_id, legacy_facts_json, migrated_at)
 		 VALUES ('receipt-1', 'workspace-a', 'user-1', 'workforce-1', 'assignment-1', '{"employee_number":"E-001"}', '2026-07-25T00:00:00Z')`,
 	} {
@@ -66,16 +66,16 @@ func TestSQLiteBackupRestorePreservesAccountAndWorkforceGraph(t *testing.T) {
 	t.Cleanup(func() { _ = restored.Close() })
 
 	var accountName, workerNumber, organizationUnitID, managerProfileID, legacyFacts string
-	if err := restored.QueryRowContext(t.Context(), `SELECT name FROM identity_users WHERE workspace_id = 'workspace-a' AND id = 'user-1'`).Scan(&accountName); err != nil {
+	if err := restored.QueryRowContext(t.Context(), `SELECT name FROM _identity_users WHERE workspace_id = 'workspace-a' AND id = 'user-1'`).Scan(&accountName); err != nil {
 		t.Fatal(err)
 	}
-	if err := restored.QueryRowContext(t.Context(), `SELECT worker_no FROM identity_workforce_profiles WHERE workspace_id = 'workspace-a' AND id = 'workforce-1'`).Scan(&workerNumber); err != nil {
+	if err := restored.QueryRowContext(t.Context(), `SELECT worker_no FROM _identity_workforce_profiles WHERE workspace_id = 'workspace-a' AND id = 'workforce-1'`).Scan(&workerNumber); err != nil {
 		t.Fatal(err)
 	}
-	if err := restored.QueryRowContext(t.Context(), `SELECT organization_unit_id, manager_workforce_profile_id FROM identity_workforce_assignments WHERE workspace_id = 'workspace-a' AND id = 'assignment-1'`).Scan(&organizationUnitID, &managerProfileID); err != nil {
+	if err := restored.QueryRowContext(t.Context(), `SELECT organization_unit_id, manager_workforce_profile_id FROM _identity_workforce_assignments WHERE workspace_id = 'workspace-a' AND id = 'assignment-1'`).Scan(&organizationUnitID, &managerProfileID); err != nil {
 		t.Fatal(err)
 	}
-	if err := restored.QueryRowContext(t.Context(), `SELECT legacy_facts_json FROM identity_workforce_legacy_migration_receipts WHERE workspace_id = 'workspace-a' AND id = 'receipt-1'`).Scan(&legacyFacts); err != nil {
+	if err := restored.QueryRowContext(t.Context(), `SELECT legacy_facts_json FROM _identity_workforce_migration_receipts WHERE workspace_id = 'workspace-a' AND id = 'receipt-1'`).Scan(&legacyFacts); err != nil {
 		t.Fatal(err)
 	}
 	if accountName != "Account One" || workerNumber != "E-001" || organizationUnitID != "department-1" || managerProfileID != "manager-1" || legacyFacts != `{"employee_number":"E-001"}` {

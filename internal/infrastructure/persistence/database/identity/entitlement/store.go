@@ -83,7 +83,7 @@ func (s Store) Apply(ctx context.Context, mutation identitymodel.IdentityEntitle
 	// The receipt contains only strings and typed entitlement values, so it is
 	// always JSON-encodable.
 	resultJSON, _ := json.Marshal(receipt)
-	statement, arguments, err := ormbuilder.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "identity_entitlement_batch_receipts", workspaceID).
+	statement, arguments, err := ormbuilder.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_entitlement_batch_receipts", workspaceID).
 		Columns("id", "actor_id", "idempotency_key", "request_fingerprint", "result_json", "created_at").
 		Values(receipt.ID, receipt.ActorID, receipt.IdempotencyKey, receipt.RequestFingerprint, string(resultJSON), receipt.CreatedAt).Build()
 	if err != nil {
@@ -99,7 +99,7 @@ func (s Store) Apply(ctx context.Context, mutation identitymodel.IdentityEntitle
 }
 
 func (s Store) loadReceipt(ctx context.Context, queryer identityEntitlementReceiptQueryer, workspaceID, idempotencyKey string) (identitymodel.IdentityEntitlementBatchReceipt, bool, error) {
-	statement, arguments, buildErr := ormbuilder.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "identity_entitlement_batch_receipts", workspaceID).
+	statement, arguments, buildErr := ormbuilder.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_entitlement_batch_receipts", workspaceID).
 		Columns("result_json", "request_fingerprint").Where(ormbuilder.Equal("idempotency_key", idempotencyKey)).Build()
 	if buildErr != nil {
 		return identitymodel.IdentityEntitlementBatchReceipt{}, false, buildErr

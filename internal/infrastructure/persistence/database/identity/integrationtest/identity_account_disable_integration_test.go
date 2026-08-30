@@ -34,12 +34,12 @@ func TestDisableIdentityAccountRevokesSessionsAtomicallyAndPreservesBusinessFact
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := identityStore.DB().ExecContext(t.Context(), `INSERT INTO identity_profile_bindings
+	if _, err := identityStore.DB().ExecContext(t.Context(), `INSERT INTO _identity_profile_bindings
 		(id, workspace_id, binding_key, object_key, profile_id, identity_user_id, status, version, created_at, updated_at)
 		VALUES ('binding-1','default','member','member_profile','member-1','user-1','active',1,'now','now')`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := identityStore.DB().ExecContext(t.Context(), `INSERT INTO auth_refresh_tokens
+	if _, err := identityStore.DB().ExecContext(t.Context(), `INSERT INTO _identity_auth_refresh_tokens
 		(id, workspace_id, user_id, session_id, token_hash, expires_at, created_at, updated_at)
 		VALUES
 		('token-b','default','user-1','b-console-session','hash-b','2999-01-01T00:00:00Z','now','now'),
@@ -47,7 +47,7 @@ func TestDisableIdentityAccountRevokesSessionsAtomicallyAndPreservesBusinessFact
 		('token-other','default','other-user','other-session','hash-other','2999-01-01T00:00:00Z','now','now')`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := identityStore.DB().ExecContext(t.Context(), `CREATE TRIGGER fail_account_session_revoke BEFORE UPDATE ON auth_refresh_tokens
+	if _, err := identityStore.DB().ExecContext(t.Context(), `CREATE TRIGGER fail_account_session_revoke BEFORE UPDATE ON _identity_auth_refresh_tokens
 		BEGIN SELECT RAISE(ABORT, 'injected session revoke failure'); END`); err != nil {
 		t.Fatal(err)
 	}
@@ -74,23 +74,23 @@ func assertIdentityAccountDisableState(t *testing.T, store *persistence.Identity
 	t.Helper()
 	var gotUser, gotWorkforce, gotBinding string
 	var activeTargetSessions, revokedTargetSessions, revokedOtherSessions int
-	if err := store.DB().QueryRow(`SELECT status FROM identity_users WHERE id='user-1'`).Scan(&gotUser); err != nil {
+	if err := store.DB().QueryRow(`SELECT status FROM _identity_users WHERE id='user-1'`).Scan(&gotUser); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.DB().QueryRow(`SELECT
 		SUM(CASE WHEN revoked_at IS NULL OR revoked_at = '' THEN 1 ELSE 0 END),
 		SUM(CASE WHEN revoked_at IS NOT NULL AND revoked_at <> '' THEN 1 ELSE 0 END)
-		FROM auth_refresh_tokens WHERE workspace_id='default' AND user_id='user-1'`).Scan(&activeTargetSessions, &revokedTargetSessions); err != nil {
+		FROM _identity_auth_refresh_tokens WHERE workspace_id='default' AND user_id='user-1'`).Scan(&activeTargetSessions, &revokedTargetSessions); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.DB().QueryRow(`SELECT COUNT(*) FROM auth_refresh_tokens
+	if err := store.DB().QueryRow(`SELECT COUNT(*) FROM _identity_auth_refresh_tokens
 		WHERE id='token-other' AND revoked_at IS NOT NULL AND revoked_at <> ''`).Scan(&revokedOtherSessions); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.DB().QueryRow(`SELECT work_status FROM identity_workforce_profiles WHERE id='workforce-1'`).Scan(&gotWorkforce); err != nil {
+	if err := store.DB().QueryRow(`SELECT work_status FROM _identity_workforce_profiles WHERE id='workforce-1'`).Scan(&gotWorkforce); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.DB().QueryRow(`SELECT status FROM identity_profile_bindings WHERE id='binding-1'`).Scan(&gotBinding); err != nil {
+	if err := store.DB().QueryRow(`SELECT status FROM _identity_profile_bindings WHERE id='binding-1'`).Scan(&gotBinding); err != nil {
 		t.Fatal(err)
 	}
 	wantActive, wantRevoked := 2, 0

@@ -173,7 +173,7 @@ func TestIdentityUserRootFileOnlyCoordinatesClassifiedOwners(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(source)
-	for _, forbiddenTable := range []string{"identity_users", "identity_departments", "identity_profile_bindings"} {
+	for _, forbiddenTable := range []string{"_identity_users", "_identity_departments", "_identity_profile_bindings"} {
 		if strings.Contains(text, forbiddenTable) {
 			t.Errorf("Identity user coordinator still owns classified table %q", forbiddenTable)
 		}

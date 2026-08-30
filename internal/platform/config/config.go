@@ -70,7 +70,6 @@ type Config struct {
 	DatabaseStatementTimeout          time.Duration
 	DatabaseLockTimeout               time.Duration
 	DatabaseSSLRootCert               string
-	DatabaseRLSEnabled                bool
 	DBPath                            string
 	ManifestPath                      string
 	MigrationDir                      string
@@ -173,7 +172,6 @@ func FromEnv() Config {
 		DatabaseStatementTimeout:              durationEnv("DATABASE_STATEMENT_TIMEOUT", 30*time.Second),
 		DatabaseLockTimeout:                   durationEnv("DATABASE_LOCK_TIMEOUT", 5*time.Second),
 		DatabaseSSLRootCert:                   strings.TrimSpace(os.Getenv("DATABASE_SSL_ROOT_CERT")),
-		DatabaseRLSEnabled:                    boolEnv("DATABASE_RLS_ENABLED", false),
 		DBPath:                                env("APP_DB_PATH", "data/runtime.db"),
 		ManifestPath:                          env("TEMPLATE_MANIFEST", "domainry.template.json"),
 		MigrationDir:                          env("MIGRATION_DIR", "migrations"),
@@ -243,21 +241,6 @@ func (c Config) EffectiveDatabaseMigrationMode() string {
 	return "apply"
 }
 
-type databaseSecurityPolicy interface{ Validate(Config) error }
-
-type postgresSecurityPolicy struct{}
-
-func (postgresSecurityPolicy) Validate(c Config) error {
-	if !c.DatabaseRLSEnabled {
-		return fmt.Errorf("DATABASE_RLS_ENABLED must be true for PostgreSQL in production")
-	}
-	return nil
-}
-
-var databaseSecurityPolicies = map[string]databaseSecurityPolicy{
-	"postgres": postgresSecurityPolicy{}, "postgresql": postgresSecurityPolicy{}, "pgx": postgresSecurityPolicy{},
-}
-
 func (c Config) ValidateSecurity() error {
 	if !c.IsProduction() {
 		return nil
@@ -273,11 +256,6 @@ func (c Config) ValidateSecurity() error {
 	}
 	if strings.TrimSpace(c.AuthDefaultPassword) == "" || strings.TrimSpace(c.AuthDefaultPassword) == DevDefaultAdminPassword {
 		return fmt.Errorf("AUTH_DEFAULT_PASSWORD must be set to a non-default value in production")
-	}
-	if policy := databaseSecurityPolicies[strings.ToLower(strings.TrimSpace(c.DatabaseDriver))]; policy != nil {
-		if err := policy.Validate(c); err != nil {
-			return err
-		}
 	}
 	if strings.TrimSpace(c.IdentityDataSecretKey) == "" || strings.TrimSpace(c.IdentityDataSecretKey) == DevIdentityDataSecret || strings.TrimSpace(c.IdentityDataSecretKey) == c.AuthJWTSecret {
 		return fmt.Errorf("IDENTITY_DATA_SECRET_KEY must be set to a non-default value in production")

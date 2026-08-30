@@ -23,20 +23,19 @@ import (
 const (
 	IdentitySchemaVersionBaseline           = "001_identity_service_baseline"
 	IdentitySchemaVersionPortability        = "002_identity_portability_cutover"
-	IdentitySchemaVersionNoFrontend         = "003_remove_frontend_capability_registry"
 	IdentitySchemaVersionProviderCredential = "004_workspace_provider_credential_identity"
 	CurrentIdentitySchemaVersion            = "005_data_exchange_and_authoring_cleanup"
 )
 
 const (
-	managedIdentityDatabaseTable           = "_domainry_managed_identity_database"
+	managedIdentityDatabaseTable           = "_identity_managed_database"
 	managedIdentityDatabaseContractVersion = "domainry-managed-identity-database-v1"
 	identitySchemaMigrationKind            = "identity_schema"
 	identitySchemaMigrationName            = "data_exchange_and_authoring_cleanup"
 )
 
 func SupportedIdentitySchemaVersions() []string {
-	return []string{IdentitySchemaVersionBaseline, IdentitySchemaVersionPortability, IdentitySchemaVersionNoFrontend, IdentitySchemaVersionProviderCredential, CurrentIdentitySchemaVersion}
+	return []string{IdentitySchemaVersionBaseline, IdentitySchemaVersionPortability, IdentitySchemaVersionProviderCredential, CurrentIdentitySchemaVersion}
 }
 
 func (s *IdentityStore) EnsureSchema(ctx context.Context) error {
@@ -47,15 +46,14 @@ func (s *IdentityStore) EnsureSchema(ctx context.Context) error {
 		if err := s.verifyManagedIdentityDatabaseMarker(ctx); err != nil {
 			return err
 		}
-		return s.EnsureWorkspaceRLS(ctx)
+		return nil
 	}
 	if s.migrationDB != nil {
 		migrationStore := s.identityMigrationStore()
-		migrationStore.config.DatabaseRLSEnabled = false
 		if err := migrationStore.EnsureSchema(ctx); err != nil {
 			return err
 		}
-		return s.EnsureWorkspaceRLS(ctx)
+		return nil
 	}
 	release, err := s.LockManager.Acquire(ctx, s.config)
 	if err != nil {
@@ -93,23 +91,17 @@ func (s *IdentityStore) EnsureSchema(ctx context.Context) error {
 	if err := s.EnsureEvidenceSchema(ctx); err != nil {
 		return err
 	}
-	if pending {
-		if err := identityschema.RemoveFrontendCapabilityRegistry(ctx, s); err != nil {
-			return err
-		}
-		if err := s.retireSupersededIdentityTables(ctx); err != nil {
-			return err
-		}
-	}
 	if err := s.recordIdentitySchemaMigrationIfPending(ctx, pending, startedAt); err != nil {
 		return err
 	}
-	return s.EnsureWorkspaceRLS(ctx)
+	if err := s.removeObsoleteIdentityMigrationLedger(ctx); err != nil {
+		return err
+	}
+	return nil
 }
 
 // EnsureEmbeddedSchema assembles Identity-owned tables while the embedding
-// host owns the migration lock and ledger. It intentionally does not create or
-// consult Identity's standalone _schema_materializations ledger.
+// host owns the migration lock and the single _schema_migrations ledger.
 func (s *IdentityStore) EnsureEmbeddedSchema(ctx context.Context) error {
 	if err := s.ensureManagedIdentityDatabaseMarker(ctx); err != nil {
 		return err
@@ -126,22 +118,6 @@ func (s *IdentityStore) EnsureEmbeddedSchema(ctx context.Context) error {
 	if err := s.EnsureEvidenceSchema(ctx); err != nil {
 		return err
 	}
-	if err := s.retireSupersededIdentityTables(ctx); err != nil {
-		return err
-	}
-	return s.EnsureWorkspaceRLS(ctx)
-}
-
-// retireSupersededIdentityTables removes Data Exchange job state, retired
-// metadata draft storage, and the write-fence event table superseded by Audit.
-// domainry-orm has no DROP TABLE builder; these bounded, host-qualified DDL
-// statements run only in the migration boundary.
-func (s *IdentityStore) retireSupersededIdentityTables(ctx context.Context) error {
-	for _, table := range []string{"identity_portability_export_receipts", "identity_portability_import_receipts", "identity_change_plan_operations", "identity_change_plan_drafts", "identity_portability_write_fence_events"} {
-		if _, err := s.schemaDatabase().ExecContext(ctx, "DROP TABLE IF EXISTS "+s.tableIdentifier(table)); err != nil {
-			return fmt.Errorf("retire superseded Identity table %s: %w", table, err)
-		}
-	}
 	return nil
 }
 
@@ -149,7 +125,6 @@ func EmbeddedSchemaChecksum() string { return currentIdentitySchemaChecksum() }
 
 func (s *IdentityStore) identityMigrationStore() *IdentityStore {
 	return &IdentityStore{
-		RLSManager:           s.RLSManager,
 		ScopeValidator:       workspace.NewScopeValidator(s.migrationDB, s.engine, s.BuilderRenderer(), s.databaseSchema, s.relationPrefix),
 		Coordinator:          s.Coordinator,
 		db:                   s.migrationDB,
@@ -281,9 +256,6 @@ func (s *IdentityStore) identitySchemaMigrationPending(ctx context.Context, vers
 	if err := s.Coordinator.Ledger.Ensure(ctx); err != nil {
 		return false, fmt.Errorf("prepare Identity schema migration ledger: %w", err)
 	}
-	if err := s.adoptLegacyIdentityMaterializationLedger(ctx); err != nil {
-		return false, err
-	}
 	path := identitySchemaMigrationPath(version)
 	var count int
 	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+s.tableIdentifier("_schema_migrations")+" WHERE "+s.identifier("path")+" = "+s.placeholder(1), path).Scan(&count); err != nil {
@@ -329,46 +301,11 @@ func identitySchemaMigrationPath(version string) string {
 	return "identity_schema_" + strings.TrimSpace(version)
 }
 
-func (s *IdentityStore) adoptLegacyIdentityMaterializationLedger(ctx context.Context) error {
-	exists, err := s.identityTableExists(ctx, "_schema_materializations")
-	if err != nil || !exists {
-		return err
-	}
-	columns := []string{"version", "name", "kind", "checksum", "dirty", "applied_at", "service_version", "duration_ms", "operator", "instance_id", "backup_id"}
-	rows, err := s.schemaDatabase().QueryContext(ctx, "SELECT "+strings.Join(quotedColumns(s, columns), ", ")+" FROM "+s.tableIdentifier("_schema_materializations"))
-	if err != nil {
-		return fmt.Errorf("read legacy Identity materialization ledger: %w", err)
-	}
-	type legacyMaterialization struct {
-		version, name, kind, checksum, appliedAt, serviceVersion, operator, instanceID, backupID string
-		dirty                                                                                    bool
-		duration                                                                                 int64
-	}
-	values := []legacyMaterialization{}
-	for rows.Next() {
-		var value legacyMaterialization
-		if err := rows.Scan(&value.version, &value.name, &value.kind, &value.checksum, &value.dirty, &value.appliedAt, &value.serviceVersion, &value.duration, &value.operator, &value.instanceID, &value.backupID); err != nil {
-			_ = rows.Close()
-			return err
-		}
-		values = append(values, value)
-	}
-	if err := rows.Close(); err != nil {
-		return err
-	}
-	for _, value := range values {
-		query, args, buildErr := ormbuilder.NewInsertBuilder(s.BuilderRenderer(), "_schema_migrations").Columns("path", "version", "name", "kind", "checksum", "dirty", "applied_at", "service_version", "duration_ms", "operator", "instance_id", "backup_id").Values(identitySchemaMigrationPath(value.version), value.version, value.name, identitySchemaMigrationKind, value.checksum, value.dirty, value.appliedAt, value.serviceVersion, value.duration, value.operator, value.instanceID, value.backupID).OnConflictDoNothing("path").Build()
-		if buildErr != nil {
-			return buildErr
-		}
-		if _, err := s.schemaDatabase().ExecContext(ctx, query, args...); err != nil {
-			return fmt.Errorf("adopt Identity materialization %s: %w", value.version, err)
-		}
-	}
-	// domainry-orm has no DROP TABLE builder. This bounded cleanup retires the
-	// former second migration ledger after every row has been adopted.
-	if _, err := s.schemaDatabase().ExecContext(ctx, "DROP TABLE "+s.tableIdentifier("_schema_materializations")); err != nil {
-		return fmt.Errorf("retire legacy Identity materialization ledger: %w", err)
+func (s *IdentityStore) removeObsoleteIdentityMigrationLedger(ctx context.Context) error {
+	// domainry-orm has no DROP TABLE builder. This never-launched private ledger
+	// carries no business data and is removed rather than adopted.
+	if _, err := s.schemaDatabase().ExecContext(ctx, "DROP TABLE IF EXISTS "+s.tableIdentifier("_schema_materializations")); err != nil {
+		return fmt.Errorf("remove obsolete Identity migration ledger: %w", err)
 	}
 	return nil
 }
@@ -380,7 +317,7 @@ func (s *IdentityStore) identityTableExists(ctx context.Context, table string) (
 		return false, fmt.Errorf("Identity table inspection is unavailable")
 	}
 	if err := s.schemaDatabase().QueryRowContext(ctx, query.Statement, query.Arguments...).Scan(&count); err != nil {
-		return false, fmt.Errorf("inspect legacy Identity materialization ledger: %w", err)
+		return false, fmt.Errorf("inspect Identity table %s: %w", table, err)
 	}
 	return count > 0, nil
 }
@@ -390,7 +327,7 @@ func (s *IdentityStore) SchemaTableExists(ctx context.Context, table string) (bo
 }
 
 func currentIdentitySchemaChecksum() string {
-	sum := sha256.Sum256([]byte(CurrentIdentitySchemaVersion + ":metadata,identity,audit,authentication,authorization_catalog,workspace_provider_credential_identity,data_exchange_and_authoring_cleanup,workspace_write_fences,managed_identity_database,no_frontend_capability_registry"))
+	sum := sha256.Sum256([]byte(CurrentIdentitySchemaVersion + ":metadata,identity,audit,authentication,authorization_catalog,workspace_provider_credential_identity,data_exchange_and_authoring_cleanup,workspace_write_fences,managed_identity_database"))
 	return hex.EncodeToString(sum[:])
 }
 

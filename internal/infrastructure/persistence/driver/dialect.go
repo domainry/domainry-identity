@@ -47,9 +47,6 @@ type EngineProfile interface {
 	MigrationRollbackPolicy() MigrationRollbackPolicy
 	DatabaseSchema(config.Config) string
 	RendererSchema(string) string
-	WorkspaceRLSSupported() bool
-	ApplyWorkspaceRLS(context.Context, *sql.DB, ormdialect.Renderer, string, string, string) error
-	InspectWorkspaceRLS(context.Context, *sql.DB, ormdialect.Renderer, string, string, string) (WorkspaceRLSStatus, error)
 }
 
 // Engine is the complete database-engine strategy selected once at assembly.
@@ -86,12 +83,6 @@ type SchemaProfile interface {
 	TableColumns(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string) (map[string]bool, error)
 	TableIndexes(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string) (map[string]bool, error)
 	DropIndex(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, string) error
-}
-
-type WorkspaceRLSProfile interface {
-	WorkspaceRLSSupported() bool
-	ApplyWorkspaceRLS(context.Context, *sql.DB, ormdialect.Renderer, string, string, string) error
-	InspectWorkspaceRLS(context.Context, *sql.DB, ormdialect.Renderer, string, string, string) (WorkspaceRLSStatus, error)
 }
 
 type SchemaTypes struct {
@@ -137,17 +128,6 @@ type MigrationRollbackPolicy struct {
 	Mode                   string
 	RequiresVerifiedBackup bool
 	Procedure              []string
-}
-
-type WorkspaceRLSStatus struct {
-	Enabled         bool     `json:"enabled"`
-	Forced          bool     `json:"forced"`
-	ApplicationRole string   `json:"application_role,omitempty"`
-	RoleOwnsTable   bool     `json:"role_owns_table"`
-	RoleBypassRLS   bool     `json:"role_bypass_rls"`
-	PolicyVersion   string   `json:"policy_version,omitempty"`
-	CoveredTables   []string `json:"covered_tables,omitempty"`
-	MissingTables   []string `json:"missing_tables,omitempty"`
 }
 
 type SchemaDatabase interface {

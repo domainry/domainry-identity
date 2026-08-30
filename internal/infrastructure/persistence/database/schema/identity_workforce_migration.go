@@ -57,9 +57,9 @@ type legacyIdentityUserWorkforceTarget struct {
 }
 
 func migrateLegacyIdentityUserWorkforceFacts(ctx context.Context, store Store) error {
-	columns, err := store.TableColumns(ctx, "identity_users")
+	columns, err := store.TableColumns(ctx, "_identity_users")
 	if err != nil {
-		return fmt.Errorf("inspect identity_users for workforce migration: %w", err)
+		return fmt.Errorf("inspect _identity_users for workforce migration: %w", err)
 	}
 	if !columns["employee_no"] && !columns["department_id"] && !columns["manager_id"] {
 		return nil
@@ -78,9 +78,9 @@ func migrateLegacyIdentityUserWorkforceFacts(ctx context.Context, store Store) e
 		if !columns[column] {
 			continue
 		}
-		query := "ALTER TABLE " + store.TableIdentifier("identity_users") + " DROP COLUMN " + store.Identifier(column)
+		query := "ALTER TABLE " + store.TableIdentifier("_identity_users") + " DROP COLUMN " + store.Identifier(column)
 		if _, err := store.SchemaDB().ExecContext(ctx, query); err != nil {
-			return fmt.Errorf("drop migrated identity_users.%s: %w", column, err)
+			return fmt.Errorf("drop migrated _identity_users.%s: %w", column, err)
 		}
 	}
 	return nil
@@ -95,7 +95,7 @@ func loadLegacyIdentityUserWorkforceFacts(ctx context.Context, store Store, colu
 			selected = append(selected, "''")
 		}
 	}
-	rows, err := store.SchemaDB().QueryContext(ctx, "SELECT "+strings.Join(selected, ", ")+" FROM "+store.TableIdentifier("identity_users")+" ORDER BY "+store.Identifier("workspace_id")+", "+store.Identifier("id"))
+	rows, err := store.SchemaDB().QueryContext(ctx, "SELECT "+strings.Join(selected, ", ")+" FROM "+store.TableIdentifier("_identity_users")+" ORDER BY "+store.Identifier("workspace_id")+", "+store.Identifier("id"))
 	if err != nil {
 		return nil, fmt.Errorf("read legacy identity workforce facts: %w", err)
 	}
@@ -168,7 +168,7 @@ func persistLegacyIdentityUserWorkforceFacts(ctx context.Context, store Store, f
 
 func ensureLegacyWorkforceProfile(ctx context.Context, tx *sql.Tx, store Store, fact legacyIdentityUserWorkforceFacts) (legacyIdentityUserWorkforceTarget, error) {
 	var profileID string
-	query := "SELECT " + store.Identifier("id") + " FROM " + store.TableIdentifier("identity_workforce_profiles") +
+	query := "SELECT " + store.Identifier("id") + " FROM " + store.TableIdentifier("_identity_workforce_profiles") +
 		" WHERE " + store.Identifier("workspace_id") + " = " + store.Placeholder(1) +
 		" AND " + store.Identifier("identity_user_id") + " = " + store.Placeholder(2) +
 		" ORDER BY " + store.Identifier("id")
@@ -182,7 +182,7 @@ func ensureLegacyWorkforceProfile(ctx context.Context, tx *sql.Tx, store Store, 
 	profileID = identityMigrationID("workforce-profile", fact.WorkspaceID, fact.UserID)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	columns := identityMigrationIdentifiers(store, "id", "workspace_id", "organization_id", "identity_user_id", "worker_no", "worker_type", "work_status", "start_date", "end_date", "primary_assignment_id", "version", "created_at", "updated_at")
-	insert := "INSERT INTO " + store.TableIdentifier("identity_workforce_profiles") + " (" + columns + ") VALUES (" + identityMigrationPlaceholders(store, 13) + ")"
+	insert := "INSERT INTO " + store.TableIdentifier("_identity_workforce_profiles") + " (" + columns + ") VALUES (" + identityMigrationPlaceholders(store, 13) + ")"
 	if _, err := tx.ExecContext(ctx, insert,
 		profileID, fact.WorkspaceID, fact.WorkspaceID, fact.UserID, identityMigrationWorkerNo(fact),
 		identityMigrationWorkerType(fact.EmploymentType), identityMigrationWorkStatus(fact.EmploymentStatus),
@@ -196,7 +196,7 @@ func ensureLegacyWorkforceProfile(ctx context.Context, tx *sql.Tx, store Store, 
 func ensureLegacyWorkforceAssignment(ctx context.Context, tx *sql.Tx, store Store, fact legacyIdentityUserWorkforceFacts, profileID, managerProfileID string) (string, error) {
 	assignmentID := identityMigrationID("workforce-assignment", fact.WorkspaceID, fact.UserID)
 	var existingID string
-	query := "SELECT " + store.Identifier("id") + " FROM " + store.TableIdentifier("identity_workforce_assignments") +
+	query := "SELECT " + store.Identifier("id") + " FROM " + store.TableIdentifier("_identity_workforce_assignments") +
 		" WHERE " + store.Identifier("workspace_id") + " = " + store.Placeholder(1) +
 		" AND " + store.Identifier("id") + " = " + store.Placeholder(2)
 	err := tx.QueryRowContext(ctx, query, fact.WorkspaceID, assignmentID).Scan(&existingID)
@@ -216,7 +216,7 @@ func ensureLegacyWorkforceAssignment(ctx context.Context, tx *sql.Tx, store Stor
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	columns := identityMigrationIdentifiers(store, "id", "workspace_id", "workforce_profile_id", "organization_unit_id", "position_id", "manager_workforce_profile_id", "assignment_type", "effective_from", "effective_to", "status", "version", "created_at", "updated_at")
-	insert := "INSERT INTO " + store.TableIdentifier("identity_workforce_assignments") + " (" + columns + ") VALUES (" + identityMigrationPlaceholders(store, 13) + ")"
+	insert := "INSERT INTO " + store.TableIdentifier("_identity_workforce_assignments") + " (" + columns + ") VALUES (" + identityMigrationPlaceholders(store, 13) + ")"
 	if _, err := tx.ExecContext(ctx, insert,
 		assignmentID, fact.WorkspaceID, profileID, unitID, identityMigrationNullable(positionID),
 		identityMigrationNullable(managerProfileID), "primary", identityMigrationNullable(fact.HireDate),
@@ -224,7 +224,7 @@ func ensureLegacyWorkforceAssignment(ctx context.Context, tx *sql.Tx, store Stor
 	); err != nil {
 		return "", fmt.Errorf("create migrated workforce assignment for %s: %w", fact.UserID, err)
 	}
-	update := "UPDATE " + store.TableIdentifier("identity_workforce_profiles") + " SET " + store.Identifier("primary_assignment_id") + " = " + store.Placeholder(1) + ", " + store.Identifier("updated_at") + " = " + store.Placeholder(2) +
+	update := "UPDATE " + store.TableIdentifier("_identity_workforce_profiles") + " SET " + store.Identifier("primary_assignment_id") + " = " + store.Placeholder(1) + ", " + store.Identifier("updated_at") + " = " + store.Placeholder(2) +
 		" WHERE " + store.Identifier("workspace_id") + " = " + store.Placeholder(3) + " AND " + store.Identifier("id") + " = " + store.Placeholder(4) +
 		" AND (" + store.Identifier("primary_assignment_id") + " IS NULL OR " + store.Identifier("primary_assignment_id") + " = '')"
 	if _, err := tx.ExecContext(ctx, update, assignmentID, now, fact.WorkspaceID, profileID); err != nil {
@@ -235,7 +235,7 @@ func ensureLegacyWorkforceAssignment(ctx context.Context, tx *sql.Tx, store Stor
 
 func ensureLegacyWorkforceMigrationReceipt(ctx context.Context, tx *sql.Tx, store Store, fact legacyIdentityUserWorkforceFacts, target legacyIdentityUserWorkforceTarget) error {
 	var count int
-	query := "SELECT COUNT(*) FROM " + store.TableIdentifier("identity_workforce_legacy_migration_receipts") +
+	query := "SELECT COUNT(*) FROM " + store.TableIdentifier("_identity_workforce_migration_receipts") +
 		" WHERE " + store.Identifier("workspace_id") + " = " + store.Placeholder(1) +
 		" AND " + store.Identifier("identity_user_id") + " = " + store.Placeholder(2)
 	if err := tx.QueryRowContext(ctx, query, fact.WorkspaceID, fact.UserID).Scan(&count); err != nil {
@@ -248,7 +248,7 @@ func ensureLegacyWorkforceMigrationReceipt(ctx context.Context, tx *sql.Tx, stor
 	raw, _ := json.Marshal(fact)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	columns := identityMigrationIdentifiers(store, "id", "workspace_id", "identity_user_id", "workforce_profile_id", "workforce_assignment_id", "legacy_facts_json", "migrated_at")
-	insert := "INSERT INTO " + store.TableIdentifier("identity_workforce_legacy_migration_receipts") + " (" + columns + ") VALUES (" + identityMigrationPlaceholders(store, 7) + ")"
+	insert := "INSERT INTO " + store.TableIdentifier("_identity_workforce_migration_receipts") + " (" + columns + ") VALUES (" + identityMigrationPlaceholders(store, 7) + ")"
 	if _, err := tx.ExecContext(ctx, insert,
 		identityMigrationID("workforce-migration-receipt", fact.WorkspaceID, fact.UserID),
 		fact.WorkspaceID, fact.UserID, target.profileID, identityMigrationNullable(target.assignmentID), string(raw), now,
@@ -259,16 +259,16 @@ func ensureLegacyWorkforceMigrationReceipt(ctx context.Context, tx *sql.Tx, stor
 }
 
 func dropLegacyIdentityUserWorkforceIndexes(ctx context.Context, store Store) error {
-	indexes, err := store.TableIndexes(ctx, "identity_users")
+	indexes, err := store.TableIndexes(ctx, "_identity_users")
 	if err != nil {
-		return fmt.Errorf("inspect identity_users indexes for workforce migration: %w", err)
+		return fmt.Errorf("inspect _identity_users indexes for workforce migration: %w", err)
 	}
 	for _, index := range legacyIdentityUserWorkforceIndexes {
 		if !indexes[index] {
 			continue
 		}
-		if err := store.DropIndex(ctx, "identity_users", index); err != nil {
-			return fmt.Errorf("drop migrated identity_users index %s: %w", index, err)
+		if err := store.DropIndex(ctx, "_identity_users", index); err != nil {
+			return fmt.Errorf("drop migrated _identity_users index %s: %w", index, err)
 		}
 	}
 	return nil

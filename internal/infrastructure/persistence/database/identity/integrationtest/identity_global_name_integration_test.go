@@ -63,7 +63,7 @@ func TestEnsureIdentitySchemaAddsGlobalNameColumnsWithoutChangingLegacyDisplayNa
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = identityStore.Close() })
-	if _, err := identityStore.DB().Exec(`CREATE TABLE identity_users (
+	if _, err := identityStore.DB().Exec(`CREATE TABLE _identity_users (
 		id TEXT PRIMARY KEY,
 		workspace_id TEXT NOT NULL,
 		name TEXT NOT NULL,
@@ -73,7 +73,7 @@ func TestEnsureIdentitySchemaAddsGlobalNameColumnsWithoutChangingLegacyDisplayNa
 		created_at TEXT NOT NULL,
 		updated_at TEXT NOT NULL
 	);
-	INSERT INTO identity_users (id, workspace_id, name, email, phone, status, created_at, updated_at)
+	INSERT INTO _identity_users (id, workspace_id, name, email, phone, status, created_at, updated_at)
 	VALUES ('legacy-user', 'default', '单名', 'legacy@example.com', '', 'active', 'before', 'before');`); err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestEnsureIdentitySchemaAddsGlobalNameColumnsWithoutChangingLegacyDisplayNa
 	}
 	var name, given, middle, family, prefix, suffix, native, locale string
 	if err := identityStore.DB().QueryRow(`SELECT name, given_name, middle_name, family_name, name_prefix, name_suffix, native_name, name_locale
-		FROM identity_users WHERE workspace_id = 'default' AND id = 'legacy-user'`).
+		FROM _identity_users WHERE workspace_id = 'default' AND id = 'legacy-user'`).
 		Scan(&name, &given, &middle, &family, &prefix, &suffix, &native, &locale); err != nil {
 		t.Fatal(err)
 	}

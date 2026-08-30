@@ -41,7 +41,7 @@ func (s Store) SearchIdentityUsers(ctx context.Context, workspaceID string, quer
 		return identitymodel.IdentityUserPage{}, err
 	}
 	conditions := identityDirectoryPredicates(query, identityUserDirectoryColumns)
-	total, err := s.identityDirectoryCount(ctx, workspaceID, "identity_users", conditions)
+	total, err := s.identityDirectoryCount(ctx, workspaceID, "_identity_users", conditions)
 	if err != nil {
 		return identitymodel.IdentityUserPage{}, err
 	}
@@ -49,7 +49,7 @@ func (s Store) SearchIdentityUsers(ctx context.Context, workspaceID string, quer
 		"id", "name", "given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale",
 		"email", "phone", "account_type", "locale", "timezone", "status", "version", "created_at", "updated_at",
 	}
-	statement, args, err := s.PageSQL(ctx, workspaceID, "identity_users", columns, query, conditions)
+	statement, args, err := s.PageSQL(ctx, workspaceID, "_identity_users", columns, query, conditions)
 	if err != nil {
 		return identitymodel.IdentityUserPage{}, err
 	}
@@ -86,12 +86,12 @@ func (s Store) SearchIdentityWorkforceProfiles(ctx context.Context, workspaceID 
 		return identitymodel.IdentityWorkforceProfilePage{}, err
 	}
 	conditions := identityDirectoryPredicates(query, identityWorkforceDirectoryColumns)
-	total, err := s.identityDirectoryCount(ctx, workspaceID, "identity_workforce_profiles", conditions)
+	total, err := s.identityDirectoryCount(ctx, workspaceID, "_identity_workforce_profiles", conditions)
 	if err != nil {
 		return identitymodel.IdentityWorkforceProfilePage{}, err
 	}
 	columns := []string{"id", "organization_id", "identity_user_id", "worker_no", "worker_type", "work_status", "start_date", "end_date", "primary_assignment_id", "version"}
-	statement, args, err := s.PageSQL(ctx, workspaceID, "identity_workforce_profiles", columns, query, conditions)
+	statement, args, err := s.PageSQL(ctx, workspaceID, "_identity_workforce_profiles", columns, query, conditions)
 	if err != nil {
 		return identitymodel.IdentityWorkforceProfilePage{}, err
 	}

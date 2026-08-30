@@ -77,7 +77,7 @@ func (s Store) Apply(ctx context.Context, mutation identitymodel.IdentityWorkfor
 	// The receipt contains only strings and typed Workforce values, so it is
 	// always JSON-encodable.
 	resultJSON, _ := json.Marshal(receipt)
-	statement, arguments, err := ormbuilder.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "identity_workforce_transfer_batch_receipts", workspaceID).
+	statement, arguments, err := ormbuilder.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_workforce_transfer_batch_receipts", workspaceID).
 		Columns("id", "actor_id", "idempotency_key", "request_fingerprint", "result_json", "created_at").
 		Values(receipt.ID, receipt.ActorID, receipt.IdempotencyKey, receipt.RequestFingerprint, string(resultJSON), receipt.CreatedAt).Build()
 	if err != nil {
@@ -97,7 +97,7 @@ type identityWorkforceTransferBatchQueryer interface {
 }
 
 func (s Store) loadReceipt(ctx context.Context, queryer identityWorkforceTransferBatchQueryer, workspaceID, idempotencyKey string) (identitymodel.IdentityWorkforceTransferBatchReceipt, bool, error) {
-	statement, arguments, buildErr := ormbuilder.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "identity_workforce_transfer_batch_receipts", workspaceID).
+	statement, arguments, buildErr := ormbuilder.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_workforce_transfer_batch_receipts", workspaceID).
 		Columns("result_json", "request_fingerprint").Where(ormbuilder.Equal("idempotency_key", idempotencyKey)).Build()
 	if buildErr != nil {
 		return identitymodel.IdentityWorkforceTransferBatchReceipt{}, false, buildErr

@@ -132,7 +132,7 @@ func TestIdentityProfileBindingStoreProvidesAtomicOptimisticIdempotentLifecycle(
 func assertProfileBindingRole(t *testing.T, store *IdentityStore, userID, roleID, status, bindingKey, profileID string) {
 	t.Helper()
 	var actualStatus, actualBindingKey, actualProfileID string
-	if err := store.DB().QueryRowContext(t.Context(), `SELECT status, binding_key, profile_id FROM identity_user_role_assignments WHERE workspace_id = 'default' AND user_id = ? AND role_id = ?`, userID, roleID).
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT status, binding_key, profile_id FROM _identity_user_role_assignments WHERE workspace_id = 'default' AND user_id = ? AND role_id = ?`, userID, roleID).
 		Scan(&actualStatus, &actualBindingKey, &actualProfileID); err != nil {
 		t.Fatal(err)
 	}

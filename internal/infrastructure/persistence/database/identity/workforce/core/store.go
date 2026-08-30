@@ -96,7 +96,7 @@ func (s *Store) UpsertProfile(ctx context.Context, execer Execer, workspaceID st
 		item.Version = 1
 	}
 	now := s.now()
-	insert := ormbuilder.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "identity_workforce_profiles", workspaceID).Columns("id", "organization_id", "identity_user_id", "worker_no", "worker_type", "work_status", "start_date", "end_date", "primary_assignment_id", "version", "created_at", "updated_at").Values(item.ID, item.OrganizationID, item.IdentityUserID, item.WorkerNo, string(item.WorkerType), string(item.WorkStatus), nullable(item.StartDate), nullable(item.EndDate), nullable(item.PrimaryAssignmentID), item.Version, now, now)
+	insert := ormbuilder.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_workforce_profiles", workspaceID).Columns("id", "organization_id", "identity_user_id", "worker_no", "worker_type", "work_status", "start_date", "end_date", "primary_assignment_id", "version", "created_at", "updated_at").Values(item.ID, item.OrganizationID, item.IdentityUserID, item.WorkerNo, string(item.WorkerType), string(item.WorkStatus), nullable(item.StartDate), nullable(item.EndDate), nullable(item.PrimaryAssignmentID), item.Version, now, now)
 	s.backend.ApplyUpsert(insert, []string{"workspace_id", "id"}, "organization_id", "identity_user_id", "worker_no", "worker_type", "work_status", "start_date", "end_date", "primary_assignment_id", "version", "updated_at")
 	statement, arguments, err := insert.Build()
 	if err != nil {
@@ -175,7 +175,7 @@ func (s *Store) UpsertAssignment(ctx context.Context, execer Execer, workspaceID
 		item.Version = 1
 	}
 	now := s.now()
-	insert := ormbuilder.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "identity_workforce_assignments", workspaceID).Columns("id", "workforce_profile_id", "organization_unit_id", "position_id", "manager_workforce_profile_id", "assignment_type", "effective_from", "effective_to", "status", "version", "created_at", "updated_at").Values(item.ID, item.WorkforceProfileID, item.OrganizationUnitID, nullable(item.PositionID), nullable(item.ManagerWorkforceProfileID), string(item.AssignmentType), nullable(item.EffectiveFrom), nullable(item.EffectiveTo), string(item.Status), item.Version, now, now)
+	insert := ormbuilder.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_workforce_assignments", workspaceID).Columns("id", "workforce_profile_id", "organization_unit_id", "position_id", "manager_workforce_profile_id", "assignment_type", "effective_from", "effective_to", "status", "version", "created_at", "updated_at").Values(item.ID, item.WorkforceProfileID, item.OrganizationUnitID, nullable(item.PositionID), nullable(item.ManagerWorkforceProfileID), string(item.AssignmentType), nullable(item.EffectiveFrom), nullable(item.EffectiveTo), string(item.Status), item.Version, now, now)
 	s.backend.ApplyUpsert(insert, []string{"workspace_id", "id"}, "workforce_profile_id", "organization_unit_id", "position_id", "manager_workforce_profile_id", "assignment_type", "effective_from", "effective_to", "status", "version", "updated_at")
 	statement, arguments, err := insert.Build()
 	if err != nil {
@@ -186,10 +186,10 @@ func (s *Store) UpsertAssignment(ctx context.Context, execer Execer, workspaceID
 }
 
 func profileSelect(renderer ormdialect.Renderer, workspaceID string) *ormbuilder.SelectBuilder {
-	return ormbuilder.NewWorkspaceSelectBuilder(renderer, "identity_workforce_profiles", workspaceID).Columns(profileColumns...)
+	return ormbuilder.NewWorkspaceSelectBuilder(renderer, "_identity_workforce_profiles", workspaceID).Columns(profileColumns...)
 }
 func assignmentSelect(renderer ormdialect.Renderer, workspaceID string) *ormbuilder.SelectBuilder {
-	return ormbuilder.NewWorkspaceSelectBuilder(renderer, "identity_workforce_assignments", workspaceID).Columns(assignmentColumns...)
+	return ormbuilder.NewWorkspaceSelectBuilder(renderer, "_identity_workforce_assignments", workspaceID).Columns(assignmentColumns...)
 }
 
 type scanner interface{ Scan(...any) error }

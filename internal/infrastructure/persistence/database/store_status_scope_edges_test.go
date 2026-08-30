@@ -119,9 +119,9 @@ func TestWorkspaceScopeInventoryIsolatesBorrowedIdentityRelations(t *testing.T) 
 				columns: []string{"table"},
 				rows: [][]driver.Value{
 					{"_audit_events"},
-					{"domainry_identity_identity_users"},
+					{"domainry_identity__identity_users"},
 					{"runtime_jobs"},
-					{"domainry_identity_auth_sessions"},
+					{"domainry_identity__identity_auth_sessions"},
 				},
 			}}})
 			store.engine = engine
@@ -132,7 +132,7 @@ func TestWorkspaceScopeInventoryIsolatesBorrowedIdentityRelations(t *testing.T) 
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got, want := strings.Join(tables, ","), "auth_sessions,identity_users"; got != want {
+			if got, want := strings.Join(tables, ","), "_identity_auth_sessions,_identity_users"; got != want {
 				t.Fatalf("borrowed inventory=%q want=%q", got, want)
 			}
 		})
@@ -145,7 +145,7 @@ func TestWorkspaceScopeValidationStillInspectsBorrowedIdentityRelations(t *testi
 			columns: []string{"table"},
 			rows: [][]driver.Value{
 				{"_audit_events"},
-				{"domainry_identity_identity_users"},
+				{"domainry_identity__identity_users"},
 			},
 		},
 		{columns: []string{"workspace", "count"}, rows: [][]driver.Value{{"", int64(3)}}},
@@ -154,7 +154,7 @@ func TestWorkspaceScopeValidationStillInspectsBorrowedIdentityRelations(t *testi
 	store.ScopeValidator = workspace.NewScopeValidator(store.db, store.engine, base.NewSQLDatabase(store.db, store.engine, "", store.relationPrefix).SQLRenderer, "", store.relationPrefix)
 
 	err := store.ValidateLegacyWorkspaceScopes(t.Context())
-	if err == nil || !strings.Contains(err.Error(), "table=identity_users classification=missing_workspace row_count=3") {
+	if err == nil || !strings.Contains(err.Error(), "table=_identity_users classification=missing_workspace row_count=3") {
 		t.Fatalf("validation error=%v", err)
 	}
 }

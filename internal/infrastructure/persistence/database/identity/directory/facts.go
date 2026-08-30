@@ -43,7 +43,7 @@ func (s Store) ListUserFacts(ctx context.Context, workspaceID string, userIDs []
 }
 
 func (s Store) appendIdentityDirectoryRoles(ctx context.Context, workspaceID string, userIDs []string, facts *identitymodel.IdentityUserDirectoryFacts) error {
-	query, args, err := ormbuilder.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "identity_user_role_assignments", workspaceID).
+	query, args, err := ormbuilder.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_user_role_assignments", workspaceID).
 		Columns("user_id", "role_id", "workforce_profile_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason", "expires_at", "created_at", "updated_at").
 		Where(ormbuilder.In("user_id", stringValues(userIDs)...)).Build()
 	if err != nil {
@@ -69,7 +69,7 @@ func (s Store) appendIdentityDirectoryRoles(ctx context.Context, workspaceID str
 }
 
 func (s Store) appendIdentityDirectoryProfiles(ctx context.Context, workspaceID string, userIDs []string, facts *identitymodel.IdentityUserDirectoryFacts) error {
-	query, args, err := ormbuilder.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "identity_workforce_profiles", workspaceID).
+	query, args, err := ormbuilder.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_workforce_profiles", workspaceID).
 		Columns("id", "organization_id", "identity_user_id", "worker_no", "worker_type", "work_status", "start_date", "end_date", "primary_assignment_id", "version").
 		Where(ormbuilder.In("identity_user_id", stringValues(userIDs)...)).Build()
 	if err != nil {
@@ -91,7 +91,7 @@ func (s Store) appendIdentityDirectoryProfiles(ctx context.Context, workspaceID 
 }
 
 func (s Store) appendIdentityDirectoryBindings(ctx context.Context, workspaceID string, userIDs []string, facts *identitymodel.IdentityUserDirectoryFacts) error {
-	query, args, err := ormbuilder.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "identity_profile_bindings", workspaceID).
+	query, args, err := ormbuilder.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_profile_bindings", workspaceID).
 		Columns("workspace_id", "binding_key", "object_key", "profile_id", "identity_user_id", "status", "invitation_channel", "claim_proof_type", "version", "created_at", "updated_at").
 		Where(ormbuilder.In("identity_user_id", stringValues(userIDs)...)).Build()
 	if err != nil {

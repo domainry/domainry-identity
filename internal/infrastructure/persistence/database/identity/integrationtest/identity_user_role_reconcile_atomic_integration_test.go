@@ -33,7 +33,7 @@ func TestIdentityUserAndRoleReconcileRollsBackAsOneTransaction(t *testing.T) {
 	if err := repository.AssignIdentityUserRole(t.Context(), "default", identitymodel.IdentityUserRoleAssignment{UserID: original.ID, RoleID: "original-role"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := identityStore.DB().ExecContext(t.Context(), `CREATE TRIGGER reject_new_role BEFORE INSERT ON identity_user_role_assignments
+	if _, err := identityStore.DB().ExecContext(t.Context(), `CREATE TRIGGER reject_new_role BEFORE INSERT ON _identity_user_role_assignments
 		WHEN NEW.role_id = 'new-role' BEGIN SELECT RAISE(ABORT, 'rejected role'); END`); err != nil {
 		t.Fatal(err)
 	}

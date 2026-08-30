@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-const metadataRefreshIntentTable = "identity_metadata_refresh_intents"
+const metadataRefreshIntentTable = "_identity_metadata_refresh_intents"
 
 // PublishDefinition commits the active definition, immutable version, Audit,
 // and active catalog revision as one local publication fact.

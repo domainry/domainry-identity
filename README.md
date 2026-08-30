@@ -80,7 +80,6 @@ MySQL 和 PostgreSQL 使用各自的标识符、占位符及 schema migration SQ
 - `DATABASE_CONNECTION_MODE=direct|session_pooler|transaction_pooler`；
 - 独立的 `DATABASE_MIGRATION_DSN`；
 - 连接池预算、TLS 校验、statement/lock timeout；
-- 可选的 workspace RLS。
 
 Identity 不负责在数据库服务器上创建 database。部署前应由运维创建名为 `identity` 的 database，并为查询账号和迁移账号授予相应权限；服务启动时会拒绝指向其他 database 的 MySQL/PostgreSQL DSN。`DATABASE_MIGRATION_DSN` 如有配置，也必须指向同一个 `identity` database。
 

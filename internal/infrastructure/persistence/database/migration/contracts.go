@@ -239,14 +239,14 @@ type ReconciliationAction struct {
 // deliberately excludes Runtime business workflows, records and outboxes.
 func IdentityRestoreReconciliationPlan() []ReconciliationAction {
 	return []ReconciliationAction{
-		{Table: "identity_authoring_receipts", Action: "release_expired_processing_lease", Guard: "status = 'processing' AND lease_expires_at <= restored_at"},
-		{Table: "auth_mutation_receipts", Action: "release_expired_processing_lease", Guard: "status = 'processing' AND lease_expires_at <= restored_at"},
-		{Table: "identity_metadata_refresh_intents", Action: "release_expired_processing_lease", Guard: "status = 'executing' AND lease_expires_at <= restored_at"},
-		{Table: "identity_workspace_write_fences", Action: "preserve_active_cutover_fence", Guard: "state = 'frozen'"},
+		{Table: "_identity_authoring_receipts", Action: "release_expired_processing_lease", Guard: "status = 'processing' AND lease_expires_at <= restored_at"},
+		{Table: "_identity_auth_mutation_receipts", Action: "release_expired_processing_lease", Guard: "status = 'processing' AND lease_expires_at <= restored_at"},
+		{Table: "_identity_metadata_refresh_intents", Action: "release_expired_processing_lease", Guard: "status = 'executing' AND lease_expires_at <= restored_at"},
+		{Table: "_identity_workspace_write_fences", Action: "preserve_active_cutover_fence", Guard: "state = 'frozen'"},
 		{Table: "_audit_events", Action: "preserve_append_only_cutover_evidence", Guard: "event = 'identity.portability_write_fence.frozen' OR event = 'identity.portability_write_fence.released'"},
-		{Table: "auth_login_transactions", Action: "expire_stale_unconsumed_login_transaction", Guard: "consumed_at IS NULL AND expires_at <= restored_at"},
-		{Table: "auth_authorization_codes", Action: "expire_stale_unconsumed_authorization_code", Guard: "consumed_at IS NULL AND expires_at <= restored_at"},
-		{Table: "auth_refresh_tokens", Action: "preserve_revocation_chain", Guard: "revoked_at IS NOT NULL OR replaced_by_id IS NOT NULL"},
+		{Table: "_identity_auth_login_transactions", Action: "expire_stale_unconsumed_login_transaction", Guard: "consumed_at IS NULL AND expires_at <= restored_at"},
+		{Table: "_identity_auth_authorization_codes", Action: "expire_stale_unconsumed_authorization_code", Guard: "consumed_at IS NULL AND expires_at <= restored_at"},
+		{Table: "_identity_auth_refresh_tokens", Action: "preserve_revocation_chain", Guard: "revoked_at IS NOT NULL OR replaced_by_id IS NOT NULL"},
 	}
 }
 

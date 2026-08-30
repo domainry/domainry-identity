@@ -44,7 +44,7 @@ func (r MetadataStore) SnapshotRevision(ctx context.Context, scope identitymodel
 		executor = actionExecutor
 	}
 	var revision string
-	statement, arguments, err := ormbuilder.NewSelectBuilder(r.store.SQLRenderer, "application_schema_catalog").
+	statement, arguments, err := ormbuilder.NewSelectBuilder(r.store.SQLRenderer, "_identity_manifest_catalog").
 		Columns("value").Where(ormbuilder.Equal("key", "schema_hash")).Build()
 	if err != nil {
 		return "", fmt.Errorf("build metadata snapshot revision read: %w", err)

@@ -17,9 +17,9 @@ import (
 )
 
 func TestPostgresSafeStatusContainsOnlyOperationalFields(t *testing.T) {
-	profile := ConnectionProfile{Backend: BackendPostgres, Mode: ConnectionModeSessionPooler, Schema: "identity", MaxOpenConns: 12, MaxIdleConns: 4, ServerMaxConns: 100, ReservedConns: 10, ServiceReplicaCount: 3, TLS: true, TLSVerified: true, PreparedStatements: true, MigrationConfigured: true, MigrationMode: "verify", RLSEnabled: true}
+	profile := ConnectionProfile{Backend: BackendPostgres, Mode: ConnectionModeSessionPooler, Schema: "identity", MaxOpenConns: 12, MaxIdleConns: 4, ServerMaxConns: 100, ReservedConns: 10, ServiceReplicaCount: 3, TLS: true, TLSVerified: true, PreparedStatements: true, MigrationConfigured: true, MigrationMode: "verify"}
 	status := profile.SafeStatus()
-	if status.Backend != BackendPostgres || status.Mode != ConnectionModeSessionPooler || status.Schema != "identity" || status.MaxOpenConns != 12 || status.MaxIdleConns != 4 || status.ServerMaxConns != 100 || status.ReservedConns != 10 || status.ServiceReplicaCount != 3 || !status.TLS || !status.TLSVerified || !status.PreparedStatements || !status.MigrationConfigured || status.MigrationMode != "verify" || !status.RLSEnabled {
+	if status.Backend != BackendPostgres || status.Mode != ConnectionModeSessionPooler || status.Schema != "identity" || status.MaxOpenConns != 12 || status.MaxIdleConns != 4 || status.ServerMaxConns != 100 || status.ReservedConns != 10 || status.ServiceReplicaCount != 3 || !status.TLS || !status.TLSVerified || !status.PreparedStatements || !status.MigrationConfigured || status.MigrationMode != "verify" {
 		t.Fatalf("safe status=%#v", status)
 	}
 	if _, found := reflect.TypeOf(status).FieldByName("DSN"); found {

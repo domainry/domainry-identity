@@ -58,7 +58,7 @@ func (repository *SQLRepository) Inventory(ctx context.Context, workspaceID stri
 		}
 		inventory.ExcludedCounts[name] = count
 	}
-	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(repository.store.SQLRenderer, "auth_provider_credentials", workspaceID).
+	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(repository.store.SQLRenderer, "_identity_auth_provider_credentials", workspaceID).
 		Columns("provider_key").OrderBy(ormbuilder.Ascending("provider_key")).Build()
 	if err != nil {
 		return portabilitymodel.Inventory{}, fmt.Errorf("build Identity provider inventory: %w", err)
@@ -80,7 +80,7 @@ func (repository *SQLRepository) Inventory(ctx context.Context, workspaceID stri
 
 func (repository *SQLRepository) MetadataSchemaSHA256(ctx context.Context) (string, error) {
 	var digest string
-	query, arguments, err := ormbuilder.NewSelectBuilder(repository.store.SQLRenderer, "application_schema_catalog").
+	query, arguments, err := ormbuilder.NewSelectBuilder(repository.store.SQLRenderer, "_identity_manifest_catalog").
 		Columns("value").Where(ormbuilder.Equal("key", "schema_hash")).Build()
 	if err != nil {
 		return "", fmt.Errorf("build Identity metadata schema hash read: %w", err)
@@ -143,7 +143,7 @@ func (repository *SQLRepository) VerifyWriteFreeze(ctx context.Context, workspac
 
 func (repository *SQLRepository) VerifyProviderReadiness(ctx context.Context, workspaceID string, references []portabilitymodel.ProviderReference) error {
 	for _, reference := range references {
-		query, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(repository.store.SQLRenderer, "auth_provider_credentials", workspaceID).
+		query, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(repository.store.SQLRenderer, "_identity_auth_provider_credentials", workspaceID).
 			Columns("configuration_json", "secret_envelope").Where(ormbuilder.Equal("provider_key", reference.ProviderKey)).Build()
 		if err != nil {
 			return fmt.Errorf("build Identity provider readiness read: %w", err)
@@ -322,7 +322,7 @@ func (repository *SQLRepository) verifyAuthorizationState(ctx context.Context, q
 }
 
 func (repository *SQLRepository) providerReferences(ctx context.Context, workspaceID string) ([]portabilitymodel.ProviderReference, error) {
-	query, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(repository.store.SQLRenderer, "auth_provider_credentials", workspaceID).
+	query, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(repository.store.SQLRenderer, "_identity_auth_provider_credentials", workspaceID).
 		Columns("provider_key", "configuration_json").OrderBy(ormbuilder.Ascending("provider_key")).Build()
 	if err != nil {
 		return nil, fmt.Errorf("build Identity provider reference list: %w", err)

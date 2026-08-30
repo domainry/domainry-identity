@@ -105,7 +105,7 @@ func TestDirectRolePublicationRollbackAndDisableAreAtomicWithDirectoryAndAudit(t
 	}
 	assertRoleDirectoryState(t, store, "Reviewer", "disabled", 4)
 	var disabled int
-	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM role_definitions WHERE resource_key='reviewer' AND disabled_at IS NOT NULL`).Scan(&disabled); err != nil || disabled != 1 {
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _metadata_role_definitions WHERE resource_key='reviewer' AND disabled_at IS NOT NULL`).Scan(&disabled); err != nil || disabled != 1 {
 		t.Fatalf("disabled role definitions=%d err=%v", disabled, err)
 	}
 }
@@ -113,7 +113,7 @@ func TestDirectRolePublicationRollbackAndDisableAreAtomicWithDirectoryAndAudit(t
 func assertRoleDirectoryState(t *testing.T, store *database.IdentityStore, wantLabel, wantStatus string, wantAuditCount int) {
 	t.Helper()
 	var label, status string
-	if err := store.DB().QueryRowContext(t.Context(), `SELECT label, status FROM identity_roles WHERE workspace_id=? AND role_key='reviewer'`, identitymodel.InstallationWorkspaceID).Scan(&label, &status); err != nil {
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT label, status FROM _identity_roles WHERE workspace_id=? AND role_key='reviewer'`, identitymodel.InstallationWorkspaceID).Scan(&label, &status); err != nil {
 		t.Fatal(err)
 	}
 	if label != wantLabel || status != wantStatus {

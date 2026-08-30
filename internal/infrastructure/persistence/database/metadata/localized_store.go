@@ -242,7 +242,7 @@ func (s MetadataStore) syncLocalizedText(ctx context.Context, tx *sql.Tx, seed m
 	if seed.EntityType == "" || seed.EntityKey == "" || seed.Property == "" || seed.Locale == "" || seed.Text == "" {
 		return nil
 	}
-	query, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer, "identity_localized_text", seed.WorkspaceID).
+	query, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer, "_identity_localized_texts", seed.WorkspaceID).
 		Columns("text", "source_kind").
 		Where(localizedTextIdentityPredicate(seed)).Build()
 	if err != nil {
@@ -267,7 +267,7 @@ func (s MetadataStore) syncLocalizedText(ctx context.Context, tx *sql.Tx, seed m
 	if strings.TrimSpace(sourceKind) != "generated" || currentText == seed.Text {
 		return nil
 	}
-	update, updateArguments, buildErr := ormbuilder.NewWorkspaceUpdateBuilder(s.store.SQLRenderer, "identity_localized_text", seed.WorkspaceID).
+	update, updateArguments, buildErr := ormbuilder.NewWorkspaceUpdateBuilder(s.store.SQLRenderer, "_identity_localized_texts", seed.WorkspaceID).
 		Set("text", seed.Text).Set("source_id", seed.SourceID).Set("updated_at", now).
 		Where(localizedTextIdentityPredicate(seed)).Build()
 	if buildErr != nil {
@@ -346,7 +346,7 @@ func (s MetadataStore) ListLocalizedTexts(ctx context.Context, workspaceID strin
 	add("entity_key", query.EntityKey)
 	add("property", query.Property)
 	add("locale", query.Locale)
-	selectBuilder := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer, "identity_localized_text", workspaceID).
+	selectBuilder := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer, "_identity_localized_texts", workspaceID).
 		Columns("workspace_id", "entity_type", "entity_key", "property", "locale", "text", "source_kind", "source_id", "created_at", "updated_at").
 		OrderBy(ormbuilder.Ascending("entity_type"), ormbuilder.Ascending("entity_key"), ormbuilder.Ascending("property"), ormbuilder.Ascending("locale"))
 	if len(predicates) > 0 {
@@ -382,7 +382,7 @@ func localizedTextIdentityPredicate(text metadatamodel.LocalizedText) ormbuilder
 }
 
 func localizedTextInsert(store MetadataStore, text metadatamodel.LocalizedText, now string) *ormbuilder.InsertBuilder {
-	return ormbuilder.NewWorkspaceInsertBuilder(store.store.SQLRenderer, "identity_localized_text", text.WorkspaceID).
+	return ormbuilder.NewWorkspaceInsertBuilder(store.store.SQLRenderer, "_identity_localized_texts", text.WorkspaceID).
 		Columns("id", "entity_type", "entity_key", "property", "locale", "text", "source_kind", "source_id", "created_at", "updated_at").
 		Values(localizedTextID(text), text.EntityType, text.EntityKey, text.Property, text.Locale, text.Text, text.SourceKind, text.SourceID, now, now)
 }

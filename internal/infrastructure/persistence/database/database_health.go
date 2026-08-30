@@ -1,8 +1,6 @@
 package database
 
 import (
-	"context"
-
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/postgres"
 )
@@ -36,16 +34,14 @@ func (postgresDatabaseHealth) Readiness(store *IdentityStore) DatabaseReadiness 
 	}
 	capability := store.postgresCapabilities
 	stats := store.db.Stats()
-	rlsStatus := store.WorkspaceRLSStatus(context.Background())
 	result := DatabaseReadiness{
 		SchemaExists: capability.SchemaExists, SchemaUsage: capability.SchemaUsage,
 		ReadOnly: capability.ReadOnly || capability.InRecovery, TLSVerified: capability.TLS == store.postgresProfile.TLS,
 		MigrationConnectionReady: !store.postgresProfile.MigrationConfigured || store.migratorCapabilities.Database != "",
-		RLSEnabled:               rlsStatus.Enabled, RLSPolicyVersion: rlsStatus.PolicyVersion, RLSCoveredTables: len(rlsStatus.CoveredTables), RLSMissingTables: len(rlsStatus.MissingTables),
-		ReadReady:           capability.SchemaExists && capability.SchemaUsage,
-		WriteReady:          capability.SchemaExists && capability.SchemaUsage && !capability.ReadOnly && !capability.InRecovery,
-		MigrationCompatible: store.migrationCompatible,
-		PoolDegraded:        stats.MaxOpenConnections > 0 && stats.InUse >= stats.MaxOpenConnections,
+		ReadReady:                capability.SchemaExists && capability.SchemaUsage,
+		WriteReady:               capability.SchemaExists && capability.SchemaUsage && !capability.ReadOnly && !capability.InRecovery,
+		MigrationCompatible:      store.migrationCompatible,
+		PoolDegraded:             stats.MaxOpenConnections > 0 && stats.InUse >= stats.MaxOpenConnections,
 	}
 	switch {
 	case !result.SchemaExists || !result.SchemaUsage:
@@ -60,8 +56,6 @@ func (postgresDatabaseHealth) Readiness(store *IdentityStore) DatabaseReadiness 
 		result.Failure = "migration_incompatible"
 	case result.PoolDegraded:
 		result.Failure = "pool_degraded"
-	case store.postgresProfile.RLSEnabled && (!result.RLSEnabled || result.RLSMissingTables > 0):
-		result.Failure = "rls_incompatible"
 	default:
 		result.Ready = true
 	}

@@ -324,7 +324,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = moduleDB.Close() })
 	var revisionCount int
-	if err := moduleDB.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM identity_authorization_catalog_revisions WHERE workspace_id = ? AND application_key = ?`, "default", "orders-runtime").Scan(&revisionCount); err != nil || revisionCount != 2 {
+	if err := moduleDB.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _identity_authorization_catalog_revisions WHERE workspace_id = ? AND application_key = ?`, "default", "orders-runtime").Scan(&revisionCount); err != nil || revisionCount != 2 {
 		t.Fatalf("catalog revision history count=%d err=%v", revisionCount, err)
 	}
 	otherWorkspaceCatalog := catalog

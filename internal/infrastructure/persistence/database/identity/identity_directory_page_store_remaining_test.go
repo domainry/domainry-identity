@@ -130,7 +130,7 @@ func TestIdentityDirectoryQueryCompositionAndStableOrdering(t *testing.T) {
 		"status": "status", "account_type": "account_type",
 	}
 	conditions := identityDirectoryPredicates(query, columns)
-	statement, args, err := store.identityDirectoryPageSQL(t.Context(), "workspace", "identity_users", []string{"id"}, identitymodel.IdentityListQuery{PageSize: 20, Sort: query.Sort}, conditions)
+	statement, args, err := store.identityDirectoryPageSQL(t.Context(), "workspace", "_identity_users", []string{"id"}, identitymodel.IdentityListQuery{PageSize: 20, Sort: query.Sort}, conditions)
 	if err != nil || !strings.Contains(statement, `"workspace_id" = ?`) || !strings.Contains(statement, `ORDER BY "name" DESC, "id" ASC LIMIT ?`) {
 		t.Fatalf("statement=%q args=%#v err=%v", statement, args, err)
 	}

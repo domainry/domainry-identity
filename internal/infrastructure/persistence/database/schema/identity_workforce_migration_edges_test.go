@@ -74,11 +74,11 @@ func TestIdentityMigrationTableInspectionEdges(t *testing.T) {
 			}
 			indexStep = schemaSQLQueryStep{columns: []string{"name"}, rows: [][]driver.Value{{"idx_identity_users_department"}}}
 			store, closeDB := schemaStoreForState(&schemaSQLState{querySteps: []schemaSQLQueryStep{columnStep, indexStep}}, dialect)
-			columns, err := store.TableColumns(t.Context(), "identity_users")
+			columns, err := store.TableColumns(t.Context(), "_identity_users")
 			if err != nil || !columns["employee_no"] {
 				t.Fatalf("columns=%v err=%v", columns, err)
 			}
-			indexes, err := store.TableIndexes(t.Context(), "identity_users")
+			indexes, err := store.TableIndexes(t.Context(), "_identity_users")
 			if err != nil || !indexes["idx_identity_users_department"] {
 				t.Fatalf("indexes=%v err=%v", indexes, err)
 			}
@@ -87,11 +87,11 @@ func TestIdentityMigrationTableInspectionEdges(t *testing.T) {
 	}
 	for _, inspect := range []func(scriptedSchemaStore) error{
 		func(store scriptedSchemaStore) error {
-			_, err := store.TableColumns(t.Context(), "identity_users")
+			_, err := store.TableColumns(t.Context(), "_identity_users")
 			return err
 		},
 		func(store scriptedSchemaStore) error {
-			_, err := store.TableIndexes(t.Context(), "identity_users")
+			_, err := store.TableIndexes(t.Context(), "_identity_users")
 			return err
 		},
 	} {
@@ -118,7 +118,7 @@ func TestIdentityMigrationTableInspectionEdges(t *testing.T) {
 	store, closeDB := schemaStoreForState(&schemaSQLState{querySteps: []schemaSQLQueryStep{{
 		columns: []string{"first", "second"}, rows: [][]driver.Value{{"a", "b"}},
 	}}}, "mysql")
-	if _, err := store.TableColumns(t.Context(), "identity_users"); err == nil {
+	if _, err := store.TableColumns(t.Context(), "_identity_users"); err == nil {
 		t.Fatal("non-sqlite column scan failure ignored")
 	}
 	closeDB()

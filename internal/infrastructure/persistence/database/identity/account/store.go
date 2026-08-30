@@ -27,7 +27,7 @@ func (s Store) Disable(ctx context.Context, workspaceID, userID string) (int, er
 		return 0, err
 	}
 	defer tx.Rollback()
-	statement, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "identity_users", workspaceID).
+	statement, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_users", workspaceID).
 		Set("status", "disabled").
 		SetExpression("version", ormbuilder.Add(ormbuilder.Column("version"), ormbuilder.Value(1))).
 		Set("updated_at", s.now()).
@@ -48,7 +48,7 @@ func (s Store) Disable(ctx context.Context, workspaceID, userID string) (int, er
 		return 0, fmt.Errorf("identity user %q not found", userID)
 	}
 	now := s.now()
-	statement, arguments, err = ormbuilder.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "auth_refresh_tokens", workspaceID).
+	statement, arguments, err = ormbuilder.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_auth_refresh_tokens", workspaceID).
 		Set("revoked_at", now).
 		Set("updated_at", now).
 		Where(ormbuilder.And(ormbuilder.Equal("user_id", userID), ormbuilder.IsNull("revoked_at"))).

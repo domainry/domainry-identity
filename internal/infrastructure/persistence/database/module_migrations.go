@@ -30,7 +30,7 @@ func (s *IdentityStore) ApplyOwnedMigrations(ctx context.Context, owner string, 
 	if err := s.applyOwnedMigrationsLocked(ctx, owner, migrations); err != nil {
 		return err
 	}
-	return s.EnsureWorkspaceRLS(ctx)
+	return nil
 }
 
 func (s *IdentityStore) ApplyOwnedMigrationsLocked(ctx context.Context, owner string, migrations []modulehost.SchemaMigration) error {

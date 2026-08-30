@@ -57,7 +57,7 @@ func TestPublishDefinitionUsesIdentityOwnedRefreshIntent(t *testing.T) {
 
 	var status, operation string
 	if err := store.DB().QueryRowContext(t.Context(),
-		"SELECT status, operation FROM identity_metadata_refresh_intents WHERE workspace_id = ? AND idempotency_key = ?",
+		"SELECT status, operation FROM _identity_metadata_refresh_intents WHERE workspace_id = ? AND idempotency_key = ?",
 		identitymodel.InstallationWorkspaceID,
 		definition.SchemaHash,
 	).Scan(&status, &operation); err != nil {
@@ -78,7 +78,7 @@ func TestPublishDefinitionUsesIdentityOwnedRefreshIntent(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := store.DB().QueryRowContext(t.Context(),
-		"SELECT status FROM identity_metadata_refresh_intents WHERE workspace_id = ? AND idempotency_key = ?",
+		"SELECT status FROM _identity_metadata_refresh_intents WHERE workspace_id = ? AND idempotency_key = ?",
 		identitymodel.InstallationWorkspaceID,
 		definition.SchemaHash,
 	).Scan(&status); err != nil {

@@ -26,7 +26,7 @@ func NewWriteFenceStore(db *sql.DB, renderer ormdialect.Renderer) *WriteFenceSto
 }
 
 const (
-	identityWorkspaceWriteFenceTable = "identity_workspace_write_fences"
+	identityWorkspaceWriteFenceTable = "_identity_workspace_write_fences"
 	identityWriteFenceEventFrozen    = "frozen"
 	identityWriteFenceEventReleased  = "released"
 )

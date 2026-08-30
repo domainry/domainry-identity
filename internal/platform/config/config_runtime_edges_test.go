@@ -24,7 +24,6 @@ func TestValidateSecurityRemainingProductionGates(t *testing.T) {
 		{name: "missing jwt kid", mutate: func(c *Config) { c.AuthJWTActiveKID = " " }, want: "AUTH_JWT_ACTIVE_KID"},
 		{name: "missing password", mutate: func(c *Config) { c.AuthDefaultPassword = " " }, want: "AUTH_DEFAULT_PASSWORD"},
 		{name: "default password", mutate: func(c *Config) { c.AuthDefaultPassword = DevDefaultAdminPassword }, want: "AUTH_DEFAULT_PASSWORD"},
-		{name: "postgres without rls", mutate: func(c *Config) { c.DatabaseDriver = "postgres"; c.DatabaseRLSEnabled = false }, want: "DATABASE_RLS_ENABLED"},
 		{name: "missing integration key", mutate: func(c *Config) { c.IdentityDataSecretKey = " " }, want: "IDENTITY_DATA_SECRET_KEY"},
 		{name: "missing integration kid", mutate: func(c *Config) { c.IdentityDataActiveKeyID = " " }, want: "IDENTITY_DATA_ACTIVE_KEY_ID"},
 		{name: "missing operations token", mutate: func(c *Config) { c.IdentityOperationsAccessToken = " " }, want: "IDENTITY_OPERATIONS_ACCESS_TOKEN"},

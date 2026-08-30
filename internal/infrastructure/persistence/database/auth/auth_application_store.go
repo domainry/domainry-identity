@@ -14,7 +14,7 @@ func (s AuthStore) AuthorizationRedirectRegistered(ctx context.Context, workspac
 	if err != nil {
 		return false, err
 	}
-	statement, args, buildErr := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "identity_authorization_catalogs", workspaceID).
+	statement, args, buildErr := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_authorization_catalogs", workspaceID).
 		Columns("catalog_json").Where(ormbuilder.Equal("application_key", strings.TrimSpace(applicationKey))).Limit(1).Build()
 	if buildErr != nil {
 		return false, buildErr

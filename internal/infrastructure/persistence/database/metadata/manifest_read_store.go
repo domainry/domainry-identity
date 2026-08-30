@@ -32,11 +32,11 @@ func (r MetadataStore) LoadManifest(ctx context.Context, scope identitymodel.Sys
 	if err != nil {
 		return manifestmodel.ManifestSchema{}, err
 	}
-	roles, err := loadMetadataSliceContext[identitymodel.RoleSchema](ctx, r.database(), r.store, "role_definitions")
+	roles, err := loadMetadataSliceContext[identitymodel.RoleSchema](ctx, r.database(), r.store, "_metadata_role_definitions")
 	if err != nil {
 		return manifestmodel.ManifestSchema{}, err
 	}
-	profileBindings, err := loadMetadataSliceContext[identitymodel.IdentityProfileExtension](ctx, r.database(), r.store, "identity_profile_binding_definitions")
+	profileBindings, err := loadMetadataSliceContext[identitymodel.IdentityProfileExtension](ctx, r.database(), r.store, "_identity_profile_binding_definitions")
 	if err != nil {
 		return manifestmodel.ManifestSchema{}, err
 	}
@@ -101,7 +101,7 @@ func (r MetadataStore) loadBusinessDefinitions(ctx context.Context) ([]definitio
 }
 
 func (r MetadataStore) loadCatalog(ctx context.Context) (map[string]string, error) {
-	statement, arguments, err := ormbuilder.NewSelectBuilder(r.store.SQLRenderer, "application_schema_catalog").Columns("key", "value").Build()
+	statement, arguments, err := ormbuilder.NewSelectBuilder(r.store.SQLRenderer, "_identity_manifest_catalog").Columns("key", "value").Build()
 	if err != nil {
 		return nil, fmt.Errorf("build metadata catalog query: %w", err)
 	}

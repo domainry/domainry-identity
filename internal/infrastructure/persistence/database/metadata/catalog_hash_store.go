@@ -87,5 +87,5 @@ func (r MetadataStore) refreshCatalogHash(ctx context.Context) error {
 }
 
 func metadataCatalogDefinitionTables() []string {
-	return []string{"role_definitions", "identity_profile_binding_definitions"}
+	return []string{"_metadata_role_definitions", "_identity_profile_binding_definitions"}
 }

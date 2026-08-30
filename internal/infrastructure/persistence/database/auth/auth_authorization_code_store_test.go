@@ -46,7 +46,7 @@ func TestAuthorizationCodeIsBoundAndConsumedExactlyOnce(t *testing.T) {
 		t.Fatalf("replay consumed=%v err=%v", consumed, err)
 	}
 	var persisted string
-	if err := store.DB().QueryRowContext(t.Context(), "SELECT session_json FROM auth_authorization_codes").Scan(&persisted); err != nil {
+	if err := store.DB().QueryRowContext(t.Context(), "SELECT session_json FROM _identity_auth_authorization_codes").Scan(&persisted); err != nil {
 		t.Fatal(err)
 	}
 	if persisted == "" || strings.Contains(persisted, "refresh") || strings.Contains(persisted, "access") {

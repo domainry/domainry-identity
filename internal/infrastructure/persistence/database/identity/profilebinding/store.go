@@ -88,7 +88,7 @@ func (s *Store) GetIdentityProfileBindingByKey(ctx context.Context, workspaceID,
 }
 
 func profileBindingSelect(store Backend, workspaceID string) *ormbuilder.SelectBuilder {
-	return ormbuilder.NewWorkspaceSelectBuilder(store.SQLRenderer(), "identity_profile_bindings", workspaceID).
+	return ormbuilder.NewWorkspaceSelectBuilder(store.SQLRenderer(), "_identity_profile_bindings", workspaceID).
 		Columns("workspace_id", "binding_key", "object_key", "profile_id", "identity_user_id", "status", "invitation_channel", "claim_proof_type", "version", "created_at", "updated_at")
 }
 
@@ -214,7 +214,7 @@ func (s *Store) synchronizeSystemManagedRoles(ctx context.Context, tx *sql.Tx, m
 		return nil
 	}
 	if previousUserID != "" && (mutation.Operation == identitymodel.IdentityProfileBindingRebind || mutation.Operation == identitymodel.IdentityProfileBindingUnlink) {
-		statement, arguments, buildErr := ormbuilder.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "identity_user_role_assignments", mutation.WorkspaceID).
+		statement, arguments, buildErr := ormbuilder.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_user_role_assignments", mutation.WorkspaceID).
 			Set("status", "revoked").Set("revoked_by", mutation.ActorID).Set("revoked_at", now).
 			Set("revoke_reason", string(mutation.Operation)).Set("updated_at", now).
 			Where(ormbuilder.And(ormbuilder.Equal("user_id", previousUserID), ormbuilder.Equal("binding_key", mutation.BindingKey), ormbuilder.Equal("profile_id", mutation.ProfileID), ormbuilder.Equal("source", "profile_binding"))).Build()
@@ -229,7 +229,7 @@ func (s *Store) synchronizeSystemManagedRoles(ctx context.Context, tx *sql.Tx, m
 		return nil
 	}
 	for _, roleID := range roleIDs {
-		insert := ormbuilder.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "identity_user_role_assignments", mutation.WorkspaceID).
+		insert := ormbuilder.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_user_role_assignments", mutation.WorkspaceID).
 			Columns("id", "user_id", "role_id", "workforce_profile_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason", "expires_at", "created_at", "updated_at").
 			Values(profileBindingStableID("profile_role", mutation.WorkspaceID, nextUserID, roleID), nextUserID, roleID, nil, mutation.BindingKey, mutation.ProfileID, "profile_binding", "active", nil, nil, mutation.ActorID, string(mutation.Operation), nil, nil, nil, nil, now, now)
 		s.store.ApplyUpsert(insert, []string{"workspace_id", "id"}, "binding_key", "profile_id", "source", "status", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason", "updated_at")
@@ -264,7 +264,7 @@ func uniqueProfileBindingStrings(values []string) []string {
 }
 
 func (s *Store) ListIdentityProfileBindingEvents(ctx context.Context, workspaceID, objectKey, profileID string) ([]identitymodel.IdentityProfileBindingEvent, error) {
-	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "identity_profile_binding_events", workspaceID).
+	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_profile_binding_events", workspaceID).
 		Columns("id", "workspace_id", "binding_key", "object_key", "profile_id", "operation", "previous_user_id", "identity_user_id", "binding_version", "idempotency_key", "actor_id", "reason", "approval_id", "status", "created_at").
 		Where(ormbuilder.And(ormbuilder.Equal("object_key", objectKey), ormbuilder.Equal("profile_id", profileID))).
 		OrderBy(ormbuilder.Ascending("created_at"), ormbuilder.Ascending("id")).Build()
@@ -299,7 +299,7 @@ type identityProfileBindingQuerier interface {
 }
 
 func (s *Store) loadReceipt(ctx context.Context, queryer identityProfileBindingQuerier, mutation identitymodel.IdentityProfileBindingMutation) (identitymodel.IdentityProfileBindingReceipt, bool, error) {
-	statement, arguments, buildErr := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "identity_profile_binding_receipts", mutation.WorkspaceID).
+	statement, arguments, buildErr := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_profile_binding_receipts", mutation.WorkspaceID).
 		Columns("id", "workspace_id", "binding_key", "object_key", "profile_id", "operation", "idempotency_key", "request_fingerprint", "binding_json", "created_at").
 		Where(ormbuilder.And(ormbuilder.Equal("object_key", mutation.ObjectKey), ormbuilder.Equal("profile_id", mutation.ProfileID), ormbuilder.Equal("operation", string(mutation.Operation)), ormbuilder.Equal("idempotency_key", mutation.IdempotencyKey))).Build()
 	if buildErr != nil {
@@ -374,7 +374,7 @@ func (s *Store) UpdateProfileIdentityUser(ctx context.Context, tx *sql.Tx, mutat
 
 func (s *Store) writeBinding(ctx context.Context, tx *sql.Tx, binding identitymodel.IdentityProfileBinding, found bool) error {
 	if found {
-		statement, arguments, buildErr := ormbuilder.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "identity_profile_bindings", binding.WorkspaceID).
+		statement, arguments, buildErr := ormbuilder.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_profile_bindings", binding.WorkspaceID).
 			Set("binding_key", binding.BindingKey).Set("identity_user_id", nullableProfileBindingUser(binding.IdentityUserID)).
 			Set("status", string(binding.Status)).Set("invitation_channel", nullableProfileBindingText(binding.InvitationChannel)).
 			Set("claim_proof_type", nullableProfileBindingText(binding.ClaimProofType)).Set("version", binding.Version).Set("updated_at", binding.UpdatedAt).
@@ -385,7 +385,7 @@ func (s *Store) writeBinding(ctx context.Context, tx *sql.Tx, binding identitymo
 		_, err := tx.ExecContext(ctx, statement, arguments...)
 		return err
 	}
-	statement, arguments, buildErr := ormbuilder.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "identity_profile_bindings", binding.WorkspaceID).
+	statement, arguments, buildErr := ormbuilder.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_profile_bindings", binding.WorkspaceID).
 		Columns("id", "binding_key", "object_key", "profile_id", "identity_user_id", "status", "invitation_channel", "claim_proof_type", "version", "created_at", "updated_at").
 		Values(profileBindingStableID("binding", binding.WorkspaceID, binding.ObjectKey, binding.ProfileID), binding.BindingKey, binding.ObjectKey, binding.ProfileID, nullableProfileBindingUser(binding.IdentityUserID), string(binding.Status), nullableProfileBindingText(binding.InvitationChannel), nullableProfileBindingText(binding.ClaimProofType), binding.Version, binding.CreatedAt, binding.UpdatedAt).Build()
 	if buildErr != nil {
@@ -398,7 +398,7 @@ func (s *Store) writeBinding(ctx context.Context, tx *sql.Tx, binding identitymo
 func (s *Store) writeReceipt(ctx context.Context, tx *sql.Tx, receipt identitymodel.IdentityProfileBindingReceipt) error {
 	// This concrete binding contains only JSON-safe scalar fields.
 	bindingJSON, _ := json.Marshal(receipt.Binding)
-	statement, arguments, buildErr := ormbuilder.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "identity_profile_binding_receipts", receipt.WorkspaceID).
+	statement, arguments, buildErr := ormbuilder.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_profile_binding_receipts", receipt.WorkspaceID).
 		Columns("id", "binding_key", "object_key", "profile_id", "operation", "idempotency_key", "request_fingerprint", "binding_json", "created_at").
 		Values(receipt.ID, receipt.BindingKey, receipt.ObjectKey, receipt.ProfileID, string(receipt.Operation), receipt.IdempotencyKey, receipt.RequestFingerprint, string(bindingJSON), receipt.CreatedAt).Build()
 	if buildErr != nil {
@@ -409,7 +409,7 @@ func (s *Store) writeReceipt(ctx context.Context, tx *sql.Tx, receipt identitymo
 }
 
 func (s *Store) writeEvent(ctx context.Context, tx *sql.Tx, event identitymodel.IdentityProfileBindingEvent) error {
-	statement, arguments, buildErr := ormbuilder.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "identity_profile_binding_events", event.WorkspaceID).
+	statement, arguments, buildErr := ormbuilder.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_profile_binding_events", event.WorkspaceID).
 		Columns("id", "binding_key", "object_key", "profile_id", "operation", "previous_user_id", "identity_user_id", "binding_version", "idempotency_key", "actor_id", "reason", "approval_id", "status", "created_at").
 		Values(event.ID, event.BindingKey, event.ObjectKey, event.ProfileID, string(event.Operation), nullableProfileBindingText(event.PreviousUserID), nullableProfileBindingText(event.IdentityUserID), event.BindingVersion, event.IdempotencyKey, event.ActorID, nullableProfileBindingText(event.Reason), nullableProfileBindingText(event.ApprovalID), event.Status, event.CreatedAt).Build()
 	if buildErr != nil {

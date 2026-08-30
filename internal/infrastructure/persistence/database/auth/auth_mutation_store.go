@@ -39,7 +39,7 @@ func (s AuthStore) TryBeginAuthMutation(ctx context.Context, workspaceID string,
 	receipt.RequestFingerprint, receipt.Status = strings.TrimSpace(request.RequestFingerprint), string(idempotency.StatusProcessing)
 	receipt.LeaseOwner, receipt.LeaseExpiresAt, receipt.FencingToken = strings.TrimSpace(request.LeaseOwner), now.Add(request.LeaseTTL).Format(time.RFC3339Nano), 1
 	receipt.CreatedAt, receipt.UpdatedAt = now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)
-	insert := ormbuilder.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "auth_mutation_receipts", workspaceID).
+	insert := ormbuilder.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_auth_mutation_receipts", workspaceID).
 		Columns(authMutationReceiptWriteColumns()...).Values(authMutationReceiptWriteValues(receipt, "{}")...)
 	statement, arguments, buildErr := insert.Build()
 	if buildErr != nil {
@@ -62,7 +62,7 @@ func (s AuthStore) TryBeginAuthMutation(ctx context.Context, workspaceID string,
 		s.observeAuthMutation(receipt.WorkspaceID, receipt.UseCase, idempotency.OutcomeForDecision(decision, false))
 		return authmodel.AuthMutationClaimResult{Decision: decision, Receipt: current}, nil
 	}
-	statement, arguments, err = ormbuilder.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "auth_mutation_receipts", workspaceID).
+	statement, arguments, err = ormbuilder.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_auth_mutation_receipts", workspaceID).
 		Set("status", string(idempotency.StatusProcessing)).Set("lease_owner", receipt.LeaseOwner).Set("lease_expires_at", receipt.LeaseExpiresAt).
 		SetExpression("fencing_token", ormbuilder.Add(ormbuilder.Column("fencing_token"), ormbuilder.Value(1))).Set("updated_at", receipt.UpdatedAt).
 		Where(ormbuilder.And(ormbuilder.Equal("id", receipt.ID), ormbuilder.Equal("request_fingerprint", receipt.RequestFingerprint), ormbuilder.Equal("status", string(idempotency.StatusProcessing)), ormbuilder.LessThanOrEqual("lease_expires_at", now.Format(time.RFC3339Nano)))).Build()
@@ -109,7 +109,7 @@ func (s AuthStore) CompleteAuthMutation(ctx context.Context, workspaceID string,
 	if completion.Failed {
 		status = idempotency.StatusFailedTerminal
 	}
-	statement, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "auth_mutation_receipts", workspaceID).
+	statement, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_auth_mutation_receipts", workspaceID).
 		Set("status", string(status)).Set("result_json", string(resultJSON)).Set("error_code", strings.TrimSpace(completion.ErrorCode)).
 		Set("expires_at", completion.ExpiresAt.UTC().Format(time.RFC3339Nano)).Set("updated_at", now.Format(time.RFC3339Nano)).
 		Where(ormbuilder.And(ormbuilder.Equal("id", completion.ReceiptID), ormbuilder.Equal("lease_owner", strings.TrimSpace(completion.LeaseOwner)), ormbuilder.Equal("fencing_token", completion.FencingToken), ormbuilder.Equal("status", string(idempotency.StatusProcessing)))).Build()
@@ -174,7 +174,7 @@ func authMutationReceiptWriteValues(value authmodel.AuthMutationReceipt, resultJ
 }
 
 func authMutationReceiptSelect(s AuthStore, workspaceID string) *ormbuilder.SelectBuilder {
-	return ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "auth_mutation_receipts", workspaceID).Columns(authMutationReceiptColumns()...)
+	return ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_auth_mutation_receipts", workspaceID).Columns(authMutationReceiptColumns()...)
 }
 
 func authMutationReceiptValues(value authmodel.AuthMutationReceipt, resultJSON string) []any {

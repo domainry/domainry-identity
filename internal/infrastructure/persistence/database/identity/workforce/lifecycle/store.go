@@ -68,7 +68,7 @@ func (s Store) ApplyTx(ctx context.Context, tx *sql.Tx, workspaceID string, muta
 		}
 	}
 	for _, ending := range mutation.EndAssignments {
-		statement, arguments, buildErr := ormbuilder.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "identity_workforce_assignments", workspaceID).
+		statement, arguments, buildErr := ormbuilder.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_workforce_assignments", workspaceID).
 			Set("status", "disabled").Set("effective_to", strings.TrimSpace(ending.EffectiveTo)).
 			SetExpression("version", ormbuilder.Add(ormbuilder.Column("version"), ormbuilder.Value(1))).Set("updated_at", now).
 			Where(ormbuilder.And(ormbuilder.Equal("id", strings.TrimSpace(ending.AssignmentID)), ormbuilder.Equal("status", "active"))).Build()
@@ -160,7 +160,7 @@ func (s Store) Terminate(ctx context.Context, mutation identitymodel.IdentityWor
 	if err := s.writeProfile(ctx, tx, workspaceID, result.Profile); err != nil {
 		return result, err
 	}
-	statement, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "identity_workforce_assignments", workspaceID).
+	statement, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_workforce_assignments", workspaceID).
 		Set("status", "disabled").Set("effective_to", strings.TrimSpace(mutation.EffectiveAt)).
 		SetExpression("version", ormbuilder.Add(ormbuilder.Column("version"), ormbuilder.Value(1))).Set("updated_at", now).
 		Where(ormbuilder.And(ormbuilder.Equal("workforce_profile_id", result.Profile.ID), ormbuilder.Equal("status", "active"))).Build()
@@ -181,7 +181,7 @@ func (s Store) Terminate(ctx context.Context, mutation identitymodel.IdentityWor
 	if result.RevokedEntitlementCount, err = entitlementResult.RowsAffected(); err != nil {
 		return result, err
 	}
-	statement, arguments, err = ormbuilder.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "identity_profile_bindings", workspaceID).
+	statement, arguments, err = ormbuilder.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_profile_bindings", workspaceID).
 		Projections(ormbuilder.Project(ormbuilder.CountAll())).Where(ormbuilder.Equal("identity_user_id", result.Profile.IdentityUserID)).Build()
 	if err != nil {
 		return result, err
@@ -196,7 +196,7 @@ func (s Store) Terminate(ctx context.Context, mutation identitymodel.IdentityWor
 }
 
 func (s Store) revokeEntitlements(ctx context.Context, tx *sql.Tx, workspaceID, profileID, actorID, reason, now string) (sql.Result, error) {
-	statement, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "identity_user_role_assignments", workspaceID).
+	statement, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_user_role_assignments", workspaceID).
 		Set("status", "revoked").Set("revoked_by", actorID).Set("revoked_at", now).Set("revoke_reason", reason).Set("updated_at", now).
 		Where(ormbuilder.And(ormbuilder.Equal("workforce_profile_id", profileID), ormbuilder.Equal("status", "active"))).Build()
 	if err != nil {

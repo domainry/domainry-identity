@@ -54,7 +54,7 @@ func TestAccessReviewDecisionIsAtomicAuditableAndIdempotent(t *testing.T) {
 			ExpectedVersion: 1, IdempotencyKey: "decision-1",
 		},
 	}
-	if _, err := identityStore.DB().ExecContext(t.Context(), `CREATE TRIGGER fail_access_review_receipt BEFORE INSERT ON identity_access_review_receipts
+	if _, err := identityStore.DB().ExecContext(t.Context(), `CREATE TRIGGER fail_access_review_receipt BEFORE INSERT ON _identity_access_review_receipts
 		BEGIN SELECT RAISE(ABORT, 'injected receipt failure'); END`); err != nil {
 		t.Fatal(err)
 	}
