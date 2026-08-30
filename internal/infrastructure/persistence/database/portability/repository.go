@@ -80,7 +80,7 @@ func (repository *SQLRepository) Inventory(ctx context.Context, workspaceID stri
 
 func (repository *SQLRepository) MetadataSchemaSHA256(ctx context.Context) (string, error) {
 	var digest string
-	query, arguments, err := ormbuilder.NewSelectBuilder(repository.store.SQLRenderer, "metadata_catalog").
+	query, arguments, err := ormbuilder.NewSelectBuilder(repository.store.SQLRenderer, "application_schema_catalog").
 		Columns("value").Where(ormbuilder.Equal("key", "schema_hash")).Build()
 	if err != nil {
 		return "", fmt.Errorf("build Identity metadata schema hash read: %w", err)
@@ -122,38 +122,6 @@ func (repository *SQLRepository) Export(ctx context.Context, workspaceID string)
 	return datasets, providers, inventory.ExcludedCounts, nil
 }
 
-func (repository *SQLRepository) RecordExport(ctx context.Context, bundle portabilitymodel.Bundle) error {
-	counts := map[string]int64{}
-	for _, dataset := range bundle.Datasets {
-		counts[dataset.Name] = int64(len(dataset.Records))
-	}
-	countsJSON, err := json.Marshal(counts)
-	if err != nil {
-		return err
-	}
-	freezeHash := sha256.Sum256([]byte(bundle.FreezeEvidence))
-	query, arguments, buildErr := ormbuilder.NewWorkspaceInsertBuilder(repository.store.SQLRenderer, "identity_portability_export_receipts", bundle.WorkspaceID).
-		Columns("export_id", "content_sha256", "freeze_evidence_sha256", "dataset_counts_json", "source_mode", "exported_at").
-		Values(bundle.ExportID, bundle.ContentSHA256, hex.EncodeToString(freezeHash[:]), string(countsJSON), bundle.SourceMode, bundle.ExportedAt.UTC().Format(time.RFC3339Nano)).Build()
-	if buildErr != nil {
-		return fmt.Errorf("build Identity portability export receipt: %w", buildErr)
-	}
-	_, err = repository.store.DB().ExecContext(ctx, query, arguments...)
-	if err == nil {
-		return nil
-	}
-	var existing string
-	lookup, lookupArguments, buildErr := ormbuilder.NewWorkspaceSelectBuilder(repository.store.SQLRenderer, "identity_portability_export_receipts", bundle.WorkspaceID).
-		Columns("content_sha256").Where(ormbuilder.Equal("export_id", bundle.ExportID)).Build()
-	if buildErr != nil {
-		return fmt.Errorf("build Identity portability export replay read: %w", buildErr)
-	}
-	if lookupErr := repository.store.DB().QueryRowContext(ctx, lookup, lookupArguments...).Scan(&existing); lookupErr == nil && existing == bundle.ContentSHA256 {
-		return nil
-	}
-	return fmt.Errorf("record Identity portability export: %w", err)
-}
-
 func (repository *SQLRepository) FreezeWrites(ctx context.Context, workspaceID, evidence, operator string, now time.Time) (portabilitymodel.WriteFence, error) {
 	return repository.store.FreezeIdentityWrites(ctx, workspaceID, evidence, operator, now)
 }
@@ -162,8 +130,15 @@ func (repository *SQLRepository) ReleaseWriteFence(ctx context.Context, workspac
 	return repository.store.ReleaseIdentityWriteFence(ctx, workspaceID, operator, now)
 }
 
-func (repository *SQLRepository) VerifyWriteFreeze(ctx context.Context, workspaceID, evidence string) error {
-	return repository.store.VerifyIdentityWriteFreeze(ctx, workspaceID, evidence)
+func (repository *SQLRepository) VerifyWriteFreeze(ctx context.Context, workspaceID string) error {
+	frozen, err := repository.store.IdentityWritesFrozen(ctx, workspaceID)
+	if err != nil {
+		return err
+	}
+	if !frozen {
+		return fmt.Errorf("identity.portability_write_freeze_not_active")
+	}
+	return nil
 }
 
 func (repository *SQLRepository) VerifyProviderReadiness(ctx context.Context, workspaceID string, references []portabilitymodel.ProviderReference) error {
@@ -210,35 +185,36 @@ func (repository *SQLRepository) Import(ctx context.Context, bundle portabilitym
 	if metadataSchemaSHA256 != bundle.MetadataSchemaSHA256 {
 		return portabilitymodel.ImportReceipt{}, fmt.Errorf("identity.portability_metadata_schema_mismatch")
 	}
-	if receipt, found, err := repository.importReceipt(ctx, bundle.WorkspaceID, idempotencyKey); err != nil {
-		return portabilitymodel.ImportReceipt{}, err
-	} else if found {
-		if receipt.ContentSHA256 != bundle.ContentSHA256 {
-			return portabilitymodel.ImportReceipt{}, fmt.Errorf("identity.portability_idempotency_conflict")
-		}
-		if err := repository.verifyAuthorizationState(ctx, repository.store.DB(), bundle); err != nil {
-			return portabilitymodel.ImportReceipt{}, err
-		}
-		receipt.Replayed = true
-		return receipt, nil
-	}
-
 	tx, err := repository.store.DB().BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
 		return portabilitymodel.ImportReceipt{}, err
 	}
 	defer tx.Rollback()
+	targetPopulated := false
 	for _, spec := range portableDatasetSpecs {
 		count, countErr := repository.workspaceCount(ctx, tx, spec.table, spec.workspace, bundle.WorkspaceID)
 		if countErr != nil {
 			return portabilitymodel.ImportReceipt{}, countErr
 		}
 		if count != 0 {
-			return portabilitymodel.ImportReceipt{}, fmt.Errorf("identity.portability_target_not_empty: %s", spec.name)
+			targetPopulated = true
 		}
 	}
-
 	counts := map[string]int64{}
+	for _, dataset := range bundle.Datasets {
+		counts[dataset.Name] = int64(len(dataset.Records))
+	}
+	if targetPopulated {
+		if err := repository.verifyAuthorizationState(ctx, tx, bundle); err != nil {
+			return portabilitymodel.ImportReceipt{}, fmt.Errorf("identity.portability_target_not_empty: %w", err)
+		}
+		return portabilitymodel.ImportReceipt{
+			ReceiptID: importReceiptID(bundle.WorkspaceID, bundle.ContentSHA256, idempotencyKey), WorkspaceID: bundle.WorkspaceID,
+			ContentSHA256: bundle.ContentSHA256, IdempotencyKey: idempotencyKey, ImportedCounts: counts, ImportedAt: importedAt.UTC(), Replayed: true,
+		}, nil
+	}
+
+	counts = map[string]int64{}
 	for _, dataset := range bundle.Datasets {
 		spec, _ := datasetSpecNamed(dataset.Name)
 		for _, record := range dataset.Records {
@@ -271,19 +247,6 @@ func (repository *SQLRepository) Import(ctx context.Context, bundle portabilitym
 		IdempotencyKey: idempotencyKey,
 		ImportedCounts: counts,
 		ImportedAt:     importedAt.UTC(),
-	}
-	countsJSON, err := json.Marshal(counts)
-	if err != nil {
-		return portabilitymodel.ImportReceipt{}, err
-	}
-	query, arguments, err := ormbuilder.NewWorkspaceInsertBuilder(repository.store.SQLRenderer, "identity_portability_import_receipts", receipt.WorkspaceID).
-		Columns("receipt_id", "content_sha256", "idempotency_key", "imported_counts_json", "imported_at").
-		Values(receipt.ReceiptID, receipt.ContentSHA256, receipt.IdempotencyKey, string(countsJSON), receipt.ImportedAt.Format(time.RFC3339Nano)).Build()
-	if err != nil {
-		return portabilitymodel.ImportReceipt{}, fmt.Errorf("build Identity portability import receipt: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx, query, arguments...); err != nil {
-		return portabilitymodel.ImportReceipt{}, fmt.Errorf("record Identity portability import: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return portabilitymodel.ImportReceipt{}, err
@@ -405,30 +368,6 @@ func (repository *SQLRepository) workspaceCount(ctx context.Context, queryer int
 		return 0, fmt.Errorf("inventory Identity table %s: %w", table, err)
 	}
 	return count, nil
-}
-
-func (repository *SQLRepository) importReceipt(ctx context.Context, workspaceID, idempotencyKey string) (portabilitymodel.ImportReceipt, bool, error) {
-	query, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(repository.store.SQLRenderer, "identity_portability_import_receipts", workspaceID).
-		Columns("receipt_id", "content_sha256", "imported_counts_json", "imported_at").
-		Where(ormbuilder.Equal("idempotency_key", idempotencyKey)).Build()
-	if err != nil {
-		return portabilitymodel.ImportReceipt{}, false, fmt.Errorf("build Identity portability import receipt read: %w", err)
-	}
-	var receipt portabilitymodel.ImportReceipt
-	var countsJSON, importedAt string
-	err = repository.store.DB().QueryRowContext(ctx, query, arguments...).Scan(&receipt.ReceiptID, &receipt.ContentSHA256, &countsJSON, &importedAt)
-	if err == sql.ErrNoRows {
-		return portabilitymodel.ImportReceipt{}, false, nil
-	}
-	if err != nil {
-		return portabilitymodel.ImportReceipt{}, false, err
-	}
-	receipt.WorkspaceID, receipt.IdempotencyKey = workspaceID, idempotencyKey
-	if err := json.Unmarshal([]byte(countsJSON), &receipt.ImportedCounts); err != nil {
-		return portabilitymodel.ImportReceipt{}, false, err
-	}
-	receipt.ImportedAt, err = time.Parse(time.RFC3339Nano, importedAt)
-	return receipt, true, err
 }
 
 func workspaceDatasetFields(spec datasetSpec, values []any) ([]string, []any, error) {

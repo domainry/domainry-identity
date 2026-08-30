@@ -14,7 +14,6 @@ func TestBundleRejectsNestedProviderSecretsAndDuplicateRecords(t *testing.T) {
 		MetadataSchemaSHA256: strings.Repeat("a", 64),
 		SourceMode:           "module",
 		ExportedAt:           time.Date(2026, time.August, 27, 12, 0, 0, 0, time.UTC),
-		FreezeEvidence:       "cutover-ticket",
 		Datasets: []Dataset{{
 			Name:    "users",
 			Records: []Record{{"id": json.RawMessage(`"user-1"`)}},

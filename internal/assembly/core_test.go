@@ -8,7 +8,6 @@ import (
 
 	"github.com/domainry/domainry-foundation/requestcontext"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
-	changeplanmodel "github.com/domainry/domainry-identity/internal/domain/changeplan/model"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
@@ -108,7 +107,7 @@ func TestColdStartLoadsPublishedRoleDefinitions(t *testing.T) {
 	_, err := first.MetadataStore.ApplyDefinitionMutations(t.Context(), identitymodel.NewSystemScope(identitymodel.SystemScopeInstallation, "test published role"), []metadatamodel.MetadataDefinitionMutation{{
 		Operation: "create", ResourceType: "role", ResourceKey: "member",
 		Request: metadatamodel.MetadataDefinitionUpsertRequest{ExpectedSchemaHash: &empty, Payload: payload},
-	}}, nil, &changeplanmodel.BusinessChangePlanPublication{WorkspaceID: identitymodel.InstallationWorkspaceID, PlanID: "role-member"})
+	}}, nil, &metadatamodel.MetadataDefinitionPublication{WorkspaceID: identitymodel.InstallationWorkspaceID})
 	if err != nil {
 		t.Fatal(err)
 	}

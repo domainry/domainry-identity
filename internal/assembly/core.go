@@ -130,7 +130,7 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 
 	metadataRuntime := NewMetadataRuntime(metadataservice.SchemaSnapshotState{
 		TemplateID: defaultString(manifest.TemplateID, "domainry-identity"), TemplateVersion: manifest.Version, Name: manifest.Name,
-		Objects: manifest.Objects, Views: manifest.Views, Actions: manifest.Actions,
+		Objects: manifest.Objects, Actions: manifest.Actions,
 		Roles: manifest.Roles, PermissionSets: manifest.PermissionSets, PermissionSetGroups: manifest.PermissionSetGroups,
 		Guardrails: manifest.Guardrails, IdentityProfileExtensions: manifest.IdentityProfileExtensions,
 	})

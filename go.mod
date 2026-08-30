@@ -6,14 +6,21 @@ replace github.com/domainry/domainry-foundation => ../domainry-foundation
 
 replace github.com/domainry/domainry-orm => ../domainry-orm
 
+replace github.com/domainry/domainry-identity-sdk => ../domainry-identity-sdk
+
+replace github.com/domainry/domainry-data-exchange-sdk => ../domainry-data-exchange-sdk
+
 require (
 	github.com/beevik/etree v1.6.0
 	github.com/coreos/go-oidc/v3 v3.20.0
 	github.com/crewjam/saml v0.5.1
 	github.com/domainry/domainry-audit v0.0.0
 	github.com/domainry/domainry-audit-sdk v0.0.0
+	github.com/domainry/domainry-data-exchange-sdk v0.3.1-0.20260830024026-64866b01d3a6
 	github.com/domainry/domainry-foundation v0.1.0-dev.5
 	github.com/domainry/domainry-identity-sdk v0.1.0-dev8
+	github.com/domainry/domainry-metadata v0.0.0
+	github.com/domainry/domainry-metadata-sdk v0.0.0
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/russellhaering/goxmldsig v1.6.0
@@ -26,6 +33,10 @@ require (
 replace github.com/domainry/domainry-audit => ../domainry-audit
 
 replace github.com/domainry/domainry-audit-sdk => ../domainry-audit-sdk
+
+replace github.com/domainry/domainry-metadata => ../domainry-metadata
+
+replace github.com/domainry/domainry-metadata-sdk => ../domainry-metadata-sdk
 
 require (
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect

@@ -48,51 +48,6 @@ func manifestMetadataSeeds(seed manifestmodel.ManifestSchema) ([]metadataResourc
 		seeds = append(seeds, seed)
 		return nil
 	}
-	appendDerivedSeed := func(resourceType, table, key, objectKey, name string, payload any) {
-		seeds = append(seeds, metadataResourceSeed{
-			ResourceType: resourceType, Table: table, Key: strings.TrimSpace(key), ObjectKey: strings.TrimSpace(objectKey), Name: strings.TrimSpace(name),
-			SchemaVersion: version, SourceKind: "generated", SourceID: sourceID, Payload: payload,
-		})
-	}
-	for _, object := range seed.Objects {
-		objectCopy := object
-		objectCopy.Fields = nil
-		objectCopy.Validations = nil
-		if err := appendSeed("object", "object_definitions", object.Key, object.Key, object.Name, objectCopy); err != nil {
-			return nil, err
-		}
-		for _, field := range object.Fields {
-			fieldCopy := field
-			config := map[string]any{}
-			for key, value := range field.Config {
-				config[key] = value
-			}
-			config["_definition_object_key"] = object.Key
-			fieldCopy.Config = config
-			fieldKey := metadataJoinedKey(object.Key, field.Key)
-			appendDerivedSeed("field", "field_definitions", fieldKey, object.Key, field.Name, fieldCopy)
-		}
-		for index, validation := range object.Validations {
-			if strings.TrimSpace(validation.ObjectKey) == "" {
-				validation.ObjectKey = object.Key
-			}
-			key := validation.Key
-			if strings.TrimSpace(key) == "" {
-				key = validationMetadataKey(object.Key, index, validation)
-			}
-			appendDerivedSeed("validation", "validation_definitions", key, validation.ObjectKey, validation.Message, validation)
-		}
-	}
-	for _, view := range seed.Views {
-		if err := appendSeed("view", "view_definitions", view.Key, view.ObjectKey, view.Name, view); err != nil {
-			return nil, err
-		}
-	}
-	for _, action := range seed.Actions {
-		if err := appendSeed("action", "action_definitions", action.Key, action.ObjectKey, action.Label, action); err != nil {
-			return nil, err
-		}
-	}
 	roles := append([]identitymodel.RoleSchema(nil), seed.Roles...)
 	roles = appendSystemRoleDefinition(roles, "identity_effective", "Identity Effective")
 	for _, role := range roles {

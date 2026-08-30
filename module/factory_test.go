@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	dataexchangemodulehost "github.com/domainry/domainry-data-exchange-sdk/modulehost"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	identitycontracttest "github.com/domainry/domainry-identity-sdk/contracttest"
 	identityhttpapi "github.com/domainry/domainry-identity-sdk/httpapi"
@@ -47,6 +48,22 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	}
 	if binding.Descriptor().Audience != "orders-runtime" {
 		t.Fatalf("module audience=%q want host application audience", binding.Descriptor().Audience)
+	}
+	providerSource, ok := binding.(interface {
+		IdentityDataExchangeProviders() (string, dataexchangemodulehost.ImportProvider, dataexchangemodulehost.ExportProvider)
+	})
+	if !ok {
+		t.Fatal("module Binding does not expose its Data Exchange providers")
+	}
+	providerKey, importProvider, exportProvider := providerSource.IdentityDataExchangeProviders()
+	if providerKey != identitymodule.IdentityPortabilityProviderKey || importProvider == nil || exportProvider == nil {
+		t.Fatalf("Data Exchange providers key=%q import=%T export=%T", providerKey, importProvider, exportProvider)
+	}
+	if _, ok := importProvider.(dataexchangemodulehost.ImportArtifactProvider); !ok {
+		t.Fatalf("Identity import provider %T does not support atomic artifacts", importProvider)
+	}
+	if _, ok := exportProvider.(dataexchangemodulehost.ExportArtifactProvider); !ok {
+		t.Fatalf("Identity export provider %T does not support canonical artifacts", exportProvider)
 	}
 	httpProvider, ok := binding.(identityhttpapi.Provider)
 	if !ok {
@@ -104,13 +121,6 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		"GET /auth/role-requests":                               identityhttpapi.ExposurePublic,
 		"POST /auth/role-requests":                              identityhttpapi.ExposurePublic,
 		"POST /auth/reset-password":                             identityhttpapi.ExposureTenantAdmin,
-		"PUT /tenant-admin/change-plans/{planID}":               identityhttpapi.ExposureTenantAdmin,
-		"POST /tenant-admin/change-plans/{planID}/review":       identityhttpapi.ExposureTenantAdmin,
-		"POST /tenant-admin/change-plans/{planID}/approve":      identityhttpapi.ExposureTenantAdmin,
-		"POST /tenant-admin/change-plans/apply":                 identityhttpapi.ExposureTenantAdmin,
-		"GET /domain-system-snapshot":                           identityhttpapi.ExposureTenantAdmin,
-		"GET /domain-reference-graph":                           identityhttpapi.ExposureTenantAdmin,
-		"GET /tenant-admin/metadata/definitions/{resourceType}": identityhttpapi.ExposureTenantAdmin,
 	} {
 		owner, ok := mountedPatterns[pattern]
 		if !ok {
@@ -214,8 +224,8 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		request := httptest.NewRequest(http.MethodGet, "/tenant-admin/metadata/definitions/"+resourceType, nil)
 		request.Header.Set("Authorization", "Bearer "+adminSession.AccessToken)
 		mounted.ServeHTTP(response, request)
-		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"definitions"`) {
-			t.Fatalf("mounted %s definitions status=%d body=%s", resourceType, response.Code, response.Body.String())
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("retired Identity metadata route %s status=%d body=%s", resourceType, response.Code, response.Body.String())
 		}
 	}
 	wechat := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

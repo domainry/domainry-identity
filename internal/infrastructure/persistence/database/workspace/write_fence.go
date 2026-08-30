@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	auditmodel "github.com/domainry/domainry-audit-sdk/contract"
+	auditmoduleimpl "github.com/domainry/domainry-audit/module"
 	portabilitymodel "github.com/domainry/domainry-identity/internal/domain/portability"
 	ormbuilder "github.com/domainry/domainry-orm/builder"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
@@ -24,10 +26,9 @@ func NewWriteFenceStore(db *sql.DB, renderer ormdialect.Renderer) *WriteFenceSto
 }
 
 const (
-	identityWorkspaceWriteFenceTable   = "identity_workspace_write_fences"
-	identityPortabilityFenceEventTable = "identity_portability_write_fence_events"
-	identityWriteFenceEventFrozen      = "frozen"
-	identityWriteFenceEventReleased    = "released"
+	identityWorkspaceWriteFenceTable = "identity_workspace_write_fences"
+	identityWriteFenceEventFrozen    = "frozen"
+	identityWriteFenceEventReleased  = "released"
 )
 
 type identityWriteFenceQueryer interface {
@@ -168,17 +169,36 @@ func (store *WriteFenceStore) identityWriteFence(ctx context.Context, queryer id
 }
 
 func (store *WriteFenceStore) appendIdentityWriteFenceEvent(ctx context.Context, tx *sql.Tx, workspaceID, event, evidenceSHA256, operator string, occurredAt time.Time) error {
-	digest := sha256.Sum256([]byte(strings.Join([]string{workspaceID, event, evidenceSHA256, operator, occurredAt.UTC().Format(time.RFC3339Nano)}, "\x00")))
-	query, arguments, err := ormbuilder.NewWorkspaceInsertBuilder(store.renderer, identityPortabilityFenceEventTable, workspaceID).
-		Columns("event_id", "event", "evidence_sha256", "operator", "occurred_at").
-		Values(hex.EncodeToString(digest[:]), event, evidenceSHA256, operator, occurredAt.UTC().Format(time.RFC3339Nano)).Build()
+	stateEvent := "identity.portability_write_fence." + strings.TrimSpace(event)
+	auditEvent, err := auditmodel.BuildEvent(auditmodel.AppendRequest{
+		IdempotencyKey: strings.Join([]string{"identity-write-fence", event, evidenceSHA256, operator, occurredAt.UTC().Format(time.RFC3339Nano)}, ":"),
+		Event:          stateEvent,
+		ObjectKey:      identityWorkspaceWriteFenceTable,
+		RecordID:       workspaceID,
+		Actor:          auditmodel.Actor{WorkspaceID: workspaceID, SubjectID: operator, Kind: "operator"},
+		Summary:        "Identity portability write fence " + event,
+		After: map[string]any{
+			"state":           event,
+			"evidence_sha256": evidenceSHA256,
+		},
+	}, occurredAt)
 	if err != nil {
-		return fmt.Errorf("build Identity write-fence event: %w", err)
+		return fmt.Errorf("build Identity write-fence audit event: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, query, arguments...); err != nil {
-		return fmt.Errorf("append Identity write-fence event: %w", err)
+	if err := auditmoduleimpl.AppendPreparedWithin(ctx, store.renderer, writeFenceAuditTransaction{tx: tx}, auditEvent); err != nil {
+		return fmt.Errorf("append Identity write-fence audit event: %w", err)
 	}
 	return nil
+}
+
+type writeFenceAuditTransaction struct{ tx *sql.Tx }
+
+func (adapter writeFenceAuditTransaction) ExecContext(ctx context.Context, query string, arguments ...any) (auditmodel.Result, error) {
+	return adapter.tx.ExecContext(ctx, query, arguments...)
+}
+
+func (adapter writeFenceAuditTransaction) QueryRowContext(ctx context.Context, query string, arguments ...any) auditmodel.Row {
+	return adapter.tx.QueryRowContext(ctx, query, arguments...)
 }
 
 func (store *WriteFenceStore) IdentityWritesFrozen(ctx context.Context, workspaceID string) (bool, error) {
@@ -197,16 +217,4 @@ func (store *WriteFenceStore) AnyIdentityWritesFrozen(ctx context.Context) (bool
 		return false, err
 	}
 	return count > 0, nil
-}
-
-func (store *WriteFenceStore) VerifyIdentityWriteFreeze(ctx context.Context, workspaceID, evidence string) error {
-	fence, found, err := store.IdentityWriteFence(ctx, workspaceID)
-	if err != nil {
-		return err
-	}
-	digest := sha256.Sum256([]byte(strings.TrimSpace(evidence)))
-	if !found || fence.State != "frozen" || fence.EvidenceSHA256 != hex.EncodeToString(digest[:]) {
-		return fmt.Errorf("identity.portability_write_freeze_not_active")
-	}
-	return nil
 }

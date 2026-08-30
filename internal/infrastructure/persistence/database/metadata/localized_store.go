@@ -97,10 +97,6 @@ func manifestLocalizedTextSeeds(seed manifestmodel.ManifestSchema) []metadatamod
 			addI18n("validation", key, validation.I18n)
 		}
 	}
-	for _, view := range seed.Views {
-		addDefault("view", view.Key, "name", view.Name)
-		addI18n("view", view.Key, view.I18n)
-	}
 	for _, action := range seed.Actions {
 		addDefault("action", action.Key, "label", action.Label)
 		addI18n("action", action.Key, action.I18n)

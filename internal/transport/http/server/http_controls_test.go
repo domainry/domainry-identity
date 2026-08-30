@@ -60,12 +60,12 @@ func TestEmbeddedAuthRouteInventoryOwnsEveryNonBrowserRoute(t *testing.T) {
 
 func TestClassifyRouteSurface(t *testing.T) {
 	tests := map[string]routeSurface{
-		"GET /browser/auth/login":                routeSurfacePublic,
-		"GET /identity/discovery":                routeSurfacePublic,
-		"GET /identity/users":                    routeSurfaceTenantAdmin,
-		"GET /tenant-admin/runtime-schema":       routeSurfaceTenantAdmin,
-		"PUT /auth/providers/oidc/setup":         routeSurfaceTenantAdmin,
-		"POST /ops/identity-portability/exports": routeSurfaceOperations,
+		"GET /browser/auth/login":                     routeSurfacePublic,
+		"GET /identity/discovery":                     routeSurfacePublic,
+		"GET /identity/users":                         routeSurfaceTenantAdmin,
+		"GET /tenant-admin/runtime-schema":            routeSurfaceTenantAdmin,
+		"PUT /auth/providers/oidc/setup":              routeSurfaceTenantAdmin,
+		"POST /ops/identity-portability/write-fences": routeSurfaceOperations,
 	}
 	for requestTarget, want := range tests {
 		method, path, _ := strings.Cut(requestTarget, " ")
@@ -104,7 +104,7 @@ func TestHTTPControlsApplyIndependentRateLimitsAndTimeout(t *testing.T) {
 	assertStatus("/healthz", http.StatusNoContent)
 	assertStatus("/healthz", http.StatusTooManyRequests)
 	assertStatus("/identity/users", http.StatusNoContent)
-	assertStatus("/ops/identity-portability/exports", http.StatusNoContent)
+	assertStatus("/ops/identity-portability/write-fences", http.StatusNoContent)
 }
 
 func TestHTTPControlsApplySurfaceBodyLimitsAndListenerIsolation(t *testing.T) {
@@ -121,12 +121,12 @@ func TestHTTPControlsApplySurfaceBodyLimitsAndListenerIsolation(t *testing.T) {
 	if status := decode("/browser/auth/login"); status != http.StatusNoContent {
 		t.Fatalf("public body status=%d", status)
 	}
-	if status := decode("/ops/identity-portability/imports"); status != http.StatusBadRequest {
+	if status := decode("/ops/identity-portability/write-fences"); status != http.StatusBadRequest {
 		t.Fatalf("operations oversized body status=%d", status)
 	}
 
 	public := surfaceOnly(routeSurfacePublic, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }))
-	for path, want := range map[string]int{"/browser/auth/login": http.StatusNoContent, "/identity/users": http.StatusNotFound, "/ops/identity-portability/exports": http.StatusNotFound} {
+	for path, want := range map[string]int{"/browser/auth/login": http.StatusNoContent, "/identity/users": http.StatusNotFound, "/ops/identity-portability/write-fences": http.StatusNotFound} {
 		response := httptest.NewRecorder()
 		public.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
 		if response.Code != want {

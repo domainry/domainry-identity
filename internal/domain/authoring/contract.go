@@ -30,31 +30,29 @@ type CapabilityAuthoringDomain struct {
 }
 
 type CapabilityAuthoringDefinition struct {
-	Key                                     string                                 `json:"key"`
-	Status                                  string                                 `json:"status"`
-	Lifecycle                               string                                 `json:"lifecycle"`
-	AllowedContexts                         []string                               `json:"allowed_contexts,omitempty"`
-	Parameters                              []CapabilityAuthoringParameter         `json:"parameters,omitempty"`
-	Requires                                []string                               `json:"requires,omitempty"`
-	Conflicts                               []string                               `json:"conflicts,omitempty"`
-	Permissions                             []string                               `json:"permissions,omitempty"`
-	AuditEvents                             []string                               `json:"audit_events,omitempty"`
-	ValidationEndpoint                      string                                 `json:"validation_endpoint,omitempty"`
-	PreviewEndpoint                         string                                 `json:"preview_endpoint,omitempty"`
-	SimulationEndpoint                      string                                 `json:"simulation_endpoint,omitempty"`
-	ConfigurationRoutes                     []string                               `json:"configuration_routes,omitempty"`
-	ResourceOperations                      *CapabilityAuthoringResourceOperations `json:"resource_operations,omitempty"`
-	ResourceKeyPathParameter                string                                 `json:"resource_key_path_parameter,omitempty"`
-	SystemDraftResourceType                 string                                 `json:"system_draft_resource_type,omitempty"`
-	SystemDraftResourceTypeInputJSONPointer string                                 `json:"system_draft_resource_type_input_json_pointer,omitempty"`
-	Errors                                  []CapabilityAuthoringError             `json:"errors,omitempty"`
-	Examples                                []CapabilityAuthoringExample           `json:"examples,omitempty"`
-	InputSchema                             *CapabilityAuthoringSchema             `json:"input_schema,omitempty"`
-	OutputSchema                            *CapabilityAuthoringSchema             `json:"output_schema,omitempty"`
-	OutputVariables                         []CapabilityAuthoringOutput            `json:"output_variables,omitempty"`
-	ReferenceContracts                      []CapabilityAuthoringReference         `json:"reference_contracts,omitempty"`
-	Execution                               *CapabilityAuthoringExecution          `json:"execution,omitempty"`
-	Sources                                 []CapabilityAuthoringSource            `json:"sources"`
+	Key                      string                                 `json:"key"`
+	Status                   string                                 `json:"status"`
+	Lifecycle                string                                 `json:"lifecycle"`
+	AllowedContexts          []string                               `json:"allowed_contexts,omitempty"`
+	Parameters               []CapabilityAuthoringParameter         `json:"parameters,omitempty"`
+	Requires                 []string                               `json:"requires,omitempty"`
+	Conflicts                []string                               `json:"conflicts,omitempty"`
+	Permissions              []string                               `json:"permissions,omitempty"`
+	AuditEvents              []string                               `json:"audit_events,omitempty"`
+	ValidationEndpoint       string                                 `json:"validation_endpoint,omitempty"`
+	PreviewEndpoint          string                                 `json:"preview_endpoint,omitempty"`
+	SimulationEndpoint       string                                 `json:"simulation_endpoint,omitempty"`
+	ConfigurationRoutes      []string                               `json:"configuration_routes,omitempty"`
+	ResourceOperations       *CapabilityAuthoringResourceOperations `json:"resource_operations,omitempty"`
+	ResourceKeyPathParameter string                                 `json:"resource_key_path_parameter,omitempty"`
+	Errors                   []CapabilityAuthoringError             `json:"errors,omitempty"`
+	Examples                 []CapabilityAuthoringExample           `json:"examples,omitempty"`
+	InputSchema              *CapabilityAuthoringSchema             `json:"input_schema,omitempty"`
+	OutputSchema             *CapabilityAuthoringSchema             `json:"output_schema,omitempty"`
+	OutputVariables          []CapabilityAuthoringOutput            `json:"output_variables,omitempty"`
+	ReferenceContracts       []CapabilityAuthoringReference         `json:"reference_contracts,omitempty"`
+	Execution                *CapabilityAuthoringExecution          `json:"execution,omitempty"`
+	Sources                  []CapabilityAuthoringSource            `json:"sources"`
 }
 
 // CapabilityAuthoringResourceOperations gives direct-authoring clients an

@@ -36,11 +36,12 @@ func identitySchemaStore(t *testing.T, state *databaseSQLState) *IdentityStore {
 }
 
 func identitySchemaLedgerQueries(count int64, checksum string, dirty bool) []databaseSQLQueryStep {
-	steps := make([]databaseSQLQueryStep, 0, 11)
-	for range 9 {
+	steps := make([]databaseSQLQueryStep, 0, 13)
+	for range 10 {
 		steps = append(steps, databaseSQLQueryStep{})
 	}
 	steps = append(steps,
+		databaseSQLQueryStep{columns: []string{"count"}, rows: [][]driver.Value{{int64(0)}}},
 		databaseSQLQueryStep{columns: []string{"count"}, rows: [][]driver.Value{{count}}},
 		databaseSQLQueryStep{columns: []string{"checksum", "dirty"}, rows: [][]driver.Value{{checksum, dirty}}},
 	)
@@ -49,7 +50,7 @@ func identitySchemaLedgerQueries(count int64, checksum string, dirty bool) []dat
 
 func TestIdentitySchemaHelpersAndDatabaseSelection(t *testing.T) {
 	versions := SupportedIdentitySchemaVersions()
-	if len(versions) != 4 || versions[0] != IdentitySchemaVersionBaseline || versions[1] != IdentitySchemaVersionPortability || versions[2] != IdentitySchemaVersionNoFrontend || versions[3] != CurrentIdentitySchemaVersion {
+	if len(versions) != 5 || versions[0] != IdentitySchemaVersionBaseline || versions[1] != IdentitySchemaVersionPortability || versions[2] != IdentitySchemaVersionNoFrontend || versions[3] != IdentitySchemaVersionProviderCredential || versions[4] != CurrentIdentitySchemaVersion {
 		t.Fatalf("versions=%#v", versions)
 	}
 	store := identitySchemaStore(t, &databaseSQLState{})
@@ -103,7 +104,7 @@ func TestIdentitySchemaUpgradeRemovesFrontendCapabilityRegistry(t *testing.T) {
 		_ = store.Close()
 		t.Fatal(err)
 	}
-	if _, err := store.DB().ExecContext(t.Context(), `DELETE FROM _schema_materializations WHERE version = ?`, CurrentIdentitySchemaVersion); err != nil {
+	if _, err := store.DB().ExecContext(t.Context(), `DELETE FROM _schema_migrations WHERE path = ?`, identitySchemaMigrationPath(CurrentIdentitySchemaVersion)); err != nil {
 		_ = store.Close()
 		t.Fatal(err)
 	}
@@ -123,7 +124,7 @@ func TestIdentitySchemaUpgradeRemovesFrontendCapabilityRegistry(t *testing.T) {
 	if err := upgraded.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'frontend_capability_manifests'`).Scan(&tableCount); err != nil {
 		t.Fatal(err)
 	}
-	if err := upgraded.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _schema_materializations WHERE version = ? AND dirty = FALSE`, CurrentIdentitySchemaVersion).Scan(&migrationCount); err != nil {
+	if err := upgraded.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _schema_migrations WHERE path = ? AND dirty = FALSE`, identitySchemaMigrationPath(CurrentIdentitySchemaVersion)).Scan(&migrationCount); err != nil {
 		t.Fatal(err)
 	}
 	if tableCount != 0 || migrationCount != 1 {
@@ -161,12 +162,8 @@ func TestIdentitySchemaMigrationLedgerFailures(t *testing.T) {
 	if _, err := store.identitySchemaMigrationPending(t.Context(), "version"); !errors.Is(err, errDatabaseSQL) {
 		t.Fatalf("create error=%v", err)
 	}
-	store = identitySchemaStore(t, &databaseSQLState{execSteps: []databaseSQLExecStep{{rows: 1}, {err: errDatabaseSQL}}, querySteps: []databaseSQLQueryStep{{err: errDatabaseSQL}}})
-	if _, err := store.identitySchemaMigrationPending(t.Context(), "version"); !errors.Is(err, errDatabaseSQL) {
-		t.Fatalf("alter error=%v", err)
-	}
-	queries := make([]databaseSQLQueryStep, 10)
-	queries[9].err = errDatabaseSQL
+	queries := identitySchemaLedgerQueries(0, "", false)[:12]
+	queries[11] = databaseSQLQueryStep{err: errDatabaseSQL}
 	store = identitySchemaStore(t, &databaseSQLState{querySteps: queries})
 	if _, err := store.identitySchemaMigrationPending(t.Context(), "version"); !errors.Is(err, errDatabaseSQL) {
 		t.Fatalf("count error=%v", err)
@@ -175,9 +172,7 @@ func TestIdentitySchemaMigrationLedgerFailures(t *testing.T) {
 	if pending, err := store.identitySchemaMigrationPending(t.Context(), "version"); err != nil || !pending {
 		t.Fatalf("pending=%v err=%v", pending, err)
 	}
-	queries = make([]databaseSQLQueryStep, 10)
-	queries[0] = databaseSQLQueryStep{err: errDatabaseSQL}
-	queries[9] = databaseSQLQueryStep{columns: []string{"count"}, rows: [][]driver.Value{{int64(0)}}}
+	queries = identitySchemaLedgerQueries(0, "", false)[:12]
 	store = identitySchemaStore(t, &databaseSQLState{querySteps: queries})
 	if pending, err := store.identitySchemaMigrationPending(t.Context(), "version"); err != nil || !pending {
 		t.Fatalf("alter success pending=%v err=%v", pending, err)
@@ -295,7 +290,7 @@ func TestEnsureIdentitySchemaOrchestrationFailures(t *testing.T) {
 		t.Fatalf("pending error=%v", err)
 	}
 
-	pendingLedgerQueries := identitySchemaLedgerQueries(0, "", false)[:10]
+	pendingLedgerQueries := identitySchemaLedgerQueries(0, "", false)[:12]
 	validationQueries := append(append([]databaseSQLQueryStep{}, pendingLedgerQueries...), databaseSQLQueryStep{err: errDatabaseSQL})
 	validation := identitySchemaStore(t, &databaseSQLState{querySteps: validationQueries})
 	if err := validation.EnsureSchema(t.Context()); !errors.Is(err, errDatabaseSQL) {

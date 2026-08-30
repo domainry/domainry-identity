@@ -21,12 +21,12 @@ func NewMetadataRuntime(state metadataservice.SchemaSnapshotState) *MetadataRunt
 	return &MetadataRuntime{snapshot: metadataservice.BuildSchemaSnapshot(state)}
 }
 
-func (r *MetadataRuntime) ApplyManifestMetadata(templateID, templateVersion, name string, objects []definitionmodel.ObjectSchema, views []definitionmodel.ViewSchema, actions []definitionmodel.ActionSchema, roles []identitymodel.RoleSchema, permissionSets []identitymodel.IdentityPermissionSet, permissionSetGroups []identitymodel.IdentityPermissionSetGroup, guardrails []identitymodel.IdentityGuardrailPolicy, profileExtensions []identitymodel.IdentityProfileExtension) {
+func (r *MetadataRuntime) ApplyManifestMetadata(templateID, templateVersion, name string, objects []definitionmodel.ObjectSchema, actions []definitionmodel.ActionSchema, roles []identitymodel.RoleSchema, permissionSets []identitymodel.IdentityPermissionSet, permissionSetGroups []identitymodel.IdentityPermissionSetGroup, guardrails []identitymodel.IdentityGuardrailPolicy, profileExtensions []identitymodel.IdentityProfileExtension) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.snapshot = metadataservice.BuildSchemaSnapshot(metadataservice.SchemaSnapshotState{
 		TemplateID: templateID, TemplateVersion: templateVersion, Name: name,
-		Objects: objects, Views: views, Actions: actions, Roles: roles,
+		Objects: objects, Actions: actions, Roles: roles,
 		PermissionSets: permissionSets, PermissionSetGroups: permissionSetGroups,
 		Guardrails: guardrails, IdentityProfileExtensions: profileExtensions,
 	})
@@ -45,7 +45,7 @@ func (r *MetadataRuntime) SchemaForPrincipal(_ context.Context, principal identi
 func snapshotState(snapshot metadatamodel.MetadataSchemaSnapshot) metadataservice.SchemaSnapshotState {
 	return metadataservice.SchemaSnapshotState{
 		TemplateID: snapshot.TemplateID, TemplateVersion: snapshot.TemplateVersion, Name: snapshot.Name,
-		Objects: snapshot.Objects, Views: snapshot.Views, Actions: snapshot.Actions, Roles: snapshot.Roles,
+		Objects: snapshot.Objects, Actions: snapshot.Actions, Roles: snapshot.Roles,
 		PermissionSets: snapshot.PermissionSets, PermissionSetGroups: snapshot.PermissionSetGroups,
 		Guardrails: snapshot.Guardrails, IdentityProfileExtensions: snapshot.IdentityProfileExtensions,
 	}

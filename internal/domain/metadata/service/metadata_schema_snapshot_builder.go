@@ -11,7 +11,6 @@ import (
 type SchemaSnapshotState struct {
 	TemplateID, TemplateVersion, Name string
 	Objects                           []definitionmodel.ObjectSchema
-	Views                             []definitionmodel.ViewSchema
 	Actions                           []definitionmodel.ActionSchema
 	Roles                             []identitymodel.RoleSchema
 	PermissionSets                    []identitymodel.IdentityPermissionSet
@@ -29,7 +28,7 @@ func BuildSchemaSnapshot(state SchemaSnapshotState) metadatamodel.MetadataSchema
 	sort.Slice(roles, func(i, j int) bool { return roles[i].Key < roles[j].Key })
 	snapshot := metadatamodel.MetadataSchemaSnapshot{
 		TemplateID: state.TemplateID, TemplateVersion: state.TemplateVersion, Name: state.Name,
-		Objects: objects, Views: append([]definitionmodel.ViewSchema(nil), state.Views...), Actions: actions,
+		Objects: objects, Actions: actions,
 		GuardedWrites: GuardedWriteContracts(actions), Roles: roles,
 		PermissionSets:            append([]identitymodel.IdentityPermissionSet(nil), state.PermissionSets...),
 		PermissionSetGroups:       append([]identitymodel.IdentityPermissionSetGroup(nil), state.PermissionSetGroups...),

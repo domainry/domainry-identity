@@ -28,8 +28,8 @@ cutover evidence record.
 
 ## Procedure
 
-1. Dry-run the source inventory with
-   `POST /ops/identity-portability/exports` and:
+1. Submit a dry-run export through the host Data Exchange transport using
+   provider `identity-portability` and these provider options:
 
    ```json
    {
@@ -43,7 +43,8 @@ cutover evidence record.
    refresh sessions, MFA secrets, authorization codes, login transactions, and
    provider secrets must be excluded.
 
-2. Dry-run the empty target and confirm all provider keys can be made ready.
+2. Prepare the empty target. Configure every referenced provider and its secret
+   on the target; Identity validates the actual configuration before import.
    Do not start the import if the target contains any portable dataset rows.
 
 3. Freeze source writes with
@@ -62,48 +63,37 @@ cutover evidence record.
    credential/session mutations, Catalog publication, and management writes
    for this workspace. Reads remain available.
 
-4. Export with the exact, unhashed evidence value from step 3:
+4. Submit the export through Data Exchange. Identity checks the durable frozen
+   state directly, so the export request does not repeat the change reference:
 
    ```json
    {
      "workspace_id": "workspace-a",
      "source_mode": "module",
-     "freeze_evidence": "approved-change-ticket-and-backup-reference",
      "dry_run": false
    }
    ```
 
-   Store the returned bundle in encrypted, access-controlled temporary storage.
+   Download the completed Data Exchange artifact into encrypted,
+   access-controlled temporary storage.
    Verify that `content_sha256`, `authorization_state_sha256`,
    `metadata_schema_sha256`, and `export_id` are present. Repeating the export
    while the source is unchanged must produce the same content checksum and
    export ID.
 
-5. Dry-run the target import using the complete bundle, a stable idempotency
-   key, explicit provider readiness, and all three security acknowledgements:
+5. Submit the complete JSON bundle to Data Exchange provider
+   `identity-portability` with a stable job idempotency key. The engine's
+   validation phase is the dry run; Identity needs no caller-supplied import
+   options. The target verifies the bundle checksum, actual provider
+   configuration and secrets, target metadata hash, and target emptiness
+   before any write.
 
-   ```json
-   {
-     "bundle": { "contract_version": "domainry-identity-portability-v1" },
-     "idempotency_key": "approved-cutover-id",
-     "dry_run": true,
-     "provider_readiness": { "oidc": true },
-     "accept_session_revocation": true,
-     "accept_credential_reset": true,
-     "accept_mfa_reenrollment": true
-   }
-   ```
-
-   `bundle` above represents the complete exported object, not only the shown
-   field. The target verifies the bundle checksum, provider configuration
-   hashes, target metadata hash, and target emptiness before any write.
-
-6. Submit the same request with `dry_run: false`. The import runs in one target
-   database transaction. It re-exports the inserted target records inside that
-   transaction and compares the server-computed authorization-state digest to
-   the source digest before commit. A repeated request with the same
-   idempotency key returns the existing receipt only after verifying that the
-   target has not drifted.
+6. After validation succeeds, the Identity provider applies the import in one
+   target database transaction. It
+   re-exports the inserted target records inside that transaction and compares
+   the server-computed authorization-state digest to the source digest before
+   commit. Data Exchange owns job idempotency, chunks, retries, and the durable
+   artifact; Identity owns the domain validation and transactional apply.
 
 7. Reconcile before traffic switch:
 
@@ -136,10 +126,10 @@ cutover evidence record.
   approved reverse migration from a newly frozen SaaS source. Dual writes and
   copying only the changed rows are forbidden.
 
-Every freeze and release is recorded in the append-only
-`identity_portability_write_fence_events` ledger; current enforcement state is
-the `identity_workspace_write_fences` projection. Export/import receipts and
-the event ledger must be retained with the cutover evidence.
+Every freeze and release is recorded in the shared append-only `_audit_events`
+ledger; current enforcement state is the `identity_workspace_write_fences`
+projection. Data Exchange job and artifact evidence plus the Audit events must
+be retained with the cutover evidence.
 
 ## External-provider drill
 

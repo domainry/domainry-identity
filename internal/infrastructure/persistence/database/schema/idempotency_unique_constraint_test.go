@@ -129,7 +129,7 @@ func sqliteColumnHasUniqueIndex(store *database.IdentityStore, table, targetColu
 }
 
 func idempotencyTableOwner(table string) string {
-	for prefix, owner := range map[string]string{"business_action": "action", "record_mutation": "record", "workflow": "workflow", "automation": "automation", "integration": "integration", "identity_change_plan": "changeplan", "auth_mutation": "auth"} {
+	for prefix, owner := range map[string]string{"business_action": "action", "record_mutation": "record", "workflow": "workflow", "automation": "automation", "integration": "integration", "auth_mutation": "auth"} {
 		if strings.HasPrefix(table, prefix) {
 			return owner
 		}

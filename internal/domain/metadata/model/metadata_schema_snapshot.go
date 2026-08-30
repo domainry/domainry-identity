@@ -12,7 +12,6 @@ type MetadataSchemaSnapshot struct {
 	SchemaHash                string                                     `json:"schema_hash"`
 	SnapshotVersion           string                                     `json:"snapshot_version"`
 	Objects                   []definitionmodel.ObjectSchema             `json:"objects"`
-	Views                     []definitionmodel.ViewSchema               `json:"views"`
 	Actions                   []definitionmodel.ActionSchema             `json:"actions"`
 	GuardedWrites             []MetadataGuardedWriteContract             `json:"guarded_writes,omitempty"`
 	Roles                     []identitymodel.RoleSchema                 `json:"roles"`

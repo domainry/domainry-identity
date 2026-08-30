@@ -15,8 +15,9 @@ func (schemaHelperStore) DatabaseSchema() string { return "" }
 func (schemaHelperStore) Identifier(value string) string {
 	return `"` + value + `"`
 }
-func (schemaHelperStore) TableIdentifier(value string) string { return value }
-func (schemaHelperStore) Placeholder(index int) string        { return "?" }
+func (schemaHelperStore) TableIdentifier(value string) string                     { return value }
+func (schemaHelperStore) Placeholder(index int) string                            { return "?" }
+func (schemaHelperStore) SchemaTableExists(context.Context, string) (bool, error) { return false, nil }
 func (schemaHelperStore) CreateIndexIfMissing(context.Context, string, string, bool, ...string) error {
 	return nil
 }

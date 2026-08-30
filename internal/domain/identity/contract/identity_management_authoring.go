@@ -125,7 +125,7 @@ func identityUserOutputSchema(closed *bool) *authoringcontract.CapabilityAuthori
 }
 
 func identityManagementExecution(readSet []string, writeSet, idempotency, event, permission string) *authoringcontract.CapabilityAuthoringExecution {
-	return &authoringcontract.CapabilityAuthoringExecution{ReadSet: readSet, WriteSet: []string{writeSet}, Transaction: "identity_repository_transaction", Idempotency: idempotency, SideEffects: []string{"audit:" + event}, SideEffectLevel: "internal", PermissionModel: permission, ChangeControl: "direct_on_configuring_runtime_change_plan_on_existing_runtime"}
+	return &authoringcontract.CapabilityAuthoringExecution{ReadSet: readSet, WriteSet: []string{writeSet}, Transaction: "identity_repository_transaction", Idempotency: idempotency, SideEffects: []string{"audit:" + event}, SideEffectLevel: "internal", PermissionModel: permission, ChangeControl: "direct_audited_configuration"}
 }
 
 func identityManagementAuthoringSources(modelSymbol, validationSymbol string) []authoringcontract.CapabilityAuthoringSource {

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	identityauditmodule "github.com/domainry/domainry-identity/internal/infrastructure/auditmodule"
+	metadatarepository "github.com/domainry/domainry-metadata-sdk/repository"
 	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
 
@@ -18,27 +19,16 @@ func (s MetadataStore) insertMetadataChangeAudit(ctx context.Context, tx *sql.Tx
 }
 
 func (s MetadataStore) nextMetadataSchemaVersionTx(ctx context.Context, tx *sql.Tx, resourceType, resourceKey string) (string, error) {
-	statement, arguments, err := ormbuilder.NewSelectBuilder(s.store.SQLRenderer, "metadata_definition_versions").
-		Projections(ormbuilder.Project(ormbuilder.CountAll())).
-		Where(ormbuilder.And(ormbuilder.Equal("resource_type", resourceType), ormbuilder.Equal("resource_key", resourceKey))).Build()
+	count, err := s.countOwnedDefinitionVersions(ctx, tx, resourceType, resourceKey)
 	if err != nil {
-		return "", fmt.Errorf("build metadata version count query: %w", err)
-	}
-	var count int
-	if err := tx.QueryRowContext(ctx, statement, arguments...).Scan(&count); err != nil {
 		return "", fmt.Errorf("read metadata version count: %w", err)
 	}
 	return fmt.Sprintf("%d", count+1), nil
 }
 
 func (s MetadataStore) insertMetadataDefinitionVersionTx(ctx context.Context, tx *sql.Tx, resourceType, resourceKey, version, hash string, payload []byte, now string) error {
-	statement, arguments, err := ormbuilder.NewInsertBuilder(s.store.SQLRenderer, "metadata_definition_versions").
-		Columns("id", "resource_type", "resource_key", "schema_version", "schema_hash", "payload_json", "created_at").
-		Values(metadataResourceID(resourceType+":version", resourceKey+":"+version+":"+metadataHashPrefix(hash)), resourceType, resourceKey, version, hash, string(payload), now).Build()
+	err := s.insertOwnedDefinitionVersion(ctx, tx, metadatarepository.DefinitionVersion{ResourceType: resourceType, ResourceKey: resourceKey, SchemaVersion: version, SchemaHash: hash, Payload: append([]byte(nil), payload...), CreatedAt: now})
 	if err != nil {
-		return fmt.Errorf("build %s %s version insert: %w", resourceType, resourceKey, err)
-	}
-	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
 		return fmt.Errorf("insert %s %s version: %w", resourceType, resourceKey, err)
 	}
 	return nil

@@ -22,6 +22,9 @@ func (Profile) ApplicationTablesQuery(ormdialect.Renderer, string) driver.Schema
 func (Profile) WorkspaceTablesQuery(ormdialect.Renderer, string) driver.SchemaQuery {
 	return driver.SchemaQuery{Statement: "SELECT DISTINCT m.name FROM sqlite_master m JOIN pragma_table_info(m.name) p WHERE m.type = 'table' AND p.name = 'workspace_id' ORDER BY m.name"}
 }
+func (Profile) TableExistsQuery(renderer ormdialect.Renderer, _ string, table string) driver.SchemaQuery {
+	return driver.SchemaQuery{Statement: "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=" + renderer.Placeholder(1), Arguments: []any{table}}
+}
 func (profile Profile) CreateIndexIfMissing(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _ string, relationPrefix, table, index string, unique bool, columns ...string) error {
 	indexes, err := profile.TableIndexes(ctx, database, renderer, "", relationPrefix, table)
 	if err != nil || indexes[index] {

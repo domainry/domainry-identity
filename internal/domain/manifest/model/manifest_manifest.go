@@ -23,7 +23,6 @@ type ManifestSchema struct {
 	Description               string                                         `json:"description,omitempty"`
 	I18n                      localizationmodel.LocalizedTextMap             `json:"i18n,omitempty"`
 	Objects                   []definitionmodel.ObjectSchema                 `json:"objects"`
-	Views                     []definitionmodel.ViewSchema                   `json:"views,omitempty"`
 	Actions                   []definitionmodel.ActionSchema                 `json:"actions,omitempty"`
 	IdentityBootstrap         *identitymodel.ManifestIdentityBootstrapSchema `json:"identity_bootstrap,omitempty"`
 	IdentityProfileExtensions []identitymodel.IdentityProfileExtension       `json:"identity_profile_extensions,omitempty"`

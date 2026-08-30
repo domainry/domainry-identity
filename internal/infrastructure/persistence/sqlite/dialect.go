@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	"github.com/domainry/domainry-identity/internal/platform/config"
@@ -50,7 +51,23 @@ func (Dialect) Configure(ctx context.Context, db *sql.DB, cfg config.Config) err
 	if err != nil {
 		return err
 	}
-	return ormsqlite.InitializeOwned(ctx, db, connection)
+	deadline := time.Now().Add(connection.BusyTimeout)
+	for {
+		err = ormsqlite.InitializeOwned(ctx, db, connection)
+		if err == nil || !sqliteBusy(err) || time.Now().After(deadline) {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(25 * time.Millisecond):
+		}
+	}
+}
+
+func sqliteBusy(err error) bool {
+	message := strings.ToUpper(err.Error())
+	return strings.Contains(message, "SQLITE_BUSY") || strings.Contains(message, "DATABASE IS LOCKED")
 }
 
 func identitySQLiteConnectionConfig(cfg config.Config) (ormsqlite.OwnedConnectionConfig, error) {

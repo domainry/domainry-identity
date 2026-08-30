@@ -32,6 +32,9 @@ func (Profile) WorkspaceTablesQuery(renderer ormdialect.Renderer, databaseSchema
 		Arguments: []any{databaseSchema},
 	}
 }
+func (Profile) TableExistsQuery(renderer ormdialect.Renderer, _ string, table string) driver.SchemaQuery {
+	return driver.SchemaQuery{Statement: "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name=" + renderer.Placeholder(1), Arguments: []any{table}}
+}
 func (profile Profile) CreateIndexIfMissing(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _ string, relationPrefix, table, index string, unique bool, columns ...string) error {
 	indexes, err := profile.TableIndexes(ctx, database, renderer, "", relationPrefix, table)
 	if err != nil || indexes[index] {

@@ -51,7 +51,7 @@ func TestMetadataCandidateValidatesResourcesCreatedTogetherAsOneGraph(t *testing
 	mutations := []metadatamodel.MetadataDefinitionMutation{
 		{Operation: "create", ResourceType: "object", ResourceKey: "project", Request: metadatamodel.MetadataDefinitionUpsertRequest{Payload: json.RawMessage(`{"key":"project","name":"Project","description":"Project"}`)}},
 		{Operation: "create", ResourceType: "field", ResourceKey: "project.name", Request: metadatamodel.MetadataDefinitionUpsertRequest{ObjectKey: "project", Payload: json.RawMessage(`{"key":"name","name":"Name","type":"text","required":true}`)}},
-		{Operation: "create", ResourceType: "view", ResourceKey: "project_list", Request: metadatamodel.MetadataDefinitionUpsertRequest{Payload: json.RawMessage(`{"key":"project_list","name":"Projects","object_key":"project","type":"table","config":{"columns":["name"]}}`)}},
+		{Operation: "create", ResourceType: "action", ResourceKey: "project.activate", Request: metadatamodel.MetadataDefinitionUpsertRequest{Payload: json.RawMessage(`{"key":"project.activate","object_key":"project","label":"Activate","kind":"record_operation","requires_permission":"project.activate","audit_event":"project.activated"}`)}},
 	}
 	if err := service.ValidateMetadataCandidate(t.Context(), mutations); err != nil {
 		t.Fatalf("composed candidate rejected: %#v", err)
@@ -62,7 +62,7 @@ func TestMetadataCandidateRejectsDanglingReferencesBeforePersistence(t *testing.
 	service := NewMetadataApplicationService(MetadataApplicationDependencies{Repository: metadataCandidateRepository{manifest: loadMetadataCandidateFixture(t)}})
 	mutations := []metadatamodel.MetadataDefinitionMutation{{Operation: "create", ResourceType: "field", ResourceKey: "missing.name", Request: metadatamodel.MetadataDefinitionUpsertRequest{ObjectKey: "missing", Payload: json.RawMessage(`{"key":"name","name":"Name","type":"text"}`)}}}
 	err := service.ValidateMetadataCandidate(t.Context(), mutations)
-	if apperror.CodeOf(err) != "backend.change_plan.candidate_invalid" {
+	if apperror.CodeOf(err) != "backend.metadata.candidate_invalid" {
 		t.Fatalf("error=%v", err)
 	}
 }
@@ -78,7 +78,7 @@ func TestMetadataCandidateAcceptsRoleReferencesFromPublishedAuthorizationSchema(
 
 	role = json.RawMessage(`{"key":"coach","name":"Coach","record_scope":"all_records","data_permissions":[{"object_key":"unknown","scope":"all_records","read":true}]}`)
 	mutation.Request.Payload = role
-	if err := service.ValidateMetadataCandidate(t.Context(), []metadatamodel.MetadataDefinitionMutation{mutation}); apperror.CodeOf(err) != "backend.change_plan.candidate_invalid" || !strings.Contains(apperror.ParamsOf(err)["diagnostic"], `references unknown object "unknown"`) {
+	if err := service.ValidateMetadataCandidate(t.Context(), []metadatamodel.MetadataDefinitionMutation{mutation}); apperror.CodeOf(err) != "backend.metadata.candidate_invalid" || !strings.Contains(apperror.ParamsOf(err)["diagnostic"], `references unknown object "unknown"`) {
 		t.Fatalf("unknown application object was not rejected: %#v", err)
 	}
 }
@@ -90,7 +90,7 @@ func TestMetadataCandidateRequiresRoleCleanupWhenLastDedicatedActionPermissionIs
 	manifest.Roles = append(manifest.Roles, identitymodel.RoleSchema{Key: "reviewer", Name: "Reviewer", Permissions: []string{"customer.approve"}, RecordScope: "all_records", DataPermissions: []identitymodel.DataPermission{{ObjectKey: "customer", Scope: "all_records", Read: true}}})
 	service := NewMetadataApplicationService(MetadataApplicationDependencies{Repository: metadataCandidateRepository{manifest: manifest}})
 	retire := metadatamodel.MetadataDefinitionMutation{Operation: "archive", ResourceType: "action", ResourceKey: action.Key}
-	if err := service.ValidateMetadataCandidate(t.Context(), []metadatamodel.MetadataDefinitionMutation{retire}); apperror.CodeOf(err) != "backend.change_plan.candidate_invalid" || !strings.Contains(apperror.ParamsOf(err)["diagnostic"], "reviewer retains retired action permission customer.approve") {
+	if err := service.ValidateMetadataCandidate(t.Context(), []metadatamodel.MetadataDefinitionMutation{retire}); apperror.CodeOf(err) != "backend.metadata.candidate_invalid" || !strings.Contains(apperror.ParamsOf(err)["diagnostic"], "reviewer retains retired action permission customer.approve") {
 		t.Fatalf("dangling role permission error=%#v", err)
 	}
 	rolePayload := json.RawMessage(`{"key":"reviewer","name":"Reviewer","permissions":["customer.read"],"record_scope":"all_records","data_permissions":[{"object_key":"customer","scope":"all_records","read":true,"write":false}]}`)

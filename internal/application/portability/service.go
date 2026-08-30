@@ -13,10 +13,9 @@ type Repository interface {
 	Inventory(context.Context, string) (portabilitymodel.Inventory, error)
 	MetadataSchemaSHA256(context.Context) (string, error)
 	Export(context.Context, string) ([]portabilitymodel.Dataset, []portabilitymodel.ProviderReference, map[string]int64, error)
-	RecordExport(context.Context, portabilitymodel.Bundle) error
 	FreezeWrites(context.Context, string, string, string, time.Time) (portabilitymodel.WriteFence, error)
 	ReleaseWriteFence(context.Context, string, string, time.Time) (portabilitymodel.WriteFence, error)
-	VerifyWriteFreeze(context.Context, string, string) error
+	VerifyWriteFreeze(context.Context, string) error
 	VerifyProviderReadiness(context.Context, string, []portabilitymodel.ProviderReference) error
 	Import(context.Context, portabilitymodel.Bundle, string, time.Time) (portabilitymodel.ImportReceipt, error)
 }
@@ -46,10 +45,9 @@ func NewService(repository Repository, options Options) (*Service, error) {
 }
 
 type ExportRequest struct {
-	WorkspaceID    string
-	SourceMode     string
-	FreezeEvidence string
-	DryRun         bool
+	WorkspaceID string
+	SourceMode  string
+	DryRun      bool
 }
 
 type ExportResult struct {
@@ -74,10 +72,7 @@ func (service *Service) Export(ctx context.Context, request ExportRequest) (Expo
 	if request.DryRun {
 		return ExportResult{Inventory: inventory}, nil
 	}
-	if strings.TrimSpace(request.FreezeEvidence) == "" {
-		return ExportResult{}, fmt.Errorf("identity.portability_write_freeze_evidence_required")
-	}
-	if err := service.repository.VerifyWriteFreeze(ctx, workspaceID, request.FreezeEvidence); err != nil {
+	if err := service.repository.VerifyWriteFreeze(ctx, workspaceID); err != nil {
 		return ExportResult{}, err
 	}
 	datasets, providers, excluded, err := service.repository.Export(ctx, workspaceID)
@@ -94,7 +89,6 @@ func (service *Service) Export(ctx context.Context, request ExportRequest) (Expo
 		MetadataSchemaSHA256: metadataSchemaSHA256,
 		SourceMode:           strings.TrimSpace(request.SourceMode),
 		ExportedAt:           service.clock().UTC(),
-		FreezeEvidence:       strings.TrimSpace(request.FreezeEvidence),
 		Datasets:             datasets,
 		ProviderReferences:   providers,
 		ExcludedCounts:       excluded,
@@ -102,20 +96,13 @@ func (service *Service) Export(ctx context.Context, request ExportRequest) (Expo
 	if err := bundle.Finalize(); err != nil {
 		return ExportResult{}, err
 	}
-	if err := service.repository.RecordExport(ctx, bundle); err != nil {
-		return ExportResult{}, err
-	}
 	return ExportResult{Inventory: inventory, Bundle: &bundle}, nil
 }
 
 type ImportRequest struct {
-	Bundle                  portabilitymodel.Bundle
-	IdempotencyKey          string
-	DryRun                  bool
-	ProviderReadiness       map[string]bool
-	AcceptSessionRevocation bool
-	AcceptCredentialReset   bool
-	AcceptMFAReenrollment   bool
+	Bundle         portabilitymodel.Bundle
+	IdempotencyKey string
+	DryRun         bool
 }
 
 type ImportResult struct {
@@ -126,14 +113,6 @@ type ImportResult struct {
 func (service *Service) Import(ctx context.Context, request ImportRequest) (ImportResult, error) {
 	if err := request.Bundle.Validate(); err != nil {
 		return ImportResult{}, err
-	}
-	if err := validateSecurityAcceptance(request); err != nil {
-		return ImportResult{}, err
-	}
-	for _, provider := range request.Bundle.ProviderReferences {
-		if !request.ProviderReadiness[provider.ProviderKey] {
-			return ImportResult{}, fmt.Errorf("identity.portability_provider_not_ready: %s", provider.ProviderKey)
-		}
 	}
 	if err := service.repository.VerifyProviderReadiness(ctx, request.Bundle.WorkspaceID, request.Bundle.ProviderReferences); err != nil {
 		return ImportResult{}, err
@@ -163,11 +142,4 @@ func (service *Service) Import(ctx context.Context, request ImportRequest) (Impo
 	receipt.CredentialsReset = true
 	receipt.MFAReenrollment = true
 	return ImportResult{Inventory: inventory, Receipt: &receipt}, nil
-}
-
-func validateSecurityAcceptance(request ImportRequest) error {
-	if !request.AcceptSessionRevocation || !request.AcceptCredentialReset || !request.AcceptMFAReenrollment {
-		return fmt.Errorf("identity.portability_security_disposition_not_accepted")
-	}
-	return nil
 }

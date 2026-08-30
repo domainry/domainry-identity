@@ -1,8 +1,6 @@
 package identity
 
 import (
-	changeplanmodel "github.com/domainry/domainry-identity/internal/domain/changeplan/model"
-	changeplanprojection "github.com/domainry/domainry-identity/internal/domain/changeplan/projection"
 	definitionmodel "github.com/domainry/domainry-identity/internal/domain/definition/model"
 
 	"context"
@@ -12,79 +10,6 @@ import (
 	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
-
-func (s *IdentityApplicationService) EnrichReferenceGraph(ctx context.Context, graph changeplanmodel.ReferenceGraph) (changeplanmodel.ReferenceGraph, error) {
-	builder := changeplanprojection.NewChangePlanReferenceGraphBuilder()
-	for _, node := range graph.Nodes {
-		builder.Node(node.ResourceType, node.ResourceKey, node.ObjectKey, node.Label, node.Owner)
-	}
-	for _, edge := range graph.Edges {
-		builder.Edge(edge.FromType, edge.FromKey, edge.ToType, edge.ToKey, edge.Kind, edge.Path)
-	}
-	governance, err := BuildIdentityGovernanceSnapshot(ctx, s)
-	if err != nil {
-		return changeplanmodel.ReferenceGraph{}, err
-	}
-	for _, permission := range governance.Permissions {
-		builder.Node("permission", permission.Key, permission.Resource, permission.Label, "platform")
-	}
-	for _, menu := range governance.Menus {
-		builder.Node("menu", menu.Key, "", menu.Label, "")
-	}
-	roleMenusByRoleID := make(map[string][]identitymodel.IdentityRoleMenuAssignment, len(governance.Roles))
-	for _, assignment := range governance.RoleMenuAssignments {
-		roleMenusByRoleID[assignment.RoleID] = append(roleMenusByRoleID[assignment.RoleID], assignment)
-	}
-	roleKeysByID := make(map[string]string, len(governance.Roles))
-	for _, role := range governance.Roles {
-		roleKeysByID[role.ID] = role.Key
-	}
-	for _, role := range governance.Roles {
-		builder.Node("role", role.Key, "", role.Label, "")
-		for index, assignment := range roleMenusByRoleID[role.ID] {
-			assignmentKey := role.Key + ":" + assignment.MenuID
-			builder.Node("role_menu_assignment", assignmentKey, "", assignment.MenuID, "manual")
-			builder.Edge("role_menu_assignment", assignmentKey, "role", role.Key, "belongs_to_role", "role_key")
-			builder.Edge("role_menu_assignment", assignmentKey, "menu", assignment.MenuID, "sees_menu", fmt.Sprintf("menu_assignments[%d]", index))
-		}
-	}
-	for _, role := range governance.RoleDefinitions {
-		builder.Node("role", role.Key, "", role.Name, "metadata")
-		for index, permission := range role.Permissions {
-			assignmentKey := role.Key + ":" + permission
-			builder.Node("role_permission", assignmentKey, "", permission, "metadata")
-			builder.Edge("role_permission", assignmentKey, "role", role.Key, "belongs_to_role", "role_key")
-			builder.Edge("role_permission", assignmentKey, "permission", permission, "grants_permission", fmt.Sprintf("permissions[%d]", index))
-		}
-		for index, scope := range role.DataPermissions {
-			assignmentKey := role.Key + ":" + scope.ObjectKey
-			builder.Node("role_data_scope", assignmentKey, scope.ObjectKey, scope.Scope, "metadata")
-			builder.Edge("role_data_scope", assignmentKey, "role", role.Key, "belongs_to_role", "role_key")
-			builder.Edge("role_data_scope", assignmentKey, "object", scope.ObjectKey, "governs_data_scope", fmt.Sprintf("data_permissions[%d].object_key", index))
-		}
-		for index, field := range role.FieldPermissions {
-			assignmentKey := role.Key + ":" + field.ObjectKey + "." + field.FieldKey
-			builder.Node("role_field_permission", assignmentKey, field.ObjectKey, field.FieldKey, "metadata")
-			builder.Edge("role_field_permission", assignmentKey, "role", role.Key, "belongs_to_role", "role_key")
-			builder.Edge("role_field_permission", assignmentKey, "field", field.ObjectKey+"."+field.FieldKey, "governs_field", fmt.Sprintf("field_permissions[%d].field_key", index))
-		}
-	}
-	userRolesByUserID := make(map[string][]identitymodel.IdentityUserRoleAssignment, len(governance.Users))
-	for _, assignment := range governance.UserRoleAssignments {
-		userRolesByUserID[assignment.UserID] = append(userRolesByUserID[assignment.UserID], assignment)
-	}
-	for _, user := range governance.Users {
-		builder.Node("user", user.ID, "", user.Name, "manual")
-		for index, assignment := range userRolesByUserID[user.ID] {
-			roleKey := assignment.RoleID
-			if resolved := roleKeysByID[assignment.RoleID]; resolved != "" {
-				roleKey = resolved
-			}
-			builder.Edge("user", user.ID, "role", roleKey, "assigned_role", fmt.Sprintf("role_assignments[%d]", index))
-		}
-	}
-	return builder.Graph(), nil
-}
 
 func (validator *IdentityGovernanceApplicationService) validateFieldPermissions(values []identitymodel.IdentityFieldPermission) []identitycontract.IdentityGovernanceValidationIssue {
 	issues := []identitycontract.IdentityGovernanceValidationIssue{}

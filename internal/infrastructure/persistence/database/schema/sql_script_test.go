@@ -130,6 +130,12 @@ func (scriptedSchemaStore) DatabaseSchema() string              { return "main" 
 func (scriptedSchemaStore) Identifier(value string) string      { return `"` + value + `"` }
 func (scriptedSchemaStore) TableIdentifier(value string) string { return `"` + value + `"` }
 func (scriptedSchemaStore) Placeholder(int) string              { return "?" }
+func (s scriptedSchemaStore) SchemaTableExists(ctx context.Context, table string) (bool, error) {
+	query := s.engineProfile().TableExistsQuery(s.renderer(), s.DatabaseSchema(), table)
+	var count int
+	err := s.db.QueryRowContext(ctx, query.Statement, query.Arguments...).Scan(&count)
+	return count > 0, err
+}
 func (scriptedSchemaStore) CreateIndexIfMissing(context.Context, string, string, bool, ...string) error {
 	return nil
 }

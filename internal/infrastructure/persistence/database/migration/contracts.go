@@ -207,15 +207,15 @@ type RestoreRequest struct {
 	MaintenanceEvidence string    `json:"maintenance_evidence"`
 	DrainEvidence       string    `json:"drain_evidence"`
 	Operator            string    `json:"operator"`
-	ChangePlanID        string    `json:"change_plan_id"`
+	ApprovalReference   string    `json:"approval_reference"`
 }
 
 func (r RestoreRequest) Validate(evidence BackupEvidence) error {
 	if strings.TrimSpace(r.Target) == "" || strings.TrimSpace(r.BackupID) == "" || r.BackupID != evidence.BackupID {
 		return fmt.Errorf("restore.target_and_backup_required")
 	}
-	if strings.TrimSpace(r.Operator) == "" || strings.TrimSpace(r.ChangePlanID) == "" {
-		return fmt.Errorf("restore.authorization_and_change_plan_required")
+	if strings.TrimSpace(r.Operator) == "" || strings.TrimSpace(r.ApprovalReference) == "" {
+		return fmt.Errorf("restore.authorization_required")
 	}
 	if !r.DryRun && (strings.TrimSpace(r.MaintenanceEvidence) == "" || strings.TrimSpace(r.DrainEvidence) == "") {
 		return fmt.Errorf("restore.maintenance_and_drain_evidence_required")
@@ -243,9 +243,7 @@ func IdentityRestoreReconciliationPlan() []ReconciliationAction {
 		{Table: "auth_mutation_receipts", Action: "release_expired_processing_lease", Guard: "status = 'processing' AND lease_expires_at <= restored_at"},
 		{Table: "identity_metadata_refresh_intents", Action: "release_expired_processing_lease", Guard: "status = 'executing' AND lease_expires_at <= restored_at"},
 		{Table: "identity_workspace_write_fences", Action: "preserve_active_cutover_fence", Guard: "state = 'frozen'"},
-		{Table: "identity_portability_write_fence_events", Action: "preserve_append_only_cutover_evidence", Guard: "event_id IS NOT NULL"},
-		{Table: "identity_portability_export_receipts", Action: "preserve_completed_export_receipt", Guard: "content_sha256 IS NOT NULL"},
-		{Table: "identity_portability_import_receipts", Action: "preserve_completed_import_receipt", Guard: "content_sha256 IS NOT NULL"},
+		{Table: "_audit_events", Action: "preserve_append_only_cutover_evidence", Guard: "event = 'identity.portability_write_fence.frozen' OR event = 'identity.portability_write_fence.released'"},
 		{Table: "auth_login_transactions", Action: "expire_stale_unconsumed_login_transaction", Guard: "consumed_at IS NULL AND expires_at <= restored_at"},
 		{Table: "auth_authorization_codes", Action: "expire_stale_unconsumed_authorization_code", Guard: "consumed_at IS NULL AND expires_at <= restored_at"},
 		{Table: "auth_refresh_tokens", Action: "preserve_revocation_chain", Guard: "revoked_at IS NOT NULL OR replaced_by_id IS NOT NULL"},
@@ -304,17 +302,17 @@ func WriteJSONEvidence(path string, value any) error {
 }
 
 type MigrationPreview struct {
-	ReleaseID        string   `json:"release_id"`
-	Phase            string   `json:"phase"`
-	Additions        []string `json:"additions"`
-	Removals         []string `json:"removals"`
-	Backfills        []string `json:"backfills"`
-	EstimatedRows    int64    `json:"estimated_rows"`
-	LockRisk         string   `json:"lock_risk"`
-	RollbackStrategy string   `json:"rollback_strategy"`
-	BackupID         string   `json:"backup_id,omitempty"`
-	ChangePlanID     string   `json:"change_plan_id,omitempty"`
-	OldReplicaCount  int      `json:"old_replica_count"`
+	ReleaseID         string   `json:"release_id"`
+	Phase             string   `json:"phase"`
+	Additions         []string `json:"additions"`
+	Removals          []string `json:"removals"`
+	Backfills         []string `json:"backfills"`
+	EstimatedRows     int64    `json:"estimated_rows"`
+	LockRisk          string   `json:"lock_risk"`
+	RollbackStrategy  string   `json:"rollback_strategy"`
+	BackupID          string   `json:"backup_id,omitempty"`
+	ApprovalReference string   `json:"approval_reference,omitempty"`
+	OldReplicaCount   int      `json:"old_replica_count"`
 }
 
 func (p MigrationPreview) ValidateForApply() error {
@@ -322,7 +320,7 @@ func (p MigrationPreview) ValidateForApply() error {
 	if strings.TrimSpace(p.ReleaseID) == "" || !phases[p.Phase] || strings.TrimSpace(p.RollbackStrategy) == "" {
 		return fmt.Errorf("migration.preview_invalid")
 	}
-	if len(p.Removals) > 0 && (strings.TrimSpace(p.BackupID) == "" || strings.TrimSpace(p.ChangePlanID) == "") {
+	if len(p.Removals) > 0 && (strings.TrimSpace(p.BackupID) == "" || strings.TrimSpace(p.ApprovalReference) == "") {
 		return fmt.Errorf("migration.destructive_evidence_required")
 	}
 	if p.Phase == "contract" && p.OldReplicaCount != 0 {

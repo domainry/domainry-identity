@@ -5,9 +5,11 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"fmt"
 	"time"
 
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/transaction"
+	metadatarepository "github.com/domainry/domainry-metadata-sdk/repository"
 	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
 
@@ -33,6 +35,19 @@ func (r MetadataStore) refreshCatalogHashWithExecutorAt(
 ) error {
 	tables := metadataCatalogDefinitionTables()
 	hash := sha256.New()
+	definitions := r.store.MetadataDefinitions()
+	executorRepository, ok := definitions.(metadatarepository.ExecutorSnapshotRepository)
+	if !ok {
+		return fmt.Errorf("Metadata executor snapshot repository is unavailable")
+	}
+	snapshot, err := executorRepository.DefinitionSnapshotWithExecutor(ctx, executor)
+	if err != nil {
+		return err
+	}
+	hash.Write([]byte("metadata:"))
+	for _, definition := range snapshot.Definitions {
+		hash.Write([]byte(definition.ResourceType + ":" + definition.Key + ":" + definition.SchemaHash + "|"))
+	}
 	for _, table := range tables {
 		query, args, err := ormbuilder.NewSelectBuilder(r.store.SQLRenderer, table).
 			Columns("resource_key", "schema_hash").OrderBy(ormbuilder.Ascending("resource_key")).Build()
@@ -72,5 +87,5 @@ func (r MetadataStore) refreshCatalogHash(ctx context.Context) error {
 }
 
 func metadataCatalogDefinitionTables() []string {
-	return []string{"object_definitions", "field_definitions", "validation_definitions", "view_definitions", "action_definitions", "role_definitions", "identity_profile_binding_definitions"}
+	return []string{"role_definitions", "identity_profile_binding_definitions"}
 }

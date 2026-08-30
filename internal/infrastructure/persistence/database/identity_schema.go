@@ -21,22 +21,22 @@ import (
 )
 
 const (
-	IdentitySchemaVersionBaseline    = "001_identity_service_baseline"
-	IdentitySchemaVersionPortability = "002_identity_portability_cutover"
-	IdentitySchemaVersionNoFrontend  = "003_remove_frontend_capability_registry"
-	CurrentIdentitySchemaVersion     = "004_workspace_provider_credential_identity"
+	IdentitySchemaVersionBaseline           = "001_identity_service_baseline"
+	IdentitySchemaVersionPortability        = "002_identity_portability_cutover"
+	IdentitySchemaVersionNoFrontend         = "003_remove_frontend_capability_registry"
+	IdentitySchemaVersionProviderCredential = "004_workspace_provider_credential_identity"
+	CurrentIdentitySchemaVersion            = "005_data_exchange_and_authoring_cleanup"
 )
 
 const (
-	identitySchemaMigrationTable           = "_schema_materializations"
 	managedIdentityDatabaseTable           = "_domainry_managed_identity_database"
 	managedIdentityDatabaseContractVersion = "domainry-managed-identity-database-v1"
 	identitySchemaMigrationKind            = "identity_schema"
-	identitySchemaMigrationName            = "workspace_provider_credential_identity"
+	identitySchemaMigrationName            = "data_exchange_and_authoring_cleanup"
 )
 
 func SupportedIdentitySchemaVersions() []string {
-	return []string{IdentitySchemaVersionBaseline, IdentitySchemaVersionPortability, IdentitySchemaVersionNoFrontend, CurrentIdentitySchemaVersion}
+	return []string{IdentitySchemaVersionBaseline, IdentitySchemaVersionPortability, IdentitySchemaVersionNoFrontend, IdentitySchemaVersionProviderCredential, CurrentIdentitySchemaVersion}
 }
 
 func (s *IdentityStore) EnsureSchema(ctx context.Context) error {
@@ -81,6 +81,9 @@ func (s *IdentityStore) EnsureSchema(ctx context.Context) error {
 	if err := s.ensureManagedIdentityDatabaseMarker(ctx); err != nil {
 		return err
 	}
+	if err := s.ensureMetadataModuleSchema(ctx); err != nil {
+		return err
+	}
 	if err := s.EnsureMetadataSchema(ctx); err != nil {
 		return err
 	}
@@ -94,12 +97,55 @@ func (s *IdentityStore) EnsureSchema(ctx context.Context) error {
 		if err := identityschema.RemoveFrontendCapabilityRegistry(ctx, s); err != nil {
 			return err
 		}
+		if err := s.retireSupersededIdentityTables(ctx); err != nil {
+			return err
+		}
 	}
 	if err := s.recordIdentitySchemaMigrationIfPending(ctx, pending, startedAt); err != nil {
 		return err
 	}
 	return s.EnsureWorkspaceRLS(ctx)
 }
+
+// EnsureEmbeddedSchema assembles Identity-owned tables while the embedding
+// host owns the migration lock and ledger. It intentionally does not create or
+// consult Identity's standalone _schema_materializations ledger.
+func (s *IdentityStore) EnsureEmbeddedSchema(ctx context.Context) error {
+	if err := s.ensureManagedIdentityDatabaseMarker(ctx); err != nil {
+		return err
+	}
+	if err := s.ensureMetadataModuleSchema(ctx); err != nil {
+		return err
+	}
+	if err := s.EnsureMetadataSchema(ctx); err != nil {
+		return err
+	}
+	if err := s.EnsureIdentitySchema(ctx); err != nil {
+		return err
+	}
+	if err := s.EnsureEvidenceSchema(ctx); err != nil {
+		return err
+	}
+	if err := s.retireSupersededIdentityTables(ctx); err != nil {
+		return err
+	}
+	return s.EnsureWorkspaceRLS(ctx)
+}
+
+// retireSupersededIdentityTables removes Data Exchange job state, retired
+// metadata draft storage, and the write-fence event table superseded by Audit.
+// domainry-orm has no DROP TABLE builder; these bounded, host-qualified DDL
+// statements run only in the migration boundary.
+func (s *IdentityStore) retireSupersededIdentityTables(ctx context.Context) error {
+	for _, table := range []string{"identity_portability_export_receipts", "identity_portability_import_receipts", "identity_change_plan_operations", "identity_change_plan_drafts", "identity_portability_write_fence_events"} {
+		if _, err := s.schemaDatabase().ExecContext(ctx, "DROP TABLE IF EXISTS "+s.tableIdentifier(table)); err != nil {
+			return fmt.Errorf("retire superseded Identity table %s: %w", table, err)
+		}
+	}
+	return nil
+}
+
+func EmbeddedSchemaChecksum() string { return currentIdentitySchemaChecksum() }
 
 func (s *IdentityStore) identityMigrationStore() *IdentityStore {
 	return &IdentityStore{
@@ -133,8 +179,8 @@ func (s *IdentityStore) recordIdentitySchemaMigrationIfPending(ctx context.Conte
 func (s *IdentityStore) verifyIdentitySchema(ctx context.Context) error {
 	var checksum string
 	var dirty bool
-	query := "SELECT " + s.identifier("checksum") + ", " + s.identifier("dirty") + " FROM " + s.tableIdentifier(identitySchemaMigrationTable) + " WHERE " + s.identifier("version") + " = " + s.placeholder(1)
-	if err := s.db.QueryRowContext(ctx, query, CurrentIdentitySchemaVersion).Scan(&checksum, &dirty); err != nil {
+	query := "SELECT " + s.identifier("checksum") + ", " + s.identifier("dirty") + " FROM " + s.tableIdentifier("_schema_migrations") + " WHERE " + s.identifier("path") + " = " + s.placeholder(1)
+	if err := s.db.QueryRowContext(ctx, query, identitySchemaMigrationPath(CurrentIdentitySchemaVersion)).Scan(&checksum, &dirty); err != nil {
 		return fmt.Errorf("verify Identity schema compatibility: %w", err)
 	}
 	if dirty {
@@ -229,23 +275,18 @@ func (s *IdentityStore) identityMigrationConfig() config.Config {
 
 func (s *IdentityStore) identitySchemaMigrationPending(ctx context.Context, version string) (bool, error) {
 	db := s.schemaDatabase()
-	text := s.metadataIDColumnType()
-	if _, err := db.ExecContext(ctx, "CREATE TABLE IF NOT EXISTS "+s.tableIdentifier(identitySchemaMigrationTable)+" ("+s.identifier("version")+" "+text+" PRIMARY KEY, "+s.identifier("name")+" "+text+" NOT NULL DEFAULT '', "+s.identifier("kind")+" "+text+" NOT NULL DEFAULT 'identity_schema', "+s.identifier("checksum")+" "+text+" NOT NULL DEFAULT '', "+s.identifier("dirty")+" BOOLEAN NOT NULL DEFAULT FALSE, "+s.identifier("applied_at")+" "+text+" NOT NULL, "+s.identifier("service_version")+" "+text+" NOT NULL DEFAULT '', "+s.identifier("duration_ms")+" BIGINT NOT NULL DEFAULT 0, "+s.identifier("operator")+" "+text+" NOT NULL DEFAULT '', "+s.identifier("instance_id")+" "+text+" NOT NULL DEFAULT '', "+s.identifier("backup_id")+" "+text+" NOT NULL DEFAULT '')"); err != nil {
+	if s.Coordinator == nil || s.Coordinator.Ledger == nil {
+		return false, fmt.Errorf("Identity schema migration ledger is unavailable")
+	}
+	if err := s.Coordinator.Ledger.Ensure(ctx); err != nil {
 		return false, fmt.Errorf("prepare Identity schema migration ledger: %w", err)
 	}
-	columns := []struct{ name, definition string }{{"name", text + " NOT NULL DEFAULT ''"}, {"kind", text + " NOT NULL DEFAULT 'identity_schema'"}, {"checksum", text + " NOT NULL DEFAULT ''"}, {"dirty", "BOOLEAN NOT NULL DEFAULT FALSE"}, {"service_version", text + " NOT NULL DEFAULT ''"}, {"duration_ms", "BIGINT NOT NULL DEFAULT 0"}, {"operator", text + " NOT NULL DEFAULT ''"}, {"instance_id", text + " NOT NULL DEFAULT ''"}, {"backup_id", text + " NOT NULL DEFAULT ''"}}
-	for _, column := range columns {
-		rows, queryErr := db.QueryContext(ctx, "SELECT "+s.identifier(column.name)+" FROM "+s.tableIdentifier(identitySchemaMigrationTable)+" WHERE 1 = 0")
-		if queryErr == nil {
-			_ = rows.Close()
-			continue
-		}
-		if _, alterErr := db.ExecContext(ctx, "ALTER TABLE "+s.tableIdentifier(identitySchemaMigrationTable)+" ADD COLUMN "+s.identifier(column.name)+" "+column.definition); alterErr != nil {
-			return false, alterErr
-		}
+	if err := s.adoptLegacyIdentityMaterializationLedger(ctx); err != nil {
+		return false, err
 	}
+	path := identitySchemaMigrationPath(version)
 	var count int
-	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+s.tableIdentifier(identitySchemaMigrationTable)+" WHERE "+s.identifier("version")+" = "+s.placeholder(1), version).Scan(&count); err != nil {
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+s.tableIdentifier("_schema_migrations")+" WHERE "+s.identifier("path")+" = "+s.placeholder(1), path).Scan(&count); err != nil {
 		return false, fmt.Errorf("check Identity schema migration: %w", err)
 	}
 	if count == 0 {
@@ -253,14 +294,14 @@ func (s *IdentityStore) identitySchemaMigrationPending(ctx context.Context, vers
 	}
 	var checksum string
 	var dirty bool
-	if err := db.QueryRowContext(ctx, "SELECT "+s.identifier("checksum")+", "+s.identifier("dirty")+" FROM "+s.tableIdentifier(identitySchemaMigrationTable)+" WHERE "+s.identifier("version")+" = "+s.placeholder(1), version).Scan(&checksum, &dirty); err != nil {
+	if err := db.QueryRowContext(ctx, "SELECT "+s.identifier("checksum")+", "+s.identifier("dirty")+" FROM "+s.tableIdentifier("_schema_migrations")+" WHERE "+s.identifier("path")+" = "+s.placeholder(1), path).Scan(&checksum, &dirty); err != nil {
 		return false, err
 	}
 	if dirty {
 		return false, fmt.Errorf("migration.dirty: Identity schema %s", version)
 	}
 	if strings.TrimSpace(checksum) == "" {
-		_, err := db.ExecContext(ctx, "UPDATE "+s.tableIdentifier(identitySchemaMigrationTable)+" SET "+s.identifier("checksum")+" = "+s.placeholder(1)+" WHERE "+s.identifier("version")+" = "+s.placeholder(2), currentIdentitySchemaChecksum(), version)
+		_, err := db.ExecContext(ctx, "UPDATE "+s.tableIdentifier("_schema_migrations")+" SET "+s.identifier("checksum")+" = "+s.placeholder(1)+" WHERE "+s.identifier("path")+" = "+s.placeholder(2), currentIdentitySchemaChecksum(), path)
 		return false, err
 	}
 	if checksum != currentIdentitySchemaChecksum() {
@@ -270,22 +311,86 @@ func (s *IdentityStore) identitySchemaMigrationPending(ctx context.Context, vers
 }
 
 func (s *IdentityStore) startIdentitySchemaMigration(ctx context.Context, version string) error {
-	columns := []string{"version", "name", "kind", "checksum", "dirty", "applied_at", "service_version", "duration_ms", "operator", "instance_id", "backup_id"}
-	query := "INSERT INTO " + s.tableIdentifier(identitySchemaMigrationTable) + " (" + strings.Join(quotedColumns(s, columns), ", ") + ") VALUES (" + strings.Join(placeholders(s, len(columns)), ", ") + ")"
-	_, err := s.schemaDatabase().ExecContext(ctx, query, version, identitySchemaMigrationName, identitySchemaMigrationKind, currentIdentitySchemaChecksum(), true, time.Now().UTC().Format(time.RFC3339), s.config.ServiceVersion, 0, migrationcontract.Operator(s.config), migrationcontract.InstanceID(s.config), s.BackupManager.BackupID())
+	columns := []string{"path", "version", "name", "kind", "checksum", "dirty", "applied_at", "service_version", "duration_ms", "operator", "instance_id", "backup_id"}
+	query := "INSERT INTO " + s.tableIdentifier("_schema_migrations") + " (" + strings.Join(quotedColumns(s, columns), ", ") + ") VALUES (" + strings.Join(placeholders(s, len(columns)), ", ") + ")"
+	_, err := s.schemaDatabase().ExecContext(ctx, query, identitySchemaMigrationPath(version), version, identitySchemaMigrationName, identitySchemaMigrationKind, currentIdentitySchemaChecksum(), true, time.Now().UTC().Format(time.RFC3339), s.config.ServiceVersion, 0, migrationcontract.Operator(s.config), migrationcontract.InstanceID(s.config), s.BackupManager.BackupID())
 	return err
 }
 
 func (s *IdentityStore) recordIdentitySchemaMigration(ctx context.Context, version string, duration time.Duration) error {
-	_, err := s.schemaDatabase().ExecContext(ctx, "UPDATE "+s.tableIdentifier(identitySchemaMigrationTable)+" SET "+s.identifier("dirty")+" = FALSE, "+s.identifier("duration_ms")+" = "+s.placeholder(1)+", "+s.identifier("applied_at")+" = "+s.placeholder(2)+" WHERE "+s.identifier("version")+" = "+s.placeholder(3), duration.Milliseconds(), time.Now().UTC().Format(time.RFC3339), version)
+	_, err := s.schemaDatabase().ExecContext(ctx, "UPDATE "+s.tableIdentifier("_schema_migrations")+" SET "+s.identifier("dirty")+" = FALSE, "+s.identifier("duration_ms")+" = "+s.placeholder(1)+", "+s.identifier("applied_at")+" = "+s.placeholder(2)+" WHERE "+s.identifier("path")+" = "+s.placeholder(3), duration.Milliseconds(), time.Now().UTC().Format(time.RFC3339), identitySchemaMigrationPath(version))
 	if err != nil {
 		return fmt.Errorf("record Identity schema migration: %w", err)
 	}
 	return nil
 }
 
+func identitySchemaMigrationPath(version string) string {
+	return "identity_schema_" + strings.TrimSpace(version)
+}
+
+func (s *IdentityStore) adoptLegacyIdentityMaterializationLedger(ctx context.Context) error {
+	exists, err := s.identityTableExists(ctx, "_schema_materializations")
+	if err != nil || !exists {
+		return err
+	}
+	columns := []string{"version", "name", "kind", "checksum", "dirty", "applied_at", "service_version", "duration_ms", "operator", "instance_id", "backup_id"}
+	rows, err := s.schemaDatabase().QueryContext(ctx, "SELECT "+strings.Join(quotedColumns(s, columns), ", ")+" FROM "+s.tableIdentifier("_schema_materializations"))
+	if err != nil {
+		return fmt.Errorf("read legacy Identity materialization ledger: %w", err)
+	}
+	type legacyMaterialization struct {
+		version, name, kind, checksum, appliedAt, serviceVersion, operator, instanceID, backupID string
+		dirty                                                                                    bool
+		duration                                                                                 int64
+	}
+	values := []legacyMaterialization{}
+	for rows.Next() {
+		var value legacyMaterialization
+		if err := rows.Scan(&value.version, &value.name, &value.kind, &value.checksum, &value.dirty, &value.appliedAt, &value.serviceVersion, &value.duration, &value.operator, &value.instanceID, &value.backupID); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		values = append(values, value)
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for _, value := range values {
+		query, args, buildErr := ormbuilder.NewInsertBuilder(s.BuilderRenderer(), "_schema_migrations").Columns("path", "version", "name", "kind", "checksum", "dirty", "applied_at", "service_version", "duration_ms", "operator", "instance_id", "backup_id").Values(identitySchemaMigrationPath(value.version), value.version, value.name, identitySchemaMigrationKind, value.checksum, value.dirty, value.appliedAt, value.serviceVersion, value.duration, value.operator, value.instanceID, value.backupID).OnConflictDoNothing("path").Build()
+		if buildErr != nil {
+			return buildErr
+		}
+		if _, err := s.schemaDatabase().ExecContext(ctx, query, args...); err != nil {
+			return fmt.Errorf("adopt Identity materialization %s: %w", value.version, err)
+		}
+	}
+	// domainry-orm has no DROP TABLE builder. This bounded cleanup retires the
+	// former second migration ledger after every row has been adopted.
+	if _, err := s.schemaDatabase().ExecContext(ctx, "DROP TABLE "+s.tableIdentifier("_schema_materializations")); err != nil {
+		return fmt.Errorf("retire legacy Identity materialization ledger: %w", err)
+	}
+	return nil
+}
+
+func (s *IdentityStore) identityTableExists(ctx context.Context, table string) (bool, error) {
+	var count int
+	query := s.PersistenceEngine().TableExistsQuery(s.BuilderRenderer(), s.DatabaseSchema(), s.relationPrefix+table)
+	if strings.TrimSpace(query.Statement) == "" {
+		return false, fmt.Errorf("Identity table inspection is unavailable")
+	}
+	if err := s.schemaDatabase().QueryRowContext(ctx, query.Statement, query.Arguments...).Scan(&count); err != nil {
+		return false, fmt.Errorf("inspect legacy Identity materialization ledger: %w", err)
+	}
+	return count > 0, nil
+}
+
+func (s *IdentityStore) SchemaTableExists(ctx context.Context, table string) (bool, error) {
+	return s.identityTableExists(ctx, table)
+}
+
 func currentIdentitySchemaChecksum() string {
-	sum := sha256.Sum256([]byte(CurrentIdentitySchemaVersion + ":metadata,identity,audit,authentication,authorization_catalog,workspace_provider_credential_identity,portability_receipts,workspace_write_fences,workspace_write_fence_events,managed_identity_database,no_frontend_capability_registry"))
+	sum := sha256.Sum256([]byte(CurrentIdentitySchemaVersion + ":metadata,identity,audit,authentication,authorization_catalog,workspace_provider_credential_identity,data_exchange_and_authoring_cleanup,workspace_write_fences,managed_identity_database,no_frontend_capability_registry"))
 	return hex.EncodeToString(sum[:])
 }
 

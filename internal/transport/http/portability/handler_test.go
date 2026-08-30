@@ -39,7 +39,7 @@ func (portabilityRepositoryStub) ReleaseWriteFence(_ context.Context, workspaceI
 	return portabilitymodel.WriteFence{WorkspaceID: workspaceID, State: "released", ReleasedBy: operator, ReleasedAt: &now}, nil
 }
 
-func (portabilityRepositoryStub) VerifyWriteFreeze(context.Context, string, string) error { return nil }
+func (portabilityRepositoryStub) VerifyWriteFreeze(context.Context, string) error { return nil }
 
 func (portabilityRepositoryStub) VerifyProviderReadiness(context.Context, string, []portabilitymodel.ProviderReference) error {
 	return nil
@@ -75,7 +75,7 @@ func TestPortabilityOperationsRequireDedicatedBearerToken(t *testing.T) {
 	}).RegisterRoutes(mux)
 
 	request := func(token string) *http.Request {
-		value := httptest.NewRequest(http.MethodPost, "/ops/identity-portability/exports", strings.NewReader(`{"workspace_id":"workspace-a","source_mode":"module","dry_run":true}`))
+		value := httptest.NewRequest(http.MethodPost, "/ops/identity-portability/write-fences", strings.NewReader(`{"workspace_id":"workspace-a","evidence":"ticket-1","operator":"operator-1"}`))
 		if token != "" {
 			value.Header.Set("Authorization", "Bearer "+token)
 		}
@@ -88,7 +88,19 @@ func TestPortabilityOperationsRequireDedicatedBearerToken(t *testing.T) {
 	}
 	authorized := httptest.NewRecorder()
 	mux.ServeHTTP(authorized, request("operations-token"))
-	if authorized.Code != http.StatusOK || !strings.Contains(authorized.Body.String(), `"workspace_id":"workspace-a"`) {
+	if authorized.Code != http.StatusOK || !strings.Contains(authorized.Body.String(), `"workspace_id":"workspace-a"`) || !strings.Contains(authorized.Body.String(), `"state":"frozen"`) {
 		t.Fatalf("authorized status=%d body=%s", authorized.Code, authorized.Body.String())
+	}
+}
+
+func TestPortabilityHTTPDoesNotOwnImportOrExportRoutes(t *testing.T) {
+	mux := http.NewServeMux()
+	NewHandler(Dependencies{}).RegisterRoutes(mux)
+	for _, path := range []string{"/ops/identity-portability/exports", "/ops/identity-portability/imports"} {
+		response := httptest.NewRecorder()
+		mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, path, nil))
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("retired route %s status=%d want=%d", path, response.Code, http.StatusNotFound)
+		}
 	}
 }

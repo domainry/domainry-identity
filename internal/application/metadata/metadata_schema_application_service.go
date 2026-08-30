@@ -63,7 +63,7 @@ func (s *MetadataApplicationService) ReloadMetadata(ctx context.Context, princip
 	if err := s.repository.SyncManifest(ctx, metadataInstallationScope("synchronize metadata manifest"), manifest); err != nil {
 		return metadatamodel.MetadataSchemaSnapshot{}, wrapMetadataError(err)
 	}
-	s.runtime.ApplyManifestMetadata(valueOrDefault(manifest.TemplateID, s.templateID), valueOrDefault(manifest.Version, s.version), valueOrDefault(manifest.Name, s.name), manifest.Objects, manifest.Views, manifest.Actions, manifest.Roles, manifest.PermissionSets, manifest.PermissionSetGroups, manifest.Guardrails, manifest.IdentityProfileExtensions)
+	s.runtime.ApplyManifestMetadata(valueOrDefault(manifest.TemplateID, s.templateID), valueOrDefault(manifest.Version, s.version), valueOrDefault(manifest.Name, s.name), manifest.Objects, manifest.Actions, manifest.Roles, manifest.PermissionSets, manifest.PermissionSetGroups, manifest.Guardrails, manifest.IdentityProfileExtensions)
 	snapshot := s.runtime.Schema()
 	s.notifyReloadObservers(snapshot)
 	return snapshot, nil

@@ -9,6 +9,7 @@ import (
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
 	identityschema "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/schema"
 	"github.com/domainry/domainry-identity/internal/platform/config"
+	metadatamodule "github.com/domainry/domainry-metadata/module"
 )
 
 func TestEveryStandaloneIdentityTableHasOneOwnerAndMigrationDisposition(t *testing.T) {
@@ -26,7 +27,11 @@ func TestEveryStandaloneIdentityTableHasOneOwnerAndMigrationDisposition(t *testi
 
 	ownership := map[string]identityschema.TableOwnership{}
 	moduleOwned := map[string]bool{}
+	hostOwned := map[string]bool{"_schema_migrations": true}
 	for _, table := range auditmodule.OwnedTables() {
+		moduleOwned[table] = true
+	}
+	for _, table := range metadatamodule.OwnedTables() {
 		moduleOwned[table] = true
 	}
 	for _, table := range identityschema.IdentityTableOwnership() {
@@ -37,6 +42,9 @@ func TestEveryStandaloneIdentityTableHasOneOwnerAndMigrationDisposition(t *testi
 			t.Errorf("duplicate table ownership for %q", table.Name)
 		}
 		ownership[table.Name] = table
+		if moduleOwned[table.Name] {
+			t.Errorf("table %q is claimed by both Identity and an embedded module", table.Name)
+		}
 		if table.ContainsSecret && table.MigrationDisposition == identityschema.MigrationPortable {
 			t.Errorf("secret-bearing table %q cannot be portable", table.Name)
 		}
@@ -54,7 +62,7 @@ func TestEveryStandaloneIdentityTableHasOneOwnerAndMigrationDisposition(t *testi
 			t.Fatal(err)
 		}
 		actual = append(actual, table)
-		if _, declared := ownership[table]; !declared && !moduleOwned[table] {
+		if _, declared := ownership[table]; !declared && !moduleOwned[table] && !hostOwned[table] {
 			t.Errorf("standalone Identity table %q has no ownership classification", table)
 		}
 	}
@@ -68,6 +76,9 @@ func TestEveryStandaloneIdentityTableHasOneOwnerAndMigrationDisposition(t *testi
 
 func TestIdentityOwnershipCatalogRejectsPlaneBusinessTables(t *testing.T) {
 	for _, table := range identityschema.IdentityTableOwnership() {
+		if table.Name == "_schema_migrations" {
+			t.Error("host migration ledger must not be claimed by the Identity module")
+		}
 		for _, prefix := range []string{"record_", "workflow_", "automation_", "notification_", "party_", "integration_"} {
 			if len(table.Name) >= len(prefix) && table.Name[:len(prefix)] == prefix {
 				t.Errorf("Plane-owned table %q leaked into Identity ownership catalog", table.Name)

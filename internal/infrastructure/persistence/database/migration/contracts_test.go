@@ -72,7 +72,7 @@ func TestBackupEvidenceRequiresConsistentRecoveryBoundary(t *testing.T) {
 func TestRestoreAndContractPhaseRequireSafetyEvidence(t *testing.T) {
 	now := time.Now().UTC()
 	evidence := BackupEvidence{BackupID: "backup-1", CreatedAt: now.Add(-time.Hour)}
-	request := RestoreRequest{Engine: "postgres", Target: "production", BackupID: "backup-1", Operator: "oncall", ChangePlanID: "change-1"}
+	request := RestoreRequest{Engine: "postgres", Target: "production", BackupID: "backup-1", Operator: "oncall", ApprovalReference: "approval-1"}
 	if err := request.Validate(evidence); err == nil {
 		t.Fatal("restore without maintenance and drain evidence accepted")
 	}
@@ -80,7 +80,7 @@ func TestRestoreAndContractPhaseRequireSafetyEvidence(t *testing.T) {
 	if err := request.Validate(evidence); err != nil {
 		t.Fatalf("dry-run rejected: %v", err)
 	}
-	preview := MigrationPreview{ReleaseID: "release-1", Phase: "contract", Removals: []string{"legacy_column"}, RollbackStrategy: "backup_restore", BackupID: "backup-1", ChangePlanID: "change-1", OldReplicaCount: 1}
+	preview := MigrationPreview{ReleaseID: "release-1", Phase: "contract", Removals: []string{"legacy_column"}, RollbackStrategy: "backup_restore", BackupID: "backup-1", ApprovalReference: "approval-1", OldReplicaCount: 1}
 	if err := preview.ValidateForApply(); err == nil {
 		t.Fatal("contract phase accepted while old replicas remain")
 	}

@@ -13,10 +13,6 @@ import (
 	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
 
-var disableRemovedGeneratedActionsForManifest = func(ctx context.Context, store MetadataStore, tx *sql.Tx, manifest manifestmodel.ManifestSchema, now string) error {
-	return store.disableRemovedGeneratedActions(ctx, tx, manifest, now)
-}
-
 var closeGeneratedActionRows = func(rows *sql.Rows) error { return rows.Close() }
 
 type metadataResourceSeed struct {
@@ -33,6 +29,9 @@ type metadataResourceSeed struct {
 
 func (s MetadataStore) EnsureManifestMetadata(ctx context.Context, seed manifestmodel.ManifestSchema) error {
 	ctx = manifestMetadataContext(ctx)
+	if err := s.syncBusinessMetadataDefinitions(ctx, seed); err != nil {
+		return err
+	}
 	seeded, err := s.manifestMetadataSeeded(ctx)
 	if err != nil {
 		return err
@@ -77,6 +76,9 @@ func (s MetadataStore) EnsureManifestMetadata(ctx context.Context, seed manifest
 
 func (s MetadataStore) SyncManifestMetadata(ctx context.Context, seed manifestmodel.ManifestSchema) error {
 	ctx = manifestMetadataContext(ctx)
+	if err := s.syncBusinessMetadataDefinitions(ctx, seed); err != nil {
+		return err
+	}
 	seeds, err := manifestMetadataSeeds(seed)
 	if err != nil {
 		return err
@@ -103,9 +105,6 @@ func (s MetadataStore) SyncManifestMetadata(ctx context.Context, seed manifestmo
 			return err
 		}
 	}
-	if err := disableRemovedGeneratedActionsForManifest(ctx, s, tx, seed, now); err != nil {
-		return err
-	}
 	if err := s.syncManifestLocalizedTexts(ctx, tx, seed, now); err != nil {
 		return err
 	}
@@ -125,16 +124,6 @@ func manifestMetadataContext(ctx context.Context) context.Context {
 		return ctx
 	}
 	return requestcontext.WithWorkspaceID(ctx, identitymodel.InstallationWorkspaceID)
-}
-
-func (s MetadataStore) disableRemovedGeneratedActions(ctx context.Context, tx *sql.Tx, manifest manifestmodel.ManifestSchema, now string) error {
-	activeKeys := make(map[string]bool, len(manifest.Actions))
-	for _, action := range manifest.Actions {
-		if key := strings.TrimSpace(action.Key); key != "" {
-			activeKeys[key] = true
-		}
-	}
-	return s.disableRemovedGeneratedDefinitions(ctx, tx, "action_definitions", manifestGeneratedSourceID(manifest), activeKeys, now)
 }
 
 func manifestGeneratedSourceID(manifest manifestmodel.ManifestSchema) string {

@@ -50,7 +50,7 @@ func TestIdentityRoleAuthoringContractsPublishExactHTTPShapes(t *testing.T) {
 		}
 	}
 	role := IdentityRoleAuthoringCapability()
-	if role.InputSchema == nil || role.InputSchema.AdditionalProperties == nil || *role.InputSchema.AdditionalProperties || len(role.Examples) != 3 {
+	if role.InputSchema == nil || role.InputSchema.AdditionalProperties == nil || *role.InputSchema.AdditionalProperties || len(role.Examples) != 3 || role.ResourceOperations == nil || role.Execution.ChangeControl != "direct_audited_versioned_metadata" {
 		t.Fatalf("role=%#v", role)
 	}
 	rolePayload := role.InputSchema.Properties["payload"]
@@ -60,7 +60,7 @@ func TestIdentityRoleAuthoringContractsPublishExactHTTPShapes(t *testing.T) {
 		}
 	}
 	permission := IdentityRolePermissionAuthoringCapability()
-	if permission.InputSchema == nil || permission.OutputSchema == nil || len(permission.ReferenceContracts) != 2 || permission.ResourceOperations != nil || permission.Execution.ChangeControl != "reviewed_system_draft_change_plan" {
+	if permission.InputSchema == nil || permission.OutputSchema == nil || len(permission.ReferenceContracts) != 2 || permission.ResourceOperations != nil || permission.Execution.ChangeControl != "direct_audited_versioned_metadata" {
 		t.Fatalf("permission=%#v", permission)
 	}
 	for _, capability := range []struct {
@@ -86,8 +86,8 @@ func TestIdentityRoleAuthoringContractsPublishExactHTTPShapes(t *testing.T) {
 			t.Fatalf("owner capability %s missing request field %s", capability.key, capability.required)
 		}
 		if capability.key == "identity.role_data_scope" || capability.key == "identity.role_field_permission" {
-			if definition.ResourceOperations != nil || definition.Execution == nil || definition.Execution.ChangeControl != "reviewed_system_draft_change_plan" {
-				t.Fatalf("role policy capability %s still publishes direct mutation: %#v", capability.key, definition)
+			if definition.ResourceOperations != nil || definition.Execution == nil || definition.Execution.ChangeControl != "direct_audited_versioned_metadata" {
+				t.Fatalf("role policy capability %s does not publish through direct versioned metadata: %#v", capability.key, definition)
 			}
 		}
 	}

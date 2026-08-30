@@ -169,7 +169,7 @@ func TestBackupEvidenceFileAndJSONIOEdges(t *testing.T) {
 func TestRestoreDrillPreviewAndCommandEdgeContracts(t *testing.T) {
 	now := time.Now().UTC()
 	evidence := validBackupEvidence(now)
-	request := RestoreRequest{Target: "target", BackupID: evidence.BackupID, Operator: "operator", ChangePlanID: "change", DryRun: true}
+	request := RestoreRequest{Target: "target", BackupID: evidence.BackupID, Operator: "operator", ApprovalReference: "approval", DryRun: true}
 	if err := request.Validate(evidence); err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +178,7 @@ func TestRestoreDrillPreviewAndCommandEdgeContracts(t *testing.T) {
 		func(value *RestoreRequest) { value.BackupID = "" },
 		func(value *RestoreRequest) { value.BackupID = "other" },
 		func(value *RestoreRequest) { value.Operator = "" },
-		func(value *RestoreRequest) { value.ChangePlanID = "" },
+		func(value *RestoreRequest) { value.ApprovalReference = "" },
 		func(value *RestoreRequest) { value.DryRun = false },
 		func(value *RestoreRequest) { value.DryRun = false; value.MaintenanceEvidence = "maintenance" },
 		func(value *RestoreRequest) { value.PointInTime = evidence.CreatedAt.Add(time.Second) },
@@ -203,7 +203,7 @@ func TestRestoreDrillPreviewAndCommandEdgeContracts(t *testing.T) {
 	if err := request.Validate(evidence); err == nil {
 		t.Fatal("PITR before backup creation accepted")
 	}
-	request = RestoreRequest{Target: "target", BackupID: evidence.BackupID, Operator: "operator", ChangePlanID: "change", MaintenanceEvidence: "maintenance", DrainEvidence: "drain"}
+	request = RestoreRequest{Target: "target", BackupID: evidence.BackupID, Operator: "operator", ApprovalReference: "approval", MaintenanceEvidence: "maintenance", DrainEvidence: "drain"}
 	if err := request.Validate(evidence); err != nil {
 		t.Fatalf("fully evidenced non-dry-run rejected: %v", err)
 	}

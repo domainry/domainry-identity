@@ -34,7 +34,7 @@ func TestHTTPMiddlewareRejectsIdentityMutationsWhileWorkspaceIsFrozen(t *testing
 		t.Fatalf("read status=%d calls=%d", allowed.Code, calls)
 	}
 
-	operation := httptest.NewRequest(http.MethodPost, "/ops/identity-portability/exports", nil)
+	operation := httptest.NewRequest(http.MethodPost, "/ops/identity-portability/write-fences", nil)
 	operation.Header.Set("X-Workspace-ID", "workspace-a")
 	ops := httptest.NewRecorder()
 	handler.ServeHTTP(ops, operation)

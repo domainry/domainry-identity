@@ -134,8 +134,7 @@ func classifyRouteSurface(method, path string) routeSurface {
 		return routeSurfacePublic
 	}
 	for _, prefix := range []string{
-		"/tenant-admin", "/identity", "/metadata", "/change-plans", "/audit",
-		"/permissions", "/domain-system-snapshot", "/domain-reference-graph",
+		"/tenant-admin", "/identity", "/metadata", "/audit", "/permissions",
 	} {
 		if path == prefix || strings.HasPrefix(path, prefix+"/") {
 			return routeSurfaceTenantAdmin

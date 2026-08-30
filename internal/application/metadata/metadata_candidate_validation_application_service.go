@@ -14,11 +14,11 @@ import (
 )
 
 // ValidateMetadataCandidate validates the complete Identity metadata graph
-// after applying a Change Plan. Object, field, relation and authorization
-// references are checked together so a multi-resource plan is atomic.
+// after applying a mutation set. Object, field, relation and authorization
+// references are checked together before the set is published atomically.
 func (s *MetadataApplicationService) ValidateMetadataCandidate(ctx context.Context, mutations []metadatamodel.MetadataDefinitionMutation) error {
 	if s == nil || s.repository == nil {
-		return badRequest("backend.change_plan.candidate_invalid", "diagnostic", "metadata repository is unavailable")
+		return badRequest("backend.metadata.candidate_invalid", "diagnostic", "metadata repository is unavailable")
 	}
 	candidate, err := s.repository.LoadManifest(ctx, metadataInstallationScope("validate Identity metadata candidate"))
 	if err != nil {
@@ -27,18 +27,18 @@ func (s *MetadataApplicationService) ValidateMetadataCandidate(ctx context.Conte
 	activeActions := append([]definitionmodel.ActionSchema(nil), candidate.Actions...)
 	for _, mutation := range mutations {
 		if err := applyMetadataCandidateMutation(&candidate, mutation); err != nil {
-			return badRequest("backend.change_plan.candidate_invalid", "resource_type", mutation.ResourceType, "resource_key", mutation.ResourceKey, "diagnostic", err.Error())
+			return badRequest("backend.metadata.candidate_invalid", "resource_type", mutation.ResourceType, "resource_key", mutation.ResourceKey, "diagnostic", err.Error())
 		}
 	}
 	if err := metadatavalidation.MetadataValidateIdentitySchemaWithAuthorizationObjects(candidate, s.currentAuthorizationObjects()); err != nil {
-		return badRequest("backend.change_plan.candidate_invalid", "diagnostic", err.Error())
+		return badRequest("backend.metadata.candidate_invalid", "diagnostic", err.Error())
 	}
 	if err := validateRetiredActionPermissionAssignments(activeActions, candidate.Actions, candidate.Roles); err != nil {
-		return badRequest("backend.change_plan.candidate_invalid", "diagnostic", err.Error())
+		return badRequest("backend.metadata.candidate_invalid", "diagnostic", err.Error())
 	}
 	for _, action := range candidate.Actions {
 		if issues := validateBusinessActionDefinitionIssuesWithObjects(action, candidate.Objects); len(issues) > 0 {
-			return badRequest("backend.change_plan.candidate_invalid", "resource_type", "action", "resource_key", action.Key, "diagnostic", issues[0].ErrorCode+":"+issues[0].FieldPath)
+			return badRequest("backend.metadata.candidate_invalid", "resource_type", "action", "resource_key", action.Key, "diagnostic", issues[0].ErrorCode+":"+issues[0].FieldPath)
 		}
 	}
 	return nil
@@ -82,8 +82,6 @@ func applyMetadataCandidateMutation(candidate *manifestmodel.ManifestSchema, mut
 		return applyCandidateField(candidate, mutation, remove)
 	case "validation":
 		return applyCandidateValidation(candidate, mutation, remove)
-	case "view":
-		return candidateApplySlice(&candidate.Views, resourceKey, payload, remove, func(value definitionmodel.ViewSchema) string { return value.Key })
 	case "action":
 		return candidateApplySlice(&candidate.Actions, resourceKey, payload, remove, func(value definitionmodel.ActionSchema) string { return value.Key })
 	case "role":

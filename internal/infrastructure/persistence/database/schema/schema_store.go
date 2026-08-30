@@ -26,6 +26,7 @@ type Store interface {
 	Identifier(string) string
 	TableIdentifier(string) string
 	Placeholder(int) string
+	SchemaTableExists(context.Context, string) (bool, error)
 	CreateIndexIfMissing(context.Context, string, string, bool, ...string) error
 	NormalizeAuditCursorColumns(context.Context, string, ...string) error
 	TableColumns(context.Context, string) (map[string]bool, error)

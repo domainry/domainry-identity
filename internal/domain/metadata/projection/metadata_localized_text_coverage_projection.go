@@ -116,9 +116,6 @@ func metadataLocalizedTextExpectedItems(snapshot metadatamodel.MetadataSchemaSna
 			add("validation", key, "message", validation.Message)
 		}
 	}
-	for _, view := range snapshot.Views {
-		add("view", view.Key, "name", view.Name)
-	}
 	for _, action := range snapshot.Actions {
 		add("action", action.Key, "label", action.Label)
 		for _, field := range action.PayloadFields {

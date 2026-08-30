@@ -48,10 +48,6 @@ func (s *MetadataSchemaDomainService) ForPrincipalLocale(ctx context.Context, pr
 			validation.Message = localize("validation", key, "message", validation.Message)
 		}
 	}
-	for index := range snapshot.Views {
-		view := &snapshot.Views[index]
-		view.Name = localize("view", view.Key, "name", view.Name)
-	}
 	for index := range snapshot.Actions {
 		action := &snapshot.Actions[index]
 		action.Label = localize("action", action.Key, "label", action.Label)

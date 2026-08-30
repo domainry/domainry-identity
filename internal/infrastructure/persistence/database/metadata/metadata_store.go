@@ -44,7 +44,7 @@ func (r MetadataStore) SnapshotRevision(ctx context.Context, scope identitymodel
 		executor = actionExecutor
 	}
 	var revision string
-	statement, arguments, err := ormbuilder.NewSelectBuilder(r.store.SQLRenderer, "metadata_catalog").
+	statement, arguments, err := ormbuilder.NewSelectBuilder(r.store.SQLRenderer, "application_schema_catalog").
 		Columns("value").Where(ormbuilder.Equal("key", "schema_hash")).Build()
 	if err != nil {
 		return "", fmt.Errorf("build metadata snapshot revision read: %w", err)
@@ -76,7 +76,7 @@ func (r MetadataStore) MigrationPlan(ctx context.Context, scope identitymodel.Sy
 }
 
 // SyncManifest validates the call boundary only; definition persistence is
-// handled by the metadata catalog and change-plan repositories.
+// handled by the metadata catalog and publication repositories.
 func (r MetadataStore) SyncManifest(ctx context.Context, scope identitymodel.SystemScope, _ manifestmodel.ManifestSchema) error {
 	if err := requireMetadataInstallationScope(scope); err != nil {
 		return err

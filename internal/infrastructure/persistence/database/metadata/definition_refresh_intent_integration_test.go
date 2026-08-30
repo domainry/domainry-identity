@@ -49,6 +49,7 @@ func TestPublishDefinitionUsesIdentityOwnedRefreshIntent(t *testing.T) {
 			RoleKey:     "system",
 			CreatedAt:   now,
 		},
+		nil,
 	)
 	if err != nil {
 		t.Fatal(err)

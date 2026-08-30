@@ -55,7 +55,6 @@ type Bundle struct {
 	AuthorizationStateSHA256 string              `json:"authorization_state_sha256"`
 	SourceMode               string              `json:"source_mode"`
 	ExportedAt               time.Time           `json:"exported_at"`
-	FreezeEvidence           string              `json:"freeze_evidence"`
 	Datasets                 []Dataset           `json:"datasets"`
 	ProviderReferences       []ProviderReference `json:"provider_references"`
 	ExcludedCounts           map[string]int64    `json:"excluded_counts"`
@@ -122,7 +121,7 @@ func (bundle Bundle) Validate() error {
 	if _, err := identitymodel.NewWorkspaceID(bundle.WorkspaceID); err != nil {
 		return fmt.Errorf("identity.portability_workspace_invalid: %w", err)
 	}
-	if strings.TrimSpace(bundle.SchemaVersion) == "" || len(strings.TrimSpace(bundle.MetadataSchemaSHA256)) != 64 || strings.TrimSpace(bundle.SourceMode) == "" || bundle.ExportedAt.IsZero() || strings.TrimSpace(bundle.FreezeEvidence) == "" {
+	if strings.TrimSpace(bundle.SchemaVersion) == "" || len(strings.TrimSpace(bundle.MetadataSchemaSHA256)) != 64 || strings.TrimSpace(bundle.SourceMode) == "" || bundle.ExportedAt.IsZero() {
 		return fmt.Errorf("identity.portability_export_evidence_required")
 	}
 	if bundle.Security != SecureCutoverDisposition() {
@@ -177,7 +176,6 @@ func (bundle Bundle) contentDigest() (string, error) {
 	copy.ExportID = ""
 	copy.ContentSHA256 = ""
 	copy.ExportedAt = time.Time{}
-	copy.FreezeEvidence = ""
 	canonicalize(&copy)
 	raw, err := json.Marshal(copy)
 	if err != nil {

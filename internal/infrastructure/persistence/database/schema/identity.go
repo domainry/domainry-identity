@@ -148,23 +148,6 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"created_at " + text + " NOT NULL",
 			"updated_at " + text + " NOT NULL",
 		},
-		"identity_portability_export_receipts": {
-			"export_id " + text + " PRIMARY KEY",
-			"workspace_id " + text + " NOT NULL",
-			"content_sha256 " + text + " NOT NULL",
-			"freeze_evidence_sha256 " + text + " NOT NULL",
-			"dataset_counts_json TEXT NOT NULL",
-			"source_mode " + text + " NOT NULL",
-			"exported_at " + text + " NOT NULL",
-		},
-		"identity_portability_import_receipts": {
-			"receipt_id " + text + " PRIMARY KEY",
-			"workspace_id " + text + " NOT NULL",
-			"content_sha256 " + text + " NOT NULL",
-			"idempotency_key " + text + " NOT NULL",
-			"imported_counts_json TEXT NOT NULL",
-			"imported_at " + text + " NOT NULL",
-		},
 		"identity_workspace_write_fences": {
 			"workspace_id " + text + " PRIMARY KEY",
 			"state " + text + " NOT NULL",
@@ -174,14 +157,6 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"released_by " + text + " NOT NULL DEFAULT ''",
 			"released_at " + text,
 			"updated_at " + text + " NOT NULL",
-		},
-		"identity_portability_write_fence_events": {
-			"event_id " + text + " PRIMARY KEY",
-			"workspace_id " + text + " NOT NULL",
-			"event " + text + " NOT NULL",
-			"evidence_sha256 " + text + " NOT NULL",
-			"operator " + text + " NOT NULL",
-			"occurred_at " + text + " NOT NULL",
 		},
 		"identity_entitlement_batch_receipts": {
 			"id " + text + " PRIMARY KEY",
@@ -491,12 +466,6 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 	if err := s.CreateIndexIfMissing(ctx, "identity_authoring_receipts", "idx_identity_authoring_receipt_lease", false, "status", "lease_expires_at"); err != nil {
 		return fmt.Errorf("create identity authoring receipt lease index: %w", err)
 	}
-	if err := s.CreateIndexIfMissing(ctx, "identity_portability_import_receipts", "uniq_identity_portability_import_idempotency", true, "workspace_id", "idempotency_key"); err != nil {
-		return fmt.Errorf("create Identity portability import idempotency index: %w", err)
-	}
-	if err := s.CreateIndexIfMissing(ctx, "identity_portability_export_receipts", "uniq_identity_portability_export_content", true, "workspace_id", "content_sha256"); err != nil {
-		return fmt.Errorf("create Identity portability export content index: %w", err)
-	}
 	if err := s.CreateIndexIfMissing(ctx, "identity_workforce_transfer_batch_receipts", "uniq_identity_workforce_transfer_batch_receipt", true, "workspace_id", "idempotency_key"); err != nil {
 		return fmt.Errorf("create identity workforce transfer batch receipt unique index: %w", err)
 	}
@@ -585,7 +554,6 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 		{table: "identity_profile_bindings", name: "idx_identity_profile_bindings_user", columns: []string{"workspace_id", "binding_key", "identity_user_id"}},
 		{table: "identity_profile_binding_events", name: "idx_identity_profile_binding_events_profile", columns: []string{"workspace_id", "object_key", "profile_id", "created_at"}},
 		{table: "identity_profile_binding_events", name: "idx_identity_profile_binding_events_status", columns: []string{"status", "created_at"}},
-		{table: "identity_portability_write_fence_events", name: "idx_identity_portability_write_fence_events_workspace", columns: []string{"workspace_id", "occurred_at"}},
 	} {
 		if err := s.CreateIndexIfMissing(ctx, index.table, index.name, false, index.columns...); err != nil {
 			return fmt.Errorf("create %s: %w", index.name, err)

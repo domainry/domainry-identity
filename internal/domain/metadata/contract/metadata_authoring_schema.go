@@ -34,11 +34,12 @@ func metadataAuthoringOutputSchema(payload authoringcontract.CapabilityAuthoring
 	}
 	return &authoringcontract.CapabilityAuthoringSchema{
 		Schema: metadataJSONSchemaDraft, Type: "object", AdditionalProperties: metadataBoolPointer(false),
-		Required: []string{"definition", "resource_hash", "schema", "snapshot_hash"},
+		Required: []string{"definition", "resource", "resource_hash", "schema", "snapshot_hash", "available_successors"},
 		Properties: map[string]authoringcontract.CapabilityAuthoringSchema{
-			"definition":    definition,
-			"resource_hash": {Type: "string"},
-			"snapshot_hash": {Type: "string"},
+			"definition": definition, "resource": definition,
+			"resource_hash":        {Type: "string"},
+			"snapshot_hash":        {Type: "string"},
+			"available_successors": {Type: "array", Items: &authoringcontract.CapabilityAuthoringSchema{}},
 			// The endpoint currently returns the complete Runtime schema snapshot.
 			// It remains explicitly open until P3 introduces the bounded V4 result envelope.
 			"schema": {Type: "object", AdditionalProperties: metadataBoolPointer(true)},
@@ -131,75 +132,39 @@ func metadataRelationPayloadSchema() authoringcontract.CapabilityAuthoringSchema
 	return payload
 }
 
-func metadataDictionaryItemSchema() authoringcontract.CapabilityAuthoringSchema {
-	return authoringcontract.CapabilityAuthoringSchema{
-		Type: "object", AdditionalProperties: metadataBoolPointer(false), Required: []string{"key", "value"},
-		Properties: map[string]authoringcontract.CapabilityAuthoringSchema{
-			"key": metadataNonEmptyStringSchema("Stable item key."), "label": {Type: "string"}, "description": {Type: "string"}, "value": metadataNonEmptyStringSchema("Stable stored value."),
-			"sort_order": {Type: "integer", Minimum: metadataFloatPointer(0)}, "locale": {Type: "string"}, "status": {Type: "string", Enum: []any{"active", "disabled"}},
-			"parent_key": {Type: "string"}, "color": {Type: "string"}, "icon": {Type: "string"}, "tags": {Type: "array", Items: &authoringcontract.CapabilityAuthoringSchema{Type: "string"}},
-		},
-	}
-}
-
-func metadataDictionaryPayloadSchema() authoringcontract.CapabilityAuthoringSchema {
-	item := metadataDictionaryItemSchema()
-	return authoringcontract.CapabilityAuthoringSchema{
-		Type: "object", AdditionalProperties: metadataBoolPointer(false), Required: []string{"items", "key"},
-		Properties: map[string]authoringcontract.CapabilityAuthoringSchema{
-			"key": metadataNonEmptyStringSchema("Stable dictionary key matching the resourceKey path."), "name": {Type: "string"}, "description": {Type: "string"},
-			"items": {Type: "array", Items: &item}, "config": {Type: "object", AdditionalProperties: metadataBoolPointer(false)},
-		},
-	}
-}
-
-func metadataViewPayloadSchema() authoringcontract.CapabilityAuthoringSchema {
-	stringArray := authoringcontract.CapabilityAuthoringSchema{Type: "array", Items: &authoringcontract.CapabilityAuthoringSchema{Type: "string"}}
-	sortObject := authoringcontract.CapabilityAuthoringSchema{Type: "object", AdditionalProperties: metadataBoolPointer(false), Required: []string{"field"}, Properties: map[string]authoringcontract.CapabilityAuthoringSchema{"field": {Type: "string"}, "direction": {Type: "string", Enum: []any{"asc", "desc"}}}}
-	sortItem := authoringcontract.CapabilityAuthoringSchema{OneOf: []authoringcontract.CapabilityAuthoringSchema{{Type: "string"}, sortObject}}
-	filter := authoringcontract.CapabilityAuthoringSchema{Type: "object", AdditionalProperties: metadataBoolPointer(false), Required: []string{"field"}, Properties: map[string]authoringcontract.CapabilityAuthoringSchema{"key": {Type: "string"}, "field": {Type: "string"}, "source": {Type: "string", Enum: []any{"current_user"}}, "value": {}}}
-	config := authoringcontract.CapabilityAuthoringSchema{Type: "object", AdditionalProperties: metadataBoolPointer(false), Properties: map[string]authoringcontract.CapabilityAuthoringSchema{
-		"business_view": {Type: "string"}, "columns": stringArray, "end_field": {Type: "string"}, "filters": {Type: "array", Items: &filter}, "group_by": {Type: "string"}, "lane_field": {Type: "string"},
-		"page_size": {Type: "integer", Minimum: metadataFloatPointer(1), Maximum: metadataFloatPointer(200), Default: 25}, "route": {Type: "string"}, "search_fields": stringArray,
-		"sort": {Type: "array", Items: &sortItem}, "start_field": {Type: "string"}, "title_field": {Type: "string"},
-	}}
-	return authoringcontract.CapabilityAuthoringSchema{Type: "object", AdditionalProperties: metadataBoolPointer(false), Required: []string{"key", "name", "object_key", "type", "config"}, Properties: map[string]authoringcontract.CapabilityAuthoringSchema{
-		"key": metadataNonEmptyStringSchema("Stable view key matching the resourceKey path."), "name": metadataNonEmptyStringSchema("Human-readable view name."), "object_key": metadataNonEmptyStringSchema("Runtime object queried by the view."), "type": metadataNonEmptyStringSchema("Runtime view presentation hint."),
-		"i18n": {Type: "object", AdditionalProperties: metadataBoolPointer(true)}, "config": config,
-	}}
-}
-
 func metadataAuthoringExecution(resource string) *authoringcontract.CapabilityAuthoringExecution {
 	return &authoringcontract.CapabilityAuthoringExecution{
 		ReadSet: []string{"metadata.schema_snapshot", resource}, WriteSet: []string{"metadata.definition_version", resource},
-		Transaction: "reviewed_change_plan_transaction", Idempotency: "idempotency_key_and_plan_revision",
-		SideEffects: []string{"audit:identity_change_plan.item_applied", "schema_snapshot_rebuild"}, SideEffectLevel: "internal", Compensation: "restore_as_new_system_draft", PermissionModel: "workspace.admin",
-		ChangeControl: "reviewed_system_draft_change_plan",
+		Transaction: "metadata_repository_transaction", Idempotency: "builder_task_id_and_idempotency_key",
+		SideEffects: []string{"audit:metadata_definition.saved", "schema_snapshot_rebuild"}, SideEffectLevel: "internal", Compensation: "restore_prior_version_as_new_revision", PermissionModel: "workspace.admin",
+		ChangeControl: "direct_audited_versioned_metadata",
 	}
 }
 
 func metadataConfigurationRoutes(resourceType string) []string {
-	base := "/metadata/definitions/" + resourceType + "/{resourceKey}"
+	base := "/tenant-admin/metadata/definitions/" + resourceType + "/{resourceKey}"
 	return []string{
 		"GET " + base,
 		"GET " + base + "/versions",
 		"POST " + base + "/validate",
-		"GET /domain-system-snapshot",
-		"GET /domain-reference-graph",
-		"GET /tenant-admin/change-plans/{planID}",
-		"PUT /tenant-admin/change-plans/{planID}",
-		"POST /tenant-admin/change-plans/{planID}/simulate",
-		"POST /tenant-admin/change-plans/{planID}/review",
-		"POST /tenant-admin/change-plans/{planID}/approve",
-		"POST /tenant-admin/change-plans/apply",
+		"PUT " + base,
+		"DELETE " + base,
 	}
 }
 
 func metadataResourceOperations(resourceType string) *authoringcontract.CapabilityAuthoringResourceOperations {
-	// Definition writes are never exposed as single-resource operations. The
-	// payload schema remains on the capability, while publication always uses
-	// the reviewed workspace system-draft lifecycle in ConfigurationRoutes.
-	return nil
+	base := "/tenant-admin/metadata/definitions/" + resourceType + "/{resourceKey}"
+	return &authoringcontract.CapabilityAuthoringResourceOperations{
+		PersistenceMode: "audited_versioned_resource",
+		Validate:        "POST " + base + "/validate",
+		Upsert:          "PUT " + base,
+		UpsertHeaders:   authoringcontract.DirectAuthoringUpsertHeaders(),
+		SuccessSchema:   authoringcontract.DirectAuthoringSuccessSchema(),
+		Get:             "GET " + base,
+		Versions:        "GET " + base + "/versions",
+		Rollback:        "POST " + base + "/rollback",
+		Delete:          "DELETE " + base,
+	}
 }
 
 func VersionedMetadataDefinitionRequestSchema(payload authoringcontract.CapabilityAuthoringSchema, objectKeyRequired bool) *authoringcontract.CapabilityAuthoringSchema {

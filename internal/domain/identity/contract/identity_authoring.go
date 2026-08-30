@@ -29,7 +29,6 @@ func IdentityRoleAuthoringCapability() authoringcontract.CapabilityAuthoringDefi
 	execution.PermissionModel = "identity.roles.write"
 	return authoringcontract.CapabilityAuthoringDefinition{
 		Key: "identity.role", Status: "supported", Lifecycle: "versioned_metadata",
-		SystemDraftResourceType: "role",
 		Parameters: []authoringcontract.CapabilityAuthoringParameter{
 			{Key: "key", Type: "string", Required: true}, {Key: "name", Type: "string", Required: true}, {Key: "permissions", Type: "array", Required: true, ItemSchema: "permission_key"},
 			{Key: "record_scope", Type: "string", Required: true}, {Key: "expected_schema_hash", Type: "schema_hash", Required: true},
@@ -40,13 +39,13 @@ func IdentityRoleAuthoringCapability() authoringcontract.CapabilityAuthoringDefi
 			{Key: "permission_set_group_keys", Type: "array", ItemSchema: "permission_set_group_key"},
 			{Key: "guardrail_keys", Type: "array", ItemSchema: "guardrail_key"},
 		},
-		Permissions: []string{"identity.roles.write"}, AuditEvents: []string{"identity_change_plan.item_applied"},
-		ValidationEndpoint: "POST /metadata/definitions/role/{resourceKey}/validate", ConfigurationRoutes: metadatacontract.VersionedMetadataDefinitionRoutes("role"),
+		Permissions: []string{"identity.roles.write"}, AuditEvents: []string{"metadata_definition.saved"},
+		ValidationEndpoint: "POST /tenant-admin/metadata/definitions/role/{resourceKey}/validate", ConfigurationRoutes: metadatacontract.VersionedMetadataDefinitionRoutes("role"),
+		ResourceOperations:       metadatacontract.VersionedMetadataDefinitionOperations("role"),
 		ResourceKeyPathParameter: "resourceKey", InputSchema: input, OutputSchema: output,
 		OutputVariables: []authoringcontract.CapabilityAuthoringOutput{{Name: "role_id", JSONPointer: "/definition/resource_key", Type: "role_key", VisibleTo: "subsequent_capability_calls"}},
 		Execution:       execution,
 		Errors: []authoringcontract.CapabilityAuthoringError{
-			{Code: "backend.change_plan.system_draft_required", FieldPath: "payload", MessageKey: "backend.change_plan.system_draft_required"},
 			{Code: "backend.identity.role_id_key_required", FieldPath: "payload.key", MessageKey: "backend.identity.role_id_key_required"},
 			{Code: "backend.identity.permission_not_found", FieldPath: "payload.permissions[]", ParameterKeys: []string{"actual"}, MessageKey: "backend.identity.permission_not_found"},
 		},
@@ -55,7 +54,7 @@ func IdentityRoleAuthoringCapability() authoringcontract.CapabilityAuthoringDefi
 			{Name: "representative", Value: map[string]any{"expected_schema_hash": "$instance.schema_hash", "payload": map[string]any{"key": "sales_manager", "name": "Sales Manager", "permissions": []any{}, "record_scope": "none", "permission_set_group_keys": []any{"sales_operations"}, "guardrail_keys": []any{"protect_security_raw"}}}},
 			{Name: "invalid_with_repair", Value: map[string]any{"expected_schema_hash": "$instance.schema_hash", "payload": map[string]any{"key": "", "name": "Sales Manager", "permissions": []any{}, "record_scope": "all_records"}}, ExpectedErrorCodes: []string{"backend.identity.role_id_key_required"}},
 		},
-		Sources: []authoringcontract.CapabilityAuthoringSource{{Kind: "model", Path: "internal/domain/identity/model/identity_manifest.go", Symbol: "RoleSchema"}, {Kind: "validation", Path: "internal/application/metadata/metadata_candidate_validation_application_service.go", Symbol: "ValidateMetadataCandidate"}, {Kind: "service", Path: "internal/application/changeplan/change_plan_application_service.go", Symbol: "ChangePlanApplicationService"}},
+		Sources: []authoringcontract.CapabilityAuthoringSource{{Kind: "model", Path: "internal/domain/identity/model/identity_manifest.go", Symbol: "RoleSchema"}, {Kind: "validation", Path: "internal/application/metadata/metadata_candidate_validation_application_service.go", Symbol: "ValidateMetadataCandidate"}, {Kind: "service", Path: "internal/application/metadata/metadata_application_service.go", Symbol: "UpsertMetadataDefinition"}},
 	}
 }
 
@@ -69,10 +68,9 @@ func IdentityRolePermissionAuthoringCapability() authoringcontract.CapabilityAut
 	output := &authoringcontract.CapabilityAuthoringSchema{Schema: "https://json-schema.org/draft/2020-12/schema", Type: "array", Items: &assignment}
 	return authoringcontract.CapabilityAuthoringDefinition{
 		Key: "identity.role_permission", Status: "supported", Lifecycle: "versioned_metadata", Requires: []string{"identity.role"},
-		SystemDraftResourceType: "role",
-		Parameters:              []authoringcontract.CapabilityAuthoringParameter{{Key: "permission_keys", Type: "array", Required: true, ItemSchema: "permission_key"}},
-		Permissions:             []string{"identity.permissions.write"}, AuditEvents: []string{"identity_change_plan.item_applied"},
-		ValidationEndpoint: "POST /identity/roles/{roleID}/permissions/validate", ConfigurationRoutes: identityReviewedSystemDraftRoutes("POST /identity/roles/{roleID}/permissions/validate", "GET /identity/roles/{roleID}/permissions"),
+		Parameters:  []authoringcontract.CapabilityAuthoringParameter{{Key: "permission_keys", Type: "array", Required: true, ItemSchema: "permission_key"}},
+		Permissions: []string{"identity.permissions.write"}, AuditEvents: []string{"metadata_definition.saved"},
+		ValidationEndpoint: "POST /identity/roles/{roleID}/permissions/validate", ConfigurationRoutes: identityRoleMetadataRoutes("POST /identity/roles/{roleID}/permissions/validate", "GET /identity/roles/{roleID}/permissions"),
 		ResourceKeyPathParameter: "roleID", InputSchema: input, OutputSchema: output,
 		OutputVariables: []authoringcontract.CapabilityAuthoringOutput{{Name: "permission_assignments", JSONPointer: "/", Type: "identity_role_permission_list", VisibleTo: "subsequent_capability_calls"}},
 		ReferenceContracts: []authoringcontract.CapabilityAuthoringReference{
@@ -80,11 +78,10 @@ func IdentityRolePermissionAuthoringCapability() authoringcontract.CapabilityAut
 			{Kind: "permission_key", InputJSONPointer: "/permission_keys/*", ResolverEndpoint: "GET /tenant-admin/platform-capabilities/references/permission_key"},
 		},
 		Execution: &authoringcontract.CapabilityAuthoringExecution{
-			ReadSet: []string{"identity.role", "identity.permission_catalog"}, WriteSet: []string{"identity.role"}, Transaction: "reviewed_change_plan_transaction", Idempotency: "plan_revision",
-			SideEffects: []string{"audit:identity_change_plan.item_applied", "schema_snapshot_rebuild"}, SideEffectLevel: "internal", Compensation: "restore_as_new_system_draft", PermissionModel: "identity.permissions.write", ChangeControl: "reviewed_system_draft_change_plan",
+			ReadSet: []string{"identity.role", "identity.permission_catalog"}, WriteSet: []string{"metadata.definition_version", "identity.role"}, Transaction: "metadata_repository_transaction", Idempotency: "builder_task_id_and_idempotency_key",
+			SideEffects: []string{"audit:metadata_definition.saved", "schema_snapshot_rebuild"}, SideEffectLevel: "internal", Compensation: "restore_prior_version_as_new_revision", PermissionModel: "identity.permissions.write", ChangeControl: "direct_audited_versioned_metadata",
 		},
 		Errors: []authoringcontract.CapabilityAuthoringError{
-			{Code: "backend.change_plan.system_draft_required", FieldPath: "permission_keys", MessageKey: "backend.change_plan.system_draft_required"},
 			{Code: "backend.identity.permission_not_found", FieldPath: "permission_keys[]", ParameterKeys: []string{"allowed", "actual"}, MessageKey: "backend.identity.permission_not_found"},
 			{Code: "backend.identity.permission_duplicate", FieldPath: "permission_keys[]", ParameterKeys: []string{"actual"}, MessageKey: "backend.identity.permission_duplicate"},
 		},
@@ -97,11 +94,12 @@ func IdentityRolePermissionAuthoringCapability() authoringcontract.CapabilityAut
 	}
 }
 
-func identityReviewedSystemDraftRoutes(readRoutes ...string) []string {
+func identityRoleMetadataRoutes(readRoutes ...string) []string {
 	routes := append([]string(nil), readRoutes...)
 	return append(routes,
-		"GET /domain-system-snapshot", "GET /domain-reference-graph", "GET /tenant-admin/change-plans/{planID}", "PUT /tenant-admin/change-plans/{planID}",
-		"POST /tenant-admin/change-plans/{planID}/simulate", "POST /tenant-admin/change-plans/{planID}/review", "POST /tenant-admin/change-plans/{planID}/approve", "POST /tenant-admin/change-plans/apply",
+		"GET /tenant-admin/metadata/definitions/role/{roleID}",
+		"GET /tenant-admin/metadata/definitions/role/{roleID}/versions",
+		"PUT /tenant-admin/metadata/definitions/role/{roleID}",
 	)
 }
 

@@ -73,8 +73,8 @@ func ValidateStructuredMetadataDefinition(resourceType string, payload json.RawM
 	}
 }
 
-// CanonicalizeMetadataCandidate is the sole pre-publication projection used by
-// system drafts. It validates the complete composed candidate first, removes
+// CanonicalizeMetadataCandidate is the sole pre-publication projection. It
+// validates the complete composed candidate first, removes
 // client JSON representation differences, and always derives compiler-owned
 // Action effect sets on the server.
 func (s *MetadataApplicationService) CanonicalizeMetadataCandidate(ctx context.Context, mutations []metadatamodel.MetadataDefinitionMutation) ([]metadatamodel.MetadataDefinitionMutation, error) {

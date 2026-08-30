@@ -12,7 +12,6 @@ import (
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	"github.com/domainry/domainry-identity-sdk/browsergateway"
 	identityauthoring "github.com/domainry/domainry-identity/internal/application/authoring"
-	changeplanapplication "github.com/domainry/domainry-identity/internal/application/changeplan"
 	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
 	portabilityapplication "github.com/domainry/domainry-identity/internal/application/portability"
 	"github.com/domainry/domainry-identity/internal/assembly"
@@ -21,14 +20,11 @@ import (
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
 	identityprovider "github.com/domainry/domainry-identity/internal/infrastructure/identityprovider"
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
-	changeplanpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/changeplan"
 	identitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity"
 	portabilitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/portability"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 	authhttp "github.com/domainry/domainry-identity/internal/transport/http/auth"
-	changeplanhttp "github.com/domainry/domainry-identity/internal/transport/http/changeplans"
 	identityhttp "github.com/domainry/domainry-identity/internal/transport/http/identity"
-	metadatahttp "github.com/domainry/domainry-identity/internal/transport/http/metadata"
 	portabilityhttp "github.com/domainry/domainry-identity/internal/transport/http/portability"
 	remotesdkhttp "github.com/domainry/domainry-identity/internal/transport/http/remotesdk"
 )
@@ -167,27 +163,8 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 	identityRoutes := &recordingRouteRegistrar{mux: mux}
 	identityHandler.RegisterRoutes(identityRoutes)
 
-	metadataHandler := metadatahttp.NewMetadataHandler(metadatahttp.MetadataDependencies{
-		Definitions: core.Metadata, LocalizedTexts: core.Metadata, RuntimeCatalog: core.Metadata,
-		IdentityCatalog: core.Identity, Audit: core.Audit, Principal: httpSupport.principal,
-		WriteJSON: httpSupport.writeJSON, WriteError: httpSupport.writeError, WriteServiceError: httpSupport.writeServiceError,
-		DecodeJSON: httpSupport.decodeJSON, Admin: httpSupport.admin, Authenticated: httpSupport.authenticated, LegacyHeaders: func(http.ResponseWriter) {},
-	})
-	metadataRoutes := &recordingRouteRegistrar{mux: mux}
-	metadataHandler.RegisterRoutes(metadataRoutes)
 	registerAuditRoutes(mux, core.Audit, httpSupport)
 
-	changePlanStore := changeplanpersistence.NewBusinessChangePlanStore(core.Store)
-	changePlanService := changeplanapplication.NewChangePlanApplicationService(changePlanStore, core.MetadataStore, core.AuditStore, metadataChangePlanRuntime{metadata: core.Metadata})
-	changePlanProjection := newIdentityChangePlanProjection(core.MetadataRuntime, core.Metadata, core.Identity, capabilityCatalog, httpSupport)
-	changePlanHandler := changeplanhttp.NewChangePlansHandler(changeplanhttp.ChangePlansDependencies{
-		Service: changePlanService, Principal: httpSupport.principal, Snapshot: changePlanProjection.snapshotSource, Graph: changePlanProjection.graphSource,
-		WriteJSON: httpSupport.writeJSON, WriteError: httpSupport.writeError, WriteServiceError: httpSupport.writeServiceError, DecodeJSON: httpSupport.decodeJSON,
-	})
-	changePlanRoutes := &recordingRouteRegistrar{mux: mux}
-	changePlanHandler.RegisterRoutes(changePlanRoutes)
-	mux.HandleFunc("GET /domain-system-snapshot", httpSupport.admin(changePlanProjection.systemSnapshot))
-	mux.HandleFunc("GET /domain-reference-graph", httpSupport.admin(changePlanProjection.referenceGraph))
 	mux.HandleFunc("GET /permissions/effective", httpSupport.authenticated(func(w http.ResponseWriter, r *http.Request) {
 		snapshot, err := core.MetadataSchema.FeaturePermissions(r.Context(), httpSupport.principal(r))
 		if err != nil {
@@ -233,14 +210,6 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 	}
 	embeddedPublicAuthRoutes, embeddedManagementAuthRoutes := embeddedAuthRouteInventory(authRoutes.patterns, embeddedBrowserRoutes)
 	managementRoutes := append([]string(nil), identityRoutes.patterns...)
-	managementRoutes = append(managementRoutes, changePlanRoutes.patterns...)
-	for _, pattern := range metadataRoutes.patterns {
-		method, path, ok := strings.Cut(pattern, " ")
-		if ok && classifyRouteSurface(method, path) == routeSurfaceTenantAdmin {
-			managementRoutes = append(managementRoutes, pattern)
-		}
-	}
-	managementRoutes = append(managementRoutes, "GET /domain-system-snapshot", "GET /domain-reference-graph")
 	return &Server{
 		core: core, routes: httpSupport.middleware(mux),
 		identityManagementRoutes:     managementRoutes,

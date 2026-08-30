@@ -20,16 +20,6 @@ type metadataDefinitionPayloadShape struct {
 
 func metadataDefinitionTable(resourceType string) (string, error) {
 	switch strings.TrimSpace(resourceType) {
-	case "object":
-		return "object_definitions", nil
-	case "field":
-		return "field_definitions", nil
-	case "validation":
-		return "validation_definitions", nil
-	case "view":
-		return "view_definitions", nil
-	case "action":
-		return "action_definitions", nil
 	case "role":
 		return "role_definitions", nil
 	case "identity_profile_binding":
@@ -73,14 +63,6 @@ func metadataDefinitionShape(_ context.Context, resourceType, resourceKey string
 		payload.ObjectKey = valueOrFirstNonEmpty(req.ObjectKey, payload.ObjectKey)
 		payload.Key = valueOrFirstNonEmpty(resourceKey, payload.Key)
 		return metadataDefinitionPayloadShape{Key: payload.Key, ObjectKey: payload.ObjectKey, Name: valueOrFirstNonEmpty(req.Name, payload.Message), Payload: payload}, metadataDefinitionKeyError("validation", payload.Key)
-	case "view":
-		var payload definitionmodel.ViewSchema
-		if err := json.Unmarshal(req.Payload, &payload); err != nil {
-			return metadataDefinitionPayloadShape{}, err
-		}
-		payload.Key = valueOrFirstNonEmpty(resourceKey, payload.Key)
-		payload.ObjectKey = valueOrFirstNonEmpty(req.ObjectKey, payload.ObjectKey)
-		return metadataDefinitionPayloadShape{Key: payload.Key, ObjectKey: payload.ObjectKey, Name: valueOrFirstNonEmpty(req.Name, payload.Name), Payload: payload}, metadataDefinitionKeyError("view", payload.Key)
 	case "action":
 		var payload definitionmodel.ActionSchema
 		if err := json.Unmarshal(req.Payload, &payload); err != nil {

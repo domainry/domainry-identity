@@ -159,20 +159,6 @@ func (validator *identitySchemaValidator) validateObjects() {
 }
 
 func (validator *identitySchemaValidator) validateViewsAndActions() {
-	seenViews := map[string]bool{}
-	for index, view := range validator.schema.Views {
-		path := fmt.Sprintf("views[%d]", index)
-		key := strings.TrimSpace(view.Key)
-		if key == "" {
-			validator.add(path+".key", "is required")
-		} else if seenViews[key] {
-			validator.add(path+".key", "duplicate view %q", key)
-		}
-		seenViews[key] = true
-		if _, exists := validator.objects[strings.TrimSpace(view.ObjectKey)]; !exists {
-			validator.add(path+".object_key", "references unknown object %q", view.ObjectKey)
-		}
-	}
 	seenActions := map[string]bool{}
 	for index, action := range validator.schema.Actions {
 		path := fmt.Sprintf("actions[%d]", index)

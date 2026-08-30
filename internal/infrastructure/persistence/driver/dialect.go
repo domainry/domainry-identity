@@ -38,6 +38,7 @@ type EngineProfile interface {
 	ColumnDefinition(string) string
 	ApplicationTablesQuery(ormdialect.Renderer, string) SchemaQuery
 	WorkspaceTablesQuery(ormdialect.Renderer, string) SchemaQuery
+	TableExistsQuery(ormdialect.Renderer, string, string) SchemaQuery
 	MigrationLedgerTypes() MigrationLedgerTypes
 	EnsureMigrationNamespace(context.Context, SchemaDatabase, ormdialect.Renderer, string) error
 	ConfigureMigrationTransaction(context.Context, *sql.Tx, ormdialect.Renderer, string, time.Duration, time.Duration) error
@@ -79,6 +80,7 @@ type SchemaProfile interface {
 	ColumnDefinition(string) string
 	ApplicationTablesQuery(ormdialect.Renderer, string) SchemaQuery
 	WorkspaceTablesQuery(ormdialect.Renderer, string) SchemaQuery
+	TableExistsQuery(ormdialect.Renderer, string, string) SchemaQuery
 	CreateIndexIfMissing(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, string, bool, ...string) error
 	NormalizeAuditCursorColumns(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, ...string) error
 	TableColumns(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string) (map[string]bool, error)

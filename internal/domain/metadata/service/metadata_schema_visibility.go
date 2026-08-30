@@ -15,7 +15,6 @@ import (
 func SnapshotForPrincipal(snapshot metadatamodel.MetadataSchemaSnapshot, principal identitymodel.Principal) metadatamodel.MetadataSchemaSnapshot {
 	if !principal.Known {
 		snapshot.Objects = nil
-		snapshot.Views = nil
 		snapshot.Actions = nil
 		snapshot.GuardedWrites = nil
 		snapshot.Roles = nil
@@ -38,12 +37,6 @@ func SnapshotForPrincipal(snapshot metadatamodel.MetadataSchemaSnapshot, princip
 		object.Fields = visibleFields(principal.Role, object)
 		visibleObjects = append(visibleObjects, object)
 		visibleObjectKeys[object.Key] = true
-	}
-	visibleViews := make([]definitionmodel.ViewSchema, 0, len(snapshot.Views))
-	for _, view := range snapshot.Views {
-		if visibleObjectKeys[view.ObjectKey] {
-			visibleViews = append(visibleViews, view)
-		}
 	}
 	visibleActions := make([]definitionmodel.ActionSchema, 0, len(snapshot.Actions))
 	visibleActionKeys := map[string]bool{}
@@ -70,7 +63,6 @@ func SnapshotForPrincipal(snapshot metadatamodel.MetadataSchemaSnapshot, princip
 		}
 	}
 	snapshot.Objects = visibleObjects
-	snapshot.Views = visibleViews
 	snapshot.Actions = visibleActions
 	snapshot.GuardedWrites = visibleWrites
 	snapshot.IdentityProfileExtensions = visibleExtensions

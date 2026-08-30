@@ -17,7 +17,7 @@ type metadataSQLDialect interface {
 }
 
 func (s MetadataStore) manifestMetadataSeeded(ctx context.Context) (bool, error) {
-	query, args, err := ormbuilder.NewSelectBuilder(s.store.SQLRenderer, "metadata_catalog").
+	query, args, err := ormbuilder.NewSelectBuilder(s.store.SQLRenderer, "application_schema_catalog").
 		Projections(ormbuilder.Project(ormbuilder.CountAll())).Where(ormbuilder.Equal("key", "template_id")).Build()
 	if err != nil {
 		return false, fmt.Errorf("build metadata catalog seed query: %w", err)
@@ -30,7 +30,7 @@ func (s MetadataStore) manifestMetadataSeeded(ctx context.Context) (bool, error)
 }
 
 func (s MetadataStore) ManifestIdentitySeedSyncedVersion(ctx context.Context) (string, error) {
-	query, args, buildErr := ormbuilder.NewSelectBuilder(s.store.SQLRenderer, "metadata_catalog").
+	query, args, buildErr := ormbuilder.NewSelectBuilder(s.store.SQLRenderer, "application_schema_catalog").
 		Columns("value").Where(ormbuilder.Equal("key", "identity_seed_synced_version")).Build()
 	if buildErr != nil {
 		return "", fmt.Errorf("build identity seed version query: %w", buildErr)
@@ -58,7 +58,7 @@ func (s MetadataStore) SetManifestIdentitySeedSyncedVersion(ctx context.Context,
 }
 
 func (s MetadataStore) ManifestOrganizationScopeSeedState(ctx context.Context) (string, error) {
-	query, args, buildErr := ormbuilder.NewSelectBuilder(s.store.SQLRenderer, "metadata_catalog").
+	query, args, buildErr := ormbuilder.NewSelectBuilder(s.store.SQLRenderer, "application_schema_catalog").
 		Columns("value").Where(ormbuilder.Equal("key", "organization_scope_seed_state")).Build()
 	if buildErr != nil {
 		return "", fmt.Errorf("build organization scope seed query: %w", buildErr)
@@ -86,13 +86,13 @@ func (s MetadataStore) SetManifestOrganizationScopeSeedState(ctx context.Context
 }
 
 func buildMetadataCatalogUpsert(store MetadataStore, key, value, now string) (string, []any, error) {
-	insert := ormbuilder.NewInsertBuilder(store.store.SQLRenderer, "metadata_catalog").
+	insert := ormbuilder.NewInsertBuilder(store.store.SQLRenderer, "application_schema_catalog").
 		Columns("key", "value", "updated_at").Values(key, value, now)
 	return store.store.Engine.ApplyUpsert(insert, []string{"key"}, "value", "updated_at").Build()
 }
 
 func (s MetadataStore) insertMetadataCatalog(ctx context.Context, tx *sql.Tx, key string, value string, now string) error {
-	query, args, err := ormbuilder.NewInsertBuilder(s.store.SQLRenderer, "metadata_catalog").
+	query, args, err := ormbuilder.NewInsertBuilder(s.store.SQLRenderer, "application_schema_catalog").
 		Columns("key", "value", "updated_at").Values(strings.TrimSpace(key), strings.TrimSpace(value), now).Build()
 	if err != nil {
 		return fmt.Errorf("build metadata catalog insert %s: %w", key, err)
@@ -104,7 +104,7 @@ func (s MetadataStore) insertMetadataCatalog(ctx context.Context, tx *sql.Tx, ke
 }
 
 func (s MetadataStore) upsertMetadataCatalog(ctx context.Context, tx *sql.Tx, key string, value string, now string) error {
-	updateQuery, args, buildErr := ormbuilder.NewUpdateBuilder(s.store.SQLRenderer, "metadata_catalog").
+	updateQuery, args, buildErr := ormbuilder.NewUpdateBuilder(s.store.SQLRenderer, "application_schema_catalog").
 		Set("value", strings.TrimSpace(value)).Set("updated_at", now).Where(ormbuilder.Equal("key", strings.TrimSpace(key))).Build()
 	if buildErr != nil {
 		return fmt.Errorf("build metadata catalog update %s: %w", key, buildErr)

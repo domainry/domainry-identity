@@ -148,13 +148,9 @@ type MetadataDefinitionMutation struct {
 }
 
 type MetadataDefinitionRollbackRequest struct {
-	TargetVersion              string `json:"target_version"`
-	ExpectedSchemaHash         string `json:"expected_schema_hash"`
-	ExpectedReferenceGraphHash string `json:"expected_reference_graph_hash"`
-	BusinessReason             string `json:"business_reason"`
-	ChangePlanID               string `json:"change_plan_id"`
-	ChangePlanRevision         int    `json:"change_plan_revision,omitempty"`
-	BuilderTaskID              string `json:"builder_task_id,omitempty"`
-	AuthoringContractVersion   string `json:"authoring_contract_version"`
-	AuthoringContractHash      string `json:"authoring_contract_hash"`
+	TargetVersion      string `json:"target_version"`
+	ExpectedSchemaHash string `json:"expected_schema_hash"`
+	BusinessReason     string `json:"business_reason"`
+	SourceID           string `json:"source_id,omitempty"`
+	BuilderTaskID      string `json:"builder_task_id,omitempty"`
 }

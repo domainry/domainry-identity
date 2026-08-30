@@ -9,7 +9,7 @@ import (
 )
 
 // RoleGovernanceDetail composes the published role and its governed references
-// into one query projection. Mutations continue to use Change Plan authoring.
+// into one query projection. Mutations use versioned metadata publication.
 func (s *IdentityApplicationService) RoleGovernanceDetail(ctx context.Context, roleID string) (identitymodel.IdentityRoleGovernanceDetail, error) {
 	scoped, err := s.domainForContext(ctx)
 	if err != nil {

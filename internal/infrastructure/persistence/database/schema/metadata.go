@@ -2,7 +2,10 @@ package schema
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
+	"strings"
 )
 
 // EnsureMetadataSchema creates only the definition storage used by the
@@ -10,54 +13,14 @@ import (
 // workflow and integration tables deliberately do not belong to this service.
 func EnsureMetadataSchema(ctx context.Context, s Store) error {
 	documentText := s.SchemaTypes().DocumentText
-	if _, err := s.SchemaDB().ExecContext(ctx, "CREATE TABLE IF NOT EXISTS "+s.TableIdentifier("metadata_catalog")+" ("+
+	if _, err := s.SchemaDB().ExecContext(ctx, "CREATE TABLE IF NOT EXISTS "+s.TableIdentifier("application_schema_catalog")+" ("+
 		s.Identifier("key")+" "+s.MetadataIDColumnType()+" PRIMARY KEY, "+
 		s.Identifier("value")+" "+documentText+" NOT NULL, "+
 		s.Identifier("updated_at")+" "+s.MetadataIDColumnType()+" NOT NULL)"); err != nil {
-		return fmt.Errorf("create metadata_catalog: %w", err)
+		return fmt.Errorf("create application_schema_catalog: %w", err)
 	}
-	if _, err := s.SchemaDB().ExecContext(ctx, "CREATE TABLE IF NOT EXISTS "+s.TableIdentifier("metadata_definition_versions")+" ("+
-		s.Identifier("id")+" "+s.MetadataIDColumnType()+" PRIMARY KEY, "+
-		s.Identifier("resource_type")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-		s.Identifier("resource_key")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-		s.Identifier("schema_version")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-		s.Identifier("schema_hash")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-		s.Identifier("payload_json")+" "+documentText+" NOT NULL, "+
-		s.Identifier("created_at")+" "+s.MetadataIDColumnType()+" NOT NULL)"); err != nil {
-		return fmt.Errorf("create metadata_definition_versions: %w", err)
-	}
-	if _, err := s.SchemaDB().ExecContext(ctx, "CREATE TABLE IF NOT EXISTS "+s.TableIdentifier("identity_change_plan_drafts")+" ("+
-		s.Identifier("workspace_id")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-		s.Identifier("plan_id")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-		s.Identifier("revision")+" INTEGER NOT NULL, "+
-		s.Identifier("status")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-		s.Identifier("payload_json")+" "+documentText+" NOT NULL, "+
-		s.Identifier("created_by")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-		s.Identifier("updated_by")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-		s.Identifier("created_at")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-		s.Identifier("updated_at")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-		"PRIMARY KEY ("+s.Identifier("workspace_id")+", "+s.Identifier("plan_id")+"))"); err != nil {
-		return fmt.Errorf("create identity_change_plan_drafts: %w", err)
-	}
-	if _, err := s.SchemaDB().ExecContext(ctx, "CREATE TABLE IF NOT EXISTS "+s.TableIdentifier("identity_change_plan_operations")+" ("+
-		s.Identifier("id")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-		s.Identifier("workspace_id")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-		s.Identifier("plan_id")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-		s.Identifier("plan_revision")+" INTEGER NOT NULL, "+
-		s.Identifier("operation")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-		s.Identifier("idempotency_key")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-		s.Identifier("request_fingerprint")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-		s.Identifier("status")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-		s.Identifier("result_json")+" "+documentText+" NOT NULL, "+
-		s.Identifier("lease_owner")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-		s.Identifier("lease_expires_at")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-		s.Identifier("fencing_token")+" BIGINT NOT NULL, "+
-		s.Identifier("error_code")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-		s.Identifier("expires_at")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-		s.Identifier("actor_id")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-		s.Identifier("created_at")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-		s.Identifier("updated_at")+" "+s.MetadataIDColumnType()+" NOT NULL)"); err != nil {
-		return fmt.Errorf("create identity_change_plan_operations: %w", err)
+	if err := migrateLegacyIdentityMetadataTables(ctx, s); err != nil {
+		return err
 	}
 	if _, err := s.SchemaDB().ExecContext(ctx, "CREATE TABLE IF NOT EXISTS "+s.TableIdentifier("identity_metadata_refresh_intents")+" ("+
 		s.Identifier("id")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
@@ -85,39 +48,6 @@ func EnsureMetadataSchema(ctx context.Context, s Store) error {
 	}
 	if err := s.CreateIndexIfMissing(ctx, "identity_metadata_refresh_intents", "idx_identity_metadata_refresh_intent_lease", false, "status", "lease_expires_at"); err != nil {
 		return fmt.Errorf("create identity metadata refresh intent lease: %w", err)
-	}
-	if err := prepareIdempotencyReceiptMigrations(ctx, s, idempotencyReceiptMigrationSpec{table: "identity_change_plan_operations", scopeColumns: []string{"plan_id", "plan_revision", "operation"}, backfillColumns: []string{"plan_id", "operation"}}); err != nil {
-		return err
-	}
-	for _, index := range []struct {
-		name    string
-		unique  bool
-		columns []string
-	}{
-		{name: "uniq_change_plan_operation_workspace_identity", unique: true, columns: []string{"workspace_id", "id"}},
-		{name: "uniq_change_plan_operation_scope", unique: true, columns: []string{"workspace_id", "plan_id", "plan_revision", "operation", "idempotency_key"}},
-		{name: "idx_change_plan_operation_lease", columns: []string{"status", "lease_expires_at"}},
-	} {
-		if err := s.CreateIndexIfMissing(ctx, "identity_change_plan_operations", index.name, index.unique, index.columns...); err != nil {
-			return fmt.Errorf("create %s: %w", index.name, err)
-		}
-	}
-	for _, table := range metadataDefinitionTables() {
-		if _, err := s.SchemaDB().ExecContext(ctx, "CREATE TABLE IF NOT EXISTS "+s.TableIdentifier(table)+" ("+
-			s.Identifier("id")+" "+s.MetadataIDColumnType()+" PRIMARY KEY, "+
-			s.Identifier("resource_key")+" "+s.MetadataIDColumnType()+" NOT NULL UNIQUE, "+
-			s.Identifier("object_key")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-			s.Identifier("name")+" TEXT NOT NULL, "+
-			s.Identifier("payload_json")+" "+documentText+" NOT NULL, "+
-			s.Identifier("schema_version")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-			s.Identifier("schema_hash")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-			s.Identifier("source_kind")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-			s.Identifier("source_id")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-			s.Identifier("disabled_at")+" "+s.MetadataIDColumnType()+", "+
-			s.Identifier("created_at")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-			s.Identifier("updated_at")+" "+s.MetadataIDColumnType()+" NOT NULL)"); err != nil {
-			return fmt.Errorf("create %s: %w", table, err)
-		}
 	}
 	if _, err := s.SchemaDB().ExecContext(ctx, "CREATE TABLE IF NOT EXISTS "+s.TableIdentifier("identity_localized_text")+" ("+
 		s.Identifier("id")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
@@ -149,14 +79,66 @@ func EnsureMetadataSchema(ctx context.Context, s Store) error {
 	return nil
 }
 
-func metadataDefinitionTables() []string {
-	return []string{
-		"object_definitions",
-		"field_definitions",
-		"validation_definitions",
-		"view_definitions",
-		"action_definitions",
-		"role_definitions",
-		"identity_profile_binding_definitions",
+func migrateLegacyIdentityMetadataTables(ctx context.Context, s Store) error {
+	// domainry-orm has no INSERT ... SELECT or DROP TABLE builder. These bounded,
+	// dialect-neutral statements preserve legacy rows while ownership is split.
+	if exists, err := s.SchemaTableExists(ctx, "metadata_catalog"); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("inspect legacy metadata_catalog: %w", err)
+	} else if exists {
+		columns := quotedIdentityMetadataMigrationColumns(s, []string{"key", "value", "updated_at"})
+		key := s.Identifier("key")
+		if _, err := s.SchemaDB().ExecContext(ctx, "DELETE FROM "+s.TableIdentifier("application_schema_catalog")+" WHERE "+key+" IN (SELECT "+key+" FROM "+s.TableIdentifier("metadata_catalog")+")"); err != nil {
+			return fmt.Errorf("prepare metadata_catalog copy: %w", err)
+		}
+		if _, err := s.SchemaDB().ExecContext(ctx, "INSERT INTO "+s.TableIdentifier("application_schema_catalog")+" ("+columns+") SELECT "+columns+" FROM "+s.TableIdentifier("metadata_catalog")); err != nil {
+			return fmt.Errorf("copy metadata_catalog: %w", err)
+		}
+		if _, err := s.SchemaDB().ExecContext(ctx, "DROP TABLE "+s.TableIdentifier("metadata_catalog")); err != nil {
+			return fmt.Errorf("retire metadata_catalog: %w", err)
+		}
 	}
+	exists, err := s.SchemaTableExists(ctx, "identity_definition_versions")
+	if errors.Is(err, sql.ErrNoRows) {
+		exists, err = false, nil
+	}
+	if err != nil {
+		return err
+	}
+	if exists {
+		columns := quotedIdentityMetadataMigrationColumns(s, []string{"id", "resource_type", "resource_key", "schema_version", "schema_hash", "payload_json", "created_at"})
+		id := s.Identifier("id")
+		if _, err := s.SchemaDB().ExecContext(ctx, "DELETE FROM "+s.TableIdentifier("metadata_definition_versions")+" WHERE "+id+" IN (SELECT "+id+" FROM "+s.TableIdentifier("identity_definition_versions")+")"); err != nil {
+			return fmt.Errorf("prepare Identity definition version consolidation: %w", err)
+		}
+		if _, err := s.SchemaDB().ExecContext(ctx, "INSERT INTO "+s.TableIdentifier("metadata_definition_versions")+" ("+columns+") SELECT "+columns+" FROM "+s.TableIdentifier("identity_definition_versions")); err != nil {
+			return fmt.Errorf("consolidate Identity definition versions: %w", err)
+		}
+		if _, err := s.SchemaDB().ExecContext(ctx, "DROP TABLE "+s.TableIdentifier("identity_definition_versions")); err != nil {
+			return fmt.Errorf("retire Identity definition version table: %w", err)
+		}
+	}
+	moduleVersionsExist, err := s.SchemaTableExists(ctx, "metadata_definition_versions")
+	if errors.Is(err, sql.ErrNoRows) {
+		moduleVersionsExist, err = false, nil
+	}
+	if err != nil {
+		return err
+	}
+	if moduleVersionsExist {
+		if _, err := s.SchemaDB().ExecContext(ctx, "DELETE FROM "+s.TableIdentifier("metadata_definition_versions")+" WHERE "+s.Identifier("resource_type")+" = "+s.Placeholder(1), "view"); err != nil {
+			return fmt.Errorf("retire view definition versions: %w", err)
+		}
+	}
+	if _, err := s.SchemaDB().ExecContext(ctx, "DROP TABLE IF EXISTS "+s.TableIdentifier("view_definitions")); err != nil {
+		return fmt.Errorf("retire view definitions: %w", err)
+	}
+	return nil
+}
+
+func quotedIdentityMetadataMigrationColumns(s Store, columns []string) string {
+	quoted := make([]string, len(columns))
+	for index, column := range columns {
+		quoted[index] = s.Identifier(column)
+	}
+	return strings.Join(quoted, ", ")
 }

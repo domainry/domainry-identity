@@ -36,6 +36,9 @@ func TestEmbeddedWorkspaceExportImportIsDeterministicAndSecretFree(t *testing.T)
 	if dryRun.Bundle != nil || dryRun.Inventory.DatasetCounts["users"] != 1 || dryRun.Inventory.ExcludedCounts["credentials"] != 1 || dryRun.Inventory.ExcludedCounts["provider_secrets"] != 1 {
 		t.Fatalf("unexpected dry-run inventory: %+v", dryRun)
 	}
+	if _, err := sourceService.Export(t.Context(), portabilityapplication.ExportRequest{WorkspaceID: "workspace-a", SourceMode: "module"}); err == nil || !strings.Contains(err.Error(), "write_freeze_not_active") {
+		t.Fatalf("unfrozen export was accepted: %v", err)
+	}
 	if fence, err := sourceService.FreezeWrites(t.Context(), "workspace-a", "freeze-ticket-42", "migration-operator"); err != nil || fence.State != "frozen" {
 		t.Fatalf("write fence=%+v err=%v", fence, err)
 	}
@@ -48,7 +51,7 @@ func TestEmbeddedWorkspaceExportImportIsDeterministicAndSecretFree(t *testing.T)
 	assertWriteFenceEvents(t, source, 1, "frozen")
 
 	exported, err := sourceService.Export(t.Context(), portabilityapplication.ExportRequest{
-		WorkspaceID: "workspace-a", SourceMode: "module", FreezeEvidence: "freeze-ticket-42",
+		WorkspaceID: "workspace-a", SourceMode: "module",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -70,7 +73,7 @@ func TestEmbeddedWorkspaceExportImportIsDeterministicAndSecretFree(t *testing.T)
 	}
 
 	repeated, err := sourceService.Export(t.Context(), portabilityapplication.ExportRequest{
-		WorkspaceID: "workspace-a", SourceMode: "module", FreezeEvidence: "freeze-ticket-42",
+		WorkspaceID: "workspace-a", SourceMode: "module",
 	})
 	if err != nil || repeated.Bundle.ContentSHA256 != exported.Bundle.ContentSHA256 || repeated.Bundle.ExportID != exported.Bundle.ExportID {
 		t.Fatalf("repeated export=%+v err=%v", repeated.Bundle, err)
@@ -88,10 +91,7 @@ func TestEmbeddedWorkspaceExportImportIsDeterministicAndSecretFree(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := portabilityapplication.ImportRequest{
-		Bundle: *exported.Bundle, IdempotencyKey: "cutover-42", ProviderReadiness: map[string]bool{"oidc": true},
-		AcceptSessionRevocation: true, AcceptCredentialReset: true, AcceptMFAReenrollment: true,
-	}
+	request := portabilityapplication.ImportRequest{Bundle: *exported.Bundle, IdempotencyKey: "cutover-42"}
 	dryImport := request
 	dryImport.DryRun = true
 	if result, err := targetService.Import(t.Context(), dryImport); err != nil || result.Receipt != nil {
@@ -137,14 +137,14 @@ func TestEmbeddedWorkspaceExportImportIsDeterministicAndSecretFree(t *testing.T)
 func assertWriteFenceEvents(t *testing.T, store *database.IdentityStore, wantCount int, wantEvent string) {
 	t.Helper()
 	var count int
-	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM identity_portability_write_fence_events WHERE workspace_id='workspace-a'`).Scan(&count); err != nil {
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _audit_events WHERE workspace_id='workspace-a' AND object_key='identity_workspace_write_fences'`).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
 	if count != wantCount {
 		t.Fatalf("write-fence event count=%d want=%d", count, wantCount)
 	}
 	var matching int
-	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM identity_portability_write_fence_events WHERE workspace_id='workspace-a' AND event=?`, wantEvent).Scan(&matching); err != nil {
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _audit_events WHERE workspace_id='workspace-a' AND object_key='identity_workspace_write_fences' AND event=?`, "identity.portability_write_fence."+wantEvent).Scan(&matching); err != nil {
 		t.Fatal(err)
 	}
 	if matching != 1 {
@@ -229,7 +229,7 @@ func seedTargetProvider(t *testing.T, store *database.IdentityStore, now time.Ti
 
 func seedMetadataSchemaHash(t *testing.T, store *database.IdentityStore) {
 	t.Helper()
-	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO metadata_catalog (key, value, updated_at) VALUES ('schema_hash', ?, '2026-08-27T12:00:00Z')`, strings.Repeat("a", 64)); err != nil {
+	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO application_schema_catalog (key, value, updated_at) VALUES ('schema_hash', ?, '2026-08-27T12:00:00Z')`, strings.Repeat("a", 64)); err != nil {
 		t.Fatal(err)
 	}
 }

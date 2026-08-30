@@ -97,8 +97,21 @@ func (s *MetadataApplicationService) ValidateMetadataDefinitionRequestPayload(ct
 	case "field":
 		normalized, err := s.normalizeAndValidateFieldMetadataMutation(ctx, req)
 		return normalized.Payload, nil, err
-	case "view":
-		normalized, err := metadatavalidation.MetadataValidateViewDefinition(resourceKey, req.Payload, s.runtime.Schema().Objects)
+	case "validation":
+		var validation definitionmodel.ValidationSchema
+		if err := json.Unmarshal(req.Payload, &validation); err != nil {
+			return nil, nil, badRequest("backend.metadata.validation_definition_invalid")
+		}
+		if validation.Key = strings.TrimSpace(validation.Key); validation.Key == "" || validation.Key != strings.TrimSpace(resourceKey) {
+			return nil, nil, badRequest("backend.metadata.validation_definition_invalid")
+		}
+		if strings.TrimSpace(validation.ObjectKey) == "" {
+			validation.ObjectKey = strings.TrimSpace(req.ObjectKey)
+		}
+		if strings.TrimSpace(validation.ObjectKey) == "" {
+			return nil, nil, badRequest("backend.metadata.validation_definition_invalid")
+		}
+		normalized, err := json.Marshal(validation)
 		return normalized, nil, err
 	case "action":
 		action, err := decodeActionDefinitionPayload(req.Payload)
@@ -129,13 +142,6 @@ func (s *MetadataApplicationService) ValidateMetadataDefinitionPayload(ctx conte
 	switch strings.TrimSpace(resourceType) {
 	case "field":
 		return s.normalizeAndValidateFieldMetadataMutation(ctx, req)
-	case "view":
-		normalized, err := metadatavalidation.MetadataValidateViewDefinition("", req.Payload, s.runtime.Schema().Objects)
-		if err != nil {
-			return req, err
-		}
-		req.Payload = normalized
-		return req, nil
 	case "action":
 		action, err := decodeActionDefinitionPayload(req.Payload)
 		if err != nil {
@@ -196,7 +202,6 @@ func identityMetadataManifest(snapshot metadatamodel.MetadataSchemaSnapshot) man
 		Version:                   snapshot.TemplateVersion,
 		Name:                      snapshot.Name,
 		Objects:                   snapshot.Objects,
-		Views:                     snapshot.Views,
 		Actions:                   snapshot.Actions,
 		Roles:                     snapshot.Roles,
 		PermissionSets:            snapshot.PermissionSets,

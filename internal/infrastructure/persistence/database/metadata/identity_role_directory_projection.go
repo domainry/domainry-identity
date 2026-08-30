@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	changeplanmodel "github.com/domainry/domainry-identity/internal/domain/changeplan/model"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
 	ormbuilder "github.com/domainry/domainry-orm/builder"
@@ -17,12 +16,12 @@ import (
 // the published RoleSchema head in the same database transaction. The
 // directory carries identity and assignment facts only; authorization policy
 // remains exclusively owned by the published RoleSchema.
-func (r MetadataStore) applyIdentityRoleDirectoryMutation(ctx context.Context, tx *sql.Tx, publication *changeplanmodel.BusinessChangePlanPublication, mutation metadatamodel.MetadataDefinitionMutation, definition metadatamodel.MetadataDefinition) error {
+func (r MetadataStore) applyIdentityRoleDirectoryMutation(ctx context.Context, tx *sql.Tx, publication *metadatamodel.MetadataDefinitionPublication, mutation metadatamodel.MetadataDefinitionMutation, definition metadatamodel.MetadataDefinition) error {
 	if strings.TrimSpace(mutation.ResourceType) != "role" || mutation.Operation == "noop" {
 		return nil
 	}
 	if publication == nil {
-		return fmt.Errorf("role metadata mutation requires a system draft publication")
+		return fmt.Errorf("role metadata mutation requires a source publication scope")
 	}
 	workspaceID, err := identitymodel.NewWorkspaceID(publication.WorkspaceID)
 	if err != nil {

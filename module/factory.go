@@ -6,14 +6,17 @@ import (
 	"fmt"
 	"net/http"
 
+	dataexchangemodulehost "github.com/domainry/domainry-data-exchange-sdk/modulehost"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	identityapplication "github.com/domainry/domainry-identity-sdk/application"
 	"github.com/domainry/domainry-identity-sdk/browsergateway"
 	identityhttpapi "github.com/domainry/domainry-identity-sdk/httpapi"
+	portabilityapplication "github.com/domainry/domainry-identity/internal/application/portability"
 	"github.com/domainry/domainry-identity/internal/assembly"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	identityservice "github.com/domainry/domainry-identity/internal/domain/identity/service"
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
+	portabilitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/portability"
 	httpserver "github.com/domainry/domainry-identity/internal/transport/http/server"
 )
 
@@ -71,7 +74,12 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 	if err != nil {
 		return nil, fmt.Errorf("open Identity module database: %w", err)
 	}
-	if err := store.EnsureSchema(ctx); err != nil {
+	if handle != nil && handle.Migrations != nil {
+		err = handle.Migrations.ApplyOwnedMigration(ctx, "identity", 1, "identity_foundation", database.EmbeddedSchemaChecksum(), store.EnsureEmbeddedSchema)
+	} else {
+		err = store.EnsureSchema(ctx)
+	}
+	if err != nil {
 		_ = store.CloseContext(context.Background())
 		return nil, fmt.Errorf("prepare Identity module schema: %w", err)
 	}
@@ -152,7 +160,20 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 			Pattern: pattern, Exposures: []identityhttpapi.Exposure{identityhttpapi.ExposurePublic, identityhttpapi.ExposureTenantAdmin},
 		})
 	}
-	return &moduleBinding{Binding: scopedBinding, runtime: identityRuntime, application: application, surfaces: []identityhttpapi.Surface{browserSurface, managementSurface}}, nil
+	portabilityRepository, err := portabilitypersistence.NewSQLRepository(store)
+	if err != nil {
+		_ = identityRuntime.CloseContext(ctx)
+		return nil, fmt.Errorf("assemble Identity portability Data Exchange provider: %w", err)
+	}
+	portabilityService, err := portabilityapplication.NewService(portabilityRepository, portabilityapplication.Options{SchemaVersion: database.CurrentIdentitySchemaVersion})
+	if err != nil {
+		_ = identityRuntime.CloseContext(ctx)
+		return nil, fmt.Errorf("assemble Identity portability service: %w", err)
+	}
+	return &moduleBinding{
+		Binding: scopedBinding, runtime: identityRuntime, application: application, surfaces: []identityhttpapi.Surface{browserSurface, managementSurface},
+		portability: &identityPortabilityDataExchangeProvider{service: portabilityService},
+	}, nil
 }
 
 type moduleOrganizationScopeResolver struct {
@@ -191,6 +212,14 @@ type moduleBinding struct {
 	runtime     *assembly.Core
 	application identitysdk.ApplicationRef
 	surfaces    []identityhttpapi.Surface
+	portability *identityPortabilityDataExchangeProvider
+}
+
+func (binding *moduleBinding) IdentityDataExchangeProviders() (string, dataexchangemodulehost.ImportProvider, dataexchangemodulehost.ExportProvider) {
+	if binding == nil || binding.portability == nil {
+		return "", nil, nil
+	}
+	return IdentityPortabilityProviderKey, binding.portability, binding.portability
 }
 
 func (binding *moduleBinding) HTTPSurfaces() []identityhttpapi.Surface {

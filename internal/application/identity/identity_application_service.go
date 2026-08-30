@@ -6,7 +6,6 @@ import (
 
 	"github.com/domainry/domainry-foundation/apperror"
 	"github.com/domainry/domainry-foundation/requestcontext"
-	changeplanmodel "github.com/domainry/domainry-identity/internal/domain/changeplan/model"
 	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	identityrepository "github.com/domainry/domainry-identity/internal/domain/identity/repository"
@@ -374,20 +373,4 @@ func (s *IdentityApplicationService) canReadWorkforceProfile(ctx context.Context
 		departmentsByID[department.ID] = department
 	}
 	return identityWorkforceReadScopeAllows(principal, profile, assignments, departmentsByID), nil
-}
-
-func (s *IdentityApplicationService) EnrichBusinessReferenceGraph(ctx context.Context, graph changeplanmodel.ReferenceGraph, principal identitymodel.Principal) (changeplanmodel.ReferenceGraph, error) {
-	if err := identityAuthorizeQuery(principal); err != nil {
-		return changeplanmodel.ReferenceGraph{}, err
-	}
-	scoped, _ := s.ForWorkspace(principal.WorkspaceID)
-	return scoped.EnrichReferenceGraph(requestcontext.WithWorkspaceID(ctx, principal.WorkspaceID), graph)
-}
-
-func (s *IdentityApplicationService) GovernanceSnapshot(ctx context.Context, principal identitymodel.Principal) (changeplanmodel.IdentityGovernance, error) {
-	if err := identityAuthorizeQuery(principal); err != nil {
-		return changeplanmodel.IdentityGovernance{}, err
-	}
-	scoped, _ := s.ForWorkspace(principal.WorkspaceID)
-	return BuildIdentityGovernanceSnapshot(requestcontext.WithWorkspaceID(ctx, principal.WorkspaceID), scoped)
 }

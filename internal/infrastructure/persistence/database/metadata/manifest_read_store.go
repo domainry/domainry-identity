@@ -10,8 +10,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"sort"
-	"strconv"
 	"strings"
 
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
@@ -30,23 +28,7 @@ func (r MetadataStore) LoadManifest(ctx context.Context, scope identitymodel.Sys
 	if err != nil {
 		return manifestmodel.ManifestSchema{}, err
 	}
-	objects, err := loadMetadataSliceContext[definitionmodel.ObjectSchema](ctx, r.database(), r.store, "object_definitions")
-	if err != nil {
-		return manifestmodel.ManifestSchema{}, err
-	}
-	fields, err := loadMetadataSliceContext[definitionmodel.FieldSchema](ctx, r.database(), r.store, "field_definitions")
-	if err != nil {
-		return manifestmodel.ManifestSchema{}, err
-	}
-	validations, err := loadMetadataSliceContext[definitionmodel.ValidationSchema](ctx, r.database(), r.store, "validation_definitions")
-	if err != nil {
-		return manifestmodel.ManifestSchema{}, err
-	}
-	views, err := loadMetadataSliceContext[definitionmodel.ViewSchema](ctx, r.database(), r.store, "view_definitions")
-	if err != nil {
-		return manifestmodel.ManifestSchema{}, err
-	}
-	actions, err := loadMetadataSliceContext[definitionmodel.ActionSchema](ctx, r.database(), r.store, "action_definitions")
+	objects, fields, validations, actions, err := r.loadBusinessDefinitions(ctx)
 	if err != nil {
 		return manifestmodel.ManifestSchema{}, err
 	}
@@ -72,12 +54,54 @@ func (r MetadataStore) LoadManifest(ctx context.Context, scope identitymodel.Sys
 	}
 	return manifestmodel.ManifestSchema{
 		TemplateID: catalog["template_id"], Version: catalog["template_version"], DefaultLocale: catalog["default_locale"], Name: catalog["name"],
-		Objects: objects, Views: views, Actions: actions, Roles: roles, IdentityProfileExtensions: profileBindings,
+		Objects: objects, Actions: actions, Roles: roles, IdentityProfileExtensions: profileBindings,
 	}, nil
 }
 
+func (r MetadataStore) loadBusinessDefinitions(ctx context.Context) ([]definitionmodel.ObjectSchema, []definitionmodel.FieldSchema, []definitionmodel.ValidationSchema, []definitionmodel.ActionSchema, error) {
+	repository := r.store.MetadataDefinitions()
+	if repository == nil {
+		return nil, nil, nil, nil, fmt.Errorf("Metadata definition repository is unavailable")
+	}
+	snapshot, err := repository.DefinitionSnapshot(ctx)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	objects, fields := []definitionmodel.ObjectSchema{}, []definitionmodel.FieldSchema{}
+	validations, actions := []definitionmodel.ValidationSchema{}, []definitionmodel.ActionSchema{}
+	for _, definition := range snapshot.Definitions {
+		switch definition.ResourceType {
+		case "object":
+			var value definitionmodel.ObjectSchema
+			if err := json.Unmarshal(definition.Payload, &value); err != nil {
+				return nil, nil, nil, nil, fmt.Errorf("decode object definition %s: %w", definition.Key, err)
+			}
+			objects = append(objects, value)
+		case "field":
+			var value definitionmodel.FieldSchema
+			if err := json.Unmarshal(definition.Payload, &value); err != nil {
+				return nil, nil, nil, nil, fmt.Errorf("decode field definition %s: %w", definition.Key, err)
+			}
+			fields = append(fields, value)
+		case "validation":
+			var value definitionmodel.ValidationSchema
+			if err := json.Unmarshal(definition.Payload, &value); err != nil {
+				return nil, nil, nil, nil, fmt.Errorf("decode validation definition %s: %w", definition.Key, err)
+			}
+			validations = append(validations, value)
+		case "action":
+			var value definitionmodel.ActionSchema
+			if err := json.Unmarshal(definition.Payload, &value); err != nil {
+				return nil, nil, nil, nil, fmt.Errorf("decode action definition %s: %w", definition.Key, err)
+			}
+			actions = append(actions, value)
+		}
+	}
+	return objects, fields, validations, actions, nil
+}
+
 func (r MetadataStore) loadCatalog(ctx context.Context) (map[string]string, error) {
-	statement, arguments, err := ormbuilder.NewSelectBuilder(r.store.SQLRenderer, "metadata_catalog").Columns("key", "value").Build()
+	statement, arguments, err := ormbuilder.NewSelectBuilder(r.store.SQLRenderer, "application_schema_catalog").Columns("key", "value").Build()
 	if err != nil {
 		return nil, fmt.Errorf("build metadata catalog query: %w", err)
 	}
@@ -135,6 +159,9 @@ func (r MetadataStore) ListDefinitions(ctx context.Context, scope identitymodel.
 	if err := requireMetadataInstallationScope(scope); err != nil {
 		return nil, err
 	}
+	if metadataModuleOwnsDefinition(resourceType) {
+		return r.ListMetadataDefinitions(ctx, resourceType, "")
+	}
 	table, err := metadataDefinitionTable(resourceType)
 	if err != nil {
 		return nil, err
@@ -162,6 +189,9 @@ func (r MetadataStore) ListDefinitions(ctx context.Context, scope identitymodel.
 func (r MetadataStore) GetDefinition(ctx context.Context, scope identitymodel.SystemScope, resourceType, resourceKey string) (metadatamodel.MetadataDefinition, bool, error) {
 	if err := requireMetadataInstallationScope(scope); err != nil {
 		return metadatamodel.MetadataDefinition{}, false, err
+	}
+	if metadataModuleOwnsDefinition(resourceType) {
+		return r.GetMetadataDefinition(ctx, resourceType, resourceKey)
 	}
 	table, err := metadataDefinitionTable(resourceType)
 	if err != nil {
@@ -205,43 +235,7 @@ func (r MetadataStore) ListDefinitionVersions(ctx context.Context, scope identit
 	if err := requireMetadataInstallationScope(scope); err != nil {
 		return nil, err
 	}
-	statement, arguments, err := ormbuilder.NewSelectBuilder(r.store.SQLRenderer, "metadata_definition_versions").
-		Columns("schema_version", "schema_hash", "payload_json", "created_at").
-		Where(ormbuilder.And(ormbuilder.Equal("resource_type", resourceType), ormbuilder.Equal("resource_key", resourceKey))).
-		OrderBy(ormbuilder.Descending("created_at")).Build()
-	if err != nil {
-		return nil, fmt.Errorf("build versions %s %s query: %w", resourceType, resourceKey, err)
-	}
-	rows, err := r.database().QueryContext(ctx, statement, arguments...)
-	if err != nil {
-		return nil, fmt.Errorf("list versions %s %s: %w", resourceType, resourceKey, err)
-	}
-	defer rows.Close()
-	out := []metadatamodel.MetadataDefinitionVersion{}
-	for rows.Next() {
-		var version metadatamodel.MetadataDefinitionVersion
-		var payload string
-		if err := rows.Scan(&version.SchemaVersion, &version.SchemaHash, &payload, &version.CreatedAt); err != nil {
-			return nil, fmt.Errorf("scan version: %w", err)
-		}
-		version.ResourceType, version.ResourceKey, version.Payload = resourceType, resourceKey, json.RawMessage(payload)
-		out = append(out, version)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	sort.SliceStable(out, func(i, j int) bool {
-		left, leftErr := strconv.Atoi(strings.TrimSpace(out[i].SchemaVersion))
-		right, rightErr := strconv.Atoi(strings.TrimSpace(out[j].SchemaVersion))
-		if leftErr == nil && rightErr == nil && left != right {
-			return left > right
-		}
-		if out[i].CreatedAt != out[j].CreatedAt {
-			return out[i].CreatedAt > out[j].CreatedAt
-		}
-		return out[i].SchemaVersion > out[j].SchemaVersion
-	})
-	return out, nil
+	return r.ListMetadataDefinitionVersions(ctx, resourceType, resourceKey)
 }
 
 func (r MetadataStore) metadataDefinitionReplay(ctx context.Context, scope identitymodel.SystemScope, resourceType, resourceKey, targetHash string, expectedHash *string) (metadatamodel.MetadataDefinition, bool, error) {
