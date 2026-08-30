@@ -1,7 +1,7 @@
 package metadata
 
 import (
-	auditapplication "github.com/domainry/domainry-identity/internal/application/audit"
+	auditapplication "github.com/domainry/domainry-identity/internal/application/auditbinding"
 	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
 	metadataapplication "github.com/domainry/domainry-identity/internal/application/metadata"
 	"net/http"

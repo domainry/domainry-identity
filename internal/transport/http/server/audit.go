@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	auditmodel "github.com/domainry/domainry-audit-sdk/contract"
-	auditapplication "github.com/domainry/domainry-identity/internal/application/audit"
+	auditapplication "github.com/domainry/domainry-identity/internal/application/auditbinding"
 )
 
 func registerAuditRoutes(mux *http.ServeMux, audit *auditapplication.AuditApplicationService, support *httpSupport) {

@@ -2,7 +2,7 @@ package identity
 
 import (
 	"context"
-	auditapplication "github.com/domainry/domainry-identity/internal/application/audit"
+	auditapplication "github.com/domainry/domainry-identity/internal/application/auditbinding"
 	identityauthoring "github.com/domainry/domainry-identity/internal/application/authoring"
 	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
 	metadataapplication "github.com/domainry/domainry-identity/internal/application/metadata"

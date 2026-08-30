@@ -11,11 +11,11 @@ import (
 	"github.com/domainry/domainry-foundation/requestcontext"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	identitysdkadapter "github.com/domainry/domainry-identity/internal/adapter/identitysdk"
-	auditapplication "github.com/domainry/domainry-identity/internal/application/audit"
+	auditapplication "github.com/domainry/domainry-identity/internal/application/auditbinding"
+	auditrepository "github.com/domainry/domainry-identity/internal/application/auditbinding"
 	authapplication "github.com/domainry/domainry-identity/internal/application/auth"
 	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
 	metadataapplication "github.com/domainry/domainry-identity/internal/application/metadata"
-	auditrepository "github.com/domainry/domainry-identity/internal/domain/audit/repository"
 	authpolicy "github.com/domainry/domainry-identity/internal/domain/auth/policy"
 	definitionmodel "github.com/domainry/domainry-identity/internal/domain/definition/model"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
@@ -105,7 +105,7 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 	if err != nil {
 		return fail(fmt.Errorf("open Audit module: %w", err))
 	}
-	auditStore := identityauditmodule.NewRepository(auditBinding)
+	auditStore := identityauditmodule.NewAuditStore(auditBinding)
 	auditApp := auditapplication.NewAuditApplicationService(auditStore)
 	authStore := authpersistence.NewAuthStoreWithKeyProvider(identityStore, store.SecretKeyProvider(), store.IdempotencyMetrics(ctx))
 	authApp := authapplication.NewAuthApplicationService(

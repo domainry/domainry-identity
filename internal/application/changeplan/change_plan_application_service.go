@@ -9,7 +9,7 @@ import (
 
 	auditmodel "github.com/domainry/domainry-audit-sdk/contract"
 	"github.com/domainry/domainry-foundation/apperror"
-	auditrepository "github.com/domainry/domainry-identity/internal/domain/audit/repository"
+	auditrepository "github.com/domainry/domainry-identity/internal/application/auditbinding"
 	changeplanpolicy "github.com/domainry/domainry-identity/internal/domain/changeplan/policy"
 	changeplanrepository "github.com/domainry/domainry-identity/internal/domain/changeplan/repository"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"

@@ -8,18 +8,18 @@ import (
 	auditsdk "github.com/domainry/domainry-audit-sdk"
 	auditmodel "github.com/domainry/domainry-audit-sdk/contract"
 	sdkcontract "github.com/domainry/domainry-audit-sdk/contract"
-	auditrepository "github.com/domainry/domainry-identity/internal/domain/audit/repository"
+	auditrepository "github.com/domainry/domainry-identity/internal/application/auditbinding"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/transaction"
 )
 
-// Repository is Identity's compatibility facade. Audit persistence and query
-// semantics live in domainry-audit; Identity only supplies transaction context.
-type Repository struct{ binding auditsdk.Binding }
+// Store adapts Identity transaction and system-scope semantics to the reusable
+// Audit application store contract. Audit persistence remains module-owned.
+type AuditStore struct{ binding auditsdk.Binding }
 
-func NewRepository(binding auditsdk.Binding) *Repository { return &Repository{binding: binding} }
+func NewAuditStore(binding auditsdk.Binding) *AuditStore { return &AuditStore{binding: binding} }
 
-func (r *Repository) InsertAuditEvent(ctx context.Context, workspaceID string, event auditmodel.AuditEvent) error {
+func (r *AuditStore) InsertAuditEvent(ctx context.Context, workspaceID string, event auditmodel.AuditEvent) error {
 	if r == nil || r.binding == nil {
 		return fmt.Errorf("audit.binding_unavailable")
 	}
@@ -32,14 +32,14 @@ func (r *Repository) InsertAuditEvent(ctx context.Context, workspaceID string, e
 	return r.binding.PreparedAppender().AppendPrepared(ctx, event)
 }
 
-func (r *Repository) ListAuditEvents(ctx context.Context, workspaceID string, query auditmodel.AuditEventQuery) ([]auditmodel.AuditEvent, error) {
+func (r *AuditStore) ListAuditEvents(ctx context.Context, workspaceID string, query auditmodel.AuditEventQuery) ([]auditmodel.AuditEvent, error) {
 	if r == nil || r.binding == nil {
 		return nil, fmt.Errorf("audit.binding_unavailable")
 	}
 	return r.binding.Reader().List(ctx, workspaceID, query)
 }
 
-func (r *Repository) ListAuditEventsForSystem(ctx context.Context, scope identitymodel.SystemScope, query auditmodel.AuditEventQuery) ([]auditmodel.AuditEvent, error) {
+func (r *AuditStore) ListAuditEventsForSystem(ctx context.Context, scope identitymodel.SystemScope, query auditmodel.AuditEventQuery) ([]auditmodel.AuditEvent, error) {
 	if _, err := identitymodel.NewSystemQueryScope(scope); err != nil {
 		return nil, err
 	}
@@ -49,7 +49,7 @@ func (r *Repository) ListAuditEventsForSystem(ctx context.Context, scope identit
 	return r.binding.Reader().ListSystem(ctx, query)
 }
 
-func (r *Repository) ListAuditOptions(ctx context.Context, workspaceID string, query auditmodel.AuditOptionQuery) ([]auditmodel.AuditOption, error) {
+func (r *AuditStore) ListAuditOptions(ctx context.Context, workspaceID string, query auditmodel.AuditOptionQuery) ([]auditmodel.AuditOption, error) {
 	if r == nil || r.binding == nil {
 		return nil, fmt.Errorf("audit.binding_unavailable")
 	}
@@ -75,4 +75,4 @@ func (a transactionAdapter) QueryRowContext(ctx context.Context, q string, args 
 
 type sqlResult struct{ sql.Result }
 
-var _ auditrepository.AuditRepository = (*Repository)(nil)
+var _ auditrepository.AuditRepository = (*AuditStore)(nil)
