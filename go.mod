@@ -2,25 +2,17 @@ module github.com/domainry/domainry-identity
 
 go 1.26.0
 
-replace github.com/domainry/domainry-foundation => ../domainry-foundation
-
-replace github.com/domainry/domainry-orm => ../domainry-orm
-
-replace github.com/domainry/domainry-identity-sdk => ../domainry-identity-sdk
-
-replace github.com/domainry/domainry-data-exchange-sdk => ../domainry-data-exchange-sdk
-
 require (
 	github.com/beevik/etree v1.6.0
 	github.com/coreos/go-oidc/v3 v3.20.0
 	github.com/crewjam/saml v0.5.1
-	github.com/domainry/domainry-audit v0.0.0
-	github.com/domainry/domainry-audit-sdk v0.0.0
-	github.com/domainry/domainry-data-exchange-sdk v0.3.1-0.20260830024026-64866b01d3a6
-	github.com/domainry/domainry-foundation v0.1.0-dev.5
-	github.com/domainry/domainry-identity-sdk v0.1.0-dev8
-	github.com/domainry/domainry-metadata v0.0.0
-	github.com/domainry/domainry-metadata-sdk v0.0.0
+	github.com/domainry/domainry-audit v0.1.0
+	github.com/domainry/domainry-audit-sdk v0.1.0
+	github.com/domainry/domainry-data-exchange-sdk v0.3.1
+	github.com/domainry/domainry-foundation v0.1.0-dev.6
+	github.com/domainry/domainry-identity-sdk v0.1.0-dev9
+	github.com/domainry/domainry-metadata v0.1.0
+	github.com/domainry/domainry-metadata-sdk v0.1.0
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/russellhaering/goxmldsig v1.6.0
@@ -29,14 +21,6 @@ require (
 	golang.org/x/oauth2 v0.36.0
 	modernc.org/sqlite v1.53.0
 )
-
-replace github.com/domainry/domainry-audit => ../domainry-audit
-
-replace github.com/domainry/domainry-audit-sdk => ../domainry-audit-sdk
-
-replace github.com/domainry/domainry-metadata => ../domainry-metadata
-
-replace github.com/domainry/domainry-metadata-sdk => ../domainry-metadata-sdk
 
 require (
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
@@ -54,7 +38,7 @@ require (
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
-	github.com/domainry/domainry-orm v0.1.25-0.20260829222221-e316e284305e
+	github.com/domainry/domainry-orm v0.1.25
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
