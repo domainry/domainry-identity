@@ -243,6 +243,21 @@ func (c Config) EffectiveDatabaseMigrationMode() string {
 	return "apply"
 }
 
+type databaseSecurityPolicy interface{ Validate(Config) error }
+
+type postgresSecurityPolicy struct{}
+
+func (postgresSecurityPolicy) Validate(c Config) error {
+	if !c.DatabaseRLSEnabled {
+		return fmt.Errorf("DATABASE_RLS_ENABLED must be true for PostgreSQL in production")
+	}
+	return nil
+}
+
+var databaseSecurityPolicies = map[string]databaseSecurityPolicy{
+	"postgres": postgresSecurityPolicy{}, "postgresql": postgresSecurityPolicy{}, "pgx": postgresSecurityPolicy{},
+}
+
 func (c Config) ValidateSecurity() error {
 	if !c.IsProduction() {
 		return nil
@@ -259,8 +274,10 @@ func (c Config) ValidateSecurity() error {
 	if strings.TrimSpace(c.AuthDefaultPassword) == "" || strings.TrimSpace(c.AuthDefaultPassword) == DevDefaultAdminPassword {
 		return fmt.Errorf("AUTH_DEFAULT_PASSWORD must be set to a non-default value in production")
 	}
-	if (strings.EqualFold(strings.TrimSpace(c.DatabaseDriver), "postgres") || strings.EqualFold(strings.TrimSpace(c.DatabaseDriver), "postgresql")) && !c.DatabaseRLSEnabled {
-		return fmt.Errorf("DATABASE_RLS_ENABLED must be true for PostgreSQL in production")
+	if policy := databaseSecurityPolicies[strings.ToLower(strings.TrimSpace(c.DatabaseDriver))]; policy != nil {
+		if err := policy.Validate(c); err != nil {
+			return err
+		}
 	}
 	if strings.TrimSpace(c.IdentityDataSecretKey) == "" || strings.TrimSpace(c.IdentityDataSecretKey) == DevIdentityDataSecret || strings.TrimSpace(c.IdentityDataSecretKey) == c.AuthJWTSecret {
 		return fmt.Errorf("IDENTITY_DATA_SECRET_KEY must be set to a non-default value in production")

@@ -289,10 +289,10 @@ func (s *IdentityStore) RelationPrefix() string {
 }
 
 func (s *IdentityStore) DatabaseStatus() (postgres.SafeStatus, bool) {
-	if s == nil || s.postgresProfile == nil {
+	if s == nil {
 		return postgres.SafeStatus{}, false
 	}
-	return s.postgresProfile.SafeStatus(), true
+	return databaseHealthFor(s.engine).Status(s)
 }
 
 type WorkspaceRLSStatus = workspace.WorkspaceRLSStatus
@@ -318,47 +318,10 @@ type DatabaseReadiness struct {
 }
 
 func (s *IdentityStore) DatabaseReadiness() DatabaseReadiness {
-	if s == nil || s.postgresProfile == nil {
-		ready := s != nil && s.db != nil
-		return DatabaseReadiness{Ready: ready, ReadReady: ready, WriteReady: ready, MigrationCompatible: ready}
+	if s == nil {
+		return DatabaseReadiness{}
 	}
-	capability := s.postgresCapabilities
-	stats := s.db.Stats()
-	rlsStatus := s.WorkspaceRLSStatus(context.Background())
-	result := DatabaseReadiness{
-		SchemaExists:             capability.SchemaExists,
-		SchemaUsage:              capability.SchemaUsage,
-		ReadOnly:                 capability.ReadOnly || capability.InRecovery,
-		TLSVerified:              capability.TLS == s.postgresProfile.TLS,
-		MigrationConnectionReady: !s.postgresProfile.MigrationConfigured || s.migratorCapabilities.Database != "",
-		RLSEnabled:               rlsStatus.Enabled,
-		RLSPolicyVersion:         rlsStatus.PolicyVersion,
-		RLSCoveredTables:         len(rlsStatus.CoveredTables),
-		RLSMissingTables:         len(rlsStatus.MissingTables),
-		ReadReady:                capability.SchemaExists && capability.SchemaUsage,
-		WriteReady:               capability.SchemaExists && capability.SchemaUsage && !capability.ReadOnly && !capability.InRecovery,
-		MigrationCompatible:      s.migrationCompatible,
-		PoolDegraded:             stats.MaxOpenConnections > 0 && stats.InUse >= stats.MaxOpenConnections,
-	}
-	switch {
-	case !result.SchemaExists || !result.SchemaUsage:
-		result.Failure = postgres.FailureSchemaIncompatible
-	case result.ReadOnly:
-		result.Failure = "read_only"
-	case !result.TLSVerified:
-		result.Failure = postgres.FailureTLS
-	case !result.MigrationConnectionReady:
-		result.Failure = postgres.FailureServerUnavailable
-	case !result.MigrationCompatible:
-		result.Failure = "migration_incompatible"
-	case result.PoolDegraded:
-		result.Failure = "pool_degraded"
-	case s.postgresProfile.RLSEnabled && (!result.RLSEnabled || result.RLSMissingTables > 0):
-		result.Failure = "rls_incompatible"
-	default:
-		result.Ready = true
-	}
-	return result
+	return databaseHealthFor(s.engine).Readiness(s)
 }
 
 func (s *IdentityStore) ObserveIdempotency(_ context.Context, workspaceID, scope string, outcome idempotency.Outcome) {

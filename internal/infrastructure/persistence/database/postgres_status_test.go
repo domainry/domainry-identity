@@ -12,6 +12,7 @@ func TestDatabaseReadinessUsesOnlyCapabilityFacts(t *testing.T) {
 	profile := postgres.ConnectionProfile{Backend: postgres.BackendPostgres, Mode: postgres.ConnectionModeDirect, Schema: "domainry_runtime", TLS: true, MigrationConfigured: true}
 	store := &IdentityStore{
 		db:                  openReadinessTestDatabase(t),
+		engine:              postgres.NewEngine(),
 		postgresProfile:     &profile,
 		migrationCompatible: true,
 		postgresCapabilities: postgres.Capabilities{
@@ -38,7 +39,7 @@ func TestDatabaseReadinessSeparatesReadWriteMigrationAndPoolState(t *testing.T) 
 	}
 	defer tx.Rollback()
 	profile := postgres.ConnectionProfile{Backend: postgres.BackendPostgres, Schema: "domainry_runtime"}
-	store := &IdentityStore{db: db, postgresProfile: &profile, migrationCompatible: true, postgresCapabilities: postgres.Capabilities{SchemaExists: true, SchemaUsage: true}}
+	store := &IdentityStore{db: db, engine: postgres.NewEngine(), postgresProfile: &profile, migrationCompatible: true, postgresCapabilities: postgres.Capabilities{SchemaExists: true, SchemaUsage: true}}
 	readiness := store.DatabaseReadiness()
 	if readiness.Ready || !readiness.ReadReady || !readiness.WriteReady || !readiness.MigrationCompatible || !readiness.PoolDegraded || readiness.Failure != "pool_degraded" {
 		t.Fatalf("pool saturation was not separated: %+v", readiness)
@@ -63,7 +64,7 @@ func openReadinessTestDatabase(t *testing.T) *sql.DB {
 
 func TestDatabaseReadinessFailsClosedForMissingSchema(t *testing.T) {
 	profile := postgres.ConnectionProfile{Backend: postgres.BackendPostgres, Schema: "domainry_runtime", TLS: true}
-	store := &IdentityStore{db: openReadinessTestDatabase(t), postgresProfile: &profile, migrationCompatible: true, postgresCapabilities: postgres.Capabilities{TLS: true}}
+	store := &IdentityStore{db: openReadinessTestDatabase(t), engine: postgres.NewEngine(), postgresProfile: &profile, migrationCompatible: true, postgresCapabilities: postgres.Capabilities{TLS: true}}
 	readiness := store.DatabaseReadiness()
 	if readiness.Ready || readiness.Failure != postgres.FailureSchemaIncompatible {
 		t.Fatalf("unexpected readiness: %+v", readiness)

@@ -77,7 +77,7 @@ func TestIdentityStoreReadinessFailurePriority(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			store := &IdentityStore{db: openReadinessTestDatabase(t), postgresProfile: &profile, postgresCapabilities: test.capability, migratorCapabilities: test.migrator, migrationCompatible: test.compatible, RLSManager: workspace.NewRLSManager(workspace.RLSOptions{Status: test.rls})}
+			store := &IdentityStore{db: openReadinessTestDatabase(t), engine: postgres.NewEngine(), postgresProfile: &profile, postgresCapabilities: test.capability, migratorCapabilities: test.migrator, migrationCompatible: test.compatible, RLSManager: workspace.NewRLSManager(workspace.RLSOptions{Status: test.rls})}
 			if readiness := store.DatabaseReadiness(); readiness.Failure != test.failure || readiness.Ready != (test.failure == "") {
 				t.Fatalf("readiness=%#v", readiness)
 			}
