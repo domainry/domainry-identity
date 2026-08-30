@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"testing"
 
+	auditmodel "github.com/domainry/domainry-audit-sdk/contract"
 	auditapplication "github.com/domainry/domainry-identity/internal/application/audit"
-	auditmodel "github.com/domainry/domainry-identity/internal/domain/audit/model"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 

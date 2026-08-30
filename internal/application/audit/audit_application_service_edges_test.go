@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
+	auditmodel "github.com/domainry/domainry-audit-sdk/contract"
 	"github.com/domainry/domainry-foundation/apperror"
-	auditmodel "github.com/domainry/domainry-identity/internal/domain/audit/model"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 

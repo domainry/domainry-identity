@@ -1,6 +1,6 @@
 package metadata
 
-import auditmodel "github.com/domainry/domainry-identity/internal/domain/audit/model"
+import auditmodel "github.com/domainry/domainry-audit-sdk/contract"
 
 import (
 	"context"

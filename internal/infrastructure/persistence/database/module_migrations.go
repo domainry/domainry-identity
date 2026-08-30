@@ -1,0 +1,182 @@
+package database
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"regexp"
+	"strings"
+	"time"
+
+	"github.com/domainry/domainry-audit-sdk/modulehost"
+	ormbuilder "github.com/domainry/domainry-orm/builder"
+	ormmigration "github.com/domainry/domainry-orm/migration"
+)
+
+var moduleMigrationIdentityPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
+
+// ApplyOwnedMigrations is the host-owned module migration boundary. It uses
+// Identity's lock and global _schema_migrations ledger; modules never create a
+// second ledger in the same database.
+func (s *IdentityStore) ApplyOwnedMigrations(ctx context.Context, owner string, migrations []modulehost.SchemaMigration) error {
+	if err := validateOwnedMigrations(owner, migrations); err != nil {
+		return err
+	}
+	release, err := s.LockManager.Acquire(ctx, s.config)
+	if err != nil {
+		return err
+	}
+	defer release()
+	if err := s.applyOwnedMigrationsLocked(ctx, owner, migrations); err != nil {
+		return err
+	}
+	return s.EnsureWorkspaceRLS(ctx)
+}
+
+func (s *IdentityStore) ApplyOwnedMigrationsLocked(ctx context.Context, owner string, migrations []modulehost.SchemaMigration) error {
+	if err := validateOwnedMigrations(owner, migrations); err != nil {
+		return err
+	}
+	return s.applyOwnedMigrationsLocked(ctx, owner, migrations)
+}
+
+func validateOwnedMigrations(owner string, migrations []modulehost.SchemaMigration) error {
+	if !moduleMigrationIdentityPattern.MatchString(strings.TrimSpace(owner)) {
+		return fmt.Errorf("module migration owner is invalid")
+	}
+	for index, migration := range migrations {
+		if migration.Version == 0 || !moduleMigrationIdentityPattern.MatchString(strings.TrimSpace(migration.Name)) || len(migration.Statements) == 0 {
+			return fmt.Errorf("module migration %s[%d] is invalid", owner, index)
+		}
+		if index > 0 && migrations[index-1].Version >= migration.Version {
+			return fmt.Errorf("module migrations for %s are not strictly ordered", owner)
+		}
+	}
+	return nil
+}
+
+func (s *IdentityStore) applyOwnedMigrationsLocked(ctx context.Context, owner string, migrations []modulehost.SchemaMigration) error {
+	// The ledger schema is host-owned. Use the lock-owning connection here so
+	// SQLite's single-connection migration pool cannot self-deadlock.
+	if s.Coordinator == nil || s.Coordinator.Ledger == nil {
+		return fmt.Errorf("module migration host ledger is unavailable")
+	}
+	if _, err := s.schemaDatabase().ExecContext(ctx, s.Coordinator.Ledger.SchemaSQL()); err != nil {
+		return fmt.Errorf("prepare host migration ledger: %w", err)
+	}
+	for _, migration := range migrations {
+		if err := s.applyOwnedMigration(ctx, owner, migration); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *IdentityStore) applyOwnedMigration(ctx context.Context, owner string, migration modulehost.SchemaMigration) error {
+	path := fmt.Sprintf("module_%s_%06d_%s", owner, migration.Version, strings.TrimSpace(migration.Name))
+	checksum := ormmigration.Checksum(migration)
+	query, args, err := ormbuilder.NewSelectBuilder(s.BuilderRenderer(), "_schema_migrations").
+		Columns("checksum", "dirty").Where(ormbuilder.Equal("path", path)).Build()
+	if err != nil {
+		return err
+	}
+	var applied string
+	var dirty bool
+	err = s.schemaDatabase().QueryRowContext(ctx, query, args...).Scan(&applied, &dirty)
+	if err == nil {
+		if dirty {
+			return fmt.Errorf("migration.dirty: %s", path)
+		}
+		if applied != checksum {
+			return fmt.Errorf("migration.checksum_drift: %s", path)
+		}
+		return nil
+	}
+	if err != sql.ErrNoRows {
+		return fmt.Errorf("inspect module migration %s: %w", path, err)
+	}
+	if s.config.EffectiveDatabaseMigrationMode() == "verify" {
+		return fmt.Errorf("migration.pending: %s", path)
+	}
+	baseline, err := s.proveOwnedMigrationBaseline(ctx, migration.Baseline)
+	if err != nil {
+		return fmt.Errorf("migration.baseline_mismatch: %s: %w", path, err)
+	}
+	insert, insertArgs, err := ormbuilder.NewInsertBuilder(s.BuilderRenderer(), "_schema_migrations").
+		Columns("path", "version", "name", "kind", "checksum", "dirty", "applied_at", "service_version", "duration_ms", "operator", "instance_id", "backup_id").
+		Values(path, fmt.Sprint(migration.Version), migration.Name, "module:"+owner, checksum, !baseline, time.Now().UTC().Format(time.RFC3339), strings.TrimSpace(s.config.ServiceVersion), 0, "module", "identity", "").Build()
+	if err != nil {
+		return err
+	}
+	if _, err := s.schemaDatabase().ExecContext(ctx, insert, insertArgs...); err != nil {
+		return fmt.Errorf("record module migration %s: %w", path, err)
+	}
+	if baseline {
+		return nil
+	}
+	started := time.Now()
+	tx, err := s.schemaDatabase().BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin module migration %s: %w", path, err)
+	}
+	defer tx.Rollback()
+	for _, statement := range migration.Statements {
+		if _, err := tx.ExecContext(ctx, statement); err != nil {
+			return fmt.Errorf("migration.failed: execute %s: %w", path, err)
+		}
+	}
+	complete, completeArgs, err := ormbuilder.NewUpdateBuilder(s.BuilderRenderer(), "_schema_migrations").
+		Set("dirty", false).Set("duration_ms", time.Since(started).Milliseconds()).Set("applied_at", time.Now().UTC().Format(time.RFC3339)).
+		Where(ormbuilder.And(ormbuilder.Equal("path", path), ormbuilder.Equal("checksum", checksum))).Build()
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, complete, completeArgs...); err != nil {
+		return fmt.Errorf("complete module migration %s: %w", path, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit module migration %s: %w", path, err)
+	}
+	return nil
+}
+
+func (s *IdentityStore) proveOwnedMigrationBaseline(ctx context.Context, baseline *modulehost.SchemaBaseline) (bool, error) {
+	if baseline == nil || len(baseline.Tables) == 0 {
+		return false, nil
+	}
+	found := 0
+	for _, table := range baseline.Tables {
+		columns, err := s.TableColumns(ctx, table.Name)
+		if err != nil {
+			return false, err
+		}
+		if len(columns) == 0 {
+			continue
+		}
+		found++
+		if len(columns) != len(table.Columns) {
+			return false, fmt.Errorf("baseline schema mismatch for %s: columns=%d want=%d", table.Name, len(columns), len(table.Columns))
+		}
+		for _, column := range table.Columns {
+			if !columns[column.Name] {
+				return false, fmt.Errorf("baseline schema mismatch for %s: column %s is missing", table.Name, column.Name)
+			}
+		}
+		indexes, err := s.TableIndexes(ctx, table.Name)
+		if err != nil {
+			return false, err
+		}
+		for _, index := range table.Indexes {
+			if !indexes[index.Name] {
+				return false, fmt.Errorf("baseline schema mismatch for %s: index %s is missing", table.Name, index.Name)
+			}
+		}
+	}
+	if found == 0 {
+		return false, nil
+	}
+	if found != len(baseline.Tables) {
+		return false, fmt.Errorf("partial baseline: found %d of %d owned tables", found, len(baseline.Tables))
+	}
+	return true, nil
+}

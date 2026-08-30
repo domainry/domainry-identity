@@ -1,40 +1,20 @@
 package metadata
 
-import auditmodel "github.com/domainry/domainry-identity/internal/domain/audit/model"
+import auditmodel "github.com/domainry/domainry-audit-sdk/contract"
+import auditmoduleimpl "github.com/domainry/domainry-audit/module"
 
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"strings"
 
+	identityauditmodule "github.com/domainry/domainry-identity/internal/infrastructure/auditmodule"
 	ormbuilder "github.com/domainry/domainry-orm/builder"
 )
 
 func (s MetadataStore) insertMetadataChangeAudit(ctx context.Context, tx *sql.Tx, event auditmodel.AuditEvent) error {
-	before, err := json.Marshal(event.Before)
-	if err != nil {
-		return fmt.Errorf("encode audit before: %w", err)
-	}
-	after, err := json.Marshal(event.After)
-	if err != nil {
-		return fmt.Errorf("encode audit after: %w", err)
-	}
-	metadata, err := json.Marshal(event.Metadata)
-	if err != nil {
-		return fmt.Errorf("encode audit metadata: %w", err)
-	}
-	statement, arguments, err := ormbuilder.NewWorkspaceInsertBuilder(s.store.SQLRenderer, "_audit_events", event.WorkspaceID).
-		Columns("id", "event", "object_key", "record_id", "actor_id", "role_key", "summary", "metadata_json", "before_json", "after_json", "created_at").
-		Values(event.ID, event.Event, event.ObjectKey, event.RecordID, event.ActorID, event.RoleKey, event.Summary, string(metadata), string(before), string(after), event.CreatedAt).Build()
-	if err != nil {
-		return fmt.Errorf("build metadata change audit insert: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
-		return fmt.Errorf("insert metadata change audit: %w", err)
-	}
-	return nil
+	return auditmoduleimpl.AppendPreparedWithin(ctx, s.store.BuilderRenderer(), identityauditmodule.NewTransaction(tx), event)
 }
 
 func (s MetadataStore) nextMetadataSchemaVersionTx(ctx context.Context, tx *sql.Tx, resourceType, resourceKey string) (string, error) {

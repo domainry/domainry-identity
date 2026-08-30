@@ -5,6 +5,7 @@ import (
 	"sort"
 	"testing"
 
+	auditmodule "github.com/domainry/domainry-audit/module"
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
 	identityschema "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/schema"
 	"github.com/domainry/domainry-identity/internal/platform/config"
@@ -24,6 +25,10 @@ func TestEveryStandaloneIdentityTableHasOneOwnerAndMigrationDisposition(t *testi
 	}
 
 	ownership := map[string]identityschema.TableOwnership{}
+	moduleOwned := map[string]bool{}
+	for _, table := range auditmodule.OwnedTables() {
+		moduleOwned[table] = true
+	}
 	for _, table := range identityschema.IdentityTableOwnership() {
 		if table.Name == "" || table.Boundary == "" || table.MigrationDisposition == "" {
 			t.Errorf("incomplete table ownership: %+v", table)
@@ -49,7 +54,7 @@ func TestEveryStandaloneIdentityTableHasOneOwnerAndMigrationDisposition(t *testi
 			t.Fatal(err)
 		}
 		actual = append(actual, table)
-		if _, declared := ownership[table]; !declared {
+		if _, declared := ownership[table]; !declared && !moduleOwned[table] {
 			t.Errorf("standalone Identity table %q has no ownership classification", table)
 		}
 	}

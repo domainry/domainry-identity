@@ -76,7 +76,6 @@ func TestSchemaAssemblersPropagateEveryOrderedMutationFailure(t *testing.T) {
 	}{
 		{name: "metadata", ensure: identityschema.EnsureMetadataSchema},
 		{name: "identity", ensure: identityschema.EnsureIdentitySchema},
-		{name: "evidence", ensure: identityschema.EnsureEvidenceSchema},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -118,7 +117,6 @@ func TestSchemaAssemblersPreserveCancellation(t *testing.T) {
 	for _, ensure := range []func(context.Context, identityschema.Store) error{
 		identityschema.EnsureMetadataSchema,
 		identityschema.EnsureIdentitySchema,
-		identityschema.EnsureEvidenceSchema,
 	} {
 		if err := ensure(cancelled, store); !errors.Is(err, context.Canceled) {
 			t.Fatalf("schema cancellation=%v", err)
@@ -135,7 +133,6 @@ func TestSchemaAssemblersReachMySQLTypeBranchesBeforeMutation(t *testing.T) {
 	for name, ensure := range map[string]func(context.Context, identityschema.Store) error{
 		"metadata": identityschema.EnsureMetadataSchema,
 		"identity": identityschema.EnsureIdentitySchema,
-		"evidence": identityschema.EnsureEvidenceSchema,
 	} {
 		t.Run(name, func(t *testing.T) {
 			faults := &schemaFaultStore{Store: schemaDriverStore{Store: store, driver: "mysql"}, failAt: 1}

@@ -38,7 +38,7 @@ func TestStandaloneIdentitySchemaDoesNotCreatePlaneTables(t *testing.T) {
 		}
 		tables[table] = true
 	}
-	for _, required := range []string{"identity_users", "identity_roles", "identity_departments", "identity_menus", "identity_credentials", "object_definitions", "field_definitions", "identity_metadata_refresh_intents", "_audit_events"} {
+	for _, required := range []string{"identity_users", "identity_roles", "identity_departments", "identity_menus", "identity_credentials", "object_definitions", "field_definitions", "identity_metadata_refresh_intents"} {
 		if !tables[required] {
 			t.Errorf("required Identity table %q is missing", required)
 		}

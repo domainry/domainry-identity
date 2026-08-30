@@ -88,6 +88,10 @@ func (reader *StatusReader) MigrationStatus(ctx context.Context) (MigrationStatu
 			if checksum != expected {
 				status.DriftPaths = append(status.DriftPaths, path)
 			}
+		} else if strings.HasPrefix(path, "module_") {
+			// Source-owned module migrations share the host ledger. Their exact
+			// checksums are verified by the module registrar when the module opens;
+			// they are not unknown Identity file migrations.
 		} else {
 			version, _ := Identity(filepath.Base(path))
 			if status.MaxSchemaVersion != "" && CompareVersions(version, status.MaxSchemaVersion) > 0 {

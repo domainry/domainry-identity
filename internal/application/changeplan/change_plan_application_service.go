@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
+	auditmodel "github.com/domainry/domainry-audit-sdk/contract"
 	"github.com/domainry/domainry-foundation/apperror"
-	auditmodel "github.com/domainry/domainry-identity/internal/domain/audit/model"
 	auditrepository "github.com/domainry/domainry-identity/internal/domain/audit/repository"
 	changeplanpolicy "github.com/domainry/domainry-identity/internal/domain/changeplan/policy"
 	changeplanrepository "github.com/domainry/domainry-identity/internal/domain/changeplan/repository"

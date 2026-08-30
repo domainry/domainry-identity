@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	auditmodel "github.com/domainry/domainry-identity/internal/domain/audit/model"
+	auditmodel "github.com/domainry/domainry-audit-sdk/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"

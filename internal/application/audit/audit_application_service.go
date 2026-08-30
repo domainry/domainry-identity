@@ -4,10 +4,10 @@ import (
 	"context"
 	"strings"
 
+	auditmodel "github.com/domainry/domainry-audit-sdk/contract"
 	"github.com/domainry/domainry-foundation/apperror"
 	"github.com/domainry/domainry-foundation/secrets"
 	auditcontract "github.com/domainry/domainry-identity/internal/domain/audit/contract"
-	auditmodel "github.com/domainry/domainry-identity/internal/domain/audit/model"
 	auditrepository "github.com/domainry/domainry-identity/internal/domain/audit/repository"
 	auditservice "github.com/domainry/domainry-identity/internal/domain/audit/service"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"

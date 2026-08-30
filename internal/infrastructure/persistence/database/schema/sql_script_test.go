@@ -16,6 +16,8 @@ import (
 
 var errSchemaSQL = errors.New("scripted schema SQL failure")
 
+const mysqlIndexedTextType = "VARCHAR(191) CHARACTER SET ascii COLLATE ascii_bin"
+
 type schemaSQLState struct {
 	execSteps   []schemaSQLExecStep
 	execQueries []string
@@ -153,7 +155,7 @@ func (scriptedSchemaStore) MetadataIDColumnType() string       { return "TEXT" }
 func (scriptedSchemaStore) LocalizedTextKeyColumnType() string { return "TEXT" }
 func (s scriptedSchemaStore) SchemaTypes() persistencedriver.SchemaTypes {
 	if s.Driver() == "mysql" {
-		return persistencedriver.SchemaTypes{Boolean: "BOOLEAN", FalseLiteral: "0", DefaultText: "VARCHAR(255)", DocumentText: "LONGTEXT", IndexedText: mysqlAuditCursorType, AuditCursorText: mysqlAuditCursorType}
+		return persistencedriver.SchemaTypes{Boolean: "BOOLEAN", FalseLiteral: "0", DefaultText: "VARCHAR(255)", DocumentText: "LONGTEXT", IndexedText: mysqlIndexedTextType, AuditCursorText: mysqlIndexedTextType}
 	}
 	return persistencedriver.SchemaTypes{Boolean: "INTEGER", FalseLiteral: "0", DefaultText: "TEXT", DocumentText: "TEXT", IndexedText: "TEXT", AuditCursorText: "TEXT"}
 }

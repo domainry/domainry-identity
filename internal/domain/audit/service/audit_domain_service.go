@@ -7,9 +7,9 @@ import (
 	"context"
 	"strings"
 
+	auditmodel "github.com/domainry/domainry-audit-sdk/contract"
 	"github.com/domainry/domainry-foundation/apperror"
 	auditcontract "github.com/domainry/domainry-identity/internal/domain/audit/contract"
-	auditmodel "github.com/domainry/domainry-identity/internal/domain/audit/model"
 	auditrepository "github.com/domainry/domainry-identity/internal/domain/audit/repository"
 )
 

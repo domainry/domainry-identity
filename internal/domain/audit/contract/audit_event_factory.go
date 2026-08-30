@@ -3,7 +3,7 @@ package contract
 import (
 	"context"
 
-	auditmodel "github.com/domainry/domainry-identity/internal/domain/audit/model"
+	auditmodel "github.com/domainry/domainry-audit-sdk/contract"
 )
 
 // AuditEventFactory creates the canonical event for an owner that must persist the

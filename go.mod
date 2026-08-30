@@ -4,11 +4,15 @@ go 1.26.0
 
 replace github.com/domainry/domainry-foundation => ../domainry-foundation
 
+replace github.com/domainry/domainry-orm => ../domainry-orm
+
 require (
 	github.com/beevik/etree v1.6.0
 	github.com/coreos/go-oidc/v3 v3.20.0
 	github.com/crewjam/saml v0.5.1
-	github.com/domainry/domainry-foundation v0.1.0-dev.4
+	github.com/domainry/domainry-audit v0.0.0
+	github.com/domainry/domainry-audit-sdk v0.0.0
+	github.com/domainry/domainry-foundation v0.1.0-dev.5
 	github.com/domainry/domainry-identity-sdk v0.1.0-dev8
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/jackc/pgx/v5 v5.10.0
@@ -18,6 +22,10 @@ require (
 	golang.org/x/oauth2 v0.36.0
 	modernc.org/sqlite v1.53.0
 )
+
+replace github.com/domainry/domainry-audit => ../domainry-audit
+
+replace github.com/domainry/domainry-audit-sdk => ../domainry-audit-sdk
 
 require (
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect

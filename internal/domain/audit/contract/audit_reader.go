@@ -3,7 +3,7 @@ package contract
 import (
 	"context"
 
-	auditmodel "github.com/domainry/domainry-identity/internal/domain/audit/model"
+	auditmodel "github.com/domainry/domainry-audit-sdk/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 

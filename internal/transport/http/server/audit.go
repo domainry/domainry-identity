@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
+	auditmodel "github.com/domainry/domainry-audit-sdk/contract"
 	auditapplication "github.com/domainry/domainry-identity/internal/application/audit"
-	auditmodel "github.com/domainry/domainry-identity/internal/domain/audit/model"
 )
 
 func registerAuditRoutes(mux *http.ServeMux, audit *auditapplication.AuditApplicationService, support *httpSupport) {

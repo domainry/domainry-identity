@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	auditmodel "github.com/domainry/domainry-identity/internal/domain/audit/model"
+	auditmodel "github.com/domainry/domainry-audit-sdk/contract"
 )
 
 func (h *IdentityHandler) getIdentityDepartment(w http.ResponseWriter, r *http.Request) {

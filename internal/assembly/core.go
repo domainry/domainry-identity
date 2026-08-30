@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 
+	auditsdk "github.com/domainry/domainry-audit-sdk"
+	auditmoduleimpl "github.com/domainry/domainry-audit/module"
 	"github.com/domainry/domainry-foundation/requestcontext"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	identitysdkadapter "github.com/domainry/domainry-identity/internal/adapter/identitysdk"
@@ -13,15 +15,16 @@ import (
 	authapplication "github.com/domainry/domainry-identity/internal/application/auth"
 	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
 	metadataapplication "github.com/domainry/domainry-identity/internal/application/metadata"
+	auditrepository "github.com/domainry/domainry-identity/internal/domain/audit/repository"
 	authpolicy "github.com/domainry/domainry-identity/internal/domain/auth/policy"
 	definitionmodel "github.com/domainry/domainry-identity/internal/domain/definition/model"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	manifestmodel "github.com/domainry/domainry-identity/internal/domain/manifest/model"
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
 	metadataservice "github.com/domainry/domainry-identity/internal/domain/metadata/service"
+	identityauditmodule "github.com/domainry/domainry-identity/internal/infrastructure/auditmodule"
 	identityprovider "github.com/domainry/domainry-identity/internal/infrastructure/identityprovider"
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
-	auditpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/audit"
 	authpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/auth"
 	identitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity"
 	identitycatalogpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identitycatalog"
@@ -40,7 +43,7 @@ type Core struct {
 	Manifest              manifestmodel.ManifestSchema
 	MetadataStore         metadatapersistence.MetadataStore
 	IdentityStore         *identitypersistence.SQLIdentityStore
-	AuditStore            auditpersistence.AuditStore
+	AuditStore            auditrepository.AuditRepository
 	AuthStore             authpersistence.AuthStore
 	Identity              *identityapplication.IdentityApplicationService
 	Audit                 *auditapplication.AuditApplicationService
@@ -97,7 +100,12 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 	identityApp.ReplaceRoleDefinitions(manifest.Roles)
 	identityApp.ReplaceAuthorizationCatalogs(manifest.PermissionSets, manifest.PermissionSetGroups, manifest.Guardrails)
 
-	auditStore := auditpersistence.NewAuditStore(store)
+	auditBinding, err := auditmoduleimpl.NewFactory(auditmoduleimpl.Options{}).OpenModule(ctx,
+		auditsdk.ApplicationRef{InstallationID: defaultString(manifest.TemplateID, "domainry-identity")}, identityauditmodule.NewHost(store))
+	if err != nil {
+		return fail(fmt.Errorf("open Audit module: %w", err))
+	}
+	auditStore := identityauditmodule.NewRepository(auditBinding)
 	auditApp := auditapplication.NewAuditApplicationService(auditStore)
 	authStore := authpersistence.NewAuthStoreWithKeyProvider(identityStore, store.SecretKeyProvider(), store.IdempotencyMetrics(ctx))
 	authApp := authapplication.NewAuthApplicationService(

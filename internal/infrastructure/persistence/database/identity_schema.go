@@ -10,6 +10,9 @@ import (
 	"strings"
 	"time"
 
+	auditsdk "github.com/domainry/domainry-audit-sdk"
+	auditmodulehost "github.com/domainry/domainry-audit-sdk/modulehost"
+	auditmodule "github.com/domainry/domainry-audit/module"
 	migrationcontract "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/migration"
 	identityschema "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/schema"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/workspace"
@@ -185,7 +188,32 @@ func (s *IdentityStore) EnsureEvidenceSchema(ctx context.Context) error {
 	if s.schemaAssembler != nil {
 		return s.schemaAssembler.EnsureEvidenceSchema(ctx, s)
 	}
+	binding, err := auditmodule.NewFactory(auditmodule.Options{}).OpenModule(ctx, auditsdk.ApplicationRef{InstallationID: "domainry-identity"}, identityAuditLockedHost{store: s})
+	if err != nil {
+		return fmt.Errorf("prepare Audit module schema: %w", err)
+	}
+	defer binding.Close(ctx)
 	return identityschema.EnsureEvidenceSchema(ctx, s)
+}
+
+type identityAuditLockedHost struct{ store *IdentityStore }
+
+func (h identityAuditLockedHost) Database() auditmodulehost.Database { return h.store.DB() }
+func (h identityAuditLockedHost) Dialect() auditmodulehost.Dialect {
+	return h.store.BuilderRenderer()
+}
+func (h identityAuditLockedHost) Migrations() auditmodulehost.MigrationRegistrar {
+	return identityAuditLockedMigrationRegistrar{store: h.store}
+}
+
+type identityAuditLockedMigrationRegistrar struct{ store *IdentityStore }
+
+func (r identityAuditLockedMigrationRegistrar) Driver() string {
+	return r.store.PersistenceEngine().Name()
+}
+func (r identityAuditLockedMigrationRegistrar) Schema() string { return r.store.DatabaseSchema() }
+func (r identityAuditLockedMigrationRegistrar) ApplyOwnedMigrations(ctx context.Context, owner string, migrations []auditmodulehost.SchemaMigration) error {
+	return r.store.ApplyOwnedMigrationsLocked(ctx, owner, migrations)
 }
 
 func (s *IdentityStore) identityMigrationConfig() config.Config {

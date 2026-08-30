@@ -3,7 +3,7 @@ package repository
 import (
 	"context"
 
-	auditmodel "github.com/domainry/domainry-identity/internal/domain/audit/model"
+	auditmodel "github.com/domainry/domainry-audit-sdk/contract"
 	changeplanmodel "github.com/domainry/domainry-identity/internal/domain/changeplan/model"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	manifestmodel "github.com/domainry/domainry-identity/internal/domain/manifest/model"
