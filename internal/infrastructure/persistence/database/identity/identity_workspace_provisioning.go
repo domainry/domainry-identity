@@ -42,10 +42,10 @@ func (s *SQLIdentityStore) ProvisionWorkspaceIdentityWithExecutor(
 		if err := s.roleStore().UpsertWithExecutor(ctx, execer, workspaceID, role); err != nil {
 			return fmt.Errorf("provision workspace role %s: %w", role.Key, err)
 		}
-		if after != nil {
-			if err := after(WorkspaceIdentityProvisionStageRole); err != nil {
-				return err
-			}
+	}
+	if after != nil {
+		if err := after(WorkspaceIdentityProvisionStageRole); err != nil {
+			return err
 		}
 	}
 	if err := s.writeIdentityUserRoleAssignment(ctx, execer, workspaceID, identitymodel.IdentityUserRoleAssignment{
