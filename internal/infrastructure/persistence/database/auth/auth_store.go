@@ -182,6 +182,12 @@ func (s AuthStore) GetIdentityCredential(ctx context.Context, workspaceID, userI
 }
 
 func (s AuthStore) UpsertIdentityCredential(ctx context.Context, workspaceID string, credential identitymodel.IdentityCredential) error {
+	return s.UpsertIdentityCredentialWithExecutor(ctx, s.db, workspaceID, credential)
+}
+
+func (s AuthStore) UpsertIdentityCredentialWithExecutor(ctx context.Context, execer interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}, workspaceID string, credential identitymodel.IdentityCredential) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -204,7 +210,7 @@ func (s AuthStore) UpsertIdentityCredential(ctx context.Context, workspaceID str
 	if err != nil {
 		return fmt.Errorf("build identity credential upsert: %w", err)
 	}
-	_, err = s.db.ExecContext(ctx, statement, arguments...)
+	_, err = execer.ExecContext(ctx, statement, arguments...)
 	return err
 }
 

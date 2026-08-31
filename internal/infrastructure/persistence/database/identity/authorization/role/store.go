@@ -18,6 +18,10 @@ type Backend interface {
 	QueryIdentityContext(context.Context, string, ...any) (*sql.Rows, error)
 }
 
+type Execer interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
 type Store struct {
 	backend Backend
 	now     func() string
@@ -53,6 +57,10 @@ func (s *Store) List(ctx context.Context, workspaceID string) ([]identitymodel.I
 }
 
 func (s *Store) Upsert(ctx context.Context, workspaceID string, item identitymodel.IdentityRole) error {
+	return s.UpsertWithExecutor(ctx, s.backend.DB(), workspaceID, item)
+}
+
+func (s *Store) UpsertWithExecutor(ctx context.Context, execer Execer, workspaceID string, item identitymodel.IdentityRole) error {
 	workspaceID, err := workspace(workspaceID)
 	if err != nil {
 		return err
@@ -73,7 +81,7 @@ func (s *Store) Upsert(ctx context.Context, workspaceID string, item identitymod
 	if err != nil {
 		return fmt.Errorf("build identity role upsert: %w", err)
 	}
-	_, err = s.backend.DB().ExecContext(ctx, statement, arguments...)
+	_, err = execer.ExecContext(ctx, statement, arguments...)
 	return err
 }
 

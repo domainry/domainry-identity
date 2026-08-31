@@ -1,0 +1,116 @@
+package module
+
+import (
+	"context"
+	"crypto/rand"
+	"database/sql"
+	"encoding/base64"
+	"fmt"
+	"sort"
+	"strings"
+
+	identitysdk "github.com/domainry/domainry-identity-sdk"
+	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	identitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity"
+	"golang.org/x/crypto/bcrypt"
+)
+
+func (binding *moduleBinding) ProvisionWorkspaceIdentity(ctx context.Context, request identitysdk.WorkspaceIdentityProvisionRequest, transaction identitysdk.EmbeddedTransaction) (identitysdk.WorkspaceIdentityProvisionResult, error) {
+	if binding == nil || binding.runtime == nil || binding.runtime.Identity == nil || binding.runtime.IdentityStore == nil {
+		return identitysdk.WorkspaceIdentityProvisionResult{}, &identitysdk.Error{Code: "identity.workspace_provisioning_unavailable"}
+	}
+	tx, ok := transaction.Native.(*sql.Tx)
+	if !ok || tx == nil {
+		return identitysdk.WorkspaceIdentityProvisionResult{}, &identitysdk.Error{Code: "identity.workspace_provisioning_transaction_required"}
+	}
+	request.WorkspaceID = strings.TrimSpace(request.WorkspaceID)
+	request.AdminLoginID = strings.ToLower(strings.TrimSpace(request.AdminLoginID))
+	request.AdminName = strings.TrimSpace(request.AdminName)
+	if _, err := identitymodel.NewWorkspaceID(request.WorkspaceID); err != nil || request.AdminLoginID == "" || request.AdminName == "" {
+		return identitysdk.WorkspaceIdentityProvisionResult{}, &identitysdk.Error{Code: "identity.workspace_provisioning_invalid", Cause: err}
+	}
+	password, err := workspaceInitialPassword()
+	if err != nil {
+		return identitysdk.WorkspaceIdentityProvisionResult{}, err
+	}
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return identitysdk.WorkspaceIdentityProvisionResult{}, fmt.Errorf("hash initial workspace password: %w", err)
+	}
+	roles := binding.provisionedWorkspaceRoles(request.WorkspaceID)
+	admin := identitymodel.IdentityUser{
+		ID: "admin", Name: request.AdminName, Email: request.AdminLoginID,
+		AccountType: identitymodel.IdentityAccountHuman, Status: identitymodel.IdentityStatusActive,
+	}
+	if err := binding.runtime.IdentityStore.ProvisionWorkspaceIdentityWithExecutor(ctx, tx, request.WorkspaceID, admin, roles); err != nil {
+		return identitysdk.WorkspaceIdentityProvisionResult{}, err
+	}
+	if err := binding.runtime.AuthStore.UpsertIdentityCredentialWithExecutor(ctx, tx, request.WorkspaceID, identitymodel.IdentityCredential{
+		UserID: "admin", PasswordHash: string(passwordHash), MustChangePassword: true,
+	}); err != nil {
+		return identitysdk.WorkspaceIdentityProvisionResult{}, fmt.Errorf("provision workspace administrator credential: %w", err)
+	}
+	return identitysdk.WorkspaceIdentityProvisionResult{
+		AdminLoginID: request.AdminLoginID, InitialPassword: password, MustChangePassword: true, ProvisionedRoles: len(roles),
+	}, nil
+}
+
+func (binding *moduleBinding) ReconcileWorkspaceRoles(ctx context.Context, request identitysdk.WorkspaceRoleReconcileRequest, transaction identitysdk.EmbeddedTransaction) (identitysdk.WorkspaceRoleReconcileResult, error) {
+	if binding == nil || binding.runtime == nil || binding.runtime.Identity == nil || binding.runtime.IdentityStore == nil {
+		return identitysdk.WorkspaceRoleReconcileResult{}, &identitysdk.Error{Code: "identity.workspace_role_reconciliation_unavailable"}
+	}
+	tx, ok := transaction.Native.(*sql.Tx)
+	if !ok || tx == nil {
+		return identitysdk.WorkspaceRoleReconcileResult{}, &identitysdk.Error{Code: "identity.workspace_provisioning_transaction_required"}
+	}
+	workspaceID := strings.TrimSpace(request.WorkspaceID)
+	if _, err := identitymodel.NewWorkspaceID(workspaceID); err != nil {
+		return identitysdk.WorkspaceRoleReconcileResult{}, &identitysdk.Error{Code: "identity.workspace_provisioning_invalid", Cause: err}
+	}
+	roles := binding.provisionedWorkspaceRoles(workspaceID)
+	for _, role := range roles {
+		if err := binding.runtime.IdentityStore.UpsertIdentityRoleWithExecutor(ctx, tx, workspaceID, role); err != nil {
+			return identitysdk.WorkspaceRoleReconcileResult{}, fmt.Errorf("reconcile workspace role %s: %w", role.Key, err)
+		}
+	}
+	return identitysdk.WorkspaceRoleReconcileResult{ProvisionedRoles: len(roles)}, nil
+}
+
+func (binding *moduleBinding) provisionedWorkspaceRoles(workspaceID string) []identitymodel.IdentityRole {
+	definitions := binding.runtime.Identity.PublishedRoleDefinitions(context.Background())
+	byKey := map[string]identitymodel.IdentityRole{}
+	for _, definition := range definitions {
+		key := strings.TrimSpace(definition.Key)
+		if key == "" || (key != "admin" && !definition.ProvisionToWorkspaces) {
+			continue
+		}
+		label := strings.TrimSpace(definition.Name)
+		if label == "" {
+			label = key
+		}
+		byKey[key] = identitymodel.IdentityRole{ID: identitypersistence.WorkspaceRoleID(workspaceID, key), Key: key, Label: label, Description: "Application-declared tenant login role", Status: identitymodel.IdentityStatusActive}
+	}
+	if _, found := byKey["admin"]; !found {
+		byKey["admin"] = identitymodel.IdentityRole{ID: identitypersistence.WorkspaceRoleID(workspaceID, "admin"), Key: "admin", Label: "Administrator", Description: "Tenant workspace administrator", Status: identitymodel.IdentityStatusActive}
+	}
+	keys := make([]string, 0, len(byKey))
+	for key := range byKey {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	roles := make([]identitymodel.IdentityRole, 0, len(keys))
+	for _, key := range keys {
+		roles = append(roles, byKey[key])
+	}
+	return roles
+}
+
+func workspaceInitialPassword() (string, error) {
+	buffer := make([]byte, 18)
+	if _, err := rand.Read(buffer); err != nil {
+		return "", fmt.Errorf("generate initial workspace password: %w", err)
+	}
+	return "Vd!9" + base64.RawURLEncoding.EncodeToString(buffer), nil
+}
+
+var _ identitysdk.EmbeddedWorkspaceProvisioner = (*moduleBinding)(nil)

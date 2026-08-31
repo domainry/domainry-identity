@@ -85,6 +85,7 @@ func projectRoleDefinition(input identitysdk.ProjectRoleDefinition) (identitymod
 		AssignmentMode: identitymodel.IdentityRoleAssignmentMode(strings.TrimSpace(input.AssignmentMode)), RiskLevel: identitymodel.IdentityRoleRiskLevel(strings.TrimSpace(input.RiskLevel)),
 		ConflictRoleKeys: append([]string(nil), input.ConflictRoleKeys...), GrantableRoleKeys: append([]string(nil), input.GrantableRoleKeys...),
 		PermissionSetKeys: append([]string(nil), input.PermissionSetKeys...), PermissionSetGroups: append([]string(nil), input.PermissionSetGroups...), GuardrailKeys: append([]string(nil), input.GuardrailKeys...),
+		ProvisionToWorkspaces: input.ProvisionToWorkspaces,
 	}
 	if err := decodeProjectRolePolicy(input.DataPermissions, &definition.DataPermissions); err != nil {
 		return identitymodel.RoleSchema{}, err

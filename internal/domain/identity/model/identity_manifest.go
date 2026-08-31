@@ -3,25 +3,26 @@ package identitymodel
 import localizationmodel "github.com/domainry/domainry-identity/internal/domain/localization/model"
 
 type RoleSchema struct {
-	Key                  string                             `json:"key"`
-	Name                 string                             `json:"name"`
-	I18n                 localizationmodel.LocalizedTextMap `json:"i18n,omitempty"`
-	Permissions          []string                           `json:"permissions"`
-	RecordScope          string                             `json:"record_scope"`
-	DataPermissions      []DataPermission                   `json:"data_permissions,omitempty"`
-	FieldPermissions     []FieldPermission                  `json:"field_permissions,omitempty"`
-	ReferencePermissions []ReferencePermission              `json:"reference_permissions,omitempty"`
-	ExportRules          []ExportRule                       `json:"export_rules,omitempty"`
-	Audience             IdentityRoleAudience               `json:"audience,omitempty"`
-	RequiredBindingKey   string                             `json:"required_binding_key,omitempty"`
-	AssignmentMode       IdentityRoleAssignmentMode         `json:"assignment_mode,omitempty"`
-	RiskLevel            IdentityRoleRiskLevel              `json:"risk_level,omitempty"`
-	ConflictRoleKeys     []string                           `json:"conflict_role_keys,omitempty"`
-	GrantableRoleKeys    []string                           `json:"grantable_role_keys,omitempty"`
-	PermissionSetKeys    []string                           `json:"permission_set_keys,omitempty"`
-	PermissionSetGroups  []string                           `json:"permission_set_group_keys,omitempty"`
-	GuardrailKeys        []string                           `json:"guardrail_keys,omitempty"`
-	Guardrails           []IdentityGuardrailPolicy          `json:"guardrails,omitempty"`
+	Key                   string                             `json:"key"`
+	Name                  string                             `json:"name"`
+	I18n                  localizationmodel.LocalizedTextMap `json:"i18n,omitempty"`
+	Permissions           []string                           `json:"permissions"`
+	RecordScope           string                             `json:"record_scope"`
+	DataPermissions       []DataPermission                   `json:"data_permissions,omitempty"`
+	FieldPermissions      []FieldPermission                  `json:"field_permissions,omitempty"`
+	ReferencePermissions  []ReferencePermission              `json:"reference_permissions,omitempty"`
+	ExportRules           []ExportRule                       `json:"export_rules,omitempty"`
+	Audience              IdentityRoleAudience               `json:"audience,omitempty"`
+	RequiredBindingKey    string                             `json:"required_binding_key,omitempty"`
+	AssignmentMode        IdentityRoleAssignmentMode         `json:"assignment_mode,omitempty"`
+	RiskLevel             IdentityRoleRiskLevel              `json:"risk_level,omitempty"`
+	ConflictRoleKeys      []string                           `json:"conflict_role_keys,omitempty"`
+	GrantableRoleKeys     []string                           `json:"grantable_role_keys,omitempty"`
+	PermissionSetKeys     []string                           `json:"permission_set_keys,omitempty"`
+	PermissionSetGroups   []string                           `json:"permission_set_group_keys,omitempty"`
+	GuardrailKeys         []string                           `json:"guardrail_keys,omitempty"`
+	Guardrails            []IdentityGuardrailPolicy          `json:"guardrails,omitempty"`
+	ProvisionToWorkspaces bool                               `json:"provision_to_workspaces,omitempty"`
 }
 
 type IdentityRoleAudience string
