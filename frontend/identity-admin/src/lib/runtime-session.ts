@@ -1,21 +1,9 @@
+import type { IdentitySession } from '@domainry/identity-client'
+
 export const RUNTIME_SESSION_KEY = 'identity-admin-runtime-session'
 
-export interface RuntimeUser {
-  id: string
-  name: string
-  email: string
-  locale?: string
-  version: number
-  department_id?: string
-  department_path?: string
-  status: string
-}
-
-export interface RuntimeRole {
-  id: string
-  key: string
-  label: string
-}
+export type RuntimeUser = IdentitySession['user']
+export type RuntimeRole = IdentitySession['roles'][number]
 
 export interface Session {
   username: string

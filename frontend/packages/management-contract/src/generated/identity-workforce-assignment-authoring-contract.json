@@ -1,8 +1,5 @@
 {
   "key": "identity.workforce_assignment",
-  "surface": "",
-  "actor_audiences": null,
-  "exposure_class": "",
   "status": "supported",
   "lifecycle": "immediate_audited_configuration",
   "parameters": [
@@ -299,7 +296,7 @@
     ],
     "side_effect_level": "internal",
     "permission_model": "identity.workforce.write",
-    "change_control": "direct_on_configuring_runtime_change_plan_on_existing_runtime"
+    "change_control": "direct_audited_configuration"
   },
   "sources": [
     {

@@ -39,8 +39,9 @@ describe('identity account directory boundary', () => {
 
   it('keeps Workforce facts out of the Runtime account contract and write projection', () => {
     const api = readFileSync(new URL('../../data/api.ts', import.meta.url), 'utf8')
-    const runtimeUser = api.slice(api.indexOf('interface RuntimeUser {'), api.indexOf('interface RuntimeUserDirectoryEntry'))
-    const writeProjection = api.slice(api.indexOf('const identityUserWritableFields'), api.indexOf('interface RuntimeDepartment'))
+    const identityContract = readFileSync(new URL('../../../../packages/management-contract/src/index.ts', import.meta.url), 'utf8')
+    const runtimeUser = identityContract.slice(identityContract.indexOf('export interface IdentityUser {'), identityContract.indexOf('export interface IdentityUserDirectoryEntry'))
+    const writeProjection = api.slice(api.indexOf('const identityUserWritableFields'), api.indexOf('function mapIdentityAccount'))
 
     for (const forbidden of [
       'employee_number',
@@ -60,12 +61,13 @@ describe('identity account directory boundary', () => {
     }
     expect(writeProjection).toContain('identityUserAuthoringContract.parameters')
     expect(writeProjection).toContain('identityUserWritableFields.has(key)')
+    expect(api).toContain('from "@domainry/identity-management-contract"')
   })
 
   it('keeps the canonical display name independent from optional global name parts', () => {
     const api = readFileSync(new URL('../../data/api.ts', import.meta.url), 'utf8')
     const contract = JSON.parse(
-      readFileSync(new URL('../../data/generated/identity-user-authoring-contract.json', import.meta.url), 'utf8'),
+      readFileSync(new URL('../../../../packages/management-contract/src/generated/identity-user-authoring-contract.json', import.meta.url), 'utf8'),
     ) as { parameters: Array<{ key: string; required?: boolean }> }
     const accountPages = [
       readFileSync(new URL('./identity-accounts-page.tsx', import.meta.url), 'utf8'),
@@ -167,9 +169,10 @@ describe('identity account directory boundary', () => {
 
   it('provisions and displays the fixed initial credential without caching it in the account list', () => {
     const api = readFileSync(new URL('../../data/api.ts', import.meta.url), 'utf8')
+    const identityContract = readFileSync(new URL('../../../../packages/management-contract/src/index.ts', import.meta.url), 'utf8')
     const hooks = readFileSync(new URL('../../data/hooks.ts', import.meta.url), 'utf8')
     const page = readFileSync(new URL('./identity-accounts-page.tsx', import.meta.url), 'utf8')
-    expect(api).toContain('initial_password?: string')
+    expect(identityContract).toContain('initial_password?: string')
     expect(api).toContain('identityAccountsApi')
     expect(api).toContain('provision(input:')
     expect(api).toContain('user.must_change_password !== false')

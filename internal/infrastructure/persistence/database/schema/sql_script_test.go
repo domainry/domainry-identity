@@ -134,6 +134,9 @@ func (s scriptedSchemaStore) SchemaTableExists(ctx context.Context, table string
 	query := s.engineProfile().TableExistsQuery(s.renderer(), s.DatabaseSchema(), table)
 	var count int
 	err := s.db.QueryRowContext(ctx, query.Statement, query.Arguments...).Scan(&count)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
 	return count > 0, err
 }
 func (scriptedSchemaStore) CreateIndexIfMissing(context.Context, string, string, bool, ...string) error {

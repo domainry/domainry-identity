@@ -460,7 +460,7 @@
     ],
     "side_effect_level": "internal",
     "permission_model": "identity.users.write",
-    "change_control": "direct_on_configuring_runtime_change_plan_on_existing_runtime"
+    "change_control": "direct_audited_configuration"
   },
   "sources": [
     {

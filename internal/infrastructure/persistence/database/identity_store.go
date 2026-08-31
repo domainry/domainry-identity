@@ -19,7 +19,7 @@ import (
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/postgres"
 	"github.com/domainry/domainry-identity/internal/platform/config"
-	metadatapersistence "github.com/domainry/domainry-metadata-sdk/persistence"
+	metadatasdk "github.com/domainry/domainry-metadata-sdk"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 )
 
@@ -46,14 +46,14 @@ type IdentityStore struct {
 	schemaAssembler      identitySchemaAssembler
 	borrowedDatabase     bool
 	relationPrefix       string
-	metadataDefinitions  metadatapersistence.DefinitionRepository
+	metadataBinding      metadatasdk.Binding
 }
 
-func (s *IdentityStore) MetadataDefinitions() metadatapersistence.DefinitionRepository {
+func (s *IdentityStore) Metadata() metadatasdk.Binding {
 	if s == nil {
 		return nil
 	}
-	return s.metadataDefinitions
+	return s.metadataBinding
 }
 
 func newMigrationCoordinator(queryDatabase, migrationPool *sql.DB, migrationDatabase driver.SchemaDatabase, backupDatabase, lockDatabase *sql.DB, engine databaseEngine, renderer ormdialect.Renderer, databaseSchema, relationPrefix string, cfg config.Config, secretMaterialKey [32]byte, metrics *observability.Metrics) *migrationowner.Coordinator {

@@ -11,9 +11,59 @@ import type {
   WorkforceDetail,
   WorkforceAssignableRole,
 } from "./types";
-import { identityListParams, type IdentityListQuery, type IdentityPage } from "./identity-list-query";
-export type { IdentityListQuery, IdentityPage } from "./identity-list-query";
-import identityUserAuthoringContract from "./generated/identity-user-authoring-contract.json";
+import {
+  identityListParams,
+  type IdentityAccountSecurity,
+  type IdentityBatchReceipt,
+  type IdentityDepartment as RuntimeDepartment,
+  type IdentityListQuery,
+  type IdentityPage,
+  type IdentityRole as RuntimeRole,
+  type IdentityRoleAssignment as RuntimeRoleAssignment,
+  type IdentityRolePage as RuntimeRolePage,
+  type IdentityUser as RuntimeUser,
+  type IdentityUserDeletionImpact,
+  type IdentityUserDirectoryEntry as RuntimeUserDirectoryEntry,
+  type IdentityUserDisableImpact,
+  type IdentityWorkforceAssignment as RuntimeWorkforceAssignment,
+  type IdentityWorkforceDetail as RuntimeWorkforceDetail,
+  type IdentityWorkforceProfile as RuntimeWorkforceProfile,
+  type IdentityWorkforceProfilePage as RuntimeWorkforceProfilePage,
+  type EntitlementBatchItem,
+  type WorkforceLifecycleInput,
+  type WorkforceLifecycleResult,
+  type WorkforceOnboardingInput,
+  type WorkforceOnboardingResult,
+  type WorkforceTransferBatchItem,
+} from "@domainry/identity-management-contract";
+export type {
+  IdentityAccountSecurity,
+  IdentityBatchReceipt,
+  IdentityDataScopePolicy as RuntimeDataScopePolicy,
+  IdentityFieldPermission as RuntimeFieldPermission,
+  IdentityListQuery,
+  IdentityMenu as RuntimeMenu,
+  IdentityPage,
+  IdentityPermissionPoint as RuntimePermissionPoint,
+  IdentityPolicyExpression as RuntimeIdentityPolicyExpression,
+  IdentityRole as RuntimeRole,
+  IdentityRoleAssignment as RuntimeRoleAssignment,
+  IdentityRoleMenuAssignment as RuntimeRoleMenuAssignment,
+  IdentityRolePermissionAssignment as RuntimeRolePermissionAssignment,
+  IdentityUserDeletionImpact,
+  IdentityUserDisableImpact,
+  EffectiveActionPermission,
+  EffectivePermissionDecision,
+  EffectivePermissions,
+  EntitlementBatchItem,
+  WorkforceLifecycleInput,
+  WorkforceLifecycleOperation,
+  WorkforceLifecycleResult,
+  WorkforceOnboardingInput,
+  WorkforceOnboardingResult,
+  WorkforceTransferBatchItem,
+} from "@domainry/identity-management-contract";
+import identityUserAuthoringContract from "@domainry/identity-management-contract/identity-user-authoring-contract.json";
 import { saveSystemResourceDraft } from "./action-definition-api";
 
 const identityUserWritableFields = new Set(
@@ -29,47 +79,6 @@ function identityUserWriteBody(body: Record<string, unknown>) {
     }
   }
   return body;
-}
-
-interface RuntimeDepartment {
-  id: string;
-  name: string;
-  parent_id?: string;
-  path: string;
-  ancestor_ids: string[];
-  depth: number;
-  sort_order: number;
-  status: "active" | "disabled";
-}
-
-interface RuntimeUser {
-  id: string;
-  name: string;
-  given_name?: string;
-  middle_name?: string;
-  family_name?: string;
-  name_prefix?: string;
-  name_suffix?: string;
-  native_name?: string;
-  name_locale?: string;
-  account_type: "human" | "service" | "automation";
-  locale?: string;
-  timezone?: string;
-  email: string;
-  phone?: string;
-  status: "active" | "disabled";
-  version: number;
-  created_at: string;
-  updated_at: string;
-  initial_password?: string;
-  must_change_password?: boolean;
-}
-
-interface RuntimeUserDirectoryEntry {
-  user: RuntimeUser;
-  roles: Array<{ id: string; key: string; label: string; source?: string; status?: string }>;
-  security: { mfa_enabled: boolean; locked: boolean; active_sessions: number; last_login_at?: string };
-  identity_badges: Array<{ kind: "workforce" | "business_profile"; key: string; id: string; status: string }>;
 }
 
 function mapIdentityAccount(user: RuntimeUser, resourceHash?: string): IdentityAccount {
@@ -96,25 +105,6 @@ function mapIdentityAccount(user: RuntimeUser, resourceHash?: string): IdentityA
   };
 }
 
-export interface RuntimeRole {
-  id: string;
-  key: string;
-  label: string;
-  description: string;
-  status: "active" | "disabled";
-  permission_keys: string[] | null;
-  data_scopes: unknown[] | null;
-  field_permissions: unknown[] | null;
-}
-
-interface RuntimeRolePage {
-  items: RuntimeRole[];
-  page: number;
-  page_size: number;
-  total: number;
-  has_next: boolean;
-}
-
 export interface RoleListQuery {
   page: number;
   pageSize: number;
@@ -139,247 +129,6 @@ export interface RoleCreateInput extends Omit<Role, "id"> {
     read: boolean;
     write: boolean;
   };
-}
-
-export interface RuntimeRoleAssignment {
-  user_id: string;
-  role_id: string;
-  workforce_profile_id?: string;
-  binding_key?: string;
-  profile_id?: string;
-  source?: string;
-  status?: string;
-  valid_from?: string;
-  valid_until?: string;
-  granted_by?: string;
-  created_at?: string;
-  expires_at?: string;
-}
-
-export interface IdentityUserDeletionImpact {
-  user_id: string;
-  profile_bindings: Array<{ object_key: string; profile_id: string; binding_key: string; status: string }>;
-  workforce_profile_ids: string[];
-  active_role_ids: string[];
-  business_profile_references: Array<{ object_key: string; field_key: string; count: number }>;
-  owned_record_references: Array<{ object_key: string; field_key: string; count: number }>;
-  pending_approval_task_ids: string[];
-  retained_audit_event_ids: string[];
-  active_legal_hold_ids: string[];
-  blockers: string[];
-  credentials_and_sessions_revoked: boolean;
-  can_delete: boolean;
-}
-
-export interface IdentityUserDisableImpact {
-  user_id: string;
-  profile_bindings: Array<{ object_key: string; profile_id: string; binding_key: string; status: string }>;
-  workforce_profile_ids: string[];
-  active_entitlement_role_ids: string[];
-  sessions_will_be_revoked: boolean;
-  business_facts_preserved: boolean;
-}
-
-export interface IdentityAccountSecurity {
-  credential?: {
-    user_id: string;
-    password_updated_at?: string;
-    failed_login_count: number;
-    locked_until?: string;
-    last_login_at?: string;
-    must_change_password: boolean;
-  };
-  sessions: Array<{
-    id: string;
-    session_id: string;
-    expires_at: string;
-    revoked_at?: string;
-    created_at?: string;
-    last_used_at?: string;
-  }>;
-  external_accounts: Array<{
-    id: string;
-    provider: string;
-    email?: string;
-    phone?: string;
-    display_name?: string;
-    linked_at?: string;
-  }>;
-  mfa_factors: Array<{
-    id: string;
-    type: string;
-    label?: string;
-    provider?: string;
-    status: string;
-    verified_at?: string;
-    last_used_at?: string;
-    created_at?: string;
-  }>;
-  mfa_enabled: boolean;
-  active_sessions: number;
-  locked: boolean;
-}
-
-interface RuntimeWorkforceProfile {
-  id: string;
-  organization_id: string;
-  identity_user_id: string;
-  worker_no: string;
-  worker_type: WorkforceProfile["workerType"];
-  work_status: WorkforceProfile["workStatus"];
-  start_date?: string;
-  end_date?: string;
-  primary_assignment_id?: string;
-  version: number;
-}
-
-interface RuntimeWorkforceProfilePage {
-  items: RuntimeWorkforceProfile[];
-  page: number;
-  page_size: number;
-  total: number;
-  has_next: boolean;
-}
-
-interface RuntimeWorkforceAssignment {
-  id: string;
-  workforce_profile_id: string;
-  organization_unit_id: string;
-  position_id?: string;
-  manager_workforce_profile_id?: string;
-  assignment_type: WorkforceAssignment["assignmentType"];
-  effective_from?: string;
-  effective_to?: string;
-  status: WorkforceAssignment["status"];
-  version: number;
-}
-
-interface RuntimeWorkforceDetail {
-  profile: RuntimeWorkforceProfile;
-  assignments: RuntimeWorkforceAssignment[];
-  account: RuntimeUser;
-  business_profiles: Array<{
-    binding_key: string;
-    object_key: string;
-    profile_id: string;
-    status: WorkforceDetail["businessProfiles"][number]["status"];
-  }>;
-}
-
-export type WorkforceLifecycleOperation = "invite" | "onboard" | "assign" | "transfer" | "add_secondary" | "suspend" | "revoke_access";
-
-export interface WorkforceLifecycleInput {
-  operation: WorkforceLifecycleOperation;
-  profile: {
-    id: string;
-    organization_id?: string;
-    identity_user_id?: string;
-    worker_no?: string;
-    worker_type?: WorkforceProfile["workerType"];
-    work_status?: WorkforceProfile["workStatus"];
-    start_date?: string;
-    end_date?: string;
-    primary_assignment_id?: string;
-    version?: number;
-  };
-  assignment?: {
-    id: string;
-    organization_unit_id: string;
-    position_id?: string;
-    manager_workforce_profile_id?: string;
-    assignment_type?: WorkforceAssignment["assignmentType"];
-    effective_from?: string;
-  };
-  previous_assignment_id?: string;
-  effective_at?: string;
-  reason?: string;
-}
-
-export interface WorkforceOnboardingInput {
-  user: {
-    id: string;
-    name: string;
-    email: string;
-    phone?: string;
-    status: "active";
-  };
-  profile: {
-    id: string;
-    organization_id: string;
-    identity_user_id: string;
-    worker_no: string;
-    worker_type: WorkforceProfile["workerType"];
-    work_status: "active";
-    start_date?: string;
-  };
-  assignment: {
-    id: string;
-    organization_unit_id: string;
-    effective_from?: string;
-  };
-  role_ids?: string[];
-  reason?: string;
-}
-
-export interface WorkforceOnboardingResult {
-  user: RuntimeUser;
-  profile: RuntimeWorkforceProfile;
-  assignment: RuntimeWorkforceAssignment;
-  role_assignments: RuntimeRoleAssignment[];
-}
-
-export interface WorkforceLifecycleResult {
-  profile?: RuntimeWorkforceProfile;
-  assignments?: RuntimeWorkforceAssignment[];
-  ended_assignment_count: number;
-  revoked_entitlement_count: number;
-}
-
-export interface WorkforceTransferBatchItem {
-  profile_id: string;
-  previous_assignment_id: string;
-  assignment: NonNullable<WorkforceLifecycleInput["assignment"]>;
-  effective_at: string;
-  reason?: string;
-}
-
-export interface IdentityBatchReceipt<T> {
-  id: string;
-  workspace_id: string;
-  actor_id: string;
-  idempotency_key: string;
-  items: T[];
-  replayed?: boolean;
-  created_at: string;
-}
-
-export interface EntitlementBatchItem {
-  operation: "grant" | "revoke";
-  user_id: string;
-  role_id: string;
-  workforce_profile_id?: string;
-  binding_key?: string;
-  profile_id?: string;
-  valid_from?: string;
-  valid_until?: string;
-  reason?: string;
-}
-
-export interface RuntimeMenu {
-  id: string;
-  key: string;
-  label: string;
-  description?: string;
-  route?: string;
-  icon?: string;
-  parent_id?: string;
-  sort_order: number;
-  status: "active" | "disabled";
-}
-
-export interface RuntimeRoleMenuAssignment {
-  role_id: string;
-  menu_id: string;
 }
 
 export interface RuntimeSchema {
@@ -454,107 +203,6 @@ export interface RuntimeAuditEvent {
   before?: Record<string, unknown>;
   after?: Record<string, unknown>;
   created_at: string;
-}
-
-export interface EffectivePermissionDecision {
-  key: string;
-  permission_key?: string;
-  data_scope?: string;
-  allowed: boolean;
-  reason: string;
-}
-
-export interface EffectiveActionPermission {
-  key: string;
-  object_key: string;
-  label?: string;
-  kind: string;
-  permission_key: string;
-  data_scope: string;
-  allowed: boolean;
-  reason: string;
-  assurance_required: string[];
-}
-
-export interface EffectivePermissions {
-  role_key: string;
-  user_id: string;
-  function_permissions?: Array<{
-    key: string;
-    decision: EffectivePermissionDecision;
-  }>;
-  objects?: Array<{
-    object_key: string;
-    actions: Array<EffectivePermissionDecision & { action?: string }>;
-  }>;
-  actions?: EffectiveActionPermission[];
-}
-
-export interface RuntimeDataScopePolicy {
-  resource: string;
-  scope: string;
-  audit_denial?: boolean;
-  predicate?: RuntimeIdentityPolicyExpression;
-}
-
-export interface RuntimeIdentityPolicyExpression {
-  operator: 'and' | 'or' | 'not' | 'eq' | 'in';
-  path?: Array<{
-    direction: 'forward' | 'reverse';
-    relation_field_key: string;
-    target_object_key: string;
-  }>;
-  field_key?: string;
-  value_source?: 'literal' | 'actor_claim';
-  claim_key?: string;
-  values?: string[];
-  children?: RuntimeIdentityPolicyExpression[];
-}
-
-export interface RuntimeFieldPermission {
-  resource: string;
-  field: string;
-  visible: boolean;
-  editable: boolean;
-  masked?: boolean;
-  policies?: unknown[];
-}
-
-export interface RuntimePermissionPoint {
-  key: string;
-  label: string;
-  system: string;
-  resource: string;
-  resource_label: string;
-  action: string;
-  category: string;
-  description: string;
-  source_type?: string;
-  source_action_key?: string;
-  object_key?: string;
-  action_label?: string;
-  authorization_strategy?: 'inherit_object_permission' | 'dedicated_permission';
-  risk_level?: 'low' | 'medium' | 'high' | 'critical';
-  approval_required?: boolean;
-  assurance_required?: string[];
-  lifecycle_status?: string;
-  action_usages?: RuntimeActionPermissionUsage[];
-}
-
-export interface RuntimeActionPermissionUsage {
-  action_key: string;
-  object_key: string;
-  action_label: string;
-  authorization_strategy: 'inherit_object_permission' | 'dedicated_permission';
-  risk_level: 'low' | 'medium' | 'high' | 'critical';
-  approval_required: boolean;
-  assurance_required: string[];
-  lifecycle_status: string;
-}
-
-export interface RuntimeRolePermissionAssignment {
-  role_id: string;
-  permission_key: string;
 }
 
 function makeID(prefix: string, source: string): string {

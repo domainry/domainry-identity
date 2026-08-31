@@ -105,7 +105,7 @@ func TestDirectRolePublicationRollbackAndDisableAreAtomicWithDirectoryAndAudit(t
 	}
 	assertRoleDirectoryState(t, store, "Reviewer", "disabled", 4)
 	var disabled int
-	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _metadata_role_definitions WHERE resource_key='reviewer' AND disabled_at IS NOT NULL`).Scan(&disabled); err != nil || disabled != 1 {
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _identity_role_definitions WHERE resource_key='reviewer' AND disabled_at IS NOT NULL`).Scan(&disabled); err != nil || disabled != 1 {
 		t.Fatalf("disabled role definitions=%d err=%v", disabled, err)
 	}
 }

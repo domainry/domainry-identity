@@ -56,3 +56,37 @@ func TestModuleUsesTaggedDependencies(t *testing.T) {
 		t.Fatal("Identity must consume released module tags, not local directory replacements")
 	}
 }
+
+func TestIdentityDoesNotReachIntoMetadataPersistence(t *testing.T) {
+	root := filepath.Clean(filepath.Join("..", ".."))
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || filepath.Ext(path) != ".go" {
+			return nil
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if strings.Contains(string(content), "domainry-metadata-sdk/"+"persistence") {
+			t.Errorf("Identity source %q imports the retired Metadata persistence boundary", path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, relative := range []string{
+		"internal/application/metadata/metadata_localized_text_coverage_application_service.go",
+		"internal/domain/metadata/projection/metadata_localized_text_coverage_projection.go",
+		"internal/domain/metadata/service/metadata_dictionary_domain_service.go",
+	} {
+		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(relative))); err == nil {
+			t.Errorf("Identity duplicate Metadata implementation returned: %s", relative)
+		} else if !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+	}
+}

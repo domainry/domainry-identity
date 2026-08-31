@@ -7,21 +7,21 @@ import (
 	"strings"
 
 	manifestmodel "github.com/domainry/domainry-identity/internal/domain/manifest/model"
-	metadatapersistence "github.com/domainry/domainry-metadata-sdk/persistence"
+	metadatasdk "github.com/domainry/domainry-metadata-sdk"
 )
 
 func (s MetadataStore) syncBusinessMetadataDefinitions(ctx context.Context, manifest manifestmodel.ManifestSchema) error {
-	repository := s.store.MetadataDefinitions()
-	if repository == nil {
-		return fmt.Errorf("Metadata definition repository is unavailable")
+	binding := s.store.Metadata()
+	if binding == nil || binding.Projection() == nil {
+		return fmt.Errorf("Metadata projection is unavailable")
 	}
-	definitions := []metadatapersistence.Definition{}
+	definitions := []metadatasdk.Definition{}
 	appendDefinition := func(resourceType, key, objectKey, name string, value any) error {
 		payload, err := json.Marshal(value)
 		if err != nil {
 			return err
 		}
-		definitions = append(definitions, metadatapersistence.Definition{ResourceType: resourceType, Key: strings.TrimSpace(key), ObjectKey: strings.TrimSpace(objectKey), Name: strings.TrimSpace(name), Payload: payload})
+		definitions = append(definitions, metadatasdk.Definition{ResourceType: resourceType, ResourceKey: strings.TrimSpace(key), ObjectKey: strings.TrimSpace(objectKey), Name: strings.TrimSpace(name), Payload: payload})
 		return nil
 	}
 	for _, object := range manifest.Objects {
@@ -64,7 +64,11 @@ func (s MetadataStore) syncBusinessMetadataDefinitions(ctx context.Context, mani
 	if sourceID == "" {
 		sourceID = "generated-template"
 	}
-	return repository.SyncDefinitions(ctx, metadatapersistence.Snapshot{SchemaVersion: version, SourceKind: "generated", SourceID: sourceID, Definitions: definitions})
+	return binding.Projection().Sync(ctx, metadatasdk.ProjectionSnapshot{
+		SchemaVersion: version, SourceKind: "generated", SourceID: sourceID,
+		Name: strings.TrimSpace(manifest.Name), DefaultLocale: strings.TrimSpace(manifest.DefaultLocale),
+		Definitions: definitions,
+	})
 }
 
 func cloneBusinessMetadataConfig(value map[string]any) map[string]any {

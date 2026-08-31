@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	metadatapersistence "github.com/domainry/domainry-metadata-sdk/persistence"
 	"github.com/domainry/domainry-orm/query"
 )
 
@@ -38,7 +37,7 @@ func (s MetadataStore) insertMetadataResource(ctx context.Context, tx *sql.Tx, s
 	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
 		return fmt.Errorf("insert %s %s: %w", seed.ResourceType, seed.Key, err)
 	}
-	if err := s.insertOwnedDefinitionVersion(ctx, tx, metadatapersistence.DefinitionVersion{
+	if err := s.insertOwnedDefinitionVersion(ctx, tx, metadataDefinitionVersion{
 		ResourceType: seed.ResourceType, ResourceKey: seed.Key, SchemaVersion: seed.SchemaVersion,
 		SchemaHash: hash, Payload: raw, CreatedAt: now,
 	}); err != nil {
@@ -92,7 +91,7 @@ func (s MetadataStore) syncMetadataResource(ctx context.Context, tx *sql.Tx, see
 		}
 		return fmt.Errorf("metadata definition version id collision for %s %s", seed.ResourceType, seed.Key)
 	}
-	if err := s.insertOwnedDefinitionVersion(ctx, tx, metadatapersistence.DefinitionVersion{
+	if err := s.insertOwnedDefinitionVersion(ctx, tx, metadataDefinitionVersion{
 		ResourceType: seed.ResourceType, ResourceKey: seed.Key, SchemaVersion: seed.SchemaVersion,
 		SchemaHash: hash, Payload: raw, CreatedAt: now,
 	}); err != nil {

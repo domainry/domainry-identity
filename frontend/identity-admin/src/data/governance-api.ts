@@ -6,6 +6,25 @@ import {
 } from "@/lib/runtime-api";
 import type { RuntimeProductSurface } from "@domainry/surface-contract";
 import type {
+  IdentityAccessExplainResult,
+  IdentityAccessReverseIndex,
+  IdentityEffectiveAccessSnapshot,
+  IdentityRoleChangeImpact,
+  IdentityRoleDefinition,
+  IdentityRoleGovernanceDetail,
+  IdentityRoleVersionHistory,
+} from '@domainry/identity-management-contract'
+export type {
+  IdentityAccessExplainResult,
+  IdentityAccessReason,
+  IdentityAccessReverseIndex,
+  IdentityEffectiveAccessSnapshot,
+  IdentityGrantSource,
+  IdentityRoleChangeImpact,
+  IdentityRoleGovernanceDetail,
+  IdentityRoleVersionHistory,
+} from '@domainry/identity-management-contract'
+import type {
   EffectivePermissions,
   RuntimeAuditEvent,
   RuntimeDataScopePolicy,
@@ -164,151 +183,6 @@ export const identityPoliciesApi = {
   },
 };
 
-export interface IdentityGrantSource {
-  type: string;
-  key: string;
-  role_id?: string;
-  role_key?: string;
-  permission_set_key?: string;
-  permission_set_group_key?: string;
-  assignment_source?: string;
-  binding_key?: string;
-  profile_id?: string;
-  workforce_profile_id?: string;
-  valid_from?: string;
-  valid_until?: string;
-  expires_at?: string;
-}
-
-export interface IdentityEffectiveAccessSnapshot {
-  user_id: string;
-  known: boolean;
-  authorization_revision?: string;
-  role_keys: string[];
-  permission_set_keys: string[];
-  guardrail_keys: string[];
-  permissions: Array<{
-    key: string;
-    object_key?: string;
-    action?: string;
-    sources: IdentityGrantSource[];
-  }>;
-  data_access: Array<{
-    object_key: string;
-    action: string;
-    allowed: boolean;
-    scope: string;
-    scopes: string[];
-    sources: IdentityGrantSource[];
-  }>;
-  field_access: Array<{
-    object_key: string;
-    field_key: string;
-    read: boolean;
-    write: boolean;
-    export: boolean;
-    masked?: boolean;
-    sensitive?: boolean;
-    sources: IdentityGrantSource[];
-  }>;
-}
-
-export interface IdentityAccessReason {
-  code: string;
-  effect: string;
-  layer: string;
-  subject?: string;
-  details?: Record<string, string>;
-  sources?: IdentityGrantSource[];
-  children?: IdentityAccessReason[];
-}
-
-export interface IdentityAccessExplainResult {
-  user_id: string;
-  object_key?: string;
-  action?: string;
-  field_key?: string;
-  record_id?: string;
-  allowed: boolean;
-  authorization_revision?: string;
-  reason: IdentityAccessReason;
-}
-
-export interface IdentityAccessReverseIndex {
-  user_roles: Record<string, string[]>;
-  role_permissions: Record<string, string[]>;
-  permission_roles: Record<string, string[]>;
-  object_action_roles: Record<string, string[]>;
-}
-
-export interface IdentityRoleGovernanceDetail {
-  role: {
-    id: string;
-    key: string;
-    label: string;
-    description: string;
-    status: string;
-  };
-  definition: import("./action-definition-api").RuntimeManifestRole;
-  permission_sets: Array<{
-    key: string;
-    name: string;
-    description?: string;
-    permissions?: string[];
-  }>;
-  permission_set_groups: Array<{
-    key: string;
-    name: string;
-    description?: string;
-    permission_set_keys: string[];
-  }>;
-  guardrails: Array<{
-    key: string;
-    name: string;
-    description?: string;
-    denied_permission_keys?: string[];
-  }>;
-  permissions: Array<{ role_id: string; permission_key: string }>;
-  data_scopes: RuntimeDataScopePolicy[];
-  field_permissions: RuntimeFieldPermission[];
-  export_rules: Array<{ object_key: string; mode: string; fields: string[] }>;
-  menus: Array<{
-    id: string;
-    key: string;
-    label: string;
-    route?: string;
-    status: string;
-  }>;
-  members: Array<IdentityGrantSource & {
-    user_id: string;
-    source?: string;
-    status?: string;
-    granted_by?: string;
-    grant_reason?: string;
-    created_at?: string;
-  }>;
-}
-
-export interface IdentityRoleChangeImpact {
-  role_key: string;
-  affected_user_count: number;
-  profile_types: string[];
-  added_permissions: string[];
-  removed_permissions: string[];
-  affected_objects: string[];
-  affected_actions: string[];
-  sensitive_fields: string[];
-  high_risk_capabilities: string[];
-}
-
-export interface IdentityRoleVersionHistory {
-  capability_key: string;
-  resource_id: string;
-  versioning: string;
-  items: RuntimeAuditEvent[];
-  count: number;
-}
-
 export const identityAccessApi = {
   snapshot(userID: string) {
     return runtimeRequest<IdentityEffectiveAccessSnapshot>(
@@ -329,7 +203,7 @@ export const identityAccessApi = {
       `/identity/roles/${encodeURIComponent(roleID)}/governance-detail`,
     );
   },
-  roleImpact(roleID: string, role: import("./action-definition-api").RuntimeManifestRole) {
+  roleImpact(roleID: string, role: IdentityRoleDefinition) {
     return runtimeRequest<IdentityRoleChangeImpact>(
       `/identity/roles/${encodeURIComponent(roleID)}/impact-preview`,
       { method: "POST", body: { role } },

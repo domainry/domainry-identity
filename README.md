@@ -12,6 +12,7 @@ Domainry Identity 是 Domainry 的基础登录与权限模块，负责用户与�
 - `internal/transport/http/remotesdk/`：远程 SDK 调用所使用的 HTTP 协议。
 - `internal/transport/http/module/`：由 Runtime Host 挂载的模块 HTTP surface。
 - `internal/transport/http/saas/`：独立服务 HTTP transport facade；共享路由实现位于 `internal/transport/http/server/`。
+- 独立服务的治理审计接口由内嵌 Audit Binding 发布的 `modulehttp` Surface 提供，Identity Server 只负责认证上下文和挂载，不复制 Audit 查询/导出编排。
 - `internal/application/`、`internal/domain/`：应用服务与领域模型。
 - `internal/infrastructure/persistence/`：SQLite、MySQL、PostgreSQL 持久化实现。
 - `frontend/identity-admin/`：Identity 管理前端。
@@ -84,6 +85,13 @@ MySQL 和 PostgreSQL 使用各自的标识符、占位符及 schema migration SQ
 - 连接池预算、TLS 校验、statement/lock timeout；
 
 Identity 不负责在数据库服务器上创建 database。部署前应由运维创建名为 `identity` 的 database，并为查询账号和迁移账号授予相应权限；服务启动时会拒绝指向其他 database 的 MySQL/PostgreSQL DSN。`DATABASE_MIGRATION_DSN` 如有配置，也必须指向同一个 `identity` database。
+
+Identity 角色定义及其版本由 `_identity_role_definitions`、
+`_identity_role_definition_versions` 持久化。业务对象等通用定义只通过
+Metadata SDK 的 `Projection`/`Definitions` 业务端口同步和读取；Identity
+不再获取 Metadata repository，角色定义不经过 Metadata 表。
+通用字典解析和本地化 coverage 由 Metadata owner 提供；Identity 只保留
+角色、权限和菜单所需的 Identity 自有本地化投影。
 
 单体模式和独立服务模式使用同一套 Identity 数据库配置、migration 和生命周期；Runtime 不再提供连接池或 schema。
 

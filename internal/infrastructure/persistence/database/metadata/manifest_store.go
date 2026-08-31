@@ -9,6 +9,7 @@ import (
 
 	"github.com/domainry/domainry-foundation/requestcontext"
 	manifestmodel "github.com/domainry/domainry-identity/internal/domain/manifest/model"
+	metadatamodulehost "github.com/domainry/domainry-metadata-sdk/modulehost"
 	"github.com/domainry/domainry-orm/query"
 )
 
@@ -28,9 +29,6 @@ type metadataResourceSeed struct {
 
 func (s MetadataStore) EnsureManifestMetadata(ctx context.Context, seed manifestmodel.ManifestSchema) error {
 	ctx = s.manifestMetadataContext(ctx)
-	if err := s.syncBusinessMetadataDefinitions(ctx, seed); err != nil {
-		return err
-	}
 	seeded, err := s.manifestMetadataSeeded(ctx)
 	if err != nil {
 		return err
@@ -47,6 +45,10 @@ func (s MetadataStore) EnsureManifestMetadata(ctx context.Context, seed manifest
 		return fmt.Errorf("begin metadata seed: %w", err)
 	}
 	defer tx.Rollback()
+	ctx = metadatamodulehost.WithExecutor(ctx, tx)
+	if err := s.syncBusinessMetadataDefinitions(ctx, seed); err != nil {
+		return err
+	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	for key, value := range map[string]string{
 		"template_id":      seed.TemplateID,
@@ -67,6 +69,9 @@ func (s MetadataStore) EnsureManifestMetadata(ctx context.Context, seed manifest
 	if err := s.syncManifestLocalizedTexts(ctx, tx, seed, now); err != nil {
 		return err
 	}
+	if err := s.refreshCatalogHashWithExecutorAt(ctx, tx, now); err != nil {
+		return fmt.Errorf("refresh Identity metadata catalog: %w", err)
+	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit metadata seed: %w", err)
 	}
@@ -75,9 +80,6 @@ func (s MetadataStore) EnsureManifestMetadata(ctx context.Context, seed manifest
 
 func (s MetadataStore) SyncManifestMetadata(ctx context.Context, seed manifestmodel.ManifestSchema) error {
 	ctx = s.manifestMetadataContext(ctx)
-	if err := s.syncBusinessMetadataDefinitions(ctx, seed); err != nil {
-		return err
-	}
 	seeds, err := manifestMetadataSeeds(seed)
 	if err != nil {
 		return err
@@ -87,6 +89,10 @@ func (s MetadataStore) SyncManifestMetadata(ctx context.Context, seed manifestmo
 		return fmt.Errorf("begin metadata sync: %w", err)
 	}
 	defer tx.Rollback()
+	ctx = metadatamodulehost.WithExecutor(ctx, tx)
+	if err := s.syncBusinessMetadataDefinitions(ctx, seed); err != nil {
+		return err
+	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	for key, value := range map[string]string{
 		"template_id":      seed.TemplateID,
@@ -107,10 +113,12 @@ func (s MetadataStore) SyncManifestMetadata(ctx context.Context, seed manifestmo
 	if err := s.syncManifestLocalizedTexts(ctx, tx, seed, now); err != nil {
 		return err
 	}
+	if err := s.refreshCatalogHashWithExecutorAt(ctx, tx, now); err != nil {
+		return fmt.Errorf("refresh Identity metadata catalog: %w", err)
+	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit metadata sync: %w", err)
 	}
-	_ = s.refreshMetadataCatalogHash(ctx)
 	return nil
 }
 

@@ -23,7 +23,6 @@ type MetadataRepository interface {
 	ListDefinitionVersions(ctx context.Context, scope identitymodel.SystemScope, resourceType, resourceKey string) ([]metadatamodel.MetadataDefinitionVersion, error)
 	RollbackDefinition(ctx context.Context, scope identitymodel.SystemScope, resourceType, resourceKey string, req metadatamodel.MetadataDefinitionRollbackRequest, audit auditmodel.AuditEvent, publication *metadatamodel.MetadataDefinitionPublication) (metadatamodel.MetadataDefinition, error)
 	ListLocalizedTexts(ctx context.Context, workspaceID string, query metadatamodel.LocalizedTextQuery) ([]metadatamodel.LocalizedText, error)
-	UpsertLocalizedText(ctx context.Context, workspaceID string, req metadatamodel.LocalizedTextUpsertRequest) (metadatamodel.LocalizedText, error)
 }
 
 // DefinitionMutationRepository atomically persists a reviewed definition

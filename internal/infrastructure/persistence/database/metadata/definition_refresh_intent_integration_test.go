@@ -31,25 +31,25 @@ func TestPublishDefinitionUsesIdentityOwnedRefreshIntent(t *testing.T) {
 	definition, err := repository.PublishDefinition(
 		t.Context(),
 		identitymodel.NewSystemScope(identitymodel.SystemScopeInstallation, "test metadata publication"),
-		"object",
-		"order",
+		"role",
+		"order_reviewer",
 		metadatamodel.MetadataDefinitionUpsertRequest{
-			Name:       "Order",
+			Name:       "Order Reviewer",
 			SourceKind: "test",
 			SourceID:   "definition-refresh-intent-test",
-			Payload:    json.RawMessage(`{"key":"order","name":"Order"}`),
+			Payload:    json.RawMessage(`{"key":"order_reviewer","name":"Order Reviewer","record_scope":"all_records"}`),
 		},
 		auditmodel.AuditEvent{
 			ID:          "audit-metadata-order",
 			WorkspaceID: "workspace-primary",
 			Event:       "metadata_definition.saved",
-			ObjectKey:   "object",
-			RecordID:    "order",
+			ObjectKey:   "role",
+			RecordID:    "order_reviewer",
 			ActorID:     "test",
 			RoleKey:     "system",
 			CreatedAt:   now,
 		},
-		nil,
+		&metadatamodel.MetadataDefinitionPublication{WorkspaceID: "workspace-primary"},
 	)
 	if err != nil {
 		t.Fatal(err)

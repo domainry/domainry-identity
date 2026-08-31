@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/transaction"
-	metadatapersistence "github.com/domainry/domainry-metadata-sdk/persistence"
+	metadatamodulehost "github.com/domainry/domainry-metadata-sdk/modulehost"
 	"github.com/domainry/domainry-orm/query"
 )
 
@@ -35,18 +35,17 @@ func (r MetadataStore) refreshCatalogHashWithExecutorAt(
 ) error {
 	tables := metadataCatalogDefinitionTables()
 	hash := sha256.New()
-	definitions := r.store.MetadataDefinitions()
-	executorRepository, ok := definitions.(metadatapersistence.ExecutorSnapshotRepository)
-	if !ok {
-		return fmt.Errorf("Metadata executor snapshot repository is unavailable")
+	binding := r.store.Metadata()
+	if binding == nil || binding.Definitions() == nil {
+		return fmt.Errorf("Metadata definitions are unavailable")
 	}
-	snapshot, err := executorRepository.DefinitionSnapshotWithExecutor(ctx, executor)
+	snapshot, err := binding.Definitions().Snapshot(metadatamodulehost.WithExecutor(ctx, executor))
 	if err != nil {
 		return err
 	}
 	hash.Write([]byte("metadata:"))
 	for _, definition := range snapshot.Definitions {
-		hash.Write([]byte(definition.ResourceType + ":" + definition.Key + ":" + definition.SchemaHash + "|"))
+		hash.Write([]byte(definition.ResourceType + ":" + definition.ResourceKey + ":" + definition.SchemaHash + "|"))
 	}
 	for _, table := range tables {
 		queryValue, args, err := query.NewSelectBuilder(r.store.SQLRenderer, table).
@@ -87,5 +86,5 @@ func (r MetadataStore) refreshCatalogHash(ctx context.Context) error {
 }
 
 func metadataCatalogDefinitionTables() []string {
-	return []string{"_metadata_role_definitions", "_identity_profile_binding_definitions"}
+	return []string{"_identity_role_definitions", "_identity_profile_binding_definitions"}
 }

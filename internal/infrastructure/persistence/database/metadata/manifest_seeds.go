@@ -51,7 +51,7 @@ func manifestMetadataSeeds(seed manifestmodel.ManifestSchema) ([]metadataResourc
 	roles := append([]identitymodel.RoleSchema(nil), seed.Roles...)
 	roles = appendSystemRoleDefinition(roles, "identity_effective", "Identity Effective")
 	for _, role := range roles {
-		if err := appendSeed("role", "_metadata_role_definitions", role.Key, "", role.Name, role); err != nil {
+		if err := appendSeed("role", "_identity_role_definitions", role.Key, "", role.Name, role); err != nil {
 			return nil, err
 		}
 	}

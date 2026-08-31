@@ -35,21 +35,10 @@ type MetadataApplicationService struct {
 	version                string
 	name                   string
 	auditAppender          MetadataAuditAppender
-	actionDefinitions      func() []definitionmodel.ActionSchema
-	permissionDefinitions  func() []identitymodel.IdentityPermissionDefinition
 	authorizationObjectsMu sync.RWMutex
 	authorizationObjects   []definitionmodel.ObjectSchema
 	reloadObserversMu      sync.RWMutex
 	reloadObservers        []func(metadatamodel.MetadataSchemaSnapshot)
-}
-
-// UsePermissionDefinitionSource binds the effective Identity authorization
-// catalog to the generic metadata definition read surface. Permissions are a
-// runtime projection, not rows in the versioned metadata tables.
-func (s *MetadataApplicationService) UsePermissionDefinitionSource(source func() []identitymodel.IdentityPermissionDefinition) {
-	if s != nil {
-		s.permissionDefinitions = source
-	}
 }
 
 // ReplaceAuthorizationObjects supplies the application object catalog used by
@@ -71,15 +60,6 @@ func (s *MetadataApplicationService) currentAuthorizationObjects() []definitionm
 	s.authorizationObjectsMu.RLock()
 	defer s.authorizationObjectsMu.RUnlock()
 	return append([]definitionmodel.ObjectSchema(nil), s.authorizationObjects...)
-}
-
-// UseActionDefinitionSource binds the effective execution catalog used by
-// read-only metadata projections. Persisted definition lifecycle and source
-// identity remain owned by the metadata repository.
-func (s *MetadataApplicationService) UseActionDefinitionSource(source func() []definitionmodel.ActionSchema) {
-	if s != nil {
-		s.actionDefinitions = source
-	}
 }
 
 func (s *MetadataApplicationService) AddReloadObserver(observer func(metadatamodel.MetadataSchemaSnapshot)) {

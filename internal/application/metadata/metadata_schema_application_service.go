@@ -2,13 +2,8 @@ package metadata
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/json"
-	"fmt"
-	"sort"
 	"strings"
 
-	definitionmodel "github.com/domainry/domainry-identity/internal/domain/definition/model"
 	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	identityprojection "github.com/domainry/domainry-identity/internal/domain/identity/projection"
@@ -112,110 +107,6 @@ func (s *MetadataApplicationService) MetadataObjectRecordCount(ctx context.Conte
 	return 0, nil
 }
 
-func (s *MetadataApplicationService) ListMetadataDefinitions(ctx context.Context, resourceType, workspaceID string, principal identitymodel.Principal) ([]metadatamodel.MetadataDefinition, error) {
-	if err := metadataAuthorizeQuery(principal); err != nil {
-		return nil, err
-	}
-	workspaceID = strings.TrimSpace(workspaceID)
-	if workspaceID != strings.TrimSpace(principal.WorkspaceID) || !identitycontract.IdentityRoleHasPermissionKey(principal.Role, "workspace.admin") {
-		return nil, forbidden("auth.permission_denied")
-	}
-	if strings.TrimSpace(resourceType) == "permission" {
-		return s.permissionMetadataDefinitions(), nil
-	}
-	definitions, err := s.repository.ListDefinitions(ctx, metadataInstallationScope("list metadata definitions"), resourceType)
-	if err != nil {
-		return nil, wrapMetadataError(err)
-	}
-	return s.withEffectiveActionDefinitions(resourceType, definitions), nil
-}
-
-func (s *MetadataApplicationService) permissionMetadataDefinitions() []metadatamodel.MetadataDefinition {
-	if s == nil || s.permissionDefinitions == nil {
-		return []metadatamodel.MetadataDefinition{}
-	}
-	permissions := s.permissionDefinitions()
-	definitions := make([]metadatamodel.MetadataDefinition, 0, len(permissions))
-	for _, permission := range permissions {
-		key := strings.TrimSpace(permission.Key)
-		if key == "" {
-			continue
-		}
-		payload, err := json.Marshal(permission)
-		if err != nil {
-			continue
-		}
-		digest := sha256.Sum256(payload)
-		definitions = append(definitions, metadatamodel.MetadataDefinition{
-			ResourceType: "permission", ResourceKey: key, ObjectKey: strings.TrimSpace(permission.ObjectKey), Name: strings.TrimSpace(permission.Label),
-			Payload: payload, SchemaVersion: "runtime", SchemaHash: fmt.Sprintf("%x", digest[:]), SourceKind: "runtime_catalog", SourceID: "identity_permissions",
-		})
-	}
-	sort.Slice(definitions, func(i, j int) bool { return definitions[i].ResourceKey < definitions[j].ResourceKey })
-	return definitions
-}
-
-func (s *MetadataApplicationService) GetMetadataDefinition(ctx context.Context, resourceType, resourceKey string, principal identitymodel.Principal) (metadatamodel.MetadataDefinition, bool, error) {
-	if err := metadataAuthorizeQuery(principal); err != nil {
-		return metadatamodel.MetadataDefinition{}, false, err
-	}
-	if !identitycontract.IdentityRoleHasPermissionKey(principal.Role, "workspace.admin") {
-		return metadatamodel.MetadataDefinition{}, false, forbidden("auth.permission_denied")
-	}
-	definition, found, err := s.repository.GetDefinition(ctx, metadataInstallationScope("get metadata definition"), resourceType, resourceKey)
-	if err != nil || !found {
-		return definition, found, wrapMetadataError(err)
-	}
-	definition = s.withEffectiveActionDefinitions(resourceType, []metadatamodel.MetadataDefinition{definition})[0]
-	return definition, true, nil
-}
-
-func (s *MetadataApplicationService) withEffectiveActionDefinitions(resourceType string, definitions []metadatamodel.MetadataDefinition) []metadatamodel.MetadataDefinition {
-	if strings.TrimSpace(resourceType) != "action" || s.actionDefinitions == nil || len(definitions) == 0 {
-		return definitions
-	}
-	effective := map[string]definitionmodel.ActionSchema{}
-	for _, action := range s.actionDefinitions() {
-		if key := strings.TrimSpace(action.Key); key != "" {
-			effective[key] = action
-		}
-	}
-	result := append([]metadatamodel.MetadataDefinition(nil), definitions...)
-	for index := range result {
-		action, ok := effective[strings.TrimSpace(result[index].ResourceKey)]
-		if !ok {
-			continue
-		}
-		payload, err := json.Marshal(action)
-		if err == nil {
-			result[index].Payload = payload
-		}
-	}
-	return result
-}
-
-func (s *MetadataApplicationService) ListMetadataDefinitionVersions(ctx context.Context, resourceType, resourceKey string, principal identitymodel.Principal) ([]metadatamodel.MetadataDefinitionVersion, error) {
-	if err := metadataAuthorizeQuery(principal); err != nil {
-		return nil, err
-	}
-	if !identitycontract.IdentityRoleHasPermissionKey(principal.Role, "workspace.admin") {
-		return nil, forbidden("auth.permission_denied")
-	}
-	versions, err := s.repository.ListDefinitionVersions(ctx, metadataInstallationScope("list metadata definition versions"), resourceType, resourceKey)
-	return versions, wrapMetadataError(err)
-}
-
-func (s *MetadataApplicationService) ListLocalizedTexts(ctx context.Context, query metadatamodel.LocalizedTextQuery, principal identitymodel.Principal) ([]metadatamodel.LocalizedText, error) {
-	if err := metadataAuthorizeQuery(principal); err != nil {
-		return nil, err
-	}
-	if strings.TrimSpace(query.WorkspaceID) != strings.TrimSpace(principal.WorkspaceID) || !identitycontract.IdentityRoleHasPermissionKey(principal.Role, "workspace.admin") {
-		return nil, forbidden("auth.permission_denied")
-	}
-	values, err := s.repository.ListLocalizedTexts(ctx, query.WorkspaceID, query)
-	return values, wrapMetadataError(err)
-}
-
 func (s *MetadataApplicationService) LocalizedTextsForLocale(ctx context.Context, workspaceID, locale string) ([]metadatamodel.LocalizedText, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	if err := metadataAuthorizeWorkspaceQuery(workspaceID); err != nil {
@@ -227,18 +118,4 @@ func (s *MetadataApplicationService) LocalizedTextsForLocale(ctx context.Context
 	}
 	values, err := s.repository.ListLocalizedTexts(ctx, workspaceID, metadatamodel.LocalizedTextQuery{WorkspaceID: workspaceID, Locale: locale})
 	return values, wrapMetadataError(err)
-}
-
-func (s *MetadataApplicationService) UpsertLocalizedText(ctx context.Context, req metadatamodel.LocalizedTextUpsertRequest, principal identitymodel.Principal) (metadatamodel.LocalizedText, error) {
-	if err := metadataAuthorizeCommand(principal); err != nil {
-		return metadatamodel.LocalizedText{}, err
-	}
-	if strings.TrimSpace(req.WorkspaceID) != strings.TrimSpace(principal.WorkspaceID) || !identitycontract.IdentityRoleHasPermissionKey(principal.Role, "workspace.admin") {
-		return metadatamodel.LocalizedText{}, forbidden("auth.permission_denied")
-	}
-	value, err := s.repository.UpsertLocalizedText(ctx, req.WorkspaceID, req)
-	if err != nil {
-		return value, wrapMetadataError(err)
-	}
-	return value, nil
 }

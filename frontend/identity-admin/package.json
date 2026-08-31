@@ -31,6 +31,7 @@
     "@domainry/surface-contract": "file:../packages/surface-contract",
     "@domainry/ui": "file:../packages/ui",
     "@domainry/identity-client": "file:../../../domainry-identity-sdk/browser",
+    "@domainry/identity-management-contract": "file:../packages/management-contract",
     "@xyflow/react": "^12.11.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

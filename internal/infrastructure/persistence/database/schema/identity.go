@@ -11,6 +11,29 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 	boolType, boolFalse := types.Boolean, types.FalseLiteral
 	defaultText, identityIndexText := types.DefaultText, types.IndexedText
 	tables := map[string][]string{
+		"_identity_role_definition_versions": {
+			"id " + text + " PRIMARY KEY",
+			"resource_type " + text + " NOT NULL",
+			"resource_key " + text + " NOT NULL",
+			"schema_version " + text + " NOT NULL",
+			"schema_hash " + text + " NOT NULL",
+			"payload_json TEXT NOT NULL",
+			"created_at " + text + " NOT NULL",
+		},
+		"_identity_role_definitions": {
+			"id " + text + " PRIMARY KEY",
+			"resource_key " + text + " NOT NULL",
+			"object_key " + text + " NOT NULL",
+			"name TEXT NOT NULL",
+			"payload_json TEXT NOT NULL",
+			"schema_version " + text + " NOT NULL",
+			"schema_hash " + text + " NOT NULL",
+			"source_kind " + text + " NOT NULL",
+			"source_id " + text + " NOT NULL",
+			"disabled_at " + text,
+			"created_at " + text + " NOT NULL",
+			"updated_at " + text + " NOT NULL",
+		},
 		"_identity_profile_binding_definition_versions": {
 			"id " + text + " PRIMARY KEY",
 			"resource_type " + text + " NOT NULL",
@@ -587,6 +610,8 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 		name    string
 		columns []string
 	}{
+		{table: "_identity_role_definitions", name: "uniq_identity_role_definition_key", columns: []string{"resource_key"}},
+		{table: "_identity_role_definition_versions", name: "uniq_identity_role_definition_version", columns: []string{"resource_type", "resource_key", "schema_version", "schema_hash"}},
 		{table: "_identity_profile_binding_definitions", name: "uniq_identity_profile_binding_definition_key", columns: []string{"resource_key"}},
 		{table: "_identity_profile_binding_definition_versions", name: "uniq_identity_profile_binding_definition_version", columns: []string{"resource_type", "resource_key", "schema_version", "schema_hash"}},
 		{table: "_identity_workforce_profiles", name: "uniq_identity_workforce_profiles_user", columns: []string{"workspace_id", "organization_id", "identity_user_id"}},

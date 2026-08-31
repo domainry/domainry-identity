@@ -164,7 +164,9 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 	identityRoutes := &recordingRouteRegistrar{mux: mux}
 	identityHandler.RegisterRoutes(identityRoutes)
 
-	registerAuditRoutes(mux, core.Audit, httpSupport)
+	if err := registerAuditRoutes(mux, core.AuditBinding, httpSupport); err != nil {
+		return nil, err
+	}
 
 	mux.HandleFunc("GET /permissions/effective", httpSupport.authenticated(func(w http.ResponseWriter, r *http.Request) {
 		snapshot, err := core.MetadataSchema.FeaturePermissions(r.Context(), httpSupport.principal(r))

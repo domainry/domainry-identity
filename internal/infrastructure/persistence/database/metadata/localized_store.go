@@ -11,7 +11,6 @@ import (
 
 	"sort"
 	"strings"
-	"time"
 
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
 	"github.com/domainry/domainry-orm/query"
@@ -274,55 +273,6 @@ func (s MetadataStore) syncLocalizedText(ctx context.Context, tx *sql.Tx, seed m
 	}
 	if _, err := tx.ExecContext(ctx, update, updateArguments...); err != nil {
 		return fmt.Errorf("update localized text %s/%s/%s/%s: %w", seed.EntityType, seed.EntityKey, seed.Property, seed.Locale, err)
-	}
-	return nil
-}
-
-func (s MetadataStore) UpsertLocalizedText(ctx context.Context, workspaceID string, req metadatamodel.LocalizedTextUpsertRequest) (metadatamodel.LocalizedText, error) {
-	workspaceID, err := requireMetadataWorkspaceID(workspaceID, req.WorkspaceID)
-	if err != nil {
-		return metadatamodel.LocalizedText{}, err
-	}
-	req.WorkspaceID = workspaceID
-	text := normalizeLocalizedText(metadatamodel.LocalizedText{
-		WorkspaceID: req.WorkspaceID,
-		EntityType:  req.EntityType,
-		EntityKey:   req.EntityKey,
-		Property:    req.Property,
-		Locale:      req.Locale,
-		Text:        req.Text,
-		SourceKind:  firstNonEmptyLocalizedText(req.SourceKind, "user"),
-		SourceID:    firstNonEmptyLocalizedText(req.SourceID, "metadata_api"),
-	})
-	if text.EntityType == "" || text.EntityKey == "" || text.Property == "" || text.Locale == "" || text.Text == "" {
-		return metadatamodel.LocalizedText{}, fmt.Errorf("localized text requires entity_type, entity_key, property, locale, and text")
-	}
-	tx, err := s.database().BeginTx(ctx, nil)
-	if err != nil {
-		return metadatamodel.LocalizedText{}, fmt.Errorf("begin localized text upsert: %w", err)
-	}
-	defer tx.Rollback()
-	now := time.Now().UTC().Format(time.RFC3339)
-	if err := s.upsertLocalizedText(ctx, tx, text, now); err != nil {
-		return metadatamodel.LocalizedText{}, err
-	}
-	if err := tx.Commit(); err != nil {
-		return metadatamodel.LocalizedText{}, fmt.Errorf("commit localized text upsert: %w", err)
-	}
-	text.CreatedAt = now
-	text.UpdatedAt = now
-	return text, nil
-}
-
-func (s MetadataStore) upsertLocalizedText(ctx context.Context, tx *sql.Tx, text metadatamodel.LocalizedText, now string) error {
-	insert := localizedTextInsert(s, text, now)
-	s.store.Engine.ApplyUpsert(insert, []string{"workspace_id", "entity_type", "entity_key", "property", "locale"}, "text", "source_kind", "source_id", "updated_at")
-	statement, arguments, err := insert.Build()
-	if err != nil {
-		return fmt.Errorf("build localized text upsert: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
-		return fmt.Errorf("upsert localized text: %w", err)
 	}
 	return nil
 }

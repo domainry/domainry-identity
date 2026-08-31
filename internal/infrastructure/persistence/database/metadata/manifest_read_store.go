@@ -30,7 +30,7 @@ func (r MetadataStore) LoadManifest(ctx context.Context, scope identitymodel.Sys
 	if err != nil {
 		return manifestmodel.ManifestSchema{}, err
 	}
-	roles, err := loadMetadataSliceContext[identitymodel.RoleSchema](ctx, r.database(), r.store, "_metadata_role_definitions")
+	roles, err := loadMetadataSliceContext[identitymodel.RoleSchema](ctx, r.database(), r.store, "_identity_role_definitions")
 	if err != nil {
 		return manifestmodel.ManifestSchema{}, err
 	}
@@ -57,11 +57,11 @@ func (r MetadataStore) LoadManifest(ctx context.Context, scope identitymodel.Sys
 }
 
 func (r MetadataStore) loadBusinessDefinitions(ctx context.Context) ([]definitionmodel.ObjectSchema, []definitionmodel.FieldSchema, []definitionmodel.ValidationSchema, []definitionmodel.ActionSchema, error) {
-	repository := r.store.MetadataDefinitions()
-	if repository == nil {
+	binding := r.store.Metadata()
+	if binding == nil || binding.Definitions() == nil {
 		return nil, nil, nil, nil, fmt.Errorf("Metadata definition repository is unavailable")
 	}
-	snapshot, err := repository.DefinitionSnapshot(ctx)
+	snapshot, err := binding.Definitions().Snapshot(ctx)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
@@ -72,25 +72,25 @@ func (r MetadataStore) loadBusinessDefinitions(ctx context.Context) ([]definitio
 		case "object":
 			var value definitionmodel.ObjectSchema
 			if err := json.Unmarshal(definition.Payload, &value); err != nil {
-				return nil, nil, nil, nil, fmt.Errorf("decode object definition %s: %w", definition.Key, err)
+				return nil, nil, nil, nil, fmt.Errorf("decode object definition %s: %w", definition.ResourceKey, err)
 			}
 			objects = append(objects, value)
 		case "field":
 			var value definitionmodel.FieldSchema
 			if err := json.Unmarshal(definition.Payload, &value); err != nil {
-				return nil, nil, nil, nil, fmt.Errorf("decode field definition %s: %w", definition.Key, err)
+				return nil, nil, nil, nil, fmt.Errorf("decode field definition %s: %w", definition.ResourceKey, err)
 			}
 			fields = append(fields, value)
 		case "validation":
 			var value definitionmodel.ValidationSchema
 			if err := json.Unmarshal(definition.Payload, &value); err != nil {
-				return nil, nil, nil, nil, fmt.Errorf("decode validation definition %s: %w", definition.Key, err)
+				return nil, nil, nil, nil, fmt.Errorf("decode validation definition %s: %w", definition.ResourceKey, err)
 			}
 			validations = append(validations, value)
 		case "action":
 			var value definitionmodel.ActionSchema
 			if err := json.Unmarshal(definition.Payload, &value); err != nil {
-				return nil, nil, nil, nil, fmt.Errorf("decode action definition %s: %w", definition.Key, err)
+				return nil, nil, nil, nil, fmt.Errorf("decode action definition %s: %w", definition.ResourceKey, err)
 			}
 			actions = append(actions, value)
 		}

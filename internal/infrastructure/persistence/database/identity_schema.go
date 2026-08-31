@@ -53,7 +53,7 @@ func (s *IdentityStore) EnsureSchema(ctx context.Context) error {
 		if err := migrationStore.EnsureSchema(ctx); err != nil {
 			return err
 		}
-		return nil
+		return s.ensureMetadataModuleSchema(ctx)
 	}
 	release, err := s.LockManager.Acquire(ctx, s.config)
 	if err != nil {

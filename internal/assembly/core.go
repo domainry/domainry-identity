@@ -44,6 +44,7 @@ type Core struct {
 	Manifest              manifestmodel.ManifestSchema
 	MetadataStore         metadatapersistence.MetadataStore
 	IdentityStore         *identitypersistence.SQLIdentityStore
+	AuditBinding          auditsdk.Binding
 	AuditStore            auditrepository.AuditRepository
 	AuthStore             authpersistence.AuthStore
 	Identity              *identityapplication.IdentityApplicationService
@@ -115,6 +116,19 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 	if err != nil {
 		return fail(fmt.Errorf("open Audit module: %w", err))
 	}
+	if err := auditBinding.Descriptor().Validate(); err != nil {
+		return fail(fmt.Errorf("validate Audit module descriptor: %w", err))
+	}
+	if !auditBinding.Descriptor().Capabilities.HTTPSurface {
+		return fail(fmt.Errorf("Audit Binding does not declare its product HTTP surface capability"))
+	}
+	auditHostBinder, ok := auditBinding.(auditsdk.ApplicationHostBinder)
+	if !ok {
+		return fail(fmt.Errorf("Audit Binding does not accept application host capabilities"))
+	}
+	if err := auditHostBinder.BindApplicationHost(identityauditmodule.NewApplicationHost(cfg.AuthJWTSecret)); err != nil {
+		return fail(fmt.Errorf("bind Audit application host: %w", err))
+	}
 	auditStore := identityauditmodule.NewAuditStore(auditBinding)
 	auditApp := auditapplication.NewAuditApplicationService(auditStore)
 	authStore := authpersistence.NewAuthStoreWithKeyProvider(identityStore, store.SecretKeyProvider(), store.IdempotencyMetrics(ctx))
@@ -148,9 +162,6 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 		Repository: metadataStore, Runtime: metadataRuntime, Audit: auditApp,
 		AuditAppender: auditApp.AppendWithMetadata, TemplateID: metadataRuntime.Schema().TemplateID,
 		Version: metadataRuntime.Schema().TemplateVersion, Name: metadataRuntime.Schema().Name,
-	})
-	metadataApp.UsePermissionDefinitionSource(func() []identitymodel.IdentityPermissionDefinition {
-		return identityApp.ListPermissions(context.Background())
 	})
 	metadataSchemaApp := metadataapplication.NewMetadataSchemaApplicationService(metadataRuntime, metadataStore)
 	refreshIdentityCatalog := func(snapshot metadatamodel.MetadataSchemaSnapshot) {
@@ -194,7 +205,7 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 	}
 	return &Core{
 		Store: store, Manifest: manifest, MetadataStore: metadataStore, IdentityStore: identityStore,
-		AuditStore: auditStore, AuthStore: authStore, Identity: identityApp, Audit: auditApp, Auth: authApp,
+		AuditBinding: auditBinding, AuditStore: auditStore, AuthStore: authStore, Identity: identityApp, Audit: auditApp, Auth: authApp,
 		MetadataRuntime: metadataRuntime, Metadata: metadataApp, MetadataSchema: metadataSchemaApp,
 		ProviderConfiguration: providerConfiguration, ProviderFlows: providerFlows,
 		EffectiveAccess: effectiveAccess, Binding: binding,

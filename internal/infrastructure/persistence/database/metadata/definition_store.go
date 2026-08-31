@@ -9,7 +9,7 @@ import (
 	"fmt"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
-	metadatapersistence "github.com/domainry/domainry-metadata-sdk/persistence"
+	metadatasdk "github.com/domainry/domainry-metadata-sdk"
 	"sort"
 	"strconv"
 	"strings"
@@ -22,13 +22,14 @@ func (s MetadataStore) UpsertMetadataDefinition(ctx context.Context, resourceTyp
 	resourceType = strings.TrimSpace(resourceType)
 	resourceKey = strings.TrimSpace(resourceKey)
 	moduleOwned := metadataModuleOwnsDefinition(resourceType)
+	if moduleOwned {
+		return metadatamodel.MetadataDefinition{}, fmt.Errorf("Metadata-owned %s definitions are read-only from Identity", resourceType)
+	}
 	table := ""
-	if !moduleOwned {
-		var err error
-		table, err = metadataDefinitionTable(resourceType)
-		if err != nil {
-			return metadatamodel.MetadataDefinition{}, err
-		}
+	var tableErr error
+	table, tableErr = metadataDefinitionTable(resourceType)
+	if tableErr != nil {
+		return metadatamodel.MetadataDefinition{}, tableErr
 	}
 	if len(req.Payload) == 0 {
 		return metadatamodel.MetadataDefinition{}, fmt.Errorf("metadata payload is required")
@@ -63,33 +64,23 @@ func (s MetadataStore) UpsertMetadataDefinition(ctx context.Context, resourceTyp
 	}
 	defer tx.Rollback()
 	definition := metadatamodel.MetadataDefinition{ResourceType: resourceType, ResourceKey: shape.Key, ObjectKey: shape.ObjectKey, Name: shape.Name, Payload: append([]byte(nil), raw...), SchemaVersion: schemaVersion, SchemaHash: hash, SourceKind: sourceKind, SourceID: sourceID, CreatedAt: now, UpdatedAt: now}
-	if moduleOwned {
-		if err := s.replaceMetadataModuleDefinitionTx(ctx, tx, definition, req.ExpectedSchemaHash); err != nil {
-			_ = tx.Rollback()
-			if replay, found, replayErr := s.metadataDefinitionReplay(ctx, scope, resourceType, shape.Key, hash, req.ExpectedSchemaHash); replayErr == nil && found {
-				return replay, nil
-			}
-			return metadatamodel.MetadataDefinition{}, err
-		}
-	} else {
-		if err := s.replaceMetadataDefinitionVersion(ctx, tx, table, resourceType, shape.Key, req.ExpectedSchemaHash); err != nil {
-			return metadatamodel.MetadataDefinition{}, err
-		}
-		values := []any{metadataResourceID(resourceType, shape.Key), shape.Key, shape.ObjectKey, shape.Name, string(raw), schemaVersion, hash, sourceKind, sourceID, nil, now, now}
-		statement, arguments, err := query.NewInsertBuilder(s.store.SQLRenderer, table).
-			Columns("id", "resource_key", "object_key", "name", "payload_json", "schema_version", "schema_hash", "source_kind", "source_id", "disabled_at", "created_at", "updated_at").Values(values...).Build()
-		if err != nil {
-			return metadatamodel.MetadataDefinition{}, fmt.Errorf("build %s %s insert: %w", resourceType, shape.Key, err)
-		}
-		if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
-			_ = tx.Rollback()
-			if replay, found, replayErr := s.metadataDefinitionReplay(ctx, scope, resourceType, shape.Key, hash, req.ExpectedSchemaHash); replayErr == nil && found {
-				return replay, nil
-			}
-			return metadatamodel.MetadataDefinition{}, fmt.Errorf("insert %s %s: %w", resourceType, shape.Key, err)
-		}
+	if err := s.replaceMetadataDefinitionVersion(ctx, tx, table, resourceType, shape.Key, req.ExpectedSchemaHash); err != nil {
+		return metadatamodel.MetadataDefinition{}, err
 	}
-	if err := s.insertOwnedDefinitionVersion(ctx, tx, metadatapersistence.DefinitionVersion{
+	values := []any{metadataResourceID(resourceType, shape.Key), shape.Key, shape.ObjectKey, shape.Name, string(raw), schemaVersion, hash, sourceKind, sourceID, nil, now, now}
+	statement, arguments, err := query.NewInsertBuilder(s.store.SQLRenderer, table).
+		Columns("id", "resource_key", "object_key", "name", "payload_json", "schema_version", "schema_hash", "source_kind", "source_id", "disabled_at", "created_at", "updated_at").Values(values...).Build()
+	if err != nil {
+		return metadatamodel.MetadataDefinition{}, fmt.Errorf("build %s %s insert: %w", resourceType, shape.Key, err)
+	}
+	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
+		_ = tx.Rollback()
+		if replay, found, replayErr := s.metadataDefinitionReplay(ctx, scope, resourceType, shape.Key, hash, req.ExpectedSchemaHash); replayErr == nil && found {
+			return replay, nil
+		}
+		return metadatamodel.MetadataDefinition{}, fmt.Errorf("insert %s %s: %w", resourceType, shape.Key, err)
+	}
+	if err := s.insertOwnedDefinitionVersion(ctx, tx, metadataDefinitionVersion{
 		ResourceType: resourceType, ResourceKey: shape.Key, SchemaVersion: schemaVersion,
 		SchemaHash: hash, Payload: raw, CreatedAt: now,
 	}); err != nil {
@@ -178,18 +169,7 @@ func metadataHashSelect(s MetadataStore, table, resourceKey string) *query.Selec
 func (s MetadataStore) DisableMetadataDefinition(ctx context.Context, resourceType string, resourceKey string) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 	if metadataModuleOwnsDefinition(resourceType) {
-		repository, err := s.metadataModuleDefinitionStore()
-		if err != nil {
-			return err
-		}
-		disabled, err := repository.DisableDefinitionWithExecutor(ctx, s.database(), resourceType, resourceKey, now, nil)
-		if err != nil {
-			return fmt.Errorf("disable %s %s: %w", resourceType, resourceKey, err)
-		}
-		if !disabled {
-			return fmt.Errorf("metadata.%s.notFound: %s", resourceType, resourceKey)
-		}
-		return nil
+		return fmt.Errorf("Metadata-owned %s definitions are read-only from Identity", resourceType)
 	}
 	table, err := metadataDefinitionTable(resourceType)
 	if err != nil {
@@ -215,11 +195,11 @@ func (s MetadataStore) DisableMetadataDefinition(ctx context.Context, resourceTy
 
 func (s MetadataStore) ListMetadataDefinitions(ctx context.Context, resourceType string, workspaceID string) ([]metadatamodel.MetadataDefinition, error) {
 	if metadataModuleOwnsDefinition(resourceType) {
-		repository, err := s.metadataModuleDefinitionStore()
+		definitions, err := s.metadataModuleDefinitions()
 		if err != nil {
 			return nil, err
 		}
-		values, err := repository.ListDefinitionsWithExecutor(ctx, s.database(), resourceType, workspaceID)
+		values, err := definitions.List(ctx, metadatasdk.DefinitionQuery{ResourceType: resourceType, SourceID: workspaceID})
 		if err != nil {
 			return nil, fmt.Errorf("list %s definitions: %w", resourceType, err)
 		}
@@ -267,11 +247,11 @@ func (s MetadataStore) ListMetadataDefinitions(ctx context.Context, resourceType
 
 func (s MetadataStore) GetMetadataDefinition(ctx context.Context, resourceType string, resourceKey string) (metadatamodel.MetadataDefinition, bool, error) {
 	if metadataModuleOwnsDefinition(resourceType) {
-		repository, err := s.metadataModuleDefinitionStore()
+		definitions, err := s.metadataModuleDefinitions()
 		if err != nil {
 			return metadatamodel.MetadataDefinition{}, false, err
 		}
-		value, found, err := repository.GetDefinitionWithExecutor(ctx, s.database(), resourceType, resourceKey)
+		value, found, err := definitions.Get(ctx, resourceType, resourceKey)
 		if err != nil {
 			return metadatamodel.MetadataDefinition{}, false, fmt.Errorf("get %s definition: %w", resourceType, err)
 		}
@@ -331,13 +311,14 @@ func (s MetadataStore) ListMetadataDefinitionVersions(ctx context.Context, resou
 
 func (s MetadataStore) RollbackMetadataDefinition(ctx context.Context, resourceType string, resourceKey string, request metadatamodel.MetadataDefinitionRollbackRequest, audit auditmodel.AuditEvent) (metadatamodel.MetadataDefinition, error) {
 	moduleOwned := metadataModuleOwnsDefinition(resourceType)
+	if moduleOwned {
+		return metadatamodel.MetadataDefinition{}, fmt.Errorf("Metadata-owned %s definition rollback is unavailable from Identity", resourceType)
+	}
 	table := ""
-	if !moduleOwned {
-		var err error
-		table, err = metadataDefinitionTable(resourceType)
-		if err != nil {
-			return metadatamodel.MetadataDefinition{}, err
-		}
+	var tableErr error
+	table, tableErr = metadataDefinitionTable(resourceType)
+	if tableErr != nil {
+		return metadatamodel.MetadataDefinition{}, tableErr
 	}
 	tx, err := s.database().BeginTx(ctx, nil)
 	if err != nil {
@@ -363,30 +344,23 @@ func (s MetadataStore) RollbackMetadataDefinition(ctx context.Context, resourceT
 		return metadatamodel.MetadataDefinition{}, fmt.Errorf("rollback decode target: %w", err)
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	if moduleOwned {
-		definition := metadatamodel.MetadataDefinition{ResourceType: resourceType, ResourceKey: resourceKey, ObjectKey: shape.ObjectKey, Name: shape.Name, Payload: []byte(payloadJSON), SchemaVersion: nextVersion, SchemaHash: targetHash, SourceKind: "rollback", SourceID: request.SourceID, CreatedAt: now, UpdatedAt: now}
-		if err := s.replaceMetadataModuleDefinitionTx(ctx, tx, definition, &request.ExpectedSchemaHash); err != nil {
-			return metadatamodel.MetadataDefinition{}, err
-		}
-	} else {
-		statement, arguments, err = query.NewUpdateBuilder(s.store.SQLRenderer, table).
-			Set("payload_json", payloadJSON).Set("object_key", shape.ObjectKey).Set("name", shape.Name).Set("schema_version", nextVersion).
-			Set("schema_hash", targetHash).Set("source_kind", "rollback").Set("source_id", request.SourceID).Set("disabled_at", nil).Set("updated_at", now).
-			Where(query.And(query.Equal("resource_key", resourceKey), query.Equal("schema_hash", request.ExpectedSchemaHash))).Build()
-		if err != nil {
-			return metadatamodel.MetadataDefinition{}, fmt.Errorf("build rollback update: %w", err)
-		}
-		result, err := tx.ExecContext(ctx, statement, arguments...)
-		if err != nil {
-			return metadatamodel.MetadataDefinition{}, fmt.Errorf("rollback update: %w", err)
-		}
-		affected, rowsErr := result.RowsAffected()
-		if rowsErr != nil {
-			return metadatamodel.MetadataDefinition{}, fmt.Errorf("read rollback update rows: %w", rowsErr)
-		}
-		if affected != 1 {
-			return metadatamodel.MetadataDefinition{}, &metadatamodel.MetadataDefinitionConflictError{ResourceType: resourceType, ResourceKey: resourceKey, ExpectedHash: request.ExpectedSchemaHash, CurrentHash: s.currentMetadataHashTx(ctx, tx, table, resourceKey)}
-		}
+	statement, arguments, err = query.NewUpdateBuilder(s.store.SQLRenderer, table).
+		Set("payload_json", payloadJSON).Set("object_key", shape.ObjectKey).Set("name", shape.Name).Set("schema_version", nextVersion).
+		Set("schema_hash", targetHash).Set("source_kind", "rollback").Set("source_id", request.SourceID).Set("disabled_at", nil).Set("updated_at", now).
+		Where(query.And(query.Equal("resource_key", resourceKey), query.Equal("schema_hash", request.ExpectedSchemaHash))).Build()
+	if err != nil {
+		return metadatamodel.MetadataDefinition{}, fmt.Errorf("build rollback update: %w", err)
+	}
+	result, err := tx.ExecContext(ctx, statement, arguments...)
+	if err != nil {
+		return metadatamodel.MetadataDefinition{}, fmt.Errorf("rollback update: %w", err)
+	}
+	affected, rowsErr := result.RowsAffected()
+	if rowsErr != nil {
+		return metadatamodel.MetadataDefinition{}, fmt.Errorf("read rollback update rows: %w", rowsErr)
+	}
+	if affected != 1 {
+		return metadatamodel.MetadataDefinition{}, &metadatamodel.MetadataDefinitionConflictError{ResourceType: resourceType, ResourceKey: resourceKey, ExpectedHash: request.ExpectedSchemaHash, CurrentHash: s.currentMetadataHashTx(ctx, tx, table, resourceKey)}
 	}
 	if err := s.insertMetadataDefinitionVersionTx(ctx, tx, resourceType, resourceKey, nextVersion, targetHash, []byte(payloadJSON), now); err != nil {
 		return metadatamodel.MetadataDefinition{}, err

@@ -1,4 +1,12 @@
 import { runtimeRequest } from '@/lib/runtime-api'
+import type {
+  IdentityRoleDefinition as RuntimeManifestRole,
+} from '@domainry/identity-management-contract'
+export type {
+  IdentityRoleDataPermission as RuntimeRoleDataPermission,
+  IdentityRoleDefinition as RuntimeManifestRole,
+  IdentityRoleFieldPermission as RuntimeRoleFieldPermission,
+} from '@domainry/identity-management-contract'
 
 export interface RuntimeActionPayloadField {
   key: string
@@ -94,46 +102,6 @@ export interface RuntimeReferenceGraph {
   hash: string
   nodes: Array<{ resource_type: string; resource_key: string; object_key?: string; label?: string; owner?: string }>
   edges: RuntimeReferenceEdge[]
-}
-
-export interface RuntimeManifestRole {
-  key: string
-  name: string
-  permissions: string[]
-  record_scope: string
-  data_permissions?: RuntimeRoleDataPermission[]
-  field_permissions?: RuntimeRoleFieldPermission[]
-  reference_permissions?: unknown[]
-  export_rules?: Array<{ object_key: string; mode: string; fields: string[] }>
-  audience?: 'any' | 'workforce' | 'business_profile' | 'service'
-  required_binding_key?: string
-  assignment_mode?: 'manual' | 'request_only' | 'system_managed'
-  risk_level?: 'normal' | 'elevated' | 'privileged'
-  conflict_role_keys?: string[]
-  grantable_role_keys?: string[]
-  permission_set_keys?: string[]
-  permission_set_group_keys?: string[]
-  guardrail_keys?: string[]
-  [key: string]: unknown
-}
-
-export interface RuntimeRoleDataPermission {
-  object_key: string
-  scope: string
-  read: boolean
-  write: boolean
-  audit_denial?: boolean
-  predicate?: unknown
-}
-
-export interface RuntimeRoleFieldPermission {
-  object_key: string
-  field_key: string
-  read: boolean
-  write: boolean
-  export: boolean
-  masked?: boolean
-  policies?: unknown[]
 }
 
 export interface RuntimeSystemSnapshot {

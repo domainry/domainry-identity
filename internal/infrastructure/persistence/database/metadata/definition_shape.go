@@ -21,7 +21,7 @@ type metadataDefinitionPayloadShape struct {
 func metadataDefinitionTable(resourceType string) (string, error) {
 	switch strings.TrimSpace(resourceType) {
 	case "role":
-		return "_metadata_role_definitions", nil
+		return "_identity_role_definitions", nil
 	case "identity_profile_binding":
 		return "_identity_profile_binding_definitions", nil
 	default:
