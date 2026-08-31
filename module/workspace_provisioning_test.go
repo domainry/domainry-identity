@@ -47,13 +47,22 @@ func TestBootstrapBindingCreatesNoTenantBeforeHostAtomicProvision(t *testing.T) 
 		t.Fatal("historical default workspace was provisioned")
 	}
 	_ = failed.Rollback()
+	weak, err := db.BeginTx(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bootstrap.ProvisionWorkspaceIdentity(t.Context(), identitysdk.WorkspaceIdentityProvisionRequest{WorkspaceID: "workspace-weak", AdminLoginID: "admin@example.com", AdminName: "Admin", InitialPassword: "weak"}, identitysdk.EmbeddedTransaction{Native: weak}); err == nil {
+		_ = weak.Rollback()
+		t.Fatal("weak host-supplied bootstrap password was accepted")
+	}
+	_ = weak.Rollback()
 
 	tx, err := db.BeginTx(t.Context(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := bootstrap.ProvisionWorkspaceIdentity(t.Context(), identitysdk.WorkspaceIdentityProvisionRequest{WorkspaceID: "workspace-primary", AdminLoginID: "admin@example.com", AdminName: "Admin"}, identitysdk.EmbeddedTransaction{Native: tx})
-	if err != nil || result.InitialPassword == "" {
+	result, err := bootstrap.ProvisionWorkspaceIdentity(t.Context(), identitysdk.WorkspaceIdentityProvisionRequest{WorkspaceID: "workspace-primary", AdminLoginID: "admin@example.com", AdminName: "Admin", InitialPassword: "BootstrapAdmin1!"}, identitysdk.EmbeddedTransaction{Native: tx})
+	if err != nil || result.InitialPassword != "BootstrapAdmin1!" {
 		_ = tx.Rollback()
 		t.Fatalf("bootstrap result=%#v error=%v", result, err)
 	}

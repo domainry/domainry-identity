@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode"
 
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
@@ -29,9 +30,15 @@ func (binding *moduleBinding) ProvisionWorkspaceIdentity(ctx context.Context, re
 	if _, err := identitymodel.NewWorkspaceID(request.WorkspaceID); err != nil || request.AdminLoginID == "" || request.AdminName == "" {
 		return identitysdk.WorkspaceIdentityProvisionResult{}, &identitysdk.Error{Code: "identity.workspace_provisioning_invalid", Cause: err}
 	}
-	password, err := workspaceInitialPassword()
-	if err != nil {
-		return identitysdk.WorkspaceIdentityProvisionResult{}, err
+	password := request.InitialPassword
+	if password == "" {
+		var err error
+		password, err = workspaceInitialPassword()
+		if err != nil {
+			return identitysdk.WorkspaceIdentityProvisionResult{}, err
+		}
+	} else if !validBootstrapInitialPassword(password) {
+		return identitysdk.WorkspaceIdentityProvisionResult{}, &identitysdk.Error{Code: "identity.workspace_provisioning_initial_password_invalid"}
 	}
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
@@ -133,6 +140,26 @@ func workspaceInitialPassword() (string, error) {
 		return "", fmt.Errorf("generate initial workspace password: %w", err)
 	}
 	return "Vd!9" + base64.RawURLEncoding.EncodeToString(buffer), nil
+}
+
+func validBootstrapInitialPassword(password string) bool {
+	if len(password) > 72 || len([]rune(password)) < 12 {
+		return false
+	}
+	var upper, lower, number, symbol bool
+	for _, value := range password {
+		switch {
+		case unicode.IsUpper(value):
+			upper = true
+		case unicode.IsLower(value):
+			lower = true
+		case unicode.IsDigit(value):
+			number = true
+		case unicode.IsPunct(value) || unicode.IsSymbol(value):
+			symbol = true
+		}
+	}
+	return upper && lower && number && symbol
 }
 
 var _ identitysdk.EmbeddedWorkspaceProvisioner = (*moduleBinding)(nil)
