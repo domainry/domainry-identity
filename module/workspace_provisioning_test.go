@@ -2,6 +2,7 @@ package module_test
 
 import (
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -9,6 +10,17 @@ import (
 	identitymodule "github.com/domainry/domainry-identity/module"
 	_ "modernc.org/sqlite"
 )
+
+var errInjectedWorkspaceProvisionFailure = errors.New("injected workspace provisioning failure")
+
+type exactWorkspaceProvisionFailureInjector struct{ target string }
+
+func (injector exactWorkspaceProvisionFailureInjector) InjectWorkspaceProvisionFailure(point string) error {
+	if point == injector.target {
+		return errInjectedWorkspaceProvisionFailure
+	}
+	return nil
+}
 
 func TestEmbeddedWorkspaceProvisioningJoinsHostTransaction(t *testing.T) {
 	databasePath := filepath.Join(t.TempDir(), "embedded-provisioning.db")
@@ -68,6 +80,67 @@ func TestEmbeddedWorkspaceProvisioningJoinsHostTransaction(t *testing.T) {
 	assertIdentityRowCount(t, db, "domainry_identity__identity_roles", "workspace-active", 2)
 	assertIdentityRowCount(t, db, "domainry_identity__identity_user_role_assignments", "workspace-active", 1)
 	assertIdentityRowCount(t, db, "domainry_identity__identity_credentials", "workspace-active", 1)
+}
+
+func TestEmbeddedWorkspaceProvisioningRollsBackEveryIdentityBoundary(t *testing.T) {
+	points := []string{
+		identitysdk.WorkspaceProvisionFailureAfterIdentityUser,
+		identitysdk.WorkspaceProvisionFailureAfterIdentityRole,
+		identitysdk.WorkspaceProvisionFailureAfterRoleAssignment,
+		identitysdk.WorkspaceProvisionFailureAfterCredential,
+	}
+	for _, point := range points {
+		t.Run(point, func(t *testing.T) {
+			databasePath := filepath.Join(t.TempDir(), "embedded-provisioning.db")
+			db, err := sql.Open("sqlite", databasePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = db.Close() })
+			application := identitysdk.ApplicationRef{WorkspaceID: "default", ApplicationKey: "runtime"}
+			binding, err := identitymodule.NewFactory(identitymodule.Options{IdentityVersion: "test", DatabaseDriver: "sqlite", DatabasePath: databasePath}).OpenWithDatabase(t.Context(), application, identitysdk.DatabaseHandle{Pool: db, Driver: "sqlite", FilePath: databasePath})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = binding.Close(t.Context()) })
+			provisioner := binding.(identitysdk.EmbeddedWorkspaceProvisioner)
+			request := identitysdk.WorkspaceIdentityProvisionRequest{WorkspaceID: "workspace-rollback", AdminLoginID: "rollback@example.com", AdminName: "Rollback Admin"}
+
+			failedTx, err := db.BeginTx(t.Context(), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := provisioner.ProvisionWorkspaceIdentity(t.Context(), request, identitysdk.EmbeddedTransaction{
+				Native: failedTx, WorkspaceProvisionFailures: exactWorkspaceProvisionFailureInjector{target: point},
+			})
+			if !errors.Is(err, errInjectedWorkspaceProvisionFailure) || result != (identitysdk.WorkspaceIdentityProvisionResult{}) {
+				_ = failedTx.Rollback()
+				t.Fatalf("result=%#v error=%v", result, err)
+			}
+			if err := failedTx.Rollback(); err != nil {
+				t.Fatal(err)
+			}
+			for _, table := range []string{"domainry_identity__identity_users", "domainry_identity__identity_roles", "domainry_identity__identity_user_role_assignments", "domainry_identity__identity_credentials"} {
+				assertIdentityRowCount(t, db, table, request.WorkspaceID, 0)
+			}
+
+			retryTx, err := db.BeginTx(t.Context(), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			retried, err := provisioner.ProvisionWorkspaceIdentity(t.Context(), request, identitysdk.EmbeddedTransaction{Native: retryTx})
+			if err != nil || retried.InitialPassword == "" {
+				_ = retryTx.Rollback()
+				t.Fatalf("clean retry result=%#v error=%v", retried, err)
+			}
+			if err := retryTx.Commit(); err != nil {
+				t.Fatal(err)
+			}
+			for _, table := range []string{"domainry_identity__identity_users", "domainry_identity__identity_roles", "domainry_identity__identity_user_role_assignments", "domainry_identity__identity_credentials"} {
+				assertIdentityRowCount(t, db, table, request.WorkspaceID, 1)
+			}
+		})
+	}
 }
 
 func assertIdentityRowCount(t *testing.T, db *sql.DB, table, workspaceID string, want int) {

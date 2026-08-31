@@ -42,13 +42,35 @@ func (binding *moduleBinding) ProvisionWorkspaceIdentity(ctx context.Context, re
 		ID: "admin", Name: request.AdminName, Email: request.AdminLoginID,
 		AccountType: identitymodel.IdentityAccountHuman, Status: identitymodel.IdentityStatusActive,
 	}
-	if err := binding.runtime.IdentityStore.ProvisionWorkspaceIdentityWithExecutor(ctx, tx, request.WorkspaceID, admin, roles); err != nil {
+	if err := binding.runtime.IdentityStore.ProvisionWorkspaceIdentityWithExecutor(ctx, tx, request.WorkspaceID, admin, roles, func(stage identitypersistence.WorkspaceIdentityProvisionStage) error {
+		if transaction.WorkspaceProvisionFailures == nil {
+			return nil
+		}
+		point := ""
+		switch stage {
+		case identitypersistence.WorkspaceIdentityProvisionStageUser:
+			point = identitysdk.WorkspaceProvisionFailureAfterIdentityUser
+		case identitypersistence.WorkspaceIdentityProvisionStageRole:
+			point = identitysdk.WorkspaceProvisionFailureAfterIdentityRole
+		case identitypersistence.WorkspaceIdentityProvisionStageRoleAssignment:
+			point = identitysdk.WorkspaceProvisionFailureAfterRoleAssignment
+		}
+		if point == "" {
+			return nil
+		}
+		return transaction.WorkspaceProvisionFailures.InjectWorkspaceProvisionFailure(point)
+	}); err != nil {
 		return identitysdk.WorkspaceIdentityProvisionResult{}, err
 	}
 	if err := binding.runtime.AuthStore.UpsertIdentityCredentialWithExecutor(ctx, tx, request.WorkspaceID, identitymodel.IdentityCredential{
 		UserID: "admin", PasswordHash: string(passwordHash), MustChangePassword: true,
 	}); err != nil {
 		return identitysdk.WorkspaceIdentityProvisionResult{}, fmt.Errorf("provision workspace administrator credential: %w", err)
+	}
+	if transaction.WorkspaceProvisionFailures != nil {
+		if err := transaction.WorkspaceProvisionFailures.InjectWorkspaceProvisionFailure(identitysdk.WorkspaceProvisionFailureAfterCredential); err != nil {
+			return identitysdk.WorkspaceIdentityProvisionResult{}, err
+		}
 	}
 	return identitysdk.WorkspaceIdentityProvisionResult{
 		AdminLoginID: request.AdminLoginID, InitialPassword: password, MustChangePassword: true, ProvisionedRoles: len(roles),
