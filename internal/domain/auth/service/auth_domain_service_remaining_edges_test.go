@@ -25,7 +25,7 @@ func TestAccessTokenHeaderPayloadAndCancellationEdges(t *testing.T) {
 	}
 
 	repository.refreshTokens = []identitymodel.AuthRefreshToken{{UserID: "user", SessionID: "session", ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339)}}
-	validClaims, err := json.Marshal(authmodel.AuthClaims{Subject: "user", WorkspaceID: "default", SessionID: "session", ExpiresAt: time.Now().Add(time.Hour).Unix()})
+	validClaims, err := json.Marshal(authmodel.AuthClaims{Subject: "user", WorkspaceID: "workspace-primary", SessionID: "session", ExpiresAt: time.Now().Add(time.Hour).Unix()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -411,7 +411,7 @@ func TestWeChatExternalLoginReusesOrphanAndSkipsBindingManagedDefaultRole(t *tes
 		Key: "member", Audience: identitymodel.IdentityRoleAudienceBusiness, RequiredBindingKey: "member", AssignmentMode: identitymodel.IdentityRoleAssignmentSystemManaged,
 	}
 
-	session, err := auth.ExternalLoginWithPolicy(t.Context(), "default", assertion, authmodel.AuthExternalLoginPolicy{AutoCreateUsers: true, DefaultRoleKey: "member"})
+	session, err := auth.ExternalLoginWithPolicy(t.Context(), "workspace-primary", assertion, authmodel.AuthExternalLoginPolicy{AutoCreateUsers: true, DefaultRoleKey: "member"})
 	if err != nil {
 		t.Fatalf("recover verified wechat login: %v", err)
 	}
@@ -441,7 +441,7 @@ func TestLinkedExternalLoginBackfillsOnlySafeDefaultRole(t *testing.T) {
 		policy := authmodel.AuthExternalLoginPolicy{DefaultRoleKey: "default-role"}
 		assertion := authmodel.AuthExternalIdentityAssertion{Provider: "oidc", Subject: "subject"}
 		for range 2 {
-			if _, err := auth.ExternalLoginWithPolicy(t.Context(), "default", assertion, policy); err != nil {
+			if _, err := auth.ExternalLoginWithPolicy(t.Context(), "workspace-primary", assertion, policy); err != nil {
 				t.Fatalf("linked login: %v", err)
 			}
 		}
@@ -457,7 +457,7 @@ func TestLinkedExternalLoginBackfillsOnlySafeDefaultRole(t *testing.T) {
 	} {
 		t.Run(name+" is denied", func(t *testing.T) {
 			auth, identities, _ := newFixture(definition)
-			if _, err := auth.ExternalLoginWithPolicy(t.Context(), "default", authmodel.AuthExternalIdentityAssertion{Provider: "oidc", Subject: "subject"}, authmodel.AuthExternalLoginPolicy{DefaultRoleKey: "default-role"}); err != nil {
+			if _, err := auth.ExternalLoginWithPolicy(t.Context(), "workspace-primary", authmodel.AuthExternalIdentityAssertion{Provider: "oidc", Subject: "subject"}, authmodel.AuthExternalLoginPolicy{DefaultRoleKey: "default-role"}); err != nil {
 				t.Fatalf("linked login with denied default role: %v", err)
 			}
 			if len(identities.roleAssignments) != 0 {

@@ -65,7 +65,7 @@ func NewWithStore(ctx context.Context, cfg config.Config, store *database.Identi
 		_ = store.CloseContext(context.Background())
 		return nil, fmt.Errorf("prepare Identity schema: %w", err)
 	}
-	core, err := assembly.New(ctx, cfg, store, assembly.Options{Clock: options.Clock})
+	core, err := assembly.New(ctx, cfg, store, assembly.Options{Clock: options.Clock, WorkspaceID: cfg.IdentityWorkspaceID})
 	if err != nil {
 		return nil, err
 	}
@@ -94,6 +94,7 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 		TenantAdminRateLimitPerMinute: cfg.HTTPTenantAdminRateLimitPerMinute,
 		OperationsRateLimitPerMinute:  cfg.HTTPOpsRateLimitPerMinute,
 	})
+	httpSupport.initializedWorkspaceID = cfg.IdentityWorkspaceID
 	httpSupport.writesFrozen = core.Store.IdentityWritesFrozen
 	mux := http.NewServeMux()
 	registerHealthRoutes(mux, httpSupport)
@@ -187,7 +188,7 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 	}, applicationCredentials)
 	browserCatalog := identitysdk.AuthorizationCatalog{
 		ContractVersion: identitysdk.CatalogVersionV1,
-		Application:     identitysdk.ApplicationRef{WorkspaceID: identitymodel.InstallationWorkspaceID, ApplicationKey: identitysdk.ApplicationKey(cfg.IdentityBrowserApplicationKey), RedirectURLs: append([]string(nil), cfg.IdentityBrowserReturnURLs...)},
+		Application:     identitysdk.ApplicationRef{WorkspaceID: identitysdk.WorkspaceID(cfg.IdentityWorkspaceID), ApplicationKey: identitysdk.ApplicationKey(cfg.IdentityBrowserApplicationKey), RedirectURLs: append([]string(nil), cfg.IdentityBrowserReturnURLs...)},
 		Resources:       []identitysdk.ResourceDefinition{}, Actions: []identitysdk.ActionDefinition{},
 	}
 	if _, err := core.Binding.Catalog().Publish(ctx, browserCatalog); err != nil {
@@ -195,7 +196,7 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 	}
 	browserGateway, err := browsergateway.New(core.Binding, browsergateway.Config{
 		ApplicationKey: identitysdk.ApplicationKey(cfg.IdentityBrowserApplicationKey), AllowedReturnURLs: append([]string(nil), cfg.IdentityBrowserReturnURLs...),
-		DefaultWorkspaceID: identitymodel.InstallationWorkspaceID, MaxRequestBodySize: int64(cfg.HTTPPublicMaxJSONBodyBytes),
+		DefaultWorkspaceID: identitysdk.WorkspaceID(cfg.IdentityWorkspaceID), MaxRequestBodySize: int64(cfg.HTTPPublicMaxJSONBodyBytes),
 		Cookie: browsergateway.CookieConfig{Path: "/browser/auth", Secure: cfg.IsProduction(), SameSite: http.SameSiteLaxMode, MaxAge: cfg.AuthRefreshTTL},
 	})
 	if err != nil {

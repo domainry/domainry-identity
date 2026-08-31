@@ -11,11 +11,14 @@ import (
 	identityapplication "github.com/domainry/domainry-identity-sdk/application"
 	"github.com/domainry/domainry-identity-sdk/browsergateway"
 	identityhttpapi "github.com/domainry/domainry-identity-sdk/httpapi"
+	identityapplicationinternal "github.com/domainry/domainry-identity/internal/application/identity"
 	portabilityapplication "github.com/domainry/domainry-identity/internal/application/portability"
 	"github.com/domainry/domainry-identity/internal/assembly"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	identityservice "github.com/domainry/domainry-identity/internal/domain/identity/service"
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
+	authpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/auth"
+	identitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity"
 	portabilitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/portability"
 	httpserver "github.com/domainry/domainry-identity/internal/transport/http/server"
 )
@@ -38,6 +41,69 @@ func (factory *Factory) OpenWithDatabase(ctx context.Context, application identi
 	return factory.open(ctx, application, &handle)
 }
 
+// OpenBootstrapWithDatabase opens only the atomic workspace provisioner. It
+// creates no compatibility workspace, user, role, credential, browser route,
+// or ordinary Identity Binding before the host commits the first tenant.
+func (factory *Factory) OpenBootstrapWithDatabase(ctx context.Context, applicationKey identitysdk.ApplicationKey, handle identitysdk.DatabaseHandle) (identitysdk.BootstrapBinding, error) {
+	if ctx == nil {
+		return nil, &identitysdk.Error{Code: "identity.context_required"}
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, &identitysdk.Error{StatusCode: http.StatusServiceUnavailable, Code: "identity.context_unavailable", Cause: err}
+	}
+	if !applicationKey.Valid() {
+		return nil, &identitysdk.Error{Code: "identity.module_application_scope_required"}
+	}
+	db, valid := handle.Pool.(*sql.DB)
+	if !valid || db == nil {
+		return nil, &identitysdk.Error{Code: "identity.module_database_required"}
+	}
+	cfg, _, err := loadModuleConfig(factory.Options)
+	if err != nil {
+		return nil, err
+	}
+	cfg.AuthAudience = string(applicationKey)
+	cfg.DatabaseDriver = handle.Driver
+	cfg.DatabaseSchema = handle.Schema
+	cfg.DBPath = handle.FilePath
+	cfg.DatabaseDSN = ""
+	cfg.DatabaseMigrationDSN = ""
+	store, err := database.OpenBorrowedContext(ctx, cfg, db)
+	if err != nil {
+		return nil, fmt.Errorf("open Identity bootstrap database: %w", err)
+	}
+	fail := func(err error) (identitysdk.BootstrapBinding, error) {
+		_ = store.CloseContext(context.Background())
+		return nil, err
+	}
+	if handle.Migrations != nil {
+		err = handle.Migrations.ApplyOwnedMigration(ctx, "identity", 1, "identity_foundation", database.EmbeddedSchemaChecksum(), store.EnsureEmbeddedSchema)
+	} else {
+		err = store.EnsureSchema(ctx)
+	}
+	if err != nil {
+		return fail(fmt.Errorf("prepare Identity bootstrap schema: %w", err))
+	}
+	manifest, err := loadModuleManifest()
+	if err != nil {
+		return fail(err)
+	}
+	manifest.Roles = identityapplicationinternal.WithStandaloneIdentityRoleDefinitions(manifest.Roles)
+	identityStore, err := identitypersistence.NewSQLIdentityStoreWithSchema(ctx, store.DB(), store.SchemaDB(), store.PersistenceEngine(), store.DatabaseSchema(), store.RelationPrefix())
+	if err != nil {
+		return fail(fmt.Errorf("open Identity bootstrap repository: %w", err))
+	}
+	seed := identityapplicationinternal.FromManifest(manifest)
+	permissions := identityapplicationinternal.MergeIdentityPermissions(seed.Permissions, identityapplicationinternal.IdentityPermissionsFromRoles(manifest.Roles, manifest.Objects, cfg.AppLocale))
+	identityApp := identityapplicationinternal.NewIdentityApplicationService(identityStore, permissions)
+	identityApp.ReplaceRoleDefinitions(manifest.Roles)
+	authStore := authpersistence.NewAuthStoreWithKeyProvider(identityStore, store.SecretKeyProvider(), store.IdempotencyMetrics(ctx))
+	return &moduleBinding{
+		runtime:     &assembly.Core{Store: store, Manifest: manifest, IdentityStore: identityStore, Identity: identityApp, AuthStore: authStore},
+		application: identitysdk.ApplicationRef{ApplicationKey: applicationKey},
+	}, nil
+}
+
 func (factory *Factory) open(ctx context.Context, application identitysdk.ApplicationRef, handle *identitysdk.DatabaseHandle) (identitysdk.Binding, error) {
 	if ctx == nil {
 		return nil, &identitysdk.Error{Code: "identity.context_required"}
@@ -56,6 +122,7 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 	// authoritative token audience, avoiding a split trust scope between
 	// Runtime IDENTITY_AUDIENCE and module-local environment configuration.
 	cfg.AuthAudience = string(application.ApplicationKey)
+	cfg.IdentityWorkspaceID = string(application.WorkspaceID)
 	var store *database.IdentityStore
 	if handle == nil {
 		store, err = database.OpenContext(ctx, cfg)
@@ -88,7 +155,7 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 		_ = store.CloseContext(context.Background())
 		return nil, err
 	}
-	identityRuntime, err := assembly.NewWithManifest(ctx, cfg, store, manifest, assembly.Options{Clock: factory.Options.Clock})
+	identityRuntime, err := assembly.NewWithManifest(ctx, cfg, store, manifest, assembly.Options{Clock: factory.Options.Clock, WorkspaceID: string(application.WorkspaceID)})
 	if err != nil {
 		_ = store.CloseContext(context.Background())
 		return nil, err
@@ -238,6 +305,7 @@ func (binding *moduleBinding) Close(ctx context.Context) error {
 
 var _ identitysdk.Factory = (*Factory)(nil)
 var _ identitysdk.DatabaseFactory = (*Factory)(nil)
+var _ identitysdk.BootstrapDatabaseFactory = (*Factory)(nil)
 var _ identitysdk.Binding = (*moduleBinding)(nil)
 var _ identitysdk.ProjectRoleCatalogPublisher = (*moduleBinding)(nil)
 var _ identityhttpapi.Provider = (*moduleBinding)(nil)

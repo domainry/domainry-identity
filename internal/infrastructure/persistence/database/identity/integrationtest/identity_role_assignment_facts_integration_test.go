@@ -45,10 +45,10 @@ func TestIdentityRoleAssignmentFactsRoundTrip(t *testing.T) {
 		ExpiresAt:          &expiresAt,
 		CreatedAt:          "2026-01-01T00:00:00Z",
 	}
-	if err := repository.AssignIdentityUserRole(t.Context(), "default", want); err != nil {
+	if err := repository.AssignIdentityUserRole(t.Context(), "workspace-primary", want); err != nil {
 		t.Fatal(err)
 	}
-	got, err := repository.ListIdentityUserRoleAssignments(t.Context(), "default", want.UserID)
+	got, err := repository.ListIdentityUserRoleAssignments(t.Context(), "workspace-primary", want.UserID)
 	if err != nil {
 		t.Fatal(err)
 	}

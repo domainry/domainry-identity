@@ -28,7 +28,7 @@ func TestIdentityDirectoryNativeSearchCapabilities(t *testing.T) {
 		userPage:                    identitymodel.IdentityUserPage{Total: 7},
 		workforcePage:               identitymodel.IdentityWorkforceProfilePage{Total: 9},
 	}
-	service, err := NewIdentityDomainService(repository, nil).ForWorkspace("default")
+	service, err := NewIdentityDomainService(repository, nil).ForWorkspace("workspace-primary")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestIdentityWorkforceScopedProfileIDs(t *testing.T) {
 	if _, err := service.identityWorkforceScopedProfileIDs(t.Context(), identitymodel.IdentityListQuery{Scope: "department"}, profiles); !errors.Is(err, repository.departmentsErr) {
 		t.Fatalf("department err=%v", err)
 	}
-	withoutWorkforce, err := NewIdentityDomainService(&identityDepartmentUserRepository{}, nil).ForWorkspace("default")
+	withoutWorkforce, err := NewIdentityDomainService(&identityDepartmentUserRepository{}, nil).ForWorkspace("workspace-primary")
 	if err != nil {
 		t.Fatal(err)
 	}

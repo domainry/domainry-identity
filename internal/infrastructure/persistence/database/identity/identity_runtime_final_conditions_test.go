@@ -10,48 +10,48 @@ import (
 
 func TestMemoryWorkforceFinalConditions(t *testing.T) {
 	store := NewMemoryIdentityStore()
-	if err := store.UpsertIdentityWorkforceProfile(t.Context(), "default", identitymodel.IdentityWorkforceProfile{}); err == nil {
+	if err := store.UpsertIdentityWorkforceProfile(t.Context(), "workspace-primary", identitymodel.IdentityWorkforceProfile{}); err == nil {
 		t.Fatal("empty profile accepted")
 	}
 	profile := identitymodel.IdentityWorkforceProfile{ID: "b", OrganizationID: "org", IdentityUserID: "user-b", WorkerNo: "B", Version: 2}
-	if err := store.UpsertIdentityWorkforceProfile(t.Context(), "default", profile); err != nil {
+	if err := store.UpsertIdentityWorkforceProfile(t.Context(), "workspace-primary", profile); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpsertIdentityWorkforceProfile(t.Context(), "default", profile); err != nil {
+	if err := store.UpsertIdentityWorkforceProfile(t.Context(), "workspace-primary", profile); err != nil {
 		t.Fatalf("same profile update failed: %v", err)
 	}
 	if err := store.UpsertIdentityWorkforceProfile(t.Context(), "other", identitymodel.IdentityWorkforceProfile{ID: "foreign", OrganizationID: "org", IdentityUserID: "foreign", WorkerNo: "foreign"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpsertIdentityWorkforceProfile(t.Context(), "default", identitymodel.IdentityWorkforceProfile{ID: "other-org", OrganizationID: "other", IdentityUserID: "other", WorkerNo: "other"}); err != nil {
+	if err := store.UpsertIdentityWorkforceProfile(t.Context(), "workspace-primary", identitymodel.IdentityWorkforceProfile{ID: "other-org", OrganizationID: "other", IdentityUserID: "other", WorkerNo: "other"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpsertIdentityWorkforceProfile(t.Context(), "default", identitymodel.IdentityWorkforceProfile{ID: "identity-conflict", OrganizationID: "org", IdentityUserID: "user-b", WorkerNo: "unique"}); err == nil {
+	if err := store.UpsertIdentityWorkforceProfile(t.Context(), "workspace-primary", identitymodel.IdentityWorkforceProfile{ID: "identity-conflict", OrganizationID: "org", IdentityUserID: "user-b", WorkerNo: "unique"}); err == nil {
 		t.Fatal("identity conflict accepted")
 	}
-	if err := store.UpsertIdentityWorkforceProfile(t.Context(), "default", identitymodel.IdentityWorkforceProfile{ID: "worker-conflict", OrganizationID: "org", IdentityUserID: "unique", WorkerNo: "B"}); err == nil {
+	if err := store.UpsertIdentityWorkforceProfile(t.Context(), "workspace-primary", identitymodel.IdentityWorkforceProfile{ID: "worker-conflict", OrganizationID: "org", IdentityUserID: "unique", WorkerNo: "B"}); err == nil {
 		t.Fatal("worker number conflict accepted")
 	}
 
-	if err := store.UpsertIdentityWorkforceAssignment(t.Context(), "default", identitymodel.IdentityWorkforceAssignment{}); err == nil {
+	if err := store.UpsertIdentityWorkforceAssignment(t.Context(), "workspace-primary", identitymodel.IdentityWorkforceAssignment{}); err == nil {
 		t.Fatal("empty assignment accepted")
 	}
 	for _, assignment := range []identitymodel.IdentityWorkforceAssignment{
 		{ID: "b", WorkforceProfileID: "b", Version: 2},
 		{ID: "a", WorkforceProfileID: "a"},
 	} {
-		if err := store.UpsertIdentityWorkforceAssignment(t.Context(), "default", assignment); err != nil {
+		if err := store.UpsertIdentityWorkforceAssignment(t.Context(), "workspace-primary", assignment); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if err := store.UpsertIdentityWorkforceAssignment(t.Context(), "other", identitymodel.IdentityWorkforceAssignment{ID: "foreign", WorkforceProfileID: "b"}); err != nil {
 		t.Fatal(err)
 	}
-	all, err := store.ListIdentityWorkforceAssignments(t.Context(), "default", "")
+	all, err := store.ListIdentityWorkforceAssignments(t.Context(), "workspace-primary", "")
 	if err != nil || len(all) != 2 || all[0].ID != "a" || all[1].ID != "b" {
 		t.Fatalf("all assignments=%#v error=%v", all, err)
 	}
-	filtered, err := store.ListIdentityWorkforceAssignments(t.Context(), "default", "b")
+	filtered, err := store.ListIdentityWorkforceAssignments(t.Context(), "workspace-primary", "b")
 	if err != nil || len(filtered) != 1 || filtered[0].ID != "b" {
 		t.Fatalf("filtered assignments=%#v error=%v", filtered, err)
 	}
@@ -61,10 +61,10 @@ func TestSQLIdentityBootstrapFinalFailureStages(t *testing.T) {
 	wantErr := errors.New("bootstrap stage")
 	for _, call := range []func(*SQLIdentityStore) error{
 		func(store *SQLIdentityStore) error {
-			return store.ApplyIdentityBootstrapAtomically(t.Context(), "default", nil, nil, []identitymodel.IdentityWorkforceProfile{{ID: "profile"}}, nil, nil)
+			return store.ApplyIdentityBootstrapAtomically(t.Context(), "workspace-primary", nil, nil, []identitymodel.IdentityWorkforceProfile{{ID: "profile"}}, nil, nil)
 		},
 		func(store *SQLIdentityStore) error {
-			return store.ApplyIdentityBootstrapAtomically(t.Context(), "default", nil, nil, nil, []identitymodel.IdentityWorkforceAssignment{{ID: "assignment"}}, nil)
+			return store.ApplyIdentityBootstrapAtomically(t.Context(), "workspace-primary", nil, nil, nil, []identitymodel.IdentityWorkforceAssignment{{ID: "assignment"}}, nil)
 		},
 	} {
 		store, closeDB := scriptedSQLIdentity(&identitySQLState{execFailAt: 1, failure: wantErr})
@@ -121,7 +121,7 @@ func TestIdentitySubjectExportFinalFailureStages(t *testing.T) {
 		querySteps:  []identitySQLQueryStep{{columns: userColumns, rows: [][]driver.Value{userRow}}},
 	}
 	store, closeDB := scriptedSQLIdentity(previewFailure)
-	if _, err := NewIdentitySubjectLifecycleStore(store).ExportSubject(t.Context(), "default", "user"); !errors.Is(err, wantErr) {
+	if _, err := NewIdentitySubjectLifecycleStore(store).ExportSubject(t.Context(), "workspace-primary", "user"); !errors.Is(err, wantErr) {
 		t.Fatalf("preview error=%v", err)
 	}
 	closeDB()
@@ -132,7 +132,7 @@ func TestIdentitySubjectExportFinalFailureStages(t *testing.T) {
 	}
 	relationshipFailure := &identitySQLState{queryFailAt: 8, failure: wantErr, querySteps: steps}
 	store, closeDB = scriptedSQLIdentity(relationshipFailure)
-	if _, err := NewIdentitySubjectLifecycleStore(store).ExportSubject(t.Context(), "default", "user"); !errors.Is(err, wantErr) {
+	if _, err := NewIdentitySubjectLifecycleStore(store).ExportSubject(t.Context(), "workspace-primary", "user"); !errors.Is(err, wantErr) {
 		t.Fatalf("relationship error=%v", err)
 	}
 	closeDB()
@@ -148,7 +148,7 @@ func TestIdentitySubjectRelationshipExportFinalFailures(t *testing.T) {
 	for index, state := range states {
 		store, closeDB := scriptedSQLIdentity(state)
 		lifecycle := NewIdentitySubjectLifecycleStore(store)
-		if _, err := lifecycle.exportSubjectRelationships(t.Context(), "default", "user"); err == nil {
+		if _, err := lifecycle.exportSubjectRelationships(t.Context(), "workspace-primary", "user"); err == nil {
 			t.Fatalf("relationship failure case %d ignored", index)
 		}
 		closeDB()

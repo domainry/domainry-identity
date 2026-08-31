@@ -146,9 +146,9 @@ func directoryProjectionFixture() (*IdentityApplicationService, *directoryProjec
 
 func TestSearchUserDirectoryProjectsRolesSecurityAndIdentityBadges(t *testing.T) {
 	service, _ := directoryProjectionFixture()
-	ctx := requestcontext.WithWorkspaceID(t.Context(), "default")
+	ctx := requestcontext.WithWorkspaceID(t.Context(), "workspace-primary")
 	page, err := service.SearchUserDirectory(ctx, identitymodel.IdentityListQuery{PageSize: 1}, func(_ context.Context, workspaceID, userID string) (IdentityUserDirectorySecuritySummary, error) {
-		if workspaceID != "default" || userID != "user-1" {
+		if workspaceID != "workspace-primary" || userID != "user-1" {
 			t.Fatalf("unexpected security lookup %q/%q", workspaceID, userID)
 		}
 		return IdentityUserDirectorySecuritySummary{MFAEnabled: true, Locked: true, ActiveSessions: 2, LastLoginAt: "now"}, nil
@@ -169,7 +169,7 @@ func TestSearchUserDirectoryProjectsRolesSecurityAndIdentityBadges(t *testing.T)
 
 func TestSearchUserDirectoryFailureBoundaries(t *testing.T) {
 	service, repository := directoryProjectionFixture()
-	validContext := requestcontext.WithWorkspaceID(t.Context(), "default")
+	validContext := requestcontext.WithWorkspaceID(t.Context(), "workspace-primary")
 	readerFailure := errors.New("security unavailable")
 	if _, err := service.SearchUserDirectory(t.Context(), identitymodel.IdentityListQuery{}, func(context.Context, string, string) (IdentityUserDirectorySecuritySummary, error) {
 		return IdentityUserDirectorySecuritySummary{}, nil
@@ -200,7 +200,7 @@ func TestSearchUserDirectoryFailureBoundaries(t *testing.T) {
 func TestSearchUserDirectoryWithoutWorkforceCapability(t *testing.T) {
 	repository := &identityScopedRepository{users: []identitymodel.IdentityUser{{ID: "user", Name: "User"}}}
 	service := NewIdentityApplicationService(repository, nil)
-	page, err := service.SearchUserDirectory(requestcontext.WithWorkspaceID(t.Context(), "default"), identitymodel.IdentityListQuery{}, func(context.Context, string, string) (IdentityUserDirectorySecuritySummary, error) {
+	page, err := service.SearchUserDirectory(requestcontext.WithWorkspaceID(t.Context(), "workspace-primary"), identitymodel.IdentityListQuery{}, func(context.Context, string, string) (IdentityUserDirectorySecuritySummary, error) {
 		return IdentityUserDirectorySecuritySummary{}, nil
 	})
 	if err != nil || len(page.Items) != 1 || len(page.Items[0].IdentityBadges) != 0 {
@@ -210,7 +210,7 @@ func TestSearchUserDirectoryWithoutWorkforceCapability(t *testing.T) {
 
 func TestSearchUserDirectoryBatchUsesFactsCapabilityAndValidatesReader(t *testing.T) {
 	service, base := directoryProjectionFixture()
-	ctx := requestcontext.WithWorkspaceID(t.Context(), "default")
+	ctx := requestcontext.WithWorkspaceID(t.Context(), "workspace-primary")
 	if _, err := service.SearchUserDirectoryBatch(ctx, identitymodel.IdentityListQuery{}, nil); apperror.CodeOf(err) != "backend.identity.user_directory_security_unavailable" {
 		t.Fatalf("nil batch reader error=%v", err)
 	}
@@ -226,7 +226,7 @@ func TestSearchUserDirectoryBatchUsesFactsCapabilityAndValidatesReader(t *testin
 	}
 	factsService := NewIdentityApplicationService(factsRepository, nil)
 	page, err := factsService.SearchUserDirectoryBatch(ctx, identitymodel.IdentityListQuery{}, func(_ context.Context, workspaceID string, userIDs []string) (map[string]IdentityUserDirectorySecuritySummary, error) {
-		if workspaceID != "default" || len(userIDs) != 2 {
+		if workspaceID != "workspace-primary" || len(userIDs) != 2 {
 			t.Fatalf("workspace=%q users=%v", workspaceID, userIDs)
 		}
 		return map[string]IdentityUserDirectorySecuritySummary{"user-1": {MFAEnabled: true}}, nil

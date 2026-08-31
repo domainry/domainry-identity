@@ -51,7 +51,11 @@ func (s *AuthDomainService) PrincipalFromBearer(ctx context.Context, authorizati
 	if err != nil {
 		return identitymodel.Principal{}, err
 	}
-	workspaceID := valueOrDefault(claims.WorkspaceID, identitymodel.InstallationWorkspaceID)
+	workspace, err := identitymodel.NewWorkspaceID(claims.WorkspaceID)
+	if err != nil {
+		return identitymodel.Principal{}, forbidden("auth.workspace_scope_required")
+	}
+	workspaceID := workspace.String()
 	ctx = requestcontext.WithWorkspaceID(ctx, workspaceID)
 	principal, err := s.authorization.ResolvePrincipal(ctx, claims.Subject)
 	if err != nil {

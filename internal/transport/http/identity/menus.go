@@ -2,6 +2,7 @@ package identity
 
 import (
 	"context"
+	"github.com/domainry/domainry-foundation/requestcontext"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 
 	"net/http"
@@ -80,7 +81,7 @@ func (h *IdentityHandler) LocalizedMenus(r *http.Request, menus []identitymodel.
 	if locale == "" {
 		return menus
 	}
-	values, err := h.localization.LocalizedTextsForLocale(r.Context(), "default", locale)
+	values, err := h.localization.LocalizedTextsForLocale(r.Context(), requestcontext.WorkspaceID(r.Context()), locale)
 	if err != nil || len(values) == 0 {
 		return menus
 	}
@@ -109,7 +110,7 @@ func (h *IdentityHandler) localizedIdentityPermissions(r *http.Request, permissi
 	if locale == "" {
 		return permissions
 	}
-	values, err := h.localization.LocalizedTextsForLocale(r.Context(), "default", locale)
+	values, err := h.localization.LocalizedTextsForLocale(r.Context(), requestcontext.WorkspaceID(r.Context()), locale)
 	if err != nil || len(values) == 0 {
 		return permissions
 	}

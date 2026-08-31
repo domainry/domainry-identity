@@ -25,7 +25,7 @@ func TestEnsureIdentitySchemaAddsDepartmentSortOrderToExistingSQLiteDatabase(t *
 	defer store.Close()
 	if _, err := store.DB().Exec(`CREATE TABLE _identity_departments (
     id TEXT PRIMARY KEY,
-    workspace_id TEXT NOT NULL DEFAULT 'default',
+    workspace_id TEXT NOT NULL DEFAULT 'workspace-primary',
     name TEXT NOT NULL,
     parent_id TEXT,
     path TEXT NOT NULL,
@@ -42,7 +42,7 @@ func TestEnsureIdentitySchemaAddsDepartmentSortOrderToExistingSQLiteDatabase(t *
 	}
 	if _, err := store.DB().Exec(`INSERT INTO _identity_departments
     (id, workspace_id, name, path, ancestor_ids, depth, sort_order, status, created_at, updated_at)
-    VALUES ('sales', 'default', 'Sales', '/sales', '[]', 0, 20, 'active', 'now', 'now')`); err != nil {
+    VALUES ('sales', 'workspace-primary', 'Sales', '/sales', '[]', 0, 20, 'active', 'now', 'now')`); err != nil {
 		t.Fatalf("expected upgraded table to accept sort_order: %v", err)
 	}
 }
@@ -54,7 +54,7 @@ func TestEnsureIdentitySchemaMigratesLegacyUserWorkforceFactsAndDropsColumns(t *
 	}
 	defer store.Close()
 	if _, err := store.DB().Exec(`CREATE TABLE _identity_users (
-    id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL DEFAULT 'default', name TEXT NOT NULL,
+    id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL DEFAULT 'workspace-primary', name TEXT NOT NULL,
     email TEXT NOT NULL, employee_no TEXT NOT NULL DEFAULT '', phone TEXT NOT NULL DEFAULT '',
     gender TEXT NOT NULL DEFAULT '', hire_date TEXT NOT NULL DEFAULT '', job_title TEXT NOT NULL DEFAULT '',
     job_level TEXT NOT NULL DEFAULT '', employment_type TEXT NOT NULL DEFAULT '',
@@ -71,8 +71,8 @@ CREATE INDEX idx_identity_users_manager_path ON _identity_users(workspace_id, ma
 INSERT INTO _identity_users
   (id, workspace_id, name, email, employee_no, phone, gender, hire_date, job_title, job_level, employment_type, employment_status, department_id, department_path, manager_id, manager_path, manager_ancestor_ids, manager_depth, status, created_at, updated_at)
 VALUES
-  ('manager', 'default', 'Manager', 'manager@example.com', 'M001', '', '', '2025-01-01', 'Director', 'L7', 'full_time', 'active', 'executive', '/executive', NULL, '', '[]', 0, 'active', 'now', 'now'),
-  ('worker', 'default', 'Worker', 'worker@example.com', 'E001', '10000000001', 'other', '2026-01-01', 'Engineer', 'L4', 'contractor', 'on_leave', 'engineering', '/engineering', 'manager', '/manager/worker', '["manager"]', 1, 'active', 'now', 'now')`); err != nil {
+  ('manager', 'workspace-primary', 'Manager', 'manager@example.com', 'M001', '', '', '2025-01-01', 'Director', 'L7', 'full_time', 'active', 'executive', '/executive', NULL, '', '[]', 0, 'active', 'now', 'now'),
+  ('worker', 'workspace-primary', 'Worker', 'worker@example.com', 'E001', '10000000001', 'other', '2026-01-01', 'Engineer', 'L4', 'contractor', 'on_leave', 'engineering', '/engineering', 'manager', '/manager/worker', '["manager"]', 1, 'active', 'now', 'now')`); err != nil {
 		t.Fatalf("seed legacy identity users: %v", err)
 	}
 	if err := store.EnsureIdentitySchema(t.Context()); err != nil {
@@ -108,7 +108,7 @@ VALUES
 	}
 	var workerProfileID, workerNo, workerType, workStatus, startDate, primaryAssignmentID string
 	if err := store.DB().QueryRow(`SELECT id, worker_no, worker_type, work_status, start_date, primary_assignment_id
-FROM _identity_workforce_profiles WHERE workspace_id = 'default' AND identity_user_id = 'worker'`).
+FROM _identity_workforce_profiles WHERE workspace_id = 'workspace-primary' AND identity_user_id = 'worker'`).
 		Scan(&workerProfileID, &workerNo, &workerType, &workStatus, &startDate, &primaryAssignmentID); err != nil {
 		t.Fatalf("read migrated worker profile: %v", err)
 	}
@@ -117,19 +117,19 @@ FROM _identity_workforce_profiles WHERE workspace_id = 'default' AND identity_us
 	}
 	var unitID, managerProfileID, positionID, assignmentStatus string
 	if err := store.DB().QueryRow(`SELECT organization_unit_id, manager_workforce_profile_id, position_id, status
-FROM _identity_workforce_assignments WHERE workspace_id = 'default' AND id = ?`, primaryAssignmentID).
+FROM _identity_workforce_assignments WHERE workspace_id = 'workspace-primary' AND id = ?`, primaryAssignmentID).
 		Scan(&unitID, &managerProfileID, &positionID, &assignmentStatus); err != nil {
 		t.Fatalf("read migrated worker assignment: %v", err)
 	}
 	var expectedManagerProfileID string
-	if err := store.DB().QueryRow(`SELECT id FROM _identity_workforce_profiles WHERE workspace_id = 'default' AND identity_user_id = 'manager'`).Scan(&expectedManagerProfileID); err != nil {
+	if err := store.DB().QueryRow(`SELECT id FROM _identity_workforce_profiles WHERE workspace_id = 'workspace-primary' AND identity_user_id = 'manager'`).Scan(&expectedManagerProfileID); err != nil {
 		t.Fatal(err)
 	}
 	if unitID != "engineering" || managerProfileID != expectedManagerProfileID || !strings.HasPrefix(positionID, "legacy-position-") || assignmentStatus != "disabled" {
 		t.Fatalf("migrated assignment unit=%q manager=%q position=%q status=%q", unitID, managerProfileID, positionID, assignmentStatus)
 	}
 	var receiptRaw string
-	if err := store.DB().QueryRow(`SELECT legacy_facts_json FROM _identity_workforce_migration_receipts WHERE workspace_id = 'default' AND identity_user_id = 'worker'`).Scan(&receiptRaw); err != nil {
+	if err := store.DB().QueryRow(`SELECT legacy_facts_json FROM _identity_workforce_migration_receipts WHERE workspace_id = 'workspace-primary' AND identity_user_id = 'worker'`).Scan(&receiptRaw); err != nil {
 		t.Fatalf("read migration receipt: %v", err)
 	}
 	var receipt map[string]any
@@ -145,7 +145,7 @@ FROM _identity_workforce_assignments WHERE workspace_id = 'default' AND id = ?`,
 		"_identity_workforce_migration_receipts": 2,
 	} {
 		var count int
-		if err := store.DB().QueryRow("SELECT COUNT(*) FROM " + table + " WHERE workspace_id = 'default'").Scan(&count); err != nil || count != want {
+		if err := store.DB().QueryRow("SELECT COUNT(*) FROM " + table + " WHERE workspace_id = 'workspace-primary'").Scan(&count); err != nil || count != want {
 			t.Fatalf("deterministic migration table=%s count=%d want=%d err=%v", table, count, want, err)
 		}
 	}
@@ -162,7 +162,7 @@ func TestLegacyWorkforceBackfillPreservesDepartmentManagerAndSubordinateScope(t 
 	}
 	defer store.Close()
 	if _, err := store.DB().Exec(`CREATE TABLE _identity_users (
-		id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL DEFAULT 'default', name TEXT NOT NULL,
+		id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL DEFAULT 'workspace-primary', name TEXT NOT NULL,
 		email TEXT NOT NULL, employee_no TEXT NOT NULL DEFAULT '', phone TEXT NOT NULL DEFAULT '',
 		hire_date TEXT NOT NULL DEFAULT '', job_title TEXT NOT NULL DEFAULT '', job_level TEXT NOT NULL DEFAULT '',
 		employment_type TEXT NOT NULL DEFAULT '', employment_status TEXT NOT NULL DEFAULT 'active',
@@ -173,9 +173,9 @@ func TestLegacyWorkforceBackfillPreservesDepartmentManagerAndSubordinateScope(t 
 	INSERT INTO _identity_users
 		(id,workspace_id,name,email,employee_no,hire_date,employment_status,department_id,department_path,manager_id,manager_path,manager_ancestor_ids,manager_depth,status,created_at,updated_at)
 	VALUES
-		('manager','default','Manager','manager@example.test','M-1','2020-01-01','active','executive','/executive',NULL,'/manager','[]',0,'active','now','now'),
-		('worker','default','Worker','worker@example.test','E-1','2021-01-01','active','engineering','/engineering','manager','/manager/worker','["manager"]',1,'active','now','now'),
-		('nested','default','Nested','nested@example.test','E-2','2022-01-01','active','engineering','/engineering','worker','/manager/worker/nested','["manager","worker"]',2,'active','now','now')`); err != nil {
+		('manager','workspace-primary','Manager','manager@example.test','M-1','2020-01-01','active','executive','/executive',NULL,'/manager','[]',0,'active','now','now'),
+		('worker','workspace-primary','Worker','worker@example.test','E-1','2021-01-01','active','engineering','/engineering','manager','/manager/worker','["manager"]',1,'active','now','now'),
+		('nested','workspace-primary','Nested','nested@example.test','E-2','2022-01-01','active','engineering','/engineering','worker','/manager/worker/nested','["manager","worker"]',2,'active','now','now')`); err != nil {
 		t.Fatal(err)
 	}
 	legacy := map[string]struct {
@@ -197,12 +197,12 @@ func TestLegacyWorkforceBackfillPreservesDepartmentManagerAndSubordinateScope(t 
 		{ID: "executive", Name: "Executive", Path: "/executive", Status: identitymodel.IdentityStatusActive},
 		{ID: "engineering", Name: "Engineering", Path: "/engineering", Status: identitymodel.IdentityStatusActive},
 	} {
-		if err := identity.UpsertIdentityDepartment(t.Context(), "default", department); err != nil {
+		if err := identity.UpsertIdentityDepartment(t.Context(), "workspace-primary", department); err != nil {
 			t.Fatal(err)
 		}
 	}
 	domain := identityservice.NewIdentityDomainService(identity, nil)
-	scoped, err := domain.ForWorkspace("default")
+	scoped, err := domain.ForWorkspace("workspace-primary")
 	if err != nil {
 		t.Fatal(err)
 	}

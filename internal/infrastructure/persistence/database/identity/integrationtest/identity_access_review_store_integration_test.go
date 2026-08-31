@@ -24,17 +24,17 @@ func TestAccessReviewDecisionIsAtomicAuditableAndIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpsertIdentityUser(t.Context(), "default", identitymodel.IdentityUser{ID: "user-1", Name: "User", Status: identitymodel.IdentityStatusActive}); err != nil {
+	if err := store.UpsertIdentityUser(t.Context(), "workspace-primary", identitymodel.IdentityUser{ID: "user-1", Name: "User", Status: identitymodel.IdentityStatusActive}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpsertIdentityRole(t.Context(), "default", identitymodel.IdentityRole{ID: "role-1", Key: "privileged", Label: "Privileged", Status: identitymodel.IdentityStatusActive}); err != nil {
+	if err := store.UpsertIdentityRole(t.Context(), "workspace-primary", identitymodel.IdentityRole{ID: "role-1", Key: "privileged", Label: "Privileged", Status: identitymodel.IdentityStatusActive}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.AssignIdentityUserRole(t.Context(), "default", identitymodel.IdentityUserRoleAssignment{UserID: "user-1", RoleID: "role-1", Source: "manual", Status: "active", GrantedBy: "admin"}); err != nil {
+	if err := store.AssignIdentityUserRole(t.Context(), "workspace-primary", identitymodel.IdentityUserRoleAssignment{UserID: "user-1", RoleID: "role-1", Source: "manual", Status: "active", GrantedBy: "admin"}); err != nil {
 		t.Fatal(err)
 	}
 	review := identitymodel.IdentityAccessReview{
-		ID: "review-1", WorkspaceID: "default", PeriodStart: "2026-01-01T00:00:00Z", PeriodEnd: "2026-03-31T00:00:00Z",
+		ID: "review-1", WorkspaceID: "workspace-primary", PeriodStart: "2026-01-01T00:00:00Z", PeriodEnd: "2026-03-31T00:00:00Z",
 		DueAt: "2026-04-15T00:00:00Z", Status: identitymodel.IdentityAccessReviewOpen, CreatedBy: "admin",
 		CreatedAt: "2026-04-01T00:00:00Z", UpdatedAt: "2026-04-01T00:00:00Z",
 		Items: []identitymodel.IdentityAccessReviewItem{{
@@ -47,7 +47,7 @@ func TestAccessReviewDecisionIsAtomicAuditableAndIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	mutation := identitymodel.IdentityAccessReviewDecisionMutation{
-		WorkspaceID: "default", ItemID: "item-1", ReviewerID: "reviewer",
+		WorkspaceID: "workspace-primary", ItemID: "item-1", ReviewerID: "reviewer",
 		RequestFingerprint: "fingerprint-1",
 		Request: identitymodel.IdentityAccessReviewDecisionRequest{
 			Decision: identitymodel.IdentityAccessReviewRevoke, Reason: "no longer required",
@@ -61,11 +61,11 @@ func TestAccessReviewDecisionIsAtomicAuditableAndIdempotent(t *testing.T) {
 	if _, err := store.ApplyIdentityAccessReviewDecision(t.Context(), mutation); err == nil {
 		t.Fatal("injected receipt failure was ignored")
 	}
-	assignments, err := store.ListIdentityUserRoleAssignments(t.Context(), "default", "user-1")
+	assignments, err := store.ListIdentityUserRoleAssignments(t.Context(), "workspace-primary", "user-1")
 	if err != nil || len(assignments) != 1 {
 		t.Fatalf("assignment mutation was not rolled back: %#v err=%v", assignments, err)
 	}
-	item, found, err := store.GetIdentityAccessReviewItem(t.Context(), "default", "item-1")
+	item, found, err := store.GetIdentityAccessReviewItem(t.Context(), "workspace-primary", "item-1")
 	if err != nil || !found || item.Status != "pending" || item.Version != 1 {
 		t.Fatalf("item mutation was not rolled back: %#v found=%v err=%v", item, found, err)
 	}
@@ -85,11 +85,11 @@ func TestAccessReviewDecisionIsAtomicAuditableAndIdempotent(t *testing.T) {
 	if _, err := store.ApplyIdentityAccessReviewDecision(t.Context(), reused); apperror.CodeOf(err) != "backend.idempotency_key_reused" {
 		t.Fatalf("reused idempotency key error=%v", err)
 	}
-	assignments, err = store.ListIdentityUserRoleAssignments(t.Context(), "default", "user-1")
+	assignments, err = store.ListIdentityUserRoleAssignments(t.Context(), "workspace-primary", "user-1")
 	if err != nil || len(assignments) != 0 {
 		t.Fatalf("revoke was not applied exactly once: %#v err=%v", assignments, err)
 	}
-	reviews, err := store.ListIdentityAccessReviews(t.Context(), "default", string(identitymodel.IdentityAccessReviewCompleted))
+	reviews, err := store.ListIdentityAccessReviews(t.Context(), "workspace-primary", string(identitymodel.IdentityAccessReviewCompleted))
 	if err != nil || len(reviews) != 1 || len(reviews[0].Items) != 1 || reviews[0].Items[0].Decision != identitymodel.IdentityAccessReviewRevoke {
 		t.Fatalf("completed review=%#v err=%v", reviews, err)
 	}
@@ -111,9 +111,9 @@ func TestAccessReviewStoreValidatesInputsAndSupportsEveryDecisionShape(t *testin
 
 	for _, invalid := range []identitymodel.IdentityAccessReview{
 		{WorkspaceID: ""},
-		{WorkspaceID: "default", CreatedBy: "admin", Items: []identitymodel.IdentityAccessReviewItem{{ID: "item"}}},
-		{WorkspaceID: "default", ID: "review", Items: []identitymodel.IdentityAccessReviewItem{{ID: "item"}}},
-		{WorkspaceID: "default", ID: "review", CreatedBy: "admin"},
+		{WorkspaceID: "workspace-primary", CreatedBy: "admin", Items: []identitymodel.IdentityAccessReviewItem{{ID: "item"}}},
+		{WorkspaceID: "workspace-primary", ID: "review", Items: []identitymodel.IdentityAccessReviewItem{{ID: "item"}}},
+		{WorkspaceID: "workspace-primary", ID: "review", CreatedBy: "admin"},
 	} {
 		if err := store.CreateIdentityAccessReview(t.Context(), invalid); err == nil {
 			t.Fatalf("invalid review was accepted: %#v", invalid)
@@ -128,10 +128,10 @@ func TestAccessReviewStoreValidatesInputsAndSupportsEveryDecisionShape(t *testin
 	if _, found, err := store.GetIdentityAccessReviewDecisionReceipt(t.Context(), "", "item", "key"); err == nil || found {
 		t.Fatalf("invalid receipt workspace found=%v err=%v", found, err)
 	}
-	if _, found, err := store.GetIdentityAccessReviewItem(t.Context(), "default", "missing"); err != nil || found {
+	if _, found, err := store.GetIdentityAccessReviewItem(t.Context(), "workspace-primary", "missing"); err != nil || found {
 		t.Fatalf("missing item found=%v err=%v", found, err)
 	}
-	if _, found, err := store.GetIdentityAccessReviewDecisionReceipt(t.Context(), "default", "missing", "key"); err != nil || found {
+	if _, found, err := store.GetIdentityAccessReviewDecisionReceipt(t.Context(), "workspace-primary", "missing", "key"); err != nil || found {
 		t.Fatalf("missing receipt found=%v err=%v", found, err)
 	}
 
@@ -139,18 +139,18 @@ func TestAccessReviewStoreValidatesInputsAndSupportsEveryDecisionShape(t *testin
 		{ID: "role-current", Key: "current", Label: "Current", Status: identitymodel.IdentityStatusActive},
 		{ID: "role-reduced", Key: "reduced", Label: "Reduced", Status: identitymodel.IdentityStatusActive},
 	} {
-		if err := store.UpsertIdentityRole(t.Context(), "default", role); err != nil {
+		if err := store.UpsertIdentityRole(t.Context(), "workspace-primary", role); err != nil {
 			t.Fatal(err)
 		}
 	}
 	userIDs := []string{"keep", "expiry", "reduce", "missing-revoke", "missing-expiry", "missing-reduce", "bad-replacement", "same-replacement", "unknown", "version"}
 	for _, userID := range userIDs {
-		if err := store.UpsertIdentityUser(t.Context(), "default", identitymodel.IdentityUser{ID: userID, Name: userID, Status: identitymodel.IdentityStatusActive}); err != nil {
+		if err := store.UpsertIdentityUser(t.Context(), "workspace-primary", identitymodel.IdentityUser{ID: userID, Name: userID, Status: identitymodel.IdentityStatusActive}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	for _, userID := range []string{"keep", "expiry", "reduce", "bad-replacement", "same-replacement", "unknown", "version"} {
-		if err := store.AssignIdentityUserRole(t.Context(), "default", identitymodel.IdentityUserRoleAssignment{
+		if err := store.AssignIdentityUserRole(t.Context(), "workspace-primary", identitymodel.IdentityUserRoleAssignment{
 			UserID: userID, RoleID: "role-current", Source: "manual", Status: "active", GrantedBy: "admin",
 		}); err != nil {
 			t.Fatal(err)
@@ -165,20 +165,20 @@ func TestAccessReviewStoreValidatesInputsAndSupportsEveryDecisionShape(t *testin
 		})
 	}
 	review := identitymodel.IdentityAccessReview{
-		ID: "review-shapes", WorkspaceID: "default", PeriodStart: "2026-01-01T00:00:00Z", PeriodEnd: "2026-03-31T00:00:00Z",
+		ID: "review-shapes", WorkspaceID: "workspace-primary", PeriodStart: "2026-01-01T00:00:00Z", PeriodEnd: "2026-03-31T00:00:00Z",
 		DueAt: "2026-04-15T00:00:00Z", Status: identitymodel.IdentityAccessReviewOpen, CreatedBy: "admin",
 		CreatedAt: "2026-04-01T00:00:00Z", UpdatedAt: "2026-04-01T00:00:00Z", Items: items,
 	}
 	if err := store.CreateIdentityAccessReview(t.Context(), review); err != nil {
 		t.Fatal(err)
 	}
-	if reviews, err := store.ListIdentityAccessReviews(t.Context(), "default", ""); err != nil || len(reviews) != 1 || len(reviews[0].Items) != len(items) {
+	if reviews, err := store.ListIdentityAccessReviews(t.Context(), "workspace-primary", ""); err != nil || len(reviews) != 1 || len(reviews[0].Items) != len(items) {
 		t.Fatalf("unfiltered reviews=%#v err=%v", reviews, err)
 	}
 
 	mutation := func(userID string, decision identitymodel.IdentityAccessReviewDecision) identitymodel.IdentityAccessReviewDecisionMutation {
 		return identitymodel.IdentityAccessReviewDecisionMutation{
-			WorkspaceID: "default", ItemID: "item-" + userID, ReviewerID: "reviewer", RequestFingerprint: "fingerprint-" + userID,
+			WorkspaceID: "workspace-primary", ItemID: "item-" + userID, ReviewerID: "reviewer", RequestFingerprint: "fingerprint-" + userID,
 			Request: identitymodel.IdentityAccessReviewDecisionRequest{
 				Decision: decision, Reason: "reviewed", ExpectedVersion: 1, IdempotencyKey: "decision-" + userID,
 			},
@@ -186,10 +186,10 @@ func TestAccessReviewStoreValidatesInputsAndSupportsEveryDecisionShape(t *testin
 	}
 	invalidMutations := []identitymodel.IdentityAccessReviewDecisionMutation{
 		{},
-		{WorkspaceID: "default", ReviewerID: "reviewer", RequestFingerprint: "fingerprint", Request: identitymodel.IdentityAccessReviewDecisionRequest{IdempotencyKey: "key"}},
-		{WorkspaceID: "default", ItemID: "item", RequestFingerprint: "fingerprint", Request: identitymodel.IdentityAccessReviewDecisionRequest{IdempotencyKey: "key"}},
-		{WorkspaceID: "default", ItemID: "item", ReviewerID: "reviewer", RequestFingerprint: "fingerprint"},
-		{WorkspaceID: "default", ItemID: "item", ReviewerID: "reviewer", Request: identitymodel.IdentityAccessReviewDecisionRequest{IdempotencyKey: "key"}},
+		{WorkspaceID: "workspace-primary", ReviewerID: "reviewer", RequestFingerprint: "fingerprint", Request: identitymodel.IdentityAccessReviewDecisionRequest{IdempotencyKey: "key"}},
+		{WorkspaceID: "workspace-primary", ItemID: "item", RequestFingerprint: "fingerprint", Request: identitymodel.IdentityAccessReviewDecisionRequest{IdempotencyKey: "key"}},
+		{WorkspaceID: "workspace-primary", ItemID: "item", ReviewerID: "reviewer", RequestFingerprint: "fingerprint"},
+		{WorkspaceID: "workspace-primary", ItemID: "item", ReviewerID: "reviewer", Request: identitymodel.IdentityAccessReviewDecisionRequest{IdempotencyKey: "key"}},
 	}
 	for _, invalid := range invalidMutations {
 		if _, err := store.ApplyIdentityAccessReviewDecision(t.Context(), invalid); err == nil {

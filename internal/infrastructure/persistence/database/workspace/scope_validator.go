@@ -40,6 +40,7 @@ func (validator *ScopeValidator) ValidateLegacyWorkspaceScopes(ctx context.Conte
 		workspaceColumn := validator.renderer.Identifier("workspace_id")
 		query := "SELECT COALESCE(" + workspaceColumn + ", ''), COUNT(*) FROM " + validator.renderer.Table(table) +
 			" WHERE " + workspaceColumn + " IS NULL OR TRIM(" + workspaceColumn + ") = ''" +
+			" OR LOWER(TRIM(" + workspaceColumn + ")) = 'default'" +
 			" GROUP BY " + workspaceColumn
 		rows, queryErr := validator.database.QueryContext(ctx, query)
 		if queryErr != nil {
@@ -54,6 +55,9 @@ func (validator *ScopeValidator) ValidateLegacyWorkspaceScopes(ctx context.Conte
 				return err
 			}
 			classification := "missing_workspace"
+			if strings.EqualFold(strings.TrimSpace(observed), "default") {
+				classification = "legacy_default_workspace"
+			}
 			findingsByClassification[classification] += count
 		}
 		if err := rows.Err(); err != nil {

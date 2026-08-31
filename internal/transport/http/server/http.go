@@ -18,12 +18,13 @@ import (
 )
 
 type httpSupport struct {
-	auth               *authapplication.AuthApplicationService
-	corsAllowedOrigins map[string]struct{}
-	corsAllowAnyOrigin bool
-	request            atomic.Uint64
-	writesFrozen       func(context.Context, string) (bool, error)
-	controls           *httpSurfaceControls
+	auth                   *authapplication.AuthApplicationService
+	corsAllowedOrigins     map[string]struct{}
+	corsAllowAnyOrigin     bool
+	request                atomic.Uint64
+	writesFrozen           func(context.Context, string) (bool, error)
+	controls               *httpSurfaceControls
+	initializedWorkspaceID string
 }
 
 func newHTTPSupport(auth *authapplication.AuthApplicationService, allowedOrigins []string, controlConfig ...httpControlConfig) *httpSupport {
@@ -188,7 +189,11 @@ func (h *httpSupport) middleware(next http.Handler) http.Handler {
 		}
 		workspaceID := strings.TrimSpace(r.Header.Get("X-Workspace-ID"))
 		if workspaceID == "" {
-			workspaceID = identitymodel.InstallationWorkspaceID
+			workspaceID = strings.TrimSpace(h.initializedWorkspaceID)
+		}
+		if _, err := identitymodel.NewWorkspaceID(workspaceID); err != nil {
+			h.writeError(w, r, http.StatusBadRequest, "backend.workspace_scope_required")
+			return
 		}
 		ctx := requestcontext.WithRequestID(r.Context(), requestID)
 		ctx = requestcontext.WithWorkspaceID(ctx, workspaceID)

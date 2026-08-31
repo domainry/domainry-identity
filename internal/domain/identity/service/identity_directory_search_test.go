@@ -10,7 +10,7 @@ import (
 
 func directorySearchService(t *testing.T, repository *identityRolesRepositoryStub) *IdentityDomainService {
 	t.Helper()
-	service, err := NewIdentityDomainService(repository, nil).ForWorkspace("default")
+	service, err := NewIdentityDomainService(repository, nil).ForWorkspace("workspace-primary")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +149,7 @@ func TestIdentityDirectorySearchHelpersAndValidation(t *testing.T) {
 	for _, field := range []string{"user_id", "role_id", "workforce_profile_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "created_at", "unknown"} {
 		_ = identityRoleAssignmentValue(identitymodel.IdentityUserRoleAssignment{}, field)
 	}
-	withoutWorkforce, err := NewIdentityDomainService(&identityDepartmentUserRepository{}, nil).ForWorkspace("default")
+	withoutWorkforce, err := NewIdentityDomainService(&identityDepartmentUserRepository{}, nil).ForWorkspace("workspace-primary")
 	if err != nil {
 		t.Fatal(err)
 	}

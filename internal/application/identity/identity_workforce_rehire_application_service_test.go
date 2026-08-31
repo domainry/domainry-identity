@@ -129,7 +129,7 @@ func rehireApplicationFixture() (*IdentityApplicationService, *rehireWorkforceRe
 func TestRehireWorkforceCreatesFreshAssignmentWithoutEntitlementMutation(t *testing.T) {
 	service, repository := rehireApplicationFixture()
 	result, err := service.RehireWorkforce(
-		requestcontext.WithWorkspaceID(t.Context(), "default"), " workforce-1 ", "2026-08-01",
+		requestcontext.WithWorkspaceID(t.Context(), "workspace-primary"), " workforce-1 ", "2026-08-01",
 		identitymodel.IdentityWorkforceAssignment{ID: "new-primary", OrganizationUnitID: "unit-new"},
 		identitymodel.Principal{UserID: "admin"}, " rehired ",
 	)
@@ -148,7 +148,7 @@ func TestRehireWorkforceCreatesFreshAssignmentWithoutEntitlementMutation(t *test
 }
 
 func TestRehireWorkforceRejectsEveryInvalidBoundary(t *testing.T) {
-	ctx := requestcontext.WithWorkspaceID(t.Context(), "default")
+	ctx := requestcontext.WithWorkspaceID(t.Context(), "workspace-primary")
 	assignment := identitymodel.IdentityWorkforceAssignment{ID: "new-primary", OrganizationUnitID: "unit-new"}
 	service, repository := rehireApplicationFixture()
 	if _, err := service.RehireWorkforce(t.Context(), "workforce-1", "2026-08-01", assignment, identitymodel.Principal{}, "rehired"); apperror.CodeOf(err) != "backend.workspace_scope_required" {
@@ -227,7 +227,7 @@ func lifecycleApplicationFixture() (*IdentityApplicationService, *rehireWorkforc
 }
 
 func TestApplyWorkforceLifecycleSupportsEveryOperation(t *testing.T) {
-	ctx := requestcontext.WithWorkspaceID(t.Context(), "default")
+	ctx := requestcontext.WithWorkspaceID(t.Context(), "workspace-primary")
 	operations := []string{
 		IdentityWorkforceLifecycleInvite,
 		IdentityWorkforceLifecycleOnboard,
@@ -275,7 +275,7 @@ func TestApplyWorkforceLifecycleSupportsEveryOperation(t *testing.T) {
 }
 
 func TestApplyWorkforceLifecycleRejectsEveryBoundary(t *testing.T) {
-	ctx := requestcontext.WithWorkspaceID(t.Context(), "default")
+	ctx := requestcontext.WithWorkspaceID(t.Context(), "workspace-primary")
 	service, repository := lifecycleApplicationFixture()
 	validAssign := lifecycleApplicationRequest(IdentityWorkforceLifecycleAssign)
 	if _, err := service.ApplyWorkforceLifecycle(t.Context(), validAssign); apperror.CodeOf(err) != "backend.workspace_scope_required" {
@@ -388,7 +388,7 @@ func TestApplyWorkforceLifecycleRejectsEveryBoundary(t *testing.T) {
 }
 
 func TestIdentityApplicationWorkforceDirectoryValidationAndTermination(t *testing.T) {
-	ctx := requestcontext.WithWorkspaceID(t.Context(), "default")
+	ctx := requestcontext.WithWorkspaceID(t.Context(), "workspace-primary")
 	service, repository := lifecycleApplicationFixture()
 	repository.bindings = []identitymodel.IdentityProfileBinding{
 		{BindingKey: "active", Status: identitymodel.IdentityProfileBindingActive},
@@ -445,7 +445,7 @@ func identitymodelWorkforceQuery() identitymodel.IdentityListQuery {
 }
 
 func TestIdentityApplicationWorkforceFailureBoundaries(t *testing.T) {
-	ctx := requestcontext.WithWorkspaceID(t.Context(), "default")
+	ctx := requestcontext.WithWorkspaceID(t.Context(), "workspace-primary")
 	service, repository := lifecycleApplicationFixture()
 	profile := repository.profile
 	assignment := identitymodel.IdentityWorkforceAssignment{
@@ -477,7 +477,7 @@ func TestIdentityApplicationWorkforceFailureBoundaries(t *testing.T) {
 		}
 	}
 
-	plainScoped, err := NewIdentityApplicationService(&identityScopedRepository{}, nil).ForWorkspace("default")
+	plainScoped, err := NewIdentityApplicationService(&identityScopedRepository{}, nil).ForWorkspace("workspace-primary")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -571,9 +571,9 @@ func workforceTransferBatchRequest(key string) IdentityWorkforceTransferBatchReq
 }
 
 func TestWorkforceTransferBatchPersistsReplaysAndRejectsEveryBoundary(t *testing.T) {
-	ctx := requestcontext.WithWorkspaceID(t.Context(), "default")
+	ctx := requestcontext.WithWorkspaceID(t.Context(), "workspace-primary")
 	service, repository := lifecycleApplicationFixture()
-	actor := identitymodel.Principal{Known: true, UserID: " admin ", WorkspaceID: "default"}
+	actor := identitymodel.Principal{Known: true, UserID: " admin ", WorkspaceID: "workspace-primary"}
 	request := workforceTransferBatchRequest("batch")
 	receipt, err := service.ApplyWorkforceTransferBatch(ctx, request, actor)
 	if err != nil || receipt.Replayed || len(repository.transferApplied.Mutations) != 1 ||

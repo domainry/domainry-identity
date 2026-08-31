@@ -56,7 +56,7 @@ func TestSDKAccessBundleDoesNotInventDataAccessFromFunctionGrant(t *testing.T) {
 	bundle := sdkAccessBundle(identitymodel.IdentityEffectiveAccessSnapshot{
 		AuthorizationRevision: "revision-1",
 		Permissions:           []identitymodel.IdentityEffectivePermissionGrant{{ObjectKey: "order", Action: "read"}},
-	}, identitymodel.Principal{WorkspaceID: "default", UserID: "user-1"}, "catalog-1", time.Now())
+	}, identitymodel.Principal{WorkspaceID: "workspace-primary", UserID: "user-1"}, "catalog-1", time.Now())
 	if len(bundle.FunctionGrants) != 1 || len(bundle.DataPolicies) != 0 {
 		t.Fatalf("bundle=%#v", bundle)
 	}
@@ -64,7 +64,7 @@ func TestSDKAccessBundleDoesNotInventDataAccessFromFunctionGrant(t *testing.T) {
 	bundle = sdkAccessBundle(identitymodel.IdentityEffectiveAccessSnapshot{
 		AuthorizationRevision: "revision-1",
 		DataAccess:            []identitymodel.IdentityEffectiveDataAccess{{ObjectKey: "order", Action: "read", Allowed: true, Scope: "all_records"}},
-	}, identitymodel.Principal{WorkspaceID: "default", UserID: "user-1"}, "catalog-1", time.Now())
+	}, identitymodel.Principal{WorkspaceID: "workspace-primary", UserID: "user-1"}, "catalog-1", time.Now())
 	if len(bundle.DataPolicies) != 1 || bundle.DataPolicies[0].Predicate.Operator != identitysdk.OperatorExists {
 		t.Fatalf("all-records policy=%#v", bundle.DataPolicies)
 	}
@@ -85,7 +85,7 @@ func TestSDKAccessBundlePreservesCompleteV2PolicySemantics(t *testing.T) {
 		ReferencePermissions: []identitymodel.ReferencePermission{{SourceObjectKey: "invoice", RelationFieldKey: "account_id", TargetObjectKey: "account", Mode: "deny", Reason: "restricted"}},
 		GuardrailKeys:        []string{"regulated"},
 	}, identitymodel.Principal{
-		WorkspaceID: "default", UserID: "user-1",
+		WorkspaceID: "workspace-primary", UserID: "user-1",
 		Role: identitymodel.RoleSchema{Guardrails: []identitymodel.IdentityGuardrailPolicy{{Key: "regulated", FieldRestrictions: []identitymodel.IdentityFieldRestriction{{ObjectKey: "invoice", FieldKey: "phone", Actions: []string{"export"}, Reason: "legal hold"}}}}},
 	}, "catalog-2", time.Now())
 	if bundle.ContractVersion != identitysdk.CurrentPolicyBundleVersion || len(bundle.DataPolicies) != 1 || !bundle.DataPolicies[0].AuditDenial || len(bundle.DataPolicies[0].Predicate.Path) != 1 || bundle.DataPolicies[0].Predicate.Value != "$context.business_profile_id" {
@@ -105,7 +105,7 @@ func TestSDKAccessBundlePreservesCompleteV2PolicySemantics(t *testing.T) {
 func TestAccessBundleIsConstrainedByPublishedCatalog(t *testing.T) {
 	catalog := identitysdk.AuthorizationCatalog{
 		ContractVersion: identitysdk.CatalogVersionV1,
-		Application:     identitysdk.ApplicationRef{WorkspaceID: "default", ApplicationKey: "runtime-app"},
+		Application:     identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "runtime-app"},
 		Resources: []identitysdk.ResourceDefinition{
 			{Key: "customer", Fields: []string{"id"}, SupportedFacts: []string{"owner_id"}},
 		},
@@ -139,7 +139,7 @@ func TestGymOnboardingWritePolicySurvivesCatalogAndAuthorizesExactMutations(t *t
 	now := time.Now().UTC()
 	catalog := identitysdk.AuthorizationCatalog{
 		ContractVersion: identitysdk.CatalogVersionV1,
-		Application:     identitysdk.ApplicationRef{WorkspaceID: "default", ApplicationKey: "runtime-app"},
+		Application:     identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "runtime-app"},
 		Resources: []identitysdk.ResourceDefinition{
 			{Key: "course_favorite", Fields: []string{"id", "identity_user_id", "course_template_id"}, SupportedFacts: []string{"id", "identity_user_id"}},
 			{Key: "member", Fields: []string{"id", "identity_user_id"}, SupportedFacts: []string{"id", "identity_user_id"}},
@@ -161,7 +161,7 @@ func TestGymOnboardingWritePolicySurvivesCatalogAndAuthorizesExactMutations(t *t
 			{ObjectKey: "member", Action: "write", Allowed: true, Scope: "custom", Predicate: &predicate},
 		},
 	}
-	principal := identitymodel.Principal{Known: true, WorkspaceID: "default", UserID: "wechat-user"}
+	principal := identitymodel.Principal{Known: true, WorkspaceID: "workspace-primary", UserID: "wechat-user"}
 	bundle := sdkAccessBundle(snapshot, principal, "catalog", now)
 	bundle = resolveCatalogRoleAccess(bundle, catalog, identitymodel.RoleSchema{Permissions: []string{"course_favorite.create", "member.self_enroll"}})
 	bundle, err := accessBundleForCatalog(bundle, catalog)
@@ -191,7 +191,7 @@ func TestGymOnboardingWritePolicySurvivesCatalogAndAuthorizesExactMutations(t *t
 func TestCatalogAcceptsDeclaredRelationshipPredicatesAndRejectsDrift(t *testing.T) {
 	catalog := identitysdk.AuthorizationCatalog{
 		ContractVersion: identitysdk.CatalogVersionV1,
-		Application:     identitysdk.ApplicationRef{WorkspaceID: "default", ApplicationKey: "runtime-app"},
+		Application:     identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "runtime-app"},
 		Resources: []identitysdk.ResourceDefinition{
 			{Key: "invoice", Fields: []string{"id", "account_id", "phone"}, SupportedFacts: []string{"id"}, References: []identitysdk.ReferenceDefinition{{Key: "account_id", TargetResource: "account"}}},
 			{Key: "account", Fields: []string{"id", "owner_id"}, SupportedFacts: []string{"owner_id"}},
@@ -215,7 +215,7 @@ func TestCatalogAcceptsDeclaredRelationshipPredicatesAndRejectsDrift(t *testing.
 func TestPublishedCatalogMaterializesWorkspaceAdministratorAuthority(t *testing.T) {
 	catalog := identitysdk.AuthorizationCatalog{
 		ContractVersion: identitysdk.CatalogVersionV1,
-		Application:     identitysdk.ApplicationRef{WorkspaceID: "default", ApplicationKey: "runtime-app"},
+		Application:     identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "runtime-app"},
 		Resources:       []identitysdk.ResourceDefinition{{Key: "customer", Fields: []string{"id", "secret"}, SupportedFacts: []string{"id"}}},
 		Actions:         []identitysdk.ActionDefinition{{Resource: "customer", Action: "read"}},
 	}
@@ -224,7 +224,7 @@ func TestPublishedCatalogMaterializesWorkspaceAdministratorAuthority(t *testing.
 		CatalogRevision:       "catalog-revision",
 		AuthorizationRevision: "authorization-revision",
 		ExpiresAt:             time.Now().Add(time.Minute),
-		Subject:               identitysdk.Subject{WorkspaceID: "default", SubjectID: "admin"},
+		Subject:               identitysdk.Subject{WorkspaceID: "workspace-primary", SubjectID: "admin"},
 	}
 	bundle = resolveCatalogRoleAccess(bundle, catalog, identitymodel.RoleSchema{Permissions: []string{"workspace.admin"}})
 	bundle, err := accessBundleForCatalog(bundle, catalog)
@@ -240,7 +240,7 @@ func TestPublishedCatalogMaterializesWorkspaceAdministratorAuthority(t *testing.
 func TestPublishedCatalogDoesNotInventDataAuthority(t *testing.T) {
 	catalog := identitysdk.AuthorizationCatalog{
 		ContractVersion: identitysdk.CatalogVersionV1,
-		Application:     identitysdk.ApplicationRef{WorkspaceID: "default", ApplicationKey: "runtime-app"},
+		Application:     identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "runtime-app"},
 		Resources:       []identitysdk.ResourceDefinition{{Key: "customer", Fields: []string{"id"}, SupportedFacts: []string{"id"}}},
 		Actions:         []identitysdk.ActionDefinition{{Resource: "customer", Action: "read"}},
 	}

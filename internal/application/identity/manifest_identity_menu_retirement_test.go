@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/domainry/domainry-foundation/requestcontext"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 
 	persistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
@@ -30,14 +31,14 @@ func TestRetireRemovedPlatformIdentityMenusDeletesLegacyTree(t *testing.T) {
 		{ID: "legacy_child", Key: "legacy_child", Label: "Legacy child", ParentID: "org_permissions", Status: identitymodel.IdentityStatusActive},
 		{ID: "org_roles", Key: "org_roles", Label: "Roles", Status: identitymodel.IdentityStatusActive},
 	} {
-		if err := identityStore.UpsertIdentityMenu(t.Context(), identitymodel.InstallationWorkspaceID, menu); err != nil {
+		if err := identityStore.UpsertIdentityMenu(t.Context(), "workspace-primary", menu); err != nil {
 			t.Fatalf("seed menu %s: %v", menu.ID, err)
 		}
 	}
-	if err := retireRemovedPlatformIdentityMenus(t.Context(), identityStore); err != nil {
+	if err := retireRemovedPlatformIdentityMenus(requestcontext.WithWorkspaceID(t.Context(), "workspace-primary"), identityStore); err != nil {
 		t.Fatalf("retire removed platform menu: %v", err)
 	}
-	menus, err := identityStore.ListIdentityMenus(t.Context(), identitymodel.InstallationWorkspaceID)
+	menus, err := identityStore.ListIdentityMenus(t.Context(), "workspace-primary")
 	if err != nil {
 		t.Fatalf("list menus: %v", err)
 	}
@@ -48,7 +49,7 @@ func TestRetireRemovedPlatformIdentityMenusDeletesLegacyTree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reload identity store: %v", err)
 	}
-	menus, err = reloaded.ListIdentityMenus(t.Context(), identitymodel.InstallationWorkspaceID)
+	menus, err = reloaded.ListIdentityMenus(t.Context(), "workspace-primary")
 	if err != nil {
 		t.Fatalf("list reloaded menus: %v", err)
 	}

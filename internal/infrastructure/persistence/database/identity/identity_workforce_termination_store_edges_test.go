@@ -10,7 +10,7 @@ import (
 
 func workforceTerminationMutation() identitymodel.IdentityWorkforceTerminationMutation {
 	return identitymodel.IdentityWorkforceTerminationMutation{
-		WorkspaceID: "default",
+		WorkspaceID: "workspace-primary",
 		Profile: identitymodel.IdentityWorkforceProfile{
 			ID: "profile", IdentityUserID: "worker", WorkStatus: identitymodel.IdentityWorkTerminated,
 		},
@@ -22,8 +22,8 @@ func TestWorkforceTerminationValidationAndTransactionFailures(t *testing.T) {
 	mutation := workforceTerminationMutation()
 	for _, invalid := range []identitymodel.IdentityWorkforceTerminationMutation{
 		{},
-		{WorkspaceID: "default", Profile: identitymodel.IdentityWorkforceProfile{IdentityUserID: "worker"}},
-		{WorkspaceID: "default", Profile: identitymodel.IdentityWorkforceProfile{ID: "profile"}},
+		{WorkspaceID: "workspace-primary", Profile: identitymodel.IdentityWorkforceProfile{IdentityUserID: "worker"}},
+		{WorkspaceID: "workspace-primary", Profile: identitymodel.IdentityWorkforceProfile{ID: "profile"}},
 	} {
 		store, closeDB := scriptedSQLIdentity(&identitySQLState{})
 		_, err := store.TerminateIdentityWorkforce(t.Context(), invalid)

@@ -128,7 +128,7 @@ func (r MetadataStore) insertDefinitionRefreshIntentTx(ctx context.Context, tx *
 	payload, _ := json.Marshal(map[string]any{"resource_type": definition.ResourceType, "resource_key": definition.ResourceKey, "schema_version": definition.SchemaVersion, "schema_hash": definition.SchemaHash})
 	id := metadataDefinitionRefreshIntentID(definition.ResourceType, definition.ResourceKey, definition.SchemaHash)
 	leaseExpires := time.Now().UTC().Add(90 * time.Second).Format(time.RFC3339Nano)
-	statement, arguments, err := ormbuilder.NewWorkspaceInsertBuilder(r.store.SQLRenderer, metadataRefreshIntentTable, identitymodel.InstallationWorkspaceID).
+	statement, arguments, err := ormbuilder.NewWorkspaceInsertBuilder(r.store.SQLRenderer, metadataRefreshIntentTable, r.tenantWorkspaceID(ctx)).
 		Columns("id", "owner", "operation", "resource_id", "idempotency_key", "status", "payload_json", "compensation_payload_json", "attempt_count", "next_attempt_at", "lease_owner", "lease_expires_at", "fencing_token", "last_error", "created_at", "updated_at").
 		Values(id, "metadata", "catalog_refresh", definition.ResourceType+":"+definition.ResourceKey, definition.SchemaHash, "executing", string(payload), "{}", 0, "", "metadata-inline", leaseExpires, 1, "", now, now).Build()
 	if err != nil {
@@ -152,7 +152,7 @@ func (r MetadataStore) CompleteDefinitionRefresh(ctx context.Context, scope iden
 		attemptIncrement = 1
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	statement, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(r.store.SQLRenderer, metadataRefreshIntentTable, identitymodel.InstallationWorkspaceID).
+	statement, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(r.store.SQLRenderer, metadataRefreshIntentTable, r.tenantWorkspaceID(ctx)).
 		Set("status", status).
 		Set("last_error", strings.TrimSpace(errorText)).
 		Set("next_attempt_at", nextAttemptAt).

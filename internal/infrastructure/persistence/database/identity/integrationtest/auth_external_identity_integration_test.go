@@ -17,13 +17,13 @@ func TestExternalLoginCreatesLinksAndReusesIdentity(t *testing.T) {
 	auth, identity, _ := newExternalAuthFixture(t)
 	ctx := t.Context()
 
-	if _, err := auth.ExternalLogin(ctx, "default", authmodel.AuthExternalIdentityAssertion{Provider: "oidc"}, true); err == nil {
+	if _, err := auth.ExternalLogin(ctx, "workspace-primary", authmodel.AuthExternalIdentityAssertion{Provider: "oidc"}, true); err == nil {
 		t.Fatal("expected missing provider subject to be rejected")
 	}
-	if _, err := auth.ExternalLogin(ctx, "default", authmodel.AuthExternalIdentityAssertion{Subject: "subject"}, true); err == nil {
+	if _, err := auth.ExternalLogin(ctx, "workspace-primary", authmodel.AuthExternalIdentityAssertion{Subject: "subject"}, true); err == nil {
 		t.Fatal("expected missing provider to be rejected")
 	}
-	if _, err := auth.ExternalLogin(ctx, "default", authmodel.AuthExternalIdentityAssertion{Provider: "oidc", Subject: "unlinked"}, false); err == nil {
+	if _, err := auth.ExternalLogin(ctx, "workspace-primary", authmodel.AuthExternalIdentityAssertion{Provider: "oidc", Subject: "unlinked"}, false); err == nil {
 		t.Fatal("expected disabled automatic creation to reject an unlinked account")
 	}
 
@@ -47,7 +47,7 @@ func TestExternalLoginCreatesLinksAndReusesIdentity(t *testing.T) {
 			{Claim: "email_domain", Match: "example.com", RoleKey: "sales"},
 		},
 	}
-	session, err := auth.ExternalLoginWithPolicy(ctx, "default", assertion, policy)
+	session, err := auth.ExternalLoginWithPolicy(ctx, "workspace-primary", assertion, policy)
 	if err != nil {
 		t.Fatalf("create external identity user: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestExternalLoginCreatesLinksAndReusesIdentity(t *testing.T) {
 		t.Fatalf("expected non-privileged mapped role, got %#v", session.Roles)
 	}
 
-	accounts, err := auth.ListExternalAccounts(ctx, "default", session.User.ID)
+	accounts, err := auth.ListExternalAccounts(ctx, "workspace-primary", session.User.ID)
 	if err != nil {
 		t.Fatalf("list linked external accounts: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestExternalLoginCreatesLinksAndReusesIdentity(t *testing.T) {
 		t.Fatalf("unexpected linked accounts: %#v", accounts)
 	}
 
-	reused, err := auth.ExternalLogin(ctx, "default", authmodel.AuthExternalIdentityAssertion{Provider: "OIDC", Subject: "Sales.User/01"}, false)
+	reused, err := auth.ExternalLogin(ctx, "workspace-primary", authmodel.AuthExternalIdentityAssertion{Provider: "OIDC", Subject: "Sales.User/01"}, false)
 	if err != nil {
 		t.Fatalf("reuse linked external identity: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestExternalLoginCreatesLinksAndReusesIdentity(t *testing.T) {
 	if err := identity.UpsertUser(ctx, user); err != nil {
 		t.Fatalf("disable external user: %v", err)
 	}
-	if _, err := auth.ExternalLogin(ctx, "default", authmodel.AuthExternalIdentityAssertion{Provider: "oidc", Subject: "Sales.User/01"}, false); err == nil {
+	if _, err := auth.ExternalLogin(ctx, "workspace-primary", authmodel.AuthExternalIdentityAssertion{Provider: "oidc", Subject: "Sales.User/01"}, false); err == nil {
 		t.Fatal("expected disabled linked user to be rejected")
 	}
 }
@@ -99,7 +99,7 @@ func TestExternalLoginLinksVerifiedEmailAndAppliesSafeRoleFallback(t *testing.T)
 		t.Fatalf("seed existing user: %v", err)
 	}
 
-	session, err := auth.ExternalLoginWithPolicy(ctx, "default", authmodel.AuthExternalIdentityAssertion{
+	session, err := auth.ExternalLoginWithPolicy(ctx, "workspace-primary", authmodel.AuthExternalIdentityAssertion{
 		Provider: "saml", Subject: "existing-subject", Email: " existing@example.com ",
 	}, authmodel.AuthExternalLoginPolicy{AutoCreateUsers: true, DefaultRoleKey: "admin"})
 	if err != nil {
@@ -117,7 +117,7 @@ func TestExternalLoginLinksVerifiedEmailAndAppliesSafeRoleFallback(t *testing.T)
 	}); err != nil {
 		t.Fatalf("seed disabled user: %v", err)
 	}
-	if _, err := auth.ExternalLogin(ctx, "default", authmodel.AuthExternalIdentityAssertion{
+	if _, err := auth.ExternalLogin(ctx, "workspace-primary", authmodel.AuthExternalIdentityAssertion{
 		Provider: "saml", Subject: "disabled-subject", Email: "disabled@example.com",
 	}, true); err == nil {
 		t.Fatal("expected disabled email identity to be rejected")
@@ -145,49 +145,49 @@ func TestExternalAccountBindingLifecycleAndConflicts(t *testing.T) {
 		{"user-a", authmodel.AuthExternalIdentityAssertion{Provider: "oidc"}},
 	}
 	for _, testCase := range invalidAssertions {
-		if _, err := auth.BindExternalAccount(ctx, "default", testCase.userID, testCase.assertion); err == nil {
+		if _, err := auth.BindExternalAccount(ctx, "workspace-primary", testCase.userID, testCase.assertion); err == nil {
 			t.Fatalf("expected invalid binding to fail: %#v", testCase)
 		}
 	}
-	if _, err := auth.BindExternalAccount(ctx, "default", "missing", authmodel.AuthExternalIdentityAssertion{Provider: "oidc", Subject: "subject"}); err == nil {
+	if _, err := auth.BindExternalAccount(ctx, "workspace-primary", "missing", authmodel.AuthExternalIdentityAssertion{Provider: "oidc", Subject: "subject"}); err == nil {
 		t.Fatal("expected binding for missing user to fail")
 	}
 
-	account, err := auth.BindExternalAccount(ctx, "default", "user-a", authmodel.AuthExternalIdentityAssertion{
+	account, err := auth.BindExternalAccount(ctx, "workspace-primary", "user-a", authmodel.AuthExternalIdentityAssertion{
 		Provider: " OIDC ", Subject: " subject ", DisplayName: " User A ",
 	})
 	if err != nil {
 		t.Fatalf("bind external account: %v", err)
 	}
-	if _, err := auth.BindExternalAccount(ctx, "default", "user-a", authmodel.AuthExternalIdentityAssertion{Provider: "oidc", Subject: "subject"}); err != nil {
+	if _, err := auth.BindExternalAccount(ctx, "workspace-primary", "user-a", authmodel.AuthExternalIdentityAssertion{Provider: "oidc", Subject: "subject"}); err != nil {
 		t.Fatalf("rebinding the same provider subject to the same user should be idempotent: %v", err)
 	}
-	if _, err := auth.BindExternalAccount(ctx, "default", "user-b", authmodel.AuthExternalIdentityAssertion{Provider: "oidc", Subject: "subject"}); err == nil {
+	if _, err := auth.BindExternalAccount(ctx, "workspace-primary", "user-b", authmodel.AuthExternalIdentityAssertion{Provider: "oidc", Subject: "subject"}); err == nil {
 		t.Fatal("expected provider subject binding conflict")
 	}
-	if err := auth.UnbindExternalAccount(ctx, "default", "user-a", "oidc", "missing"); err == nil {
+	if err := auth.UnbindExternalAccount(ctx, "workspace-primary", "user-a", "oidc", "missing"); err == nil {
 		t.Fatal("expected missing account unbind to fail")
 	}
-	if err := auth.UnbindExternalAccount(ctx, "default", "", "oidc", account.ID); err == nil {
+	if err := auth.UnbindExternalAccount(ctx, "workspace-primary", "", "oidc", account.ID); err == nil {
 		t.Fatal("expected invalid unbind request to fail")
 	}
-	if err := auth.UnbindExternalAccount(ctx, "default", "user-a", "", account.ID); err == nil {
+	if err := auth.UnbindExternalAccount(ctx, "workspace-primary", "user-a", "", account.ID); err == nil {
 		t.Fatal("expected blank unbind provider to fail")
 	}
-	if err := auth.UnbindExternalAccount(ctx, "default", "user-a", "oidc", ""); err == nil {
+	if err := auth.UnbindExternalAccount(ctx, "workspace-primary", "user-a", "oidc", ""); err == nil {
 		t.Fatal("expected blank unbind account id to fail")
 	}
-	if err := auth.UnbindExternalAccount(ctx, "default", "user-a", "saml", account.ID); err == nil {
+	if err := auth.UnbindExternalAccount(ctx, "workspace-primary", "user-a", "saml", account.ID); err == nil {
 		t.Fatal("expected mismatched provider unbind to fail")
 	}
-	if err := auth.UnbindExternalAccount(ctx, "default", "user-a", "OIDC", account.ID); err != nil {
+	if err := auth.UnbindExternalAccount(ctx, "workspace-primary", "user-a", "OIDC", account.ID); err != nil {
 		t.Fatalf("unbind external account: %v", err)
 	}
-	accounts, err := auth.ListExternalAccounts(ctx, "default", "user-a")
+	accounts, err := auth.ListExternalAccounts(ctx, "workspace-primary", "user-a")
 	if err != nil || len(accounts) != 0 {
 		t.Fatalf("expected binding removal, accounts=%#v err=%v", accounts, err)
 	}
-	if _, err := auth.ListExternalAccounts(ctx, "default", " "); err == nil {
+	if _, err := auth.ListExternalAccounts(ctx, "workspace-primary", " "); err == nil {
 		t.Fatal("expected empty user account listing to fail")
 	}
 }
@@ -196,17 +196,17 @@ func TestExternalLoginGeneratesStableSafeUserIdentifiers(t *testing.T) {
 	auth, identity, _ := newExternalAuthFixture(t)
 	ctx := t.Context()
 	longSubject := strings.Repeat("Long.Subject/", 10)
-	if _, err := auth.ExternalLogin(ctx, "default", authmodel.AuthExternalIdentityAssertion{Provider: "OIDC", Subject: longSubject}, true); err == nil {
+	if _, err := auth.ExternalLogin(ctx, "workspace-primary", authmodel.AuthExternalIdentityAssertion{Provider: "OIDC", Subject: longSubject}, true); err == nil {
 		t.Fatal("expected automatic external user creation without email to fail explicitly")
 	}
-	first, err := auth.ExternalLogin(ctx, "default", authmodel.AuthExternalIdentityAssertion{Provider: "OIDC", Subject: longSubject, Email: "long@example.com"}, true)
+	first, err := auth.ExternalLogin(ctx, "workspace-primary", authmodel.AuthExternalIdentityAssertion{Provider: "OIDC", Subject: longSubject, Email: "long@example.com"}, true)
 	if err != nil {
 		t.Fatalf("create long external identity: %v", err)
 	}
 	if len(first.User.ID) > 64 || first.User.Name != "long@example.com" {
 		t.Fatalf("unexpected normalized external user: %#v", first.User)
 	}
-	second, err := auth.ExternalLogin(ctx, "default", authmodel.AuthExternalIdentityAssertion{Provider: "###", Subject: "###", Email: "fallback@example.com"}, true)
+	second, err := auth.ExternalLogin(ctx, "workspace-primary", authmodel.AuthExternalIdentityAssertion{Provider: "###", Subject: "###", Email: "fallback@example.com"}, true)
 	if err != nil {
 		t.Fatalf("create fallback identity: %v", err)
 	}
@@ -219,14 +219,14 @@ func TestExternalLoginGeneratesStableSafeUserIdentifiers(t *testing.T) {
 	if err := identity.UpsertUser(ctx, identitymodel.IdentityUser{ID: "oidc_collision", Name: "Collision", Email: "collision-seed@example.com", Status: identitymodel.IdentityStatusActive}); err != nil {
 		t.Fatalf("seed colliding identity: %v", err)
 	}
-	collision, err := auth.ExternalLoginWithPolicy(ctx, "default", authmodel.AuthExternalIdentityAssertion{Provider: "oidc", Subject: "collision", Email: "collision@example.com"}, authmodel.AuthExternalLoginPolicy{AutoCreateUsers: true, DefaultRoleKey: "sales"})
+	collision, err := auth.ExternalLoginWithPolicy(ctx, "workspace-primary", authmodel.AuthExternalIdentityAssertion{Provider: "oidc", Subject: "collision", Email: "collision@example.com"}, authmodel.AuthExternalLoginPolicy{AutoCreateUsers: true, DefaultRoleKey: "sales"})
 	if err != nil {
 		t.Fatalf("create identity after id collision: %v", err)
 	}
 	if collision.User.ID != "oidc_collision_1" || collision.DefaultRole != "sales" {
 		t.Fatalf("unexpected collision resolution or safe default role: %#v", collision)
 	}
-	if _, err := auth.ExternalLogin(ctx, "default", authmodel.AuthExternalIdentityAssertion{Provider: "oidc", Subject: "{", Email: "brace@example.com"}, true); err != nil {
+	if _, err := auth.ExternalLogin(ctx, "workspace-primary", authmodel.AuthExternalIdentityAssertion{Provider: "oidc", Subject: "{", Email: "brace@example.com"}, true); err != nil {
 		t.Fatalf("create identity containing non-identifier rune: %v", err)
 	}
 }
@@ -234,7 +234,7 @@ func TestExternalLoginGeneratesStableSafeUserIdentifiers(t *testing.T) {
 func newExternalAuthFixture(t *testing.T) (*authdomain.AuthDomainService, *identitybusiness.IdentityDomainService, *externalAuthRepository) {
 	t.Helper()
 	repository := identitypersistence.NewMemoryIdentityStore()
-	identity, _ := identitybusiness.NewIdentityDomainService(repository, []identitymodel.IdentityPermissionDefinition{{Key: "workspace.admin", Resource: "workspace", Action: "admin"}}).ForWorkspace(identitymodel.InstallationWorkspaceID)
+	identity, _ := identitybusiness.NewIdentityDomainService(repository, []identitymodel.IdentityPermissionDefinition{{Key: "workspace.admin", Resource: "workspace", Action: "admin"}}).ForWorkspace("workspace-primary")
 	if err := identity.UpsertDepartment(t.Context(), identitymodel.IdentityDepartment{ID: "dept_sales", Name: "Sales", Path: "/sales", Status: identitymodel.IdentityStatusActive}); err != nil {
 		t.Fatalf("seed sales department: %v", err)
 	}
@@ -243,7 +243,7 @@ func newExternalAuthFixture(t *testing.T) (*authdomain.AuthDomainService, *ident
 		{ID: "role-admin", Key: "admin", Label: "Admin", Status: identitymodel.IdentityStatusActive},
 		{ID: "role-disabled", Key: "disabled", Label: "Disabled", Status: identitymodel.IdentityStatusDisabled},
 	} {
-		seedIdentityDirectoryRole(t, repository, identitymodel.InstallationWorkspaceID, role)
+		seedIdentityDirectoryRole(t, repository, "workspace-primary", role)
 	}
 	identity.ReplaceRoleDefinitions([]identitymodel.RoleSchema{
 		{Key: "sales", Name: "Sales", RecordScope: "all_records"},

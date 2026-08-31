@@ -14,14 +14,14 @@ func TestSessionIssuance(t *testing.T) {
 	t.Run("role lookup failure", func(t *testing.T) {
 		auth, identityRepository, _ := newFaultAuthDomainService()
 		identityRepository.listAssignmentsErr = fault
-		_, err := auth.issueSession(t.Context(), "default", user)
+		_, err := auth.issueSession(t.Context(), "workspace-primary", user)
 		assertExternalAuthFault(t, err, fault)
 	})
 
 	t.Run("reconciles profile roles before role lookup", func(t *testing.T) {
 		auth, identityRepository, _ := newFaultAuthDomainService()
 		identityRepository.reconcileErr = fault
-		_, err := auth.issueSession(t.Context(), "default", user)
+		_, err := auth.issueSession(t.Context(), "workspace-primary", user)
 		assertExternalAuthFault(t, err, fault)
 		if identityRepository.reconcileCalls != 1 {
 			t.Fatalf("reconcile calls=%d", identityRepository.reconcileCalls)
@@ -31,14 +31,14 @@ func TestSessionIssuance(t *testing.T) {
 	t.Run("refresh token write failure", func(t *testing.T) {
 		auth, _, authRepository := newFaultAuthDomainService()
 		authRepository.createRefreshTokenErr = fault
-		_, err := auth.issueSession(t.Context(), "default", user)
+		_, err := auth.issueSession(t.Context(), "workspace-primary", user)
 		assertExternalAuthFault(t, err, fault)
 	})
 
 	t.Run("permission lookup failure", func(t *testing.T) {
 		auth, _, _ := newFaultAuthDomainService()
 		auth.authorization = &faultSessionAuthorization{permissionsErr: fault}
-		_, err := auth.issueSession(t.Context(), "default", user)
+		_, err := auth.issueSession(t.Context(), "workspace-primary", user)
 		assertExternalAuthFault(t, err, fault)
 	})
 
@@ -51,7 +51,7 @@ func TestSessionIssuance(t *testing.T) {
 		authRepository.credentials = map[string]identitymodel.IdentityCredential{
 			user.ID: {UserID: user.ID, MustChangePassword: true},
 		}
-		session, err := auth.issueSession(t.Context(), "default", user)
+		session, err := auth.issueSession(t.Context(), "workspace-primary", user)
 		if err != nil {
 			t.Fatalf("issue session: %v", err)
 		}

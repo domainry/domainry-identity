@@ -24,7 +24,7 @@ func TestApplyRoleDefinitionsRemainListableAfterRestart(t *testing.T) {
 		if err := store.EnsureSchema(t.Context()); err != nil {
 			t.Fatal(err)
 		}
-		return store, NewMetadataStore(store)
+		return store, NewMetadataStore(store, "workspace-primary")
 	}
 	scope := identitymodel.NewSystemScope(identitymodel.SystemScopeInstallation, "test role definition publication")
 	store, repository := open()
@@ -36,7 +36,7 @@ func TestApplyRoleDefinitionsRemainListableAfterRestart(t *testing.T) {
 		}
 		mutations = append(mutations, metadatamodel.MetadataDefinitionMutation{Operation: "create", ResourceType: "role", ResourceKey: key, Request: metadatamodel.MetadataDefinitionUpsertRequest{SourceKind: "admin", SourceID: "gym-roles", Payload: payload}})
 	}
-	publication := &metadatamodel.MetadataDefinitionPublication{WorkspaceID: identitymodel.InstallationWorkspaceID}
+	publication := &metadatamodel.MetadataDefinitionPublication{WorkspaceID: "workspace-primary"}
 	if _, err := repository.ApplyDefinitionMutations(t.Context(), scope, mutations, nil, publication); err != nil {
 		t.Fatal(err)
 	}
@@ -68,11 +68,11 @@ func TestDirectRolePublicationRollbackAndDisableAreAtomicWithDirectoryAndAudit(t
 	if err := store.EnsureSchema(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	repository := NewMetadataStore(store)
+	repository := NewMetadataStore(store, "workspace-primary")
 	scope := identitymodel.NewSystemScope(identitymodel.SystemScopeInstallation, "test direct role publication")
-	publication := &metadatamodel.MetadataDefinitionPublication{WorkspaceID: identitymodel.InstallationWorkspaceID}
+	publication := &metadatamodel.MetadataDefinitionPublication{WorkspaceID: "workspace-primary"}
 	audit := func(id, event string) auditmodel.AuditEvent {
-		return auditmodel.AuditEvent{ID: id, WorkspaceID: identitymodel.InstallationWorkspaceID, Event: event, ObjectKey: "role", RecordID: "reviewer", ActorID: "admin", RoleKey: "admin", CreatedAt: time.Now().UTC().Format(time.RFC3339Nano)}
+		return auditmodel.AuditEvent{ID: id, WorkspaceID: "workspace-primary", Event: event, ObjectKey: "role", RecordID: "reviewer", ActorID: "admin", RoleKey: "admin", CreatedAt: time.Now().UTC().Format(time.RFC3339Nano)}
 	}
 	payload := func(name string) json.RawMessage {
 		raw, marshalErr := json.Marshal(identitymodel.RoleSchema{Key: "reviewer", Name: name, RecordScope: "all_records"})
@@ -113,14 +113,14 @@ func TestDirectRolePublicationRollbackAndDisableAreAtomicWithDirectoryAndAudit(t
 func assertRoleDirectoryState(t *testing.T, store *database.IdentityStore, wantLabel, wantStatus string, wantAuditCount int) {
 	t.Helper()
 	var label, status string
-	if err := store.DB().QueryRowContext(t.Context(), `SELECT label, status FROM _identity_roles WHERE workspace_id=? AND role_key='reviewer'`, identitymodel.InstallationWorkspaceID).Scan(&label, &status); err != nil {
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT label, status FROM _identity_roles WHERE workspace_id=? AND role_key='reviewer'`, "workspace-primary").Scan(&label, &status); err != nil {
 		t.Fatal(err)
 	}
 	if label != wantLabel || status != wantStatus {
 		t.Fatalf("role directory label=%q status=%q want label=%q status=%q", label, status, wantLabel, wantStatus)
 	}
 	var audits int
-	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _audit_events WHERE workspace_id=? AND object_key='role' AND record_id='reviewer'`, identitymodel.InstallationWorkspaceID).Scan(&audits); err != nil {
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _audit_events WHERE workspace_id=? AND object_key='role' AND record_id='reviewer'`, "workspace-primary").Scan(&audits); err != nil {
 		t.Fatal(err)
 	}
 	if audits != wantAuditCount {

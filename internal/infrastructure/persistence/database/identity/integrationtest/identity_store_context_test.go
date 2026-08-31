@@ -30,11 +30,11 @@ func TestSQLIdentityStoreStopsCanceledUserWriteBeforeCacheMutation(t *testing.T)
 	}
 	canceled, cancel := context.WithCancel(t.Context())
 	cancel()
-	err = identity.UpsertIdentityUser(canceled, identitymodel.InstallationWorkspaceID, identitymodel.IdentityUser{ID: "cancelled-user", Name: "Cancelled", Email: "cancelled@example.com"})
+	err = identity.UpsertIdentityUser(canceled, "workspace-primary", identitymodel.IdentityUser{ID: "cancelled-user", Name: "Cancelled", Email: "cancelled@example.com"})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context cancellation, got %v", err)
 	}
-	if _, found, err := identity.GetIdentityUser(t.Context(), identitymodel.InstallationWorkspaceID, "cancelled-user"); err != nil || found {
+	if _, found, err := identity.GetIdentityUser(t.Context(), "workspace-primary", "cancelled-user"); err != nil || found {
 		t.Fatalf("cancelled write mutated identity cache: found=%v err=%v", found, err)
 	}
 }

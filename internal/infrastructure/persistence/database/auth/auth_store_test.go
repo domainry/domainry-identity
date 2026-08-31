@@ -127,7 +127,7 @@ func TestRefreshTokenRotationIsAtomicUnderConcurrency(t *testing.T) {
 	repository := NewAuthStore(identity)
 	now := time.Now().UTC()
 	old := identitymodel.AuthRefreshToken{ID: "old", UserID: "user", SessionID: "session", TokenHash: "old-hash", ExpiresAt: now.Add(time.Hour).Format(time.RFC3339)}
-	if err := repository.CreateAuthRefreshToken(t.Context(), "default", old); err != nil {
+	if err := repository.CreateAuthRefreshToken(t.Context(), "workspace-primary", old); err != nil {
 		t.Fatal(err)
 	}
 	var successes atomic.Int32
@@ -137,7 +137,7 @@ func TestRefreshTokenRotationIsAtomicUnderConcurrency(t *testing.T) {
 		go func() {
 			defer wait.Done()
 			replacement := identitymodel.AuthRefreshToken{ID: fmt.Sprintf("new-%d", index), UserID: "user", SessionID: "session", TokenHash: fmt.Sprintf("hash-%d", index), ExpiresAt: now.Add(time.Hour).Format(time.RFC3339)}
-			rotated, rotateErr := repository.RotateAuthRefreshToken(t.Context(), "default", old.ID, now.Format(time.RFC3339), replacement)
+			rotated, rotateErr := repository.RotateAuthRefreshToken(t.Context(), "workspace-primary", old.ID, now.Format(time.RFC3339), replacement)
 			if rotateErr != nil {
 				t.Errorf("rotate: %v", rotateErr)
 				return
@@ -151,7 +151,7 @@ func TestRefreshTokenRotationIsAtomicUnderConcurrency(t *testing.T) {
 	if successes.Load() != 1 {
 		t.Fatalf("atomic rotation successes=%d want 1", successes.Load())
 	}
-	tokens, err := repository.ListAuthRefreshTokensForUser(t.Context(), "default", "user")
+	tokens, err := repository.ListAuthRefreshTokensForUser(t.Context(), "workspace-primary", "user")
 	if err != nil || len(tokens) != 2 {
 		t.Fatalf("tokens=%#v err=%v", tokens, err)
 	}
@@ -169,7 +169,7 @@ func TestLoginFailureCounterIsAtomicUnderConcurrency(t *testing.T) {
 	}
 	repository := NewAuthStore(identity)
 	credential := identitymodel.IdentityCredential{UserID: "login-user", PasswordHash: "hash", PasswordUpdatedAt: "2026-08-17T00:00:00Z"}
-	if err := repository.UpsertIdentityCredential(t.Context(), "default", credential); err != nil {
+	if err := repository.UpsertIdentityCredential(t.Context(), "workspace-primary", credential); err != nil {
 		t.Fatal(err)
 	}
 	const attempts = 16
@@ -179,13 +179,13 @@ func TestLoginFailureCounterIsAtomicUnderConcurrency(t *testing.T) {
 		wait.Add(1)
 		go func() {
 			defer wait.Done()
-			if err := repository.RecordIdentityLoginFailure(t.Context(), "default", credential.UserID, 5, lockedUntil, "2026-08-17T00:00:01Z"); err != nil {
+			if err := repository.RecordIdentityLoginFailure(t.Context(), "workspace-primary", credential.UserID, 5, lockedUntil, "2026-08-17T00:00:01Z"); err != nil {
 				t.Errorf("record login failure: %v", err)
 			}
 		}()
 	}
 	wait.Wait()
-	loaded, found, err := repository.GetIdentityCredential(t.Context(), "default", credential.UserID)
+	loaded, found, err := repository.GetIdentityCredential(t.Context(), "workspace-primary", credential.UserID)
 	if err != nil || !found || loaded.FailedLoginCount != attempts || loaded.LockedUntil != lockedUntil {
 		t.Fatalf("credential=%#v found=%v err=%v", loaded, found, err)
 	}
@@ -225,33 +225,33 @@ func TestAuthStoreContractAndCancellation(t *testing.T) {
 	}
 	repository := NewAuthStore(identity)
 	credential := identitymodel.IdentityCredential{UserID: "auth-user", PasswordHash: "hash", PasswordUpdatedAt: "2026-07-12T00:00:00Z"}
-	if err := repository.UpsertIdentityCredential(t.Context(), "default", credential); err != nil {
+	if err := repository.UpsertIdentityCredential(t.Context(), "workspace-primary", credential); err != nil {
 		t.Fatalf("upsert credential: %v", err)
 	}
-	loaded, found, err := repository.GetIdentityCredential(t.Context(), "default", credential.UserID)
+	loaded, found, err := repository.GetIdentityCredential(t.Context(), "workspace-primary", credential.UserID)
 	if err != nil || !found || loaded.PasswordHash != credential.PasswordHash {
 		t.Fatalf("credential=%#v found=%v err=%v", loaded, found, err)
 	}
 	token := identitymodel.AuthRefreshToken{ID: "refresh-context", UserID: credential.UserID, SessionID: "session-context", TokenHash: "token-context", ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339)}
-	if err := repository.CreateAuthRefreshToken(t.Context(), "default", token); err != nil {
+	if err := repository.CreateAuthRefreshToken(t.Context(), "workspace-primary", token); err != nil {
 		t.Fatalf("create refresh token: %v", err)
 	}
-	if tokens, err := repository.ListAuthRefreshTokensForUser(t.Context(), "default", credential.UserID); err != nil || len(tokens) != 1 {
+	if tokens, err := repository.ListAuthRefreshTokensForUser(t.Context(), "workspace-primary", credential.UserID); err != nil || len(tokens) != 1 {
 		t.Fatalf("tokens=%#v err=%v", tokens, err)
 	}
 	account := identitymodel.IdentityExternalAccount{ID: "external-context", UserID: credential.UserID, Provider: "oidc", ProviderSubject: "subject-context"}
-	if err := repository.UpsertIdentityExternalAccount(t.Context(), "default", account); err != nil {
+	if err := repository.UpsertIdentityExternalAccount(t.Context(), "workspace-primary", account); err != nil {
 		t.Fatalf("upsert external account: %v", err)
 	}
-	if accounts, err := repository.ListIdentityExternalAccounts(t.Context(), "default", credential.UserID); err != nil || len(accounts) != 1 {
+	if accounts, err := repository.ListIdentityExternalAccounts(t.Context(), "workspace-primary", credential.UserID); err != nil || len(accounts) != 1 {
 		t.Fatalf("accounts=%#v err=%v", accounts, err)
 	}
 	cancelled, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, _, err := repository.GetIdentityCredential(cancelled, "default", credential.UserID); !errors.Is(err, context.Canceled) {
+	if _, _, err := repository.GetIdentityCredential(cancelled, "workspace-primary", credential.UserID); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled credential query error=%v", err)
 	}
-	if err := repository.CreateAuthRefreshToken(cancelled, "default", identitymodel.AuthRefreshToken{}); !errors.Is(err, context.Canceled) {
+	if err := repository.CreateAuthRefreshToken(cancelled, "workspace-primary", identitymodel.AuthRefreshToken{}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled token insert error=%v", err)
 	}
 }

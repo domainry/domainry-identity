@@ -13,6 +13,11 @@ func TestCommandAndQueryScopeRejectMissingWorkspace(t *testing.T) {
 		if err := construct(" \t "); !errors.Is(err, ErrWorkspaceIDRequired) {
 			t.Fatalf("missing workspace error=%v", err)
 		}
+		for _, reserved := range []string{"default", " DEFAULT "} {
+			if err := construct(reserved); !errors.Is(err, ErrWorkspaceIDReserved) {
+				t.Fatalf("reserved workspace %q error=%v", reserved, err)
+			}
+		}
 		if err := construct(" workspace-a "); err != nil {
 			t.Fatalf("valid workspace rejected: %v", err)
 		}

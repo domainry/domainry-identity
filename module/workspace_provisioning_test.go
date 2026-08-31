@@ -22,6 +22,49 @@ func (injector exactWorkspaceProvisionFailureInjector) InjectWorkspaceProvisionF
 	return nil
 }
 
+func TestBootstrapBindingCreatesNoTenantBeforeHostAtomicProvision(t *testing.T) {
+	databasePath := filepath.Join(t.TempDir(), "identity-bootstrap.db")
+	db, err := sql.Open("sqlite", databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	factory := identitymodule.NewFactory(identitymodule.Options{IdentityVersion: "test", DatabaseDriver: "sqlite", DatabasePath: databasePath})
+	bootstrap, err := factory.OpenBootstrapWithDatabase(t.Context(), "runtime", identitysdk.DatabaseHandle{Pool: db, Driver: "sqlite", FilePath: databasePath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = bootstrap.Close(t.Context()) })
+	for _, table := range []string{"domainry_identity__identity_users", "domainry_identity__identity_roles", "domainry_identity__identity_user_role_assignments", "domainry_identity__identity_credentials"} {
+		assertAllIdentityRows(t, db, table, 0)
+	}
+	failed, err := db.BeginTx(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bootstrap.ProvisionWorkspaceIdentity(t.Context(), identitysdk.WorkspaceIdentityProvisionRequest{WorkspaceID: "default", AdminLoginID: "admin@example.com", AdminName: "Admin"}, identitysdk.EmbeddedTransaction{Native: failed}); err == nil {
+		_ = failed.Rollback()
+		t.Fatal("historical default workspace was provisioned")
+	}
+	_ = failed.Rollback()
+
+	tx, err := db.BeginTx(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := bootstrap.ProvisionWorkspaceIdentity(t.Context(), identitysdk.WorkspaceIdentityProvisionRequest{WorkspaceID: "workspace-primary", AdminLoginID: "admin@example.com", AdminName: "Admin"}, identitysdk.EmbeddedTransaction{Native: tx})
+	if err != nil || result.InitialPassword == "" {
+		_ = tx.Rollback()
+		t.Fatalf("bootstrap result=%#v error=%v", result, err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	assertIdentityRowCount(t, db, "domainry_identity__identity_users", "workspace-primary", 1)
+	assertIdentityRowCount(t, db, "domainry_identity__identity_user_role_assignments", "workspace-primary", 1)
+	assertIdentityRowCount(t, db, "domainry_identity__identity_credentials", "workspace-primary", 1)
+}
+
 func TestEmbeddedWorkspaceProvisioningJoinsHostTransaction(t *testing.T) {
 	databasePath := filepath.Join(t.TempDir(), "embedded-provisioning.db")
 	db, err := sql.Open("sqlite", databasePath)
@@ -29,7 +72,7 @@ func TestEmbeddedWorkspaceProvisioningJoinsHostTransaction(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	application := identitysdk.ApplicationRef{WorkspaceID: "default", ApplicationKey: "runtime"}
+	application := identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "runtime"}
 	binding, err := identitymodule.NewFactory(identitymodule.Options{IdentityVersion: "test", DatabaseDriver: "sqlite", DatabasePath: databasePath}).OpenWithDatabase(t.Context(), application, identitysdk.DatabaseHandle{Pool: db, Driver: "sqlite", FilePath: databasePath})
 	if err != nil {
 		t.Fatal(err)
@@ -97,7 +140,7 @@ func TestEmbeddedWorkspaceProvisioningRollsBackEveryIdentityBoundary(t *testing.
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = db.Close() })
-			application := identitysdk.ApplicationRef{WorkspaceID: "default", ApplicationKey: "runtime"}
+			application := identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "runtime"}
 			binding, err := identitymodule.NewFactory(identitymodule.Options{IdentityVersion: "test", DatabaseDriver: "sqlite", DatabasePath: databasePath}).OpenWithDatabase(t.Context(), application, identitysdk.DatabaseHandle{Pool: db, Driver: "sqlite", FilePath: databasePath})
 			if err != nil {
 				t.Fatal(err)
@@ -151,5 +194,16 @@ func assertIdentityRowCount(t *testing.T, db *sql.DB, table, workspaceID string,
 	}
 	if count != want {
 		t.Fatalf("%s workspace %s count=%d want=%d", table, workspaceID, count, want)
+	}
+}
+
+func assertAllIdentityRows(t *testing.T, db *sql.DB, table string, want int) {
+	t.Helper()
+	var count int
+	if err := db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM "`+table+`"`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != want {
+		t.Fatalf("%s count=%d want=%d", table, count, want)
 	}
 }

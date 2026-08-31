@@ -42,7 +42,7 @@ func TestExpiredLockLiftsOnLogin(t *testing.T) {
 		credential.LockedUntil = time.Now().UTC().Add(-6 * time.Minute).Format(time.RFC3339)
 		authRepository.credentials = map[string]identitymodel.IdentityCredential{"user": credential}
 
-		session, err := auth.Login(t.Context(), "default", user.Email, password)
+		session, err := auth.Login(t.Context(), "workspace-primary", user.Email, password)
 		if err != nil {
 			t.Fatalf("expired lock with the correct password must allow login, got: %v", err)
 		}
@@ -64,11 +64,11 @@ func TestExpiredLockLiftsOnLogin(t *testing.T) {
 		credential.LockedUntil = time.Now().UTC().Add(-6 * time.Minute).Format(time.RFC3339)
 		authRepository.credentials = map[string]identitymodel.IdentityCredential{"user": credential}
 
-		_, err := auth.Login(t.Context(), "default", user.Email, "WrongPass1!")
+		_, err := auth.Login(t.Context(), "workspace-primary", user.Email, "WrongPass1!")
 		if code := authErrorCode(t, err); code != "auth.invalid_credentials" {
 			t.Fatalf("bad password after lock expiry must report invalid credentials, got %q", code)
 		}
-		if _, err := auth.Login(t.Context(), "default", user.Email, password); err != nil {
+		if _, err := auth.Login(t.Context(), "workspace-primary", user.Email, password); err != nil {
 			t.Fatalf("one stale failure must not re-lock the account, got: %v", err)
 		}
 	})
@@ -82,7 +82,7 @@ func TestExpiredLockLiftsOnLogin(t *testing.T) {
 		credential.LockedUntil = time.Now().UTC().Add(10 * time.Minute).Format(time.RFC3339)
 		authRepository.credentials = map[string]identitymodel.IdentityCredential{"user": credential}
 
-		_, err := auth.Login(t.Context(), "default", user.Email, password)
+		_, err := auth.Login(t.Context(), "workspace-primary", user.Email, password)
 		if code := authErrorCode(t, err); code != "auth.account_locked" {
 			t.Fatalf("active lock must stay enforced, got %q", code)
 		}
@@ -98,11 +98,11 @@ func TestExpiredLockLiftsOnLogin(t *testing.T) {
 		authRepository.credentials = map[string]identitymodel.IdentityCredential{"user": credential}
 
 		for i := 0; i < 3; i++ {
-			if _, err := auth.Login(t.Context(), "default", user.Email, "WrongPass1!"); err == nil {
+			if _, err := auth.Login(t.Context(), "workspace-primary", user.Email, "WrongPass1!"); err == nil {
 				t.Fatal("bad password must fail")
 			}
 		}
-		_, err := auth.Login(t.Context(), "default", user.Email, password)
+		_, err := auth.Login(t.Context(), "workspace-primary", user.Email, password)
 		if code := authErrorCode(t, err); code != "auth.account_locked" {
 			t.Fatalf("three fresh failures must install a fresh lock, got %q", code)
 		}
@@ -117,7 +117,7 @@ func TestExpiredLockLiftsOnLogin(t *testing.T) {
 		credential.LockedUntil = time.Now().UTC().Add(-6 * time.Minute).Format(time.RFC3339)
 		authRepository.credentials = map[string]identitymodel.IdentityCredential{"user": credential}
 
-		if err := auth.ChangePassword(t.Context(), "default", user.ID, password, "NewPassword2!"); err != nil {
+		if err := auth.ChangePassword(t.Context(), "workspace-primary", user.ID, password, "NewPassword2!"); err != nil {
 			t.Fatalf("expired lock with the correct password must allow a password change, got: %v", err)
 		}
 		stored := authRepository.credentials["user"]

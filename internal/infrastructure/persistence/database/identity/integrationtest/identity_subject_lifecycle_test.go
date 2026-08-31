@@ -35,35 +35,35 @@ func TestIdentitySubjectLifecycleContract(t *testing.T) {
 		NamePrefix: "Dr.", NameSuffix: "PhD", NativeName: "用户", NameLocale: "en-US",
 		Email: "user@example.com", Phone: "1",
 	}
-	if err := identity.UpsertIdentityUser(t.Context(), "default", user); err != nil {
+	if err := identity.UpsertIdentityUser(t.Context(), "workspace-primary", user); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.DB().ExecContext(t.Context(), "INSERT INTO _identity_credentials (user_id, workspace_id, password_hash, password_updated_at, failed_login_count, must_change_password, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", "user", "default", "hash", "now", 0, false, "now", "now"); err != nil {
+	if _, err := store.DB().ExecContext(t.Context(), "INSERT INTO _identity_credentials (user_id, workspace_id, password_hash, password_updated_at, failed_login_count, must_change_password, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", "user", "workspace-primary", "hash", "now", 0, false, "now", "now"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.DB().ExecContext(t.Context(), "INSERT INTO _identity_mfa_factors (id, workspace_id, user_id, factor_type, status, verified_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", "factor", "default", "user", "totp", "active", "now", "now", "now"); err != nil {
+	if _, err := store.DB().ExecContext(t.Context(), "INSERT INTO _identity_mfa_factors (id, workspace_id, user_id, factor_type, status, verified_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", "factor", "workspace-primary", "user", "totp", "active", "now", "now", "now"); err != nil {
 		t.Fatal(err)
 	}
-	if err := identity.UpsertIdentityWorkforceProfile(t.Context(), "default", identitymodel.IdentityWorkforceProfile{
+	if err := identity.UpsertIdentityWorkforceProfile(t.Context(), "workspace-primary", identitymodel.IdentityWorkforceProfile{
 		ID: "workforce", OrganizationID: "organization", IdentityUserID: "user", WorkerNo: "E-1",
 		WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive, PrimaryAssignmentID: "assignment",
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := identity.UpsertIdentityWorkforceAssignment(t.Context(), "default", identitymodel.IdentityWorkforceAssignment{
+	if err := identity.UpsertIdentityWorkforceAssignment(t.Context(), "workspace-primary", identitymodel.IdentityWorkforceAssignment{
 		ID: "assignment", WorkforceProfileID: "workforce", OrganizationUnitID: "department",
 		AssignmentType: identitymodel.IdentityWorkforceAssignmentPrimary, Status: identitymodel.IdentityStatusActive,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := identity.AssignIdentityUserRole(t.Context(), "default", identitymodel.IdentityUserRoleAssignment{
+	if err := identity.AssignIdentityUserRole(t.Context(), "workspace-primary", identitymodel.IdentityUserRoleAssignment{
 		UserID: "user", RoleID: "employee", WorkforceProfileID: "workforce", Source: "workforce", Status: "active",
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO _identity_profile_bindings
 		(id,workspace_id,binding_key,object_key,profile_id,identity_user_id,status,version,created_at,updated_at)
-		VALUES ('binding','default','member','member_profile','member-1','user','active',1,'now','now')`); err != nil {
+		VALUES ('binding','workspace-primary','member','member_profile','member-1','user','active',1,'now','now')`); err != nil {
 		t.Fatal(err)
 	}
 
@@ -71,20 +71,20 @@ func TestIdentitySubjectLifecycleContract(t *testing.T) {
 	if lifecycle.Owner(t.Context()) != "identity" {
 		t.Fatal("owner mismatch")
 	}
-	if _, err := lifecycle.ResolveSubject(t.Context(), "default", "record", "user"); err == nil {
+	if _, err := lifecycle.ResolveSubject(t.Context(), "workspace-primary", "record", "user"); err == nil {
 		t.Fatal("unsupported type accepted")
 	}
-	if _, err := lifecycle.ResolveSubject(t.Context(), "default", "user", "missing"); err == nil {
+	if _, err := lifecycle.ResolveSubject(t.Context(), "workspace-primary", "user", "missing"); err == nil {
 		t.Fatal("missing subject resolved")
 	}
-	if id, err := lifecycle.ResolveSubject(t.Context(), "default", "user", "user@example.com"); err != nil || id != "user" {
+	if id, err := lifecycle.ResolveSubject(t.Context(), "workspace-primary", "user", "user@example.com"); err != nil || id != "user" {
 		t.Fatalf("id=%q err=%v", id, err)
 	}
-	preview, err := lifecycle.PreviewSubject(t.Context(), "default", "user")
+	preview, err := lifecycle.PreviewSubject(t.Context(), "workspace-primary", "user")
 	if err != nil || !strings.Contains(string(preview), `"credentials":1`) || !strings.Contains(string(preview), `"mfa_factors":1`) {
 		t.Fatalf("preview=%s err=%v", preview, err)
 	}
-	exported, err := lifecycle.ExportSubject(t.Context(), "default", "user")
+	exported, err := lifecycle.ExportSubject(t.Context(), "workspace-primary", "user")
 	if err != nil || !strings.Contains(string(exported), `"email":"user@example.com"`) ||
 		!strings.Contains(string(exported), `"family_name":"Example"`) || !strings.Contains(string(exported), `"native_name":"用户"`) ||
 		strings.Contains(string(exported), "employee_no") ||
@@ -95,36 +95,36 @@ func TestIdentitySubjectLifecycleContract(t *testing.T) {
 		!strings.Contains(string(exported), `"object_key":"member_profile"`) {
 		t.Fatalf("export=%s err=%v", exported, err)
 	}
-	erased, err := lifecycle.EraseSubject(t.Context(), "default", "user", nil)
+	erased, err := lifecycle.EraseSubject(t.Context(), "workspace-primary", "user", nil)
 	if err != nil || !strings.Contains(string(erased), `"anonymized":1`) {
 		t.Fatalf("erase=%s err=%v", erased, err)
 	}
-	loaded, found, err := identity.GetIdentityUser(t.Context(), "default", "user")
+	loaded, found, err := identity.GetIdentityUser(t.Context(), "workspace-primary", "user")
 	if err != nil || !found || loaded.Status != "erased" || loaded.Email == user.Email ||
 		loaded.GivenName != "" || loaded.MiddleName != "" || loaded.FamilyName != "" || loaded.NamePrefix != "" ||
 		loaded.NameSuffix != "" || loaded.NativeName != "" || loaded.NameLocale != "" {
 		t.Fatalf("loaded=%#v found=%v err=%v", loaded, found, err)
 	}
 	var factorCount int
-	if err := store.DB().QueryRowContext(t.Context(), "SELECT COUNT(*) FROM _identity_mfa_factors WHERE workspace_id = ? AND user_id = ?", "default", "user").Scan(&factorCount); err != nil || factorCount != 0 {
+	if err := store.DB().QueryRowContext(t.Context(), "SELECT COUNT(*) FROM _identity_mfa_factors WHERE workspace_id = ? AND user_id = ?", "workspace-primary", "user").Scan(&factorCount); err != nil || factorCount != 0 {
 		t.Fatalf("MFA factors retained: count=%d err=%v", factorCount, err)
 	}
-	if _, err := lifecycle.EraseSubject(t.Context(), "default", "missing", nil); err == nil {
+	if _, err := lifecycle.EraseSubject(t.Context(), "workspace-primary", "missing", nil); err == nil {
 		t.Fatal("missing erase succeeded")
 	}
 
 	cancelled, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, err := lifecycle.ResolveSubject(cancelled, "default", "user", "user"); !errors.Is(err, context.Canceled) {
+	if _, err := lifecycle.ResolveSubject(cancelled, "workspace-primary", "user", "user"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("resolve cancel=%v", err)
 	}
-	if _, err := lifecycle.PreviewSubject(cancelled, "default", "user"); !errors.Is(err, context.Canceled) {
+	if _, err := lifecycle.PreviewSubject(cancelled, "workspace-primary", "user"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("preview cancel=%v", err)
 	}
-	if _, err := lifecycle.ExportSubject(cancelled, "default", "user"); !errors.Is(err, context.Canceled) {
+	if _, err := lifecycle.ExportSubject(cancelled, "workspace-primary", "user"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("export cancel=%v", err)
 	}
-	if _, err := lifecycle.EraseSubject(cancelled, "default", "user", nil); !errors.Is(err, context.Canceled) {
+	if _, err := lifecycle.EraseSubject(cancelled, "workspace-primary", "user", nil); !errors.Is(err, context.Canceled) {
 		t.Fatalf("erase cancel=%v", err)
 	}
 }
@@ -154,12 +154,12 @@ func TestIdentitySubjectEraseRollsBackAtEveryOwnedFactStage(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := identity.UpsertIdentityUser(t.Context(), "default", identitymodel.IdentityUser{
+			if err := identity.UpsertIdentityUser(t.Context(), "workspace-primary", identitymodel.IdentityUser{
 				ID: "user", Name: "Original Name", Email: "original@example.test", Phone: "100", Status: identitymodel.IdentityStatusActive,
 			}); err != nil {
 				t.Fatal(err)
 			}
-			if err := identity.AssignIdentityUserRole(t.Context(), "default", identitymodel.IdentityUserRoleAssignment{
+			if err := identity.AssignIdentityUserRole(t.Context(), "workspace-primary", identitymodel.IdentityUserRoleAssignment{
 				UserID: "user", RoleID: "role",
 			}); err != nil {
 				t.Fatal(err)
@@ -167,16 +167,16 @@ func TestIdentitySubjectEraseRollsBackAtEveryOwnedFactStage(t *testing.T) {
 			for _, statement := range []string{
 				`INSERT INTO _identity_credentials
 					(user_id, workspace_id, password_hash, password_updated_at, failed_login_count, must_change_password, created_at, updated_at)
-					VALUES ('user','default','hash','now',0,0,'now','now')`,
+					VALUES ('user','workspace-primary','hash','now',0,0,'now','now')`,
 				`INSERT INTO _identity_external_accounts
 					(id, workspace_id, user_id, provider, provider_subject, email, phone, display_name, avatar_url, metadata, linked_at, created_at, updated_at)
-					VALUES ('external','default','user','oidc','subject','original@example.test','100','Original','','{}','now','now','now')`,
+					VALUES ('external','workspace-primary','user','oidc','subject','original@example.test','100','Original','','{}','now','now','now')`,
 				`INSERT INTO _identity_mfa_factors
 					(id, workspace_id, user_id, factor_type, status, verified_at, created_at, updated_at)
-					VALUES ('factor','default','user','totp','active','now','now','now')`,
+					VALUES ('factor','workspace-primary','user','totp','active','now','now','now')`,
 				`INSERT INTO _identity_auth_refresh_tokens
 					(id, workspace_id, user_id, session_id, token_hash, expires_at, created_at, updated_at)
-					VALUES ('token','default','user','session','hash','2999-01-01T00:00:00Z','now','now')`,
+					VALUES ('token','workspace-primary','user','session','hash','2999-01-01T00:00:00Z','now','now')`,
 			} {
 				if _, err := store.DB().ExecContext(t.Context(), statement); err != nil {
 					t.Fatal(err)
@@ -188,7 +188,7 @@ func TestIdentitySubjectEraseRollsBackAtEveryOwnedFactStage(t *testing.T) {
 				t.Fatal(err)
 			}
 			lifecycle := identitypersistence.NewIdentitySubjectLifecycleStore(identity)
-			if _, err := lifecycle.EraseSubject(t.Context(), "default", "user", nil); err == nil {
+			if _, err := lifecycle.EraseSubject(t.Context(), "workspace-primary", "user", nil); err == nil {
 				t.Fatal("injected erase failure was ignored")
 			}
 			for _, table := range []string{
@@ -196,13 +196,13 @@ func TestIdentitySubjectEraseRollsBackAtEveryOwnedFactStage(t *testing.T) {
 				"_identity_auth_refresh_tokens", "_identity_user_role_assignments",
 			} {
 				var count int
-				if err := store.DB().QueryRowContext(t.Context(), "SELECT COUNT(*) FROM "+table+" WHERE workspace_id='default' AND user_id='user'").Scan(&count); err != nil || count != 1 {
+				if err := store.DB().QueryRowContext(t.Context(), "SELECT COUNT(*) FROM "+table+" WHERE workspace_id='workspace-primary' AND user_id='user'").Scan(&count); err != nil || count != 1 {
 					t.Fatalf("table=%s count=%d err=%v", table, count, err)
 				}
 			}
 			var name, email, phone, status string
 			if err := store.DB().QueryRowContext(t.Context(), `SELECT name,email,phone,status FROM _identity_users
-				WHERE workspace_id='default' AND id='user'`).Scan(&name, &email, &phone, &status); err != nil {
+				WHERE workspace_id='workspace-primary' AND id='user'`).Scan(&name, &email, &phone, &status); err != nil {
 				t.Fatal(err)
 			}
 			if name != "Original Name" || email != "original@example.test" || phone != "100" || status != string(identitymodel.IdentityStatusActive) {

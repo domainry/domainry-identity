@@ -8,7 +8,7 @@ import (
 
 func memoryOnboardingMutation() identitymodel.IdentityWorkforceOnboardingMutation {
 	return identitymodel.IdentityWorkforceOnboardingMutation{
-		WorkspaceID: "default",
+		WorkspaceID: "workspace-primary",
 		User:        identitymodel.IdentityUser{ID: "user", Name: "User"},
 		Profile: identitymodel.IdentityWorkforceProfile{
 			ID: "workforce", OrganizationID: "org", IdentityUserID: "user", WorkerNo: "E-1",

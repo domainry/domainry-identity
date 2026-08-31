@@ -23,7 +23,7 @@ func TestExternalLoginPropagatesRepositoryFailures(t *testing.T) {
 	t.Run("external account lookup", func(t *testing.T) {
 		auth, _, authRepository := newFaultAuthDomainService()
 		authRepository.listAccountsErr = fault
-		_, err := auth.ExternalLogin(t.Context(), "default", assertion, true)
+		_, err := auth.ExternalLogin(t.Context(), "workspace-primary", assertion, true)
 		assertExternalAuthFault(t, err, fault)
 	})
 
@@ -31,14 +31,14 @@ func TestExternalLoginPropagatesRepositoryFailures(t *testing.T) {
 		auth, identityRepository, authRepository := newFaultAuthDomainService()
 		authRepository.accounts = []identitymodel.IdentityExternalAccount{{ID: "external", UserID: "user", Provider: "oidc", ProviderSubject: "subject"}}
 		identityRepository.listUsersErr = fault
-		_, err := auth.ExternalLogin(t.Context(), "default", assertion, true)
+		_, err := auth.ExternalLogin(t.Context(), "workspace-primary", assertion, true)
 		assertExternalAuthFault(t, err, fault)
 	})
 
 	t.Run("linked identity missing", func(t *testing.T) {
 		auth, _, authRepository := newFaultAuthDomainService()
 		authRepository.accounts = []identitymodel.IdentityExternalAccount{{ID: "external", UserID: "missing", Provider: "oidc", ProviderSubject: "subject"}}
-		if _, err := auth.ExternalLogin(t.Context(), "default", assertion, true); err == nil {
+		if _, err := auth.ExternalLogin(t.Context(), "workspace-primary", assertion, true); err == nil {
 			t.Fatal("expected a missing linked identity to be rejected")
 		}
 	})
@@ -46,7 +46,7 @@ func TestExternalLoginPropagatesRepositoryFailures(t *testing.T) {
 	t.Run("verified email lookup", func(t *testing.T) {
 		auth, identityRepository, _ := newFaultAuthDomainService()
 		identityRepository.listUsersErr = fault
-		_, err := auth.ExternalLogin(t.Context(), "default", assertion, true)
+		_, err := auth.ExternalLogin(t.Context(), "workspace-primary", assertion, true)
 		assertExternalAuthFault(t, err, fault)
 	})
 
@@ -54,14 +54,14 @@ func TestExternalLoginPropagatesRepositoryFailures(t *testing.T) {
 		auth, identityRepository, authRepository := newFaultAuthDomainService()
 		identityRepository.users = []identitymodel.IdentityUser{activeExternalIdentityUser("existing", assertion.Email)}
 		authRepository.upsertAccountErr = fault
-		_, err := auth.ExternalLogin(t.Context(), "default", assertion, true)
+		_, err := auth.ExternalLogin(t.Context(), "workspace-primary", assertion, true)
 		assertExternalAuthFault(t, err, fault)
 	})
 
 	t.Run("new identity account link", func(t *testing.T) {
 		auth, _, authRepository := newFaultAuthDomainService()
 		authRepository.upsertAccountErr = fault
-		_, err := auth.ExternalLogin(t.Context(), "default", assertion, true)
+		_, err := auth.ExternalLogin(t.Context(), "workspace-primary", assertion, true)
 		assertExternalAuthFault(t, err, fault)
 	})
 }
@@ -73,7 +73,7 @@ func TestExternalAccountMutationPropagatesRepositoryFailures(t *testing.T) {
 	t.Run("bind identity lookup", func(t *testing.T) {
 		auth, identityRepository, _ := newFaultAuthDomainService()
 		identityRepository.listUsersErr = fault
-		_, err := auth.BindExternalAccount(t.Context(), "default", "user", assertion)
+		_, err := auth.BindExternalAccount(t.Context(), "workspace-primary", "user", assertion)
 		assertExternalAuthFault(t, err, fault)
 	})
 
@@ -81,7 +81,7 @@ func TestExternalAccountMutationPropagatesRepositoryFailures(t *testing.T) {
 		auth, identityRepository, authRepository := newFaultAuthDomainService()
 		identityRepository.users = []identitymodel.IdentityUser{activeExternalIdentityUser("user", assertion.Email)}
 		authRepository.listAccountsErr = fault
-		_, err := auth.BindExternalAccount(t.Context(), "default", "user", assertion)
+		_, err := auth.BindExternalAccount(t.Context(), "workspace-primary", "user", assertion)
 		assertExternalAuthFault(t, err, fault)
 	})
 
@@ -89,14 +89,14 @@ func TestExternalAccountMutationPropagatesRepositoryFailures(t *testing.T) {
 		auth, identityRepository, authRepository := newFaultAuthDomainService()
 		identityRepository.users = []identitymodel.IdentityUser{activeExternalIdentityUser("user", assertion.Email)}
 		authRepository.upsertAccountErr = fault
-		_, err := auth.BindExternalAccount(t.Context(), "default", "user", assertion)
+		_, err := auth.BindExternalAccount(t.Context(), "workspace-primary", "user", assertion)
 		assertExternalAuthFault(t, err, fault)
 	})
 
 	t.Run("unbind account listing", func(t *testing.T) {
 		auth, _, authRepository := newFaultAuthDomainService()
 		authRepository.listAccountsErr = fault
-		err := auth.UnbindExternalAccount(t.Context(), "default", "user", "oidc", "external")
+		err := auth.UnbindExternalAccount(t.Context(), "workspace-primary", "user", "oidc", "external")
 		assertExternalAuthFault(t, err, fault)
 	})
 }

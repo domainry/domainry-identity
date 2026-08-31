@@ -27,10 +27,10 @@ func TestIdentityUserAndRoleReconcileRollsBackAsOneTransaction(t *testing.T) {
 		t.Fatal(err)
 	}
 	original := identitymodel.IdentityUser{ID: "user-1", Name: "Original", Email: "original@example.com", Status: identitymodel.IdentityStatusActive}
-	if err := repository.UpsertIdentityUser(t.Context(), "default", original); err != nil {
+	if err := repository.UpsertIdentityUser(t.Context(), "workspace-primary", original); err != nil {
 		t.Fatal(err)
 	}
-	if err := repository.AssignIdentityUserRole(t.Context(), "default", identitymodel.IdentityUserRoleAssignment{UserID: original.ID, RoleID: "original-role"}); err != nil {
+	if err := repository.AssignIdentityUserRole(t.Context(), "workspace-primary", identitymodel.IdentityUserRoleAssignment{UserID: original.ID, RoleID: "original-role"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := identityStore.DB().ExecContext(t.Context(), `CREATE TRIGGER reject_new_role BEFORE INSERT ON _identity_user_role_assignments
@@ -38,29 +38,29 @@ func TestIdentityUserAndRoleReconcileRollsBackAsOneTransaction(t *testing.T) {
 		t.Fatal(err)
 	}
 	updated := identitymodel.IdentityUser{ID: original.ID, Name: "Updated", Email: "updated@example.com", Status: identitymodel.IdentityStatusActive}
-	err = repository.UpsertIdentityUserWithRoleAssignmentsAtomically(t.Context(), "default", updated, []identitymodel.IdentityUserRoleAssignment{{UserID: original.ID, RoleID: "new-role"}})
+	err = repository.UpsertIdentityUserWithRoleAssignmentsAtomically(t.Context(), "workspace-primary", updated, []identitymodel.IdentityUserRoleAssignment{{UserID: original.ID, RoleID: "new-role"}})
 	if err == nil {
 		t.Fatal("trigger failure did not abort reconcile")
 	}
-	user, found, err := repository.GetIdentityUser(t.Context(), "default", original.ID)
+	user, found, err := repository.GetIdentityUser(t.Context(), "workspace-primary", original.ID)
 	if err != nil || !found || user.Name != original.Name || user.Email != original.Email {
 		t.Fatalf("user was partially updated: user=%+v found=%v err=%v", user, found, err)
 	}
-	assignments, err := repository.ListIdentityUserRoleAssignments(t.Context(), "default", original.ID)
+	assignments, err := repository.ListIdentityUserRoleAssignments(t.Context(), "workspace-primary", original.ID)
 	if err != nil || len(assignments) != 1 || assignments[0].RoleID != "original-role" {
 		t.Fatalf("roles were partially reconciled: roles=%+v err=%v", assignments, err)
 	}
 	if _, err := identityStore.DB().ExecContext(t.Context(), `DROP TRIGGER reject_new_role`); err != nil {
 		t.Fatal(err)
 	}
-	if err := repository.UpsertIdentityUserWithRoleAssignmentsAtomically(t.Context(), "default", updated, []identitymodel.IdentityUserRoleAssignment{{UserID: original.ID, RoleID: "new-role"}}); err != nil {
+	if err := repository.UpsertIdentityUserWithRoleAssignmentsAtomically(t.Context(), "workspace-primary", updated, []identitymodel.IdentityUserRoleAssignment{{UserID: original.ID, RoleID: "new-role"}}); err != nil {
 		t.Fatal(err)
 	}
-	user, found, err = repository.GetIdentityUser(t.Context(), "default", original.ID)
+	user, found, err = repository.GetIdentityUser(t.Context(), "workspace-primary", original.ID)
 	if err != nil || !found || user.Name != updated.Name {
 		t.Fatalf("committed user=%+v found=%v err=%v", user, found, err)
 	}
-	assignments, err = repository.ListIdentityUserRoleAssignments(t.Context(), "default", original.ID)
+	assignments, err = repository.ListIdentityUserRoleAssignments(t.Context(), "workspace-primary", original.ID)
 	if err != nil || len(assignments) != 1 || assignments[0].RoleID != "new-role" {
 		t.Fatalf("committed roles=%+v err=%v", assignments, err)
 	}

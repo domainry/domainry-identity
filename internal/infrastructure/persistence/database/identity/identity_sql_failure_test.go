@@ -70,49 +70,53 @@ func TestSQLIdentityUserAndRoleWriteStages(t *testing.T) {
 	assignment := identitymodel.IdentityUserRoleAssignment{UserID: "user", RoleID: "role"}
 	store, closeDB := scriptedSQLIdentity(&identitySQLState{})
 	defer closeDB()
-	if err := store.UpsertIdentityDepartment(t.Context(), "default", identitymodel.IdentityDepartment{}); err == nil {
+	if err := store.UpsertIdentityDepartment(t.Context(), "workspace-primary", identitymodel.IdentityDepartment{}); err == nil {
 		t.Fatal("empty department accepted")
 	}
-	if err := store.UpsertIdentityUser(t.Context(), "default", identitymodel.IdentityUser{}); err == nil {
+	if err := store.UpsertIdentityUser(t.Context(), "workspace-primary", identitymodel.IdentityUser{}); err == nil {
 		t.Fatal("empty user accepted")
 	}
-	if err := store.UpsertIdentityRole(t.Context(), "default", identitymodel.IdentityRole{}); err == nil {
+	if err := store.UpsertIdentityRole(t.Context(), "workspace-primary", identitymodel.IdentityRole{}); err == nil {
 		t.Fatal("empty role accepted")
 	}
 	for _, invalid := range []identitymodel.IdentityUserRoleAssignment{{}, {UserID: "user"}} {
-		if err := store.AssignIdentityUserRole(t.Context(), "default", invalid); err == nil {
+		if err := store.AssignIdentityUserRole(t.Context(), "workspace-primary", invalid); err == nil {
 			t.Fatal("invalid assignment accepted")
 		}
 	}
 	expiresAt := "2030-01-02T03:04:05Z"
-	if err := store.AssignIdentityUserRole(t.Context(), "default", identitymodel.IdentityUserRoleAssignment{
+	if err := store.AssignIdentityUserRole(t.Context(), "workspace-primary", identitymodel.IdentityUserRoleAssignment{
 		UserID: "expiring-user", RoleID: "role", ExpiresAt: &expiresAt,
 	}); err != nil {
 		t.Fatalf("assign role with expiration: %v", err)
 	}
-	callWithFailure(t, 1, func(s *SQLIdentityStore) error { return s.UpsertIdentityDepartment(t.Context(), "default", department) })
-	callWithFailure(t, 1, func(s *SQLIdentityStore) error { return s.UpsertIdentityUser(t.Context(), "default", user) })
-	callWithFailure(t, 1, func(s *SQLIdentityStore) error { return s.AssignIdentityUserRole(t.Context(), "default", assignment) })
+	callWithFailure(t, 1, func(s *SQLIdentityStore) error {
+		return s.UpsertIdentityDepartment(t.Context(), "workspace-primary", department)
+	})
+	callWithFailure(t, 1, func(s *SQLIdentityStore) error { return s.UpsertIdentityUser(t.Context(), "workspace-primary", user) })
+	callWithFailure(t, 1, func(s *SQLIdentityStore) error {
+		return s.AssignIdentityUserRole(t.Context(), "workspace-primary", assignment)
+	})
 	for failAt := 1; failAt <= 6; failAt++ {
-		callWithFailure(t, failAt, func(s *SQLIdentityStore) error { return s.RemoveIdentityUser(t.Context(), "default", "user") })
+		callWithFailure(t, failAt, func(s *SQLIdentityStore) error { return s.RemoveIdentityUser(t.Context(), "workspace-primary", "user") })
 	}
 	for _, state := range []*identitySQLState{{beginErr: wantErr}, {commitErr: wantErr}} {
 		store, closeDB := scriptedSQLIdentity(state)
-		if err := store.RemoveIdentityUser(t.Context(), "default", "user"); err == nil {
+		if err := store.RemoveIdentityUser(t.Context(), "workspace-primary", "user"); err == nil {
 			t.Fatal("atomic user removal transaction failure ignored")
 		}
 		closeDB()
 	}
 	for failAt := 1; failAt <= 3; failAt++ {
-		callWithFailure(t, failAt, func(s *SQLIdentityStore) error { return s.RemoveIdentityRole(t.Context(), "default", "role") })
+		callWithFailure(t, failAt, func(s *SQLIdentityStore) error { return s.RemoveIdentityRole(t.Context(), "workspace-primary", "role") })
 	}
 	callWithFailure(t, 1, func(s *SQLIdentityStore) error {
-		return s.SetIdentityUserStatus(t.Context(), "default", "user", identitymodel.IdentityStatusActive)
+		return s.SetIdentityUserStatus(t.Context(), "workspace-primary", "user", identitymodel.IdentityStatusActive)
 	})
 	callWithFailure(t, 1, func(s *SQLIdentityStore) error {
-		return s.RemoveIdentityUserRole(t.Context(), "default", "user", "role")
+		return s.RemoveIdentityUserRole(t.Context(), "workspace-primary", "user", "role")
 	})
-	callWithFailure(t, 1, func(s *SQLIdentityStore) error { return s.UpsertIdentityRole(t.Context(), "default", role) })
+	callWithFailure(t, 1, func(s *SQLIdentityStore) error { return s.UpsertIdentityRole(t.Context(), "workspace-primary", role) })
 }
 
 func TestSQLIdentityAtomicUserStages(t *testing.T) {
@@ -120,7 +124,7 @@ func TestSQLIdentityAtomicUserStages(t *testing.T) {
 	user := identitymodel.IdentityUser{ID: "user"}
 	for _, state := range []*identitySQLState{{beginErr: wantErr}, {execFailAt: 1, failure: wantErr}, {commitErr: wantErr}} {
 		store, closeDB := scriptedSQLIdentity(state)
-		if err := store.UpsertIdentityUsersAtomically(t.Context(), "default", []identitymodel.IdentityUser{user}); err == nil {
+		if err := store.UpsertIdentityUsersAtomically(t.Context(), "workspace-primary", []identitymodel.IdentityUser{user}); err == nil {
 			t.Fatal("atomic user failure ignored")
 		}
 		closeDB()
@@ -137,16 +141,16 @@ func TestSQLIdentityUserProfileBindingAndRoleReconcileFailureStages(t *testing.T
 	closeDB()
 
 	store, closeDB = scriptedSQLIdentity(&identitySQLState{queryFailAt: 1, failure: wantErr})
-	if _, err := store.ListIdentityProfileBindingsByUser(t.Context(), "default", "user"); !errors.Is(err, wantErr) {
+	if _, err := store.ListIdentityProfileBindingsByUser(t.Context(), "workspace-primary", "user"); !errors.Is(err, wantErr) {
 		t.Fatalf("profile-binding query error=%v", err)
 	}
 	closeDB()
 
 	store, closeDB = scriptedSQLIdentity(&identitySQLState{querySteps: []identitySQLQueryStep{{
 		columns: []string{"workspace_id"},
-		rows:    [][]driver.Value{{"default"}},
+		rows:    [][]driver.Value{{"workspace-primary"}},
 	}}})
-	if _, err := store.ListIdentityProfileBindingsByUser(t.Context(), "default", "user"); err == nil {
+	if _, err := store.ListIdentityProfileBindingsByUser(t.Context(), "workspace-primary", "user"); err == nil {
 		t.Fatal("profile-binding scan failure ignored")
 	}
 	closeDB()
@@ -161,7 +165,7 @@ func TestSQLIdentityUserProfileBindingAndRoleReconcileFailureStages(t *testing.T
 		{execFailAt: 2, failure: wantErr},
 	} {
 		store, closeDB = scriptedSQLIdentity(state)
-		if err := store.UpsertIdentityUserWithRoleAssignmentsAtomically(t.Context(), "default", user, nil); err == nil {
+		if err := store.UpsertIdentityUserWithRoleAssignmentsAtomically(t.Context(), "workspace-primary", user, nil); err == nil {
 			t.Fatalf("role reconcile failure stage ignored: %#v", state)
 		}
 		closeDB()
@@ -186,7 +190,7 @@ func TestSQLIdentityAccountDisableFailureStages(t *testing.T) {
 		{commitErr: wantErr},
 	} {
 		store, closeDB = scriptedSQLIdentity(state)
-		if _, err := store.DisableIdentityAccount(t.Context(), "default", "user"); err == nil {
+		if _, err := store.DisableIdentityAccount(t.Context(), "workspace-primary", "user"); err == nil {
 			t.Fatalf("account disable failure stage ignored: %#v", state)
 		}
 		closeDB()
@@ -198,14 +202,14 @@ func TestSQLIdentityRequestAndMenuWriteStages(t *testing.T) {
 	validRequest := identitymodel.IdentityRoleRequest{ID: "request", UserID: "user", RoleIDs: []string{"role"}}
 	store, closeDB := scriptedSQLIdentity(&identitySQLState{})
 	for _, request := range []identitymodel.IdentityRoleRequest{{}, {ID: "id"}, {ID: "id", UserID: "user"}} {
-		if _, err := store.CreateIdentityRoleRequest(t.Context(), "default", request); err == nil {
+		if _, err := store.CreateIdentityRoleRequest(t.Context(), "workspace-primary", request); err == nil {
 			t.Fatal("invalid request accepted")
 		}
 	}
-	if err := store.UpdateIdentityRoleRequest(t.Context(), "default", identitymodel.IdentityRoleRequest{}); err == nil {
+	if err := store.UpdateIdentityRoleRequest(t.Context(), "workspace-primary", identitymodel.IdentityRoleRequest{}); err == nil {
 		t.Fatal("empty request update accepted")
 	}
-	if err := store.UpsertIdentityMenu(t.Context(), "default", identitymodel.IdentityMenu{}); err == nil {
+	if err := store.UpsertIdentityMenu(t.Context(), "workspace-primary", identitymodel.IdentityMenu{}); err == nil {
 		t.Fatal("empty menu accepted")
 	}
 	closeDB()
@@ -214,20 +218,20 @@ func TestSQLIdentityRequestAndMenuWriteStages(t *testing.T) {
 		call   func(*SQLIdentityStore) error
 	}{
 		{1, func(s *SQLIdentityStore) error {
-			_, err := s.CreateIdentityRoleRequest(t.Context(), "default", validRequest)
+			_, err := s.CreateIdentityRoleRequest(t.Context(), "workspace-primary", validRequest)
 			return err
 		}},
 		{1, func(s *SQLIdentityStore) error {
-			return s.UpdateIdentityRoleRequest(t.Context(), "default", validRequest)
+			return s.UpdateIdentityRoleRequest(t.Context(), "workspace-primary", validRequest)
 		}},
 		{1, func(s *SQLIdentityStore) error {
-			return s.UpsertIdentityMenu(t.Context(), "default", identitymodel.IdentityMenu{ID: "menu"})
+			return s.UpsertIdentityMenu(t.Context(), "workspace-primary", identitymodel.IdentityMenu{ID: "menu"})
 		}},
 		{1, func(s *SQLIdentityStore) error {
-			return s.SetIdentityRoleMenus(t.Context(), "default", "role", []string{"menu"})
+			return s.SetIdentityRoleMenus(t.Context(), "workspace-primary", "role", []string{"menu"})
 		}},
 		{2, func(s *SQLIdentityStore) error {
-			return s.SetIdentityRoleMenus(t.Context(), "default", "role", []string{"menu"})
+			return s.SetIdentityRoleMenus(t.Context(), "workspace-primary", "role", []string{"menu"})
 		}},
 	} {
 		store, closeDB := scriptedSQLIdentity(&identitySQLState{execFailAt: test.failAt, failure: wantErr})
@@ -256,7 +260,7 @@ func TestSQLIdentityRoleRequestDecisionFailureStages(t *testing.T) {
 		{commitErr: wantErr},
 	} {
 		store, closeDB = scriptedSQLIdentity(state)
-		if err := store.ApplyIdentityRoleRequestDecision(t.Context(), "default", request, nil, "pending"); err == nil {
+		if err := store.ApplyIdentityRoleRequestDecision(t.Context(), "workspace-primary", request, nil, "pending"); err == nil {
 			t.Fatalf("decision failure stage was ignored: %#v", state)
 		}
 		closeDB()
@@ -271,22 +275,25 @@ func TestSQLIdentityLoaderFailureStages(t *testing.T) {
 		columns int
 		call    func(*SQLIdentityStore) error
 	}{
-		{"roles", 5, func(s *SQLIdentityStore) error { _, err := s.loadRoles(t.Context(), "default"); return err }},
+		{"roles", 5, func(s *SQLIdentityStore) error { _, err := s.loadRoles(t.Context(), "workspace-primary"); return err }},
 		{"assignments", 4, func(s *SQLIdentityStore) error {
-			_, err := s.loadUserRoleAssignments(t.Context(), "default", "user")
+			_, err := s.loadUserRoleAssignments(t.Context(), "workspace-primary", "user")
 			return err
 		}},
 		{"requests", 13, func(s *SQLIdentityStore) error {
-			_, err := s.loadRoleRequests(t.Context(), "default", "status", "user")
+			_, err := s.loadRoleRequests(t.Context(), "workspace-primary", "status", "user")
 			return err
 		}},
-		{"menus", 10, func(s *SQLIdentityStore) error { _, err := s.loadMenus(t.Context(), "default"); return err }},
+		{"menus", 10, func(s *SQLIdentityStore) error { _, err := s.loadMenus(t.Context(), "workspace-primary"); return err }},
 		{"menu assignments", 2, func(s *SQLIdentityStore) error {
-			_, err := s.loadRoleMenuAssignments(t.Context(), "default", "role")
+			_, err := s.loadRoleMenuAssignments(t.Context(), "workspace-primary", "role")
 			return err
 		}},
-		{"departments", 8, func(s *SQLIdentityStore) error { _, err := s.loadDepartments(t.Context(), "default"); return err }},
-		{"users", 18, func(s *SQLIdentityStore) error { _, err := s.loadUsers(t.Context(), "default"); return err }},
+		{"departments", 8, func(s *SQLIdentityStore) error {
+			_, err := s.loadDepartments(t.Context(), "workspace-primary")
+			return err
+		}},
+		{"users", 18, func(s *SQLIdentityStore) error { _, err := s.loadUsers(t.Context(), "workspace-primary"); return err }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -323,26 +330,26 @@ func TestSQLIdentityBootstrapAndMenuAtomicStages(t *testing.T) {
 	assignment := identitymodel.IdentityUserRoleAssignment{UserID: "user", RoleID: "role"}
 	for _, state := range []*identitySQLState{{beginErr: wantErr}, {execFailAt: 1, failure: wantErr}, {execFailAt: 2, failure: wantErr}, {execFailAt: 3, failure: wantErr}, {commitErr: wantErr}} {
 		store, closeDB := scriptedSQLIdentity(state)
-		if err := store.ApplyIdentityBootstrapAtomically(t.Context(), "default", []identitymodel.IdentityDepartment{department}, []identitymodel.IdentityUser{user}, nil, nil, []identitymodel.IdentityUserRoleAssignment{assignment}); err == nil {
+		if err := store.ApplyIdentityBootstrapAtomically(t.Context(), "workspace-primary", []identitymodel.IdentityDepartment{department}, []identitymodel.IdentityUser{user}, nil, nil, []identitymodel.IdentityUserRoleAssignment{assignment}); err == nil {
 			t.Fatal("bootstrap failure ignored")
 		}
 		closeDB()
 	}
 	store, closeDB := scriptedSQLIdentity(&identitySQLState{})
-	if err := store.ApplyIdentityBootstrapAtomically(t.Context(), "default", []identitymodel.IdentityDepartment{department}, []identitymodel.IdentityUser{user}, nil, nil, []identitymodel.IdentityUserRoleAssignment{assignment}); err != nil {
+	if err := store.ApplyIdentityBootstrapAtomically(t.Context(), "workspace-primary", []identitymodel.IdentityDepartment{department}, []identitymodel.IdentityUser{user}, nil, nil, []identitymodel.IdentityUserRoleAssignment{assignment}); err != nil {
 		t.Fatal(err)
 	}
 	closeDB()
 	menus := []identitymodel.IdentityMenu{{ID: "menu", Key: "key"}}
 	for _, state := range []*identitySQLState{{beginErr: wantErr}, {execFailAt: 1, failure: wantErr}, {execFailAt: 2, failure: wantErr}, {commitErr: wantErr}} {
 		store, closeDB := scriptedSQLIdentity(state)
-		if err := store.RemoveIdentityMenusAtomically(t.Context(), "default", menus); err == nil {
+		if err := store.RemoveIdentityMenusAtomically(t.Context(), "workspace-primary", menus); err == nil {
 			t.Fatal("menu atomic failure ignored")
 		}
 		closeDB()
 	}
 	store, closeDB = scriptedSQLIdentity(&identitySQLState{})
-	if err := store.RemoveIdentityMenusAtomically(t.Context(), "default", menus); err != nil {
+	if err := store.RemoveIdentityMenusAtomically(t.Context(), "workspace-primary", menus); err != nil {
 		t.Fatal(err)
 	}
 	closeDB()
@@ -353,31 +360,31 @@ func TestSQLIdentityRoleReadStages(t *testing.T) {
 	roleColumns := []string{"id", "key", "label", "description", "status"}
 	roleRow := []driver.Value{"role", "role", "Role", "", "active"}
 	store, closeDB := scriptedSQLIdentity(&identitySQLState{queryFailAt: 1, failure: wantErr, querySteps: []identitySQLQueryStep{{columns: roleColumns, rows: [][]driver.Value{roleRow}}}})
-	if _, err := store.ListIdentityRoles(t.Context(), "default"); err == nil {
+	if _, err := store.ListIdentityRoles(t.Context(), "workspace-primary"); err == nil {
 		t.Fatal("role query failure ignored")
 	}
 	closeDB()
 	store, closeDB = scriptedSQLIdentity(&identitySQLState{queryFailAt: 1, failure: wantErr})
-	if _, _, err := store.memoryRole(t.Context(), "default", "role"); err == nil {
+	if _, _, err := store.memoryRole(t.Context(), "workspace-primary", "role"); err == nil {
 		t.Fatal("memory role error ignored")
 	}
 	closeDB()
 	store, closeDB = scriptedSQLIdentity(&identitySQLState{})
-	if _, found, err := store.memoryRole(t.Context(), "default", "role"); err != nil || found {
+	if _, found, err := store.memoryRole(t.Context(), "workspace-primary", "role"); err != nil || found {
 		t.Fatalf("found=%v err=%v", found, err)
 	}
 	closeDB()
 	store, closeDB = scriptedSQLIdentity(&identitySQLState{querySteps: []identitySQLQueryStep{
 		{columns: roleColumns, rows: [][]driver.Value{{"other", "other", "Other", "", "active"}}},
 	}})
-	if _, found, err := store.memoryRole(t.Context(), "default", "role"); err != nil || found {
+	if _, found, err := store.memoryRole(t.Context(), "workspace-primary", "role"); err != nil || found {
 		t.Fatalf("other role found=%v err=%v", found, err)
 	}
 	closeDB()
 	store, closeDB = scriptedSQLIdentity(&identitySQLState{querySteps: []identitySQLQueryStep{
 		{columns: roleColumns, rows: [][]driver.Value{roleRow}},
 	}})
-	if role, found, err := store.memoryRole(t.Context(), "default", "role"); err != nil || !found || role.ID != "role" {
+	if role, found, err := store.memoryRole(t.Context(), "workspace-primary", "role"); err != nil || !found || role.ID != "role" {
 		t.Fatalf("role=%#v found=%v err=%v", role, found, err)
 	}
 	closeDB()
@@ -389,42 +396,42 @@ func TestSQLIdentityRemainingWriteAndMenuStages(t *testing.T) {
 	if err := store.ApplyIdentityBootstrapAtomically(t.Context(), "", nil, nil, nil, nil, nil); err == nil {
 		t.Fatal("invalid bootstrap workspace accepted")
 	}
-	if err := store.writeIdentityDepartment(t.Context(), store.db, "default", identitymodel.IdentityDepartment{ID: "department"}); err != nil {
+	if err := store.writeIdentityDepartment(t.Context(), store.db, "workspace-primary", identitymodel.IdentityDepartment{ID: "department"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.writeIdentityUser(t.Context(), store.db, "default", identitymodel.IdentityUser{ID: "user"}); err != nil {
+	if err := store.writeIdentityUser(t.Context(), store.db, "workspace-primary", identitymodel.IdentityUser{ID: "user"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpsertIdentityUsersAtomically(t.Context(), "default", []identitymodel.IdentityUser{{ID: "user"}}); err != nil {
+	if err := store.UpsertIdentityUsersAtomically(t.Context(), "workspace-primary", []identitymodel.IdentityUser{{ID: "user"}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.RemoveIdentityUser(t.Context(), "default", "user"); err != nil {
+	if err := store.RemoveIdentityUser(t.Context(), "workspace-primary", "user"); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.RemoveIdentityRole(t.Context(), "default", "role"); err != nil {
+	if err := store.RemoveIdentityRole(t.Context(), "workspace-primary", "role"); err != nil {
 		t.Fatal(err)
 	}
 	request := identitymodel.IdentityRoleRequest{ID: "request", UserID: "user", RoleIDs: []string{"role"}}
-	if _, err := store.CreateIdentityRoleRequest(t.Context(), "default", request); err != nil {
+	if _, err := store.CreateIdentityRoleRequest(t.Context(), "workspace-primary", request); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpdateIdentityRoleRequest(t.Context(), "default", request); err != nil {
+	if err := store.UpdateIdentityRoleRequest(t.Context(), "workspace-primary", request); err != nil {
 		t.Fatal(err)
 	}
 	request.ID, request.CreatedAt, request.Status, request.UpdatedAt = "fixed-request", "created", "approved", "updated"
-	if _, err := store.CreateIdentityRoleRequest(t.Context(), "default", request); err != nil {
+	if _, err := store.CreateIdentityRoleRequest(t.Context(), "workspace-primary", request); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpdateIdentityRoleRequest(t.Context(), "default", request); err != nil {
+	if err := store.UpdateIdentityRoleRequest(t.Context(), "workspace-primary", request); err != nil {
 		t.Fatal(err)
 	}
 	role := identitymodel.IdentityRole{ID: "role", Key: "key", Status: identitymodel.IdentityStatusActive}
-	if err := store.UpsertIdentityRole(t.Context(), "default", role); err != nil {
+	if err := store.UpsertIdentityRole(t.Context(), "workspace-primary", role); err != nil {
 		t.Fatal(err)
 	}
 	closeDB()
 	store, closeDB = scriptedSQLIdentity(&identitySQLState{queryFailAt: 1, failure: wantErr})
-	if _, err := store.loadRoleRequests(t.Context(), "default", "", ""); err == nil {
+	if _, err := store.loadRoleRequests(t.Context(), "workspace-primary", "", ""); err == nil {
 		t.Fatal("role request query failure ignored")
 	}
 	closeDB()
@@ -432,17 +439,17 @@ func TestSQLIdentityRemainingWriteAndMenuStages(t *testing.T) {
 	menuColumns := []string{"id", "key", "label", "description", "route", "icon", "parent", "sort", "status"}
 	menuRow := []driver.Value{"menu", "key", "Menu", "", "/menu", "", nil, int64(1), "active"}
 	store, closeDB = scriptedSQLIdentity(&identitySQLState{queryFailAt: 1, failure: wantErr})
-	if err := store.UpsertIdentityMenu(t.Context(), "default", identitymodel.IdentityMenu{ID: "menu"}); err == nil {
+	if err := store.UpsertIdentityMenu(t.Context(), "workspace-primary", identitymodel.IdentityMenu{ID: "menu"}); err == nil {
 		t.Fatal("menu pre-read failure ignored")
 	}
 	closeDB()
 	store, closeDB = scriptedSQLIdentity(&identitySQLState{queryFailAt: 1, failure: wantErr})
-	if err := store.RemoveIdentityMenu(t.Context(), "default", "menu"); err == nil {
+	if err := store.RemoveIdentityMenu(t.Context(), "workspace-primary", "menu"); err == nil {
 		t.Fatal("menu list failure ignored")
 	}
 	closeDB()
 	store, closeDB = scriptedSQLIdentity(&identitySQLState{querySteps: []identitySQLQueryStep{{columns: menuColumns}}})
-	if err := store.RemoveIdentityMenu(t.Context(), "default", "missing"); err == nil {
+	if err := store.RemoveIdentityMenu(t.Context(), "workspace-primary", "missing"); err == nil {
 		t.Fatal("missing menu removed")
 	}
 	closeDB()
@@ -454,20 +461,20 @@ func TestSQLIdentityRemainingWriteAndMenuStages(t *testing.T) {
 	}
 	for _, state := range states {
 		store, closeDB = scriptedSQLIdentity(state)
-		if err := store.RemoveIdentityMenu(t.Context(), "default", "menu"); err == nil {
+		if err := store.RemoveIdentityMenu(t.Context(), "workspace-primary", "menu"); err == nil {
 			t.Fatal("menu stage failure ignored")
 		}
 		closeDB()
 	}
 	store, closeDB = scriptedSQLIdentity(&identitySQLState{querySteps: []identitySQLQueryStep{{columns: menuColumns, rows: [][]driver.Value{menuRow}}}})
-	if err := store.RemoveIdentityMenu(t.Context(), "default", "menu"); err != nil {
+	if err := store.RemoveIdentityMenu(t.Context(), "workspace-primary", "menu"); err != nil {
 		t.Fatal(err)
 	}
 	closeDB()
 	otherMenu := append([]driver.Value(nil), menuRow...)
 	otherMenu[0], otherMenu[1] = "other", "other"
 	store, closeDB = scriptedSQLIdentity(&identitySQLState{querySteps: []identitySQLQueryStep{{columns: menuColumns, rows: [][]driver.Value{otherMenu, menuRow}}}})
-	if err := store.RemoveIdentityMenu(t.Context(), "default", "menu"); err != nil {
+	if err := store.RemoveIdentityMenu(t.Context(), "workspace-primary", "menu"); err != nil {
 		t.Fatal(err)
 	}
 	closeDB()
@@ -478,7 +485,7 @@ func TestIdentitySubjectLifecycleSQLStages(t *testing.T) {
 	for _, state := range []*identitySQLState{{beginErr: wantErr}, {execFailAt: 1, failure: wantErr}, {execFailAt: 6, failure: wantErr}, {rowsFailAt: 6, failure: wantErr}, {commitErr: wantErr}} {
 		store, closeDB := scriptedSQLIdentity(state)
 		lifecycle := NewIdentitySubjectLifecycleStore(store)
-		if _, err := lifecycle.EraseSubject(t.Context(), "default", "user", nil); err == nil {
+		if _, err := lifecycle.EraseSubject(t.Context(), "workspace-primary", "user", nil); err == nil {
 			t.Fatal("erase stage failure ignored")
 		}
 		closeDB()
@@ -490,7 +497,7 @@ func TestIdentitySubjectLifecycleSQLStages(t *testing.T) {
 	}
 	store, closeDB := scriptedSQLIdentity(&identitySQLState{queryFailAt: 2, failure: wantErr, querySteps: []identitySQLQueryStep{{columns: userColumns, rows: [][]driver.Value{userRow}}}})
 	lifecycle := NewIdentitySubjectLifecycleStore(store)
-	if _, err := lifecycle.ExportSubject(t.Context(), "default", "user"); err == nil {
+	if _, err := lifecycle.ExportSubject(t.Context(), "workspace-primary", "user"); err == nil {
 		t.Fatal("export preview failure ignored")
 	}
 	closeDB()

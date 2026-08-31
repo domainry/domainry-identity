@@ -27,7 +27,7 @@ func TestApplyIdentityBootstrapAtomicallyRollsBackPartialGraph(t *testing.T) {
 	}
 	err = identityStore.ApplyIdentityBootstrapAtomically(
 		t.Context(),
-		identitymodel.InstallationWorkspaceID,
+		"workspace-primary",
 		[]identitymodel.IdentityDepartment{{ID: "people", Name: "People", Path: "/people", Status: identitymodel.IdentityStatusActive}},
 		[]identitymodel.IdentityUser{{ID: "employee", Name: "Employee", Email: "employee@example.com", Status: identitymodel.IdentityStatusActive}},
 		[]identitymodel.IdentityWorkforceProfile{{ID: "employee-workforce", OrganizationID: "organization", IdentityUserID: "employee", WorkerNo: "E-1", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive}},
@@ -37,19 +37,19 @@ func TestApplyIdentityBootstrapAtomicallyRollsBackPartialGraph(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected invalid assignment to roll back Identity Bootstrap")
 	}
-	departments, listErr := identityStore.ListIdentityDepartments(t.Context(), identitymodel.InstallationWorkspaceID)
+	departments, listErr := identityStore.ListIdentityDepartments(t.Context(), "workspace-primary")
 	if listErr != nil {
 		t.Fatal(listErr)
 	}
-	users, listErr := identityStore.ListIdentityUsers(t.Context(), identitymodel.InstallationWorkspaceID)
+	users, listErr := identityStore.ListIdentityUsers(t.Context(), "workspace-primary")
 	if listErr != nil {
 		t.Fatal(listErr)
 	}
-	profiles, listErr := identityStore.ListIdentityWorkforceProfiles(t.Context(), identitymodel.InstallationWorkspaceID)
+	profiles, listErr := identityStore.ListIdentityWorkforceProfiles(t.Context(), "workspace-primary")
 	if listErr != nil {
 		t.Fatal(listErr)
 	}
-	assignments, listErr := identityStore.ListIdentityWorkforceAssignments(t.Context(), identitymodel.InstallationWorkspaceID, "")
+	assignments, listErr := identityStore.ListIdentityWorkforceAssignments(t.Context(), "workspace-primary", "")
 	if listErr != nil {
 		t.Fatal(listErr)
 	}
@@ -71,11 +71,11 @@ func TestApplyIdentityBootstrapAtomicallyPersistsWorkforceBoundRole(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := identityStore.UpsertIdentityRole(t.Context(), identitymodel.InstallationWorkspaceID, identitymodel.IdentityRole{ID: "operator", Key: "operator", Label: "Operator", Status: identitymodel.IdentityStatusActive}); err != nil {
+	if err := identityStore.UpsertIdentityRole(t.Context(), "workspace-primary", identitymodel.IdentityRole{ID: "operator", Key: "operator", Label: "Operator", Status: identitymodel.IdentityStatusActive}); err != nil {
 		t.Fatal(err)
 	}
 	err = identityStore.ApplyIdentityBootstrapAtomically(
-		t.Context(), identitymodel.InstallationWorkspaceID,
+		t.Context(), "workspace-primary",
 		[]identitymodel.IdentityDepartment{{ID: "people", Name: "People", Path: "/people", Status: identitymodel.IdentityStatusActive}},
 		[]identitymodel.IdentityUser{{ID: "employee", Name: "Employee", Email: "employee@example.com", Status: identitymodel.IdentityStatusActive}},
 		[]identitymodel.IdentityWorkforceProfile{{ID: "employee-workforce", OrganizationID: "organization", IdentityUserID: "employee", WorkerNo: "E-1", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive}},
@@ -85,7 +85,7 @@ func TestApplyIdentityBootstrapAtomicallyPersistsWorkforceBoundRole(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	roleAssignments, err := identityStore.ListIdentityUserRoleAssignments(t.Context(), identitymodel.InstallationWorkspaceID, "employee")
+	roleAssignments, err := identityStore.ListIdentityUserRoleAssignments(t.Context(), "workspace-primary", "employee")
 	if err != nil {
 		t.Fatal(err)
 	}

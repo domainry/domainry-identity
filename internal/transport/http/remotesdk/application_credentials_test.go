@@ -43,11 +43,11 @@ func TestApplicationCredentialRegistryAuthorizesOnlyItsBoundScope(t *testing.T) 
 }
 
 func TestApplicationCredentialRegistryDefaultsTenantToWorkspace(t *testing.T) {
-	registry, err := NewApplicationCredentialRegistry(map[string]string{"default/orders-runtime": "service-secret"}, 100)
+	registry, err := NewApplicationCredentialRegistry(map[string]string{"workspace-primary/orders-runtime": "service-secret"}, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
-	scope := identitysdk.ApplicationScope{WorkspaceID: "default", ApplicationKey: "orders-runtime"}
+	scope := identitysdk.ApplicationScope{WorkspaceID: "workspace-primary", ApplicationKey: "orders-runtime"}
 	if decision := registry.Authorize("Bearer service-secret", scope); !decision.Authenticated || decision.RateLimited {
 		t.Fatal("workspace shorthand did not bind tenant to workspace")
 	}
@@ -64,9 +64,9 @@ func TestApplicationCredentialRegistryParsesEscapedIdentifiersAndRejectsInvalidC
 	for name, values := range map[string]map[string]string{
 		"missing segment":      {"workspace-only": "secret"},
 		"too many segments":    {"tenant/workspace/application/extra": "secret"},
-		"empty credential ID":  {"default/orders-runtime#": "secret"},
-		"empty credential":     {"default/orders-runtime": " "},
-		"duplicate credential": {"default/orders-runtime": "same", "default/notify-runtime": "same"},
+		"empty credential ID":  {"workspace-primary/orders-runtime#": "secret"},
+		"empty credential":     {"workspace-primary/orders-runtime": " "},
+		"duplicate credential": {"workspace-primary/orders-runtime": "same", "workspace-primary/notify-runtime": "same"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := NewApplicationCredentialRegistry(values, 100); err == nil {
@@ -78,14 +78,14 @@ func TestApplicationCredentialRegistryParsesEscapedIdentifiersAndRejectsInvalidC
 
 func TestApplicationCredentialRotationSharesOneApplicationRateBucket(t *testing.T) {
 	registry, err := NewApplicationCredentialRegistry(map[string]string{
-		"default/orders-runtime#old": "old-service-secret",
-		"default/orders-runtime#new": "new-service-secret",
+		"workspace-primary/orders-runtime#old": "old-service-secret",
+		"workspace-primary/orders-runtime#new": "new-service-secret",
 	}, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
 	registry.clock = func() time.Time { return time.Date(2026, 8, 27, 4, 30, 0, 0, time.UTC) }
-	scope := identitysdk.ApplicationScope{WorkspaceID: "default", ApplicationKey: "orders-runtime"}
+	scope := identitysdk.ApplicationScope{WorkspaceID: "workspace-primary", ApplicationKey: "orders-runtime"}
 	if !registry.Active(scope, "old") || !registry.Active(scope, "new") || registry.Active(scope, "retired") {
 		t.Fatal("credential rotation IDs were not constrained to active registrations")
 	}
@@ -102,28 +102,28 @@ func TestApplicationCredentialRotationSharesOneApplicationRateBucket(t *testing.
 
 func TestApplicationCredentialRateLimitsAreIndependentPerApplication(t *testing.T) {
 	registry, err := NewApplicationCredentialRegistry(map[string]string{
-		"default/orders-runtime": "orders-service-secret",
-		"default/notify-runtime": "notify-service-secret",
+		"workspace-primary/orders-runtime": "orders-service-secret",
+		"workspace-primary/notify-runtime": "notify-service-secret",
 	}, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	registry.clock = func() time.Time { return time.Date(2026, 8, 27, 4, 30, 0, 0, time.UTC) }
-	orders := identitysdk.ApplicationScope{WorkspaceID: "default", ApplicationKey: "orders-runtime"}
+	orders := identitysdk.ApplicationScope{WorkspaceID: "workspace-primary", ApplicationKey: "orders-runtime"}
 	if decision := registry.Authorize("Bearer orders-service-secret", orders); !decision.Authenticated || decision.RateLimited || decision.Remaining != 0 {
 		t.Fatalf("first orders request=%+v", decision)
 	}
 	if decision := registry.Authorize("Bearer orders-service-secret", orders); !decision.Authenticated || !decision.RateLimited {
 		t.Fatalf("second orders request=%+v", decision)
 	}
-	notify := identitysdk.ApplicationScope{WorkspaceID: "default", ApplicationKey: "notify-runtime"}
+	notify := identitysdk.ApplicationScope{WorkspaceID: "workspace-primary", ApplicationKey: "notify-runtime"}
 	if decision := registry.Authorize("Bearer notify-service-secret", notify); !decision.Authenticated || decision.RateLimited {
 		t.Fatalf("notify request shared the orders rate bucket: %+v", decision)
 	}
 }
 
 func TestApplicationCredentialHTTPBoundaryReturnsRateLimitResponse(t *testing.T) {
-	registry, err := NewApplicationCredentialRegistry(map[string]string{"default/orders-runtime": "orders-service-secret"}, 1)
+	registry, err := NewApplicationCredentialRegistry(map[string]string{"workspace-primary/orders-runtime": "orders-service-secret"}, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func TestApplicationCredentialHTTPBoundaryReturnsRateLimitResponse(t *testing.T)
 		w.WriteHeader(status)
 		_, _ = w.Write([]byte(code))
 	}}
-	scope := identitysdk.ApplicationScope{WorkspaceID: "default", ApplicationKey: "orders-runtime"}
+	scope := identitysdk.ApplicationScope{WorkspaceID: "workspace-primary", ApplicationKey: "orders-runtime"}
 	firstRequest := httptest.NewRequest(http.MethodPost, "/identity/runtime/directory/users", nil)
 	firstRequest.Header.Set("Authorization", "Bearer orders-service-secret")
 	if !authorizeApplicationCredential(httptest.NewRecorder(), firstRequest, support, registry, scope) {

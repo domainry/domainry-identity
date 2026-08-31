@@ -17,9 +17,6 @@ type workspaceAuthIdentity struct {
 
 func (a workspaceAuthIdentity) scoped(ctx context.Context) (*identityapplication.IdentityApplicationService, error) {
 	workspaceID := requestcontext.WorkspaceID(ctx)
-	if workspaceID == "" {
-		workspaceID = identitymodel.InstallationWorkspaceID
-	}
 	return a.identity.ForWorkspace(workspaceID)
 }
 

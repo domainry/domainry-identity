@@ -12,7 +12,7 @@ import (
 
 func TestRefreshSessionValidation(t *testing.T) {
 	auth, _, _ := newFaultAuthDomainService()
-	if _, err := auth.Refresh(t.Context(), "default", " "); err == nil {
+	if _, err := auth.Refresh(t.Context(), "workspace-primary", " "); err == nil {
 		t.Fatal("expected blank refresh token to fail")
 	}
 
@@ -20,7 +20,7 @@ func TestRefreshSessionValidation(t *testing.T) {
 	t.Run("repository lookup failure", func(t *testing.T) {
 		auth, _, authRepository := newFaultAuthDomainService()
 		authRepository.getRefreshTokenErr = fault
-		_, err := auth.Refresh(t.Context(), "default", "refresh-token")
+		_, err := auth.Refresh(t.Context(), "workspace-primary", "refresh-token")
 		assertExternalAuthFault(t, err, fault)
 	})
 
@@ -43,7 +43,7 @@ func TestRefreshSessionValidation(t *testing.T) {
 			if testCase.configure != nil {
 				testCase.configure(authRepository)
 			}
-			if _, err := auth.Refresh(t.Context(), "default", "refresh-token"); err == nil {
+			if _, err := auth.Refresh(t.Context(), "workspace-primary", "refresh-token"); err == nil {
 				t.Fatal("expected invalid refresh session")
 			}
 		})
@@ -56,14 +56,14 @@ func TestRefreshSessionIdentityValidation(t *testing.T) {
 	t.Run("identity lookup failure", func(t *testing.T) {
 		auth, identityRepository, _ := validRefreshFixture()
 		identityRepository.listUsersErr = fault
-		_, err := auth.Refresh(t.Context(), "default", "refresh-token")
+		_, err := auth.Refresh(t.Context(), "workspace-primary", "refresh-token")
 		assertExternalAuthFault(t, err, fault)
 	})
 
 	t.Run("identity missing", func(t *testing.T) {
 		auth, identityRepository, _ := validRefreshFixture()
 		identityRepository.users = nil
-		if _, err := auth.Refresh(t.Context(), "default", "refresh-token"); err == nil {
+		if _, err := auth.Refresh(t.Context(), "workspace-primary", "refresh-token"); err == nil {
 			t.Fatal("expected missing refresh identity to fail")
 		}
 	})
@@ -71,7 +71,7 @@ func TestRefreshSessionIdentityValidation(t *testing.T) {
 	t.Run("identity disabled", func(t *testing.T) {
 		auth, identityRepository, _ := validRefreshFixture()
 		identityRepository.users[0].Status = identitymodel.IdentityStatusDisabled
-		if _, err := auth.Refresh(t.Context(), "default", "refresh-token"); err == nil {
+		if _, err := auth.Refresh(t.Context(), "workspace-primary", "refresh-token"); err == nil {
 			t.Fatal("expected disabled refresh identity to fail")
 		}
 	})
@@ -79,7 +79,7 @@ func TestRefreshSessionIdentityValidation(t *testing.T) {
 	t.Run("session issuance failure", func(t *testing.T) {
 		auth, identityRepository, _ := validRefreshFixture()
 		identityRepository.listAssignmentsErr = fault
-		_, err := auth.Refresh(t.Context(), "default", "refresh-token")
+		_, err := auth.Refresh(t.Context(), "workspace-primary", "refresh-token")
 		assertExternalAuthFault(t, err, fault)
 	})
 }
@@ -90,13 +90,13 @@ func TestRefreshSessionRotation(t *testing.T) {
 	t.Run("revocation failure", func(t *testing.T) {
 		auth, _, authRepository := validRefreshFixture()
 		authRepository.revokeRefreshTokenErr = fault
-		_, err := auth.Refresh(t.Context(), "default", "refresh-token")
+		_, err := auth.Refresh(t.Context(), "workspace-primary", "refresh-token")
 		assertExternalAuthFault(t, err, fault)
 	})
 
 	t.Run("successful rotation", func(t *testing.T) {
 		auth, _, authRepository := validRefreshFixture()
-		result, err := auth.Refresh(t.Context(), "default", "refresh-token")
+		result, err := auth.Refresh(t.Context(), "workspace-primary", "refresh-token")
 		if err != nil {
 			t.Fatalf("rotate refresh token: %v", err)
 		}
@@ -112,13 +112,13 @@ func TestRefreshSessionRotation(t *testing.T) {
 	t.Run("application mismatch is rejected before rotation", func(t *testing.T) {
 		auth, _, authRepository := validRefreshFixture()
 		authRepository.refreshTokens[0].Audience = "orders-runtime"
-		if _, err := auth.RefreshForApplication(t.Context(), "default", "refresh-token", "billing-runtime"); err == nil {
+		if _, err := auth.RefreshForApplication(t.Context(), "workspace-primary", "refresh-token", "billing-runtime"); err == nil {
 			t.Fatal("refresh credential was accepted by another application")
 		}
 		if len(authRepository.refreshTokens) != 1 || len(authRepository.revokedRefreshTokens) != 0 || authRepository.refreshTokens[0].RevokedAt != "" {
 			t.Fatalf("rejected refresh credential was mutated: %#v", authRepository.refreshTokens)
 		}
-		result, err := auth.RefreshForApplication(t.Context(), "default", "refresh-token", "orders-runtime")
+		result, err := auth.RefreshForApplication(t.Context(), "workspace-primary", "refresh-token", "orders-runtime")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -138,7 +138,7 @@ func TestRefreshSessionRotation(t *testing.T) {
 			go func() {
 				defer wait.Done()
 				<-start
-				if _, err := auth.Refresh(t.Context(), "default", "refresh-token"); err == nil {
+				if _, err := auth.Refresh(t.Context(), "workspace-primary", "refresh-token"); err == nil {
 					success.Add(1)
 				}
 			}()
@@ -153,16 +153,16 @@ func TestRefreshSessionRotation(t *testing.T) {
 
 func TestLogoutSession(t *testing.T) {
 	auth, _, authRepository := validRefreshFixture()
-	auth.Logout(t.Context(), "default", " ")
+	auth.Logout(t.Context(), "workspace-primary", " ")
 
 	authRepository.getRefreshTokenErr = errors.New("ignored lookup failure")
-	auth.Logout(t.Context(), "default", "refresh-token")
+	auth.Logout(t.Context(), "workspace-primary", "refresh-token")
 	authRepository.getRefreshTokenErr = nil
-	auth.Logout(t.Context(), "default", "unknown")
+	auth.Logout(t.Context(), "workspace-primary", "unknown")
 	authRepository.revokeRefreshTokenErr = errors.New("ignored revoke failure")
-	auth.Logout(t.Context(), "default", "refresh-token")
+	auth.Logout(t.Context(), "workspace-primary", "refresh-token")
 	authRepository.revokeRefreshTokenErr = nil
-	auth.Logout(t.Context(), "default", "refresh-token")
+	auth.Logout(t.Context(), "workspace-primary", "refresh-token")
 	if len(authRepository.revokedRefreshTokens) != 1 || authRepository.revokedRefreshTokens[0] != "refresh-old" {
 		t.Fatalf("unexpected logout revocations: %#v", authRepository.revokedRefreshTokens)
 	}
@@ -171,7 +171,7 @@ func TestLogoutSession(t *testing.T) {
 func TestLogoutSessionRejectsAnotherApplicationBeforeRevocation(t *testing.T) {
 	auth, _, authRepository := validRefreshFixture()
 	authRepository.refreshTokens[0].Audience = "orders-runtime"
-	if err := auth.LogoutForApplication(t.Context(), "default", "refresh-token", "billing-runtime"); err == nil {
+	if err := auth.LogoutForApplication(t.Context(), "workspace-primary", "refresh-token", "billing-runtime"); err == nil {
 		t.Fatal("logout credential was accepted by another application")
 	}
 	if len(authRepository.revokedRefreshTokens) != 0 || authRepository.refreshTokens[0].RevokedAt != "" {

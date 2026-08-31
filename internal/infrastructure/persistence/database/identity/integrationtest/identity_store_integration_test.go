@@ -19,14 +19,14 @@ func TestIdentityServiceValidatesPermissionsAndComputesEffectiveKeys(t *testing.
 	service, _ := identitybusiness.NewIdentityDomainService(repo, []identitymodel.IdentityPermissionDefinition{
 		{Key: "crm.customer.view", System: "crm", Resource: "customer", Action: "view"},
 		{Key: "crm.customer.edit", System: "crm", Resource: "customer", Action: "edit"},
-	}).ForWorkspace(identitymodel.InstallationWorkspaceID)
+	}).ForWorkspace("workspace-primary")
 	if err := service.UpsertDepartment(t.Context(), identitymodel.IdentityDepartment{ID: "company", Name: "Company", Path: "/company"}); err != nil {
 		t.Fatalf("upsert company department: %v", err)
 	}
 	if err := service.UpsertUser(t.Context(), identitymodel.IdentityUser{ID: "u-admin", Name: "Admin", Email: "admin@example.com"}); err != nil {
 		t.Fatalf("upsert user: %v", err)
 	}
-	seedIdentityDirectoryRole(t, repo, identitymodel.InstallationWorkspaceID, identitymodel.IdentityRole{ID: "r-admin", Key: "admin", Label: "Admin"})
+	seedIdentityDirectoryRole(t, repo, "workspace-primary", identitymodel.IdentityRole{ID: "r-admin", Key: "admin", Label: "Admin"})
 	if err := service.AssignUserRole(t.Context(), identitymodel.IdentityUserRoleAssignment{UserID: "u-admin", RoleID: "r-admin"}); err != nil {
 		t.Fatalf("assign role: %v", err)
 	}
@@ -78,8 +78,8 @@ func TestIdentityServiceValidatesPermissionsAndComputesEffectiveKeys(t *testing.
 	if err := service.UpsertUser(t.Context(), identitymodel.IdentityUser{ID: "u-temp", Name: "Temp", Email: "temp@example.com"}); err != nil {
 		t.Fatalf("upsert temporary user: %v", err)
 	}
-	seedIdentityDirectoryRole(t, repo, identitymodel.InstallationWorkspaceID, identitymodel.IdentityRole{ID: "r-temp-active", Key: "temp_active", Label: "Temporary Active"})
-	seedIdentityDirectoryRole(t, repo, identitymodel.InstallationWorkspaceID, identitymodel.IdentityRole{ID: "r-temp-expired", Key: "temp_expired", Label: "Temporary Expired"})
+	seedIdentityDirectoryRole(t, repo, "workspace-primary", identitymodel.IdentityRole{ID: "r-temp-active", Key: "temp_active", Label: "Temporary Active"})
+	seedIdentityDirectoryRole(t, repo, "workspace-primary", identitymodel.IdentityRole{ID: "r-temp-expired", Key: "temp_expired", Label: "Temporary Expired"})
 	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{
 		{Key: "admin", Name: "Admin", Permissions: []string{"crm.customer.edit", "crm.customer.view"}, RecordScope: "all_records"},
 		{Key: "temp_active", Name: "Temporary Active", Permissions: []string{"crm.customer.view"}, RecordScope: "all_records"},
@@ -140,7 +140,7 @@ func TestIdentityServiceValidatesPermissionsAndComputesEffectiveKeys(t *testing.
 
 func TestIdentityServiceRejectsDuplicateMenuKeys(t *testing.T) {
 	repo := identitypersistence.NewMemoryIdentityStore()
-	service, _ := identitybusiness.NewIdentityDomainService(repo, nil).ForWorkspace(identitymodel.InstallationWorkspaceID)
+	service, _ := identitybusiness.NewIdentityDomainService(repo, nil).ForWorkspace("workspace-primary")
 	if err := service.UpsertMenu(t.Context(), identitymodel.IdentityMenu{ID: "menu-a", Key: "org_users", Label: "Users"}); err != nil {
 		t.Fatalf("upsert first menu: %v", err)
 	}
@@ -154,7 +154,7 @@ func TestIdentityServiceRejectsDuplicateMenuKeys(t *testing.T) {
 
 func TestIdentityServiceValidatesMenuHierarchy(t *testing.T) {
 	repo := identitypersistence.NewMemoryIdentityStore()
-	service, _ := identitybusiness.NewIdentityDomainService(repo, nil).ForWorkspace(identitymodel.InstallationWorkspaceID)
+	service, _ := identitybusiness.NewIdentityDomainService(repo, nil).ForWorkspace("workspace-primary")
 	if err := service.UpsertMenu(t.Context(), identitymodel.IdentityMenu{ID: "root", Key: "root", Label: "Root"}); err != nil {
 		t.Fatalf("upsert root menu: %v", err)
 	}
@@ -174,7 +174,7 @@ func TestIdentityServiceValidatesMenuHierarchy(t *testing.T) {
 
 func TestIdentityServiceRejectsDuplicateUserEmails(t *testing.T) {
 	repo := identitypersistence.NewMemoryIdentityStore()
-	service, _ := identitybusiness.NewIdentityDomainService(repo, nil).ForWorkspace(identitymodel.InstallationWorkspaceID)
+	service, _ := identitybusiness.NewIdentityDomainService(repo, nil).ForWorkspace("workspace-primary")
 	if err := service.UpsertUser(t.Context(), identitymodel.IdentityUser{ID: "user-a", Name: "A", Email: "Person@Example.com"}); err != nil {
 		t.Fatalf("upsert first user: %v", err)
 	}
@@ -188,7 +188,7 @@ func TestIdentityServiceRejectsDuplicateUserEmails(t *testing.T) {
 
 func TestIdentityServiceRejectsMissingAndDuplicateSiblingDepartmentNames(t *testing.T) {
 	repo := identitypersistence.NewMemoryIdentityStore()
-	service, _ := identitybusiness.NewIdentityDomainService(repo, nil).ForWorkspace(identitymodel.InstallationWorkspaceID)
+	service, _ := identitybusiness.NewIdentityDomainService(repo, nil).ForWorkspace("workspace-primary")
 	if err := service.UpsertDepartment(t.Context(), identitymodel.IdentityDepartment{ID: "root-a", Name: "Company"}); err != nil {
 		t.Fatalf("upsert first root department: %v", err)
 	}
@@ -219,7 +219,7 @@ func TestIdentityServiceRejectsMissingAndDuplicateSiblingDepartmentNames(t *test
 
 func TestIdentityServiceKeepsDepartmentSortOrder(t *testing.T) {
 	repo := identitypersistence.NewMemoryIdentityStore()
-	service, _ := identitybusiness.NewIdentityDomainService(repo, nil).ForWorkspace(identitymodel.InstallationWorkspaceID)
+	service, _ := identitybusiness.NewIdentityDomainService(repo, nil).ForWorkspace("workspace-primary")
 	if err := service.UpsertDepartment(t.Context(), identitymodel.IdentityDepartment{ID: "later", Name: "Later", SortOrder: 20}); err != nil {
 		t.Fatalf("upsert later department: %v", err)
 	}

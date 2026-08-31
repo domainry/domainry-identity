@@ -12,12 +12,12 @@ import (
 
 func TestIdentityServiceRemoveMenuDeletesDescendantsAndRoleAssignments(t *testing.T) {
 	store := identitypersistence.NewMemoryIdentityStore()
-	identity, _ := identitybusiness.NewIdentityDomainService(store, nil).ForWorkspace(identitymodel.InstallationWorkspaceID)
+	identity, _ := identitybusiness.NewIdentityDomainService(store, nil).ForWorkspace("workspace-primary")
 	identity.ReplaceRoleDefinitions([]identitymodel.RoleSchema{
 		{Key: "admin", Name: "Admin", Permissions: []string{"workspace.admin"}},
 	})
 	for _, role := range []identitymodel.IdentityRole{{ID: "admin", Key: "admin", Label: "Admin"}} {
-		seedIdentityDirectoryRole(t, store, identitymodel.InstallationWorkspaceID, role)
+		seedIdentityDirectoryRole(t, store, "workspace-primary", role)
 	}
 	for _, menu := range []identitymodel.IdentityMenu{
 		{ID: "parent", Key: "parent-key", Label: "Parent"},

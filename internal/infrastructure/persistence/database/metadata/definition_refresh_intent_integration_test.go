@@ -26,7 +26,7 @@ func TestPublishDefinitionUsesIdentityOwnedRefreshIntent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	repository := NewMetadataStore(store)
+	repository := NewMetadataStore(store, "workspace-primary")
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	definition, err := repository.PublishDefinition(
 		t.Context(),
@@ -41,7 +41,7 @@ func TestPublishDefinitionUsesIdentityOwnedRefreshIntent(t *testing.T) {
 		},
 		auditmodel.AuditEvent{
 			ID:          "audit-metadata-order",
-			WorkspaceID: identitymodel.InstallationWorkspaceID,
+			WorkspaceID: "workspace-primary",
 			Event:       "metadata_definition.saved",
 			ObjectKey:   "object",
 			RecordID:    "order",
@@ -58,7 +58,7 @@ func TestPublishDefinitionUsesIdentityOwnedRefreshIntent(t *testing.T) {
 	var status, operation string
 	if err := store.DB().QueryRowContext(t.Context(),
 		"SELECT status, operation FROM _identity_metadata_refresh_intents WHERE workspace_id = ? AND idempotency_key = ?",
-		identitymodel.InstallationWorkspaceID,
+		"workspace-primary",
 		definition.SchemaHash,
 	).Scan(&status, &operation); err != nil {
 		t.Fatal(err)
@@ -79,7 +79,7 @@ func TestPublishDefinitionUsesIdentityOwnedRefreshIntent(t *testing.T) {
 	}
 	if err := store.DB().QueryRowContext(t.Context(),
 		"SELECT status FROM _identity_metadata_refresh_intents WHERE workspace_id = ? AND idempotency_key = ?",
-		identitymodel.InstallationWorkspaceID,
+		"workspace-primary",
 		definition.SchemaHash,
 	).Scan(&status); err != nil {
 		t.Fatal(err)

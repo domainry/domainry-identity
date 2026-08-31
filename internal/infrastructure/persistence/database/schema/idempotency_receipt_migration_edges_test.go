@@ -19,11 +19,13 @@ func scriptedMigrationStore(t *testing.T, state *schemaSQLState) scriptedSchemaS
 func TestBackfillIdempotencyReceiptRowsFailureAndLegacyEdges(t *testing.T) {
 	spec := migrationSpecFixture()
 	for name, state := range map[string]schemaSQLState{
-		"query":    {querySteps: []schemaSQLQueryStep{{err: errSchemaSQL}}},
-		"scan":     {querySteps: []schemaSQLQueryStep{{columns: []string{"short"}, rows: [][]driver.Value{{"id"}}}}},
-		"terminal": {querySteps: []schemaSQLQueryStep{{columns: []string{"id", "workspace_id", "idempotency_key", "request_fingerprint", "status", "object_key"}, nextErr: errSchemaSQL}}},
-		"empty-id": {querySteps: []schemaSQLQueryStep{{columns: []string{"id", "workspace_id", "idempotency_key", "request_fingerprint", "status", "object_key"}, rows: [][]driver.Value{{"", "", "", "", "", ""}}}}},
-		"update":   {querySteps: []schemaSQLQueryStep{{columns: []string{"id", "workspace_id", "idempotency_key", "request_fingerprint", "status", "object_key"}, rows: [][]driver.Value{{"receipt", "", "", "", "", ""}}}}, execSteps: []schemaSQLExecStep{{err: errSchemaSQL}}},
+		"query":             {querySteps: []schemaSQLQueryStep{{err: errSchemaSQL}}},
+		"scan":              {querySteps: []schemaSQLQueryStep{{columns: []string{"short"}, rows: [][]driver.Value{{"id"}}}}},
+		"terminal":          {querySteps: []schemaSQLQueryStep{{columns: []string{"id", "workspace_id", "idempotency_key", "request_fingerprint", "status", "object_key"}, nextErr: errSchemaSQL}}},
+		"empty-id":          {querySteps: []schemaSQLQueryStep{{columns: []string{"id", "workspace_id", "idempotency_key", "request_fingerprint", "status", "object_key"}, rows: [][]driver.Value{{"", "", "", "", "", ""}}}}},
+		"missing-workspace": {querySteps: []schemaSQLQueryStep{{columns: []string{"id", "workspace_id", "idempotency_key", "request_fingerprint", "status", "object_key"}, rows: [][]driver.Value{{"receipt", "", "", "", "", ""}}}}},
+		"default-workspace": {querySteps: []schemaSQLQueryStep{{columns: []string{"id", "workspace_id", "idempotency_key", "request_fingerprint", "status", "object_key"}, rows: [][]driver.Value{{"receipt", "default", "", "", "", ""}}}}},
+		"update":            {querySteps: []schemaSQLQueryStep{{columns: []string{"id", "workspace_id", "idempotency_key", "request_fingerprint", "status", "object_key"}, rows: [][]driver.Value{{"receipt", "workspace-primary", "", "", "", ""}}}}, execSteps: []schemaSQLExecStep{{err: errSchemaSQL}}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			store := scriptedMigrationStore(t, &state)
@@ -32,7 +34,7 @@ func TestBackfillIdempotencyReceiptRowsFailureAndLegacyEdges(t *testing.T) {
 			}
 		})
 	}
-	state := schemaSQLState{querySteps: []schemaSQLQueryStep{{columns: []string{"id", "workspace_id", "idempotency_key", "request_fingerprint", "status", "object_key"}, rows: [][]driver.Value{{"receipt", "", "", "", "", ""}}}}}
+	state := schemaSQLState{querySteps: []schemaSQLQueryStep{{columns: []string{"id", "workspace_id", "idempotency_key", "request_fingerprint", "status", "object_key"}, rows: [][]driver.Value{{"receipt", "workspace-primary", "", "", "", ""}}}}, execSteps: []schemaSQLExecStep{{}}}
 	if err := backfillIdempotencyReceiptRows(t.Context(), scriptedMigrationStore(t, &state), spec); err != nil {
 		t.Fatalf("legacy backfill=%v", err)
 	}

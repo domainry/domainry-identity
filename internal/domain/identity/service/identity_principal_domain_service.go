@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/domainry/domainry-foundation/requestcontext"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
@@ -17,7 +18,12 @@ func NewIdentityPrincipalDomainService(roles func() []identitymodel.RoleSchema, 
 	return &IdentityPrincipalDomainService{roles: roles, defaultRoleKey: defaultRoleKey}
 }
 
-func (s *IdentityPrincipalDomainService) Resolve(_ context.Context, userID, roleKey, alternateRoleKey string) identitymodel.Principal {
+func (s *IdentityPrincipalDomainService) Resolve(ctx context.Context, userID, roleKey, alternateRoleKey string) identitymodel.Principal {
+	workspace, err := identitymodel.NewWorkspaceID(requestcontext.WorkspaceID(ctx))
+	if err != nil {
+		return identitymodel.Principal{UserID: strings.TrimSpace(userID), Known: false}
+	}
+	workspaceID := workspace.String()
 	userID = valueOrDefault(userID, "admin")
 	if strings.TrimSpace(roleKey) == "" {
 		roleKey = alternateRoleKey
@@ -30,12 +36,12 @@ func (s *IdentityPrincipalDomainService) Resolve(_ context.Context, userID, role
 		roles = s.roles()
 	}
 	if len(roles) == 0 {
-		return identitymodel.Principal{UserID: userID, WorkspaceID: "default", Known: true, Role: identitymodel.RoleSchema{Key: "developer", Name: "Developer", Permissions: []string{"workspace.admin"}, RecordScope: "all_records"}}
+		return identitymodel.Principal{UserID: userID, WorkspaceID: workspaceID, Known: true, Role: identitymodel.RoleSchema{Key: "developer", Name: "Developer", Permissions: []string{"workspace.admin"}, RecordScope: "all_records"}}
 	}
 	for _, role := range roles {
 		if role.Key == strings.TrimSpace(roleKey) {
-			return identitymodel.Principal{UserID: userID, WorkspaceID: "default", Role: role, Known: true}
+			return identitymodel.Principal{UserID: userID, WorkspaceID: workspaceID, Role: role, Known: true}
 		}
 	}
-	return identitymodel.Principal{UserID: userID, WorkspaceID: "default", Known: false}
+	return identitymodel.Principal{UserID: userID, WorkspaceID: workspaceID, Known: false}
 }

@@ -12,13 +12,13 @@ import (
 
 func TestIdentityServiceSearchRolesAcrossRequestedFieldsAndPaginates(t *testing.T) {
 	store := identitypersistence.NewMemoryIdentityStore()
-	identity, _ := identitybusiness.NewIdentityDomainService(store, nil).ForWorkspace(identitymodel.InstallationWorkspaceID)
+	identity, _ := identitybusiness.NewIdentityDomainService(store, nil).ForWorkspace("workspace-primary")
 	for _, role := range []identitymodel.IdentityRole{
 		{ID: "admin", Key: "admin", Label: "Admin"},
 		{ID: "finance-reviewer", Key: "finance_reviewer", Label: "Finance Reviewer"},
 		{ID: "sales-manager", Key: "sales_manager", Label: "Sales Manager"},
 	} {
-		seedIdentityDirectoryRole(t, store, identitymodel.InstallationWorkspaceID, role)
+		seedIdentityDirectoryRole(t, store, "workspace-primary", role)
 	}
 
 	byLabel, err := identity.SearchRoles(t.Context(), identitymodel.IdentityListQuery{

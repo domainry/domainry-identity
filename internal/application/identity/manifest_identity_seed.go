@@ -245,9 +245,6 @@ func SyncIdentitySeeds(ctx context.Context, checkpoint manifestrepository.Identi
 	seedSignature := seedSyncSignature(manifest, seed)
 	if syncedVersion == seedSignature {
 		workspaceID := manifestIdentityWorkspaceID(ctx)
-		if workspaceID == identitymodel.InstallationWorkspaceID {
-			return nil
-		}
 		roles, listErr := identityStore.ListIdentityRoles(ctx, workspaceID)
 		if listErr != nil {
 			return listErr
@@ -295,10 +292,7 @@ func SyncIdentitySeeds(ctx context.Context, checkpoint manifestrepository.Identi
 }
 
 func manifestIdentityWorkspaceID(ctx context.Context) string {
-	if workspaceID := requestcontext.WorkspaceID(ctx); workspaceID != "" {
-		return workspaceID
-	}
-	return identitymodel.InstallationWorkspaceID
+	return requestcontext.WorkspaceID(ctx)
 }
 
 func retireRemovedPlatformIdentityMenus(ctx context.Context, identityStore identityrepository.IdentitySeedRepository) error {

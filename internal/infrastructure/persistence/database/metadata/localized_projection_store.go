@@ -8,7 +8,6 @@ import (
 	"sort"
 	"strings"
 
-	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
 	ormbuilder "github.com/domainry/domainry-orm/query"
 )
@@ -29,7 +28,7 @@ func (s MetadataStore) syncMetadataLocalizedTextTx(ctx context.Context, tx *sql.
 		return nil
 	}
 	projections := metadataLocalizedProjections(rawI18n)
-	workspaceID := identitymodel.InstallationWorkspaceID
+	workspaceID := s.tenantWorkspaceID(ctx)
 	entityType, entityKey := strings.TrimSpace(resourceType), strings.TrimSpace(resourceKey)
 	statement, arguments, err := ormbuilder.NewWorkspaceDeleteBuilder(s.store.SQLRenderer, "_identity_localized_texts", workspaceID).
 		Where(ormbuilder.And(ormbuilder.Equal("entity_type", entityType), ormbuilder.Equal("entity_key", entityKey), ormbuilder.Equal("source_kind", "metadata_definition"))).Build()

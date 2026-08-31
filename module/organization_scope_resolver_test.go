@@ -45,10 +45,10 @@ func TestFactoryWiresBorrowedOrganizationScopeResolverIntoPrincipalBuild(t *test
 	t.Cleanup(func() { _ = db.Close() })
 	called := false
 	factory := NewFactory(Options{DatabaseDriver: "sqlite", DatabasePath: dbPath})
-	binding, err := factory.OpenWithDatabase(t.Context(), identitysdk.ApplicationRef{WorkspaceID: "default", ApplicationKey: "runtime"}, identitysdk.DatabaseHandle{
+	binding, err := factory.OpenWithDatabase(t.Context(), identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "runtime"}, identitysdk.DatabaseHandle{
 		Pool: db, Driver: "sqlite", FilePath: dbPath,
 		OrganizationScopeResolver: func(_ context.Context, workspaceID string, profileIDs []string) (identitysdk.OrganizationScopes, error) {
-			called = workspaceID == "default" && reflect.DeepEqual(profileIDs, []string{"workforce-admin"})
+			called = workspaceID == "workspace-primary" && reflect.DeepEqual(profileIDs, []string{"workforce-admin"})
 			return identitysdk.OrganizationScopes{StoreIDs: []string{"store-1"}}, nil
 		},
 	})
@@ -60,7 +60,7 @@ func TestFactoryWiresBorrowedOrganizationScopeResolverIntoPrincipalBuild(t *test
 	if !ok {
 		t.Fatalf("binding type=%T", binding)
 	}
-	ctx := requestcontext.WithWorkspaceID(t.Context(), "default")
+	ctx := requestcontext.WithWorkspaceID(t.Context(), "workspace-primary")
 	if err := module.runtime.Identity.UpsertWorkforceProfile(ctx, identitymodel.IdentityWorkforceProfile{
 		ID: "workforce-admin", OrganizationID: "organization", IdentityUserID: "admin", WorkerNo: "A-1",
 		WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive,

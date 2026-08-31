@@ -32,10 +32,10 @@ func TestIdentityUserGlobalNameFieldsRoundTripAndRemainSearchable(t *testing.T) 
 		NamePrefix: "Dr.", NameSuffix: "PhD", NativeName: "마리아 카레뇨", NameLocale: "es-CO",
 		Email: "maria@example.com", Phone: "+1-555-0100", Status: identitymodel.IdentityStatusActive,
 	}
-	if err := store.UpsertIdentityUser(t.Context(), "default", want); err != nil {
+	if err := store.UpsertIdentityUser(t.Context(), "workspace-primary", want); err != nil {
 		t.Fatal(err)
 	}
-	got, found, err := store.GetIdentityUser(t.Context(), "default", want.ID)
+	got, found, err := store.GetIdentityUser(t.Context(), "workspace-primary", want.ID)
 	expected := want
 	expected.AccountType = identitymodel.IdentityAccountHuman
 	expected.Version = 1
@@ -45,7 +45,7 @@ func TestIdentityUserGlobalNameFieldsRoundTripAndRemainSearchable(t *testing.T) 
 		t.Fatalf("global name round trip got=%#v found=%v err=%v want=%#v", got, found, err, expected)
 	}
 	for field, search := range map[string]string{"family_name": "Quiñones", "native_name": "카레뇨", "given_name": "María"} {
-		page, searchErr := store.SearchIdentityUsers(t.Context(), "default", identitymodel.IdentityListQuery{
+		page, searchErr := store.SearchIdentityUsers(t.Context(), "workspace-primary", identitymodel.IdentityListQuery{
 			PageSize: 20, Search: search, SearchFields: []string{field},
 			Sort: []identitymodel.IdentitySortRule{{Field: "id", Direction: "asc"}},
 		})
@@ -74,7 +74,7 @@ func TestEnsureIdentitySchemaAddsGlobalNameColumnsWithoutChangingLegacyDisplayNa
 		updated_at TEXT NOT NULL
 	);
 	INSERT INTO _identity_users (id, workspace_id, name, email, phone, status, created_at, updated_at)
-	VALUES ('legacy-user', 'default', '单名', 'legacy@example.com', '', 'active', 'before', 'before');`); err != nil {
+	VALUES ('legacy-user', 'workspace-primary', '单名', 'legacy@example.com', '', 'active', 'before', 'before');`); err != nil {
 		t.Fatal(err)
 	}
 	if err := identityStore.EnsureIdentitySchema(t.Context()); err != nil {
@@ -85,7 +85,7 @@ func TestEnsureIdentitySchemaAddsGlobalNameColumnsWithoutChangingLegacyDisplayNa
 	}
 	var name, given, middle, family, prefix, suffix, native, locale string
 	if err := identityStore.DB().QueryRow(`SELECT name, given_name, middle_name, family_name, name_prefix, name_suffix, native_name, name_locale
-		FROM _identity_users WHERE workspace_id = 'default' AND id = 'legacy-user'`).
+		FROM _identity_users WHERE workspace_id = 'workspace-primary' AND id = 'legacy-user'`).
 		Scan(&name, &given, &middle, &family, &prefix, &suffix, &native, &locale); err != nil {
 		t.Fatal(err)
 	}

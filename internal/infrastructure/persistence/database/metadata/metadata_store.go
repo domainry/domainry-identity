@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/domainry/domainry-foundation/requestcontext"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	manifestmodel "github.com/domainry/domainry-identity/internal/domain/manifest/model"
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
@@ -18,14 +19,26 @@ import (
 )
 
 type MetadataStore struct {
-	store *database.IdentityStore
-	db    *sql.DB
+	store       *database.IdentityStore
+	db          *sql.DB
+	workspaceID string
 }
 
 var _ metadatarepository.MetadataRepository = MetadataStore{}
 
-func NewMetadataStore(store *database.IdentityStore) MetadataStore {
-	return MetadataStore{store: store, db: store.DB()}
+func NewMetadataStore(store *database.IdentityStore, workspaceIDs ...string) MetadataStore {
+	workspaceID := ""
+	if len(workspaceIDs) > 0 {
+		workspaceID = strings.TrimSpace(workspaceIDs[0])
+	}
+	return MetadataStore{store: store, db: store.DB(), workspaceID: workspaceID}
+}
+
+func (r MetadataStore) tenantWorkspaceID(ctx context.Context) string {
+	if workspaceID := strings.TrimSpace(requestcontext.WorkspaceID(ctx)); workspaceID != "" {
+		return workspaceID
+	}
+	return strings.TrimSpace(r.workspaceID)
 }
 
 func (r MetadataStore) database() *sql.DB {

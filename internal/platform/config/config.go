@@ -108,6 +108,7 @@ type Config struct {
 	IdentityApplicationServiceCredentials map[string]string
 	IdentityApplicationRateLimitPerMinute int
 	IdentityOperationsAccessToken         string
+	IdentityWorkspaceID                   string
 	IdentityBrowserApplicationKey         string
 	IdentityBrowserReturnURLs             []string
 	IdentityDataSecretKey                 string
@@ -207,6 +208,7 @@ func FromEnv() Config {
 		IdentityApplicationServiceCredentials: keyMapEnv("IDENTITY_APPLICATION_SERVICE_CREDENTIALS"),
 		IdentityApplicationRateLimitPerMinute: intEnv("IDENTITY_APPLICATION_RATE_LIMIT_PER_MINUTE", 1200),
 		IdentityOperationsAccessToken:         strings.TrimSpace(os.Getenv("IDENTITY_OPERATIONS_ACCESS_TOKEN")),
+		IdentityWorkspaceID:                   strings.TrimSpace(os.Getenv("IDENTITY_WORKSPACE_ID")),
 		IdentityBrowserApplicationKey:         env("IDENTITY_BROWSER_APPLICATION_KEY", "domainry-identity-admin"),
 		IdentityBrowserReturnURLs:             csvEnv("IDENTITY_BROWSER_RETURN_URLS", defaultIdentityBrowserReturnURLs(environment)),
 		IdentityDataSecretKey:                 env("IDENTITY_DATA_SECRET_KEY", DevIdentityDataSecret),

@@ -31,9 +31,10 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 	cfg.ManifestPath = filepath.Join(projectRoot, "domainry.template.json")
 	cfg.AuthIssuer = issuer
 	cfg.AuthAudience = "domainry-runtime"
+	cfg.IdentityWorkspaceID = "workspace-primary"
 	serviceCredential := "runtime-service-token"
 	notificationCredential := "notification-service-token"
-	cfg.IdentityApplicationServiceCredentials = map[string]string{"default/orders-runtime": serviceCredential, "default/domainry-notification": notificationCredential}
+	cfg.IdentityApplicationServiceCredentials = map[string]string{"workspace-primary/orders-runtime": serviceCredential, "tenant-primary/workspace-primary/domainry-notification": notificationCredential}
 
 	identityServer, err := httpserver.New(t.Context(), cfg)
 	if err != nil {
@@ -46,7 +47,7 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 	if testServer.URL != issuer {
 		t.Fatalf("test issuer=%q server URL=%q", issuer, testServer.URL)
 	}
-	unauthorizedRequest, err := http.NewRequestWithContext(t.Context(), http.MethodPost, testServer.URL+"/identity/runtime/directory/users", bytes.NewBufferString(`{"application":{"workspace_id":"default","application_key":"orders-runtime"}}`))
+	unauthorizedRequest, err := http.NewRequestWithContext(t.Context(), http.MethodPost, testServer.URL+"/identity/runtime/directory/users", bytes.NewBufferString(`{"application":{"workspace_id":"workspace-primary","application_key":"orders-runtime"}}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +60,7 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 	if unauthorizedResponse.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("directory endpoint without service credential status=%d", unauthorizedResponse.StatusCode)
 	}
-	wrongScopeRequest, err := http.NewRequestWithContext(t.Context(), http.MethodPost, testServer.URL+"/identity/runtime/directory/users", bytes.NewBufferString(`{"application":{"workspace_id":"default","application_key":"notify-runtime"}}`))
+	wrongScopeRequest, err := http.NewRequestWithContext(t.Context(), http.MethodPost, testServer.URL+"/identity/runtime/directory/users", bytes.NewBufferString(`{"application":{"workspace_id":"workspace-primary","application_key":"notify-runtime"}}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +76,7 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 	}
 
 	factory := identityremote.NewFactory(identityremote.Config{
-		Endpoint: testServer.URL, WorkspaceID: "default", Issuer: issuer,
+		Endpoint: testServer.URL, WorkspaceID: "workspace-primary", Issuer: issuer,
 		Audience: "orders-runtime", ServiceAccessToken: serviceCredential,
 		HTTPClient: testServer.Client(),
 	})
@@ -88,7 +89,7 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 		t.Fatalf("mode=%q", binding.Descriptor().Mode)
 	}
 	notificationFactory := identityremote.NewFactory(identityremote.Config{
-		Endpoint: testServer.URL, TenantID: "default", WorkspaceID: "default", Issuer: issuer,
+		Endpoint: testServer.URL, TenantID: "tenant-primary", WorkspaceID: "workspace-primary", Issuer: issuer,
 		Audience: "domainry-notification", ServiceAccessToken: notificationCredential,
 		HTTPClient: testServer.Client(),
 	})
@@ -99,7 +100,7 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 	t.Cleanup(func() { _ = notificationBinding.Close(t.Context()) })
 	notificationCatalog := identity.AuthorizationCatalog{
 		ContractVersion: identity.CatalogVersionV1,
-		Application:     identity.ApplicationRef{TenantID: "default", WorkspaceID: "default", ApplicationKey: "domainry-notification"},
+		Application:     identity.ApplicationRef{TenantID: "tenant-primary", WorkspaceID: "workspace-primary", ApplicationKey: "domainry-notification"},
 		Resources:       []identity.ResourceDefinition{{Key: "notification_event", SupportedFacts: []string{"tenant_id", "workspace_id", "application_key"}}},
 		Actions:         []identity.ActionDefinition{{Resource: "notification_event", Action: "publish", ServiceCallable: true}},
 	}
@@ -124,7 +125,7 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 	catalog := identity.AuthorizationCatalog{
 		ContractVersion: identity.CatalogVersionV1,
 		Application: identity.ApplicationRef{
-			WorkspaceID: "default", ApplicationKey: "orders-runtime",
+			WorkspaceID: "workspace-primary", ApplicationKey: "orders-runtime",
 			RedirectURLs: []string{"http://localhost:3100/auth/callback"},
 		},
 		Resources: []identity.ResourceDefinition{{Key: "customer", Fields: []string{"id", "owner_id"}, SupportedFacts: []string{"id", "owner_id"}}},
@@ -136,7 +137,7 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 	}
 
 	identitycontracttest.Run(t, identitycontracttest.Fixture{
-		Binding: binding, WorkspaceID: "default", ApplicationKey: "orders-runtime", Login: "admin@example.com", Password: "Domainry@2026",
+		Binding: binding, WorkspaceID: "workspace-primary", ApplicationKey: "orders-runtime", Login: "admin@example.com", Password: "Domainry@2026",
 		Resource: "customer", Action: "read", CatalogRevision: receipt.Revision,
 	})
 }

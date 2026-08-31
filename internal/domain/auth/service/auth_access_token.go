@@ -3,6 +3,7 @@ package service
 import authmodel "github.com/domainry/domainry-identity/internal/domain/auth/model"
 
 import authrepository "github.com/domainry/domainry-identity/internal/domain/auth/repository"
+import identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 
 import (
 	"context"
@@ -79,7 +80,9 @@ func (s *AuthDomainService) VerifySignedAccessToken(ctx context.Context, token s
 		return claims, forbidden("auth.invalid_token")
 	}
 	now := time.Now()
-	claims.WorkspaceID = valueOrDefault(claims.WorkspaceID, "default")
+	if _, err := identitymodel.NewWorkspaceID(claims.WorkspaceID); err != nil {
+		return claims, forbidden("auth.workspace_scope_required")
+	}
 	// Audience is application-scoped. Registration is checked before issuance
 	// and resource servers compare it with their expected ApplicationKey. The
 	// Identity issuer therefore validates presence here instead of incorrectly

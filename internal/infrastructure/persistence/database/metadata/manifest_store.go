@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/domainry/domainry-foundation/requestcontext"
-	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	manifestmodel "github.com/domainry/domainry-identity/internal/domain/manifest/model"
 	ormbuilder "github.com/domainry/domainry-orm/query"
 )
@@ -28,7 +27,7 @@ type metadataResourceSeed struct {
 }
 
 func (s MetadataStore) EnsureManifestMetadata(ctx context.Context, seed manifestmodel.ManifestSchema) error {
-	ctx = manifestMetadataContext(ctx)
+	ctx = s.manifestMetadataContext(ctx)
 	if err := s.syncBusinessMetadataDefinitions(ctx, seed); err != nil {
 		return err
 	}
@@ -75,7 +74,7 @@ func (s MetadataStore) EnsureManifestMetadata(ctx context.Context, seed manifest
 }
 
 func (s MetadataStore) SyncManifestMetadata(ctx context.Context, seed manifestmodel.ManifestSchema) error {
-	ctx = manifestMetadataContext(ctx)
+	ctx = s.manifestMetadataContext(ctx)
 	if err := s.syncBusinessMetadataDefinitions(ctx, seed); err != nil {
 		return err
 	}
@@ -115,15 +114,13 @@ func (s MetadataStore) SyncManifestMetadata(ctx context.Context, seed manifestmo
 	return nil
 }
 
-// manifestMetadataContext binds installation-owned manifest metadata to the
-// compatibility workspace when startup does not run inside an HTTP request.
-// An explicit caller workspace is preserved so request-scoped sync cannot be
-// silently redirected to another tenant.
-func manifestMetadataContext(ctx context.Context) context.Context {
+// manifestMetadataContext binds installation-owned metadata only to the
+// explicitly initialized application workspace.
+func (s MetadataStore) manifestMetadataContext(ctx context.Context) context.Context {
 	if requestcontext.WorkspaceID(ctx) != "" {
 		return ctx
 	}
-	return requestcontext.WithWorkspaceID(ctx, identitymodel.InstallationWorkspaceID)
+	return requestcontext.WithWorkspaceID(ctx, s.tenantWorkspaceID(ctx))
 }
 
 func manifestGeneratedSourceID(manifest manifestmodel.ManifestSchema) string {

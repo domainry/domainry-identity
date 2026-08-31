@@ -34,19 +34,19 @@ func TestIdentityProfileBindingStoreProvidesAtomicOptimisticIdempotentLifecycle(
 		t.Fatal(err)
 	}
 	for _, profileID := range []string{"member-1", "member-2"} {
-		if _, err := identityStore.DB().ExecContext(t.Context(), `INSERT INTO member_profile (workspace_id, id, created_at, updated_at, identity_user, email) VALUES ('default', ?, 'now', 'now', NULL, ?)`, profileID, profileID+"@example.com"); err != nil {
+		if _, err := identityStore.DB().ExecContext(t.Context(), `INSERT INTO member_profile (workspace_id, id, created_at, updated_at, identity_user, email) VALUES ('workspace-primary', ?, 'now', 'now', NULL, ?)`, profileID, profileID+"@example.com"); err != nil {
 			t.Fatal(err)
 		}
 	}
 	store := identitypersistence.NewIdentityProfileBindingStore(identitySQLStoreForProfileBindingTest(t, identityStore))
-	if _, err := identityStore.DB().ExecContext(t.Context(), `INSERT INTO member_profile (workspace_id, id, created_at, updated_at, identity_user, email) VALUES ('default', 'member-seeded', 'now', 'now', 'seed-user', 'seed@example.com')`); err != nil {
+	if _, err := identityStore.DB().ExecContext(t.Context(), `INSERT INTO member_profile (workspace_id, id, created_at, updated_at, identity_user, email) VALUES ('workspace-primary', 'member-seeded', 'now', 'now', 'seed-user', 'seed@example.com')`); err != nil {
 		t.Fatal(err)
 	}
 	adopted, err := store.ExecuteIdentityProfileBindingMutation(t.Context(), profileBindingMutation("member-seeded", identitymodel.IdentityProfileBindingBind, "seed-user", 0, "adopt-seed"))
 	if err != nil || adopted.Binding.Status != identitymodel.IdentityProfileBindingActive || adopted.Binding.IdentityUserID != "seed-user" || adopted.Binding.Version != 1 {
 		t.Fatalf("adopted=%#v err=%v", adopted, err)
 	}
-	loadedAdopted, found, err := store.GetIdentityProfileBinding(t.Context(), "default", "member_profile", "member-seeded")
+	loadedAdopted, found, err := store.GetIdentityProfileBinding(t.Context(), "workspace-primary", "member_profile", "member-seeded")
 	if err != nil || !found || loadedAdopted.IdentityUserID != "seed-user" {
 		t.Fatalf("loaded adopted=%#v found=%v err=%v", loadedAdopted, found, err)
 	}
@@ -78,11 +78,11 @@ func TestIdentityProfileBindingStoreProvidesAtomicOptimisticIdempotentLifecycle(
 	}
 	assertProfileBindingRecordUser(t, identityStore, "member-1", "user-1")
 	assertProfileBindingRole(t, identityStore, "user-1", "member-role", "active", "member", "member-1")
-	loaded, found, err := store.GetIdentityProfileBinding(t.Context(), "default", "member_profile", "member-1")
+	loaded, found, err := store.GetIdentityProfileBinding(t.Context(), "workspace-primary", "member_profile", "member-1")
 	if err != nil || !found || loaded.Version != 2 {
 		t.Fatalf("loaded=%#v found=%v err=%v", loaded, found, err)
 	}
-	events, err := store.ListIdentityProfileBindingEvents(t.Context(), "default", "member_profile", "member-1")
+	events, err := store.ListIdentityProfileBindingEvents(t.Context(), "workspace-primary", "member_profile", "member-1")
 	if err != nil || len(events) != 2 || events[1].Operation != identitymodel.IdentityProfileBindingClaim || events[1].Status != "pending" {
 		t.Fatalf("events=%#v err=%v", events, err)
 	}
@@ -92,7 +92,7 @@ func TestIdentityProfileBindingStoreProvidesAtomicOptimisticIdempotentLifecycle(
 		t.Fatalf("duplicate identity binding error=%v", err)
 	}
 	assertProfileBindingRecordUser(t, identityStore, "member-2", "")
-	if _, found, err := store.GetIdentityProfileBinding(t.Context(), "default", "member_profile", "member-2"); err != nil || found {
+	if _, found, err := store.GetIdentityProfileBinding(t.Context(), "workspace-primary", "member_profile", "member-2"); err != nil || found {
 		t.Fatalf("failed transaction persisted binding: found=%v err=%v", found, err)
 	}
 
@@ -132,7 +132,7 @@ func TestIdentityProfileBindingStoreProvidesAtomicOptimisticIdempotentLifecycle(
 func assertProfileBindingRole(t *testing.T, store *IdentityStore, userID, roleID, status, bindingKey, profileID string) {
 	t.Helper()
 	var actualStatus, actualBindingKey, actualProfileID string
-	if err := store.DB().QueryRowContext(t.Context(), `SELECT status, binding_key, profile_id FROM _identity_user_role_assignments WHERE workspace_id = 'default' AND user_id = ? AND role_id = ?`, userID, roleID).
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT status, binding_key, profile_id FROM _identity_user_role_assignments WHERE workspace_id = 'workspace-primary' AND user_id = ? AND role_id = ?`, userID, roleID).
 		Scan(&actualStatus, &actualBindingKey, &actualProfileID); err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,7 @@ func identitySQLStoreForProfileBindingTest(t *testing.T, store *IdentityStore) *
 
 func profileBindingMutation(profileID string, operation identitymodel.IdentityProfileBindingOperation, userID string, expectedVersion int64, idempotencyKey string) identitymodel.IdentityProfileBindingMutation {
 	return identitymodel.IdentityProfileBindingMutation{
-		WorkspaceID: "default", BindingKey: "member", ObjectKey: "member_profile", ProfileID: profileID, IdentityField: "identity_user",
+		WorkspaceID: "workspace-primary", BindingKey: "member", ObjectKey: "member_profile", ProfileID: profileID, IdentityField: "identity_user",
 		Operation: operation, IdentityUserID: userID, ExpectedVersion: expectedVersion, IdempotencyKey: idempotencyKey,
 		RequestFingerprint: string(operation) + ":" + userID + ":" + idempotencyKey, ActorID: "actor",
 	}
@@ -161,7 +161,7 @@ func profileBindingMutation(profileID string, operation identitymodel.IdentityPr
 func assertProfileBindingRecordUser(t *testing.T, store *IdentityStore, profileID, expected string) {
 	t.Helper()
 	var actual string
-	if err := store.DB().QueryRowContext(t.Context(), `SELECT COALESCE(identity_user, '') FROM member_profile WHERE workspace_id = 'default' AND id = ?`, profileID).Scan(&actual); err != nil {
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT COALESCE(identity_user, '') FROM member_profile WHERE workspace_id = 'workspace-primary' AND id = ?`, profileID).Scan(&actual); err != nil {
 		t.Fatal(err)
 	}
 	if actual != expected {

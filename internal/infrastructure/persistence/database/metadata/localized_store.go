@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 
-	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	manifestmodel "github.com/domainry/domainry-identity/internal/domain/manifest/model"
 
 	localizationmodel "github.com/domainry/domainry-identity/internal/domain/localization/model"
@@ -18,7 +17,7 @@ import (
 	ormbuilder "github.com/domainry/domainry-orm/query"
 )
 
-func manifestLocalizedTextSeeds(seed manifestmodel.ManifestSchema) []metadatamodel.LocalizedText {
+func manifestLocalizedTextSeeds(seed manifestmodel.ManifestSchema, workspaceID string) []metadatamodel.LocalizedText {
 	sourceID := strings.TrimSpace(seed.TemplateID)
 	if sourceID == "" {
 		sourceID = "generated-template"
@@ -34,7 +33,7 @@ func manifestLocalizedTextSeeds(seed manifestmodel.ManifestSchema) []metadatamod
 			return
 		}
 		out = append(out, metadatamodel.LocalizedText{
-			WorkspaceID: identitymodel.InstallationWorkspaceID,
+			WorkspaceID: workspaceID,
 			EntityType:  entityType,
 			EntityKey:   entityKey,
 			Property:    property,
@@ -62,7 +61,7 @@ func manifestLocalizedTextSeeds(seed manifestmodel.ManifestSchema) []metadatamod
 					continue
 				}
 				out = append(out, metadatamodel.LocalizedText{
-					WorkspaceID: identitymodel.InstallationWorkspaceID,
+					WorkspaceID: workspaceID,
 					EntityType:  entityType,
 					EntityKey:   entityKey,
 					Property:    property,
@@ -85,8 +84,8 @@ func manifestLocalizedTextSeeds(seed manifestmodel.ManifestSchema) []metadatamod
 			fieldKey := metadataJoinedKey(object.Key, field.Key)
 			addDefault("field", fieldKey, "name", field.Name)
 			addI18n("field", fieldKey, field.I18n)
-			addValueOptionDefaultTexts(&out, "field_option", fieldKey, field.Options, defaultLocale, sourceID)
-			addValueOptionI18n(&out, "field_option", fieldKey, field.Options, sourceID)
+			addValueOptionDefaultTexts(&out, "field_option", fieldKey, field.Options, defaultLocale, sourceID, workspaceID)
+			addValueOptionI18n(&out, "field_option", fieldKey, field.Options, sourceID, workspaceID)
 		}
 		for index, validation := range object.Validations {
 			key := validation.Key
@@ -135,7 +134,7 @@ func manifestDefaultLocale(seed manifestmodel.ManifestSchema) string {
 	return "en-US"
 }
 
-func addValueOptionI18n(out *[]metadatamodel.LocalizedText, entityType string, parentKey string, value any, sourceID string) {
+func addValueOptionI18n(out *[]metadatamodel.LocalizedText, entityType string, parentKey string, value any, sourceID, workspaceID string) {
 	for _, option := range localizedValueOptionMaps(value) {
 		key := strings.TrimSpace(fmt.Sprint(option["value"]))
 		if key == "" || key == "<nil>" {
@@ -156,7 +155,7 @@ func addValueOptionI18n(out *[]metadatamodel.LocalizedText, entityType string, p
 					continue
 				}
 				*out = append(*out, metadatamodel.LocalizedText{
-					WorkspaceID: identitymodel.InstallationWorkspaceID,
+					WorkspaceID: workspaceID,
 					EntityType:  entityType,
 					EntityKey:   metadataJoinedKey(parentKey, key),
 					Property:    strings.TrimSpace(property),
@@ -170,7 +169,7 @@ func addValueOptionI18n(out *[]metadatamodel.LocalizedText, entityType string, p
 	}
 }
 
-func addValueOptionDefaultTexts(out *[]metadatamodel.LocalizedText, entityType string, parentKey string, value any, locale string, sourceID string) {
+func addValueOptionDefaultTexts(out *[]metadatamodel.LocalizedText, entityType string, parentKey string, value any, locale string, sourceID, workspaceID string) {
 	locale = strings.TrimSpace(locale)
 	if locale == "" {
 		return
@@ -189,7 +188,7 @@ func addValueOptionDefaultTexts(out *[]metadatamodel.LocalizedText, entityType s
 				continue
 			}
 			*out = append(*out, metadatamodel.LocalizedText{
-				WorkspaceID: identitymodel.InstallationWorkspaceID,
+				WorkspaceID: workspaceID,
 				EntityType:  entityType,
 				EntityKey:   metadataJoinedKey(parentKey, key),
 				Property:    property,
@@ -229,7 +228,7 @@ func firstNonEmptyLocalizedText(values ...string) string {
 }
 
 func (s MetadataStore) syncManifestLocalizedTexts(ctx context.Context, tx *sql.Tx, manifest manifestmodel.ManifestSchema, now string) error {
-	for _, seed := range manifestLocalizedTextSeeds(manifest) {
+	for _, seed := range manifestLocalizedTextSeeds(manifest, s.tenantWorkspaceID(ctx)) {
 		if err := s.syncLocalizedText(ctx, tx, seed, now); err != nil {
 			return err
 		}

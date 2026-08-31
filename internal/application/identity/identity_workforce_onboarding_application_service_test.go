@@ -68,7 +68,7 @@ func onboardingApplicationRequest() IdentityWorkforceOnboardingRequest {
 
 func onboardingApplicationActor() identitymodel.Principal {
 	return identitymodel.Principal{
-		Known: true, UserID: "manager", WorkspaceID: "default",
+		Known: true, UserID: "manager", WorkspaceID: "workspace-primary",
 		Role: identitymodel.RoleSchema{RecordScope: "all_records"},
 	}
 }
@@ -76,7 +76,7 @@ func onboardingApplicationActor() identitymodel.Principal {
 func TestOnboardWorkforceBuildsOneAtomicMutation(t *testing.T) {
 	service, repository := onboardingApplicationFixture()
 	result, err := service.OnboardWorkforce(
-		requestcontext.WithWorkspaceID(t.Context(), "default"),
+		requestcontext.WithWorkspaceID(t.Context(), "workspace-primary"),
 		onboardingApplicationRequest(),
 		onboardingApplicationActor(),
 	)
@@ -97,7 +97,7 @@ func TestOnboardWorkforceBuildsOneAtomicMutation(t *testing.T) {
 }
 
 func TestOnboardWorkforceFailureBoundaries(t *testing.T) {
-	ctx := requestcontext.WithWorkspaceID(t.Context(), "default")
+	ctx := requestcontext.WithWorkspaceID(t.Context(), "workspace-primary")
 	request := onboardingApplicationRequest()
 	actor := onboardingApplicationActor()
 	service, repository := onboardingApplicationFixture()

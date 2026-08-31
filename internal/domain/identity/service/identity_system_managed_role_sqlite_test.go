@@ -31,13 +31,13 @@ func TestSystemManagedBusinessRoleReconciliationPersistsInSQLite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := repository.UpsertIdentityUser(t.Context(), "default", identitymodel.IdentityUser{ID: "user-1", Name: "Member", Email: "member@example.com", Status: identitymodel.IdentityStatusActive}); err != nil {
+	if err := repository.UpsertIdentityUser(t.Context(), "workspace-primary", identitymodel.IdentityUser{ID: "user-1", Name: "Member", Email: "member@example.com", Status: identitymodel.IdentityStatusActive}); err != nil {
 		t.Fatal(err)
 	}
-	if err := repository.UpsertIdentityRole(t.Context(), "default", identitymodel.IdentityRole{ID: "member-role", Key: "member", Label: "Member", Status: identitymodel.IdentityStatusActive}); err != nil {
+	if err := repository.UpsertIdentityRole(t.Context(), "workspace-primary", identitymodel.IdentityRole{ID: "member-role", Key: "member", Label: "Member", Status: identitymodel.IdentityStatusActive}); err != nil {
 		t.Fatal(err)
 	}
-	service, err := identityservice.NewIdentityDomainService(repository, nil).ForWorkspace("default")
+	service, err := identityservice.NewIdentityDomainService(repository, nil).ForWorkspace("workspace-primary")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestSystemManagedBusinessRoleReconciliationPersistsInSQLite(t *testing.T) {
 	if err := service.ReconcileSystemManagedBusinessRoles(t.Context(), "user-1"); err != nil {
 		t.Fatal(err)
 	}
-	assignments, err := repository.ListIdentityUserRoleAssignments(t.Context(), "default", "user-1")
+	assignments, err := repository.ListIdentityUserRoleAssignments(t.Context(), "workspace-primary", "user-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestSystemManagedBusinessRoleReconciliationPersistsInSQLite(t *testing.T) {
 	if err := service.ReconcileSystemManagedBusinessRoles(t.Context(), "user-1"); err != nil {
 		t.Fatal(err)
 	}
-	assignments, err = repository.ListIdentityUserRoleAssignments(t.Context(), "default", "user-1")
+	assignments, err = repository.ListIdentityUserRoleAssignments(t.Context(), "workspace-primary", "user-1")
 	if err != nil || len(assignments) != 1 {
 		t.Fatalf("assignments=%+v err=%v", assignments, err)
 	}

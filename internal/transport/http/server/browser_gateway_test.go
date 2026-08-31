@@ -23,6 +23,7 @@ func TestIdentityAdminBrowserGatewayRotatesHTTPOnlyRefreshCookie(t *testing.T) {
 	cfg.Environment = "development"
 	cfg.DatabaseDriver = "sqlite"
 	cfg.DBPath = filepath.Join(t.TempDir(), "identity.db")
+	cfg.IdentityWorkspaceID = "workspace-primary"
 	cfg.ManifestPath = filepath.Join(projectRoot, "domainry.template.json")
 
 	identityServer, err := httpserver.New(t.Context(), cfg)
@@ -33,7 +34,7 @@ func TestIdentityAdminBrowserGatewayRotatesHTTPOnlyRefreshCookie(t *testing.T) {
 	testServer := httptest.NewServer(identityServer.Routes())
 	t.Cleanup(testServer.Close)
 
-	login := browserRequest(t, testServer.Client(), http.MethodPost, testServer.URL+"/browser/auth/login", `{"workspace_id":"default","login":"admin@example.com","password":"Domainry@2026"}`, nil)
+	login := browserRequest(t, testServer.Client(), http.MethodPost, testServer.URL+"/browser/auth/login", `{"workspace_id":"workspace-primary","login":"admin@example.com","password":"Domainry@2026"}`, nil)
 	if login.StatusCode != http.StatusOK {
 		t.Fatalf("login status=%d body=%s", login.StatusCode, readResponseBody(t, login))
 	}
@@ -74,7 +75,7 @@ func TestIdentityAdminBrowserGatewayRotatesHTTPOnlyRefreshCookie(t *testing.T) {
 	}
 	_ = unsafe.Body.Close()
 
-	invalid := browserRequest(t, testServer.Client(), http.MethodPost, testServer.URL+"/browser/auth/login", `{"workspace_id":"default","login":"admin@example.com","password":"wrong"}`, nil)
+	invalid := browserRequest(t, testServer.Client(), http.MethodPost, testServer.URL+"/browser/auth/login", `{"workspace_id":"workspace-primary","login":"admin@example.com","password":"wrong"}`, nil)
 	if invalid.StatusCode != http.StatusForbidden {
 		t.Fatalf("invalid login status=%d body=%s", invalid.StatusCode, readResponseBody(t, invalid))
 	}
@@ -88,7 +89,7 @@ func browserRequest(t *testing.T, client *http.Client, method, target, body stri
 		t.Fatal(err)
 	}
 	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("X-Workspace-ID", "default")
+	request.Header.Set("X-Workspace-ID", "workspace-primary")
 	if cookie != nil {
 		request.AddCookie(cookie)
 	}

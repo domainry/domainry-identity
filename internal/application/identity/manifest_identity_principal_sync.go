@@ -35,10 +35,8 @@ func syncManifestIdentityRoles(ctx context.Context, identityStore identityreposi
 
 func syncManifestIdentityUsers(ctx context.Context, identityStore identityrepository.IdentitySeedRepository, desiredUsers []identitymodel.IdentityUser, desiredUserRoles []identitymodel.IdentityUserRoleAssignment) error {
 	workspaceID := manifestIdentityWorkspaceID(ctx)
-	// Manifest bootstrap is installation-owned. The explicit constant keeps the
-	// exceptional raw role-assignment writer visible to the architecture gate.
-	if workspaceID != identitymodel.InstallationWorkspaceID {
-		return fmt.Errorf("sync manifest identity users requires installation workspace, got %q", workspaceID)
+	if _, err := identitymodel.NewWorkspaceID(workspaceID); err != nil {
+		return fmt.Errorf("sync manifest identity users requires initialized workspace: %w", err)
 	}
 	for _, user := range desiredUsers {
 		if strings.TrimSpace(user.ID) == "" {

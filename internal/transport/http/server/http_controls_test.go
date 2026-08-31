@@ -81,6 +81,7 @@ func TestHTTPControlsApplyIndependentRateLimitsAndTimeout(t *testing.T) {
 		PublicRequestTimeout: time.Minute, TenantAdminRequestTimeout: time.Minute, OperationsRequestTimeout: time.Second,
 		PublicRateLimitPerMinute: 1, TenantAdminRateLimitPerMinute: 1, OperationsRateLimitPerMinute: 1,
 	})
+	support.initializedWorkspaceID = "workspace-primary"
 	now := time.Date(2026, time.August, 27, 12, 0, 0, 0, time.UTC)
 	support.controls.clock = func() time.Time { return now }
 	handler := support.middleware(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {

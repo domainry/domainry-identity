@@ -21,19 +21,19 @@ func TestFederatedLoginWorkspaceResolvesWithoutConsumingTransaction(t *testing.T
 	repository := NewAuthStoreWithKeyProvider(identityStore, store.SecretKeyProvider())
 	now := time.Date(2026, time.August, 27, 12, 0, 0, 0, time.UTC)
 	challenge := authmodel.AuthProviderChallenge{
-		WorkspaceID: "default", Provider: "oidc", State: "opaque-state",
+		WorkspaceID: "workspace-primary", Provider: "oidc", State: "opaque-state",
 		ExpiresAt: now.Add(time.Minute).Format(time.RFC3339Nano),
 	}
 	if err := repository.CreateAuthLoginTransaction(t.Context(), challenge); err != nil {
 		t.Fatal(err)
 	}
-	if workspaceID, found, err := repository.FederatedLoginWorkspace(t.Context(), "oidc", challenge.State, now); err != nil || !found || workspaceID != "default" {
+	if workspaceID, found, err := repository.FederatedLoginWorkspace(t.Context(), "oidc", challenge.State, now); err != nil || !found || workspaceID != "workspace-primary" {
 		t.Fatalf("workspace=%q found=%v err=%v", workspaceID, found, err)
 	}
 	if _, found, err := repository.ConsumeAuthLoginTransaction(t.Context(), "workspace-b", "oidc", challenge.State, now); err != nil || found {
 		t.Fatalf("cross-workspace consume found=%v err=%v", found, err)
 	}
-	if _, found, err := repository.ConsumeAuthLoginTransaction(t.Context(), "default", "oidc", challenge.State, now); err != nil || !found {
+	if _, found, err := repository.ConsumeAuthLoginTransaction(t.Context(), "workspace-primary", "oidc", challenge.State, now); err != nil || !found {
 		t.Fatalf("consume found=%v err=%v", found, err)
 	}
 	if workspaceID, found, err := repository.FederatedLoginWorkspace(t.Context(), "oidc", challenge.State, now); err != nil || found || workspaceID != "" {

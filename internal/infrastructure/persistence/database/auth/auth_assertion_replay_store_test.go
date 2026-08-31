@@ -19,15 +19,15 @@ func TestAuthAssertionReplayIsClaimedOnceAndExpires(t *testing.T) {
 	}
 	repository := NewAuthStore(identityStore)
 	expiresAt := time.Now().UTC().Add(time.Minute)
-	claimed, err := repository.ClaimAuthAssertion(t.Context(), "default", "saml", "https://idp.example.test", "assertion-1", expiresAt)
+	claimed, err := repository.ClaimAuthAssertion(t.Context(), "workspace-primary", "saml", "https://idp.example.test", "assertion-1", expiresAt)
 	if err != nil || !claimed {
 		t.Fatalf("first claim=%v err=%v", claimed, err)
 	}
-	claimed, err = repository.ClaimAuthAssertion(t.Context(), "default", "saml", "https://idp.example.test", "assertion-1", expiresAt)
+	claimed, err = repository.ClaimAuthAssertion(t.Context(), "workspace-primary", "saml", "https://idp.example.test", "assertion-1", expiresAt)
 	if err != nil || claimed {
 		t.Fatalf("replay claim=%v err=%v", claimed, err)
 	}
-	claimed, err = repository.ClaimAuthAssertion(t.Context(), "default", "saml", "https://idp.example.test", "expired", time.Now().UTC().Add(-time.Second))
+	claimed, err = repository.ClaimAuthAssertion(t.Context(), "workspace-primary", "saml", "https://idp.example.test", "expired", time.Now().UTC().Add(-time.Second))
 	if err != nil || claimed {
 		t.Fatalf("expired claim=%v err=%v", claimed, err)
 	}

@@ -53,8 +53,8 @@ func TestManifestIdentitySeedBuildsDepartmentHierarchyAndBootstrapUsers(t *testi
 				{ID: "employee", Name: "Employee", Email: "employee@example.com", RoleKeys: []string{"employee"}},
 			},
 			WorkforceProfiles: []identitymodel.ManifestIdentityWorkforceProfileSchema{
-				{ID: "manager_workforce", OrganizationID: "default", IdentityUserID: "manager", WorkerNo: "manager", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive, PrimaryAssignmentID: "manager_primary"},
-				{ID: "employee_workforce", OrganizationID: "default", IdentityUserID: "employee", WorkerNo: "employee", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive, PrimaryAssignmentID: "employee_primary"},
+				{ID: "manager_workforce", OrganizationID: "workspace-primary", IdentityUserID: "manager", WorkerNo: "manager", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive, PrimaryAssignmentID: "manager_primary"},
+				{ID: "employee_workforce", OrganizationID: "workspace-primary", IdentityUserID: "employee", WorkerNo: "employee", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive, PrimaryAssignmentID: "employee_primary"},
 			},
 			WorkforceAssignments: []identitymodel.ManifestIdentityWorkforceAssignmentSchema{
 				{ID: "manager_primary", WorkforceProfileID: "manager_workforce", OrganizationUnitID: "people", AssignmentType: identitymodel.IdentityWorkforceAssignmentPrimary, Status: identitymodel.IdentityStatusActive},

@@ -6,12 +6,9 @@ import (
 )
 
 var ErrWorkspaceIDRequired = errors.New("workspace id is required")
+var ErrWorkspaceIDReserved = errors.New("default workspace id is reserved and cannot identify a tenant")
 var ErrSystemScopeRequired = errors.New("valid system scope is required")
 var ErrPrincipalScopeRequired = errors.New("authenticated principal scope is required")
-
-// InstallationWorkspaceID is the explicit compatibility tenant used only by
-// installation/bootstrap flows that intentionally provision the starter workspace.
-const InstallationWorkspaceID = "default"
 
 // WorkspaceID is a non-empty tenant boundary. Its value is intentionally
 // private so Command/Query scope construction cannot bypass validation.
@@ -21,6 +18,9 @@ func NewWorkspaceID(value string) (WorkspaceID, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return WorkspaceID{}, ErrWorkspaceIDRequired
+	}
+	if strings.EqualFold(value, "default") {
+		return WorkspaceID{}, ErrWorkspaceIDReserved
 	}
 	return WorkspaceID{value: value}, nil
 }

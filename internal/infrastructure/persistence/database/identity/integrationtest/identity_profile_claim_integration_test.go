@@ -47,19 +47,19 @@ func TestUnboundProfileCanBeClaimedAfterAccountRegistrationWithoutTrustingClient
 	)`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := databaseStore.DB().ExecContext(t.Context(), `INSERT INTO member_profile VALUES ('default', 'member-1', NULL, 'member@example.com', 'now', 'now')`); err != nil {
+	if _, err := databaseStore.DB().ExecContext(t.Context(), `INSERT INTO member_profile VALUES ('workspace-primary', 'member-1', NULL, 'member@example.com', 'now', 'now')`); err != nil {
 		t.Fatal(err)
 	}
 	identityStore, err := identitypersistence.NewSQLIdentityStore(t.Context(), databaseStore.DB(), databaseStore.PersistenceEngine())
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx := requestcontext.WithWorkspaceID(t.Context(), "default")
+	ctx := requestcontext.WithWorkspaceID(t.Context(), "workspace-primary")
 	for _, user := range []identitymodel.IdentityUser{
 		{ID: "registered-user", Email: "member@example.com", Status: identitymodel.IdentityStatusActive},
 		{ID: "competing-user", Email: "member@example.com", Status: identitymodel.IdentityStatusActive},
 	} {
-		if err := identityStore.UpsertIdentityUser(ctx, "default", user); err != nil {
+		if err := identityStore.UpsertIdentityUser(ctx, "workspace-primary", user); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -85,7 +85,7 @@ func TestUnboundProfileCanBeClaimedAfterAccountRegistrationWithoutTrustingClient
 		IdentityUserID: "attacker-controlled", ClaimProofType: "email", ClaimProofValue: "member@example.com",
 		ExpectedVersion: 0, IdempotencyKey: "claim-1",
 	}
-	principal := identitymodel.Principal{Known: true, UserID: "registered-user", WorkspaceID: "default"}
+	principal := identitymodel.Principal{Known: true, UserID: "registered-user", WorkspaceID: "workspace-primary"}
 	receipt, err := service.Execute(ctx, request, principal)
 	if err != nil || receipt.Binding.IdentityUserID != "registered-user" {
 		t.Fatalf("receipt=%#v err=%v", receipt, err)
@@ -95,7 +95,7 @@ func TestUnboundProfileCanBeClaimedAfterAccountRegistrationWithoutTrustingClient
 		t.Fatalf("replay=%#v err=%v", replay, err)
 	}
 	request.ExpectedVersion, request.IdempotencyKey = 1, "claim-2"
-	if _, err := service.Execute(ctx, request, identitymodel.Principal{Known: true, UserID: "competing-user", WorkspaceID: "default"}); apperror.CodeOf(err) != "backend.identity.profile_already_bound" {
+	if _, err := service.Execute(ctx, request, identitymodel.Principal{Known: true, UserID: "competing-user", WorkspaceID: "workspace-primary"}); apperror.CodeOf(err) != "backend.identity.profile_already_bound" {
 		t.Fatalf("competing claim error=%v", err)
 	}
 }

@@ -24,6 +24,7 @@ func TestBindingRuntimeAssemblyReturnsDirectSDKBinding(t *testing.T) {
 	cfg.Environment = "development"
 	cfg.DatabaseDriver = "sqlite"
 	cfg.DBPath = filepath.Join(t.TempDir(), "identity.db")
+	cfg.IdentityWorkspaceID = "workspace-primary"
 	cfg.ManifestPath = filepath.Join(projectRoot, "domainry.template.json")
 	store, err := database.OpenContext(t.Context(), cfg)
 	if err != nil {
@@ -32,7 +33,7 @@ func TestBindingRuntimeAssemblyReturnsDirectSDKBinding(t *testing.T) {
 	if err := store.EnsureSchema(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	assembled, err := New(t.Context(), cfg, store, Options{})
+	assembled, err := New(t.Context(), cfg, store, Options{WorkspaceID: cfg.IdentityWorkspaceID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,6 +48,7 @@ func TestPublishedRuntimeCatalogParticipatesInRoleCandidateValidation(t *testing
 	projectRoot := filepath.Clean(filepath.Join(filepath.Dir(sourceFile), "..", ".."))
 	cfg := config.FromEnv()
 	cfg.Environment, cfg.DatabaseDriver, cfg.DBPath = "development", "sqlite", filepath.Join(t.TempDir(), "identity.db")
+	cfg.IdentityWorkspaceID = "workspace-primary"
 	cfg.ManifestPath = filepath.Join(projectRoot, "domainry.template.json")
 	store, err := database.OpenContext(t.Context(), cfg)
 	if err != nil {
@@ -55,14 +57,14 @@ func TestPublishedRuntimeCatalogParticipatesInRoleCandidateValidation(t *testing
 	if err := store.EnsureSchema(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	core, err := New(t.Context(), cfg, store, Options{})
+	core, err := New(t.Context(), cfg, store, Options{WorkspaceID: cfg.IdentityWorkspaceID})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = core.CloseContext(t.Context()) })
 
-	workspaceID := identitysdk.WorkspaceID(identitymodel.InstallationWorkspaceID)
-	ctx := requestcontext.WithWorkspaceID(t.Context(), identitymodel.InstallationWorkspaceID)
+	workspaceID := identitysdk.WorkspaceID(cfg.IdentityWorkspaceID)
+	ctx := requestcontext.WithWorkspaceID(t.Context(), cfg.IdentityWorkspaceID)
 	_, err = core.Binding.Catalog().Publish(ctx, identitysdk.AuthorizationCatalog{
 		ContractVersion: identitysdk.CatalogVersionV1,
 		Application:     identitysdk.ApplicationRef{WorkspaceID: workspaceID, ApplicationKey: "gym"},
@@ -85,6 +87,7 @@ func TestColdStartLoadsPublishedRoleDefinitions(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "identity.db")
 	cfg := config.FromEnv()
 	cfg.Environment, cfg.DatabaseDriver, cfg.DBPath = "development", "sqlite", dbPath
+	cfg.IdentityWorkspaceID = "workspace-primary"
 	cfg.ManifestPath = filepath.Join(projectRoot, "domainry.template.json")
 
 	open := func() *Core {
@@ -95,7 +98,7 @@ func TestColdStartLoadsPublishedRoleDefinitions(t *testing.T) {
 		if err := store.EnsureSchema(t.Context()); err != nil {
 			t.Fatal(err)
 		}
-		core, err := New(t.Context(), cfg, store, Options{})
+		core, err := New(t.Context(), cfg, store, Options{WorkspaceID: cfg.IdentityWorkspaceID})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -107,7 +110,7 @@ func TestColdStartLoadsPublishedRoleDefinitions(t *testing.T) {
 	_, err := first.MetadataStore.ApplyDefinitionMutations(t.Context(), identitymodel.NewSystemScope(identitymodel.SystemScopeInstallation, "test published role"), []metadatamodel.MetadataDefinitionMutation{{
 		Operation: "create", ResourceType: "role", ResourceKey: "member",
 		Request: metadatamodel.MetadataDefinitionUpsertRequest{ExpectedSchemaHash: &empty, Payload: payload},
-	}}, nil, &metadatamodel.MetadataDefinitionPublication{WorkspaceID: identitymodel.InstallationWorkspaceID})
+	}}, nil, &metadatamodel.MetadataDefinitionPublication{WorkspaceID: cfg.IdentityWorkspaceID})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -25,7 +25,7 @@ func TestRoleRequestDecisionIsAtomicAcrossEveryEntitlementAndRequestState(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	request, err := store.CreateIdentityRoleRequest(t.Context(), "default", identitymodel.IdentityRoleRequest{
+	request, err := store.CreateIdentityRoleRequest(t.Context(), "workspace-primary", identitymodel.IdentityRoleRequest{
 		ID: "request-1", UserID: "target", RequestedBy: "maker", RoleIDs: []string{"role-1", "role-2", "role-3"}, Status: "pending",
 	})
 	if err != nil {
@@ -42,28 +42,28 @@ func TestRoleRequestDecisionIsAtomicAcrossEveryEntitlementAndRequestState(t *tes
 		{UserID: "target", RoleID: "role-2", Source: "governance_request", Status: "active", GrantedBy: "checker"},
 		{UserID: "target", RoleID: "role-3", Source: "governance_request", Status: "active", GrantedBy: "checker"},
 	}
-	if err := store.ApplyIdentityRoleRequestDecision(t.Context(), "default", request, assignments, "pending"); err == nil {
+	if err := store.ApplyIdentityRoleRequestDecision(t.Context(), "workspace-primary", request, assignments, "pending"); err == nil {
 		t.Fatal("injected second entitlement failure was ignored")
 	}
-	persisted, err := store.ListIdentityUserRoleAssignments(t.Context(), "default", "target")
+	persisted, err := store.ListIdentityUserRoleAssignments(t.Context(), "workspace-primary", "target")
 	if err != nil || len(persisted) != 0 {
 		t.Fatalf("partial entitlements persisted=%#v err=%v", persisted, err)
 	}
-	requests, err := store.ListIdentityRoleRequests(t.Context(), "default", "", "")
+	requests, err := store.ListIdentityRoleRequests(t.Context(), "workspace-primary", "", "")
 	if err != nil || len(requests) != 1 || requests[0].Status != "pending" {
 		t.Fatalf("request left explainable state=%#v err=%v", requests, err)
 	}
 	if _, err := identityStore.DB().ExecContext(t.Context(), `DROP TRIGGER fail_second_entitlement`); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.ApplyIdentityRoleRequestDecision(t.Context(), "default", request, assignments, "pending"); err != nil {
+	if err := store.ApplyIdentityRoleRequestDecision(t.Context(), "workspace-primary", request, assignments, "pending"); err != nil {
 		t.Fatal(err)
 	}
-	persisted, err = store.ListIdentityUserRoleAssignments(t.Context(), "default", "target")
+	persisted, err = store.ListIdentityUserRoleAssignments(t.Context(), "workspace-primary", "target")
 	if err != nil || len(persisted) != 3 {
 		t.Fatalf("atomic entitlements=%#v err=%v", persisted, err)
 	}
-	if err := store.ApplyIdentityRoleRequestDecision(t.Context(), "default", request, assignments, "pending"); apperror.CodeOf(err) != "backend.identity.role_request_concurrent_decision" {
+	if err := store.ApplyIdentityRoleRequestDecision(t.Context(), "workspace-primary", request, assignments, "pending"); apperror.CodeOf(err) != "backend.identity.role_request_concurrent_decision" {
 		t.Fatalf("concurrent decision error=%v", err)
 	}
 }

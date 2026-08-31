@@ -33,7 +33,8 @@ import (
 )
 
 type Options struct {
-	Clock identitysdk.Clock
+	Clock       identitysdk.Clock
+	WorkspaceID string
 }
 
 // Core is the deployment-neutral Identity application graph shared by the
@@ -81,7 +82,7 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 		return nil, err
 	}
 	manifest.Roles = identityapplication.WithStandaloneIdentityRoleDefinitions(manifest.Roles)
-	metadataStore := metadatapersistence.NewMetadataStore(store)
+	metadataStore := metadatapersistence.NewMetadataStore(store, options.WorkspaceID)
 	if err := metadataStore.EnsureManifestMetadata(ctx, manifest); err != nil {
 		return fail(fmt.Errorf("install metadata manifest: %w", err))
 	}
@@ -89,7 +90,16 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 	if err != nil {
 		return fail(fmt.Errorf("open Identity repository: %w", err))
 	}
-	workspaceCtx := requestcontext.WithWorkspaceID(ctx, identitymodel.InstallationWorkspaceID)
+	workspaceIDInput := strings.TrimSpace(options.WorkspaceID)
+	if workspaceIDInput == "" {
+		workspaceIDInput = strings.TrimSpace(cfg.IdentityWorkspaceID)
+	}
+	workspace, err := identitymodel.NewWorkspaceID(workspaceIDInput)
+	if err != nil {
+		return fail(fmt.Errorf("initialized Identity workspace is required: %w", err))
+	}
+	workspaceID := workspace.String()
+	workspaceCtx := requestcontext.WithWorkspaceID(ctx, workspaceID)
 	seed := identityapplication.FromManifest(manifest)
 	if err := identityapplication.SyncIdentitySeeds(workspaceCtx, metadataStore, identityStore, manifest, seed, identitymodel.NewSystemScope(identitymodel.SystemScopeInstallation, "bootstrap Identity admin data")); err != nil {
 		return fail(fmt.Errorf("synchronize Identity bootstrap: %w", err))
@@ -121,10 +131,10 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 	if err := authApp.ConfigureTokenMetadata(defaultString(cfg.AuthIssuer, "http://localhost:8081"), defaultString(cfg.AuthAudience, "domainry-runtime")); err != nil {
 		return fail(fmt.Errorf("configure token metadata: %w", err))
 	}
-	if err := authApp.EnsureBootstrapCredential(workspaceCtx, identitymodel.InstallationWorkspaceID); err != nil {
+	if err := authApp.EnsureBootstrapCredential(workspaceCtx, workspaceID); err != nil {
 		return fail(fmt.Errorf("ensure bootstrap credential: %w", err))
 	}
-	if err := authApp.EnsureCredentialsForUsers(workspaceCtx, identitymodel.InstallationWorkspaceID, seed.Users); err != nil {
+	if err := authApp.EnsureCredentialsForUsers(workspaceCtx, workspaceID, seed.Users); err != nil {
 		return fail(fmt.Errorf("ensure user credentials: %w", err))
 	}
 
@@ -150,14 +160,14 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 	}
 	metadataApp.AddReloadObserver(refreshIdentityCatalog)
 	bootstrapPrincipal := identitymodel.Principal{
-		Known: true, WorkspaceID: identitymodel.InstallationWorkspaceID, UserID: "system",
+		Known: true, WorkspaceID: workspaceID, UserID: "system",
 		Role: identitymodel.RoleSchema{Key: "system_administrator", Permissions: []string{"workspace.admin"}},
 	}
 	if _, err := metadataApp.ReloadMetadata(workspaceCtx, bootstrapPrincipal); err != nil {
 		return fail(fmt.Errorf("load persisted Identity metadata: %w", err))
 	}
 
-	providerCredentials, err := authStore.ListAuthProviderCredentials(workspaceCtx, identitymodel.InstallationWorkspaceID)
+	providerCredentials, err := authStore.ListAuthProviderCredentials(workspaceCtx, workspaceID)
 	if err != nil {
 		return fail(fmt.Errorf("load authentication provider credentials: %w", err))
 	}

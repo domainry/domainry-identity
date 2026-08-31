@@ -10,7 +10,7 @@ import (
 
 func TestPrincipalReportingFactsFollowActiveWorkforceAssignments(t *testing.T) {
 	repository := identitypersistence.NewMemoryIdentityStore()
-	service, _ := identitybusiness.NewIdentityDomainService(repository, nil).ForWorkspace(identitymodel.InstallationWorkspaceID)
+	service, _ := identitybusiness.NewIdentityDomainService(repository, nil).ForWorkspace("workspace-primary")
 	for _, user := range []identitymodel.IdentityUser{
 		{ID: "boss", Name: "Boss", Email: "boss@example.com"},
 		{ID: "lead", Name: "Lead", Email: "lead@example.com"},
@@ -25,7 +25,7 @@ func TestPrincipalReportingFactsFollowActiveWorkforceAssignments(t *testing.T) {
 		{ID: "lead-workforce", OrganizationID: "organization", IdentityUserID: "lead", WorkerNo: "lead", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive, PrimaryAssignmentID: "lead-primary"},
 		{ID: "member-workforce", OrganizationID: "organization", IdentityUserID: "member", WorkerNo: "member", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive, PrimaryAssignmentID: "member-primary"},
 	} {
-		if err := repository.UpsertIdentityWorkforceProfile(t.Context(), identitymodel.InstallationWorkspaceID, profile); err != nil {
+		if err := repository.UpsertIdentityWorkforceProfile(t.Context(), "workspace-primary", profile); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -34,7 +34,7 @@ func TestPrincipalReportingFactsFollowActiveWorkforceAssignments(t *testing.T) {
 		{ID: "lead-primary", WorkforceProfileID: "lead-workforce", OrganizationUnitID: "unit", ManagerWorkforceProfileID: "boss-workforce", AssignmentType: identitymodel.IdentityWorkforceAssignmentPrimary, Status: identitymodel.IdentityStatusActive},
 		{ID: "member-primary", WorkforceProfileID: "member-workforce", OrganizationUnitID: "unit", ManagerWorkforceProfileID: "lead-workforce", AssignmentType: identitymodel.IdentityWorkforceAssignmentPrimary, Status: identitymodel.IdentityStatusActive},
 	} {
-		if err := repository.UpsertIdentityWorkforceAssignment(t.Context(), identitymodel.InstallationWorkspaceID, assignment); err != nil {
+		if err := repository.UpsertIdentityWorkforceAssignment(t.Context(), "workspace-primary", assignment); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -42,7 +42,7 @@ func TestPrincipalReportingFactsFollowActiveWorkforceAssignments(t *testing.T) {
 	if err != nil || principal.ReportingPath != "/boss/lead/member" {
 		t.Fatalf("principal=%#v err=%v", principal, err)
 	}
-	if err := repository.UpsertIdentityWorkforceAssignment(t.Context(), identitymodel.InstallationWorkspaceID, identitymodel.IdentityWorkforceAssignment{
+	if err := repository.UpsertIdentityWorkforceAssignment(t.Context(), "workspace-primary", identitymodel.IdentityWorkforceAssignment{
 		ID: "lead-primary", WorkforceProfileID: "lead-workforce", OrganizationUnitID: "unit",
 		AssignmentType: identitymodel.IdentityWorkforceAssignmentPrimary, Status: identitymodel.IdentityStatusActive,
 	}); err != nil {

@@ -37,7 +37,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	t.Setenv("TEMPLATE_MANIFEST", filepath.Join(projectRoot, "domainry.template.json"))
 	t.Setenv("AUTH_AUDIENCE", "must-not-win-over-host-application")
 	now := time.Now().UTC().Truncate(time.Second)
-	application := identitysdk.ApplicationRef{WorkspaceID: "default", ApplicationKey: "orders-runtime", RedirectURLs: []string{"http://localhost:3100/auth/callback"}}
+	application := identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "orders-runtime", RedirectURLs: []string{"http://localhost:3100/auth/callback"}}
 	factory := identitymodule.NewFactory(identitymodule.Options{IdentityVersion: "test", DatabaseDriver: "sqlite", DatabasePath: moduleDBPath, Clock: testClock{now: now}})
 	binding, err := factory.Open(t.Context(), application)
 	if err != nil {
@@ -147,7 +147,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	}
 	catalog := identitysdk.AuthorizationCatalog{
 		ContractVersion: identitysdk.CatalogVersionV1,
-		Application:     identitysdk.ApplicationRef{ApplicationKey: "orders-runtime", WorkspaceID: "default", RedirectURLs: []string{"http://localhost:3100/auth/callback"}},
+		Application:     identitysdk.ApplicationRef{ApplicationKey: "orders-runtime", WorkspaceID: "workspace-primary", RedirectURLs: []string{"http://localhost:3100/auth/callback"}},
 		Resources:       []identitysdk.ResourceDefinition{{Key: "customer", Fields: []string{"id"}, SupportedFacts: []string{"id"}}},
 		Actions:         []identitysdk.ActionDefinition{{Resource: "customer", Action: "read"}},
 	}
@@ -205,7 +205,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	}
 
 	adminSession, err := binding.Authentication().LoginWithPassword(t.Context(), identitysdk.PasswordLoginRequest{
-		WorkspaceID: "default", Login: "admin@example.com", Password: "Domainry@2026",
+		WorkspaceID: "workspace-primary", Login: "admin@example.com", Password: "Domainry@2026",
 	})
 	if err != nil || adminSession.AccessToken == "" {
 		t.Fatalf("workspace admin login session=%#v err=%v", adminSession, err)
@@ -280,7 +280,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	}
 
 	publicExchange := httptest.NewRecorder()
-	publicExchangeRequest := httptest.NewRequest(http.MethodPost, "/auth/providers/wechat_mini_program/exchange", strings.NewReader(`{"workspace_id":"default","application_key":"orders-runtime","code":"wx-code"}`))
+	publicExchangeRequest := httptest.NewRequest(http.MethodPost, "/auth/providers/wechat_mini_program/exchange", strings.NewReader(`{"workspace_id":"workspace-primary","application_key":"orders-runtime","code":"wx-code"}`))
 	publicExchangeRequest.Header.Set("Content-Type", "application/json")
 	mounted.ServeHTTP(publicExchange, publicExchangeRequest)
 	if publicExchange.Code != http.StatusOK {
@@ -324,7 +324,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = moduleDB.Close() })
 	var revisionCount int
-	if err := moduleDB.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _identity_authorization_catalog_revisions WHERE workspace_id = ? AND application_key = ?`, "default", "orders-runtime").Scan(&revisionCount); err != nil || revisionCount != 2 {
+	if err := moduleDB.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _identity_authorization_catalog_revisions WHERE workspace_id = ? AND application_key = ?`, "workspace-primary", "orders-runtime").Scan(&revisionCount); err != nil || revisionCount != 2 {
 		t.Fatalf("catalog revision history count=%d err=%v", revisionCount, err)
 	}
 	otherWorkspaceCatalog := catalog
@@ -337,7 +337,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		t.Fatalf("first workspace receipt=%#v want=%#v err=%v", firstWorkspaceReceipt, receipt, err)
 	}
 	identitycontracttest.Run(t, identitycontracttest.Fixture{
-		Binding: binding, WorkspaceID: "default", ApplicationKey: "orders-runtime", Login: "admin@example.com", Password: "Domainry@2026",
+		Binding: binding, WorkspaceID: "workspace-primary", ApplicationKey: "orders-runtime", Login: "admin@example.com", Password: "Domainry@2026",
 		Resource: "customer", Action: "read", CatalogRevision: receipt.Revision,
 	})
 	if err := binding.Close(t.Context()); err != nil {
@@ -366,7 +366,7 @@ func TestFactoryRejectsMissingApplication(t *testing.T) {
 
 func TestFactoryRejectsUnavailableContextBeforeOpeningInfrastructure(t *testing.T) {
 	factory := identitymodule.NewFactory(identitymodule.Options{})
-	application := identitysdk.ApplicationRef{WorkspaceID: "default", ApplicationKey: "orders-runtime"}
+	application := identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "orders-runtime"}
 	if _, err := factory.Open(nil, application); err == nil {
 		t.Fatal("module factory accepted a nil context")
 	}
@@ -402,11 +402,11 @@ func TestFactoryBorrowsProjectPoolWithoutClosingOrColliding(t *testing.T) {
 	defer db.Close()
 	db.SetMaxOpenConns(3)
 	db.SetMaxIdleConns(1)
-	if _, err := db.ExecContext(t.Context(), `CREATE TABLE metadata_catalog (owner TEXT NOT NULL); INSERT INTO metadata_catalog (owner) VALUES ('runtime'); CREATE TABLE _audit_events (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL); INSERT INTO _audit_events (id, workspace_id) VALUES ('runtime-event', 'default')`); err != nil {
+	if _, err := db.ExecContext(t.Context(), `CREATE TABLE metadata_catalog (owner TEXT NOT NULL); INSERT INTO metadata_catalog (owner) VALUES ('runtime'); CREATE TABLE _audit_events (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL); INSERT INTO _audit_events (id, workspace_id) VALUES ('runtime-event', 'workspace-primary')`); err != nil {
 		t.Fatal(err)
 	}
 	factory := identitymodule.NewFactory(identitymodule.Options{DatabaseDriver: "sqlite", DatabasePath: dbPath})
-	binding, err := factory.OpenWithDatabase(t.Context(), identitysdk.ApplicationRef{WorkspaceID: "default", ApplicationKey: "crm"}, identitysdk.DatabaseHandle{Pool: db, Driver: "sqlite", FilePath: dbPath})
+	binding, err := factory.OpenWithDatabase(t.Context(), identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "crm"}, identitysdk.DatabaseHandle{Pool: db, Driver: "sqlite", FilePath: dbPath})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -421,7 +421,7 @@ func TestFactoryBorrowsProjectPoolWithoutClosingOrColliding(t *testing.T) {
 		t.Fatalf("runtime table changed or pool closed: owner=%q err=%v", owner, err)
 	}
 	var runtimeAuditEvents int
-	if err := db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _audit_events WHERE workspace_id = 'default'`).Scan(&runtimeAuditEvents); err != nil || runtimeAuditEvents != 1 {
+	if err := db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _audit_events WHERE workspace_id = 'workspace-primary'`).Scan(&runtimeAuditEvents); err != nil || runtimeAuditEvents != 1 {
 		t.Fatalf("Runtime-owned workspace table changed: count=%d err=%v", runtimeAuditEvents, err)
 	}
 	var identityTables int

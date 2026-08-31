@@ -20,7 +20,7 @@ type authProviderCallbackAdapterProbe struct {
 func TestOAuth2StartAdaptsWeChatClientParameterWithoutWeakeningState(t *testing.T) {
 	auth := NewAuthDomainService(nil, nil, "secret", "", 0, 0, 0, 0, 0, 0, authpolicy.AuthPasswordPolicy{})
 	providers := NewAuthProviderDomainService([]map[string]any{{"key": "wechat_web", "type": "oauth2", "adapter": "wechat_web", "enabled": true, "auth_url": "https://open.weixin.qq.com/connect/oauth2/authorize", "client_id": "app-id", "redirect_url": "https://app/callback", "scope": "snsapi_userinfo"}}, false)
-	started, err := NewAuthProviderFlowDomainService(auth, providers).Start(t.Context(), "default", "wechat_web", "GET", "")
+	started, err := NewAuthProviderFlowDomainService(auth, providers).Start(t.Context(), "workspace-primary", "wechat_web", "GET", "")
 	parsed, parseErr := url.Parse(started.AuthURL)
 	if err != nil || parseErr != nil || parsed.Query().Get("appid") != "app-id" || parsed.Query().Get("client_id") != "" || parsed.Query().Get("state") == "" || parsed.Fragment != "wechat_redirect" {
 		t.Fatalf("started=%#v parsed=%#v err=%v parseErr=%v", started, parsed, err, parseErr)
@@ -36,22 +36,22 @@ func TestAuthProviderFlowServiceOwnsStartDispatchAndChallengeState(t *testing.T)
 	auth := NewAuthDomainService(nil, nil, "secret", "", 0, 0, 0, 0, 0, 0, authpolicy.AuthPasswordPolicy{})
 	providers := NewAuthProviderDomainService([]map[string]any{{"key": "oidc", "type": "oidc", "enabled": true, "auth_url": "https://id.example/auth", "client_id": "client", "redirect_url": "https://app.example/callback", "scope": "openid"}, {"key": "otp", "type": "otp", "enabled": true, "otp_provider": "mock"}, {"key": "disabled", "type": "oidc", "enabled": false}}, false)
 	flows := NewAuthProviderFlowDomainService(auth, providers)
-	started, err := flows.Start(t.Context(), "default", "oidc", "GET", "")
+	started, err := flows.Start(t.Context(), "workspace-primary", "oidc", "GET", "")
 	if err != nil || started.State == "" || started.AuthURL == "" {
 		t.Fatalf("oidc start=%#v err=%v", started, err)
 	}
-	config, challenge, err := flows.ConsumeCallbackChallenge(t.Context(), "default", "oidc", started.State)
+	config, challenge, err := flows.ConsumeCallbackChallenge(t.Context(), "workspace-primary", "oidc", started.State)
 	if err != nil || config.Key != "oidc" || challenge.Provider != "oidc" {
 		t.Fatalf("challenge=%#v config=%#v err=%v", challenge, config, err)
 	}
-	otp, err := flows.Start(t.Context(), "default", "otp", "POST", "10000000002")
+	otp, err := flows.Start(t.Context(), "workspace-primary", "otp", "POST", "10000000002")
 	if err != nil || otp.State == "" || otp.Code == "" {
 		t.Fatalf("otp start=%#v err=%v", otp, err)
 	}
-	if _, err := flows.Start(t.Context(), "default", "otp", "GET", ""); authProviderTestErrorCode(err) != "auth.provider_start_requires_post" {
+	if _, err := flows.Start(t.Context(), "workspace-primary", "otp", "GET", ""); authProviderTestErrorCode(err) != "auth.provider_start_requires_post" {
 		t.Fatalf("otp method err=%v", err)
 	}
-	if _, err := flows.Start(t.Context(), "default", "disabled", "GET", ""); authProviderTestErrorCode(err) != "auth.provider_not_configured" {
+	if _, err := flows.Start(t.Context(), "workspace-primary", "disabled", "GET", ""); authProviderTestErrorCode(err) != "auth.provider_not_configured" {
 		t.Fatalf("disabled err=%v", err)
 	}
 }
@@ -60,16 +60,16 @@ func TestAuthProviderFlowUsesNeutralCallbackAdapterAfterConsumingState(t *testin
 	auth := NewAuthDomainService(nil, nil, "secret", "", 0, 0, 0, 0, 0, 0, authpolicy.AuthPasswordPolicy{})
 	providers := NewAuthProviderDomainService([]map[string]any{{"key": "oidc", "type": "oidc", "enabled": true, "auth_url": "https://id.example/auth", "client_id": "client", "redirect_url": "https://app.example/callback"}}, false)
 	flows := NewAuthProviderFlowDomainService(auth, providers)
-	started, err := flows.Start(t.Context(), "default", "oidc", "GET", "")
+	started, err := flows.Start(t.Context(), "workspace-primary", "oidc", "GET", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	probe := &authProviderCallbackAdapterProbe{}
 	input := authmodel.AuthProviderCallbackInput{Method: "POST", Values: map[string]string{"code": "code-1"}}
-	if _, err := flows.ExchangeAndCompleteCallback(t.Context(), "default", "oidc", started.State, input, probe); err == nil || !probe.called || probe.input.Values["code"] != "code-1" {
+	if _, err := flows.ExchangeAndCompleteCallback(t.Context(), "workspace-primary", "oidc", started.State, input, probe); err == nil || !probe.called || probe.input.Values["code"] != "code-1" {
 		t.Fatalf("adapter called=%v input=%#v err=%v", probe.called, probe.input, err)
 	}
-	if _, _, err := flows.ConsumeCallbackChallenge(t.Context(), "default", "oidc", started.State); authProviderTestErrorCode(err) != "auth.provider_state_invalid" {
+	if _, _, err := flows.ConsumeCallbackChallenge(t.Context(), "workspace-primary", "oidc", started.State); authProviderTestErrorCode(err) != "auth.provider_state_invalid" {
 		t.Fatalf("callback state was not consumed once: %v", err)
 	}
 }

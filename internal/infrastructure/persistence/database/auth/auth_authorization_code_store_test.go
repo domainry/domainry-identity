@@ -22,9 +22,9 @@ func TestAuthorizationCodeIsBoundAndConsumedExactlyOnce(t *testing.T) {
 	repository := NewAuthStoreWithKeyProvider(identityStore, store.SecretKeyProvider())
 	now := time.Now().UTC()
 	value := authmodel.AuthAuthorizationCode{
-		Code: "one-time-code", WorkspaceID: "default", ApplicationKey: "runtime-app",
+		Code: "one-time-code", WorkspaceID: "workspace-primary", ApplicationKey: "runtime-app",
 		RedirectURL: "https://runtime.example.com/auth/callback", ExpiresAt: now.Add(time.Minute).Format(time.RFC3339Nano),
-		Session: authmodel.AuthSession{WorkspaceID: "default", AccessToken: "access", RefreshToken: "refresh"},
+		Session: authmodel.AuthSession{WorkspaceID: "workspace-primary", AccessToken: "access", RefreshToken: "refresh"},
 	}
 	if err := repository.CreateAuthAuthorizationCode(t.Context(), value); err != nil {
 		t.Fatal(err)

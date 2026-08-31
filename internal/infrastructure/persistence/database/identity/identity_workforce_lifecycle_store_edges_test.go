@@ -21,13 +21,13 @@ func TestIdentityWorkforceLifecycleValidationTransactionAndCommitFailures(t *tes
 		{
 			name:     "begin",
 			state:    identitySQLState{beginErr: wantErr},
-			mutation: identitymodel.IdentityWorkforceLifecycleMutation{WorkspaceID: "default"},
+			mutation: identitymodel.IdentityWorkforceLifecycleMutation{WorkspaceID: "workspace-primary"},
 		},
 		{
 			name:  "profile write",
 			state: identitySQLState{execFailAt: 1, failure: wantErr},
 			mutation: identitymodel.IdentityWorkforceLifecycleMutation{
-				WorkspaceID: "default",
+				WorkspaceID: "workspace-primary",
 				Profile:     &identitymodel.IdentityWorkforceProfile{ID: "profile-1"},
 			},
 		},
@@ -35,7 +35,7 @@ func TestIdentityWorkforceLifecycleValidationTransactionAndCommitFailures(t *tes
 			name:  "end assignment update",
 			state: identitySQLState{execFailAt: 1, failure: wantErr},
 			mutation: identitymodel.IdentityWorkforceLifecycleMutation{
-				WorkspaceID:    "default",
+				WorkspaceID:    "workspace-primary",
 				EndAssignments: []identitymodel.IdentityWorkforceAssignmentEnd{{AssignmentID: "assignment-1"}},
 			},
 		},
@@ -43,7 +43,7 @@ func TestIdentityWorkforceLifecycleValidationTransactionAndCommitFailures(t *tes
 			name:  "end assignment rows affected",
 			state: identitySQLState{rowsFailAt: 1, failure: wantErr},
 			mutation: identitymodel.IdentityWorkforceLifecycleMutation{
-				WorkspaceID:    "default",
+				WorkspaceID:    "workspace-primary",
 				EndAssignments: []identitymodel.IdentityWorkforceAssignmentEnd{{AssignmentID: "assignment-1"}},
 			},
 		},
@@ -51,7 +51,7 @@ func TestIdentityWorkforceLifecycleValidationTransactionAndCommitFailures(t *tes
 			name:  "upsert assignment",
 			state: identitySQLState{execFailAt: 1, failure: wantErr},
 			mutation: identitymodel.IdentityWorkforceLifecycleMutation{
-				WorkspaceID:       "default",
+				WorkspaceID:       "workspace-primary",
 				UpsertAssignments: []identitymodel.IdentityWorkforceAssignment{{ID: "assignment-1"}},
 			},
 		},
@@ -59,20 +59,20 @@ func TestIdentityWorkforceLifecycleValidationTransactionAndCommitFailures(t *tes
 			name:  "revoke entitlements update",
 			state: identitySQLState{execFailAt: 1, failure: wantErr},
 			mutation: identitymodel.IdentityWorkforceLifecycleMutation{
-				WorkspaceID: "default", RevokeEntitlements: true,
+				WorkspaceID: "workspace-primary", RevokeEntitlements: true,
 			},
 		},
 		{
 			name:  "revoke entitlements rows affected",
 			state: identitySQLState{rowsFailAt: 1, failure: wantErr},
 			mutation: identitymodel.IdentityWorkforceLifecycleMutation{
-				WorkspaceID: "default", RevokeEntitlements: true, ActorID: "operator",
+				WorkspaceID: "workspace-primary", RevokeEntitlements: true, ActorID: "operator",
 			},
 		},
 		{
 			name:     "commit",
 			state:    identitySQLState{commitErr: wantErr},
-			mutation: identitymodel.IdentityWorkforceLifecycleMutation{WorkspaceID: "default"},
+			mutation: identitymodel.IdentityWorkforceLifecycleMutation{WorkspaceID: "workspace-primary"},
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -90,7 +90,7 @@ func TestIdentityWorkforceLifecycleCountsAndFallbackActorWithoutProfile(t *testi
 	store, closeDB := scriptedSQLIdentity(state)
 	defer closeDB()
 	result, err := store.ApplyIdentityWorkforceLifecycle(t.Context(), identitymodel.IdentityWorkforceLifecycleMutation{
-		WorkspaceID:        "default",
+		WorkspaceID:        "workspace-primary",
 		EndAssignments:     []identitymodel.IdentityWorkforceAssignmentEnd{{AssignmentID: "assignment-1", EffectiveTo: "2026-07-27"}},
 		RevokeEntitlements: true,
 		Reason:             " ",

@@ -20,7 +20,7 @@ func (s metadataSchemaApplicationProviderStub) SchemaForPrincipal(context.Contex
 
 func TestMetadataSchemaApplicationServiceOwnsFeaturePermissionProjection(t *testing.T) {
 	application := NewMetadataSchemaApplicationService(metadataSchemaApplicationProviderStub{snapshot: metadatamodel.MetadataSchemaSnapshot{Objects: []definitionmodel.ObjectSchema{{Key: "customer", Name: "Customer"}}}}, nil)
-	admin := identitymodel.Principal{Known: true, WorkspaceID: "default", UserID: "admin", Role: identitymodel.RoleSchema{
+	admin := identitymodel.Principal{Known: true, WorkspaceID: "workspace-primary", UserID: "admin", Role: identitymodel.RoleSchema{
 		Permissions:     []string{"customer.read"},
 		DataPermissions: []identitymodel.DataPermission{{ObjectKey: "customer", Scope: "all_records", Read: true}},
 	}}

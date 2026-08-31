@@ -16,7 +16,6 @@ func (s *AuthDomainService) signClaims(claims authmodel.AuthClaims) string {
 	now := time.Now().UTC()
 	claims.Issuer = valueOrDefault(claims.Issuer, s.issuer)
 	claims.Audience = valueOrDefault(claims.Audience, s.audience)
-	claims.WorkspaceID = valueOrDefault(claims.WorkspaceID, "default")
 	claims.TenantID = valueOrDefault(claims.TenantID, claims.WorkspaceID)
 	if claims.AuthorizationRevision == "" && claims.Subject != "" {
 		revision := sha256.Sum256([]byte(claims.WorkspaceID + "\x00" + claims.Subject))

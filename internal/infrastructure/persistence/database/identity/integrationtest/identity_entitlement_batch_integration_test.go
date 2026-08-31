@@ -25,7 +25,7 @@ func TestEntitlementBatchUsesOneTransactionAndStableIdempotencyReceipt(t *testin
 		t.Fatal(err)
 	}
 	mutation := identitymodel.IdentityEntitlementBatchMutation{
-		WorkspaceID: "default", ActorID: "grant-admin", IdempotencyKey: "batch-1", RequestFingerprint: "fingerprint-1",
+		WorkspaceID: "workspace-primary", ActorID: "grant-admin", IdempotencyKey: "batch-1", RequestFingerprint: "fingerprint-1",
 		Items: []identitymodel.IdentityEntitlementBatchItem{
 			{Operation: "grant", UserID: "target", RoleID: "role-1"},
 			{Operation: "grant", UserID: "target", RoleID: "role-2"},
@@ -42,11 +42,11 @@ func TestEntitlementBatchUsesOneTransactionAndStableIdempotencyReceipt(t *testin
 	if _, err := store.ApplyIdentityEntitlementBatch(t.Context(), mutation); err == nil {
 		t.Fatal("injected second entitlement failure was ignored")
 	}
-	assignments, err := store.ListIdentityUserRoleAssignments(t.Context(), "default", "target")
+	assignments, err := store.ListIdentityUserRoleAssignments(t.Context(), "workspace-primary", "target")
 	if err != nil || len(assignments) != 0 {
 		t.Fatalf("partial batch persisted=%#v err=%v", assignments, err)
 	}
-	if receipt, found, err := store.GetIdentityEntitlementBatchReceipt(t.Context(), "default", "batch-1"); err != nil || found {
+	if receipt, found, err := store.GetIdentityEntitlementBatchReceipt(t.Context(), "workspace-primary", "batch-1"); err != nil || found {
 		t.Fatalf("failed batch wrote receipt=%#v found=%v err=%v", receipt, found, err)
 	}
 	if _, err := identityStore.DB().ExecContext(t.Context(), `DROP TRIGGER fail_second_batch_entitlement`); err != nil {
@@ -65,7 +65,7 @@ func TestEntitlementBatchUsesOneTransactionAndStableIdempotencyReceipt(t *testin
 	if _, err := store.ApplyIdentityEntitlementBatch(t.Context(), reused); apperror.CodeOf(err) != "backend.idempotency_key_reused" {
 		t.Fatalf("reused key error=%v", err)
 	}
-	assignments, err = store.ListIdentityUserRoleAssignments(t.Context(), "default", "target")
+	assignments, err = store.ListIdentityUserRoleAssignments(t.Context(), "workspace-primary", "target")
 	if err != nil || len(assignments) != 2 {
 		t.Fatalf("atomic batch assignments=%#v err=%v", assignments, err)
 	}
