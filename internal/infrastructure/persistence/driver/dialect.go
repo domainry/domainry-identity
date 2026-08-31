@@ -7,11 +7,9 @@ import (
 
 	"github.com/domainry/domainry-identity/internal/platform/config"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
-	ormbuilder "github.com/domainry/domainry-orm/query"
+	"github.com/domainry/domainry-orm/query"
 )
 
-// Dialect combines the shared SQL renderer with Identity-owned connection and
-// migration configuration. Generic rendering lives in domainry-orm.
 type Dialect interface {
 	Name() string
 	SQLDriver() string
@@ -25,8 +23,8 @@ type EngineProfile interface {
 	MaxParameters() int
 	TextKeyColumnType(int) string
 	SchemaTypes() SchemaTypes
-	ApplyUpdateLock(*ormbuilder.SelectBuilder) *ormbuilder.SelectBuilder
-	ApplyUpsert(*ormbuilder.InsertBuilder, []string, ...string) *ormbuilder.InsertBuilder
+	ApplyUpdateLock(*query.SelectBuilder) *query.SelectBuilder
+	ApplyUpsert(*query.InsertBuilder, []string, ...string) *query.InsertBuilder
 	CreateIndexIfMissing(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, string, bool, ...string) error
 	NormalizeAuditCursorColumns(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string, ...string) error
 	TableColumns(context.Context, SchemaDatabase, ormdialect.Renderer, string, string, string) (map[string]bool, error)
@@ -49,9 +47,6 @@ type EngineProfile interface {
 	RendererSchema(string) string
 }
 
-// Engine is the complete database-engine strategy selected once at assembly.
-// Persistence code receives this object directly and never resolves a second
-// profile from a dialect at call time.
 type Engine interface {
 	Dialect
 	EngineProfile

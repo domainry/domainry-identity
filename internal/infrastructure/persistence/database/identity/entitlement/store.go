@@ -12,7 +12,7 @@ import (
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	roleassignmentpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/roleassignment"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
-	ormbuilder "github.com/domainry/domainry-orm/query"
+	"github.com/domainry/domainry-orm/query"
 )
 
 type identityEntitlementReceiptQueryer interface {
@@ -24,7 +24,7 @@ const AssignmentInsertBatchSize = roleassignmentpersistence.InsertBatchSize
 type Backend interface {
 	DB() *sql.DB
 	SQLRenderer() ormdialect.Renderer
-	ApplyUpsert(*ormbuilder.InsertBuilder, []string, ...string) *ormbuilder.InsertBuilder
+	ApplyUpsert(*query.InsertBuilder, []string, ...string) *query.InsertBuilder
 }
 
 type Store struct {
@@ -80,10 +80,9 @@ func (s Store) Apply(ctx context.Context, mutation identitymodel.IdentityEntitle
 		Items:              mutation.Items,
 		CreatedAt:          s.now(),
 	}
-	// The receipt contains only strings and typed entitlement values, so it is
-	// always JSON-encodable.
+
 	resultJSON, _ := json.Marshal(receipt)
-	statement, arguments, err := ormbuilder.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_entitlement_batch_receipts", workspaceID).
+	statement, arguments, err := query.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_entitlement_batch_receipts", workspaceID).
 		Columns("id", "actor_id", "idempotency_key", "request_fingerprint", "result_json", "created_at").
 		Values(receipt.ID, receipt.ActorID, receipt.IdempotencyKey, receipt.RequestFingerprint, string(resultJSON), receipt.CreatedAt).Build()
 	if err != nil {
@@ -99,8 +98,8 @@ func (s Store) Apply(ctx context.Context, mutation identitymodel.IdentityEntitle
 }
 
 func (s Store) loadReceipt(ctx context.Context, queryer identityEntitlementReceiptQueryer, workspaceID, idempotencyKey string) (identitymodel.IdentityEntitlementBatchReceipt, bool, error) {
-	statement, arguments, buildErr := ormbuilder.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_entitlement_batch_receipts", workspaceID).
-		Columns("result_json", "request_fingerprint").Where(ormbuilder.Equal("idempotency_key", idempotencyKey)).Build()
+	statement, arguments, buildErr := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_entitlement_batch_receipts", workspaceID).
+		Columns("result_json", "request_fingerprint").Where(query.Equal("idempotency_key", idempotencyKey)).Build()
 	if buildErr != nil {
 		return identitymodel.IdentityEntitlementBatchReceipt{}, false, buildErr
 	}

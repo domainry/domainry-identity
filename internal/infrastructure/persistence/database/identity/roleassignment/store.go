@@ -8,7 +8,7 @@ import (
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
-	ormbuilder "github.com/domainry/domainry-orm/query"
+	"github.com/domainry/domainry-orm/query"
 )
 
 const InsertBatchSize = 40
@@ -17,7 +17,7 @@ var columns = []string{"id", "workspace_id", "user_id", "role_id", "workforce_pr
 
 type Backend interface {
 	SQLRenderer() ormdialect.Renderer
-	ApplyUpsert(*ormbuilder.InsertBuilder, []string, ...string) *ormbuilder.InsertBuilder
+	ApplyUpsert(*query.InsertBuilder, []string, ...string) *query.InsertBuilder
 }
 
 type Execer interface {
@@ -74,7 +74,7 @@ func (s Store) UpsertBatch(ctx context.Context, execer Execer, workspaceID strin
 
 func (s Store) write(ctx context.Context, execer Execer, workspaceID string, assignments []identitymodel.IdentityUserRoleAssignment) error {
 	insertColumns := append([]string{columns[0]}, columns[2:]...)
-	insert := ormbuilder.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_user_role_assignments", workspaceID).Columns(insertColumns...)
+	insert := query.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_user_role_assignments", workspaceID).Columns(insertColumns...)
 	now := s.now()
 	for _, assignment := range assignments {
 		allValues := values(workspaceID, assignment, now)

@@ -10,7 +10,7 @@ import (
 
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/transaction"
 	metadatarepository "github.com/domainry/domainry-metadata-sdk/repository"
-	ormbuilder "github.com/domainry/domainry-orm/query"
+	"github.com/domainry/domainry-orm/query"
 )
 
 func (r MetadataStore) refreshCatalogHashTx(ctx context.Context, tx *sql.Tx, now string) error {
@@ -49,12 +49,12 @@ func (r MetadataStore) refreshCatalogHashWithExecutorAt(
 		hash.Write([]byte(definition.ResourceType + ":" + definition.Key + ":" + definition.SchemaHash + "|"))
 	}
 	for _, table := range tables {
-		query, args, err := ormbuilder.NewSelectBuilder(r.store.SQLRenderer, table).
-			Columns("resource_key", "schema_hash").OrderBy(ormbuilder.Ascending("resource_key")).Build()
+		queryValue, args, err := query.NewSelectBuilder(r.store.SQLRenderer, table).
+			Columns("resource_key", "schema_hash").OrderBy(query.Ascending("resource_key")).Build()
 		if err != nil {
 			return err
 		}
-		rows, err := executor.QueryContext(ctx, query, args...)
+		rows, err := executor.QueryContext(ctx, queryValue, args...)
 		if err != nil {
 			return err
 		}
@@ -74,11 +74,11 @@ func (r MetadataStore) refreshCatalogHashWithExecutorAt(
 		rows.Close()
 	}
 	value := hex.EncodeToString(hash.Sum(nil))
-	query, args, err := buildMetadataCatalogUpsert(r, "schema_hash", value, now)
+	queryValue, args, err := buildMetadataCatalogUpsert(r, "schema_hash", value, now)
 	if err != nil {
 		return err
 	}
-	_, err = executor.ExecContext(ctx, query, args...)
+	_, err = executor.ExecContext(ctx, queryValue, args...)
 	return err
 }
 

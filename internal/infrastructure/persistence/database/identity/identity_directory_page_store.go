@@ -5,28 +5,23 @@ import (
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	directorypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/directory"
-	ormbuilder "github.com/domainry/domainry-orm/query"
+	"github.com/domainry/domainry-orm/query"
 )
 
-// Directory is a separate persistence owner. SQLIdentityStore retains the
-// repository facade required by the domain port, but no longer owns directory
-// query construction.
-func (s *SQLIdentityStore) SearchIdentityUsers(ctx context.Context, workspaceID string, query identitymodel.IdentityListQuery) (identitymodel.IdentityUserPage, error) {
-	return directorypersistence.New(s).SearchIdentityUsers(ctx, workspaceID, query)
+func (s *SQLIdentityStore) SearchIdentityUsers(ctx context.Context, workspaceID string, queryValue identitymodel.IdentityListQuery) (identitymodel.IdentityUserPage, error) {
+	return directorypersistence.New(s).SearchIdentityUsers(ctx, workspaceID, queryValue)
 }
 
-func (s *SQLIdentityStore) SearchIdentityWorkforceProfiles(ctx context.Context, workspaceID string, query identitymodel.IdentityListQuery) (identitymodel.IdentityWorkforceProfilePage, error) {
-	return directorypersistence.New(s).SearchIdentityWorkforceProfiles(ctx, workspaceID, query)
+func (s *SQLIdentityStore) SearchIdentityWorkforceProfiles(ctx context.Context, workspaceID string, queryValue identitymodel.IdentityListQuery) (identitymodel.IdentityWorkforceProfilePage, error) {
+	return directorypersistence.New(s).SearchIdentityWorkforceProfiles(ctx, workspaceID, queryValue)
 }
 
-// The following package-private seams keep focused SQL failure tests close to
-// the facade while exercising the extracted owner implementation.
-func identityDirectoryPredicates(query identitymodel.IdentityListQuery, columns map[string]string) []ormbuilder.Predicate {
-	return directorypersistence.Predicates(query, columns)
+func identityDirectoryPredicates(queryValue identitymodel.IdentityListQuery, columns map[string]string) []query.Predicate {
+	return directorypersistence.Predicates(queryValue, columns)
 }
 
-func (s *SQLIdentityStore) identityDirectoryPageSQL(ctx context.Context, workspaceID, table string, columns []string, query identitymodel.IdentityListQuery, conditions []ormbuilder.Predicate) (string, []any, error) {
-	return directorypersistence.New(s).PageSQL(ctx, workspaceID, table, columns, query, conditions)
+func (s *SQLIdentityStore) identityDirectoryPageSQL(ctx context.Context, workspaceID, table string, columns []string, queryValue identitymodel.IdentityListQuery, conditions []query.Predicate) (string, []any, error) {
+	return directorypersistence.New(s).PageSQL(ctx, workspaceID, table, columns, queryValue, conditions)
 }
 
 func sortedStringKeys(values map[string]any) []string {

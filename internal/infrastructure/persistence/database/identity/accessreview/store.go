@@ -12,7 +12,7 @@ import (
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	identityrepository "github.com/domainry/domainry-identity/internal/domain/identity/repository"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
-	ormbuilder "github.com/domainry/domainry-orm/query"
+	"github.com/domainry/domainry-orm/query"
 )
 
 var _ identityrepository.IdentityAccessReviewRepository = (*Store)(nil)
@@ -51,7 +51,7 @@ func (s *Store) CreateIdentityAccessReview(ctx context.Context, review identitym
 		return err
 	}
 	defer tx.Rollback()
-	statement, arguments, err := ormbuilder.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_access_reviews", workspaceID).
+	statement, arguments, err := query.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_access_reviews", workspaceID).
 		Columns("id", "period_start", "period_end", "due_at", "status", "created_by", "created_at", "updated_at").
 		Values(review.ID, review.PeriodStart, review.PeriodEnd, review.DueAt, review.Status, review.CreatedBy, review.CreatedAt, review.UpdatedAt).Build()
 	if err != nil {
@@ -60,10 +60,10 @@ func (s *Store) CreateIdentityAccessReview(ctx context.Context, review identitym
 	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
 		return err
 	}
-	items := ormbuilder.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_access_review_items", workspaceID).
+	items := query.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_access_review_items", workspaceID).
 		Columns("id", "review_id", "user_id", "role_id", "role_key", "workforce_profile_id", "binding_key", "profile_id", "risk_level", "priority", "priority_reasons_json", "last_used_at", "status", "decision", "replacement_role_id", "expires_at", "reviewer_id", "reason", "decided_at", "version", "created_at", "updated_at")
 	for _, item := range review.Items {
-		// Priority reasons are strings, so this concrete JSON encoding cannot fail.
+
 		priorityReasonsJSON, _ := json.Marshal(item.PriorityReasons)
 		items.Values(
 			item.ID, review.ID, item.UserID, item.RoleID, item.RoleKey,
@@ -88,11 +88,11 @@ func (s *Store) ListIdentityAccessReviews(ctx context.Context, workspaceID, stat
 	if err != nil {
 		return nil, err
 	}
-	builder := ormbuilder.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_access_reviews", workspaceID).
+	builder := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_access_reviews", workspaceID).
 		Columns("id", "period_start", "period_end", "due_at", "status", "created_by", "created_at", "updated_at").
-		OrderBy(ormbuilder.Descending("created_at"), ormbuilder.Ascending("id"))
+		OrderBy(query.Descending("created_at"), query.Ascending("id"))
 	if status = strings.TrimSpace(status); status != "" {
-		builder.Where(ormbuilder.Equal("status", status))
+		builder.Where(query.Equal("status", status))
 	}
 	statement, arguments, err := builder.Build()
 	if err != nil {
@@ -229,11 +229,11 @@ func (s *Store) ApplyIdentityAccessReviewDecision(ctx context.Context, mutation 
 	}
 	item.Status, item.Decision, item.ReplacementRoleID, item.ExpiresAt = "decided", mutation.Request.Decision, strings.TrimSpace(mutation.Request.ReplacementRoleID), strings.TrimSpace(mutation.Request.ExpiresAt)
 	item.ReviewerID, item.Reason, item.DecidedAt, item.UpdatedAt, item.Version = mutation.ReviewerID, strings.TrimSpace(mutation.Request.Reason), now, now, item.Version+1
-	statement, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_access_review_items", workspaceID).
+	statement, arguments, err := query.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_access_review_items", workspaceID).
 		Set("status", item.Status).Set("decision", item.Decision).Set("replacement_role_id", nullIfBlank(item.ReplacementRoleID)).
 		Set("expires_at", nullIfBlank(item.ExpiresAt)).Set("reviewer_id", item.ReviewerID).Set("reason", item.Reason).
 		Set("decided_at", item.DecidedAt).Set("updated_at", item.UpdatedAt).Set("version", item.Version).
-		Where(ormbuilder.And(ormbuilder.Equal("id", item.ID), ormbuilder.Equal("status", "pending"), ormbuilder.Equal("version", mutation.Request.ExpectedVersion))).Build()
+		Where(query.And(query.Equal("id", item.ID), query.Equal("status", "pending"), query.Equal("version", mutation.Request.ExpectedVersion))).Build()
 	if err != nil {
 		return identitymodel.IdentityAccessReviewDecisionReceipt{}, fmt.Errorf("build identity access review decision: %w", err)
 	}
@@ -248,8 +248,8 @@ func (s *Store) ApplyIdentityAccessReviewDecision(ctx context.Context, mutation 
 		return identitymodel.IdentityAccessReviewDecisionReceipt{}, &apperror.AppError{Kind: apperror.KindConflict, Code: "backend.identity.access_review_concurrent_decision"}
 	}
 	var pending int
-	statement, arguments, err = ormbuilder.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_access_review_items", workspaceID).
-		Projections(ormbuilder.Project(ormbuilder.CountAll())).Where(ormbuilder.And(ormbuilder.Equal("review_id", item.ReviewID), ormbuilder.Equal("status", "pending"))).Build()
+	statement, arguments, err = query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_access_review_items", workspaceID).
+		Projections(query.Project(query.CountAll())).Where(query.And(query.Equal("review_id", item.ReviewID), query.Equal("status", "pending"))).Build()
 	if err != nil {
 		return identitymodel.IdentityAccessReviewDecisionReceipt{}, fmt.Errorf("build pending identity access review count: %w", err)
 	}
@@ -260,8 +260,8 @@ func (s *Store) ApplyIdentityAccessReviewDecision(ctx context.Context, mutation 
 	if pending == 0 {
 		reviewStatus = identitymodel.IdentityAccessReviewCompleted
 	}
-	statement, arguments, err = ormbuilder.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_access_reviews", workspaceID).
-		Set("status", reviewStatus).Set("updated_at", now).Where(ormbuilder.Equal("id", item.ReviewID)).Build()
+	statement, arguments, err = query.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_access_reviews", workspaceID).
+		Set("status", reviewStatus).Set("updated_at", now).Where(query.Equal("id", item.ReviewID)).Build()
 	if err != nil {
 		return identitymodel.IdentityAccessReviewDecisionReceipt{}, fmt.Errorf("build identity access review status update: %w", err)
 	}
@@ -273,9 +273,9 @@ func (s *Store) ApplyIdentityAccessReviewDecision(ctx context.Context, mutation 
 		WorkspaceID: workspaceID, ItemID: item.ID, IdempotencyKey: mutation.Request.IdempotencyKey,
 		RequestFingerprint: mutation.RequestFingerprint, Item: item, CreatedAt: now,
 	}
-	// The receipt is composed only of JSON-safe concrete fields.
+
 	resultJSON, _ := json.Marshal(receipt)
-	statement, arguments, err = ormbuilder.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_access_review_receipts", workspaceID).
+	statement, arguments, err = query.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_access_review_receipts", workspaceID).
 		Columns("id", "item_id", "idempotency_key", "request_fingerprint", "result_json", "created_at").
 		Values(receipt.ID, item.ID, receipt.IdempotencyKey, receipt.RequestFingerprint, string(resultJSON), receipt.CreatedAt).Build()
 	if err != nil {
@@ -291,8 +291,8 @@ func (s *Store) ApplyIdentityAccessReviewDecision(ctx context.Context, mutation 
 }
 
 func (s *Store) deleteIdentityAccessReviewAssignment(ctx context.Context, tx *sql.Tx, workspaceID, userID, roleID string) error {
-	statement, arguments, err := ormbuilder.NewWorkspaceDeleteBuilder(s.backend.SQLRenderer(), "_identity_user_role_assignments", workspaceID).
-		Where(ormbuilder.And(ormbuilder.Equal("user_id", userID), ormbuilder.Equal("role_id", roleID))).Build()
+	statement, arguments, err := query.NewWorkspaceDeleteBuilder(s.backend.SQLRenderer(), "_identity_user_role_assignments", workspaceID).
+		Where(query.And(query.Equal("user_id", userID), query.Equal("role_id", roleID))).Build()
 	if err != nil {
 		return fmt.Errorf("build identity access review assignment delete: %w", err)
 	}
@@ -301,8 +301,8 @@ func (s *Store) deleteIdentityAccessReviewAssignment(ctx context.Context, tx *sq
 }
 
 func (s *Store) ListItems(ctx context.Context, workspaceID, reviewID string) ([]identitymodel.IdentityAccessReviewItem, error) {
-	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_access_review_items", workspaceID).
-		Columns("id").Where(ormbuilder.Equal("review_id", reviewID)).OrderBy(ormbuilder.Ascending("id")).Build()
+	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_access_review_items", workspaceID).
+		Columns("id").Where(query.Equal("review_id", reviewID)).OrderBy(query.Ascending("id")).Build()
 	if err != nil {
 		return nil, fmt.Errorf("build identity access review item identifiers: %w", err)
 	}
@@ -336,9 +336,9 @@ func (s *Store) ListItems(ctx context.Context, workspaceID, reviewID string) ([]
 }
 
 func (s *Store) LoadItem(ctx context.Context, queryer Queryer, workspaceID, itemID string) (identitymodel.IdentityAccessReviewItem, bool, error) {
-	statement, arguments, buildErr := ormbuilder.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_access_review_items", workspaceID).
+	statement, arguments, buildErr := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_access_review_items", workspaceID).
 		Columns("id", "review_id", "user_id", "role_id", "role_key", "workforce_profile_id", "binding_key", "profile_id", "risk_level", "priority", "priority_reasons_json", "last_used_at", "status", "decision", "replacement_role_id", "expires_at", "reviewer_id", "reason", "decided_at", "version", "created_at", "updated_at").
-		Where(ormbuilder.Equal("id", itemID)).Build()
+		Where(query.Equal("id", itemID)).Build()
 	if buildErr != nil {
 		return identitymodel.IdentityAccessReviewItem{}, false, buildErr
 	}
@@ -368,8 +368,8 @@ func (s *Store) LoadItem(ctx context.Context, queryer Queryer, workspaceID, item
 }
 
 func (s *Store) LoadReceipt(ctx context.Context, queryer Queryer, workspaceID, itemID, idempotencyKey string) (identitymodel.IdentityAccessReviewDecisionReceipt, bool, error) {
-	statement, arguments, buildErr := ormbuilder.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_access_review_receipts", workspaceID).
-		Columns("result_json", "request_fingerprint").Where(ormbuilder.And(ormbuilder.Equal("item_id", itemID), ormbuilder.Equal("idempotency_key", idempotencyKey))).Build()
+	statement, arguments, buildErr := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_access_review_receipts", workspaceID).
+		Columns("result_json", "request_fingerprint").Where(query.And(query.Equal("item_id", itemID), query.Equal("idempotency_key", idempotencyKey))).Build()
 	if buildErr != nil {
 		return identitymodel.IdentityAccessReviewDecisionReceipt{}, false, buildErr
 	}
@@ -390,9 +390,9 @@ func (s *Store) LoadReceipt(ctx context.Context, queryer Queryer, workspaceID, i
 }
 
 func (s *Store) LoadAssignment(ctx context.Context, queryer Queryer, workspaceID, userID, roleID string) (identitymodel.IdentityUserRoleAssignment, bool, error) {
-	statement, arguments, buildErr := ormbuilder.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_user_role_assignments", workspaceID).
+	statement, arguments, buildErr := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_user_role_assignments", workspaceID).
 		Columns("workforce_profile_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason", "expires_at", "created_at", "updated_at").
-		Where(ormbuilder.And(ormbuilder.Equal("user_id", userID), ormbuilder.Equal("role_id", roleID))).Build()
+		Where(query.And(query.Equal("user_id", userID), query.Equal("role_id", roleID))).Build()
 	if buildErr != nil {
 		return identitymodel.IdentityUserRoleAssignment{}, false, buildErr
 	}
@@ -415,8 +415,8 @@ func (s *Store) LoadAssignment(ctx context.Context, queryer Queryer, workspaceID
 }
 
 func (s *Store) LoadRole(ctx context.Context, queryer Queryer, workspaceID, roleID string) (identitymodel.IdentityRole, bool, error) {
-	statement, arguments, buildErr := ormbuilder.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_roles", workspaceID).
-		Columns("id", "role_key", "label", "description", "status").Where(ormbuilder.Equal("id", roleID)).Build()
+	statement, arguments, buildErr := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_roles", workspaceID).
+		Columns("id", "role_key", "label", "description", "status").Where(query.Equal("id", roleID)).Build()
 	if buildErr != nil {
 		return identitymodel.IdentityRole{}, false, buildErr
 	}

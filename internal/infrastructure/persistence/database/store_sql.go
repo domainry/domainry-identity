@@ -6,11 +6,9 @@ import (
 
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/base"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
-	ormbuilder "github.com/domainry/domainry-orm/query"
+	"github.com/domainry/domainry-orm/query"
 )
 
-// BuilderRenderer exposes only the structured SQL rendering contract to
-// repository adapters that deliberately hide the concrete database owner.
 func (s *IdentityStore) BuilderRenderer() ormdialect.Renderer {
 	return s.sqlBase().SQLRenderer
 }
@@ -28,26 +26,26 @@ func (s *IdentityStore) EnsureCompositePrimaryKey(ctx context.Context, table str
 }
 
 func (s *IdentityStore) insertSystemRowContext(ctx context.Context, table string, columns []string, values []any) error {
-	query, args, err := ormbuilder.NewInsertBuilder(s.sqlBase().SQLRenderer, table).Columns(columns...).Values(values...).Build()
+	queryValue, args, err := query.NewInsertBuilder(s.sqlBase().SQLRenderer, table).Columns(columns...).Values(values...).Build()
 	if err != nil {
 		return fmt.Errorf("build insert %s: %w", table, err)
 	}
-	if _, err := s.db.ExecContext(ctx, query, args...); err != nil {
+	if _, err := s.db.ExecContext(ctx, queryValue, args...); err != nil {
 		return fmt.Errorf("insert %s: %w", table, err)
 	}
 	return nil
 }
 
 func (s *IdentityStore) updateSystemRowContext(ctx context.Context, table, id string, columns []string, values []any) error {
-	builder := ormbuilder.NewUpdateBuilder(s.sqlBase().SQLRenderer, table)
+	builder := query.NewUpdateBuilder(s.sqlBase().SQLRenderer, table)
 	for index, column := range columns {
 		builder.Set(column, values[index])
 	}
-	query, args, err := builder.Where(ormbuilder.Equal("id", id)).Build()
+	queryValue, args, err := builder.Where(query.Equal("id", id)).Build()
 	if err != nil {
 		return fmt.Errorf("build update %s: %w", table, err)
 	}
-	if _, err := s.db.ExecContext(ctx, query, args...); err != nil {
+	if _, err := s.db.ExecContext(ctx, queryValue, args...); err != nil {
 		return fmt.Errorf("update %s: %w", table, err)
 	}
 	return nil
@@ -77,14 +75,10 @@ func (s *IdentityStore) tableIdentifier(value string) string {
 	return s.sqlBase().SQLRenderer.Table(value)
 }
 
-// Identifier exposes the database-specific quoting policy to domain-owned
-// repository adapters without exposing Store internals.
 func (s *IdentityStore) Identifier(value string) string {
 	return s.identifier(value)
 }
 
-// TableIdentifier schema-qualifies PostgreSQL relations while leaving column,
-// constraint, and index identifiers unqualified.
 func (s *IdentityStore) TableIdentifier(value string) string {
 	return s.tableIdentifier(value)
 }
@@ -93,8 +87,6 @@ func (s *IdentityStore) placeholder(position int) string {
 	return s.sqlBase().SQLRenderer.Placeholder(position)
 }
 
-// Placeholder exposes the database-specific placeholder syntax to
-// domain-owned repository adapters.
 func (s *IdentityStore) Placeholder(position int) string {
 	return s.placeholder(position)
 }

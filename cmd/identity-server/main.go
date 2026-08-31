@@ -12,8 +12,8 @@ import (
 	"syscall"
 
 	"github.com/domainry/domainry-foundation/logging"
+	saasassembly "github.com/domainry/domainry-identity/internal/assembly/saas"
 	"github.com/domainry/domainry-identity/internal/platform/config"
-	httpserver "github.com/domainry/domainry-identity/internal/transport/http/server"
 	"go.uber.org/zap"
 )
 
@@ -73,7 +73,7 @@ func serve() error {
 	lifecycleCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	identityServer, err := httpserver.New(lifecycleCtx, cfg)
+	identityServer, err := saasassembly.Open(lifecycleCtx, cfg)
 	if err != nil {
 		return fmt.Errorf("initialize Identity backend: %w", err)
 	}
@@ -91,7 +91,7 @@ func serve() error {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.HTTPShutdownTimeout)
 		defer cancel()
 		shutdownErr := shutdownIdentityListeners(shutdownCtx, listeners)
-		closeErr := identityServer.CloseContext(shutdownCtx)
+		closeErr := identityServer.Close(shutdownCtx)
 		if errors.Is(err, http.ErrServerClosed) {
 			err = nil
 		}
@@ -99,7 +99,7 @@ func serve() error {
 	case <-lifecycleCtx.Done():
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.HTTPShutdownTimeout)
 		defer cancel()
-		return errors.Join(shutdownIdentityListeners(shutdownCtx, listeners), identityServer.CloseContext(shutdownCtx))
+		return errors.Join(shutdownIdentityListeners(shutdownCtx, listeners), identityServer.Close(shutdownCtx))
 	}
 }
 
@@ -108,7 +108,7 @@ type identityHTTPListener struct {
 	server  *http.Server
 }
 
-func identityHTTPListeners(cfg config.Config, identityServer *httpserver.Server) []identityHTTPListener {
+func identityHTTPListeners(cfg config.Config, identityServer *saasassembly.Service) []identityHTTPListener {
 	if cfg.IsProduction() {
 		return []identityHTTPListener{
 			{surface: "public", server: newIdentityHTTPServer(cfg.HTTPPublicAddr, identityServer.PublicRoutes(), cfg)},
@@ -116,7 +116,7 @@ func identityHTTPListeners(cfg config.Config, identityServer *httpserver.Server)
 			{surface: "operations", server: newIdentityHTTPServer(cfg.HTTPOpsAddr, identityServer.OperationsRoutes(), cfg)},
 		}
 	}
-	return []identityHTTPListener{{surface: "development", server: newIdentityHTTPServer(cfg.HTTPAddr(), identityServer.Routes(), cfg)}}
+	return []identityHTTPListener{{surface: "development", server: newIdentityHTTPServer(cfg.HTTPAddr(), identityServer.DevelopmentRoutes(), cfg)}}
 }
 
 func newIdentityHTTPServer(address string, handler http.Handler, cfg config.Config) *http.Server {

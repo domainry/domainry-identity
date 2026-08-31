@@ -8,13 +8,13 @@ import (
 	privacy "github.com/domainry/domainry-identity/internal/domain/privacy"
 	subjectpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/lifecycle/subject"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
-	ormbuilder "github.com/domainry/domainry-orm/query"
+	"github.com/domainry/domainry-orm/query"
 )
 
 type lifecycleSQLStore interface {
 	DB() *sql.DB
 	SQLRenderer() ormdialect.Renderer
-	ApplyUpsert(*ormbuilder.InsertBuilder, []string, ...string) *ormbuilder.InsertBuilder
+	ApplyUpsert(*query.InsertBuilder, []string, ...string) *query.InsertBuilder
 }
 
 type IdentitySubjectLifecycleStore struct{ store lifecycleSQLStore }

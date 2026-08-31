@@ -9,13 +9,9 @@ import (
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
-	ormbuilder "github.com/domainry/domainry-orm/query"
+	"github.com/domainry/domainry-orm/query"
 )
 
-// applyIdentityRoleDirectoryMutation keeps the operational role directory and
-// the published RoleSchema head in the same database transaction. The
-// directory carries identity and assignment facts only; authorization policy
-// remains exclusively owned by the published RoleSchema.
 func (r MetadataStore) applyIdentityRoleDirectoryMutation(ctx context.Context, tx *sql.Tx, publication *metadatamodel.MetadataDefinitionPublication, mutation metadatamodel.MetadataDefinitionMutation, definition metadatamodel.MetadataDefinition) error {
 	if strings.TrimSpace(mutation.ResourceType) != "role" || mutation.Operation == "noop" {
 		return nil
@@ -49,9 +45,9 @@ func (r MetadataStore) applyIdentityRoleDirectoryMutation(ctx context.Context, t
 		if label == "" {
 			label = roleKey
 		}
-		statement, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(r.store.SQLRenderer, "_identity_roles", workspaceID.String()).
+		statement, arguments, err := query.NewWorkspaceUpdateBuilder(r.store.SQLRenderer, "_identity_roles", workspaceID.String()).
 			Set("label", label).Set("status", string(identitymodel.IdentityStatusActive)).Set("updated_at", now).
-			Where(ormbuilder.Equal("role_key", roleKey)).Build()
+			Where(query.Equal("role_key", roleKey)).Build()
 		if err != nil {
 			return fmt.Errorf("build role directory projection %s update: %w", roleKey, err)
 		}
@@ -69,7 +65,7 @@ func (r MetadataStore) applyIdentityRoleDirectoryMutation(ctx context.Context, t
 		if affected != 0 {
 			return fmt.Errorf("role directory projection %s is not unique", roleKey)
 		}
-		statement, arguments, err = ormbuilder.NewWorkspaceInsertBuilder(r.store.SQLRenderer, "_identity_roles", workspaceID.String()).
+		statement, arguments, err = query.NewWorkspaceInsertBuilder(r.store.SQLRenderer, "_identity_roles", workspaceID.String()).
 			Columns("id", "role_key", "label", "description", "status", "created_at", "updated_at").
 			Values(roleKey, roleKey, label, "", string(identitymodel.IdentityStatusActive), now, now).Build()
 		if err != nil {
@@ -80,8 +76,8 @@ func (r MetadataStore) applyIdentityRoleDirectoryMutation(ctx context.Context, t
 		}
 		return nil
 	case "archive", "delete":
-		statement, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(r.store.SQLRenderer, "_identity_roles", workspaceID.String()).
-			Set("status", string(identitymodel.IdentityStatusDisabled)).Set("updated_at", now).Where(ormbuilder.Equal("role_key", roleKey)).Build()
+		statement, arguments, err := query.NewWorkspaceUpdateBuilder(r.store.SQLRenderer, "_identity_roles", workspaceID.String()).
+			Set("status", string(identitymodel.IdentityStatusDisabled)).Set("updated_at", now).Where(query.Equal("role_key", roleKey)).Build()
 		if err != nil {
 			return fmt.Errorf("build role directory projection %s disable: %w", roleKey, err)
 		}

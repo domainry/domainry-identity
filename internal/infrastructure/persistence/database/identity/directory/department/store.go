@@ -9,13 +9,13 @@ import (
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
-	ormbuilder "github.com/domainry/domainry-orm/query"
+	"github.com/domainry/domainry-orm/query"
 )
 
 type Backend interface {
 	DB() *sql.DB
 	SQLRenderer() ormdialect.Renderer
-	ApplyUpsert(*ormbuilder.InsertBuilder, []string, ...string) *ormbuilder.InsertBuilder
+	ApplyUpsert(*query.InsertBuilder, []string, ...string) *query.InsertBuilder
 	QueryIdentityContext(context.Context, string, ...any) (*sql.Rows, error)
 }
 
@@ -42,7 +42,7 @@ func (s *Store) Upsert(ctx context.Context, execer Execer, workspaceID string, i
 		item.Status = identitymodel.IdentityStatusActive
 	}
 	ancestors, _ := json.Marshal(item.AncestorIDs)
-	insert := ormbuilder.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_departments", workspace.String()).
+	insert := query.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_departments", workspace.String()).
 		Columns("id", "name", "parent_id", "leader_workforce_profile_id", "path", "ancestor_ids", "depth", "sort_order", "status", "created_at", "updated_at").
 		Values(item.ID, item.Name, nullablePointer(item.ParentID), nullable(item.LeaderWorkforceProfileID), item.Path, string(ancestors), item.Depth, item.SortOrder, string(item.Status), s.now(), s.now())
 	s.backend.ApplyUpsert(insert, []string{"workspace_id", "id"}, "name", "parent_id", "leader_workforce_profile_id", "path", "ancestor_ids", "depth", "sort_order", "status", "updated_at")
@@ -59,9 +59,9 @@ func (s *Store) List(ctx context.Context, workspaceID string) ([]identitymodel.I
 	if err != nil {
 		return nil, err
 	}
-	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_departments", workspace.String()).
+	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_departments", workspace.String()).
 		Columns("id", "name", "parent_id", "leader_workforce_profile_id", "path", "ancestor_ids", "depth", "sort_order", "status").
-		OrderBy(ormbuilder.Ascending("depth"), ormbuilder.Ascending("parent_id"), ormbuilder.Ascending("sort_order"), ormbuilder.Ascending("id")).Build()
+		OrderBy(query.Ascending("depth"), query.Ascending("parent_id"), query.Ascending("sort_order"), query.Ascending("id")).Build()
 	if err != nil {
 		return nil, fmt.Errorf("build identity departments query: %w", err)
 	}

@@ -1,4 +1,4 @@
-package module
+package moduleassembly
 
 import (
 	"context"
@@ -20,6 +20,7 @@ import (
 	authpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/auth"
 	identitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity"
 	portabilitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/portability"
+	modulehttptransport "github.com/domainry/domainry-identity/internal/transport/http/module"
 	httpserver "github.com/domainry/domainry-identity/internal/transport/http/server"
 )
 
@@ -181,16 +182,17 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 		_ = identityRuntime.CloseContext(ctx)
 		return nil, fmt.Errorf("assemble Identity module management surface: %w", err)
 	}
-	managementSurface := &moduleHTTPSurface{name: "identity_management", handler: managementServer.Routes()}
+	managementRoutes := make([]identityhttpapi.Route, 0)
 	for _, pattern := range managementServer.IdentityManagementRoutes() {
-		managementSurface.routes = append(managementSurface.routes, identityhttpapi.Route{Pattern: pattern, Exposures: []identityhttpapi.Exposure{identityhttpapi.ExposureTenantAdmin}, Authentication: identityhttpapi.AuthenticationAuthenticated, PrincipalOnly: true})
+		managementRoutes = append(managementRoutes, identityhttpapi.Route{Pattern: pattern, Exposures: []identityhttpapi.Exposure{identityhttpapi.ExposureTenantAdmin}, Authentication: identityhttpapi.AuthenticationAuthenticated, PrincipalOnly: true})
 	}
 	for _, pattern := range managementServer.EmbeddedManagementAuthRoutes() {
-		managementSurface.routes = append(managementSurface.routes, identityhttpapi.Route{Pattern: pattern, Exposures: []identityhttpapi.Exposure{identityhttpapi.ExposureTenantAdmin}, Authentication: identityhttpapi.AuthenticationAuthenticated, PrincipalOnly: true})
+		managementRoutes = append(managementRoutes, identityhttpapi.Route{Pattern: pattern, Exposures: []identityhttpapi.Exposure{identityhttpapi.ExposureTenantAdmin}, Authentication: identityhttpapi.AuthenticationAuthenticated, PrincipalOnly: true})
 	}
 	for _, pattern := range managementServer.EmbeddedPublicAuthRoutes() {
-		managementSurface.routes = append(managementSurface.routes, identityhttpapi.Route{Pattern: pattern, Exposures: []identityhttpapi.Exposure{identityhttpapi.ExposurePublic}, Authentication: identityhttpapi.AuthenticationAnonymous})
+		managementRoutes = append(managementRoutes, identityhttpapi.Route{Pattern: pattern, Exposures: []identityhttpapi.Exposure{identityhttpapi.ExposurePublic}, Authentication: identityhttpapi.AuthenticationAnonymous})
 	}
+	managementSurface := modulehttptransport.NewSurface("identity_management", managementServer.Routes(), managementRoutes)
 	browserGateway, err := browsergateway.New(scopedBinding, browsergateway.Config{
 		ApplicationKey:     application.ApplicationKey,
 		AllowedReturnURLs:  append([]string(nil), application.RedirectURLs...),
@@ -214,19 +216,20 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 		_ = identityRuntime.CloseContext(ctx)
 		return nil, fmt.Errorf("resolve Identity module browser authentication routes: %w", err)
 	}
-	browserSurface := &moduleHTTPSurface{name: "browser_authentication", handler: browserMux}
-	managementOwned := make(map[string]struct{}, len(managementSurface.routes))
-	for _, route := range managementSurface.routes {
+	browserRoutes := make([]identityhttpapi.Route, 0, len(browserPatterns))
+	managementOwned := make(map[string]struct{}, len(managementRoutes))
+	for _, route := range managementRoutes {
 		managementOwned[route.Pattern] = struct{}{}
 	}
 	for _, pattern := range browserPatterns {
 		if _, owned := managementOwned[pattern]; owned {
 			continue
 		}
-		browserSurface.routes = append(browserSurface.routes, identityhttpapi.Route{
+		browserRoutes = append(browserRoutes, identityhttpapi.Route{
 			Pattern: pattern, Exposures: []identityhttpapi.Exposure{identityhttpapi.ExposurePublic, identityhttpapi.ExposureTenantAdmin}, Authentication: identityhttpapi.AuthenticationAnonymous,
 		})
 	}
+	browserSurface := modulehttptransport.NewSurface("browser_authentication", browserMux, browserRoutes)
 	portabilityRepository, err := portabilitypersistence.NewSQLRepository(store)
 	if err != nil {
 		_ = identityRuntime.CloseContext(ctx)

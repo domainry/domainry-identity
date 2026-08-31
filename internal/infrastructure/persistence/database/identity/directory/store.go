@@ -10,7 +10,7 @@ import (
 	"github.com/domainry/domainry-foundation/pagination"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
-	ormbuilder "github.com/domainry/domainry-orm/query"
+	"github.com/domainry/domainry-orm/query"
 )
 
 type Backend interface {
@@ -35,12 +35,12 @@ var identityWorkforceDirectoryColumns = map[string]string{
 	"worker_type": "worker_type", "work_status": "work_status", "start_date": "start_date", "end_date": "end_date",
 }
 
-func (s Store) SearchIdentityUsers(ctx context.Context, workspaceID string, query identitymodel.IdentityListQuery) (identitymodel.IdentityUserPage, error) {
+func (s Store) SearchIdentityUsers(ctx context.Context, workspaceID string, queryValue identitymodel.IdentityListQuery) (identitymodel.IdentityUserPage, error) {
 	workspaceID, err := identityWorkspaceID(workspaceID)
 	if err != nil {
 		return identitymodel.IdentityUserPage{}, err
 	}
-	conditions := identityDirectoryPredicates(query, identityUserDirectoryColumns)
+	conditions := identityDirectoryPredicates(queryValue, identityUserDirectoryColumns)
 	total, err := s.identityDirectoryCount(ctx, workspaceID, "_identity_users", conditions)
 	if err != nil {
 		return identitymodel.IdentityUserPage{}, err
@@ -49,7 +49,7 @@ func (s Store) SearchIdentityUsers(ctx context.Context, workspaceID string, quer
 		"id", "name", "given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale",
 		"email", "phone", "account_type", "locale", "timezone", "status", "version", "created_at", "updated_at",
 	}
-	statement, args, err := s.PageSQL(ctx, workspaceID, "_identity_users", columns, query, conditions)
+	statement, args, err := s.PageSQL(ctx, workspaceID, "_identity_users", columns, queryValue, conditions)
 	if err != nil {
 		return identitymodel.IdentityUserPage{}, err
 	}
@@ -58,7 +58,7 @@ func (s Store) SearchIdentityUsers(ctx context.Context, workspaceID string, quer
 		return identitymodel.IdentityUserPage{}, err
 	}
 	defer rows.Close()
-	cursor := identitySQLDirectoryCursor(query)
+	cursor := identitySQLDirectoryCursor(queryValue)
 	items := make([]identitymodel.IdentityUser, 0, cursor.FetchLimit())
 	for rows.Next() {
 		var user identitymodel.IdentityUser
@@ -80,18 +80,18 @@ func (s Store) SearchIdentityUsers(ctx context.Context, workspaceID string, quer
 	return identitymodel.IdentityUserPage{Items: page.Items, PageSize: cursor.PageSize(), Total: total, HasNext: page.HasNext, NextID: page.NextID}, nil
 }
 
-func (s Store) SearchIdentityWorkforceProfiles(ctx context.Context, workspaceID string, query identitymodel.IdentityListQuery) (identitymodel.IdentityWorkforceProfilePage, error) {
+func (s Store) SearchIdentityWorkforceProfiles(ctx context.Context, workspaceID string, queryValue identitymodel.IdentityListQuery) (identitymodel.IdentityWorkforceProfilePage, error) {
 	workspaceID, err := identityWorkspaceID(workspaceID)
 	if err != nil {
 		return identitymodel.IdentityWorkforceProfilePage{}, err
 	}
-	conditions := identityDirectoryPredicates(query, identityWorkforceDirectoryColumns)
+	conditions := identityDirectoryPredicates(queryValue, identityWorkforceDirectoryColumns)
 	total, err := s.identityDirectoryCount(ctx, workspaceID, "_identity_workforce_profiles", conditions)
 	if err != nil {
 		return identitymodel.IdentityWorkforceProfilePage{}, err
 	}
 	columns := []string{"id", "organization_id", "identity_user_id", "worker_no", "worker_type", "work_status", "start_date", "end_date", "primary_assignment_id", "version"}
-	statement, args, err := s.PageSQL(ctx, workspaceID, "_identity_workforce_profiles", columns, query, conditions)
+	statement, args, err := s.PageSQL(ctx, workspaceID, "_identity_workforce_profiles", columns, queryValue, conditions)
 	if err != nil {
 		return identitymodel.IdentityWorkforceProfilePage{}, err
 	}
@@ -100,7 +100,7 @@ func (s Store) SearchIdentityWorkforceProfiles(ctx context.Context, workspaceID 
 		return identitymodel.IdentityWorkforceProfilePage{}, err
 	}
 	defer rows.Close()
-	cursor := identitySQLDirectoryCursor(query)
+	cursor := identitySQLDirectoryCursor(queryValue)
 	items := make([]identitymodel.IdentityWorkforceProfile, 0, cursor.FetchLimit())
 	for rows.Next() {
 		profile, scanErr := scanIdentityWorkforceProfile(rows)
@@ -116,60 +116,60 @@ func (s Store) SearchIdentityWorkforceProfiles(ctx context.Context, workspaceID 
 	return identitymodel.IdentityWorkforceProfilePage{Items: page.Items, PageSize: cursor.PageSize(), Total: total, HasNext: page.HasNext, NextID: page.NextID}, nil
 }
 
-func identityDirectoryPredicates(query identitymodel.IdentityListQuery, columns map[string]string) []ormbuilder.Predicate {
-	conditions := make([]ormbuilder.Predicate, 0, len(query.SearchFields)+len(query.Filters))
-	if needle := strings.ToLower(strings.TrimSpace(query.Search)); needle != "" {
-		search := make([]ormbuilder.Predicate, 0, len(query.SearchFields))
-		for _, field := range query.SearchFields {
-			search = append(search, ormbuilder.LikeValue(
-				ormbuilder.Lower(ormbuilder.Coalesce(ormbuilder.Column(columns[field]), ormbuilder.Value(""))), "%"+needle+"%",
+func identityDirectoryPredicates(queryValue identitymodel.IdentityListQuery, columns map[string]string) []query.Predicate {
+	conditions := make([]query.Predicate, 0, len(queryValue.SearchFields)+len(queryValue.Filters))
+	if needle := strings.ToLower(strings.TrimSpace(queryValue.Search)); needle != "" {
+		search := make([]query.Predicate, 0, len(queryValue.SearchFields))
+		for _, field := range queryValue.SearchFields {
+			search = append(search, query.LikeValue(
+				query.Lower(query.Coalesce(query.Column(columns[field]), query.Value(""))), "%"+needle+"%",
 			))
 		}
-		conditions = append(conditions, ormbuilder.Or(search...))
+		conditions = append(conditions, query.Or(search...))
 	}
-	for _, field := range sortedStringKeys(query.Filters) {
-		conditions = append(conditions, ormbuilder.EqualValue(
-			ormbuilder.Lower(ormbuilder.Coalesce(ormbuilder.Column(columns[field]), ormbuilder.Value(""))),
-			strings.ToLower(strings.TrimSpace(fmt.Sprint(query.Filters[field]))),
+	for _, field := range sortedStringKeys(queryValue.Filters) {
+		conditions = append(conditions, query.EqualValue(
+			query.Lower(query.Coalesce(query.Column(columns[field]), query.Value(""))),
+			strings.ToLower(strings.TrimSpace(fmt.Sprint(queryValue.Filters[field]))),
 		))
 	}
 	return conditions
 }
 
-func Predicates(query identitymodel.IdentityListQuery, columns map[string]string) []ormbuilder.Predicate {
-	return identityDirectoryPredicates(query, columns)
+func Predicates(queryValue identitymodel.IdentityListQuery, columns map[string]string) []query.Predicate {
+	return identityDirectoryPredicates(queryValue, columns)
 }
 
-func (s Store) identityDirectoryCount(ctx context.Context, workspaceID, table string, conditions []ormbuilder.Predicate) (int, error) {
-	builder := ormbuilder.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), table, workspaceID).
-		Projections(ormbuilder.Project(ormbuilder.CountAll()))
+func (s Store) identityDirectoryCount(ctx context.Context, workspaceID, table string, conditions []query.Predicate) (int, error) {
+	builder := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), table, workspaceID).
+		Projections(query.Project(query.CountAll()))
 	applyIdentityDirectoryPredicates(builder, conditions)
-	query, args, err := builder.Build()
+	queryValue, args, err := builder.Build()
 	if err != nil {
 		return 0, err
 	}
 	var total int
-	err = s.backend.DB().QueryRowContext(ctx, query, args...).Scan(&total)
+	err = s.backend.DB().QueryRowContext(ctx, queryValue, args...).Scan(&total)
 	return total, err
 }
 
-func (s Store) PageSQL(ctx context.Context, workspaceID, table string, columns []string, query identitymodel.IdentityListQuery, conditions []ormbuilder.Predicate) (string, []any, error) {
-	orders := identityDirectoryKeysetOrders(query.Sort)
-	builder := ormbuilder.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), table, workspaceID).
+func (s Store) PageSQL(ctx context.Context, workspaceID, table string, columns []string, queryValue identitymodel.IdentityListQuery, conditions []query.Predicate) (string, []any, error) {
+	orders := identityDirectoryKeysetOrders(queryValue.Sort)
+	builder := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), table, workspaceID).
 		Columns(columns...)
 	applyIdentityDirectoryPredicates(builder, conditions)
-	cursor := identitySQLDirectoryCursor(query)
-	if strings.TrimSpace(query.AfterID) == "" {
+	cursor := identitySQLDirectoryCursor(queryValue)
+	if strings.TrimSpace(queryValue.AfterID) == "" {
 		return builder.FirstPage(cursor.FetchLimit(), orders...).Build()
 	}
-	values, err := s.identityDirectoryCursorValues(ctx, workspaceID, table, query.AfterID, query.Sort, conditions)
+	values, err := s.identityDirectoryCursorValues(ctx, workspaceID, table, queryValue.AfterID, queryValue.Sort, conditions)
 	if err != nil {
 		return "", nil, err
 	}
 	return builder.NextPage(cursor.AfterID(), cursor.FetchLimit(), values, orders...).Build()
 }
 
-func (s Store) identityDirectoryCursorValues(ctx context.Context, workspaceID, table, afterID string, rules []identitymodel.IdentitySortRule, conditions []ormbuilder.Predicate) (map[string]any, error) {
+func (s Store) identityDirectoryCursorValues(ctx context.Context, workspaceID, table, afterID string, rules []identitymodel.IdentitySortRule, conditions []query.Predicate) (map[string]any, error) {
 	columns := make([]string, 0, len(rules))
 	for _, rule := range rules {
 		if rule.Field != "id" {
@@ -179,10 +179,10 @@ func (s Store) identityDirectoryCursorValues(ctx context.Context, workspaceID, t
 	if len(columns) == 0 {
 		return map[string]any{}, nil
 	}
-	predicates := append([]ormbuilder.Predicate(nil), conditions...)
-	predicates = append(predicates, ormbuilder.Equal("id", strings.TrimSpace(afterID)))
-	statement, args, err := ormbuilder.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), table, workspaceID).
-		Columns(columns...).Where(ormbuilder.And(predicates...)).Limit(1).Build()
+	predicates := append([]query.Predicate(nil), conditions...)
+	predicates = append(predicates, query.Equal("id", strings.TrimSpace(afterID)))
+	statement, args, err := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), table, workspaceID).
+		Columns(columns...).Where(query.And(predicates...)).Limit(1).Build()
 	if err != nil {
 		return nil, err
 	}
@@ -204,26 +204,26 @@ func (s Store) identityDirectoryCursorValues(ctx context.Context, workspaceID, t
 	return result, nil
 }
 
-func applyIdentityDirectoryPredicates(builder *ormbuilder.SelectBuilder, conditions []ormbuilder.Predicate) {
+func applyIdentityDirectoryPredicates(builder *query.SelectBuilder, conditions []query.Predicate) {
 	if len(conditions) > 0 {
-		builder.Where(ormbuilder.And(conditions...))
+		builder.Where(query.And(conditions...))
 	}
 }
 
-func identityDirectoryKeysetOrders(rules []identitymodel.IdentitySortRule) []ormbuilder.KeysetOrder {
-	orders := make([]ormbuilder.KeysetOrder, 0, len(rules))
+func identityDirectoryKeysetOrders(rules []identitymodel.IdentitySortRule) []query.KeysetOrder {
+	orders := make([]query.KeysetOrder, 0, len(rules))
 	for _, rule := range rules {
 		if strings.EqualFold(rule.Direction, "desc") {
-			orders = append(orders, ormbuilder.KeysetDescending(rule.Field))
+			orders = append(orders, query.KeysetDescending(rule.Field))
 		} else {
-			orders = append(orders, ormbuilder.KeysetAscending(rule.Field))
+			orders = append(orders, query.KeysetAscending(rule.Field))
 		}
 	}
 	return orders
 }
 
-func identitySQLDirectoryCursor(query identitymodel.IdentityListQuery) pagination.Cursor {
-	return pagination.NewCursor(query.AfterID, query.PageSize, pagination.CursorOptions{DefaultPageSize: 20, MaximumPageSize: 200})
+func identitySQLDirectoryCursor(queryValue identitymodel.IdentityListQuery) pagination.Cursor {
+	return pagination.NewCursor(queryValue.AfterID, queryValue.PageSize, pagination.CursorOptions{DefaultPageSize: 20, MaximumPageSize: 200})
 }
 
 func sortedStringKeys(values map[string]any) []string {

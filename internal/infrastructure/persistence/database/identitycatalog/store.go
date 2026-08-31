@@ -1,5 +1,3 @@
-// Package identitycatalog persists immutable SDK authorization catalogs using
-// the Identity-owned database schema.
 package identitycatalog
 
 import (
@@ -11,7 +9,7 @@ import (
 
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	identitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity"
-	ormbuilder "github.com/domainry/domainry-orm/query"
+	"github.com/domainry/domainry-orm/query"
 )
 
 type Store struct {
@@ -44,15 +42,15 @@ func (store *Store) Save(ctx context.Context, catalog identitysdk.AuthorizationC
 	historyID := applicationKey + ":" + string(receipt.Revision)
 	var existingPayload []byte
 	var existingRevision, existingSHA256, existingPublishedAt string
-	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(store.identity.SQLRenderer(), "_identity_authorization_catalog_revisions", workspaceID).
-		Columns("catalog_json", "revision", "sha256", "published_at").Where(ormbuilder.Equal("id", historyID)).Build()
+	statement, arguments, err := query.NewWorkspaceSelectBuilder(store.identity.SQLRenderer(), "_identity_authorization_catalog_revisions", workspaceID).
+		Columns("catalog_json", "revision", "sha256", "published_at").Where(query.Equal("id", historyID)).Build()
 	if err != nil {
 		return err
 	}
 	historyErr := tx.QueryRowContext(ctx, statement, arguments...).Scan(&existingPayload, &existingRevision, &existingSHA256, &existingPublishedAt)
 	switch {
 	case historyErr == sql.ErrNoRows:
-		statement, arguments, err = ormbuilder.NewWorkspaceInsertBuilder(store.identity.SQLRenderer(), "_identity_authorization_catalog_revisions", workspaceID).
+		statement, arguments, err = query.NewWorkspaceInsertBuilder(store.identity.SQLRenderer(), "_identity_authorization_catalog_revisions", workspaceID).
 			Columns("id", "application_key", "catalog_json", "revision", "sha256", "published_at", "created_at").
 			Values(historyID, applicationKey, payload, string(receipt.Revision), receipt.SHA256, receipt.PublishedAt, receipt.PublishedAt).Build()
 		if err != nil {
@@ -66,7 +64,7 @@ func (store *Store) Save(ctx context.Context, catalog identitysdk.AuthorizationC
 	case !bytes.Equal(existingPayload, payload) || existingRevision != string(receipt.Revision) || existingSHA256 != receipt.SHA256 || existingPublishedAt != receipt.PublishedAt:
 		return &identitysdk.Error{Code: "identity.catalog_revision_immutable_conflict"}
 	}
-	insert := ormbuilder.NewWorkspaceInsertBuilder(store.identity.SQLRenderer(), "_identity_authorization_catalogs", workspaceID).
+	insert := query.NewWorkspaceInsertBuilder(store.identity.SQLRenderer(), "_identity_authorization_catalogs", workspaceID).
 		Columns("application_key", "catalog_json", "revision", "sha256", "published_at", "updated_at").
 		Values(applicationKey, payload, string(receipt.Revision), receipt.SHA256, receipt.PublishedAt, receipt.PublishedAt)
 	store.identity.ApplyUpsert(insert, []string{"workspace_id", "application_key"}, "catalog_json", "revision", "sha256", "published_at", "updated_at")
@@ -86,8 +84,8 @@ func (store *Store) Load(ctx context.Context, application identitysdk.Applicatio
 	if workspaceID == "" || applicationKey == "" {
 		return identitysdk.AuthorizationCatalog{}, identitysdk.CatalogReceipt{}, false, &identitysdk.Error{Code: "identity.application_scope_invalid"}
 	}
-	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(store.identity.SQLRenderer(), "_identity_authorization_catalogs", workspaceID).
-		Columns("catalog_json", "revision", "sha256", "published_at").Where(ormbuilder.Equal("application_key", applicationKey)).Build()
+	statement, arguments, err := query.NewWorkspaceSelectBuilder(store.identity.SQLRenderer(), "_identity_authorization_catalogs", workspaceID).
+		Columns("catalog_json", "revision", "sha256", "published_at").Where(query.Equal("application_key", applicationKey)).Build()
 	if err != nil {
 		return identitysdk.AuthorizationCatalog{}, identitysdk.CatalogReceipt{}, false, err
 	}
@@ -114,8 +112,8 @@ func (store *Store) LoadRevision(ctx context.Context, application identitysdk.Ap
 	if workspaceID == "" || applicationKey == "" || !revision.Valid() {
 		return identitysdk.AuthorizationCatalog{}, identitysdk.CatalogReceipt{}, false, &identitysdk.Error{Code: "identity.application_scope_invalid"}
 	}
-	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(store.identity.SQLRenderer(), "_identity_authorization_catalog_revisions", workspaceID).
-		Columns("catalog_json", "sha256", "published_at").Where(ormbuilder.And(ormbuilder.Equal("application_key", applicationKey), ormbuilder.Equal("revision", string(revision)))).Build()
+	statement, arguments, err := query.NewWorkspaceSelectBuilder(store.identity.SQLRenderer(), "_identity_authorization_catalog_revisions", workspaceID).
+		Columns("catalog_json", "sha256", "published_at").Where(query.And(query.Equal("application_key", applicationKey), query.Equal("revision", string(revision)))).Build()
 	if err != nil {
 		return identitysdk.AuthorizationCatalog{}, identitysdk.CatalogReceipt{}, false, err
 	}

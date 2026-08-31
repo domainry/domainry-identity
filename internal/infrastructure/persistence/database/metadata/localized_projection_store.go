@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
-	ormbuilder "github.com/domainry/domainry-orm/query"
+	"github.com/domainry/domainry-orm/query"
 )
 
 type metadataLocalizedProjection struct {
@@ -30,8 +30,8 @@ func (s MetadataStore) syncMetadataLocalizedTextTx(ctx context.Context, tx *sql.
 	projections := metadataLocalizedProjections(rawI18n)
 	workspaceID := s.tenantWorkspaceID(ctx)
 	entityType, entityKey := strings.TrimSpace(resourceType), strings.TrimSpace(resourceKey)
-	statement, arguments, err := ormbuilder.NewWorkspaceDeleteBuilder(s.store.SQLRenderer, "_identity_localized_texts", workspaceID).
-		Where(ormbuilder.And(ormbuilder.Equal("entity_type", entityType), ormbuilder.Equal("entity_key", entityKey), ormbuilder.Equal("source_kind", "metadata_definition"))).Build()
+	statement, arguments, err := query.NewWorkspaceDeleteBuilder(s.store.SQLRenderer, "_identity_localized_texts", workspaceID).
+		Where(query.And(query.Equal("entity_type", entityType), query.Equal("entity_key", entityKey), query.Equal("source_kind", "metadata_definition"))).Build()
 	if err != nil {
 		return fmt.Errorf("build metadata localized text projection clear: %w", err)
 	}
@@ -40,7 +40,7 @@ func (s MetadataStore) syncMetadataLocalizedTextTx(ctx context.Context, tx *sql.
 	}
 	for _, projection := range projections {
 		localized := metadatamodel.LocalizedText{WorkspaceID: workspaceID, EntityType: entityType, EntityKey: entityKey, Property: projection.Property, Locale: projection.Locale, Text: projection.Text}
-		insert := ormbuilder.NewWorkspaceInsertBuilder(s.store.SQLRenderer, "_identity_localized_texts", workspaceID).
+		insert := query.NewWorkspaceInsertBuilder(s.store.SQLRenderer, "_identity_localized_texts", workspaceID).
 			Columns("id", "entity_type", "entity_key", "property", "locale", "text", "source_kind", "source_id", "created_at", "updated_at").
 			Values(localizedTextID(localized), entityType, entityKey, projection.Property, projection.Locale, projection.Text, "metadata_definition", sourceID, now, now)
 		s.store.Engine.ApplyUpsert(insert, []string{"workspace_id", "entity_type", "entity_key", "property", "locale"}, "text", "source_kind", "source_id", "updated_at")

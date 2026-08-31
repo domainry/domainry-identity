@@ -10,14 +10,11 @@ import (
 
 	"github.com/domainry/domainry-audit-sdk/modulehost"
 	ormmigration "github.com/domainry/domainry-orm/migration"
-	ormbuilder "github.com/domainry/domainry-orm/query"
+	"github.com/domainry/domainry-orm/query"
 )
 
 var moduleMigrationIdentityPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
 
-// ApplyOwnedMigrations is the host-owned module migration boundary. It uses
-// Identity's lock and global _schema_migrations ledger; modules never create a
-// second ledger in the same database.
 func (s *IdentityStore) ApplyOwnedMigrations(ctx context.Context, owner string, migrations []modulehost.SchemaMigration) error {
 	if err := validateOwnedMigrations(owner, migrations); err != nil {
 		return err
@@ -56,8 +53,7 @@ func validateOwnedMigrations(owner string, migrations []modulehost.SchemaMigrati
 }
 
 func (s *IdentityStore) applyOwnedMigrationsLocked(ctx context.Context, owner string, migrations []modulehost.SchemaMigration) error {
-	// The ledger schema is host-owned. Use the lock-owning connection here so
-	// SQLite's single-connection migration pool cannot self-deadlock.
+
 	if s.Coordinator == nil || s.Coordinator.Ledger == nil {
 		return fmt.Errorf("module migration host ledger is unavailable")
 	}
@@ -75,14 +71,14 @@ func (s *IdentityStore) applyOwnedMigrationsLocked(ctx context.Context, owner st
 func (s *IdentityStore) applyOwnedMigration(ctx context.Context, owner string, migration modulehost.SchemaMigration) error {
 	path := fmt.Sprintf("module_%s_%06d_%s", owner, migration.Version, strings.TrimSpace(migration.Name))
 	checksum := ormmigration.Checksum(migration)
-	query, args, err := ormbuilder.NewSelectBuilder(s.BuilderRenderer(), "_schema_migrations").
-		Columns("checksum", "dirty").Where(ormbuilder.Equal("path", path)).Build()
+	queryValue, args, err := query.NewSelectBuilder(s.BuilderRenderer(), "_schema_migrations").
+		Columns("checksum", "dirty").Where(query.Equal("path", path)).Build()
 	if err != nil {
 		return err
 	}
 	var applied string
 	var dirty bool
-	err = s.schemaDatabase().QueryRowContext(ctx, query, args...).Scan(&applied, &dirty)
+	err = s.schemaDatabase().QueryRowContext(ctx, queryValue, args...).Scan(&applied, &dirty)
 	if err == nil {
 		if dirty {
 			return fmt.Errorf("migration.dirty: %s", path)
@@ -102,7 +98,7 @@ func (s *IdentityStore) applyOwnedMigration(ctx context.Context, owner string, m
 	if err != nil {
 		return fmt.Errorf("migration.baseline_mismatch: %s: %w", path, err)
 	}
-	insert, insertArgs, err := ormbuilder.NewInsertBuilder(s.BuilderRenderer(), "_schema_migrations").
+	insert, insertArgs, err := query.NewInsertBuilder(s.BuilderRenderer(), "_schema_migrations").
 		Columns("path", "version", "name", "kind", "checksum", "dirty", "applied_at", "service_version", "duration_ms", "operator", "instance_id", "backup_id").
 		Values(path, fmt.Sprint(migration.Version), migration.Name, "module:"+owner, checksum, !baseline, time.Now().UTC().Format(time.RFC3339), strings.TrimSpace(s.config.ServiceVersion), 0, "module", "identity", "").Build()
 	if err != nil {
@@ -125,9 +121,9 @@ func (s *IdentityStore) applyOwnedMigration(ctx context.Context, owner string, m
 			return fmt.Errorf("migration.failed: execute %s: %w", path, err)
 		}
 	}
-	complete, completeArgs, err := ormbuilder.NewUpdateBuilder(s.BuilderRenderer(), "_schema_migrations").
+	complete, completeArgs, err := query.NewUpdateBuilder(s.BuilderRenderer(), "_schema_migrations").
 		Set("dirty", false).Set("duration_ms", time.Since(started).Milliseconds()).Set("applied_at", time.Now().UTC().Format(time.RFC3339)).
-		Where(ormbuilder.And(ormbuilder.Equal("path", path), ormbuilder.Equal("checksum", checksum))).Build()
+		Where(query.And(query.Equal("path", path), query.Equal("checksum", checksum))).Build()
 	if err != nil {
 		return err
 	}

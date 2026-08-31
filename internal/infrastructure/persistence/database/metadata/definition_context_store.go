@@ -9,15 +9,13 @@ import (
 	"fmt"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
-	ormbuilder "github.com/domainry/domainry-orm/query"
+	"github.com/domainry/domainry-orm/query"
 	"strings"
 	"time"
 )
 
 const metadataRefreshIntentTable = "_identity_metadata_refresh_intents"
 
-// PublishDefinition commits the active definition, immutable version, Audit,
-// and active catalog revision as one local publication fact.
 func (r MetadataStore) PublishDefinition(ctx context.Context, scope identitymodel.SystemScope, resourceType, resourceKey string, req metadatamodel.MetadataDefinitionUpsertRequest, audit auditmodel.AuditEvent, publication *metadatamodel.MetadataDefinitionPublication) (metadatamodel.MetadataDefinition, error) {
 	if err := requireMetadataInstallationScope(scope); err != nil {
 		return metadatamodel.MetadataDefinition{}, err
@@ -75,7 +73,7 @@ func (r MetadataStore) publishDefinition(ctx context.Context, scope identitymode
 			return metadatamodel.MetadataDefinition{}, err
 		}
 		values := []any{metadataResourceID(resourceType, shape.Key), shape.Key, shape.ObjectKey, shape.Name, string(raw), version, hash, sourceKind, sourceID, nil, now, now}
-		statement, arguments, err := ormbuilder.NewInsertBuilder(r.store.SQLRenderer, table).
+		statement, arguments, err := query.NewInsertBuilder(r.store.SQLRenderer, table).
 			Columns("id", "resource_key", "object_key", "name", "payload_json", "schema_version", "schema_hash", "source_kind", "source_id", "disabled_at", "created_at", "updated_at").
 			Values(values...).Build()
 		if err != nil {
@@ -128,7 +126,7 @@ func (r MetadataStore) insertDefinitionRefreshIntentTx(ctx context.Context, tx *
 	payload, _ := json.Marshal(map[string]any{"resource_type": definition.ResourceType, "resource_key": definition.ResourceKey, "schema_version": definition.SchemaVersion, "schema_hash": definition.SchemaHash})
 	id := metadataDefinitionRefreshIntentID(definition.ResourceType, definition.ResourceKey, definition.SchemaHash)
 	leaseExpires := time.Now().UTC().Add(90 * time.Second).Format(time.RFC3339Nano)
-	statement, arguments, err := ormbuilder.NewWorkspaceInsertBuilder(r.store.SQLRenderer, metadataRefreshIntentTable, r.tenantWorkspaceID(ctx)).
+	statement, arguments, err := query.NewWorkspaceInsertBuilder(r.store.SQLRenderer, metadataRefreshIntentTable, r.tenantWorkspaceID(ctx)).
 		Columns("id", "owner", "operation", "resource_id", "idempotency_key", "status", "payload_json", "compensation_payload_json", "attempt_count", "next_attempt_at", "lease_owner", "lease_expires_at", "fencing_token", "last_error", "created_at", "updated_at").
 		Values(id, "metadata", "catalog_refresh", definition.ResourceType+":"+definition.ResourceKey, definition.SchemaHash, "executing", string(payload), "{}", 0, "", "metadata-inline", leaseExpires, 1, "", now, now).Build()
 	if err != nil {
@@ -152,13 +150,13 @@ func (r MetadataStore) CompleteDefinitionRefresh(ctx context.Context, scope iden
 		attemptIncrement = 1
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	statement, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(r.store.SQLRenderer, metadataRefreshIntentTable, r.tenantWorkspaceID(ctx)).
+	statement, arguments, err := query.NewWorkspaceUpdateBuilder(r.store.SQLRenderer, metadataRefreshIntentTable, r.tenantWorkspaceID(ctx)).
 		Set("status", status).
 		Set("last_error", strings.TrimSpace(errorText)).
 		Set("next_attempt_at", nextAttemptAt).
-		SetExpression("attempt_count", ormbuilder.Add(ormbuilder.Column("attempt_count"), ormbuilder.Value(attemptIncrement))).
+		SetExpression("attempt_count", query.Add(query.Column("attempt_count"), query.Value(attemptIncrement))).
 		Set("lease_owner", "").Set("lease_expires_at", "").Set("updated_at", now).
-		Where(ormbuilder.And(ormbuilder.Equal("id", id), ormbuilder.Equal("status", "executing"), ormbuilder.Equal("lease_owner", "metadata-inline"), ormbuilder.Equal("fencing_token", 1))).Build()
+		Where(query.And(query.Equal("id", id), query.Equal("status", "executing"), query.Equal("lease_owner", "metadata-inline"), query.Equal("fencing_token", 1))).Build()
 	if err != nil {
 		return fmt.Errorf("build metadata refresh intent completion: %w", err)
 	}
@@ -307,7 +305,7 @@ func (r MetadataStore) applyDefinitionUpsert(ctx context.Context, tx *sql.Tx, mu
 			return metadatamodel.MetadataDefinition{}, err
 		}
 		values := []any{metadataResourceID(mutation.ResourceType, shape.Key), shape.Key, shape.ObjectKey, shape.Name, string(raw), version, hash, sourceKind, sourceID, nil, now, now}
-		statement, arguments, err := ormbuilder.NewInsertBuilder(r.store.SQLRenderer, table).
+		statement, arguments, err := query.NewInsertBuilder(r.store.SQLRenderer, table).
 			Columns("id", "resource_key", "object_key", "name", "payload_json", "schema_version", "schema_hash", "source_kind", "source_id", "disabled_at", "created_at", "updated_at").
 			Values(values...).Build()
 		if err != nil {
@@ -357,9 +355,9 @@ func (r MetadataStore) applyDefinitionArchive(ctx context.Context, tx *sql.Tx, m
 	if err != nil {
 		return metadatamodel.MetadataDefinition{}, err
 	}
-	statement, arguments, err := ormbuilder.NewUpdateBuilder(r.store.SQLRenderer, table).
+	statement, arguments, err := query.NewUpdateBuilder(r.store.SQLRenderer, table).
 		Set("disabled_at", now).Set("updated_at", now).
-		Where(ormbuilder.And(ormbuilder.Equal("resource_key", mutation.ResourceKey), ormbuilder.Equal("schema_hash", expected), ormbuilder.IsNull("disabled_at"))).Build()
+		Where(query.And(query.Equal("resource_key", mutation.ResourceKey), query.Equal("schema_hash", expected), query.IsNull("disabled_at"))).Build()
 	if err != nil {
 		return metadatamodel.MetadataDefinition{}, fmt.Errorf("build archive %s %s: %w", mutation.ResourceType, mutation.ResourceKey, err)
 	}
@@ -430,11 +428,11 @@ func (r MetadataStore) RollbackDefinition(ctx context.Context, scope identitymod
 			return metadatamodel.MetadataDefinition{}, err
 		}
 	} else {
-		update, arguments, err := ormbuilder.NewUpdateBuilder(r.store.SQLRenderer, table).
+		update, arguments, err := query.NewUpdateBuilder(r.store.SQLRenderer, table).
 			Set("payload_json", payloadJSON).Set("object_key", shape.ObjectKey).Set("name", shape.Name).
 			Set("schema_version", nextVersion).Set("schema_hash", targetHash).Set("source_kind", "builder").
 			Set("source_id", request.SourceID).Set("disabled_at", nil).Set("updated_at", now).
-			Where(ormbuilder.And(ormbuilder.Equal("resource_key", resourceKey), ormbuilder.Equal("schema_hash", request.ExpectedSchemaHash))).Build()
+			Where(query.And(query.Equal("resource_key", resourceKey), query.Equal("schema_hash", request.ExpectedSchemaHash))).Build()
 		if err != nil {
 			return metadatamodel.MetadataDefinition{}, fmt.Errorf("build rollback update: %w", err)
 		}

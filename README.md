@@ -4,12 +4,14 @@ Domainry Identity 是 Domainry 的基础登录与权限模块，负责用户与�
 
 ## 代码结构
 
-- `main.go`：独立 Identity 服务的进程入口。
-- `module/`：供单体 Runtime 进程内集成的公开 Go 包。
-- `internal/assembly/`：单体与独立服务共享的应用装配和生命周期。
+- `cmd/identity-server/`：独立 Identity 服务的进程入口。
+- `module/module.go`：供单体 Runtime 进程内集成的薄公开 facade。
+- `internal/assembly/module/`：进程内模块装配实现。
+- `internal/assembly/saas/`：独立服务装配和生命周期。
 - `internal/adapter/identitysdk/`：`domainry-identity-sdk` 的本地 `Binding` 实现。
 - `internal/transport/http/remotesdk/`：远程 SDK 调用所使用的 HTTP 协议。
-- `internal/transport/http/server/`：独立服务 HTTP 路由、浏览器网关和管理接口装配。
+- `internal/transport/http/module/`：由 Runtime Host 挂载的模块 HTTP surface。
+- `internal/transport/http/saas/`：独立服务 HTTP transport facade；共享路由实现位于 `internal/transport/http/server/`。
 - `internal/application/`、`internal/domain/`：应用服务与领域模型。
 - `internal/infrastructure/persistence/`：SQLite、MySQL、PostgreSQL 持久化实现。
 - `frontend/identity-admin/`：Identity 管理前端。
@@ -54,7 +56,7 @@ factory := identitymodule.NewFactory(identitymodule.OptionsFromEnvironment())
 构建并启动 Identity 服务：
 
 ```bash
-go build -o domainry-identity .
+go build -o domainry-identity ./cmd/identity-server
 ./domainry-identity
 ```
 
@@ -119,7 +121,7 @@ CORS_ALLOWED_ORIGINS
 ## 本地验证
 
 ```bash
-go build .
+go build ./cmd/identity-server
 go test ./...
 go vet ./...
 npm --prefix frontend run build

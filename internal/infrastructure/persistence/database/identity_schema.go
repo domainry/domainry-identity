@@ -17,7 +17,7 @@ import (
 	identityschema "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/schema"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/workspace"
 	"github.com/domainry/domainry-identity/internal/platform/config"
-	ormbuilder "github.com/domainry/domainry-orm/query"
+	"github.com/domainry/domainry-orm/query"
 )
 
 const (
@@ -100,8 +100,6 @@ func (s *IdentityStore) EnsureSchema(ctx context.Context) error {
 	return nil
 }
 
-// EnsureEmbeddedSchema assembles Identity-owned tables while the embedding
-// host owns the migration lock and the single _schema_migrations ledger.
 func (s *IdentityStore) EnsureEmbeddedSchema(ctx context.Context) error {
 	if err := s.ensureManagedIdentityDatabaseMarker(ctx); err != nil {
 		return err
@@ -154,8 +152,8 @@ func (s *IdentityStore) recordIdentitySchemaMigrationIfPending(ctx context.Conte
 func (s *IdentityStore) verifyIdentitySchema(ctx context.Context) error {
 	var checksum string
 	var dirty bool
-	query := "SELECT " + s.identifier("checksum") + ", " + s.identifier("dirty") + " FROM " + s.tableIdentifier("_schema_migrations") + " WHERE " + s.identifier("path") + " = " + s.placeholder(1)
-	if err := s.db.QueryRowContext(ctx, query, identitySchemaMigrationPath(CurrentIdentitySchemaVersion)).Scan(&checksum, &dirty); err != nil {
+	queryValue := "SELECT " + s.identifier("checksum") + ", " + s.identifier("dirty") + " FROM " + s.tableIdentifier("_schema_migrations") + " WHERE " + s.identifier("path") + " = " + s.placeholder(1)
+	if err := s.db.QueryRowContext(ctx, queryValue, identitySchemaMigrationPath(CurrentIdentitySchemaVersion)).Scan(&checksum, &dirty); err != nil {
 		return fmt.Errorf("verify Identity schema compatibility: %w", err)
 	}
 	if dirty {
@@ -185,8 +183,6 @@ func (s *IdentityStore) schemaDatabase() schemaDatabase {
 	return s.db
 }
 
-// SchemaDB returns the advisory-lock-owning migration connection when schema
-// assembly is running, so a one-connection migrator pool cannot self-deadlock.
 func (s *IdentityStore) SchemaDB() identityschema.SQLDatabase {
 	return s.schemaDatabase()
 }
@@ -284,8 +280,8 @@ func (s *IdentityStore) identitySchemaMigrationPending(ctx context.Context, vers
 
 func (s *IdentityStore) startIdentitySchemaMigration(ctx context.Context, version string) error {
 	columns := []string{"path", "version", "name", "kind", "checksum", "dirty", "applied_at", "service_version", "duration_ms", "operator", "instance_id", "backup_id"}
-	query := "INSERT INTO " + s.tableIdentifier("_schema_migrations") + " (" + strings.Join(quotedColumns(s, columns), ", ") + ") VALUES (" + strings.Join(placeholders(s, len(columns)), ", ") + ")"
-	_, err := s.schemaDatabase().ExecContext(ctx, query, identitySchemaMigrationPath(version), version, identitySchemaMigrationName, identitySchemaMigrationKind, currentIdentitySchemaChecksum(), true, time.Now().UTC().Format(time.RFC3339), s.config.ServiceVersion, 0, migrationcontract.Operator(s.config), migrationcontract.InstanceID(s.config), s.BackupManager.BackupID())
+	queryValue := "INSERT INTO " + s.tableIdentifier("_schema_migrations") + " (" + strings.Join(quotedColumns(s, columns), ", ") + ") VALUES (" + strings.Join(placeholders(s, len(columns)), ", ") + ")"
+	_, err := s.schemaDatabase().ExecContext(ctx, queryValue, identitySchemaMigrationPath(version), version, identitySchemaMigrationName, identitySchemaMigrationKind, currentIdentitySchemaChecksum(), true, time.Now().UTC().Format(time.RFC3339), s.config.ServiceVersion, 0, migrationcontract.Operator(s.config), migrationcontract.InstanceID(s.config), s.BackupManager.BackupID())
 	return err
 }
 
@@ -302,8 +298,7 @@ func identitySchemaMigrationPath(version string) string {
 }
 
 func (s *IdentityStore) removeObsoleteIdentityMigrationLedger(ctx context.Context) error {
-	// domainry-orm has no DROP TABLE builder. This never-launched private ledger
-	// carries no business data and is removed rather than adopted.
+
 	if _, err := s.schemaDatabase().ExecContext(ctx, "DROP TABLE IF EXISTS "+s.tableIdentifier("_schema_materializations")); err != nil {
 		return fmt.Errorf("remove obsolete Identity migration ledger: %w", err)
 	}
@@ -312,11 +307,11 @@ func (s *IdentityStore) removeObsoleteIdentityMigrationLedger(ctx context.Contex
 
 func (s *IdentityStore) identityTableExists(ctx context.Context, table string) (bool, error) {
 	var count int
-	query := s.PersistenceEngine().TableExistsQuery(s.BuilderRenderer(), s.DatabaseSchema(), s.relationPrefix+table)
-	if strings.TrimSpace(query.Statement) == "" {
+	queryValue := s.PersistenceEngine().TableExistsQuery(s.BuilderRenderer(), s.DatabaseSchema(), s.relationPrefix+table)
+	if strings.TrimSpace(queryValue.Statement) == "" {
 		return false, fmt.Errorf("Identity table inspection is unavailable")
 	}
-	if err := s.schemaDatabase().QueryRowContext(ctx, query.Statement, query.Arguments...).Scan(&count); err != nil {
+	if err := s.schemaDatabase().QueryRowContext(ctx, queryValue.Statement, queryValue.Arguments...).Scan(&count); err != nil {
 		return false, fmt.Errorf("inspect Identity table %s: %w", table, err)
 	}
 	return count > 0, nil
@@ -346,7 +341,7 @@ func (s *IdentityStore) ensureManagedIdentityDatabaseMarker(ctx context.Context)
 		return fmt.Errorf("generate managed database cohort marker: %w", err)
 	}
 	identity := sha256.Sum256(seed)
-	insert, arguments, err := ormbuilder.NewInsertBuilder(s.sqlBase().SQLRenderer, managedIdentityDatabaseTable).
+	insert, arguments, err := query.NewInsertBuilder(s.sqlBase().SQLRenderer, managedIdentityDatabaseTable).
 		Columns("marker_id", "contract_version", "database_identity_sha256").
 		Values(1, managedIdentityDatabaseContractVersion, hex.EncodeToString(identity[:])).
 		OnConflictDoNothing("marker_id").
@@ -369,8 +364,8 @@ func (s *IdentityStore) verifyManagedIdentityDatabaseMarker(ctx context.Context)
 
 func (s *IdentityStore) verifyManagedIdentityDatabaseMarkerWith(ctx context.Context, database schemaDatabase) error {
 	var contractVersion, identity string
-	query := "SELECT " + s.identifier("contract_version") + ", " + s.identifier("database_identity_sha256") + " FROM " + s.tableIdentifier(managedIdentityDatabaseTable) + " WHERE " + s.identifier("marker_id") + " = " + s.placeholder(1)
-	if err := database.QueryRowContext(ctx, query, 1).Scan(&contractVersion, &identity); err != nil {
+	queryValue := "SELECT " + s.identifier("contract_version") + ", " + s.identifier("database_identity_sha256") + " FROM " + s.tableIdentifier(managedIdentityDatabaseTable) + " WHERE " + s.identifier("marker_id") + " = " + s.placeholder(1)
+	if err := database.QueryRowContext(ctx, queryValue, 1).Scan(&contractVersion, &identity); err != nil {
 		return fmt.Errorf("verify managed database cohort marker: %w", err)
 	}
 	if contractVersion != managedIdentityDatabaseContractVersion || len(identity) != 64 {

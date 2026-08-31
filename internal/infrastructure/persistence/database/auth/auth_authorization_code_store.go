@@ -9,7 +9,7 @@ import (
 	"time"
 
 	authmodel "github.com/domainry/domainry-identity/internal/domain/auth/model"
-	ormbuilder "github.com/domainry/domainry-orm/query"
+	"github.com/domainry/domainry-orm/query"
 )
 
 func authAuthorizationCodeHash(code string) string {
@@ -32,7 +32,7 @@ func (s AuthStore) CreateAuthAuthorizationCode(ctx context.Context, value authmo
 		return err
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	statement, args, buildErr := ormbuilder.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_auth_authorization_codes", workspaceID).
+	statement, args, buildErr := query.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_auth_authorization_codes", workspaceID).
 		Columns("code_hash", "application_key", "session_json", "redirect_url", "expires_at", "consumed_at", "created_at").
 		Values(codeHash, strings.TrimSpace(value.ApplicationKey), envelope, strings.TrimSpace(value.RedirectURL), value.ExpiresAt, nil, valueOrNow(value.CreatedAt, now)).Build()
 	if buildErr != nil {
@@ -62,10 +62,10 @@ func (s AuthStore) ConsumeAuthAuthorizationCode(ctx context.Context, workspaceID
 		return authmodel.AuthSession{}, false, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	updateStatement, updateArgs, buildErr := ormbuilder.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_auth_authorization_codes", workspaceID).
-		Set("consumed_at", nowText).Where(ormbuilder.And(
-		ormbuilder.Equal("code_hash", codeHash), ormbuilder.Equal("application_key", applicationKey), ormbuilder.Equal("redirect_url", redirectURL),
-		ormbuilder.IsNull("consumed_at"), ormbuilder.GreaterThan("expires_at", nowText),
+	updateStatement, updateArgs, buildErr := query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_auth_authorization_codes", workspaceID).
+		Set("consumed_at", nowText).Where(query.And(
+		query.Equal("code_hash", codeHash), query.Equal("application_key", applicationKey), query.Equal("redirect_url", redirectURL),
+		query.IsNull("consumed_at"), query.GreaterThan("expires_at", nowText),
 	)).Build()
 	if buildErr != nil {
 		return authmodel.AuthSession{}, false, buildErr
@@ -78,8 +78,8 @@ func (s AuthStore) ConsumeAuthAuthorizationCode(ctx context.Context, workspaceID
 	if err != nil || count != 1 {
 		return authmodel.AuthSession{}, false, err
 	}
-	selectStatement, selectArgs, buildErr := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_auth_authorization_codes", workspaceID).
-		Columns("session_json").Where(ormbuilder.Equal("code_hash", codeHash)).Limit(1).Build()
+	selectStatement, selectArgs, buildErr := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_auth_authorization_codes", workspaceID).
+		Columns("session_json").Where(query.Equal("code_hash", codeHash)).Limit(1).Build()
 	if buildErr != nil {
 		return authmodel.AuthSession{}, false, buildErr
 	}

@@ -3,8 +3,8 @@ package main
 import (
 	"testing"
 
+	saasassembly "github.com/domainry/domainry-identity/internal/assembly/saas"
 	"github.com/domainry/domainry-identity/internal/platform/config"
-	httpserver "github.com/domainry/domainry-identity/internal/transport/http/server"
 )
 
 func TestIdentityHTTPListenersSeparateProductionSurfaces(t *testing.T) {
@@ -12,7 +12,7 @@ func TestIdentityHTTPListenersSeparateProductionSurfaces(t *testing.T) {
 		Environment: "production", HTTPPublicAddr: "0.0.0.0:8081",
 		HTTPTenantAdminAddr: "127.0.0.1:8082", HTTPOpsAddr: "127.0.0.1:8083",
 	}
-	listeners := identityHTTPListeners(production, &httpserver.Server{})
+	listeners := identityHTTPListeners(production, &saasassembly.Service{})
 	if len(listeners) != 3 {
 		t.Fatalf("production listener count=%d", len(listeners))
 	}
@@ -24,7 +24,7 @@ func TestIdentityHTTPListenersSeparateProductionSurfaces(t *testing.T) {
 	}
 
 	development := config.Config{Environment: "development", Port: "9091"}
-	listeners = identityHTTPListeners(development, &httpserver.Server{})
+	listeners = identityHTTPListeners(development, &saasassembly.Service{})
 	if len(listeners) != 1 || listeners[0].surface != "development" || listeners[0].server.Addr != ":9091" {
 		t.Fatalf("development listeners=%+v", listeners)
 	}

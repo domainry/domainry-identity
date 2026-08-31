@@ -10,7 +10,7 @@ import (
 
 	authmodel "github.com/domainry/domainry-identity/internal/domain/auth/model"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
-	ormbuilder "github.com/domainry/domainry-orm/query"
+	"github.com/domainry/domainry-orm/query"
 )
 
 type providerSecretPayload struct {
@@ -24,8 +24,8 @@ func (s AuthStore) ListAuthProviderCredentials(ctx context.Context, workspaceID 
 	if err != nil {
 		return nil, err
 	}
-	statement, args, buildErr := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_auth_provider_credentials", workspaceID).
-		Columns("provider_key", "configuration_json", "secret_envelope", "updated_by", "created_at", "updated_at").OrderBy(ormbuilder.Ascending("provider_key")).Build()
+	statement, args, buildErr := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_auth_provider_credentials", workspaceID).
+		Columns("provider_key", "configuration_json", "secret_envelope", "updated_by", "created_at", "updated_at").OrderBy(query.Ascending("provider_key")).Build()
 	if buildErr != nil {
 		return nil, buildErr
 	}
@@ -93,15 +93,15 @@ func (s AuthStore) UpsertAuthProviderCredential(ctx context.Context, provider st
 	if err != nil {
 		return authmodel.AuthProviderCredential{}, fmt.Errorf("encrypt auth provider credential: %w", err)
 	}
-	insert := ormbuilder.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_auth_provider_credentials", workspaceID).
+	insert := query.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_auth_provider_credentials", workspaceID).
 		Columns("provider_key", "configuration_json", "secret_envelope", "updated_by", "created_at", "updated_at").
 		Values(provider, string(configuration), envelope, credential.UpdatedBy, credential.CreatedAt, credential.UpdatedAt)
 	insert.OnConflictDoUpdate([]string{"workspace_id", "provider_key"},
-		ormbuilder.AssignExpression("configuration_json", ormbuilder.InsertedValue("configuration_json")),
-		ormbuilder.AssignExpression("secret_envelope", ormbuilder.InsertedValue("secret_envelope")),
-		ormbuilder.AssignExpression("updated_by", ormbuilder.InsertedValue("updated_by")),
-		ormbuilder.AssignExpression("created_at", ormbuilder.InsertedValue("created_at")),
-		ormbuilder.AssignExpression("updated_at", ormbuilder.InsertedValue("updated_at")),
+		query.AssignExpression("configuration_json", query.InsertedValue("configuration_json")),
+		query.AssignExpression("secret_envelope", query.InsertedValue("secret_envelope")),
+		query.AssignExpression("updated_by", query.InsertedValue("updated_by")),
+		query.AssignExpression("created_at", query.InsertedValue("created_at")),
+		query.AssignExpression("updated_at", query.InsertedValue("updated_at")),
 	)
 	statement, args, buildErr := insert.Build()
 	if buildErr != nil {
@@ -114,9 +114,9 @@ func (s AuthStore) UpsertAuthProviderCredential(ctx context.Context, provider st
 }
 
 func (s AuthStore) authProviderCredential(ctx context.Context, workspaceID, provider string) (authmodel.AuthProviderCredential, bool, error) {
-	statement, args, buildErr := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_auth_provider_credentials", workspaceID).
+	statement, args, buildErr := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_auth_provider_credentials", workspaceID).
 		Columns("provider_key", "configuration_json", "secret_envelope", "updated_by", "created_at", "updated_at").
-		Where(ormbuilder.Equal("provider_key", provider)).Limit(1).Build()
+		Where(query.Equal("provider_key", provider)).Limit(1).Build()
 	if buildErr != nil {
 		return authmodel.AuthProviderCredential{}, false, buildErr
 	}

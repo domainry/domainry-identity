@@ -11,7 +11,7 @@ import (
 	"github.com/domainry/domainry-foundation/apperror"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
-	ormbuilder "github.com/domainry/domainry-orm/query"
+	"github.com/domainry/domainry-orm/query"
 )
 
 type Backend interface {
@@ -51,7 +51,7 @@ func (s *Store) Create(ctx context.Context, workspaceID string, request identity
 		request.Status = "pending"
 	}
 	roleIDs, _ := json.Marshal(unique(request.RoleIDs))
-	statement, arguments, err := ormbuilder.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_role_requests", workspaceID).Columns("id", "user_id", "requested_by", "provider", "provider_subject", "role_ids_json", "status", "reason", "created_at", "updated_at", "reviewed_by", "reviewed_at", "review_note").Values(request.ID, request.UserID, nullable(request.RequestedBy), nullable(request.Provider), nullable(request.ProviderSubject), string(roleIDs), request.Status, nullable(request.Reason), request.CreatedAt, request.UpdatedAt, nullable(request.ReviewedBy), nullable(request.ReviewedAt), nullable(request.ReviewNote)).Build()
+	statement, arguments, err := query.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_role_requests", workspaceID).Columns("id", "user_id", "requested_by", "provider", "provider_subject", "role_ids_json", "status", "reason", "created_at", "updated_at", "reviewed_by", "reviewed_at", "review_note").Values(request.ID, request.UserID, nullable(request.RequestedBy), nullable(request.Provider), nullable(request.ProviderSubject), string(roleIDs), request.Status, nullable(request.Reason), request.CreatedAt, request.UpdatedAt, nullable(request.ReviewedBy), nullable(request.ReviewedAt), nullable(request.ReviewNote)).Build()
 	if err != nil {
 		return identitymodel.IdentityRoleRequest{}, fmt.Errorf("build identity role request insert: %w", err)
 	}
@@ -66,16 +66,16 @@ func (s *Store) List(ctx context.Context, workspaceID, status, userID string) ([
 	if err != nil {
 		return nil, err
 	}
-	predicates := []ormbuilder.Predicate{}
+	predicates := []query.Predicate{}
 	if strings.TrimSpace(status) != "" {
-		predicates = append(predicates, ormbuilder.Equal("status", status))
+		predicates = append(predicates, query.Equal("status", status))
 	}
 	if strings.TrimSpace(userID) != "" {
-		predicates = append(predicates, ormbuilder.Equal("user_id", userID))
+		predicates = append(predicates, query.Equal("user_id", userID))
 	}
-	builder := ormbuilder.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_role_requests", workspaceID).Columns("id", "user_id", "requested_by", "provider", "provider_subject", "role_ids_json", "status", "reason", "created_at", "updated_at", "reviewed_by", "reviewed_at", "review_note").OrderBy(ormbuilder.Descending("created_at"), ormbuilder.Ascending("id"))
+	builder := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_role_requests", workspaceID).Columns("id", "user_id", "requested_by", "provider", "provider_subject", "role_ids_json", "status", "reason", "created_at", "updated_at", "reviewed_by", "reviewed_at", "review_note").OrderBy(query.Descending("created_at"), query.Ascending("id"))
 	if len(predicates) > 0 {
-		builder.Where(ormbuilder.And(predicates...))
+		builder.Where(query.And(predicates...))
 	}
 	statement, arguments, err := builder.Build()
 	if err != nil {
@@ -136,7 +136,7 @@ func (s *Store) ApplyDecision(ctx context.Context, workspaceID string, request i
 			return err
 		}
 	}
-	statement, arguments, err := s.update(workspaceID, request).Where(ormbuilder.And(ormbuilder.Equal("id", request.ID), ormbuilder.Equal("status", expectedStatus))).Build()
+	statement, arguments, err := s.update(workspaceID, request).Where(query.And(query.Equal("id", request.ID), query.Equal("status", expectedStatus))).Build()
 	if err != nil {
 		return fmt.Errorf("build identity role request decision: %w", err)
 	}
@@ -154,9 +154,9 @@ func (s *Store) ApplyDecision(ctx context.Context, workspaceID string, request i
 	return tx.Commit()
 }
 
-func (s *Store) update(workspaceID string, request identitymodel.IdentityRoleRequest) *ormbuilder.UpdateBuilder {
+func (s *Store) update(workspaceID string, request identitymodel.IdentityRoleRequest) *query.UpdateBuilder {
 	roleIDs, _ := json.Marshal(unique(request.RoleIDs))
-	return ormbuilder.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_role_requests", workspaceID).Set("role_ids_json", string(roleIDs)).Set("status", request.Status).Set("reason", nullable(request.Reason)).Set("updated_at", request.UpdatedAt).Set("reviewed_by", nullable(request.ReviewedBy)).Set("reviewed_at", nullable(request.ReviewedAt)).Set("review_note", nullable(request.ReviewNote)).Where(ormbuilder.Equal("id", request.ID))
+	return query.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_role_requests", workspaceID).Set("role_ids_json", string(roleIDs)).Set("status", request.Status).Set("reason", nullable(request.Reason)).Set("updated_at", request.UpdatedAt).Set("reviewed_by", nullable(request.ReviewedBy)).Set("reviewed_at", nullable(request.ReviewedAt)).Set("review_note", nullable(request.ReviewNote)).Where(query.Equal("id", request.ID))
 }
 func workspace(value string) (string, error) {
 	id, err := identitymodel.NewWorkspaceID(value)

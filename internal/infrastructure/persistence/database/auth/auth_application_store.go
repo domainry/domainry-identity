@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	ormbuilder "github.com/domainry/domainry-orm/query"
+	"github.com/domainry/domainry-orm/query"
 )
 
 func (s AuthStore) AuthorizationRedirectRegistered(ctx context.Context, workspaceID, applicationKey, redirectURL string) (bool, error) {
@@ -14,8 +14,8 @@ func (s AuthStore) AuthorizationRedirectRegistered(ctx context.Context, workspac
 	if err != nil {
 		return false, err
 	}
-	statement, args, buildErr := ormbuilder.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_authorization_catalogs", workspaceID).
-		Columns("catalog_json").Where(ormbuilder.Equal("application_key", strings.TrimSpace(applicationKey))).Limit(1).Build()
+	statement, args, buildErr := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_authorization_catalogs", workspaceID).
+		Columns("catalog_json").Where(query.Equal("application_key", strings.TrimSpace(applicationKey))).Limit(1).Build()
 	if buildErr != nil {
 		return false, buildErr
 	}

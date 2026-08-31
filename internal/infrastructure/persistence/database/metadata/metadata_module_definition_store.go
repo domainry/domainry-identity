@@ -8,7 +8,7 @@ import (
 
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
 	metadatarepository "github.com/domainry/domainry-metadata-sdk/repository"
-	ormbuilder "github.com/domainry/domainry-orm/query"
+	"github.com/domainry/domainry-orm/query"
 )
 
 func metadataModuleOwnsDefinition(resourceType string) bool {
@@ -22,11 +22,11 @@ func metadataModuleOwnsDefinition(resourceType string) bool {
 
 func (s MetadataStore) countOwnedDefinitionVersions(ctx context.Context, executor metadatarepository.ExecutionExecutor, resourceType, resourceKey string) (int, error) {
 	if strings.TrimSpace(resourceType) == "identity_profile_binding" {
-		query, args, err := ormbuilder.NewSelectBuilder(s.store.SQLRenderer, "_identity_profile_binding_definition_versions").Projections(ormbuilder.Project(ormbuilder.CountAll())).Where(ormbuilder.And(ormbuilder.Equal("resource_type", resourceType), ormbuilder.Equal("resource_key", resourceKey))).Build()
+		queryValue, args, err := query.NewSelectBuilder(s.store.SQLRenderer, "_identity_profile_binding_definition_versions").Projections(query.Project(query.CountAll())).Where(query.And(query.Equal("resource_type", resourceType), query.Equal("resource_key", resourceKey))).Build()
 		if err != nil {
 			return 0, err
 		}
-		rows, err := executor.QueryContext(ctx, query, args...)
+		rows, err := executor.QueryContext(ctx, queryValue, args...)
 		if err != nil {
 			return 0, err
 		}
@@ -47,11 +47,11 @@ func (s MetadataStore) countOwnedDefinitionVersions(ctx context.Context, executo
 func (s MetadataStore) insertOwnedDefinitionVersion(ctx context.Context, executor metadatarepository.ExecutionExecutor, value metadatarepository.DefinitionVersion) error {
 	if strings.TrimSpace(value.ResourceType) == "identity_profile_binding" {
 		id := strings.TrimSpace(value.ResourceType) + ":version:" + strings.TrimSpace(value.ResourceKey) + ":" + strings.TrimSpace(value.SchemaVersion) + ":" + metadataHashPrefix(value.SchemaHash)
-		query, args, err := ormbuilder.NewInsertBuilder(s.store.SQLRenderer, "_identity_profile_binding_definition_versions").Columns("id", "resource_type", "resource_key", "schema_version", "schema_hash", "payload_json", "created_at").Values(id, value.ResourceType, value.ResourceKey, value.SchemaVersion, value.SchemaHash, value.Payload, value.CreatedAt).Build()
+		queryValue, args, err := query.NewInsertBuilder(s.store.SQLRenderer, "_identity_profile_binding_definition_versions").Columns("id", "resource_type", "resource_key", "schema_version", "schema_hash", "payload_json", "created_at").Values(id, value.ResourceType, value.ResourceKey, value.SchemaVersion, value.SchemaHash, value.Payload, value.CreatedAt).Build()
 		if err != nil {
 			return err
 		}
-		_, err = executor.ExecContext(ctx, query, args...)
+		_, err = executor.ExecContext(ctx, queryValue, args...)
 		return err
 	}
 	repository, err := s.metadataModuleDefinitionStore()
@@ -63,11 +63,11 @@ func (s MetadataStore) insertOwnedDefinitionVersion(ctx context.Context, executo
 
 func (s MetadataStore) listOwnedDefinitionVersions(ctx context.Context, executor metadatarepository.ExecutionExecutor, resourceType, resourceKey string) ([]metadatarepository.DefinitionVersion, error) {
 	if strings.TrimSpace(resourceType) == "identity_profile_binding" {
-		query, args, err := ormbuilder.NewSelectBuilder(s.store.SQLRenderer, "_identity_profile_binding_definition_versions").Columns("schema_version", "schema_hash", "payload_json", "created_at").Where(ormbuilder.And(ormbuilder.Equal("resource_type", resourceType), ormbuilder.Equal("resource_key", resourceKey))).OrderBy(ormbuilder.Descending("created_at")).Build()
+		queryValue, args, err := query.NewSelectBuilder(s.store.SQLRenderer, "_identity_profile_binding_definition_versions").Columns("schema_version", "schema_hash", "payload_json", "created_at").Where(query.And(query.Equal("resource_type", resourceType), query.Equal("resource_key", resourceKey))).OrderBy(query.Descending("created_at")).Build()
 		if err != nil {
 			return nil, err
 		}
-		rows, err := executor.QueryContext(ctx, query, args...)
+		rows, err := executor.QueryContext(ctx, queryValue, args...)
 		if err != nil {
 			return nil, err
 		}
@@ -93,11 +93,11 @@ func (s MetadataStore) listOwnedDefinitionVersions(ctx context.Context, executor
 
 func (s MetadataStore) getOwnedDefinitionVersion(ctx context.Context, executor metadatarepository.ExecutionExecutor, resourceType, resourceKey, version string) (metadatarepository.DefinitionVersion, bool, error) {
 	if strings.TrimSpace(resourceType) == "identity_profile_binding" {
-		query, args, err := ormbuilder.NewSelectBuilder(s.store.SQLRenderer, "_identity_profile_binding_definition_versions").Columns("schema_hash", "payload_json", "created_at").Where(ormbuilder.And(ormbuilder.Equal("resource_type", resourceType), ormbuilder.Equal("resource_key", resourceKey), ormbuilder.Equal("schema_version", version))).Build()
+		queryValue, args, err := query.NewSelectBuilder(s.store.SQLRenderer, "_identity_profile_binding_definition_versions").Columns("schema_hash", "payload_json", "created_at").Where(query.And(query.Equal("resource_type", resourceType), query.Equal("resource_key", resourceKey), query.Equal("schema_version", version))).Build()
 		if err != nil {
 			return metadatarepository.DefinitionVersion{}, false, err
 		}
-		rows, err := executor.QueryContext(ctx, query, args...)
+		rows, err := executor.QueryContext(ctx, queryValue, args...)
 		if err != nil {
 			return metadatarepository.DefinitionVersion{}, false, err
 		}

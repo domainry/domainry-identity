@@ -11,7 +11,7 @@ import (
 
 	identityauditmodule "github.com/domainry/domainry-identity/internal/infrastructure/auditmodule"
 	metadatarepository "github.com/domainry/domainry-metadata-sdk/repository"
-	ormbuilder "github.com/domainry/domainry-orm/query"
+	"github.com/domainry/domainry-orm/query"
 )
 
 func (s MetadataStore) insertMetadataChangeAudit(ctx context.Context, tx *sql.Tx, event auditmodel.AuditEvent) error {
@@ -36,7 +36,7 @@ func (s MetadataStore) insertMetadataDefinitionVersionTx(ctx context.Context, tx
 
 func (s MetadataStore) currentMetadataHashTx(ctx context.Context, tx *sql.Tx, table, resourceKey string) string {
 	var current string
-	statement, arguments, err := ormbuilder.NewSelectBuilder(s.store.SQLRenderer, table).Columns("schema_hash").Where(ormbuilder.Equal("resource_key", resourceKey)).Build()
+	statement, arguments, err := query.NewSelectBuilder(s.store.SQLRenderer, table).Columns("schema_hash").Where(query.Equal("resource_key", resourceKey)).Build()
 	if err == nil {
 		_ = tx.QueryRowContext(ctx, statement, arguments...).Scan(&current)
 	}

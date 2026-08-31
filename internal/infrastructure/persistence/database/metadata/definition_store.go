@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	ormbuilder "github.com/domainry/domainry-orm/query"
+	"github.com/domainry/domainry-orm/query"
 )
 
 func (s MetadataStore) UpsertMetadataDefinition(ctx context.Context, resourceType string, resourceKey string, req metadatamodel.MetadataDefinitionUpsertRequest) (metadatamodel.MetadataDefinition, error) {
@@ -76,7 +76,7 @@ func (s MetadataStore) UpsertMetadataDefinition(ctx context.Context, resourceTyp
 			return metadatamodel.MetadataDefinition{}, err
 		}
 		values := []any{metadataResourceID(resourceType, shape.Key), shape.Key, shape.ObjectKey, shape.Name, string(raw), schemaVersion, hash, sourceKind, sourceID, nil, now, now}
-		statement, arguments, err := ormbuilder.NewInsertBuilder(s.store.SQLRenderer, table).
+		statement, arguments, err := query.NewInsertBuilder(s.store.SQLRenderer, table).
 			Columns("id", "resource_key", "object_key", "name", "payload_json", "schema_version", "schema_hash", "source_kind", "source_id", "disabled_at", "created_at", "updated_at").Values(values...).Build()
 		if err != nil {
 			return metadatamodel.MetadataDefinition{}, fmt.Errorf("build %s %s insert: %w", resourceType, shape.Key, err)
@@ -105,13 +105,13 @@ func (s MetadataStore) UpsertMetadataDefinition(ctx context.Context, resourceTyp
 		}
 		return metadatamodel.MetadataDefinition{}, fmt.Errorf("commit metadata upsert: %w", err)
 	}
-	// Refresh catalog schema_hash so /schema ETag changes on the next request.
+
 	return definition, nil
 }
 
 func (s MetadataStore) replaceMetadataDefinitionVersion(ctx context.Context, tx *sql.Tx, table, resourceType, resourceKey string, expectedHash *string) error {
 	if expectedHash == nil {
-		statement, arguments, err := ormbuilder.NewDeleteBuilder(s.store.SQLRenderer, table).Where(ormbuilder.Equal("resource_key", resourceKey)).Build()
+		statement, arguments, err := query.NewDeleteBuilder(s.store.SQLRenderer, table).Where(query.Equal("resource_key", resourceKey)).Build()
 		if err != nil {
 			return fmt.Errorf("build replace %s %s delete: %w", resourceType, resourceKey, err)
 		}
@@ -136,8 +136,8 @@ func (s MetadataStore) replaceMetadataDefinitionVersion(ctx context.Context, tx 
 		}
 		return &metadatamodel.MetadataDefinitionConflictError{ResourceType: resourceType, ResourceKey: resourceKey, ExpectedHash: expected, CurrentHash: current}
 	}
-	statement, arguments, err := ormbuilder.NewDeleteBuilder(s.store.SQLRenderer, table).
-		Where(ormbuilder.And(ormbuilder.Equal("resource_key", resourceKey), ormbuilder.Equal("schema_hash", expected))).Build()
+	statement, arguments, err := query.NewDeleteBuilder(s.store.SQLRenderer, table).
+		Where(query.And(query.Equal("resource_key", resourceKey), query.Equal("schema_hash", expected))).Build()
 	if err != nil {
 		return fmt.Errorf("build replace %s %s delete: %w", resourceType, resourceKey, err)
 	}
@@ -171,11 +171,10 @@ func (s MetadataStore) nextMetadataSchemaVersion(ctx context.Context, resourceTy
 	return fmt.Sprintf("%d", count+1), nil
 }
 
-func metadataHashSelect(s MetadataStore, table, resourceKey string) *ormbuilder.SelectBuilder {
-	return ormbuilder.NewSelectBuilder(s.store.SQLRenderer, table).Columns("schema_hash").Where(ormbuilder.Equal("resource_key", resourceKey))
+func metadataHashSelect(s MetadataStore, table, resourceKey string) *query.SelectBuilder {
+	return query.NewSelectBuilder(s.store.SQLRenderer, table).Columns("schema_hash").Where(query.Equal("resource_key", resourceKey))
 }
 
-// DisableMetadataDefinition soft-deletes a definition by setting disabled_at; no physical DROP is performed.
 func (s MetadataStore) DisableMetadataDefinition(ctx context.Context, resourceType string, resourceKey string) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 	if metadataModuleOwnsDefinition(resourceType) {
@@ -196,7 +195,7 @@ func (s MetadataStore) DisableMetadataDefinition(ctx context.Context, resourceTy
 	if err != nil {
 		return err
 	}
-	statement, arguments, err := ormbuilder.NewUpdateBuilder(s.store.SQLRenderer, table).Set("disabled_at", now).Where(ormbuilder.Equal("resource_key", resourceKey)).Build()
+	statement, arguments, err := query.NewUpdateBuilder(s.store.SQLRenderer, table).Set("disabled_at", now).Where(query.Equal("resource_key", resourceKey)).Build()
 	if err != nil {
 		return fmt.Errorf("build disable %s %s update: %w", resourceType, resourceKey, err)
 	}
@@ -214,8 +213,6 @@ func (s MetadataStore) DisableMetadataDefinition(ctx context.Context, resourceTy
 	return nil
 }
 
-// ListMetadataDefinitions returns all active (non-disabled) definitions for the given resourceType.
-// If workspaceID is non-empty, only definitions matching that workspace are returned (P2-4 isolation).
 func (s MetadataStore) ListMetadataDefinitions(ctx context.Context, resourceType string, workspaceID string) ([]metadatamodel.MetadataDefinition, error) {
 	if metadataModuleOwnsDefinition(resourceType) {
 		repository, err := s.metadataModuleDefinitionStore()
@@ -237,11 +234,11 @@ func (s MetadataStore) ListMetadataDefinitions(ctx context.Context, resourceType
 		return nil, err
 	}
 	workspaceID = strings.TrimSpace(workspaceID)
-	builder := metadataDefinitionSelect(s, table).Where(ormbuilder.IsNull("disabled_at"))
+	builder := metadataDefinitionSelect(s, table).Where(query.IsNull("disabled_at"))
 	if workspaceID != "" {
-		builder.Where(ormbuilder.And(ormbuilder.IsNull("disabled_at"), ormbuilder.Equal("source_id", workspaceID)))
+		builder.Where(query.And(query.IsNull("disabled_at"), query.Equal("source_id", workspaceID)))
 	}
-	statement, arguments, err := builder.OrderBy(ormbuilder.Ascending("resource_key")).Build()
+	statement, arguments, err := builder.OrderBy(query.Ascending("resource_key")).Build()
 	if err != nil {
 		return nil, fmt.Errorf("build %s definitions query: %w", resourceType, err)
 	}
@@ -268,7 +265,6 @@ func (s MetadataStore) ListMetadataDefinitions(ctx context.Context, resourceType
 	return out, rows.Err()
 }
 
-// GetMetadataDefinition returns a single definition by type and key.
 func (s MetadataStore) GetMetadataDefinition(ctx context.Context, resourceType string, resourceKey string) (metadatamodel.MetadataDefinition, bool, error) {
 	if metadataModuleOwnsDefinition(resourceType) {
 		repository, err := s.metadataModuleDefinitionStore()
@@ -288,7 +284,7 @@ func (s MetadataStore) GetMetadataDefinition(ctx context.Context, resourceType s
 	if err != nil {
 		return metadatamodel.MetadataDefinition{}, false, err
 	}
-	statement, arguments, err := metadataDefinitionSelect(s, table).Where(ormbuilder.Equal("resource_key", resourceKey)).Build()
+	statement, arguments, err := metadataDefinitionSelect(s, table).Where(query.Equal("resource_key", resourceKey)).Build()
 	if err != nil {
 		return metadatamodel.MetadataDefinition{}, false, fmt.Errorf("build %s definition query: %w", resourceType, err)
 	}
@@ -310,7 +306,6 @@ func (s MetadataStore) GetMetadataDefinition(ctx context.Context, resourceType s
 	return d, true, nil
 }
 
-// ListMetadataDefinitionVersions returns the version history for a definition.
 func (s MetadataStore) ListMetadataDefinitionVersions(ctx context.Context, resourceType string, resourceKey string) ([]metadatamodel.MetadataDefinitionVersion, error) {
 	values, err := s.listOwnedDefinitionVersions(ctx, s.database(), resourceType, resourceKey)
 	if err != nil {
@@ -334,7 +329,6 @@ func (s MetadataStore) ListMetadataDefinitionVersions(ctx context.Context, resou
 	return out, nil
 }
 
-// RollbackMetadataDefinition restores a definition to a specific schema_version from its version history.
 func (s MetadataStore) RollbackMetadataDefinition(ctx context.Context, resourceType string, resourceKey string, request metadatamodel.MetadataDefinitionRollbackRequest, audit auditmodel.AuditEvent) (metadatamodel.MetadataDefinition, error) {
 	moduleOwned := metadataModuleOwnsDefinition(resourceType)
 	table := ""
@@ -375,10 +369,10 @@ func (s MetadataStore) RollbackMetadataDefinition(ctx context.Context, resourceT
 			return metadatamodel.MetadataDefinition{}, err
 		}
 	} else {
-		statement, arguments, err = ormbuilder.NewUpdateBuilder(s.store.SQLRenderer, table).
+		statement, arguments, err = query.NewUpdateBuilder(s.store.SQLRenderer, table).
 			Set("payload_json", payloadJSON).Set("object_key", shape.ObjectKey).Set("name", shape.Name).Set("schema_version", nextVersion).
 			Set("schema_hash", targetHash).Set("source_kind", "rollback").Set("source_id", request.SourceID).Set("disabled_at", nil).Set("updated_at", now).
-			Where(ormbuilder.And(ormbuilder.Equal("resource_key", resourceKey), ormbuilder.Equal("schema_hash", request.ExpectedSchemaHash))).Build()
+			Where(query.And(query.Equal("resource_key", resourceKey), query.Equal("schema_hash", request.ExpectedSchemaHash))).Build()
 		if err != nil {
 			return metadatamodel.MetadataDefinition{}, fmt.Errorf("build rollback update: %w", err)
 		}

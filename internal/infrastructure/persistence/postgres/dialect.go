@@ -9,7 +9,7 @@ import (
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
-	ormbuilder "github.com/domainry/domainry-orm/query"
+	"github.com/domainry/domainry-orm/query"
 )
 
 type Dialect struct{}
@@ -21,13 +21,13 @@ func (Dialect) TextKeyColumnType(int) string { return "TEXT" }
 func (Dialect) SchemaTypes() driver.SchemaTypes {
 	return driver.SchemaTypes{Boolean: "BOOLEAN", FalseLiteral: "FALSE", DefaultText: "TEXT", DocumentText: "TEXT", IndexedText: "TEXT", AuditCursorText: "TEXT"}
 }
-func (Dialect) ApplyUpdateLock(builder *ormbuilder.SelectBuilder) *ormbuilder.SelectBuilder {
+func (Dialect) ApplyUpdateLock(builder *query.SelectBuilder) *query.SelectBuilder {
 	return builder.ForUpdate()
 }
-func (Dialect) ApplyUpsert(builder *ormbuilder.InsertBuilder, conflictColumns []string, updateColumns ...string) *ormbuilder.InsertBuilder {
-	assignments := make([]ormbuilder.Assignment, len(updateColumns))
+func (Dialect) ApplyUpsert(builder *query.InsertBuilder, conflictColumns []string, updateColumns ...string) *query.InsertBuilder {
+	assignments := make([]query.Assignment, len(updateColumns))
 	for index, column := range updateColumns {
-		assignments[index] = ormbuilder.AssignExpression(column, ormbuilder.InsertedValue(column))
+		assignments[index] = query.AssignExpression(column, query.InsertedValue(column))
 	}
 	return builder.OnConflictDoUpdate(conflictColumns, assignments...)
 }

@@ -10,7 +10,7 @@ import (
 	"github.com/domainry/domainry-foundation/idempotency"
 	identityauthoring "github.com/domainry/domainry-identity/internal/application/authoring"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
-	ormbuilder "github.com/domainry/domainry-orm/query"
+	"github.com/domainry/domainry-orm/query"
 )
 
 type Backend interface {
@@ -18,9 +18,6 @@ type Backend interface {
 	SQLRenderer() ormdialect.Renderer
 }
 
-// Repository persists the small mutation envelope required by
-// Identity Admin. It deliberately does not expose the Runtime-wide Operations
-// subsystem or its queues, diagnostics and control-plane contracts.
 type Repository struct {
 	store Backend
 }
@@ -37,7 +34,7 @@ func (r *Repository) Claim(ctx context.Context, candidate identityauthoring.Rece
 	}
 	columns := identityAuthoringReceiptColumns()
 	values := identityAuthoringReceiptValues(candidate)
-	statement, arguments, buildErr := ormbuilder.NewWorkspaceInsertBuilder(r.store.SQLRenderer(), "_identity_authoring_receipts", candidate.WorkspaceID).
+	statement, arguments, buildErr := query.NewWorkspaceInsertBuilder(r.store.SQLRenderer(), "_identity_authoring_receipts", candidate.WorkspaceID).
 		Columns(append([]string{columns[0]}, columns[2:]...)...).
 		Values(append([]any{values[0]}, values[2:]...)...).Build()
 	if buildErr != nil {
@@ -66,11 +63,11 @@ func (r *Repository) Claim(ctx context.Context, candidate identityauthoring.Rece
 	candidate.CreatedAt = current.CreatedAt
 	candidate.FencingToken = current.FencingToken + 1
 	candidate.LeaseExpiresAt = candidate.UpdatedAt.Add(leaseTTL)
-	statement, arguments, err = ormbuilder.NewWorkspaceUpdateBuilder(r.store.SQLRenderer(), "_identity_authoring_receipts", candidate.WorkspaceID).
+	statement, arguments, err = query.NewWorkspaceUpdateBuilder(r.store.SQLRenderer(), "_identity_authoring_receipts", candidate.WorkspaceID).
 		Set("status", string(idempotency.StatusProcessing)).Set("lease_owner", candidate.LeaseOwner).
 		Set("lease_expires_at", formatAuthoringTime(candidate.LeaseExpiresAt)).Set("fencing_token", candidate.FencingToken).
 		Set("updated_at", formatAuthoringTime(candidate.UpdatedAt)).
-		Where(ormbuilder.And(ormbuilder.Equal("id", candidate.ID), ormbuilder.Equal("request_fingerprint", candidate.RequestFingerprint), ormbuilder.Equal("status", string(current.Status)), ormbuilder.Equal("fencing_token", current.FencingToken))).Build()
+		Where(query.And(query.Equal("id", candidate.ID), query.Equal("request_fingerprint", candidate.RequestFingerprint), query.Equal("status", string(current.Status)), query.Equal("fencing_token", current.FencingToken))).Build()
 	if err != nil {
 		return identityauthoring.Claim{}, fmt.Errorf("build identity authoring receipt claim: %w", err)
 	}
@@ -96,9 +93,9 @@ func (r *Repository) Claim(ctx context.Context, candidate identityauthoring.Rece
 }
 
 func (r *Repository) Complete(ctx context.Context, completion identityauthoring.Completion) (identityauthoring.Receipt, error) {
-	statement, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(r.store.SQLRenderer(), "_identity_authoring_receipts", completion.WorkspaceID).
+	statement, arguments, err := query.NewWorkspaceUpdateBuilder(r.store.SQLRenderer(), "_identity_authoring_receipts", completion.WorkspaceID).
 		Set("status", string(completion.Status)).Set("result_json", string(completion.Result)).Set("updated_at", formatAuthoringTime(completion.CompletedAt)).
-		Where(ormbuilder.And(ormbuilder.Equal("id", completion.ReceiptID), ormbuilder.Equal("lease_owner", completion.LeaseOwner), ormbuilder.Equal("fencing_token", completion.FencingToken), ormbuilder.Equal("status", string(idempotency.StatusProcessing)))).Build()
+		Where(query.And(query.Equal("id", completion.ReceiptID), query.Equal("lease_owner", completion.LeaseOwner), query.Equal("fencing_token", completion.FencingToken), query.Equal("status", string(idempotency.StatusProcessing)))).Build()
 	if err != nil {
 		return identityauthoring.Receipt{}, fmt.Errorf("build identity authoring receipt completion: %w", err)
 	}
@@ -117,8 +114,8 @@ func (r *Repository) Complete(ctx context.Context, completion identityauthoring.
 }
 
 func (r *Repository) findByKey(ctx context.Context, workspaceID, key string) (identityauthoring.Receipt, bool, error) {
-	statement, arguments, buildErr := ormbuilder.NewWorkspaceSelectBuilder(r.store.SQLRenderer(), "_identity_authoring_receipts", workspaceID).
-		Columns(identityAuthoringReceiptColumns()...).Where(ormbuilder.Equal("idempotency_key", key)).Build()
+	statement, arguments, buildErr := query.NewWorkspaceSelectBuilder(r.store.SQLRenderer(), "_identity_authoring_receipts", workspaceID).
+		Columns(identityAuthoringReceiptColumns()...).Where(query.Equal("idempotency_key", key)).Build()
 	if buildErr != nil {
 		return identityauthoring.Receipt{}, false, buildErr
 	}
@@ -130,8 +127,8 @@ func (r *Repository) findByKey(ctx context.Context, workspaceID, key string) (id
 }
 
 func (r *Repository) findByID(ctx context.Context, workspaceID, id string) (identityauthoring.Receipt, error) {
-	statement, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(r.store.SQLRenderer(), "_identity_authoring_receipts", workspaceID).
-		Columns(identityAuthoringReceiptColumns()...).Where(ormbuilder.Equal("id", id)).Build()
+	statement, arguments, err := query.NewWorkspaceSelectBuilder(r.store.SQLRenderer(), "_identity_authoring_receipts", workspaceID).
+		Columns(identityAuthoringReceiptColumns()...).Where(query.Equal("id", id)).Build()
 	if err != nil {
 		return identityauthoring.Receipt{}, err
 	}

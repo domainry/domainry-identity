@@ -8,7 +8,7 @@ import (
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	departmentpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/directory/department"
 	userpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/directory/user"
-	ormbuilder "github.com/domainry/domainry-orm/query"
+	"github.com/domainry/domainry-orm/query"
 )
 
 func (s *SQLIdentityStore) departmentStore() *departmentpersistence.Store {
@@ -86,7 +86,7 @@ func (s *SQLIdentityStore) UpsertIdentityUserWithRoleAssignmentsAtomically(
 	if err := s.writeIdentityUser(ctx, tx, workspaceID, user); err != nil {
 		return err
 	}
-	statement, arguments, err := ormbuilder.NewWorkspaceDeleteBuilder(s.sqlRenderer(), "_identity_user_role_assignments", workspaceID).Where(ormbuilder.Equal("user_id", user.ID)).Build()
+	statement, arguments, err := query.NewWorkspaceDeleteBuilder(s.sqlRenderer(), "_identity_user_role_assignments", workspaceID).Where(query.Equal("user_id", user.ID)).Build()
 	if err != nil {
 		return fmt.Errorf("build identity user role reset: %w", err)
 	}

@@ -13,7 +13,7 @@ import (
 	auditmoduleimpl "github.com/domainry/domainry-audit/module"
 	portabilitymodel "github.com/domainry/domainry-identity/internal/domain/portability"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
-	ormbuilder "github.com/domainry/domainry-orm/query"
+	"github.com/domainry/domainry-orm/query"
 )
 
 type WriteFenceStore struct {
@@ -60,14 +60,14 @@ func (store *WriteFenceStore) FreezeIdentityWrites(ctx context.Context, workspac
 		}
 		return portabilitymodel.WriteFence{}, fmt.Errorf("identity.portability_write_fence_already_active")
 	}
-	statement, arguments, err := ormbuilder.NewWorkspaceDeleteBuilder(store.renderer, identityWorkspaceWriteFenceTable, workspaceID).Build()
+	statement, arguments, err := query.NewWorkspaceDeleteBuilder(store.renderer, identityWorkspaceWriteFenceTable, workspaceID).Build()
 	if err != nil {
 		return portabilitymodel.WriteFence{}, fmt.Errorf("build Identity write fence replacement: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
 		return portabilitymodel.WriteFence{}, err
 	}
-	statement, arguments, err = ormbuilder.NewWorkspaceInsertBuilder(store.renderer, identityWorkspaceWriteFenceTable, fence.WorkspaceID).
+	statement, arguments, err = query.NewWorkspaceInsertBuilder(store.renderer, identityWorkspaceWriteFenceTable, fence.WorkspaceID).
 		Columns("state", "evidence_sha256", "frozen_by", "frozen_at", "released_by", "released_at", "updated_at").
 		Values(fence.State, fence.EvidenceSHA256, fence.FrozenBy, fence.FrozenAt.Format(time.RFC3339Nano), "", nil, fence.FrozenAt.Format(time.RFC3339Nano)).Build()
 	if err != nil {
@@ -103,14 +103,14 @@ func (store *WriteFenceStore) ReleaseIdentityWriteFence(ctx context.Context, wor
 	if !found || fence.State != "frozen" {
 		return portabilitymodel.WriteFence{}, fmt.Errorf("identity.portability_write_fence_not_active")
 	}
-	query, arguments, err := ormbuilder.NewWorkspaceUpdateBuilder(store.renderer, identityWorkspaceWriteFenceTable, workspaceID).
+	queryValue, arguments, err := query.NewWorkspaceUpdateBuilder(store.renderer, identityWorkspaceWriteFenceTable, workspaceID).
 		Set("state", "released").Set("released_by", operator).
 		Set("released_at", releasedAt.Format(time.RFC3339Nano)).Set("updated_at", releasedAt.Format(time.RFC3339Nano)).
-		Where(ormbuilder.And(ormbuilder.Equal("state", "frozen"), ormbuilder.Equal("evidence_sha256", fence.EvidenceSHA256))).Build()
+		Where(query.And(query.Equal("state", "frozen"), query.Equal("evidence_sha256", fence.EvidenceSHA256))).Build()
 	if err != nil {
 		return portabilitymodel.WriteFence{}, fmt.Errorf("build Identity write fence release: %w", err)
 	}
-	result, err := tx.ExecContext(ctx, query, arguments...)
+	result, err := tx.ExecContext(ctx, queryValue, arguments...)
 	if err != nil {
 		return portabilitymodel.WriteFence{}, err
 	}
@@ -138,7 +138,7 @@ func (store *WriteFenceStore) IdentityWriteFence(ctx context.Context, workspaceI
 }
 
 func (store *WriteFenceStore) identityWriteFence(ctx context.Context, queryer identityWriteFenceQueryer, workspaceID string) (portabilitymodel.WriteFence, bool, error) {
-	query, arguments, err := ormbuilder.NewWorkspaceSelectBuilder(store.renderer, identityWorkspaceWriteFenceTable, strings.TrimSpace(workspaceID)).
+	queryValue, arguments, err := query.NewWorkspaceSelectBuilder(store.renderer, identityWorkspaceWriteFenceTable, strings.TrimSpace(workspaceID)).
 		Columns("state", "evidence_sha256", "frozen_by", "frozen_at", "released_by", "released_at").Build()
 	if err != nil {
 		return portabilitymodel.WriteFence{}, false, fmt.Errorf("build Identity write fence read: %w", err)
@@ -146,7 +146,7 @@ func (store *WriteFenceStore) identityWriteFence(ctx context.Context, queryer id
 	var fence portabilitymodel.WriteFence
 	var frozenAt string
 	var releasedAt sql.NullString
-	err = queryer.QueryRowContext(ctx, query, arguments...).Scan(&fence.State, &fence.EvidenceSHA256, &fence.FrozenBy, &frozenAt, &fence.ReleasedBy, &releasedAt)
+	err = queryer.QueryRowContext(ctx, queryValue, arguments...).Scan(&fence.State, &fence.EvidenceSHA256, &fence.FrozenBy, &frozenAt, &fence.ReleasedBy, &releasedAt)
 	if err == sql.ErrNoRows {
 		return portabilitymodel.WriteFence{}, false, nil
 	}
@@ -193,12 +193,12 @@ func (store *WriteFenceStore) appendIdentityWriteFenceEvent(ctx context.Context,
 
 type writeFenceAuditTransaction struct{ tx *sql.Tx }
 
-func (adapter writeFenceAuditTransaction) ExecContext(ctx context.Context, query string, arguments ...any) (auditmodel.Result, error) {
-	return adapter.tx.ExecContext(ctx, query, arguments...)
+func (adapter writeFenceAuditTransaction) ExecContext(ctx context.Context, queryValue string, arguments ...any) (auditmodel.Result, error) {
+	return adapter.tx.ExecContext(ctx, queryValue, arguments...)
 }
 
-func (adapter writeFenceAuditTransaction) QueryRowContext(ctx context.Context, query string, arguments ...any) auditmodel.Row {
-	return adapter.tx.QueryRowContext(ctx, query, arguments...)
+func (adapter writeFenceAuditTransaction) QueryRowContext(ctx context.Context, queryValue string, arguments ...any) auditmodel.Row {
+	return adapter.tx.QueryRowContext(ctx, queryValue, arguments...)
 }
 
 func (store *WriteFenceStore) IdentityWritesFrozen(ctx context.Context, workspaceID string) (bool, error) {
@@ -207,13 +207,13 @@ func (store *WriteFenceStore) IdentityWritesFrozen(ctx context.Context, workspac
 }
 
 func (store *WriteFenceStore) AnyIdentityWritesFrozen(ctx context.Context) (bool, error) {
-	query, arguments, err := ormbuilder.NewSelectBuilder(store.renderer, identityWorkspaceWriteFenceTable).
-		Projections(ormbuilder.Project(ormbuilder.CountAll())).Where(ormbuilder.Equal("state", "frozen")).Build()
+	queryValue, arguments, err := query.NewSelectBuilder(store.renderer, identityWorkspaceWriteFenceTable).
+		Projections(query.Project(query.CountAll())).Where(query.Equal("state", "frozen")).Build()
 	if err != nil {
 		return false, fmt.Errorf("build active Identity write fence count: %w", err)
 	}
 	var count int64
-	if err := store.db.QueryRowContext(ctx, query, arguments...).Scan(&count); err != nil {
+	if err := store.db.QueryRowContext(ctx, queryValue, arguments...).Scan(&count); err != nil {
 		return false, err
 	}
 	return count > 0, nil

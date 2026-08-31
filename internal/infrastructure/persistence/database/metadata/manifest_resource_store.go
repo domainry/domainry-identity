@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	metadatarepository "github.com/domainry/domainry-metadata-sdk/repository"
-	ormbuilder "github.com/domainry/domainry-orm/query"
+	"github.com/domainry/domainry-orm/query"
 )
 
 func (s MetadataStore) insertMetadataResource(ctx context.Context, tx *sql.Tx, seed metadataResourceSeed, now string) error {
@@ -29,7 +29,7 @@ func (s MetadataStore) insertMetadataResource(ctx context.Context, tx *sql.Tx, s
 		now,
 		now,
 	}
-	statement, arguments, err := ormbuilder.NewInsertBuilder(s.store.SQLRenderer, seed.Table).
+	statement, arguments, err := query.NewInsertBuilder(s.store.SQLRenderer, seed.Table).
 		Columns("id", "resource_key", "object_key", "name", "payload_json", "schema_version", "schema_hash", "source_kind", "source_id", "disabled_at", "created_at", "updated_at").
 		Values(values...).Build()
 	if err != nil {
@@ -52,8 +52,8 @@ func (s MetadataStore) syncMetadataResource(ctx context.Context, tx *sql.Tx, see
 	if err != nil {
 		return fmt.Errorf("encode %s %s: %w", seed.ResourceType, seed.Key, err)
 	}
-	statement, arguments, err := ormbuilder.NewSelectBuilder(s.store.SQLRenderer, seed.Table).
-		Columns("schema_hash", "source_kind", "disabled_at").Where(ormbuilder.Equal("resource_key", seed.Key)).Build()
+	statement, arguments, err := query.NewSelectBuilder(s.store.SQLRenderer, seed.Table).
+		Columns("schema_hash", "source_kind", "disabled_at").Where(query.Equal("resource_key", seed.Key)).Build()
 	if err != nil {
 		return fmt.Errorf("build %s %s sync query: %w", seed.ResourceType, seed.Key, err)
 	}
@@ -73,9 +73,9 @@ func (s MetadataStore) syncMetadataResource(ctx context.Context, tx *sql.Tx, see
 	if currentHash == hash {
 		return nil
 	}
-	statement, arguments, err = ormbuilder.NewUpdateBuilder(s.store.SQLRenderer, seed.Table).
+	statement, arguments, err = query.NewUpdateBuilder(s.store.SQLRenderer, seed.Table).
 		Set("object_key", seed.ObjectKey).Set("name", seed.Name).Set("payload_json", string(raw)).Set("schema_version", seed.SchemaVersion).
-		Set("schema_hash", hash).Set("source_id", seed.SourceID).Set("updated_at", now).Where(ormbuilder.Equal("resource_key", seed.Key)).Build()
+		Set("schema_hash", hash).Set("source_id", seed.SourceID).Set("updated_at", now).Where(query.Equal("resource_key", seed.Key)).Build()
 	if err != nil {
 		return fmt.Errorf("build %s %s sync update: %w", seed.ResourceType, seed.Key, err)
 	}
