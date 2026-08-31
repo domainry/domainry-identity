@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/transaction"
-	metadatarepository "github.com/domainry/domainry-metadata-sdk/repository"
+	metadatapersistence "github.com/domainry/domainry-metadata-sdk/persistence"
 	"github.com/domainry/domainry-orm/query"
 )
 
@@ -36,7 +36,7 @@ func (r MetadataStore) refreshCatalogHashWithExecutorAt(
 	tables := metadataCatalogDefinitionTables()
 	hash := sha256.New()
 	definitions := r.store.MetadataDefinitions()
-	executorRepository, ok := definitions.(metadatarepository.ExecutorSnapshotRepository)
+	executorRepository, ok := definitions.(metadatapersistence.ExecutorSnapshotRepository)
 	if !ok {
 		return fmt.Errorf("Metadata executor snapshot repository is unavailable")
 	}

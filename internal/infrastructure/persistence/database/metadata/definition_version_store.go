@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	identityauditmodule "github.com/domainry/domainry-identity/internal/infrastructure/auditmodule"
-	metadatarepository "github.com/domainry/domainry-metadata-sdk/repository"
+	metadatapersistence "github.com/domainry/domainry-metadata-sdk/persistence"
 	"github.com/domainry/domainry-orm/query"
 )
 
@@ -27,7 +27,7 @@ func (s MetadataStore) nextMetadataSchemaVersionTx(ctx context.Context, tx *sql.
 }
 
 func (s MetadataStore) insertMetadataDefinitionVersionTx(ctx context.Context, tx *sql.Tx, resourceType, resourceKey, version, hash string, payload []byte, now string) error {
-	err := s.insertOwnedDefinitionVersion(ctx, tx, metadatarepository.DefinitionVersion{ResourceType: resourceType, ResourceKey: resourceKey, SchemaVersion: version, SchemaHash: hash, Payload: append([]byte(nil), payload...), CreatedAt: now})
+	err := s.insertOwnedDefinitionVersion(ctx, tx, metadatapersistence.DefinitionVersion{ResourceType: resourceType, ResourceKey: resourceKey, SchemaVersion: version, SchemaHash: hash, Payload: append([]byte(nil), payload...), CreatedAt: now})
 	if err != nil {
 		return fmt.Errorf("insert %s %s version: %w", resourceType, resourceKey, err)
 	}

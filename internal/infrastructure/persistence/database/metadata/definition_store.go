@@ -9,7 +9,7 @@ import (
 	"fmt"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
-	metadatarepository "github.com/domainry/domainry-metadata-sdk/repository"
+	metadatapersistence "github.com/domainry/domainry-metadata-sdk/persistence"
 	"sort"
 	"strconv"
 	"strings"
@@ -89,7 +89,7 @@ func (s MetadataStore) UpsertMetadataDefinition(ctx context.Context, resourceTyp
 			return metadatamodel.MetadataDefinition{}, fmt.Errorf("insert %s %s: %w", resourceType, shape.Key, err)
 		}
 	}
-	if err := s.insertOwnedDefinitionVersion(ctx, tx, metadatarepository.DefinitionVersion{
+	if err := s.insertOwnedDefinitionVersion(ctx, tx, metadatapersistence.DefinitionVersion{
 		ResourceType: resourceType, ResourceKey: shape.Key, SchemaVersion: schemaVersion,
 		SchemaHash: hash, Payload: raw, CreatedAt: now,
 	}); err != nil {

@@ -19,7 +19,7 @@ import (
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/postgres"
 	"github.com/domainry/domainry-identity/internal/platform/config"
-	metadatarepository "github.com/domainry/domainry-metadata-sdk/repository"
+	metadatapersistence "github.com/domainry/domainry-metadata-sdk/persistence"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 )
 
@@ -46,10 +46,10 @@ type IdentityStore struct {
 	schemaAssembler      identitySchemaAssembler
 	borrowedDatabase     bool
 	relationPrefix       string
-	metadataDefinitions  metadatarepository.DefinitionRepository
+	metadataDefinitions  metadatapersistence.DefinitionRepository
 }
 
-func (s *IdentityStore) MetadataDefinitions() metadatarepository.DefinitionRepository {
+func (s *IdentityStore) MetadataDefinitions() metadatapersistence.DefinitionRepository {
 	if s == nil {
 		return nil
 	}

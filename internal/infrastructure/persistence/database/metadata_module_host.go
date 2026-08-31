@@ -6,7 +6,7 @@ import (
 
 	metadatasdk "github.com/domainry/domainry-metadata-sdk"
 	metadatamodulehost "github.com/domainry/domainry-metadata-sdk/modulehost"
-	metadatarepository "github.com/domainry/domainry-metadata-sdk/repository"
+	metadatapersistence "github.com/domainry/domainry-metadata-sdk/persistence"
 	metadatamodule "github.com/domainry/domainry-metadata/module"
 )
 
@@ -15,7 +15,7 @@ func (s *IdentityStore) ensureMetadataModuleSchema(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	repositories, ok := binding.(metadatarepository.Binding)
+	repositories, ok := binding.(metadatapersistence.Binding)
 	if !ok || repositories.DefinitionRepository() == nil {
 		return fmt.Errorf("Metadata Binding returned no definition repository")
 	}
