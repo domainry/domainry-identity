@@ -183,13 +183,13 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 	}
 	managementSurface := &moduleHTTPSurface{name: "identity_management", handler: managementServer.Routes()}
 	for _, pattern := range managementServer.IdentityManagementRoutes() {
-		managementSurface.routes = append(managementSurface.routes, identityhttpapi.Route{Pattern: pattern, Exposures: []identityhttpapi.Exposure{identityhttpapi.ExposureTenantAdmin}})
+		managementSurface.routes = append(managementSurface.routes, identityhttpapi.Route{Pattern: pattern, Exposures: []identityhttpapi.Exposure{identityhttpapi.ExposureTenantAdmin}, Authentication: identityhttpapi.AuthenticationAuthenticated, PrincipalOnly: true})
 	}
 	for _, pattern := range managementServer.EmbeddedManagementAuthRoutes() {
-		managementSurface.routes = append(managementSurface.routes, identityhttpapi.Route{Pattern: pattern, Exposures: []identityhttpapi.Exposure{identityhttpapi.ExposureTenantAdmin}})
+		managementSurface.routes = append(managementSurface.routes, identityhttpapi.Route{Pattern: pattern, Exposures: []identityhttpapi.Exposure{identityhttpapi.ExposureTenantAdmin}, Authentication: identityhttpapi.AuthenticationAuthenticated, PrincipalOnly: true})
 	}
 	for _, pattern := range managementServer.EmbeddedPublicAuthRoutes() {
-		managementSurface.routes = append(managementSurface.routes, identityhttpapi.Route{Pattern: pattern, Exposures: []identityhttpapi.Exposure{identityhttpapi.ExposurePublic}})
+		managementSurface.routes = append(managementSurface.routes, identityhttpapi.Route{Pattern: pattern, Exposures: []identityhttpapi.Exposure{identityhttpapi.ExposurePublic}, Authentication: identityhttpapi.AuthenticationAnonymous})
 	}
 	browserGateway, err := browsergateway.New(scopedBinding, browsergateway.Config{
 		ApplicationKey:     application.ApplicationKey,
@@ -224,7 +224,7 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 			continue
 		}
 		browserSurface.routes = append(browserSurface.routes, identityhttpapi.Route{
-			Pattern: pattern, Exposures: []identityhttpapi.Exposure{identityhttpapi.ExposurePublic, identityhttpapi.ExposureTenantAdmin},
+			Pattern: pattern, Exposures: []identityhttpapi.Exposure{identityhttpapi.ExposurePublic, identityhttpapi.ExposureTenantAdmin}, Authentication: identityhttpapi.AuthenticationAnonymous,
 		})
 	}
 	portabilityRepository, err := portabilitypersistence.NewSQLRepository(store)

@@ -16,6 +16,8 @@ func (*moduleHTTPSurface) ContractVersion() string {
 	return identityhttpapi.ContractVersion
 }
 
+func (*moduleHTTPSurface) Owner() string { return "identity" }
+
 func (surface *moduleHTTPSurface) Name() string {
 	if surface == nil {
 		return ""
