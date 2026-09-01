@@ -1,16 +1,12 @@
 package identitysdkadapter
 
 import (
-	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/domainry/domainry-foundation/apperror"
@@ -23,13 +19,8 @@ import (
 	authcontract "github.com/domainry/domainry-identity/internal/domain/auth/contract"
 	authmodel "github.com/domainry/domainry-identity/internal/domain/auth/model"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
-	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 )
-
-type MetadataSource interface {
-	Schema() metadatamodel.MetadataSchemaSnapshot
-}
 
 type BindingDependencies struct {
 	Config                config.Config
@@ -39,73 +30,46 @@ type BindingDependencies struct {
 	ProviderCallback      authcontract.AuthProviderCallbackAdapter
 	EffectiveAccess       *identityapplication.IdentityEffectiveAccessApplicationService
 	Identity              *identityapplication.IdentityApplicationService
-	Metadata              MetadataSource
+	Applications          *authapplication.AuthApplicationRegistrationService
+	Permissions           *identityapplication.IdentityPermissionCatalogApplicationService
 	Clock                 identitysdk.Clock
-	Catalog               CatalogPersistence
 	MutationFence         IdentityMutationFence
 	LoginTransactions     FederatedLoginTransactionReader
-	CatalogPublished      func([]identitysdk.AuthorizationCatalog)
-}
-
-type sdkCatalogScope struct {
-	workspaceID    identitysdk.WorkspaceID
-	applicationKey identitysdk.ApplicationKey
-}
-
-type sdkCatalogRevisionScope struct {
-	catalog  sdkCatalogScope
-	revision identitysdk.CatalogRevision
-}
-
-func catalogScope(application identitysdk.ApplicationRef) sdkCatalogScope {
-	return sdkCatalogScope{
-		workspaceID:    identitysdk.WorkspaceID(strings.TrimSpace(string(application.WorkspaceID))),
-		applicationKey: identitysdk.ApplicationKey(strings.TrimSpace(string(application.ApplicationKey))),
-	}
 }
 
 type sdkBinding struct {
-	descriptor         identitysdk.Descriptor
-	auth               *authapplication.AuthApplicationService
-	providers          *authapplication.AuthProviderApplicationService
-	flows              *authapplication.AuthProviderFlowApplicationService
-	providerCallback   authcontract.AuthProviderCallbackAdapter
-	access             *identityapplication.IdentityEffectiveAccessApplicationService
-	identity           *identityapplication.IdentityApplicationService
-	metadata           MetadataSource
-	catalogMu          sync.RWMutex
-	catalogs           map[sdkCatalogScope]identitysdk.CatalogReceipt
-	catalogDefinitions map[sdkCatalogScope]identitysdk.AuthorizationCatalog
-	catalogHistory     map[sdkCatalogRevisionScope]identitysdk.AuthorizationCatalog
-	catalogReceipts    map[sdkCatalogRevisionScope]identitysdk.CatalogReceipt
-	catalogStore       CatalogPersistence
-	clock              identitysdk.Clock
-	mutationFence      IdentityMutationFence
-	loginTransactions  FederatedLoginTransactionReader
-	catalogPublished   func([]identitysdk.AuthorizationCatalog)
-	capabilities       *modulecapability.StaticBinding
+	descriptor        identitysdk.Descriptor
+	auth              *authapplication.AuthApplicationService
+	providers         *authapplication.AuthProviderApplicationService
+	flows             *authapplication.AuthProviderFlowApplicationService
+	providerCallback  authcontract.AuthProviderCallbackAdapter
+	access            *identityapplication.IdentityEffectiveAccessApplicationService
+	identity          *identityapplication.IdentityApplicationService
+	applications      *authapplication.AuthApplicationRegistrationService
+	permissions       *identityapplication.IdentityPermissionCatalogApplicationService
+	clock             identitysdk.Clock
+	mutationFence     IdentityMutationFence
+	loginTransactions FederatedLoginTransactionReader
+	capabilities      *modulecapability.StaticBinding
 }
 
 func NewBinding(dependencies BindingDependencies) (identitysdk.Binding, error) {
 	if dependencies.Authentication == nil || dependencies.ProviderConfiguration == nil || dependencies.ProviderFlows == nil ||
 		dependencies.ProviderCallback == nil || dependencies.EffectiveAccess == nil || dependencies.Identity == nil ||
-		dependencies.Metadata == nil || dependencies.Catalog == nil || dependencies.MutationFence == nil || dependencies.LoginTransactions == nil {
+		dependencies.Applications == nil || dependencies.Permissions == nil || dependencies.MutationFence == nil || dependencies.LoginTransactions == nil {
 		return nil, errors.New("complete Identity SDK Binding dependencies are required")
 	}
 	if dependencies.Clock == nil {
 		dependencies.Clock = sdkSystemClock{}
 	}
 	binding := &sdkBinding{descriptor: identitysdk.Descriptor{
-		ProtocolVersion: identitysdk.CurrentProtocolVersion, BundleVersion: identitysdk.CurrentPolicyBundleVersion, CatalogVersion: identitysdk.CatalogVersionV1,
+		ProtocolVersion: identitysdk.CurrentProtocolVersion, BundleVersion: identitysdk.CurrentPolicyBundleVersion, AuthorizationVersion: identitysdk.AuthorizationContractVersionV1,
 		Mode: identitysdk.DeploymentModeModule, Issuer: defaultString(dependencies.Config.AuthIssuer, "http://localhost:8081"), Audience: defaultString(dependencies.Config.AuthAudience, "domainry-runtime"),
-		Capabilities: []string{"authentication", "token_verification", "authorization", "principal_resolution", "directory_projection", "catalog", "credentials", "oidc", "saml"},
+		Capabilities: []string{"authentication", "token_verification", "authorization", "principal_resolution", "directory_projection", "application_registration", "permission_reconciliation", "credentials", "oidc", "saml"},
 	}, auth: dependencies.Authentication, providers: dependencies.ProviderConfiguration, flows: dependencies.ProviderFlows,
 		providerCallback: dependencies.ProviderCallback, access: dependencies.EffectiveAccess, identity: dependencies.Identity,
-		metadata: dependencies.Metadata, catalogs: map[sdkCatalogScope]identitysdk.CatalogReceipt{},
-		catalogDefinitions: map[sdkCatalogScope]identitysdk.AuthorizationCatalog{}, catalogHistory: map[sdkCatalogRevisionScope]identitysdk.AuthorizationCatalog{},
-		catalogReceipts: map[sdkCatalogRevisionScope]identitysdk.CatalogReceipt{}, catalogStore: dependencies.Catalog, clock: dependencies.Clock,
-		mutationFence: dependencies.MutationFence, loginTransactions: dependencies.LoginTransactions,
-		catalogPublished: dependencies.CatalogPublished}
+		applications: dependencies.Applications, permissions: dependencies.Permissions, clock: dependencies.Clock,
+		mutationFence: dependencies.MutationFence, loginTransactions: dependencies.LoginTransactions}
 	capabilities, err := NewCapabilityBinding()
 	if err != nil {
 		return nil, fmt.Errorf("assemble Identity capability binding: %w", err)
@@ -137,10 +101,20 @@ func (binding *sdkBinding) Principals() identitysdk.PrincipalResolver {
 func (binding *sdkBinding) Directory() identitysdk.Directory {
 	return sdkDirectory{binding: binding}
 }
-func (binding *sdkBinding) Catalog() identitysdk.CatalogClient { return sdkCatalog{binding} }
+func (binding *sdkBinding) Applications() identitysdk.ApplicationRegistry {
+	return sdkApplications{binding: binding}
+}
+func (binding *sdkBinding) Permissions() identitysdk.PermissionRegistry {
+	return sdkPermissions{binding: binding}
+}
 func (binding *sdkBinding) Credentials() identitysdk.CredentialManager {
 	return sdkCredentials{binding}
 }
+
+func (binding *sdkBinding) ApplicationServiceVerifier() identitysdk.ApplicationServiceTokenVerifier {
+	return sdkApplicationServiceVerifier{binding: binding}
+}
+
 func (binding *sdkBinding) Close(context.Context) error { return nil }
 
 type sdkAuthentication struct{ binding *sdkBinding }
@@ -167,7 +141,7 @@ func (adapter sdkAuthentication) LoginWithPassword(ctx context.Context, request 
 		return identitysdk.AuthSession{}, err
 	}
 	application := identitysdk.ApplicationRef{WorkspaceID: request.WorkspaceID, ApplicationKey: request.ApplicationKey}
-	if _, _, found, err := adapter.binding.loadCatalog(ctx, application); err != nil {
+	if found, err := adapter.binding.applicationRegistered(ctx, application); err != nil {
 		return identitysdk.AuthSession{}, sdkBoundaryError(err)
 	} else if !found {
 		return identitysdk.AuthSession{}, &identitysdk.Error{Code: "identity.application_not_registered"}
@@ -242,7 +216,7 @@ func (adapter sdkAuthentication) RefreshSession(ctx context.Context, request ide
 	if err := adapter.binding.requireMutableWorkspace(ctx, request.WorkspaceID); err != nil {
 		return identitysdk.AuthSession{}, err
 	}
-	if _, _, found, err := adapter.binding.loadCatalog(ctx, identitysdk.ApplicationRef{WorkspaceID: request.WorkspaceID, ApplicationKey: request.ApplicationKey}); err != nil {
+	if found, err := adapter.binding.applicationRegistered(ctx, identitysdk.ApplicationRef{WorkspaceID: request.WorkspaceID, ApplicationKey: request.ApplicationKey}); err != nil {
 		return identitysdk.AuthSession{}, sdkBoundaryError(err)
 	} else if !found {
 		return identitysdk.AuthSession{}, &identitysdk.Error{Code: "identity.application_not_registered"}
@@ -298,10 +272,6 @@ func (adapter sdkTokenVerifier) Verify(ctx context.Context, request identitysdk.
 type sdkAuthorization struct{ binding *sdkBinding }
 
 func (adapter sdkAuthorization) ResolveAccess(ctx context.Context, request identitysdk.AccessBundleRequest) (identitysdk.AccessBundle, error) {
-	claims, err := adapter.binding.auth.VerifyAccessToken(ctx, request.Identity.AccessToken)
-	if err != nil {
-		return identitysdk.AccessBundle{}, sdkBoundaryError(err)
-	}
 	principal, err := adapter.binding.auth.PrincipalFromBearer(ctx, "Bearer "+request.Identity.AccessToken, "")
 	if err != nil {
 		return identitysdk.AccessBundle{}, sdkBoundaryError(err)
@@ -310,20 +280,8 @@ func (adapter sdkAuthorization) ResolveAccess(ctx context.Context, request ident
 	if err != nil {
 		return identitysdk.AccessBundle{}, sdkBoundaryError(err)
 	}
-	catalog, receipt, found, err := adapter.binding.loadCatalog(ctx, identitysdk.ApplicationRef{WorkspaceID: identitysdk.WorkspaceID(claims.WorkspaceID), ApplicationKey: identitysdk.ApplicationKey(claims.Audience)})
-	if err != nil {
-		return identitysdk.AccessBundle{}, sdkBoundaryError(err)
-	}
-	if !found {
-		return identitysdk.AccessBundle{}, &identitysdk.Error{Code: "identity.catalog_not_published"}
-	}
 	now := adapter.binding.clock.Now().UTC()
-	bundle := sdkAccessBundle(snapshot, principal, string(receipt.Revision), now)
-	bundle = resolveCatalogRoleAccess(bundle, catalog, principal.Role)
-	bundle, err = accessBundleForCatalog(bundle, catalog)
-	if err != nil {
-		return identitysdk.AccessBundle{}, sdkBoundaryError(err)
-	}
+	bundle := sdkAccessBundle(snapshot, principal, now)
 	return bundle, sdkBoundaryError(bundle.Validate(now))
 }
 
@@ -374,141 +332,31 @@ func sdkDecisionEffect(allowed bool) string {
 	return "deny"
 }
 
-type sdkCatalog struct{ binding *sdkBinding }
-
-func (adapter sdkCatalog) Validate(_ context.Context, catalog identitysdk.AuthorizationCatalog) error {
-	return sdkBoundaryError(catalog.ValidateContract())
-}
-func (adapter sdkCatalog) Publish(ctx context.Context, catalog identitysdk.AuthorizationCatalog) (identitysdk.CatalogReceipt, error) {
-	if err := catalog.ValidateContract(); err != nil {
-		return identitysdk.CatalogReceipt{}, sdkBoundaryError(err)
-	}
-	if err := adapter.binding.requireMutableWorkspace(ctx, catalog.Application.WorkspaceID); err != nil {
-		return identitysdk.CatalogReceipt{}, err
-	}
-	payload, err := catalog.CanonicalJSON()
-	if err != nil {
-		return identitysdk.CatalogReceipt{}, sdkBoundaryError(err)
-	}
-	digest := sha256.Sum256(payload)
-	revision := identitysdk.CatalogRevision(hex.EncodeToString(digest[:]))
-	scope := catalogScope(catalog.Application)
-	revisionScope := sdkCatalogRevisionScope{catalog: scope, revision: revision}
-	adapter.binding.catalogMu.Lock()
-	defer adapter.binding.catalogMu.Unlock()
-	receipt, found := adapter.binding.catalogReceipts[revisionScope]
-	if !found && adapter.binding.catalogStore != nil {
-		persistedCatalog, persistedReceipt, persisted, err := adapter.binding.catalogStore.LoadRevision(ctx, catalog.Application, revision)
-		if err != nil {
-			return identitysdk.CatalogReceipt{}, sdkBoundaryError(err)
-		}
-		if persisted {
-			persistedPayload, canonicalErr := persistedCatalog.CanonicalJSON()
-			if canonicalErr != nil || !bytes.Equal(persistedPayload, payload) || persistedReceipt.SHA256 != string(revision) {
-				return identitysdk.CatalogReceipt{}, &identitysdk.Error{Code: "identity.catalog_revision_immutable_conflict", Cause: canonicalErr}
-			}
-			receipt, found = persistedReceipt, true
-		}
-	}
-	if !found {
-		receipt = identitysdk.CatalogReceipt{Revision: revision, SHA256: string(revision), PublishedAt: adapter.binding.clock.Now().UTC().Format(time.RFC3339Nano)}
-	}
-	if adapter.binding.catalogStore != nil {
-		if err := adapter.binding.catalogStore.Save(ctx, catalog, receipt); err != nil {
-			// Another SaaS instance may have inserted the same immutable revision
-			// after our lookup. Reuse its receipt and retry only the mutable current
-			// pointer instead of creating duplicate history.
-			_, concurrentReceipt, concurrent, loadErr := adapter.binding.catalogStore.LoadRevision(ctx, catalog.Application, revision)
-			if loadErr != nil || !concurrent {
-				return identitysdk.CatalogReceipt{}, sdkBoundaryError(err)
-			}
-			receipt = concurrentReceipt
-			if retryErr := adapter.binding.catalogStore.Save(ctx, catalog, receipt); retryErr != nil {
-				return identitysdk.CatalogReceipt{}, sdkBoundaryError(retryErr)
-			}
-		}
-	}
-	adapter.binding.catalogs[scope] = receipt
-	adapter.binding.catalogDefinitions[scope] = catalog
-	adapter.binding.catalogReceipts[revisionScope] = receipt
-	adapter.binding.catalogHistory[revisionScope] = catalog
-	if adapter.binding.catalogPublished != nil {
-		catalogs := make([]identitysdk.AuthorizationCatalog, 0, len(adapter.binding.catalogDefinitions))
-		for _, current := range adapter.binding.catalogDefinitions {
-			catalogs = append(catalogs, current)
-		}
-		adapter.binding.catalogPublished(catalogs)
-	}
-	return receipt, nil
-}
-
 func (binding *sdkBinding) validateApplicationRedirect(ctx context.Context, application identitysdk.ApplicationRef, returnURL string) error {
 	if strings.TrimSpace(returnURL) == "" {
 		return nil
 	}
-	scope := catalogScope(application)
-	if !scope.workspaceID.Valid() || !scope.applicationKey.Valid() {
+	if !application.WorkspaceID.Valid() || !application.ApplicationKey.Valid() {
 		return &identitysdk.Error{Code: "identity.application_scope_invalid"}
 	}
-	catalog, _, ok, err := binding.loadCatalog(ctx, application)
+	ok, err := binding.applications.RedirectAllowed(ctx, string(application.ApplicationKey), returnURL)
 	if err != nil {
 		return err
 	}
 	if !ok {
-		return &identitysdk.Error{Code: "identity.application_not_registered"}
+		return &identitysdk.Error{Code: "identity.redirect_url_not_registered"}
 	}
-	for _, candidate := range catalog.Application.RedirectURLs {
-		if strings.TrimSpace(candidate) == strings.TrimSpace(returnURL) {
-			return nil
-		}
-	}
-	return &identitysdk.Error{Code: "identity.redirect_url_not_registered"}
-}
-func (adapter sdkCatalog) CurrentRevision(ctx context.Context, application identitysdk.ApplicationRef) (identitysdk.CatalogReceipt, error) {
-	scope := catalogScope(application)
-	if !scope.workspaceID.Valid() || !scope.applicationKey.Valid() {
-		return identitysdk.CatalogReceipt{}, &identitysdk.Error{Code: "identity.application_scope_invalid"}
-	}
-	_, receipt, found, err := adapter.binding.loadCatalog(ctx, application)
-	if err != nil {
-		return identitysdk.CatalogReceipt{}, sdkBoundaryError(err)
-	}
-	if !found {
-		return identitysdk.CatalogReceipt{}, &identitysdk.Error{Code: "identity.catalog_not_published"}
-	}
-	return receipt, nil
+	return nil
 }
 
-func (binding *sdkBinding) loadCatalog(ctx context.Context, application identitysdk.ApplicationRef) (identitysdk.AuthorizationCatalog, identitysdk.CatalogReceipt, bool, error) {
-	scope := catalogScope(application)
-	if !scope.workspaceID.Valid() || !scope.applicationKey.Valid() {
-		return identitysdk.AuthorizationCatalog{}, identitysdk.CatalogReceipt{}, false, &identitysdk.Error{Code: "identity.application_scope_invalid"}
+func (binding *sdkBinding) applicationRegistered(ctx context.Context, application identitysdk.ApplicationRef) (bool, error) {
+	if !application.WorkspaceID.Valid() || !application.ApplicationKey.Valid() {
+		return false, &identitysdk.Error{Code: "identity.application_scope_invalid"}
 	}
-	binding.catalogMu.RLock()
-	catalog, catalogFound := binding.catalogDefinitions[scope]
-	receipt, receiptFound := binding.catalogs[scope]
-	binding.catalogMu.RUnlock()
-	if catalogFound && receiptFound {
-		return catalog, receipt, true, nil
+	if binding == nil || binding.applications == nil || string(application.WorkspaceID) != binding.applications.WorkspaceID() {
+		return false, &identitysdk.Error{Code: "identity.application_scope_mismatch"}
 	}
-	if binding.catalogStore == nil {
-		return identitysdk.AuthorizationCatalog{}, identitysdk.CatalogReceipt{}, false, nil
-	}
-	persistedCatalog, persistedReceipt, found, err := binding.catalogStore.Load(ctx, application)
-	if err != nil || !found {
-		return identitysdk.AuthorizationCatalog{}, identitysdk.CatalogReceipt{}, false, err
-	}
-	if err := persistedCatalog.ValidateContract(); err != nil {
-		return identitysdk.AuthorizationCatalog{}, identitysdk.CatalogReceipt{}, false, err
-	}
-	binding.catalogMu.Lock()
-	binding.catalogDefinitions[scope] = persistedCatalog
-	binding.catalogs[scope] = persistedReceipt
-	revisionScope := sdkCatalogRevisionScope{catalog: scope, revision: persistedReceipt.Revision}
-	binding.catalogHistory[revisionScope] = persistedCatalog
-	binding.catalogReceipts[revisionScope] = persistedReceipt
-	binding.catalogMu.Unlock()
-	return persistedCatalog, persistedReceipt, true, nil
+	return binding.applications.Registered(ctx, string(application.ApplicationKey))
 }
 
 type sdkCredentials struct{ binding *sdkBinding }
@@ -602,8 +450,8 @@ func sdkAuthSession(session authmodel.AuthSession) identitysdk.AuthSession {
 	return identitysdk.AuthSession{SessionID: identitysdk.SessionID(session.SessionID), TenantID: identitysdk.TenantID(session.TenantID), WorkspaceID: session.WorkspaceID, AccessToken: session.AccessToken, RefreshToken: session.RefreshToken, TokenType: session.TokenType, ExpiresAt: session.ExpiresAt, User: identitysdk.User{ID: session.User.ID, Name: session.User.Name, Email: session.User.Email, Locale: session.User.Locale, Version: session.User.Version, Status: string(session.User.Status)}, Roles: roles, DefaultRole: session.DefaultRole, Permissions: append([]string(nil), session.Permissions...), MustChangePassword: session.MustChangePassword}
 }
 
-func sdkAccessBundle(snapshot identitymodel.IdentityEffectiveAccessSnapshot, principal identitymodel.Principal, catalogRevision string, now time.Time) identitysdk.AccessBundle {
-	bundle := identitysdk.AccessBundle{ContractVersion: identitysdk.CurrentPolicyBundleVersion, CatalogRevision: identitysdk.CatalogRevision(catalogRevision), AuthorizationRevision: identitysdk.AuthorizationRevision(snapshot.AuthorizationRevision), ExpiresAt: now.UTC().Add(5 * time.Minute), Subject: identitysdk.Subject{WorkspaceID: identitysdk.WorkspaceID(principal.WorkspaceID), SubjectID: identitysdk.SubjectID(principal.UserID), WorkforceProfileID: principal.WorkforceProfileID, DepartmentID: principal.DepartmentID, DepartmentPath: principal.DepartmentPath, ReportingPath: principal.ReportingPath, OrganizationScopes: map[string][]string{"team_ids": append([]string(nil), principal.TeamIDs...), "store_ids": append([]string(nil), principal.StoreIDs...), "territory_ids": append([]string(nil), principal.TerritoryIDs...), "warehouse_ids": append([]string(nil), principal.WarehouseIDs...)}}}
+func sdkAccessBundle(snapshot identitymodel.IdentityEffectiveAccessSnapshot, principal identitymodel.Principal, now time.Time) identitysdk.AccessBundle {
+	bundle := identitysdk.AccessBundle{ContractVersion: identitysdk.CurrentPolicyBundleVersion, AuthorizationRevision: identitysdk.AuthorizationRevision(snapshot.AuthorizationRevision), ExpiresAt: now.UTC().Add(5 * time.Minute), Subject: identitysdk.Subject{WorkspaceID: identitysdk.WorkspaceID(principal.WorkspaceID), SubjectID: identitysdk.SubjectID(principal.UserID), WorkforceProfileID: principal.WorkforceProfileID, DepartmentID: principal.DepartmentID, DepartmentPath: principal.DepartmentPath, ReportingPath: principal.ReportingPath, OrganizationScopes: map[string][]string{"team_ids": append([]string(nil), principal.TeamIDs...), "store_ids": append([]string(nil), principal.StoreIDs...), "territory_ids": append([]string(nil), principal.TerritoryIDs...), "warehouse_ids": append([]string(nil), principal.WarehouseIDs...)}}}
 	for _, id := range principal.ReportingUserIDs {
 		bundle.Subject.ReportingSubjectIDs = append(bundle.Subject.ReportingSubjectIDs, identitysdk.SubjectID(id))
 	}
@@ -612,7 +460,8 @@ func sdkAccessBundle(snapshot identitymodel.IdentityEffectiveAccessSnapshot, pri
 			bundle.FunctionGrants = append(bundle.FunctionGrants, identitysdk.FunctionGrant{Resource: identitysdk.ResourceType(permission.ObjectKey), Action: identitysdk.Action(permission.Action), Effect: identitysdk.EffectAllow})
 		}
 	}
-	for index, policy := range snapshot.DataAccess {
+	dataPolicyIndex := 0
+	for _, policy := range snapshot.DataAccess {
 		if policy.ObjectKey == "" || policy.Action == "" {
 			continue
 		}
@@ -624,7 +473,9 @@ func sdkAccessBundle(snapshot identitymodel.IdentityEffectiveAccessSnapshot, pri
 		if !policy.Allowed {
 			effect = identitysdk.EffectDeny
 		}
-		bundle.DataPolicies = append(bundle.DataPolicies, identitysdk.DataPolicy{Key: "data-" + policy.ObjectKey + "-" + policy.Action + "-" + strconv.Itoa(index), Resource: identitysdk.ResourceType(policy.ObjectKey), Action: identitysdk.Action(policy.Action), Effect: effect, Predicate: predicate, AuditDenial: policy.AuditDenial})
+		dataAction := identitysdk.DataAction(strings.TrimSpace(policy.Action))
+		bundle.DataPolicies = append(bundle.DataPolicies, identitysdk.DataPolicy{Key: "data-" + policy.ObjectKey + "-" + string(dataAction) + "-" + strconv.Itoa(dataPolicyIndex), Resource: identitysdk.ResourceType(policy.ObjectKey), Action: dataAction, Effect: effect, Predicate: predicate, AuditDenial: policy.AuditDenial})
+		dataPolicyIndex++
 	}
 	for _, field := range snapshot.FieldAccess {
 		bundle.FieldPolicies = append(bundle.FieldPolicies, identitysdk.FieldPolicy{Resource: identitysdk.ResourceType(field.ObjectKey), Field: field.FieldKey, Read: field.Read, Write: field.Write, Export: field.Export, Masked: field.Masked, Reason: field.Reason, Rules: sdkFieldRules(field.Policies)})
@@ -809,7 +660,8 @@ var _ identitysdk.TokenVerifier = sdkTokenVerifier{}
 var _ identitysdk.Authorization = sdkAuthorization{}
 var _ identitysdk.PrincipalResolver = sdkPrincipalResolver{}
 var _ identitysdk.Directory = sdkDirectory{}
-var _ identitysdk.CatalogClient = sdkCatalog{}
+var _ identitysdk.ApplicationRegistry = sdkApplications{}
+var _ identitysdk.PermissionRegistry = sdkPermissions{}
 var _ identitysdk.CredentialManager = sdkCredentials{}
 
 type sdkSystemClock struct{}

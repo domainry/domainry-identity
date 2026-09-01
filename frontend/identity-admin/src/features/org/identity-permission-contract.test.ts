@@ -18,7 +18,12 @@ describe('identity permission authoring surfaces', () => {
     expect(roles).not.toContain('buildRoleAuthorizationChangePlan')
     expect(roles).not.toContain('systemChangePlansApi')
     expect(roles).toContain('permissionCatalogQuery.data')
-    expect(roles).toContain('buildPermissionCapabilityView')
+	expect(roles).toContain('buildPermissionCatalogView')
+	expect(roles).toContain('group.sourceOwner')
+	expect(roles).toContain('group.sourceKind')
+	expect(roles).toContain('group.category')
+	expect(roles).toContain('schemaQuery.data?.objects')
+	expect(roles).toContain('runtimeResourceLabels')
     expect(roles).toContain('binding.method')
     expect(roles).toContain('binding.route')
     expect(roles).toContain('operation.permissionKeys')
@@ -53,7 +58,7 @@ describe('identity permission authoring surfaces', () => {
     expect(fields).not.toContain('identityPoliciesApi.saveFieldPermissions')
   })
 
-  it('keeps functional-permission publication independent from the host change-plan client', () => {
+  it('keeps functional-permission publication on the direct RoleSchema path', () => {
     const rolePolicy = source('roles.tsx')
     const scopes = source('data-scopes.tsx')
     const fields = source('field-permissions.tsx')

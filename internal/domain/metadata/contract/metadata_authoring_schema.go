@@ -2,7 +2,22 @@ package contract
 
 import authoringcontract "github.com/domainry/domainry-identity/internal/domain/authoring"
 
-const metadataJSONSchemaDraft = "https://json-schema.org/draft/2020-12/schema"
+import "strings"
+
+const (
+	metadataJSONSchemaDraft = "https://json-schema.org/draft/2020-12/schema"
+
+	MetadataActionManifestGet          = "identity.metadata.manifest.get"
+	MetadataActionReload               = "identity.metadata.reload"
+	MetadataActionMigrationPlanGet     = "identity.metadata.migration_plan.get"
+	MetadataActionObjectRecordCountGet = "identity.metadata.object_record_count.get"
+	MetadataActionDefinitionGet        = "identity.metadata.definition.get"
+	MetadataActionDefinitionVersions   = "identity.metadata.definition.versions"
+	MetadataActionDefinitionValidate   = "identity.metadata.definition.validate"
+	MetadataActionDefinitionUpsert     = "identity.metadata.definition.upsert"
+	MetadataActionDefinitionDisable    = "identity.metadata.definition.disable"
+	MetadataActionDefinitionRollback   = "identity.metadata.definition.rollback"
+)
 
 func metadataAuthoringRequestSchema(payload authoringcontract.CapabilityAuthoringSchema, objectKeyRequired bool) *authoringcontract.CapabilityAuthoringSchema {
 	required := []string{"expected_schema_hash", "payload"}
@@ -48,6 +63,14 @@ func metadataAuthoringOutputSchema(payload authoringcontract.CapabilityAuthoring
 }
 
 func metadataObjectPayloadSchema() authoringcontract.CapabilityAuthoringSchema {
+	capabilities := authoringcontract.CapabilityAuthoringSchema{
+		Type: "object", AdditionalProperties: metadataBoolPointer(false),
+		Properties: map[string]authoringcontract.CapabilityAuthoringSchema{
+			"create": {Type: "boolean", Default: true}, "read": {Type: "boolean", Default: true},
+			"update": {Type: "boolean", Default: true}, "delete": {Type: "boolean", Default: true},
+			"export": {Type: "boolean", Default: true},
+		},
+	}
 	lifecyclePolicy := authoringcontract.CapabilityAuthoringSchema{
 		Type: "object", AdditionalProperties: metadataBoolPointer(false), Required: []string{"mode"},
 		Properties: map[string]authoringcontract.CapabilityAuthoringSchema{
@@ -88,6 +111,7 @@ func metadataObjectPayloadSchema() authoringcontract.CapabilityAuthoringSchema {
 			"key":                     metadataNonEmptyStringSchema("Stable lowercase object key matching the resourceKey path."),
 			"name":                    metadataNonEmptyStringSchema("Human-readable object name."),
 			"description":             {Type: "string"},
+			"capabilities":            capabilities,
 			"fields":                  {Type: "array", Items: &authoringcontract.CapabilityAuthoringSchema{Type: "object", AdditionalProperties: metadataBoolPointer(false)}, Default: []any{}},
 			"lifecycle_policy":        lifecyclePolicy,
 			"ledger_policy":           ledgerPolicy,
@@ -136,7 +160,7 @@ func metadataAuthoringExecution(resource string) *authoringcontract.CapabilityAu
 	return &authoringcontract.CapabilityAuthoringExecution{
 		ReadSet: []string{"metadata.schema_snapshot", resource}, WriteSet: []string{"metadata.definition_version", resource},
 		Transaction: "metadata_repository_transaction", Idempotency: "builder_task_id_and_idempotency_key",
-		SideEffects: []string{"audit:metadata_definition.saved", "schema_snapshot_rebuild"}, SideEffectLevel: "internal", Compensation: "restore_prior_version_as_new_revision", PermissionModel: "workspace.admin",
+		SideEffects: []string{"audit:metadata_definition.saved", "schema_snapshot_rebuild"}, SideEffectLevel: "internal", Compensation: "restore_prior_version_as_new_revision", PermissionModel: authoringcontract.CapabilityPermissionModelExactAction,
 		ChangeControl: "direct_audited_versioned_metadata",
 	}
 }
@@ -149,6 +173,49 @@ func metadataConfigurationRoutes(resourceType string) []string {
 		"POST " + base + "/validate",
 		"PUT " + base,
 		"DELETE " + base,
+		"POST " + base + "/rollback",
+	}
+}
+
+// VersionedMetadataDefinitionAction resolves a concrete authoring projection
+// back to the canonical, non-HTTP metadata use-case Action. Runtime may expose
+// the generic HTTP endpoint with a concrete resource type in capability
+// OpenAPI, but Identity authorization remains attached to these exact Actions.
+func VersionedMetadataDefinitionAction(pattern string) (string, bool) {
+	method, path, found := strings.Cut(strings.TrimSpace(pattern), " ")
+	if !found {
+		return "", false
+	}
+	method = strings.ToUpper(strings.TrimSpace(method))
+	const prefix = "/tenant-admin/metadata/definitions/"
+	remaining := strings.TrimPrefix(strings.TrimSpace(path), prefix)
+	if remaining == path {
+		return "", false
+	}
+	segments := strings.Split(remaining, "/")
+	if len(segments) < 2 || len(segments) > 3 || strings.TrimSpace(segments[0]) == "" ||
+		!strings.HasPrefix(segments[1], "{") || !strings.HasSuffix(segments[1], "}") {
+		return "", false
+	}
+	operation := ""
+	if len(segments) == 3 {
+		operation = strings.TrimSpace(segments[2])
+	}
+	switch {
+	case method == "GET" && operation == "":
+		return MetadataActionDefinitionGet, true
+	case method == "GET" && operation == "versions":
+		return MetadataActionDefinitionVersions, true
+	case method == "POST" && operation == "validate":
+		return MetadataActionDefinitionValidate, true
+	case method == "PUT" && operation == "":
+		return MetadataActionDefinitionUpsert, true
+	case method == "DELETE" && operation == "":
+		return MetadataActionDefinitionDisable, true
+	case method == "POST" && operation == "rollback":
+		return MetadataActionDefinitionRollback, true
+	default:
+		return "", false
 	}
 }
 

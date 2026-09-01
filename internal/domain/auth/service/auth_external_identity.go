@@ -272,14 +272,14 @@ func (s *AuthDomainService) roleForExternalAssertion(ctx context.Context, assert
 	}
 	for _, mapping := range policy.RoleMappings {
 		role, ok := byKey[strings.ToLower(strings.TrimSpace(mapping.RoleKey))]
-		if !ok || s.privilegedExternalAutoRole(ctx, role) {
+		if !ok {
 			continue
 		}
 		if externalAssertionMappingMatches(assertion, mapping) {
 			return role, true, nil
 		}
 	}
-	if role, ok := byKey[strings.ToLower(strings.TrimSpace(policy.DefaultRoleKey))]; ok && !s.privilegedExternalAutoRole(ctx, role) {
+	if role, ok := byKey[strings.ToLower(strings.TrimSpace(policy.DefaultRoleKey))]; ok {
 		return role, true, nil
 	}
 	return identitymodel.IdentityRole{}, false, nil
@@ -350,25 +350,4 @@ func normalizedAssertionClaim(assertion authmodel.AuthExternalIdentityAssertion,
 		return ""
 	}
 	return strings.TrimSpace(assertion.Claims[claim])
-}
-
-func privilegedExternalAutoRole(role identitymodel.IdentityRole) bool {
-	roleKey := strings.ToLower(strings.TrimSpace(valueOrDefault(role.Key, role.ID)))
-	return roleKey == "admin" || roleKey == "owner" || strings.Contains(roleKey, "workspace_admin")
-}
-
-func (s *AuthDomainService) privilegedExternalAutoRole(ctx context.Context, role identitymodel.IdentityRole) bool {
-	if privilegedExternalAutoRole(role) || s.identity == nil {
-		return true
-	}
-	published, ok := s.identity.PublishedRoleDefinition(ctx, valueOrDefault(role.Key, role.ID))
-	if !ok {
-		return false
-	}
-	for _, permission := range published.Permissions {
-		if strings.TrimSpace(permission) == "workspace.admin" {
-			return true
-		}
-	}
-	return false
 }

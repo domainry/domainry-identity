@@ -8,7 +8,7 @@ const api = readFileSync(new URL('../../data/governance-api.ts', import.meta.url
 describe('account Effective Access Explain', () => {
   it('binds the viewed account to the Runtime explain request', () => {
     expect(detail).toContain("<EffectiveAccessExplainCard userID={value.id} />")
-    expect(detail).toContain("has('identity.roles.read')")
+	 expect(detail).toContain("has('identity.access.explain')")
     expect(card).toContain('user_id: userID')
     expect(card).toContain('identityAccessApi.explain')
     expect(api).toContain('"/identity/access/explain"')

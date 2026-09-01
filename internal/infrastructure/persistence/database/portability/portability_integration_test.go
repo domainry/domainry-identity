@@ -33,7 +33,7 @@ func TestEmbeddedWorkspaceExportImportIsDeterministicAndSecretFree(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if dryRun.Bundle != nil || dryRun.Inventory.DatasetCounts["users"] != 1 || dryRun.Inventory.ExcludedCounts["credentials"] != 1 || dryRun.Inventory.ExcludedCounts["provider_secrets"] != 1 {
+	if dryRun.Bundle != nil || dryRun.Inventory.DatasetCounts["users"] != 1 || dryRun.Inventory.DatasetCounts["applications"] != 2 || dryRun.Inventory.DatasetCounts["permissions"] != 2 || dryRun.Inventory.ExcludedCounts["credentials"] != 1 || dryRun.Inventory.ExcludedCounts["provider_secrets"] != 1 {
 		t.Fatalf("unexpected dry-run inventory: %+v", dryRun)
 	}
 	if _, err := sourceService.Export(t.Context(), portabilityapplication.ExportRequest{WorkspaceID: "workspace-a", SourceMode: "module"}); err == nil || !strings.Contains(err.Error(), "write_freeze_not_active") {
@@ -101,12 +101,14 @@ func TestEmbeddedWorkspaceExportImportIsDeterministicAndSecretFree(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Receipt == nil || result.Receipt.ImportedCounts["users"] != 1 || !result.Receipt.AuthorizationOK || !result.Receipt.SessionsRevoked || !result.Receipt.CredentialsReset || !result.Receipt.MFAReenrollment {
+	if result.Receipt == nil || result.Receipt.ImportedCounts["users"] != 1 || result.Receipt.ImportedCounts["applications"] != 2 || result.Receipt.ImportedCounts["permissions"] != 2 || !result.Receipt.AuthorizationOK || !result.Receipt.SessionsRevoked || !result.Receipt.CredentialsReset || !result.Receipt.MFAReenrollment {
 		t.Fatalf("import receipt=%+v", result.Receipt)
 	}
-	var users, credentials, sessions, providerCredentials int
+	var users, applications, permissions, credentials, sessions, providerCredentials int
 	for query, countDestination := range map[string]*int{
 		`SELECT COUNT(*) FROM _identity_users WHERE workspace_id='workspace-a'`:                     &users,
+		`SELECT COUNT(*) FROM _identity_applications WHERE workspace_id='workspace-a'`:              &applications,
+		`SELECT COUNT(*) FROM _identity_permissions WHERE workspace_id='workspace-a'`:               &permissions,
 		`SELECT COUNT(*) FROM _identity_credentials WHERE workspace_id='workspace-a'`:               &credentials,
 		`SELECT COUNT(*) FROM _identity_auth_refresh_tokens WHERE workspace_id='workspace-a'`:       &sessions,
 		`SELECT COUNT(*) FROM _identity_auth_provider_credentials WHERE workspace_id='workspace-a'`: &providerCredentials,
@@ -115,8 +117,18 @@ func TestEmbeddedWorkspaceExportImportIsDeterministicAndSecretFree(t *testing.T)
 			t.Fatal(err)
 		}
 	}
-	if users != 1 || credentials != 0 || sessions != 0 || providerCredentials != 1 {
-		t.Fatalf("imported users=%d credentials=%d sessions=%d provider_credentials=%d", users, credentials, sessions, providerCredentials)
+	if users != 1 || applications != 2 || permissions != 2 || credentials != 0 || sessions != 0 || providerCredentials != 1 {
+		t.Fatalf("imported users=%d applications=%d permissions=%d credentials=%d sessions=%d provider_credentials=%d", users, applications, permissions, credentials, sessions, providerCredentials)
+	}
+	var disabled int
+	if err := target.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _identity_permissions WHERE workspace_id='workspace-a' AND permission_key='customer.export' AND enabled=FALSE`).Scan(&disabled); err != nil || disabled != 1 {
+		t.Fatalf("imported administrator permission state=%d err=%v", disabled, err)
+	}
+	for _, retiredTable := range []string{"_identity_authorization_catalogs", "_identity_authorization_catalog_revisions"} {
+		var count int
+		if err := target.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, retiredTable).Scan(&count); err != nil || count != 0 {
+			t.Fatalf("retired authorization table %s count=%d err=%v", retiredTable, count, err)
+		}
 	}
 	replay, err := targetService.Import(t.Context(), request)
 	if err != nil || replay.Receipt == nil || !replay.Receipt.Replayed {
@@ -179,6 +191,30 @@ func seedPortableWorkspace(t *testing.T, store *database.IdentityStore, now time
 	t.Helper()
 	timestamp := now.Format(time.RFC3339Nano)
 	seedMetadataSchemaHash(t, store)
+	for _, application := range []struct{ id, key, redirects string }{
+		{id: "application-admin", key: "identity-admin", redirects: `["https://admin.example/callback"]`},
+		{id: "application-runtime", key: "orders-runtime", redirects: `[]`},
+	} {
+		if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO _identity_applications
+			(id, workspace_id, application_key, redirect_urls_json, status, created_at, updated_at)
+			VALUES (?, 'workspace-a', ?, ?, 'active', ?, ?)`, application.id, application.key, application.redirects, timestamp, timestamp); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, permission := range []struct {
+		id, key, action, status string
+		enabled                 bool
+	}{
+		{id: "permission-read", key: "customer.read", action: "read", status: "active", enabled: true},
+		{id: "permission-export", key: "customer.export", action: "export", status: "active", enabled: false},
+	} {
+		if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO _identity_permissions
+			(id, workspace_id, permission_key, resource_key, action_key, label, description, category, source_kind, source_owner, definition_status, enabled, definition_hash, source_snapshot_hash, created_at, updated_at)
+			VALUES (?, 'workspace-a', ?, 'customer', ?, ?, '', 'CRM', 'object_default', 'application:orders-runtime', ?, ?, ?, ?, ?, ?)`,
+			permission.id, permission.key, permission.action, permission.key, permission.status, permission.enabled, strings.Repeat("a", 64), strings.Repeat("b", 64), timestamp, timestamp); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO _identity_users
         (id, workspace_id, name, given_name, middle_name, family_name, name_prefix, name_suffix, native_name, name_locale, email, phone, account_type, locale, timezone, status, version, created_at, updated_at)
         VALUES (?, ?, ?, '', '', '', '', '', '', '', ?, '', 'human', '', '', 'active', 1, ?, ?)`,

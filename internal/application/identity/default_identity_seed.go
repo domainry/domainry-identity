@@ -4,7 +4,6 @@ import (
 	"regexp"
 	"strings"
 
-	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
@@ -15,14 +14,14 @@ var businessRouteKeyPattern = regexp.MustCompile(`^business\.[a-z0-9]+(?:[._-][a
 // intentionally empty. Project-published definitions with the same key win.
 func WithStandaloneIdentityRoleDefinitions(configured []identitymodel.RoleSchema) []identitymodel.RoleSchema {
 	organizationPermissions := make([]string, 0)
-	for _, permission := range identitycontract.IdentityPlatformPermissionKeys() {
-		if strings.HasPrefix(permission, "identity.") || strings.HasPrefix(permission, "audit.") || strings.HasPrefix(permission, "metadata.") {
-			organizationPermissions = append(organizationPermissions, permission)
+	for _, action := range IdentityBuiltinAuthorizationActions() {
+		if action.Permission != nil {
+			organizationPermissions = append(organizationPermissions, action.Key)
 		}
 	}
 	defaults := []identitymodel.RoleSchema{
 		{
-			Key: "admin", Name: "Admin", Permissions: []string{"workspace.admin"}, RecordScope: "all_records",
+			Key: "admin", Name: "Admin", Permissions: append([]string(nil), organizationPermissions...), RecordScope: "all_records",
 			Audience: identitymodel.IdentityRoleAudienceAny, AssignmentMode: identitymodel.IdentityRoleAssignmentManual,
 			RiskLevel: identitymodel.IdentityRoleRiskPrivileged, GrantableRoleKeys: []string{"*"},
 		},
@@ -33,7 +32,13 @@ func WithStandaloneIdentityRoleDefinitions(configured []identitymodel.RoleSchema
 		},
 		{
 			Key: "system_administrator", Name: "System administrator",
-			Permissions: []string{"identity.audit.view", "audit.governance.read", "audit.governance.export", "metadata.read", "metadata.write"},
+			Permissions: []string{
+				"audit.governance.read", "audit.governance.export",
+				"identity.metadata.manifest.get", "identity.metadata.reload",
+				"identity.metadata.migration_plan.get", "identity.metadata.object_record_count.get",
+				"identity.metadata.definition.validate", "identity.metadata.definition.upsert",
+				"identity.metadata.definition.disable", "identity.metadata.definition.rollback",
+			},
 			RecordScope: "all_records", Audience: identitymodel.IdentityRoleAudienceAny,
 			AssignmentMode: identitymodel.IdentityRoleAssignmentManual, RiskLevel: identitymodel.IdentityRoleRiskElevated,
 		},
@@ -76,7 +81,6 @@ func generatedManifestIdentitySeed() Seed {
 		"system", "system_metadata", "system_audit",
 	)...)
 	return Seed{
-		Permissions: generatedGlobalPermissionDefinitions(generatedGlobalPermissionKeys()),
 		Roles: []identitymodel.IdentityRole{
 			{ID: "admin", Key: "admin", Label: "Admin", Status: identitymodel.IdentityStatusActive},
 			{ID: "organization_administrator", Key: "organization_administrator", Label: "Organization administrator", Status: identitymodel.IdentityStatusActive},
@@ -126,20 +130,23 @@ func generatedIdentityMenus() []identitymodel.IdentityMenu {
 	return menus
 }
 
-func requiredPermissionsForAdminRoute(route string) ([]string, bool) {
-	return identitycontract.AdminRouteRequiredPermissions(route)
-}
+// identityBuiltinPagePermissions is the standalone/test fallback. Production
+// assembly injects the complete frozen registry, including module pages.
+type identityBuiltinPagePermissions struct{}
 
-// requiredPermissionsForMenuRoute keeps Admin URLs under the platform Admin
-// registry while Business Workspace menus reference the stable route_key from
-// the project-published Route Registry. Literal /business URLs are rejected so
-// Identity never becomes a second owner of project frontend paths.
-func requiredPermissionsForMenuRoute(route string) ([]string, bool) {
+func (identityBuiltinPagePermissions) RequiredPermissionsForPage(route string) ([]string, bool) {
 	route = strings.TrimSpace(route)
-	if businessRouteKeyPattern.MatchString(route) {
-		return []string{}, true
+	for _, action := range IdentityBuiltinAuthorizationActions() {
+		if action.Permission == nil || action.Permission.Key != action.Key {
+			continue
+		}
+		for _, page := range action.Pages {
+			if page.Route == route {
+				return []string{action.Key}, true
+			}
+		}
 	}
-	return requiredPermissionsForAdminRoute(route)
+	return nil, false
 }
 
 func generatedIdentityRoleMenus(roleID string, menus []identitymodel.IdentityMenu) []identitymodel.IdentityRoleMenuAssignment {
@@ -165,33 +172,4 @@ func generatedIdentityRoleMenusForIDs(roleID string, menus []identitymodel.Ident
 		}
 	}
 	return assignments
-}
-
-func generatedGlobalPermissionKeys() []string {
-	return identitycontract.IdentityPlatformPermissionKeys()
-}
-
-// RuntimeGlobalPermissionKeys exposes the concrete platform permission
-// registry used by Runtime identity discovery. Object and Business Action
-// permission templates are resolved from project metadata instead.
-func RuntimeGlobalPermissionKeys() []string {
-	return append([]string(nil), generatedGlobalPermissionKeys()...)
-}
-
-func generatedGlobalPermissionDefinitions(keys []string) []identitymodel.IdentityPermissionDefinition {
-	definitions := make([]identitymodel.IdentityPermissionDefinition, 0, len(keys))
-	for _, key := range keys {
-		system, resource, action := IdentityParsePermissionKey(key)
-		definitions = append(definitions, identitymodel.IdentityPermissionDefinition{
-			Key:           key,
-			Label:         IdentityHumanizeIdentifier(resource + " " + action),
-			System:        system,
-			Resource:      resource,
-			ResourceLabel: IdentityHumanizeIdentifier(resource),
-			Action:        action,
-			Category:      "Global system capability",
-			Description:   IdentityHumanizeIdentifier(system + " " + resource + " " + action),
-		})
-	}
-	return definitions
 }

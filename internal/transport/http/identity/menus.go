@@ -24,6 +24,36 @@ func (h *IdentityHandler) listIdentityPermissions(w http.ResponseWriter, r *http
 	h.writeJSON(w, http.StatusOK, h.localizedIdentityPermissions(r, permissions))
 }
 
+type identityPermissionEnablementRequest struct {
+	Enabled        bool   `json:"enabled"`
+	BusinessReason string `json:"business_reason"`
+}
+
+func (h *IdentityHandler) setIdentityPermissionEnabled(w http.ResponseWriter, r *http.Request) {
+	if h.permissionCatalog == nil {
+		h.writeError(w, r, http.StatusServiceUnavailable, "backend.identity.permission_catalog_unavailable")
+		return
+	}
+	var request identityPermissionEnablementRequest
+	if !h.decodeJSON(w, r, &request) {
+		return
+	}
+	request.BusinessReason = strings.TrimSpace(request.BusinessReason)
+	if request.BusinessReason == "" {
+		h.writeError(w, r, http.StatusBadRequest, "backend.identity.permission_business_reason_required")
+		return
+	}
+	result, err := h.permissionCatalog.SetEnabled(r.Context(), strings.TrimSpace(r.PathValue("permissionKey")), request.Enabled)
+	if err != nil {
+		h.writeServiceError(w, r, err)
+		return
+	}
+	h.appendIdentityMutationAudit(r, "identity_permission_enablement_changed", "identity_permission", result.PermissionKey, "Changed Identity permission enablement", map[string]any{
+		"before": result.Before, "enabled": result.Enabled, "changed": result.Changed, "business_reason": request.BusinessReason,
+	})
+	h.writeJSON(w, http.StatusOK, result)
+}
+
 func (h *IdentityHandler) listIdentityMenus(w http.ResponseWriter, r *http.Request) {
 	menus, err := h.menus.ListMenus(r.Context())
 	if err != nil {
@@ -44,7 +74,7 @@ func (h *IdentityHandler) upsertIdentityMenu(w http.ResponseWriter, r *http.Requ
 		req.ID = menuID
 	}
 	principal := h.principal(r)
-	result, err := h.executeIdentityAuthoringUpsert(r.Context(), "identity.menu", req.ID, "identity.menus.write", r.Header.Get("Builder-Task-ID"), r.Header.Get("Idempotency-Key"), r.Header.Get("Expected-Schema-Hash"), req, principal,
+	result, err := h.executeIdentityAuthoringUpsert(r.Context(), "identity.menu", req.ID, r.Header.Get("Builder-Task-ID"), r.Header.Get("Idempotency-Key"), r.Header.Get("Expected-Schema-Hash"), req, principal,
 		func(ctx context.Context) (any, bool, error) {
 			items, loadErr := h.menus.ListMenus(ctx)
 			if loadErr != nil {
@@ -176,7 +206,7 @@ func (h *IdentityHandler) setIdentityRoleMenus(w http.ResponseWriter, r *http.Re
 	}
 	roleID := strings.TrimSpace(r.PathValue("roleID"))
 	principal := h.principal(r)
-	result, err := h.executeIdentityAuthoringUpsert(r.Context(), "identity.role_menu_assignment", roleID, "identity.menus.write", r.Header.Get("Builder-Task-ID"), r.Header.Get("Idempotency-Key"), r.Header.Get("Expected-Schema-Hash"), req, principal,
+	result, err := h.executeIdentityAuthoringUpsert(r.Context(), "identity.role_menu_assignment", roleID, r.Header.Get("Builder-Task-ID"), r.Header.Get("Idempotency-Key"), r.Header.Get("Expected-Schema-Hash"), req, principal,
 		func(ctx context.Context) (any, bool, error) {
 			items, loadErr := h.menus.ListRoleMenuAssignments(ctx, roleID)
 			return items, len(items) > 0, loadErr

@@ -22,7 +22,8 @@ func TestIdentityWorkforceReadScopeAllowsOnlyAuthorizedProfiles(t *testing.T) {
 		allowed   bool
 	}{
 		{name: "empty scope denied", principal: identitymodel.Principal{Known: true, UserID: "manager"}},
-		{name: "workspace admin allowed", principal: identitymodel.Principal{Known: true, UserID: "manager", Role: identitymodel.RoleSchema{Permissions: []string{"workspace.admin"}}}, allowed: true},
+		{name: "functional Permission does not grant data scope", principal: identitymodel.Principal{Known: true, UserID: "manager", Role: identitymodel.RoleSchema{Permissions: []string{"identity.roles.list"}}}},
+		{name: "explicit all records scope allowed", principal: identitymodel.Principal{Known: true, UserID: "manager", Role: identitymodel.RoleSchema{RecordScope: "all_records"}}, allowed: true},
 		{name: "unrelated owned denied", principal: identitymodel.Principal{Known: true, UserID: "manager", Role: identitymodel.RoleSchema{RecordScope: "owned_records"}}},
 		{name: "self owned allowed", principal: identitymodel.Principal{Known: true, UserID: "employee", Role: identitymodel.RoleSchema{RecordScope: "owned_records"}}, allowed: true},
 		{name: "subordinate allowed", principal: identitymodel.Principal{Known: true, UserID: "manager", ReportingUserIDs: []string{"employee"}, Role: identitymodel.RoleSchema{RecordScope: "subordinates"}}, allowed: true},

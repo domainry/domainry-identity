@@ -41,6 +41,7 @@ func TestBuildPrincipalEffectiveRoleAndReportingEdges(t *testing.T) {
 		},
 	}
 	service := principalRoleService(t, repository)
+	activateIdentityTestPermissions(service, "a.permission", "z.permission")
 	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{
 		Key: "role-one", Name: "role-one", Permissions: []string{"a.permission", "z.permission"}, RecordScope: "all_records",
 		DataPermissions:  []identitymodel.DataPermission{{ObjectKey: "customer", Scope: "all_records", Read: true, Write: true}, {ObjectKey: "order", Scope: "owned", Read: true, Write: true}},
@@ -137,6 +138,7 @@ func TestPublishedRoleDefinitionIsRuntimeAuthorizationAuthority(t *testing.T) {
 		fieldPermissions:      []identitymodel.IdentityFieldPermission{{Resource: "stale", Field: "secret", Visible: true, Editable: true}},
 	}
 	service := principalRoleService(t, repository)
+	activateIdentityTestPermissions(service, "order.complete", "order.read")
 	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{
 		Key: "operator", Name: "Published operator", Permissions: []string{"order.complete"}, RecordScope: "all_records",
 		DataPermissions:  []identitymodel.DataPermission{{ObjectKey: "order", Scope: "owned", Read: true, Write: true}},

@@ -90,7 +90,9 @@ func (r *authMutationEdgeRepository) CompleteAuthMutation(_ context.Context, _ s
 }
 
 func authMutationPrincipal() identitymodel.Principal {
-	return identitymodel.Principal{Known: true, WorkspaceID: "workspace-1", UserID: "user-1", RequestID: "request-1", Role: identitymodel.RoleSchema{Permissions: []string{"workspace.admin"}}}
+	return identitymodel.Principal{Known: true, WorkspaceID: "workspace-1", UserID: "user-1", RequestID: "request-1", Role: identitymodel.RoleSchema{Permissions: []string{
+		"auth.reset_password", "auth.providers.setup",
+	}}}
 }
 
 func authAcquiredReceipt(token int64) authmodel.AuthMutationReceipt {
@@ -168,16 +170,16 @@ func TestForceLogoutRequiresDedicatedSecurityPermissionAndReplaysStableResult(t 
 	}
 	principal := identitymodel.Principal{
 		Known: true, WorkspaceID: "workspace-1", UserID: "security-admin", RequestID: "request-1",
-		Role: identitymodel.RoleSchema{Permissions: []string{"identity.users.write"}},
+		Role: identitymodel.RoleSchema{Permissions: []string{"identity.users.update"}},
 	}
 	repository := &authSessionMutationEdgeRepository{authMutationEdgeRepository: authMutationEdgeRepository{
 		claim: authmodel.AuthMutationClaimResult{Decision: idempotency.DecisionAcquired, Receipt: authAcquiredReceipt(1)},
 	}, revoked: 2}
 	service := NewAuthApplicationService(identity, repository, "secret", "", time.Hour, 24*time.Hour, 3, time.Minute, time.Minute, 3, authpolicy.AuthPasswordPolicy{})
 	if _, _, gotErr := service.ForceLogoutUserIdempotent(t.Context(), principal, "force-1", "target-user"); apperror.CodeOf(gotErr) != "auth.permission_denied" || repository.claimCalls != 0 {
-		t.Fatalf("identity.users.write unexpectedly authorized force logout: err=%v claims=%d", gotErr, repository.claimCalls)
+		t.Fatalf("identity.users.update unexpectedly authorized force logout: err=%v claims=%d", gotErr, repository.claimCalls)
 	}
-	principal.Role.Permissions = []string{"identity.security.write"}
+	principal.Role.Permissions = []string{"identity.users.force_logout"}
 	result, replayed, gotErr := service.ForceLogoutUserIdempotent(t.Context(), principal, "force-1", "target-user")
 	if gotErr != nil || replayed || result.RevokedSessions != 2 || repository.calls != 1 || repository.completeCalls != 1 {
 		t.Fatalf("result=%+v replayed=%t err=%v revokes=%d completions=%d", result, replayed, gotErr, repository.calls, repository.completeCalls)

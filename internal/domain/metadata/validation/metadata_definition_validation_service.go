@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	"strings"
 
 	"github.com/domainry/domainry-foundation/apperror"
+	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	metadatacontract "github.com/domainry/domainry-identity/internal/domain/metadata/contract"
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
 )
 
@@ -25,7 +26,7 @@ func MetadataValidateDefinitionRequest(
 	principal identitymodel.Principal,
 	validatePayload MetadataDefinitionPayloadValidator,
 ) (metadatamodel.MetadataDefinitionValidationResult, error) {
-	if !principal.Known || !identitycontract.IdentityRoleHasPermissionKey(principal.Role, "workspace.admin") {
+	if !principal.Known || !identitycontract.IdentityRoleHasPermissionKey(principal.Role, metadatacontract.MetadataActionDefinitionValidate) {
 		return metadatamodel.MetadataDefinitionValidationResult{}, forbidden("auth.permission_denied")
 	}
 

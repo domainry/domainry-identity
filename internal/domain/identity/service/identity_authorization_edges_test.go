@@ -45,6 +45,7 @@ func TestIdentityAuthorizationContextBoundaryAndDelegation(t *testing.T) {
 		menuAssignments: []identitymodel.IdentityRoleMenuAssignment{{RoleID: "role", MenuID: "menu"}},
 	}
 	service := NewIdentityDomainService(repository, nil).mustForWorkspace(t, "workspace")
+	activateIdentityTestPermissions(service, "record.read")
 	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{Key: "role", Permissions: []string{"record.read"}, RecordScope: "all_records"}})
 	if assignments, workforceProfileID, err := service.ResolveEffectiveRoleAssignments(t.Context(), "user"); err != nil || len(assignments) != 1 || workforceProfileID != "" {
 		t.Fatalf("effective assignments=%+v workforce=%q err=%v", assignments, workforceProfileID, err)

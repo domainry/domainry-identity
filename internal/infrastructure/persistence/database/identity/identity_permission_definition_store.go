@@ -15,6 +15,14 @@ func (store *SQLIdentityStore) ListIdentityPermissionDefinitions(ctx context.Con
 	return store.permissionDefinitionStore().List(ctx, workspaceID)
 }
 
+func (store *SQLIdentityStore) GetIdentityPermissionDefinition(ctx context.Context, workspaceID, permissionKey string) (identitymodel.IdentityPermissionDefinitionRecord, bool, error) {
+	return store.permissionDefinitionStore().Get(ctx, workspaceID, permissionKey)
+}
+
+func (store *SQLIdentityStore) SetIdentityPermissionDefinitionEnabled(ctx context.Context, workspaceID, permissionKey string, enabled bool) (bool, error) {
+	return store.permissionDefinitionStore().SetEnabled(ctx, workspaceID, permissionKey, enabled)
+}
+
 func (store *SQLIdentityStore) ReconcileIdentityPermissionDefinitions(ctx context.Context, request identitymodel.IdentityPermissionReconcileRequest) (identitymodel.IdentityPermissionReconcileReceipt, error) {
 	return store.permissionDefinitionStore().Reconcile(ctx, request)
 }

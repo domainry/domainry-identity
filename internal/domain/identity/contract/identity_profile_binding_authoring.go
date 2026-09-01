@@ -41,11 +41,10 @@ func IdentityProfileBindingAuthoringCapability() authoringcontract.CapabilityAut
 		},
 	}
 	execution := metadatacontract.VersionedMetadataDefinitionExecution("identity.profile_binding")
-	execution.PermissionModel = "identity.profile_binding.manage"
 	return authoringcontract.CapabilityAuthoringDefinition{
 		Key: "identity.profile_binding", Status: "supported", Lifecycle: "versioned_metadata", Requires: []string{"schema.object", "schema.relation"},
-		Parameters:  []authoringcontract.CapabilityAuthoringParameter{{Key: "object_key", Type: "object_key", Required: true}, {Key: "identity_relation_field", Type: "field_key", Required: true}, {Key: "business_identity", Type: "object", Required: true}, {Key: "expected_schema_hash", Type: "schema_hash", Required: true}},
-		Permissions: []string{"identity.profile_binding.manage"}, AuditEvents: []string{"metadata_definition_upserted"},
+		Parameters:         []authoringcontract.CapabilityAuthoringParameter{{Key: "object_key", Type: "object_key", Required: true}, {Key: "identity_relation_field", Type: "field_key", Required: true}, {Key: "business_identity", Type: "object", Required: true}, {Key: "expected_schema_hash", Type: "schema_hash", Required: true}},
+		AuditEvents:        []string{"metadata_definition_upserted"},
 		ValidationEndpoint: "POST /tenant-admin/metadata/definitions/identity_profile_binding/{resourceKey}/validate", ConfigurationRoutes: metadatacontract.VersionedMetadataDefinitionRoutes("identity_profile_binding"), ResourceKeyPathParameter: "resourceKey",
 		ResourceOperations: metadatacontract.VersionedMetadataDefinitionOperations("identity_profile_binding"),
 		InputSchema:        metadatacontract.VersionedMetadataDefinitionRequestSchema(payload, false), OutputSchema: metadatacontract.VersionedMetadataDefinitionOutputSchema(payload),

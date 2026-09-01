@@ -57,6 +57,7 @@ func TestBuildPrincipalAndSelectedRoleCoverPublicationAndAssignmentEdges(t *test
 		assignments: []identitymodel.IdentityUserRoleAssignment{{UserID: "user", RoleID: "empty-status"}},
 	}}
 	service := principalRoleService(t, repository)
+	activateIdentityTestPermissions(service, "order.read")
 	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{
 		Key: "member", Permissions: []string{" ", "order.read"}, RecordScope: "all_records",
 	}, {

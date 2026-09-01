@@ -42,10 +42,6 @@ func IdentityBuildEffectiveAccessSnapshot(input IdentityEffectiveAccessProjectio
 	for _, role := range input.RoleDefinitions {
 		definitionByKey[strings.TrimSpace(role.Key)] = role
 	}
-	setByKey := map[string]identitymodel.IdentityPermissionSet{}
-	for _, set := range input.PermissionSets {
-		setByKey[strings.TrimSpace(set.Key)] = set
-	}
 	groupByKey := map[string]identitymodel.IdentityPermissionSetGroup{}
 	for _, group := range input.PermissionSetGroups {
 		groupByKey[strings.TrimSpace(group.Key)] = group
@@ -93,7 +89,7 @@ func IdentityBuildEffectiveAccessSnapshot(input IdentityEffectiveAccessProjectio
 	})
 	for _, key := range input.Principal.Role.Permissions {
 		objectKey, action := identityProjectionPermissionParts(key)
-		sources := identityProjectionSourcesForGrant(key, roleSources, definitionByKey, setByKey)
+		sources := identityProjectionSourcesForGrant(key, roleSources, definitionByKey)
 		snapshot.Permissions = append(snapshot.Permissions, identitymodel.IdentityEffectivePermissionGrant{Key: key, ObjectKey: objectKey, Action: action, Sources: sources})
 	}
 	snapshot.DataAccess = identityProjectionDataAccess(input.Principal.Role, roleSources)
@@ -169,15 +165,15 @@ func IdentityExplainEffectiveAccess(snapshot identitymodel.IdentityEffectiveAcce
 	return result
 }
 
-func identityProjectionSourcesForGrant(key string, roleSources map[string][]identitymodel.IdentityGrantSource, roles map[string]identitymodel.RoleSchema, sets map[string]identitymodel.IdentityPermissionSet) []identitymodel.IdentityGrantSource {
+func identityProjectionSourcesForGrant(key string, roleSources map[string][]identitymodel.IdentityGrantSource, roles map[string]identitymodel.RoleSchema) []identitymodel.IdentityGrantSource {
 	out := []identitymodel.IdentityGrantSource{}
 	for roleKey, sources := range roleSources {
 		role := roles[roleKey]
-		if identityProjectionContains(role.Permissions, key) {
-			out = append(out, sources...)
+		if !identityProjectionContains(role.Permissions, key) {
+			continue
 		}
 		for _, source := range sources {
-			if source.PermissionSetKey != "" && identityProjectionContains(sets[source.PermissionSetKey].Permissions, key) {
+			if source.Type == "role_assignment" {
 				out = append(out, source)
 			}
 		}
@@ -357,9 +353,6 @@ func identityProjectionPermissionParts(key string) (string, string) {
 	parts := strings.Split(strings.TrimSpace(key), ".")
 	if len(parts) < 2 {
 		return "", strings.TrimSpace(key)
-	}
-	if len(parts) == 3 {
-		return parts[1], parts[2]
 	}
 	return strings.Join(parts[:len(parts)-1], "."), parts[len(parts)-1]
 }

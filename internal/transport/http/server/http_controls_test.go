@@ -1,20 +1,133 @@
 package httpserver
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
+	actioncontract "github.com/domainry/domainry-foundation/action"
 	"github.com/domainry/domainry-identity-sdk/browsergateway"
+	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
+	"github.com/domainry/domainry-identity/internal/platform/config"
 	authhttp "github.com/domainry/domainry-identity/internal/transport/http/auth"
 )
 
+func TestStandaloneRouteInventoryBaseline(t *testing.T) {
+	_, sourceFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("resolve server test source")
+	}
+	projectRoot := filepath.Clean(filepath.Join(filepath.Dir(sourceFile), "..", "..", "..", ".."))
+	cfg := config.FromEnv()
+	cfg.Environment = "development"
+	cfg.DatabaseDriver = "sqlite"
+	cfg.DBPath = filepath.Join(t.TempDir(), "identity-route-inventory.db")
+	cfg.IdentityWorkspaceID = "workspace-primary"
+	cfg.ManifestPath = filepath.Join(projectRoot, "domainry.template.json")
+	server, err := New(t.Context(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = server.CloseContext(t.Context()) })
+	routes := server.RouteInventory()
+	sum := sha256.Sum256([]byte(strings.Join(routes, "\n")))
+	const wantCount = 164
+	const wantSHA256 = "bcee708fac6ee738e4603949bdb6365d2ab6bd591005cacb310f238661e6331e"
+	if len(routes) != wantCount || hex.EncodeToString(sum[:]) != wantSHA256 {
+		t.Fatalf("standalone route inventory count=%d sha256=%s routes=%#v", len(routes), hex.EncodeToString(sum[:]), routes)
+	}
+}
+
+func TestStandaloneRouteInventoryAndFrozenActionRegistryAreBidirectionallyComplete(t *testing.T) {
+	_, sourceFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("resolve server test source")
+	}
+	projectRoot := filepath.Clean(filepath.Join(filepath.Dir(sourceFile), "..", "..", "..", ".."))
+	cfg := config.FromEnv()
+	cfg.Environment = "development"
+	cfg.DatabaseDriver = "sqlite"
+	cfg.DBPath = filepath.Join(t.TempDir(), "identity-route-action-coverage.db")
+	cfg.IdentityWorkspaceID = "workspace-primary"
+	cfg.ManifestPath = filepath.Join(projectRoot, "domainry.template.json")
+	server, err := New(t.Context(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = server.CloseContext(t.Context()) })
+
+	routes := make(map[string]bool, len(server.RouteInventory()))
+	for _, pattern := range server.RouteInventory() {
+		method, routeTemplate, found := strings.Cut(pattern, " ")
+		if !found {
+			t.Fatalf("route inventory contains malformed pattern %q", pattern)
+		}
+		action, resolved := server.actions.ResolveHTTP(method, routeTemplate)
+		if !resolved {
+			t.Fatalf("route %q has no frozen ActionDefinition", pattern)
+		}
+		if action.Authorization.Strategy == "" {
+			t.Fatalf("route %q Action %q has no authorization strategy", pattern, action.Key)
+		}
+		wantExposure := actioncontract.ExposureTenantAdmin
+		switch classifyRouteSurface(method, routeTemplate) {
+		case routeSurfacePublic:
+			wantExposure = actioncontract.ExposurePublic
+		case routeSurfaceOperations:
+			wantExposure = actioncontract.ExposureOps
+		}
+		exposed := false
+		for _, exposure := range action.Exposures {
+			if exposure == wantExposure {
+				exposed = true
+				break
+			}
+		}
+		if !exposed {
+			t.Fatalf("route %q classified as %q but Action %q exposures=%v", pattern, wantExposure, action.Key, action.Exposures)
+		}
+		routes[pattern] = true
+	}
+	for _, action := range server.actions.Definitions() {
+		if action.HTTP == nil {
+			continue
+		}
+		pattern := action.HTTP.Method + " " + action.HTTP.RouteTemplate
+		if !routes[pattern] {
+			t.Fatalf("HTTP Action %q is not mounted by the standalone server: %q", action.Key, pattern)
+		}
+	}
+}
+
+func TestRecordingRouteRegistrarRejectsRouteOutsideFrozenActionRegistry(t *testing.T) {
+	definitions, err := standaloneProtocolAuthorizationActions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := identityapplication.NewIdentityActionRegistry(definitions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registrar := newRecordingRouteRegistrar(http.NewServeMux(), registry)
+	registrar.HandleFunc("GET /unregistered", func(http.ResponseWriter, *http.Request) {})
+	if registrar.err == nil || !strings.Contains(registrar.err.Error(), "no ActionDefinition") {
+		t.Fatalf("registration error=%v", registrar.err)
+	}
+	if len(registrar.patterns) != 0 {
+		t.Fatalf("rejected route was recorded: %#v", registrar.patterns)
+	}
+}
+
 func TestEmbeddedAuthRouteInventoryOwnsEveryNonBrowserRoute(t *testing.T) {
 	authRoutes := &recordingRouteRegistrar{mux: http.NewServeMux()}
-	authhttp.NewAuthHandler(authhttp.AuthDependencies{Authenticated: func(next http.HandlerFunc) http.HandlerFunc { return next }}).RegisterRoutes(authRoutes)
+	authhttp.NewAuthHandler(authhttp.AuthDependencies{}).RegisterRoutes(authRoutes)
 	browserRoutes, err := browsergateway.RoutePatterns("")
 	if err != nil {
 		t.Fatal(err)

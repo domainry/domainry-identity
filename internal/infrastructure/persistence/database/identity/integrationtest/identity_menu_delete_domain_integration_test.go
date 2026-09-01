@@ -14,7 +14,7 @@ func TestIdentityServiceRemoveMenuDeletesDescendantsAndRoleAssignments(t *testin
 	store := identitypersistence.NewMemoryIdentityStore()
 	identity, _ := identitybusiness.NewIdentityDomainService(store, nil).ForWorkspace("workspace-primary")
 	identity.ReplaceRoleDefinitions([]identitymodel.RoleSchema{
-		{Key: "admin", Name: "Admin", Permissions: []string{"workspace.admin"}},
+		{Key: "admin", Name: "Admin", Permissions: []string{"identity.menus.delete"}},
 	})
 	for _, role := range []identitymodel.IdentityRole{{ID: "admin", Key: "admin", Label: "Admin"}} {
 		seedIdentityDirectoryRole(t, store, "workspace-primary", role)

@@ -7,6 +7,7 @@ import (
 	"github.com/domainry/domainry-foundation/apperror"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	manifestmodel "github.com/domainry/domainry-identity/internal/domain/manifest/model"
+	metadatacontract "github.com/domainry/domainry-identity/internal/domain/metadata/contract"
 	metadatarepository "github.com/domainry/domainry-identity/internal/domain/metadata/repository"
 )
 
@@ -23,7 +24,10 @@ func (p metadataWorkspaceAuthorizationProbe) LoadManifest(context.Context, ident
 func TestMetadataApplicationAuthorizesWorkspaceBeforeRepositoryAccess(t *testing.T) {
 	calls := 0
 	service := NewMetadataApplicationService(MetadataApplicationDependencies{Repository: metadataWorkspaceAuthorizationProbe{calls: &calls}})
-	principal := identitymodel.Principal{Known: true, Role: identitymodel.RoleSchema{Permissions: []string{"workspace.admin"}}}
+	principal := identitymodel.Principal{Known: true, Role: identitymodel.RoleSchema{Permissions: []string{
+		metadatacontract.MetadataActionMigrationPlanGet,
+		metadatacontract.MetadataActionReload,
+	}}}
 	checks := []func() error{
 		func() error { _, err := service.MetadataMigrationPlan(t.Context(), principal); return err },
 		func() error { _, err := service.ReloadMetadata(t.Context(), principal); return err },

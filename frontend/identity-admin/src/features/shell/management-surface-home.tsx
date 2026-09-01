@@ -48,22 +48,22 @@ export function ManagementSurfaceHomePage({
   const schema = useQuery({
     queryKey: ["identity", "management-home", "schema"],
     queryFn: objectsApi.schemaSnapshot,
-    enabled: ready && has("metadata.read"),
+    enabled: ready && has("identity.metadata.manifest.get"),
   });
   const accounts = useQuery({
     queryKey: ["identity", "management-home", "accounts"],
     queryFn: identityAccountsApi.list,
-    enabled: ready && has("identity.users.read"),
+    enabled: ready && has("identity.users.list"),
   });
   const departments = useQuery({
     queryKey: ["identity", "management-home", "departments"],
     queryFn: departmentsApi.list,
-    enabled: ready && has("identity.departments.read"),
+    enabled: ready && has("identity.departments.list"),
   });
   const roles = useQuery({
     queryKey: ["identity", "management-home", "roles"],
     queryFn: rolesApi.list,
-    enabled: ready && has("identity.roles.read"),
+    enabled: ready && has("identity.roles.list"),
   });
 
   const visibleMenus = menus.filter((menu) => {

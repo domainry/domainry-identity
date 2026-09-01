@@ -6,8 +6,9 @@ import (
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
-// IdentityRoleHasPermissionKey reports whether a role grants an exact
-// permission, the workspace administrator permission, or a matching wildcard.
+// IdentityRoleHasPermissionKey reports whether a role grants the exact
+// Permission key. Action authorization never expands one exact grant or a
+// wildcard into another Action key.
 func IdentityRoleHasPermissionKey(role identitymodel.RoleSchema, key string) bool {
 	key = strings.TrimSpace(key)
 	if key == "" {
@@ -18,55 +19,23 @@ func IdentityRoleHasPermissionKey(role identitymodel.RoleSchema, key string) boo
 	}
 	for _, permission := range role.Permissions {
 		permission = strings.TrimSpace(permission)
-		if permission == "*" || permission == "workspace.admin" || permission == key {
-			return true
-		}
-		if strings.HasSuffix(permission, ".*") && strings.HasPrefix(key, strings.TrimSuffix(permission, ".*")+".") {
+		if permission == key {
 			return true
 		}
 	}
 	return false
 }
 
-// IdentityRoleHasExactPermissionKey applies explicit and wildcard grants but
-// deliberately excludes the legacy workspace.admin super-permission. Runtime
-// Ops authorization must use this decision so tenant administration cannot
-// become an operations capability shortcut.
+// IdentityRoleHasExactPermissionKey is retained for call sites that emphasize
+// ops isolation; functional permission matching itself is always exact.
 func IdentityRoleHasExactPermissionKey(role identitymodel.RoleSchema, key string) bool {
-	key = strings.TrimSpace(key)
-	if key == "" || IdentityRoleGuardrailDeniesPermission(role, key) {
-		return false
-	}
-	for _, permission := range role.Permissions {
-		permission = strings.TrimSpace(permission)
-		if permission == "*" || permission == key {
-			return true
-		}
-		if strings.HasSuffix(permission, ".*") && strings.HasPrefix(key, strings.TrimSuffix(permission, ".*")+".") {
-			return true
-		}
-	}
-	return false
+	return IdentityRoleHasPermissionKey(role, key)
 }
 
 // IdentityRoleAllows reports whether a role grants an action on an object.
 func IdentityRoleAllows(role identitymodel.RoleSchema, objectKey, action string) bool {
 	action = identityNormalizePermissionAction(action)
-	if IdentityRoleGuardrailDeniesPermission(role, strings.TrimSpace(objectKey)+"."+action) {
-		return false
-	}
-	for _, permission := range role.Permissions {
-		permission = strings.TrimSpace(permission)
-		switch permission {
-		case "*", "workspace.admin", objectKey + ".*", objectKey + "." + action:
-			return true
-		}
-		parts := strings.Split(permission, ".")
-		if len(parts) == 3 && parts[1] == objectKey && identityNormalizePermissionAction(parts[2]) == action {
-			return true
-		}
-	}
-	return false
+	return IdentityRoleHasPermissionKey(role, strings.TrimSpace(objectKey)+"."+action)
 }
 
 // IdentityRoleAllowsData reports whether data permissions grant the requested
@@ -74,9 +43,6 @@ func IdentityRoleAllows(role identitymodel.RoleSchema, objectKey, action string)
 func IdentityRoleAllowsData(role identitymodel.RoleSchema, objectKey, action string) bool {
 	if IdentityRoleGuardrailDeniesData(role, objectKey, action) {
 		return false
-	}
-	if IdentityRoleHasPermissionKey(role, "workspace.admin") {
-		return true
 	}
 	needsWrite := action != "read" && action != "export"
 	for _, permission := range role.DataPermissions {
@@ -151,9 +117,6 @@ func IdentityDataScopeForAction(role identitymodel.RoleSchema, objectKey, action
 
 // IdentityDataScope resolves a role's read or write scope for an object.
 func IdentityDataScope(role identitymodel.RoleSchema, objectKey string, write bool) string {
-	if IdentityRoleHasPermissionKey(role, "workspace.admin") {
-		return "all_records"
-	}
 	scopes := map[string]bool{}
 	for _, permission := range role.DataPermissions {
 		if permission.ObjectKey != objectKey {
@@ -183,12 +146,5 @@ func IdentityDataScope(role identitymodel.RoleSchema, objectKey string, write bo
 }
 
 func identityNormalizePermissionAction(action string) string {
-	switch strings.TrimSpace(action) {
-	case "view":
-		return "read"
-	case "edit":
-		return "update"
-	default:
-		return strings.TrimSpace(action)
-	}
+	return strings.TrimSpace(action)
 }

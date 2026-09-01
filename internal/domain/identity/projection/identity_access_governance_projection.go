@@ -60,15 +60,35 @@ func IdentityBuildGovernanceReports(now time.Time, permissions []identitymodel.I
 	}
 	roleByID := map[string]identitymodel.IdentityRole{}
 	definitionByKey := map[string]identitymodel.RoleSchema{}
+	permissionByKey := make(map[string]identitymodel.IdentityPermissionDefinition, len(permissions))
 	grantedPermissions := map[string]bool{}
 	memberRoleIDs := map[string]bool{}
 	for _, role := range roles {
 		roleByID[role.ID] = role
 	}
+	for _, permission := range permissions {
+		if key := strings.TrimSpace(permission.Key); key != "" {
+			permissionByKey[key] = permission
+		}
+	}
 	for _, definition := range definitions {
-		definitionByKey[definition.Key] = definition
-		for _, permission := range definition.Permissions {
-			grantedPermissions[strings.TrimSpace(permission)] = true
+		roleKey := strings.TrimSpace(definition.Key)
+		definitionByKey[roleKey] = definition
+		for _, raw := range definition.Permissions {
+			permissionKey := strings.TrimSpace(raw)
+			if permissionKey == "" {
+				continue
+			}
+			grantedPermissions[permissionKey] = true
+			permission, exists := permissionByKey[permissionKey]
+			switch {
+			case !exists:
+				report.AuthorizationDrift = append(report.AuthorizationDrift, "role:"+roleKey+":permission:"+permissionKey+":unknown")
+			case permission.DefinitionStatus != identitymodel.IdentityPermissionDefinitionActive:
+				report.AuthorizationDrift = append(report.AuthorizationDrift, "role:"+roleKey+":permission:"+permissionKey+":retired")
+			case !permission.Enabled:
+				report.AuthorizationDrift = append(report.AuthorizationDrift, "role:"+roleKey+":permission:"+permissionKey+":disabled")
+			}
 		}
 	}
 	for _, assignment := range assignments {
@@ -146,7 +166,7 @@ func IdentityPreviewRoleChange(request identitymodel.IdentityRoleChangeImpactReq
 		impact.AffectedObjects = append(impact.AffectedObjects, objectKey)
 		impact.AffectedActions = append(impact.AffectedActions, permission)
 		for _, runtimeAction := range actions {
-			if strings.TrimSpace(runtimeAction.RequiresPermission) == permission &&
+			if strings.TrimSpace(runtimeAction.Key) == permission &&
 				(strings.TrimSpace(runtimeAction.RiskLevel) == "high" || strings.TrimSpace(runtimeAction.RiskLevel) == "critical" ||
 					identitycontract.IdentityActionApprovalRequired(runtimeAction) || len(identitycontract.IdentityActionAssuranceMethods(runtimeAction)) > 0) {
 				impact.HighRiskCapabilities = append(impact.HighRiskCapabilities, runtimeAction.Key)

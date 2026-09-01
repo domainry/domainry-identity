@@ -85,7 +85,7 @@ func TestManifestIdentitySeedBuildsDepartmentHierarchyAndBootstrapUsers(t *testi
 func TestManifestIdentitySeedDoesNotInferPlatformMenusFromBusinessPermissions(t *testing.T) {
 	manifest := manifestmodel.ManifestSchema{
 		Roles: []identitymodel.RoleSchema{
-			{Key: "ceo", Name: "CEO", Permissions: []string{"identity.users.read", "workflow.definition.read", "leave_request.read"}},
+			{Key: "ceo", Name: "CEO", Permissions: []string{"identity.users.list", "workflow.definition.read", "leave_request.read"}},
 			{Key: "hr_manager", Name: "HR Manager", Permissions: []string{"leave_request.read"}},
 		},
 	}
@@ -103,11 +103,11 @@ func TestManifestIdentitySeedDoesNotInferPlatformMenusFromBusinessPermissions(t 
 	}
 }
 
-func TestManifestIdentitySeedAssignsPlatformMenusToWorkspaceAdministrator(t *testing.T) {
+func TestManifestIdentitySeedDoesNotExpandWorkspaceCapabilityIntoPlatformMenus(t *testing.T) {
 	manifest := manifestmodel.ManifestSchema{
 		Roles: []identitymodel.RoleSchema{
 			{Key: "runtime_admin", Name: "Runtime Administrator", Permissions: []string{" workspace.ADMIN "}},
-			{Key: "business_manager", Name: "Business Manager", Permissions: []string{"identity.users.read"}},
+			{Key: "business_manager", Name: "Business Manager", Permissions: []string{"identity.users.list"}},
 		},
 	}
 
@@ -116,8 +116,8 @@ func TestManifestIdentitySeedAssignsPlatformMenusToWorkspaceAdministrator(t *tes
 	for _, assignment := range seed.RoleMenus {
 		assignments[assignment.RoleID+":"+assignment.MenuID] = true
 	}
-	if !assignments["runtime_admin:org_users"] || !assignments["runtime_admin:system_metadata"] {
-		t.Fatalf("workspace administrator did not receive platform menus: %#v", seed.RoleMenus)
+	if assignments["runtime_admin:org_users"] || assignments["runtime_admin:system_metadata"] {
+		t.Fatalf("workspace capability expanded into platform menus: %#v", seed.RoleMenus)
 	}
 	if assignments["business_manager:org_users"] {
 		t.Fatalf("ordinary business permission expanded platform menu ownership: %#v", seed.RoleMenus)

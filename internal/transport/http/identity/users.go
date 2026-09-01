@@ -162,7 +162,7 @@ func (h *IdentityHandler) updateIdentityUser(w http.ResponseWriter, r *http.Requ
 	}
 	user.ID = valueOrDefault(strings.TrimSpace(r.PathValue("userID")), user.ID)
 	principal := h.principal(r)
-	result, err := h.executeIdentityAuthoringUpsert(r.Context(), "identity.user", user.ID, "identity.users.write", r.Header.Get("Builder-Task-ID"), r.Header.Get("Idempotency-Key"), r.Header.Get("Expected-Schema-Hash"), user, principal,
+	result, err := h.executeIdentityAuthoringUpsert(r.Context(), "identity.user", user.ID, r.Header.Get("Builder-Task-ID"), r.Header.Get("Idempotency-Key"), r.Header.Get("Expected-Schema-Hash"), user, principal,
 		func(ctx context.Context) (any, bool, error) { return h.users.UserByID(ctx, user.ID) },
 		func(ctx context.Context) (any, error) {
 			if executeErr := h.users.UpsertUser(ctx, user); executeErr != nil {

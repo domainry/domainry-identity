@@ -6,21 +6,6 @@ import (
 	definitionmodel "github.com/domainry/domainry-identity/internal/domain/definition/model"
 )
 
-const (
-	IdentityActionAuthorizationInheritObjectPermission = "inherit_object_permission"
-	IdentityActionAuthorizationDedicatedPermission     = "dedicated_permission"
-)
-
-func IdentityActionAuthorizationStrategy(action definitionmodel.ActionSchema) string {
-	permission := strings.TrimSpace(action.RequiresPermission)
-	for _, operation := range []string{"create", "read", "update", "delete"} {
-		if permission == strings.TrimSpace(action.ObjectKey)+"."+operation {
-			return IdentityActionAuthorizationInheritObjectPermission
-		}
-	}
-	return IdentityActionAuthorizationDedicatedPermission
-}
-
 func IdentityActionAssuranceMethods(action definitionmodel.ActionSchema) []string {
 	if action.AssurancePolicy == nil {
 		return nil

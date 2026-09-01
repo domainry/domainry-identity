@@ -6,7 +6,6 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/domainry/domainry-foundation/requestcontext"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
@@ -43,7 +42,7 @@ func TestBindingRuntimeAssemblyReturnsDirectSDKBinding(t *testing.T) {
 	}
 }
 
-func TestPublishedRuntimeCatalogParticipatesInRoleCandidateValidation(t *testing.T) {
+func TestAssemblySeparatesApplicationRegistrationFromPermissionReconcile(t *testing.T) {
 	_, sourceFile, _, _ := runtime.Caller(0)
 	projectRoot := filepath.Clean(filepath.Join(filepath.Dir(sourceFile), "..", ".."))
 	cfg := config.FromEnv()
@@ -63,21 +62,31 @@ func TestPublishedRuntimeCatalogParticipatesInRoleCandidateValidation(t *testing
 	}
 	t.Cleanup(func() { _ = core.CloseContext(t.Context()) })
 
-	workspaceID := identitysdk.WorkspaceID(cfg.IdentityWorkspaceID)
-	ctx := requestcontext.WithWorkspaceID(t.Context(), cfg.IdentityWorkspaceID)
-	_, err = core.Binding.Catalog().Publish(ctx, identitysdk.AuthorizationCatalog{
-		ContractVersion: identitysdk.CatalogVersionV1,
-		Application:     identitysdk.ApplicationRef{WorkspaceID: workspaceID, ApplicationKey: "gym"},
-		Resources:       []identitysdk.ResourceDefinition{{Key: "access_session", Fields: []string{"id", "member_id"}, SupportedFacts: []string{"id"}}},
-		Actions:         []identitysdk.ActionDefinition{{Resource: "access_session", Action: "read"}},
-	})
+	application := identitysdk.ApplicationRef{WorkspaceID: identitysdk.WorkspaceID(cfg.IdentityWorkspaceID), ApplicationKey: "gym"}
+	if _, err := core.Binding.Applications().Register(t.Context(), identitysdk.ApplicationRegistration{Application: application, RedirectURLs: []string{"https://gym.example.test/callback"}}); err != nil {
+		t.Fatalf("register application: %v", err)
+	}
+	permissionRequest, err := identitysdk.NewPermissionReconcileRequest(application, "application:gym", "", []identitysdk.PermissionDefinition{{PermissionKey: "access_session.read", ResourceKey: "access_session", ActionKey: "read", Label: "Read access sessions", Category: "Gym", SourceKind: "object_action"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	payload := json.RawMessage(`{"key":"member","name":"Member","permissions":["access_session.read"],"record_scope":"all_records","data_permissions":[{"object_key":"access_session","scope":"all_records","read":true}]}`)
-	mutation := metadatamodel.MetadataDefinitionMutation{Operation: "create", ResourceType: "role", ResourceKey: "member", Request: metadatamodel.MetadataDefinitionUpsertRequest{Payload: payload}}
-	if err := core.Metadata.ValidateMetadataCandidate(ctx, []metadatamodel.MetadataDefinitionMutation{mutation}); err != nil {
-		t.Fatalf("Runtime catalog object rejected by role candidate validation: %#v", err)
+	receipt, err := core.Binding.Permissions().Reconcile(t.Context(), permissionRequest)
+	if err != nil {
+		t.Fatalf("reconcile application permission: %v", err)
+	}
+	if receipt.SourceOwner != "application:gym" || receipt.Inserted != 1 {
+		t.Fatalf("permission receipt=%+v", receipt)
+	}
+	definitions, err := core.PermissionCatalog.List(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, definition := range definitions {
+		found = found || definition.Key == "access_session.read" && definition.SourceOwner == "application:gym"
+	}
+	if !found {
+		t.Fatalf("application-owned permission missing from current definitions: %+v", definitions)
 	}
 }
 

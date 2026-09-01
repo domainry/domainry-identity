@@ -31,28 +31,40 @@ type IdentityAccessReview struct {
 }
 
 type IdentityAccessReviewItem struct {
-	ID                 string                       `json:"id"`
-	ReviewID           string                       `json:"review_id"`
-	UserID             string                       `json:"user_id"`
-	RoleID             string                       `json:"role_id"`
-	RoleKey            string                       `json:"role_key"`
-	WorkforceProfileID string                       `json:"workforce_profile_id,omitempty"`
-	BindingKey         string                       `json:"binding_key,omitempty"`
-	ProfileID          string                       `json:"profile_id,omitempty"`
-	RiskLevel          IdentityRoleRiskLevel        `json:"risk_level"`
-	Priority           string                       `json:"priority"`
-	PriorityReasons    []string                     `json:"priority_reasons,omitempty"`
-	LastUsedAt         string                       `json:"last_used_at,omitempty"`
-	Status             string                       `json:"status"`
-	Decision           IdentityAccessReviewDecision `json:"decision,omitempty"`
-	ReplacementRoleID  string                       `json:"replacement_role_id,omitempty"`
-	ExpiresAt          string                       `json:"expires_at,omitempty"`
-	ReviewerID         string                       `json:"reviewer_id,omitempty"`
-	Reason             string                       `json:"reason,omitempty"`
-	DecidedAt          string                       `json:"decided_at,omitempty"`
-	Version            int64                        `json:"version"`
-	CreatedAt          string                       `json:"created_at"`
-	UpdatedAt          string                       `json:"updated_at"`
+	ID                 string                                `json:"id"`
+	ReviewID           string                                `json:"review_id"`
+	UserID             string                                `json:"user_id"`
+	RoleID             string                                `json:"role_id"`
+	RoleKey            string                                `json:"role_key"`
+	WorkforceProfileID string                                `json:"workforce_profile_id,omitempty"`
+	BindingKey         string                                `json:"binding_key,omitempty"`
+	ProfileID          string                                `json:"profile_id,omitempty"`
+	RiskLevel          IdentityRoleRiskLevel                 `json:"risk_level"`
+	Priority           string                                `json:"priority"`
+	PriorityReasons    []string                              `json:"priority_reasons,omitempty"`
+	PermissionStates   []IdentityAccessReviewPermissionState `json:"permission_states,omitempty"`
+	LastUsedAt         string                                `json:"last_used_at,omitempty"`
+	Status             string                                `json:"status"`
+	Decision           IdentityAccessReviewDecision          `json:"decision,omitempty"`
+	ReplacementRoleID  string                                `json:"replacement_role_id,omitempty"`
+	ExpiresAt          string                                `json:"expires_at,omitempty"`
+	ReviewerID         string                                `json:"reviewer_id,omitempty"`
+	Reason             string                                `json:"reason,omitempty"`
+	DecidedAt          string                                `json:"decided_at,omitempty"`
+	Version            int64                                 `json:"version"`
+	CreatedAt          string                                `json:"created_at"`
+	UpdatedAt          string                                `json:"updated_at"`
+}
+
+// IdentityAccessReviewPermissionState is a current-state projection. It is
+// recomputed when reviews are read and is deliberately not a review-owned
+// PermissionDefinition revision or publication record.
+type IdentityAccessReviewPermissionState struct {
+	PermissionKey    string `json:"permission_key"`
+	State            string `json:"state"`
+	DefinitionStatus string `json:"definition_status,omitempty"`
+	Enabled          bool   `json:"enabled"`
+	SourceOwner      string `json:"source_owner,omitempty"`
 }
 
 type IdentityAccessReviewCreateRequest struct {

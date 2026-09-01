@@ -30,10 +30,13 @@ func TestIdentityActionGateUsesRegisteredPermissionForAllowAndDeny(t *testing.T)
 		t.Fatal("permission list action is not registered")
 	}
 	principal := identitymodel.Principal{Known: true, WorkspaceID: "workspace-1", Role: identitymodel.RoleSchema{Key: "viewer"}}
+	permissionCatalog, _ := newIdentityHTTPPermissionCatalog()
 	handler := &IdentityHandler{
-		principal:     func(*http.Request) identitymodel.Principal { return principal },
-		writeError:    func(w http.ResponseWriter, _ *http.Request, status int, _ string, _ ...string) { w.WriteHeader(status) },
-		securityAudit: func(*http.Request, string, string, map[string]any) {},
+		principal:           func(*http.Request) identitymodel.Principal { return principal },
+		permissionCatalog:   permissionCatalog,
+		actionAuthorization: identityapplication.NewIdentityActionAuthorizationService(registry, permissionCatalog),
+		writeError:          func(w http.ResponseWriter, _ *http.Request, status int, _ string, _ ...string) { w.WriteHeader(status) },
+		securityAudit:       func(*http.Request, string, string, map[string]any) {},
 	}
 	executed := false
 	protected := handler.identityAction(action, func(w http.ResponseWriter, _ *http.Request) {
@@ -45,7 +48,7 @@ func TestIdentityActionGateUsesRegisteredPermissionForAllowAndDeny(t *testing.T)
 	if denied.Code != http.StatusForbidden || executed {
 		t.Fatalf("denied status=%d executed=%v", denied.Code, executed)
 	}
-	principal.Role.Permissions = []string{"identity.permissions.read"}
+	principal.Role.Permissions = []string{identityapplication.IdentityActionPermissionsList}
 	allowed := httptest.NewRecorder()
 	protected(allowed, httptest.NewRequest(http.MethodGet, "/identity/permissions", nil))
 	if allowed.Code != http.StatusNoContent || !executed {
@@ -68,6 +71,6 @@ func TestWorkforceApplicationProjectionRequiresWorkforceReadPermission(t *testin
 	response := httptest.NewRecorder()
 	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/identity/workforce?projection=application", nil))
 	if response.Code != http.StatusForbidden {
-		t.Fatalf("workforce projection without identity.workforce.read status=%d", response.Code)
+		t.Fatalf("workforce projection without identity.workforce.list status=%d", response.Code)
 	}
 }

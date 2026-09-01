@@ -33,9 +33,9 @@ func TestIdentityDirectAuthoringPrimitiveEdges(t *testing.T) {
 		{name: "failure", err: expectedErr},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			principal := identitymodel.Principal{Known: true, WorkspaceID: "workspace-1", Role: identitymodel.RoleSchema{Permissions: []string{"identity.roles.write"}}}
+			principal := identitymodel.Principal{Known: true, WorkspaceID: "workspace-1"}
 			result, err := handler.executeIdentityAuthoringUpsert(
-				context.Background(), "identity.role", "role-1", "identity.roles.write", "", "", "", nil,
+				context.Background(), "identity.role", "role-1", "", "", "", nil,
 				principal,
 				func(context.Context) (any, bool, error) {
 					t.Fatal("current callback should not run without operations")
@@ -50,8 +50,7 @@ func TestIdentityDirectAuthoringPrimitiveEdges(t *testing.T) {
 	}
 }
 
-func TestIdentityAuthoringAllowedRequiresScopeAndPermission(t *testing.T) {
-	permission := "identity.roles.write"
+func TestIdentityAuthoringScopeAllowedRequiresKnownWorkspace(t *testing.T) {
 	for _, test := range []struct {
 		name      string
 		principal identitymodel.Principal
@@ -59,11 +58,10 @@ func TestIdentityAuthoringAllowedRequiresScopeAndPermission(t *testing.T) {
 	}{
 		{name: "unknown", principal: identitymodel.Principal{WorkspaceID: "workspace-1"}, wantErr: true},
 		{name: "missing workspace", principal: identitymodel.Principal{Known: true}, wantErr: true},
-		{name: "missing permission", principal: identitymodel.Principal{Known: true, WorkspaceID: "workspace-1"}, wantErr: true},
-		{name: "allowed", principal: identitymodel.Principal{Known: true, WorkspaceID: "workspace-1", Role: identitymodel.RoleSchema{Permissions: []string{permission}}}},
+		{name: "allowed", principal: identitymodel.Principal{Known: true, WorkspaceID: "workspace-1"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			err := identityAuthoringAllowed(test.principal, permission)
+			err := identityAuthoringScopeAllowed(test.principal)
 			if (err != nil) != test.wantErr {
 				t.Fatalf("err=%v wantErr=%t", err, test.wantErr)
 			}
@@ -81,9 +79,9 @@ func TestIdentityDirectAuthoringCurrentStateEdges(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			handler, _ := newIdentityHTTPHandler(&identityHTTPRepository{})
-			principal := identitymodel.Principal{Known: true, WorkspaceID: "workspace-1", UserID: "builder", Role: identitymodel.RoleSchema{Permissions: []string{"identity.roles.write"}}}
+			principal := identitymodel.Principal{Known: true, WorkspaceID: "workspace-1", UserID: "builder"}
 			_, err := handler.executeIdentityAuthoringUpsert(
-				context.Background(), "identity.role", "role-1", "identity.roles.write", "task-1", "key-"+test.name, "empty", map[string]any{"id": "role-1"},
+				context.Background(), "identity.role", "role-1", "task-1", "key-"+test.name, "empty", map[string]any{"id": "role-1"},
 				principal, test.current, func(context.Context) (any, error) { return "unexpected", nil },
 			)
 			if err == nil {

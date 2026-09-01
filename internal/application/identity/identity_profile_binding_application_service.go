@@ -80,7 +80,7 @@ func (s *IdentityProfileBindingApplicationService) Execute(ctx context.Context, 
 		return identitymodel.IdentityProfileBindingReceipt{}, profileBindingError(apperror.KindBadRequest, "backend.identity.profile_binding_operation_invalid")
 	}
 	if operation != identitymodel.IdentityProfileBindingClaim &&
-		!identitycontract.IdentityRoleHasPermissionKey(principal.Role, "identity.profile_binding.manage") {
+		!identitycontract.IdentityRoleHasPermissionKey(principal.Role, "identity.profile_bindings.command") {
 		return identitymodel.IdentityProfileBindingReceipt{}, profileBindingError(apperror.KindForbidden, "backend.identity.profile_binding_manage_required")
 	}
 	request.ObjectKey = strings.TrimSpace(request.ObjectKey)
@@ -174,7 +174,7 @@ func (s *IdentityProfileBindingApplicationService) Get(ctx context.Context, obje
 	if err != nil || !found {
 		return binding, found, err
 	}
-	canManage := identitycontract.IdentityRoleHasPermissionKey(principal.Role, "identity.profile_binding.manage")
+	canManage := identitycontract.IdentityRoleHasPermissionKey(principal.Role, "identity.profile_bindings.get")
 	if !canManage && strings.TrimSpace(binding.IdentityUserID) != strings.TrimSpace(principal.UserID) {
 		return identitymodel.IdentityProfileBinding{}, false, profileBindingError(apperror.KindForbidden, "backend.identity.profile_binding_read_denied")
 	}

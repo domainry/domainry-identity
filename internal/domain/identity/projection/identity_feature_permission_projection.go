@@ -37,7 +37,7 @@ func IdentityBuildFeaturePermissions(objects []definitionmodel.ObjectSchema, act
 		result.Exports = append(result.Exports, exportPermissionSnapshot(principal, object))
 	}
 	for _, action := range actions {
-		permissionKey := valueOrDefault(action.RequiresPermission, action.Key)
+		permissionKey := strings.TrimSpace(action.Key)
 		objectKey, permissionAction := splitPermission(permissionKey)
 		if objectKey == "" {
 			objectKey = action.ObjectKey
@@ -109,16 +109,6 @@ func functionPermissionSnapshots(principal identitymodel.Principal) []identityco
 			continue
 		}
 		appendPermission(permissionKey, "allowed")
-	}
-	for _, permissionKey := range identitycontract.IdentityPlatformPermissionKeys() {
-		if !identitycontract.IdentityRoleHasPermissionKey(principal.Role, permissionKey) {
-			continue
-		}
-		reason := "allowed"
-		if !identitycontract.IdentityRoleHasExactPermissionKey(principal.Role, permissionKey) {
-			reason = "inherited"
-		}
-		appendPermission(permissionKey, reason)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
 	return out
@@ -429,6 +419,6 @@ func splitPermission(value string) (string, string) {
 }
 
 func actionName(action definitionmodel.ActionSchema) string {
-	_, name := splitPermission(valueOrDefault(action.RequiresPermission, action.Key))
+	_, name := splitPermission(action.Key)
 	return name
 }

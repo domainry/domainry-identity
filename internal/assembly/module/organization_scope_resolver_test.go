@@ -13,6 +13,12 @@ import (
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
+type testEmbeddedMigrationRegistrar struct{}
+
+func (testEmbeddedMigrationRegistrar) ApplyOwnedMigration(ctx context.Context, _ string, _ uint, _, _ string, apply func(context.Context) error) error {
+	return apply(ctx)
+}
+
 func TestModuleOrganizationScopeResolverAdaptsSDKContract(t *testing.T) {
 	wantErr := errors.New("scope unavailable")
 	profiles := []string{"workforce-2", "workforce-1"}
@@ -46,7 +52,7 @@ func TestFactoryWiresBorrowedOrganizationScopeResolverIntoPrincipalBuild(t *test
 	called := false
 	factory := NewFactory(Options{DatabaseDriver: "sqlite", DatabasePath: dbPath})
 	binding, err := factory.OpenWithDatabase(t.Context(), identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "runtime"}, identitysdk.DatabaseHandle{
-		Pool: db, Driver: "sqlite", FilePath: dbPath,
+		Pool: db, Driver: "sqlite", FilePath: dbPath, Migrations: testEmbeddedMigrationRegistrar{},
 		OrganizationScopeResolver: func(_ context.Context, workspaceID string, profileIDs []string) (identitysdk.OrganizationScopes, error) {
 			called = workspaceID == "workspace-primary" && reflect.DeepEqual(profileIDs, []string{"workforce-admin"})
 			return identitysdk.OrganizationScopes{StoreIDs: []string{"store-1"}}, nil

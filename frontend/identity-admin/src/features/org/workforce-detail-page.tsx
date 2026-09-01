@@ -93,7 +93,7 @@ export function WorkforceDetailPage({ profileID }: { profileID: string }) {
       description={t('workforce.detail.desc')}
       actions={<div className='flex gap-2'>
         <Button asChild variant='outline'><Link to='/admin/org/workforce'>{t('workforce.detail.back')}</Link></Button>
-        {has('identity.roles.write') ? <Button onClick={() => setRoleDialogOpen(true)}>{t('workforce.detail.grantRole')}</Button> : null}
+		{has('identity.user_role_assignments.assign') ? <Button onClick={() => setRoleDialogOpen(true)}>{t('workforce.detail.grantRole')}</Button> : null}
       </div>}
     >
       {detailConflict && !roleDialogOpen ? <DetailConflictAlert error={detailConflict} onReload={() => void reloadLatestWorkforce()} /> : null}

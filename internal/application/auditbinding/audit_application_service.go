@@ -47,7 +47,7 @@ func identityPolicy() auditapplication.Policy[identitymodel.Principal, identitym
 		},
 		Known: func(principal identitymodel.Principal) bool { return principal.Known },
 		CanView: func(principal identitymodel.Principal) bool {
-			return identitycontract.IdentityRoleHasPermissionKey(principal.Role, "identity.audit.view") || identitycontract.IdentityRoleAllows(principal.Role, "identity_permission", "read")
+			return identitycontract.IdentityRoleHasPermissionKey(principal.Role, "audit.governance.read")
 		},
 	}
 }

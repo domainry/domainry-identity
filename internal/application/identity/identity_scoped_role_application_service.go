@@ -276,7 +276,11 @@ func (s *IdentityApplicationService) ValidateRoleMenus(ctx context.Context, role
 		if menu.Route == "" {
 			continue
 		}
-		required, registered := requiredPermissionsForMenuRoute(menu.Route)
+		route := strings.TrimSpace(menu.Route)
+		if businessRouteKeyPattern.MatchString(route) {
+			continue
+		}
+		required, registered := s.pagePermissions.RequiredPermissionsForPage(route)
 		if !registered {
 			return apperror.New(apperror.KindBadRequest, "backend.identity.menu_route_not_registered", nil, map[string]string{"menu": menu.ID, "route": menu.Route})
 		}

@@ -39,13 +39,13 @@ for (const statement of source.statements) {
   if (!ts.isVariableStatement(statement)) continue;
   for (const declaration of statement.declarationList.declarations) {
     if (
-      declaration.name.getText(source) !== "APP_ROUTE_REGISTRY" ||
+      declaration.name.getText(source) !== "APP_ROUTE_DEFINITIONS" ||
       !declaration.initializer
     )
       continue;
     const initializer = unwrap(declaration.initializer);
     if (!ts.isArrayLiteralExpression(initializer))
-      fail("APP_ROUTE_REGISTRY must be an array literal");
+      fail("APP_ROUTE_DEFINITIONS must be an array literal");
     registry = initializer.elements.map((element) => {
       const item = unwrap(element);
       if (!ts.isObjectLiteralExpression(item))
@@ -62,7 +62,44 @@ for (const statement of source.statements) {
   }
 }
 
-if (!registry) fail("APP_ROUTE_REGISTRY was not found");
+if (!registry) fail("APP_ROUTE_DEFINITIONS was not found");
+
+const pagePermissionContractPath = path.join(
+  repositoryRoot,
+  "frontend/packages/management-contract/src/generated/identity-admin-page-permissions.json",
+);
+if (!fs.existsSync(pagePermissionContractPath))
+  fail(`generated page permission contract does not exist: ${pagePermissionContractPath}`);
+const pagePermissionContract = JSON.parse(
+  fs.readFileSync(pagePermissionContractPath, "utf8"),
+);
+if (
+  pagePermissionContract.contract_version !== "identity-admin-page-permissions-v1" ||
+  !Array.isArray(pagePermissionContract.pages)
+)
+  fail("generated page permission contract is invalid");
+const pagePermissionByRoute = new Map();
+for (const page of pagePermissionContract.pages) {
+  if (
+    !page.route?.startsWith("/") ||
+    !page.action_key ||
+    page.action_key !== page.permission_key ||
+    !page.source_owner ||
+    pagePermissionByRoute.has(page.route)
+  )
+    fail(`generated page permission is invalid or duplicated: ${JSON.stringify(page)}`);
+  pagePermissionByRoute.set(page.route, page.permission_key);
+}
+for (const route of registry) {
+  if (route.routeKey === "runtime.admin_home") {
+    route.requiredPermissions = [];
+    continue;
+  }
+  const permission = pagePermissionByRoute.get(route.path);
+  if (!permission)
+    fail(`route ${route.routeKey} has no ActionRegistry page binding for ${route.path}`);
+  route.requiredPermissions = [permission];
+}
 
 const routeKeys = new Set();
 const paths = new Set();
@@ -136,7 +173,7 @@ for (const [index, route] of registry.entries()) {
   if (route.navKey) navKeys.add(route.navKey);
 }
 
-// APP_ROUTE_REGISTRY page entries with navKey are mounted exactly once by the
+// APP_ROUTE_DEFINITIONS page entries with navKey are mounted exactly once by the
 // router's pageRoutes loop. A model must map their component in pageForNav;
 // declaring another createRoute for the same path produces a TanStack duplicate
 // route at runtime even though the exported registry itself is unique.
@@ -215,31 +252,9 @@ for (const [routePath, owners] of explicitPathOwners) {
 const packageJSON = JSON.parse(
   fs.readFileSync(path.join(root, "package.json"), "utf8"),
 );
-const permissionCatalogPaths = [
-  path.join(
-    repositoryRoot,
-    "internal/domain/identity/contract/identity_platform_permissions.go",
-  ),
-];
-for (const permissionCatalogPath of permissionCatalogPaths) {
-  if (!fs.existsSync(permissionCatalogPath))
-    fail(`Identity permission catalog does not exist: ${permissionCatalogPath}`);
-}
-const permissionCatalogSource = permissionCatalogPaths
-  .map((permissionCatalogPath) => fs.readFileSync(permissionCatalogPath, "utf8"))
-  .join("\n");
-const publishedPermissionKeys = new Set(
-  [...permissionCatalogSource.matchAll(/"([a-z][a-z0-9_.:*]+)"/g)].map(
-    (match) => match[1],
-  ),
-);
-for (const route of registry) {
-  for (const permission of route.requiredPermissions) {
-    if (!publishedPermissionKeys.has(permission))
-      fail(
-        `route ${route.routeKey} references permission ${permission} missing from the Identity permission catalog`,
-      );
-  }
+for (const pageRoute of pagePermissionByRoute.keys()) {
+  if (!registry.some((route) => route.path === pageRoute))
+    fail(`ActionRegistry page binding ${pageRoute} has no frontend route`);
 }
 const artifactKind = packageJSON.domainry?.artifact_kind;
 const allowedSurfaces = new Set(packageJSON.domainry?.allowed_surfaces ?? []);

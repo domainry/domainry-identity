@@ -106,11 +106,17 @@ type Config struct {
 	AuthAllowDevHeaders                   bool
 	AuthExternalAutoCreateUsers           bool
 	IdentityApplicationServiceCredentials map[string]string
+	IdentityApplicationPermissionOwners   map[string][]string
 	IdentityApplicationRateLimitPerMinute int
 	IdentityOperationsAccessToken         string
 	IdentityWorkspaceID                   string
 	IdentityBrowserApplicationKey         string
 	IdentityBrowserReturnURLs             []string
+	IdentityActionUsageRuntimeURL         string
+	IdentityActionUsageRequestTimeout     time.Duration
+	IdentityActionUsageApplicationKey     string
+	IdentityActionUsageRuntimeAudience    string
+	IdentityActionUsageCredentialID       string
 	IdentityDataSecretKey                 string
 	IdentityDataActiveKeyID               string
 	IdentityDataDecryptOnlyKeys           map[string]string
@@ -206,11 +212,17 @@ func FromEnv() Config {
 		AuthAllowDevHeaders:                   boolEnv("AUTH_ALLOW_DEV_HEADERS", false),
 		AuthExternalAutoCreateUsers:           boolEnv("AUTH_EXTERNAL_AUTO_CREATE_USERS", false),
 		IdentityApplicationServiceCredentials: keyMapEnv("IDENTITY_APPLICATION_SERVICE_CREDENTIALS"),
+		IdentityApplicationPermissionOwners:   keyListMapEnv("IDENTITY_APPLICATION_PERMISSION_OWNERS"),
 		IdentityApplicationRateLimitPerMinute: intEnv("IDENTITY_APPLICATION_RATE_LIMIT_PER_MINUTE", 1200),
 		IdentityOperationsAccessToken:         strings.TrimSpace(os.Getenv("IDENTITY_OPERATIONS_ACCESS_TOKEN")),
 		IdentityWorkspaceID:                   strings.TrimSpace(os.Getenv("IDENTITY_WORKSPACE_ID")),
 		IdentityBrowserApplicationKey:         env("IDENTITY_BROWSER_APPLICATION_KEY", "domainry-identity-admin"),
 		IdentityBrowserReturnURLs:             csvEnv("IDENTITY_BROWSER_RETURN_URLS", defaultIdentityBrowserReturnURLs(environment)),
+		IdentityActionUsageRuntimeURL:         strings.TrimSpace(os.Getenv("IDENTITY_ACTION_USAGE_RUNTIME_URL")),
+		IdentityActionUsageRequestTimeout:     durationEnv("IDENTITY_ACTION_USAGE_REQUEST_TIMEOUT", 3*time.Second),
+		IdentityActionUsageApplicationKey:     env("IDENTITY_ACTION_USAGE_APPLICATION_KEY", "domainry-identity-control-plane"),
+		IdentityActionUsageRuntimeAudience:    env("IDENTITY_ACTION_USAGE_RUNTIME_AUDIENCE", "domainry-runtime"),
+		IdentityActionUsageCredentialID:       env("IDENTITY_ACTION_USAGE_CREDENTIAL_ID", "identity-action-usage"),
 		IdentityDataSecretKey:                 env("IDENTITY_DATA_SECRET_KEY", DevIdentityDataSecret),
 		IdentityDataActiveKeyID:               env("IDENTITY_DATA_ACTIVE_KEY_ID", "dev-v1"),
 		IdentityDataDecryptOnlyKeys:           keyMapEnv("IDENTITY_DATA_DECRYPT_ONLY_KEYS"),
@@ -329,6 +341,29 @@ func (c Config) ValidateSecurity() error {
 func (c Config) ValidateSaaSDeployment() error {
 	if c.IsProduction() && len(c.IdentityApplicationServiceCredentials) == 0 {
 		return fmt.Errorf("IDENTITY_APPLICATION_SERVICE_CREDENTIALS must register at least one Runtime application in a production SaaS deployment")
+	}
+	if err := c.validateRuntimeActionUsageConfiguration(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c Config) validateRuntimeActionUsageConfiguration() error {
+	if err := validateRuntimeActionUsageURL(c.IdentityActionUsageRuntimeURL, c.IsProduction()); err != nil {
+		return err
+	}
+	if strings.TrimSpace(c.IdentityActionUsageRuntimeURL) == "" {
+		return nil
+	}
+	if c.IdentityActionUsageRequestTimeout <= 0 {
+		return fmt.Errorf("IDENTITY_ACTION_USAGE_REQUEST_TIMEOUT must be positive")
+	}
+	if strings.TrimSpace(c.IdentityActionUsageApplicationKey) == "" || strings.TrimSpace(c.IdentityActionUsageRuntimeAudience) == "" || strings.TrimSpace(c.IdentityActionUsageCredentialID) == "" {
+		return fmt.Errorf("IDENTITY_ACTION_USAGE_APPLICATION_KEY, IDENTITY_ACTION_USAGE_RUNTIME_AUDIENCE, and IDENTITY_ACTION_USAGE_CREDENTIAL_ID are required when Runtime Action usage query is configured")
+	}
+	credentialScope := runtimeActionUsageCredentialScope(c.IdentityWorkspaceID, c.IdentityActionUsageApplicationKey, c.IdentityActionUsageCredentialID)
+	if strings.TrimSpace(c.IdentityApplicationServiceCredentials[credentialScope]) == "" {
+		return fmt.Errorf("IDENTITY_APPLICATION_SERVICE_CREDENTIALS must contain Runtime Action usage scope %q", credentialScope)
 	}
 	return nil
 }

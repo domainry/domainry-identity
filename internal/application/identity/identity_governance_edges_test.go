@@ -20,7 +20,7 @@ func identityGovernanceTestPrincipal() identitymodel.Principal {
 func identityGovernanceTestService(repository identityrepository.IdentityRepository) *IdentityGovernanceApplicationService {
 	return NewIdentityGovernanceApplicationService(
 		repository,
-		map[string]identitymodel.IdentityPermissionDefinition{"order.read": {Key: "order.read"}},
+		map[string]identitymodel.IdentityPermissionDefinition{"order.read": {Key: "order.read", DefinitionStatus: identitymodel.IdentityPermissionDefinitionActive, Enabled: true}},
 		func() map[string]definitionmodel.ObjectSchema {
 			return map[string]definitionmodel.ObjectSchema{"order": {Key: "order", Fields: []definitionmodel.FieldSchema{{Key: "amount"}, {Key: "total_amount"}, {Key: "owner"}}}}
 		},
@@ -447,6 +447,24 @@ func TestIdentityGovernancePermissionValidationFailsClosedWithoutCatalog(t *test
 	service := NewIdentityGovernanceApplicationServiceWithPermissionSource(&identityScopedRepository{}, nil, func() map[string]definitionmodel.ObjectSchema { return nil })
 	issues := service.validatePermissionKeys([]string{"missing"})
 	if len(issues) != 1 || issues[0].ErrorCode != "backend.identity.permission_not_found" {
+		t.Fatalf("issues=%#v", issues)
+	}
+}
+
+func TestIdentityGovernancePermissionValidationUsesCurrentDefinitionState(t *testing.T) {
+	service := NewIdentityGovernanceApplicationServiceWithPermissionSource(
+		&identityScopedRepository{},
+		func() map[string]identitymodel.IdentityPermissionDefinition {
+			return map[string]identitymodel.IdentityPermissionDefinition{
+				"active":   {Key: "active", DefinitionStatus: identitymodel.IdentityPermissionDefinitionActive, Enabled: true},
+				"disabled": {Key: "disabled", DefinitionStatus: identitymodel.IdentityPermissionDefinitionActive, Enabled: false},
+				"retired":  {Key: "retired", DefinitionStatus: identitymodel.IdentityPermissionDefinitionRetired, Enabled: true},
+			}
+		},
+		func() map[string]definitionmodel.ObjectSchema { return nil },
+	)
+	issues := service.validatePermissionKeys([]string{"active", "disabled", "retired", "missing"})
+	if len(issues) != 3 || issues[0].ErrorCode != "backend.identity.permission_disabled" || issues[1].ErrorCode != "backend.identity.permission_retired" || issues[2].ErrorCode != "backend.identity.permission_not_found" {
 		t.Fatalf("issues=%#v", issues)
 	}
 }

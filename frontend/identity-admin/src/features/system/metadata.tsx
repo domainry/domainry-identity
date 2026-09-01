@@ -292,8 +292,9 @@ function FieldDefinitionDialog({
 export function MetadataPage() {
   const { t } = useI18n()
   const permissions = usePermissions()
-  const canRead = permissions.ready && permissions.has('metadata.read')
-  const canWrite = permissions.ready && permissions.has('metadata.write')
+	const canRead = permissions.ready && permissions.has('identity.metadata.manifest.get')
+	const canUpsert = permissions.ready && permissions.has('identity.metadata.definition.upsert')
+	const canDisable = permissions.ready && permissions.has('identity.metadata.definition.disable')
   const client = useQueryClient()
   const initialTarget = useMemo(initialMetadataTarget, [])
   const [selectedObjectKey, setSelectedObjectKey] = useState(initialTarget.objectKey)
@@ -530,10 +531,10 @@ export function MetadataPage() {
                 </div>
                 <div className='flex items-center gap-1.5'><Badge variant='secondary'>{t('metadata.er.entities', { count: objects.length })}</Badge><Badge variant='secondary'>{t('metadata.er.relations', { count: relations.length })}</Badge></div>
               </div>
-              <MetadataERDiagram objects={objects} selectedObjectKey={selectedObject?.key ?? ''} onSelectObject={selectObject} onSelectRelation={(relation) => { focusField(relation.source, relation.field.key); if (canWrite) setEditingField(relation.field) }} />
+			  <MetadataERDiagram objects={objects} selectedObjectKey={selectedObject?.key ?? ''} onSelectObject={selectObject} onSelectRelation={(relation) => { focusField(relation.source, relation.field.key); if (canUpsert) setEditingField(relation.field) }} />
               <div className='border-t px-4 py-3'>
                 <div className='flex items-center justify-between gap-3'><div><h3 className='text-sm font-semibold'>{t('metadata.er.diagnostics')}</h3><p className='mt-0.5 text-xs text-muted-foreground'>{t('metadata.er.diagnosticsDesc')}</p></div>{relationDiagnostics.length ? <Badge variant='destructive'>{t('metadata.er.issueCount', { count: relationDiagnostics.length })}</Badge> : <StatusBadge value='success'>{t('metadata.er.healthy')}</StatusBadge>}</div>
-                {relationDiagnostics.length ? <ul className='mt-3 divide-y rounded-md border'>{relationDiagnostics.map((diagnostic) => <li key={diagnostic.id} className='flex items-start gap-2.5 px-3 py-2 text-xs'><AlertTriangle className={cn('mt-0.5 size-3.5 shrink-0', diagnostic.severity === 'error' ? 'text-destructive' : 'text-warning')} /><button type='button' className='min-w-0 flex-1 text-left' onClick={() => { const object = objects.find((candidate) => candidate.key === diagnostic.objectKey); const field = object?.fields.find((candidate) => candidate.key === diagnostic.fieldKey); if (field) { setSelectedObjectKey(object!.key); setEditingField(field) } }}><code className='font-mono'>{diagnostic.objectKey}.{diagnostic.fieldKey}</code><span className='ml-2 text-muted-foreground'>{t(`metadata.er.diagnostic.${diagnostic.code}` as never, { target: diagnostic.target || '—', inverse: diagnostic.inverseName || '—' })}</span></button></li>)}</ul> : <div className='mt-3 flex items-center gap-2 text-xs text-muted-foreground'><CheckCircle2 className='size-4 text-success' />{t('metadata.er.healthyDesc')}</div>}
+				{relationDiagnostics.length ? <ul className='mt-3 divide-y rounded-md border'>{relationDiagnostics.map((diagnostic) => <li key={diagnostic.id} className='flex items-start gap-2.5 px-3 py-2 text-xs'><AlertTriangle className={cn('mt-0.5 size-3.5 shrink-0', diagnostic.severity === 'error' ? 'text-destructive' : 'text-warning')} /><button type='button' className='min-w-0 flex-1 text-left' onClick={() => { const object = objects.find((candidate) => candidate.key === diagnostic.objectKey); const field = object?.fields.find((candidate) => candidate.key === diagnostic.fieldKey); if (field) { setSelectedObjectKey(object!.key); if (canUpsert) setEditingField(field) } }}><code className='font-mono'>{diagnostic.objectKey}.{diagnostic.fieldKey}</code><span className='ml-2 text-muted-foreground'>{t(`metadata.er.diagnostic.${diagnostic.code}` as never, { target: diagnostic.target || '—', inverse: diagnostic.inverseName || '—' })}</span></button></li>)}</ul> : <div className='mt-3 flex items-center gap-2 text-xs text-muted-foreground'><CheckCircle2 className='size-4 text-success' />{t('metadata.er.healthyDesc')}</div>}
               </div>
               <div className='flex flex-wrap items-center gap-x-4 gap-y-1 border-t px-4 py-2 text-[11px] text-muted-foreground'><span>{t('metadata.er.requiredLegend')}</span><span>{t('metadata.er.optionalLegend')}</span><span>{t('metadata.er.interactionHint')}</span></div>
             </Card>
@@ -556,7 +557,7 @@ export function MetadataPage() {
                     <span>{t('metadata.field.desc', { count: selectedObject.fields.length })}</span>
                   </div>
                 </div>
-                <Button size='sm' disabled={!canWrite || editableFieldTypes.length === 0 || capabilitiesQuery.isError} onClick={() => setEditingField(null)}>
+				<Button size='sm' disabled={!canUpsert || editableFieldTypes.length === 0 || capabilitiesQuery.isError} onClick={() => setEditingField(null)}>
                   <Plus data-icon='inline-start' />{t('metadata.field.add')}
                 </Button>
               </div>
@@ -597,7 +598,7 @@ export function MetadataPage() {
                             label: t('common.edit'),
                             ariaLabel: t('metadata.field.editAria', { name: field.name || field.label || field.key }),
                             icon: Pencil,
-                            disabled: !canWrite || !DEVELOPED_METADATA_FIELD_TYPES.has(field.type),
+							disabled: !canUpsert || !DEVELOPED_METADATA_FIELD_TYPES.has(field.type),
                             onSelect: () => { focusField(selectedObject.key, field.key); setEditingField(field) },
                           }]}
                           secondary={[
@@ -611,7 +612,7 @@ export function MetadataPage() {
                               icon: Trash2,
                               destructive: true,
                               separatorBefore: true,
-                              disabled: !canWrite,
+							  disabled: !canDisable,
                               onSelect: () => { setDeleteError(''); setDeleteReason(''); setDeletingField(field) },
                             },
                           ]}

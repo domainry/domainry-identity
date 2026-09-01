@@ -116,9 +116,6 @@ export interface WorkforceAssignableRole {
   description: string
 }
 
-export type PermAction = 'view' | 'create' | 'edit' | 'delete' | 'export'
-export type PermMatrix = Record<string, PermAction[]>
-
 export interface Role {
   id: string
   name: TextValue
@@ -127,7 +124,6 @@ export interface Role {
   members: number
   builtIn: boolean
   status: EntityStatus
-  perms: PermMatrix
 }
 
 export type MenuType = 'group' | 'page'

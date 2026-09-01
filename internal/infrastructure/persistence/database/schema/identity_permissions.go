@@ -11,6 +11,16 @@ import (
 
 const identityPermissionsTable = "_identity_permissions"
 
+type identityPermissionIndexSpec struct {
+	name    string
+	columns []string
+}
+
+var identityPermissionIndexSpecs = []identityPermissionIndexSpec{
+	{name: "idx_identity_permissions_state", columns: []string{"workspace_id", "definition_status", "enabled"}},
+	{name: "idx_identity_permissions_source_owner", columns: []string{"workspace_id", "source_owner"}},
+}
+
 func ensureIdentityPermissionsSchema(ctx context.Context, store Store) error {
 	renderer := store.SchemaRenderer()
 	table := identityPermissionsTableDefinition(renderer)
@@ -21,13 +31,7 @@ func ensureIdentityPermissionsSchema(ctx context.Context, store Store) error {
 	if _, err := store.SchemaDB().ExecContext(ctx, statement, arguments...); err != nil {
 		return fmt.Errorf("create Identity permission table: %w", err)
 	}
-	for _, index := range []struct {
-		name    string
-		columns []string
-	}{
-		{name: "idx_identity_permissions_state", columns: []string{"workspace_id", "definition_status", "enabled"}},
-		{name: "idx_identity_permissions_source_owner", columns: []string{"workspace_id", "source_owner"}},
-	} {
+	for _, index := range identityPermissionIndexSpecs {
 		if err := ensureIdentityPermissionIndex(ctx, store, index.name, index.columns...); err != nil {
 			return err
 		}
@@ -70,7 +74,7 @@ func ensureIdentityPermissionIndex(ctx context.Context, store Store, name string
 			return nil
 		}
 	}
-	index := ormschema.NewIndex(store.SchemaRenderer(), name, identityPermissionsTable).Columns(columns...)
+	index := identityPermissionIndexDefinition(store.SchemaRenderer(), identityPermissionIndexSpec{name: name, columns: columns})
 	statement, arguments, err := index.Build()
 	if err != nil {
 		return fmt.Errorf("build Identity permission index %s: %w", name, err)
@@ -79,4 +83,8 @@ func ensureIdentityPermissionIndex(ctx context.Context, store Store, name string
 		return fmt.Errorf("create Identity permission index %s: %w", name, err)
 	}
 	return nil
+}
+
+func identityPermissionIndexDefinition(renderer ormdialect.Renderer, spec identityPermissionIndexSpec) *ormschema.IndexBuilder {
+	return ormschema.NewIndex(renderer, spec.name, identityPermissionsTable).Columns(spec.columns...)
 }

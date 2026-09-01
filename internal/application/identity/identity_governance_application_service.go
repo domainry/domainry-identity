@@ -187,8 +187,10 @@ func (validator *IdentityGovernanceApplicationService) validatePermissionKeys(ke
 		permissions = validator.permissions()
 	}
 	allowed := make([]string, 0, len(permissions))
-	for key := range permissions {
-		allowed = append(allowed, key)
+	for key, permission := range permissions {
+		if permission.DefinitionStatus == identitymodel.IdentityPermissionDefinitionActive && permission.Enabled {
+			allowed = append(allowed, key)
+		}
 	}
 	sort.Strings(allowed)
 	for index, raw := range keys {
@@ -198,8 +200,12 @@ func (validator *IdentityGovernanceApplicationService) validatePermissionKeys(ke
 			issues = append(issues, identityGovernanceIssue("permissions", path, "backend.identity.permission_not_found", "identity.role_permission", map[string]string{"actual": raw, "allowed": strings.Join(allowed, ",")}))
 		} else if seen[key] {
 			issues = append(issues, identityGovernanceIssue("permissions", path, "backend.identity.permission_duplicate", "identity.role_permission", map[string]string{"actual": raw}))
-		} else if _, exists := permissions[key]; !exists {
+		} else if permission, exists := permissions[key]; !exists {
 			issues = append(issues, identityGovernanceIssue("permissions", path, "backend.identity.permission_not_found", "identity.role_permission", map[string]string{"permission": key, "actual": key, "allowed": strings.Join(allowed, ",")}))
+		} else if permission.DefinitionStatus != identitymodel.IdentityPermissionDefinitionActive {
+			issues = append(issues, identityGovernanceIssue("permissions", path, "backend.identity.permission_retired", "identity.role_permission", map[string]string{"permission": key, "actual": key, "allowed": strings.Join(allowed, ",")}))
+		} else if !permission.Enabled {
+			issues = append(issues, identityGovernanceIssue("permissions", path, "backend.identity.permission_disabled", "identity.role_permission", map[string]string{"permission": key, "actual": key, "allowed": strings.Join(allowed, ",")}))
 		}
 		seen[key] = true
 	}

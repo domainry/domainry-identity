@@ -20,13 +20,12 @@ type IdentityRoleDefinitionPublisher interface {
 
 type IdentityRolePermissionPublicationService struct {
 	identity    *IdentityApplicationService
-	governance  *IdentityGovernanceApplicationService
 	permissions *IdentityPermissionCatalogApplicationService
 	definitions IdentityRoleDefinitionPublisher
 }
 
-func NewIdentityRolePermissionPublicationService(identity *IdentityApplicationService, governance *IdentityGovernanceApplicationService, permissions *IdentityPermissionCatalogApplicationService, definitions IdentityRoleDefinitionPublisher) *IdentityRolePermissionPublicationService {
-	return &IdentityRolePermissionPublicationService{identity: identity, governance: governance, permissions: permissions, definitions: definitions}
+func NewIdentityRolePermissionPublicationService(identity *IdentityApplicationService, permissions *IdentityPermissionCatalogApplicationService, definitions IdentityRoleDefinitionPublisher) *IdentityRolePermissionPublicationService {
+	return &IdentityRolePermissionPublicationService{identity: identity, permissions: permissions, definitions: definitions}
 }
 
 func (service *IdentityRolePermissionPublicationService) Configuration(ctx context.Context, roleID string, principal identitymodel.Principal) (identitymodel.IdentityRolePermissionConfiguration, error) {
@@ -80,22 +79,12 @@ func (service *IdentityRolePermissionPublicationService) Publish(ctx context.Con
 	if err != nil {
 		return identitymodel.IdentityRolePermissionConfiguration{}, err
 	}
-	if service.governance == nil || service.permissions == nil {
+	if service.permissions == nil {
 		return identitymodel.IdentityRolePermissionConfiguration{}, &apperror.AppError{Kind: apperror.KindUnavailable, Code: "backend.identity.role_definition_publication_unavailable"}
 	}
 	requested := normalizedPermissionKeys(request.PermissionKeys)
-	if err := service.governance.ValidateRolePermissions(ctx, current.RoleID, requested, principal); err != nil {
+	if err := service.permissions.ValidatePermissionSelections(requested); err != nil {
 		return identitymodel.IdentityRolePermissionConfiguration{}, err
-	}
-	currentKeys := make([]string, 0, len(current.Permissions))
-	for _, assignment := range current.Permissions {
-		currentKeys = append(currentKeys, assignment.PermissionKey)
-	}
-	if err := service.permissions.ValidateNewPermissionSelections(currentKeys, requested); err != nil {
-		return identitymodel.IdentityRolePermissionConfiguration{}, err
-	}
-	if permissionKeyPresent(currentKeys, "workspace.admin") && !permissionKeyPresent(requested, "workspace.admin") {
-		return identitymodel.IdentityRolePermissionConfiguration{}, &apperror.AppError{Kind: apperror.KindBadRequest, Code: "backend.identity.workspace_admin_permission_required", Params: map[string]string{"role": current.RoleKey}}
 	}
 	definition.Permissions = requested
 	revision, err := service.definitions.PublishIdentityRolePermissions(ctx, definition, request.ExpectedSchemaHash, request.BusinessReason, request.OperationID, principal)
@@ -128,14 +117,4 @@ func normalizedPermissionKeys(values []string) []string {
 	}
 	sort.Strings(out)
 	return out
-}
-
-func permissionKeyPresent(values []string, expected string) bool {
-	expected = strings.TrimSpace(expected)
-	for _, value := range values {
-		if strings.TrimSpace(value) == expected {
-			return true
-		}
-	}
-	return false
 }

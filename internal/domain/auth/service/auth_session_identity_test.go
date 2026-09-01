@@ -75,7 +75,7 @@ func TestCurrentSessionIdentity(t *testing.T) {
 			MustChangePassword: true,
 		}}
 		authorization.permissions = []string{
-			"identity.users.read",
+			"identity.users.list",
 			"operations.read",
 		}
 		response, err := auth.Me(t.Context(), validIdentityAccessToken(auth, "user", "workspace-primary"))

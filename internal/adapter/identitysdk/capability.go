@@ -13,21 +13,33 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	actioncontract "github.com/domainry/domainry-foundation/action"
 	"github.com/domainry/domainry-foundation/modulecapability"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
+	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
 	authoringcontract "github.com/domainry/domainry-identity/internal/domain/authoring"
 	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
+	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
 // NewCapabilityBinding builds Identity's immutable, topology-neutral
 // capability contract without opening the operational SDK binding.
 func NewCapabilityBinding() (*modulecapability.StaticBinding, error) {
-	domain := identitycontract.IdentityAuthoringDomain()
+	registry, err := identityapplication.NewStandaloneIdentityAuthorizationSliceRegistry()
+	if err != nil {
+		return nil, fmt.Errorf("build Identity Action registry for capability projection: %w", err)
+	}
+	projection, err := registry.ProjectAuthoringDomain(identitycontract.IdentityAuthoringDomain())
+	if err != nil {
+		return nil, fmt.Errorf("project Identity authoring Actions: %w", err)
+	}
+	domain := projection.Domain()
 	definitions := append([]authoringcontract.CapabilityAuthoringDefinition(nil), domain.Capabilities...)
 	sort.Slice(definitions, func(i, j int) bool { return definitions[i].Key < definitions[j].Key })
 
 	type selectedRoute struct {
 		definition authoringcontract.CapabilityAuthoringDefinition
+		action     identitymodel.IdentityActionDefinition
 		method     string
 		path       string
 		score      int
@@ -41,7 +53,11 @@ func NewCapabilityBinding() (*modulecapability.StaticBinding, error) {
 				return nil, fmt.Errorf("Identity capability %q has invalid route %q", definition.Key, pattern)
 			}
 			key := strings.ToUpper(method) + " " + path
-			candidate := selectedRoute{definition: definition, method: method, path: path, score: identityRouteOwnershipScore(definition, key)}
+			action, found := projection.ActionForRoute(key)
+			if !found {
+				return nil, fmt.Errorf("Identity capability %q route %q has no projected Action", definition.Key, key)
+			}
+			candidate := selectedRoute{definition: definition, action: action, method: method, path: path, score: identityRouteOwnershipScore(definition, key)}
 			if current, exists := routes[key]; !exists || candidate.score > current.score {
 				routes[key] = candidate
 			} else if candidate.score == current.score && candidate.score > 1 && candidate.definition.Key != current.definition.Key {
@@ -113,7 +129,7 @@ func NewCapabilityBinding() (*modulecapability.StaticBinding, error) {
 			if paths[selected.path] == nil {
 				paths[selected.path] = map[string]json.RawMessage{}
 			}
-			operation, err := identityOpenAPIOperation(selected.definition, selected.method, selected.path, inputName, outputName)
+			operation, err := identityOpenAPIOperation(selected.definition, selected.action, selected.method, selected.path, inputName, outputName)
 			if err != nil {
 				return nil, err
 			}
@@ -199,15 +215,14 @@ func identityRouteOwnershipScore(definition authoringcontract.CapabilityAuthorin
 	return 1
 }
 
-func identityOpenAPIOperation(definition authoringcontract.CapabilityAuthoringDefinition, method, path, inputName, outputName string) (json.RawMessage, error) {
-	read := method == strings.ToLower(http.MethodGet) || strings.TrimSpace(definition.ValidationEndpoint) == strings.ToUpper(method)+" "+path || strings.TrimSpace(definition.PreviewEndpoint) == strings.ToUpper(method)+" "+path || strings.TrimSpace(definition.SimulationEndpoint) == strings.ToUpper(method)+" "+path
-	effect := modulecapability.EffectWrite
-	idempotency := modulecapability.Idempotency{Mode: "owner_defined"}
-	if read {
-		effect = modulecapability.EffectRead
-		idempotency.Mode = "not_applicable"
-	} else if definition.Execution != nil && strings.TrimSpace(definition.Execution.Idempotency) != "" {
-		idempotency.Mode = definition.Execution.Idempotency
+func identityOpenAPIOperation(definition authoringcontract.CapabilityAuthoringDefinition, action identitymodel.IdentityActionDefinition, method, path, inputName, outputName string) (json.RawMessage, error) {
+	effect := modulecapability.EffectClass(action.EffectClass)
+	if effect != modulecapability.EffectRead && effect != modulecapability.EffectWrite {
+		return nil, fmt.Errorf("Identity authoring Action %q has invalid effect %q", action.Key, action.EffectClass)
+	}
+	idempotency := modulecapability.Idempotency{Mode: strings.TrimSpace(action.IdempotencyDecision)}
+	if idempotency.Mode == "" {
+		return nil, fmt.Errorf("Identity authoring Action %q has no idempotency decision", action.Key)
 	}
 	if definition.ResourceOperations != nil && strings.TrimSpace(definition.ResourceOperations.Upsert) == strings.ToUpper(method)+" "+path {
 		for _, header := range definition.ResourceOperations.UpsertHeaders {
@@ -216,11 +231,18 @@ func identityOpenAPIOperation(definition authoringcontract.CapabilityAuthoringDe
 			}
 		}
 	}
-	authorization := modulecapability.Authorization{Mode: modulecapability.AuthorizationPrincipal, WorkspaceScope: "application_workspace"}
-	if len(definition.Permissions) != 0 {
-		authorization.Mode = modulecapability.AuthorizationFixed
-		authorization.AllOf = append([]string(nil), definition.Permissions...)
-		sort.Strings(authorization.AllOf)
+	authorization := modulecapability.Authorization{
+		Strategy: action.Authorization.Strategy, PolicyKey: action.Authorization.PolicyKey,
+		Audiences: append([]string(nil), action.Authorization.Audiences...),
+	}
+	if authorization.Strategy != actioncontract.AuthorizationAnonymousProtocol {
+		authorization.WorkspaceScope = "application_workspace"
+	}
+	if action.Permission != nil {
+		if action.Permission.Key != action.Key {
+			return nil, fmt.Errorf("Identity authoring Action %q does not own its same-key Permission", action.Key)
+		}
+		authorization.Permission = action.Permission.Key
 	}
 	extension := modulecapability.OperationExtension{Owner: "identity", Authorization: authorization, Effect: effect, Idempotency: idempotency}
 	operation := map[string]any{
@@ -228,8 +250,12 @@ func identityOpenAPIOperation(definition authoringcontract.CapabilityAuthoringDe
 		"tags":                                 []string{definition.Key},
 		"summary":                              identityOperationSummary(definition.Key, method, path),
 		"description":                          "Identity-owned " + strings.ReplaceAll(definition.Lifecycle, "_", " ") + " operation.",
-		"security":                             []any{map[string]any{"BearerAuth": []any{}}},
 		modulecapability.OperationExtensionKey: extension,
+	}
+	if authorization.Strategy == actioncontract.AuthorizationAnonymousProtocol {
+		operation["security"] = []any{}
+	} else {
+		operation["security"] = []any{map[string]any{"BearerAuth": []any{}}}
 	}
 	parameters := identityPathParameters(path)
 	if len(parameters) != 0 {

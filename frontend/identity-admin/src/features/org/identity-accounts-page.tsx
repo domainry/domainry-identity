@@ -57,7 +57,7 @@ const EMPTY_ACCOUNT: AccountDraft = {
 
 export function IdentityAccountsPage() {
   const { t } = useI18n()
-  const { can, has } = usePermissions()
+  const { has } = usePermissions()
   const create = useCreateIdentityAccount()
   const update = useUpdateIdentityAccount()
   const remove = useDeleteIdentityAccount()
@@ -118,13 +118,13 @@ export function IdentityAccountsPage() {
       cell: ({ row }) => <DataTableRowActions
         menuLabel={t('common.actions')}
         primary={[
-          { label: t('common.edit'), icon: Pencil, disabled: !can('users', 'edit') || busy, onSelect: () => openEdit(row.original) },
-          { label: row.original.status === 'active' ? t('common.disable') : t('common.enable'), icon: Power, disabled: !has('identity.security.write') || busy, onSelect: () => row.original.status === 'active' ? setDisabling(row.original) : setRestoring(row.original) },
+		  { label: t('common.edit'), icon: Pencil, disabled: !has('identity.users.update') || busy, onSelect: () => openEdit(row.original) },
+		  { label: row.original.status === 'active' ? t('common.disable') : t('common.enable'), icon: Power, disabled: !has(row.original.status === 'active' ? 'identity.users.disable' : 'identity.users.enable') || busy, onSelect: () => row.original.status === 'active' ? setDisabling(row.original) : setRestoring(row.original) },
         ]}
-        secondary={[{ label: t('common.delete'), icon: Trash2, destructive: true, disabled: !can('users', 'delete') || busy, onSelect: () => void previewDelete(row.original) }]}
+		secondary={[{ label: t('common.delete'), icon: Trash2, destructive: true, disabled: !has('identity.users.delete') || busy, onSelect: () => void previewDelete(row.original) }]}
       />,
     },
-  ], [busy, can, has, sort, t, update])
+	  ], [busy, has, sort, t, update])
 
   function openCreate() {
     setEditing(null)
@@ -215,7 +215,7 @@ export function IdentityAccountsPage() {
     <PageShell
       title={t('accounts.title')}
       description={t('accounts.desc')}
-      actions={can('users', 'create') ? <Button onClick={openCreate}><Plus className='size-4' />{t('accounts.new')}</Button> : null}
+	  actions={has('identity.users.create') ? <Button onClick={openCreate}><Plus className='size-4' />{t('accounts.new')}</Button> : null}
     >
       <DataTable
         columns={columns}
@@ -234,7 +234,7 @@ export function IdentityAccountsPage() {
         emptyDescription={t('accounts.emptyDescription')}
         filteredEmptyTitle={hasFilters ? t('accounts.filteredEmptyTitle') : undefined}
         filteredEmptyDescription={hasFilters ? t('accounts.filteredEmptyDescription') : undefined}
-        emptyAction={can('users', 'create') ? <Button onClick={openCreate}><Plus />{t('accounts.new')}</Button> : undefined}
+		emptyAction={has('identity.users.create') ? <Button onClick={openCreate}><Plus />{t('accounts.new')}</Button> : undefined}
         actionColumnId='actions'
         headClassName={{ actions: DATA_TABLE_ACTION_HEAD_CLASS }}
         cellClassName={{ actions: DATA_TABLE_ACTION_CELL_CLASS }}

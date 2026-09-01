@@ -74,7 +74,7 @@ func TestRoleGovernanceDetailComposesPublishedAuthorities(t *testing.T) {
 		FieldPermissions: []identitymodel.FieldPermission{{ObjectKey: "order", FieldKey: "amount", Read: true, Export: false}},
 		ExportRules:      []identitymodel.ExportRule{{ObjectKey: "order", Mode: "allowlist", Fields: []string{"id"}}},
 	}})
-	service.ReplaceAuthorizationCatalogs(
+	service.ReplaceAuthorizationPolicies(
 		[]identitymodel.IdentityPermissionSet{
 			{Key: "direct", Name: "Direct"},
 			{Key: "grouped", Name: "Grouped"},

@@ -71,7 +71,8 @@ func (s *IdentityStore) applyOwnedMigrationsLocked(ctx context.Context, owner st
 func (s *IdentityStore) applyOwnedMigration(ctx context.Context, owner string, migration modulehost.SchemaMigration) error {
 	path := fmt.Sprintf("module_%s_%06d_%s", owner, migration.Version, strings.TrimSpace(migration.Name))
 	checksum := ormmigration.Checksum(migration)
-	queryValue, args, err := query.NewSelectBuilder(s.BuilderRenderer(), "_schema_migrations").
+	renderer := s.BuilderRenderer()
+	queryValue, args, err := query.NewSelectBuilder(renderer, "_schema_migrations").
 		Columns("checksum", "dirty").Where(query.Equal("path", path)).Build()
 	if err != nil {
 		return err
@@ -98,7 +99,7 @@ func (s *IdentityStore) applyOwnedMigration(ctx context.Context, owner string, m
 	if err != nil {
 		return fmt.Errorf("migration.baseline_mismatch: %s: %w", path, err)
 	}
-	insert, insertArgs, err := query.NewInsertBuilder(s.BuilderRenderer(), "_schema_migrations").
+	insert, insertArgs, err := query.NewInsertBuilder(renderer, "_schema_migrations").
 		Columns("path", "version", "name", "kind", "checksum", "dirty", "applied_at", "service_version", "duration_ms", "operator", "instance_id", "backup_id").
 		Values(path, fmt.Sprint(migration.Version), migration.Name, "module:"+owner, checksum, !baseline, time.Now().UTC().Format(time.RFC3339), strings.TrimSpace(s.config.ServiceVersion), 0, "module", "identity", "").Build()
 	if err != nil {
@@ -121,7 +122,7 @@ func (s *IdentityStore) applyOwnedMigration(ctx context.Context, owner string, m
 			return fmt.Errorf("migration.failed: execute %s: %w", path, err)
 		}
 	}
-	complete, completeArgs, err := query.NewUpdateBuilder(s.BuilderRenderer(), "_schema_migrations").
+	complete, completeArgs, err := query.NewUpdateBuilder(renderer, "_schema_migrations").
 		Set("dirty", false).Set("duration_ms", time.Since(started).Milliseconds()).Set("applied_at", time.Now().UTC().Format(time.RFC3339)).
 		Where(query.And(query.Equal("path", path), query.Equal("checksum", checksum))).Build()
 	if err != nil {

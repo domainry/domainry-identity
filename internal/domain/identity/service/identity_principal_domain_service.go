@@ -36,7 +36,7 @@ func (s *IdentityPrincipalDomainService) Resolve(ctx context.Context, userID, ro
 		roles = s.roles()
 	}
 	if len(roles) == 0 {
-		return identitymodel.Principal{UserID: userID, WorkspaceID: workspaceID, Known: true, Role: identitymodel.RoleSchema{Key: "developer", Name: "Developer", Permissions: []string{"workspace.admin"}, RecordScope: "all_records"}}
+		return identitymodel.Principal{UserID: userID, WorkspaceID: workspaceID, Known: true, Role: identitymodel.RoleSchema{Key: "developer", Name: "Developer", RecordScope: "all_records"}}
 	}
 	for _, role := range roles {
 		if role.Key == strings.TrimSpace(roleKey) {

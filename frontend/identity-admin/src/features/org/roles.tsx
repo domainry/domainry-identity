@@ -71,7 +71,7 @@ import { DataScopesPage } from './data-scopes'
 import { FieldPermissionsPage } from './field-permissions'
 import { EffectiveAccessWorkspace } from './effective-access-workspace'
 import { RoleGovernanceDetail } from './role-governance-detail'
-import { buildPermissionCapabilityView } from './permission-capability-view'
+import { buildPermissionCatalogView } from './permission-capability-view'
 
 interface RoleMenuRowProps {
   node: RoleMenuTreeNode
@@ -206,6 +206,7 @@ function RolePolicyWorkspace() {
       return identityPoliciesApi.saveRolePermissions(selected.id, draftPermissionKeys, permissionChangeReason.trim(), rolePermissionsQuery.data.schemaHash)
     },
     onSuccess: async (configuration) => {
+      queryClient.setQueryData(['runtime', 'identity', 'role-permissions', selected?.id], configuration)
       setDraftPermissionKeys(configuration.permissionKeys)
       setPermsDirty(false)
       setPermissionChangeReason('')
@@ -231,8 +232,9 @@ function RolePolicyWorkspace() {
     },
     onError: () => toast.error(t('roles.menus.toast.failed')),
   })
-  const permissionCapabilities = useMemo(() => buildPermissionCapabilityView(permissionCatalogQuery.data ?? []), [permissionCatalogQuery.data])
-  const permissionOperations = useMemo(() => permissionCapabilities.flatMap((capability) => capability.operations), [permissionCapabilities])
+	const runtimeResourceLabels = useMemo(() => new Map((schemaQuery.data?.objects ?? []).map((object) => [object.key, object.name || object.label || object.key])), [schemaQuery.data?.objects])
+	const permissionCatalogGroups = useMemo(() => buildPermissionCatalogView(permissionCatalogQuery.data ?? [], runtimeResourceLabels), [permissionCatalogQuery.data, runtimeResourceLabels])
+	const permissionOperations = useMemo(() => permissionCatalogGroups.flatMap((group) => group.capabilities.flatMap((capability) => capability.operations)), [permissionCatalogGroups])
   const createPermissionOptions = useMemo(() => {
     const query = createPermissionSearch.trim().toLowerCase()
     return permissionOperations
@@ -339,7 +341,6 @@ function RolePolicyWorkspace() {
       members: 0,
       builtIn: false,
       status: 'active',
-      perms: {},
       businessReason: values.businessReason.trim(),
       permissionKeys: createPermissionKeys,
       dataPermission: {
@@ -441,21 +442,30 @@ function RolePolicyWorkspace() {
                   <p className='mt-1 text-xs text-muted-foreground'>{t('roles.capabilities.description')}</p>
                 </div>
                 <div className='space-y-4'>
-                  {permissionCapabilities.map((capability) => (
-                    <section key={capability.key} className='overflow-hidden rounded-md border'>
-                      <div className='border-b bg-muted/30 px-4 py-3'>
-                        <p className='font-medium'>{capability.label}</p>
-                      </div>
-                      <div className='divide-y'>
-                        {capability.operations.map((operation) => {
-                          const checked = operation.permissionKeys.every((key) => draftPermissionKeys.includes(key))
-                          const selectable = operation.active && operation.enabled
+				  {permissionCatalogGroups.map((group) => (
+					<section key={group.key} className='overflow-hidden rounded-md border'>
+					  <div className='space-y-2 border-b bg-muted/30 px-4 py-3'>
+						<p className='font-medium'>{group.resourceLabel}</p>
+						<div className='flex flex-wrap gap-1 text-xs text-muted-foreground'>
+						  <Badge variant='outline'>{group.category}</Badge>
+						  <code className='rounded bg-background px-1.5 py-0.5'>{group.resourceKey}</code>
+						  <code className='rounded bg-background px-1.5 py-0.5'>{group.sourceKind}</code>
+						  <code className='rounded bg-background px-1.5 py-0.5'>{group.sourceOwner}</code>
+						</div>
+					  </div>
+					  {group.capabilities.map((capability) => <div key={capability.key}>
+						<div className='border-b bg-muted/10 px-4 py-2 text-sm font-medium'>{capability.label}</div>
+						<div className='divide-y'>
+						  {capability.operations.map((operation) => {
+						  const checked = operation.permissionKeys.every((key) => draftPermissionKeys.includes(key))
+						  const selectable = operation.active && operation.enabled
                           return <div key={operation.key} className='grid gap-3 p-4 md:grid-cols-[minmax(120px,0.35fr)_minmax(0,1fr)_auto]'>
                             <div>
                               <p className='text-sm font-medium'>{operation.operationLabel}</p>
                               <div className='mt-1 flex flex-wrap gap-1'>
                                 <Badge variant={operation.active ? 'secondary' : 'outline'}>{operation.active ? t('roles.capabilities.active') : t('roles.capabilities.retired')}</Badge>
                                 {!operation.enabled ? <Badge variant='destructive'>{t('roles.capabilities.disabled')}</Badge> : null}
+                                {!operation.usageAvailable ? <Badge variant='outline'>{t('roles.capabilities.usageUnavailable')}</Badge> : null}
                               </div>
                             </div>
                             <div className='space-y-2'>
@@ -463,15 +473,17 @@ function RolePolicyWorkspace() {
                                 <div className='flex flex-wrap items-center gap-2 text-sm'><Badge variant='outline'>{binding.method}</Badge><code className='break-all'>{binding.route || t('roles.capabilities.nonHttp')}</code></div>
                                 <div className='mt-1 text-xs text-muted-foreground'>{binding.actionLabel}{binding.pageRoute ? ` · ${binding.pageLabel || t('roles.capabilities.page')} ${binding.pageRoute}` : ''}</div>
                               </div>)}
+							  {!operation.usageAvailable ? <p className='rounded border border-dashed px-3 py-2 text-xs text-muted-foreground'>{t('roles.capabilities.usageUnavailableDescription')}</p> : null}
                               <details className='text-xs text-muted-foreground'><summary className='cursor-pointer'>{t('roles.capabilities.technicalDetails')}</summary><div className='mt-1 flex flex-wrap gap-1'>{operation.permissionKeys.map((key) => <code key={key} className='rounded bg-muted px-1.5 py-0.5'>{key}</code>)}</div></details>
                             </div>
                             <Checkbox aria-label={`${capability.label} - ${operation.operationLabel}`} checked={checked} disabled={selected.builtIn || rolePermissionsQuery.isPending || !selectable} onCheckedChange={() => togglePermissionKeys(operation.permissionKeys)} />
                           </div>
-                        })}
-                      </div>
-                    </section>
-                  ))}
-                  {!permissionCapabilities.length ? <p className='rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground'>{t('roles.capabilities.empty')}</p> : null}
+						  })}
+						</div>
+					  </div>)}
+					</section>
+				  ))}
+				  {!permissionCatalogGroups.length ? <p className='rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground'>{t('roles.capabilities.empty')}</p> : null}
                 </div>
                 {selected.builtIn ? (
                   <p className='mt-3 text-xs text-muted-foreground'>{t('roles.builtInHint')}</p>

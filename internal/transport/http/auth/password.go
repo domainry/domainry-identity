@@ -7,7 +7,6 @@ import (
 	"github.com/domainry/domainry-foundation/idempotency"
 	"github.com/domainry/domainry-foundation/requestcontext"
 	authmodel "github.com/domainry/domainry-identity/internal/domain/auth/model"
-	identitypolicy "github.com/domainry/domainry-identity/internal/domain/identity/policy"
 )
 
 func (h *AuthHandler) authLogin(w http.ResponseWriter, r *http.Request) {
@@ -186,10 +185,6 @@ func (h *AuthHandler) authResetPassword(w http.ResponseWriter, r *http.Request) 
 	principal := h.principal(r)
 	if !principal.Known {
 		h.writeError(w, r, http.StatusUnauthorized, "auth.token_required")
-		return
-	}
-	if !identitypolicy.IdentityRoleHasPermissionKey(principal.Role, "identity.security.write") {
-		h.writeError(w, r, http.StatusForbidden, "auth.permission_denied")
 		return
 	}
 	var req struct {

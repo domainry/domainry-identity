@@ -191,6 +191,7 @@ func TestBuildPrincipalForRoleUsesOnlyPublishedRolePolicy(t *testing.T) {
 		fieldPermissions:      []identitymodel.IdentityFieldPermission{{Resource: "order", Field: "amount", Visible: true, Masked: true}},
 	}
 	service := principalRoleService(t, repository)
+	activateIdentityTestPermissions(service, "a.permission", "b.permission", "z.permission")
 	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{
 		Key: "role-1", Name: "role-1", Permissions: []string{"a.permission", "b.permission", "z.permission"}, RecordScope: "all_records",
 		DataPermissions:  []identitymodel.DataPermission{{ObjectKey: "customer", Scope: "all_records", Read: true, Write: true}, {ObjectKey: "order", Scope: "owned_records", Read: true, Write: true}},
@@ -251,6 +252,9 @@ func TestBuildPrincipalEffectiveAuthorizationIsIndependentOfRoleOrder(t *testing
 		users: []identitymodel.IdentityUser{{ID: "user-1", Status: identitymodel.IdentityStatusActive}},
 	}}
 	service := principalRoleService(t, repository)
+	activateIdentityTestPermissions(service,
+		"invoice.read", "invoice.update", "invoice.approve", "invoice.export",
+	)
 	service.ReplaceRoleDefinitions(definitions)
 
 	random := rand.New(rand.NewSource(42))
@@ -310,6 +314,7 @@ func TestAuthorizationRevisionChangesForAssignmentWorkforcePermissionSetAndGuard
 		workforceEntries: []identitymodel.IdentityWorkforceDirectoryEntry{{OrganizationUnitID: "sales", OrganizationPath: "/company/sales"}},
 	}
 	service := principalRoleService(t, repository)
+	activateIdentityTestPermissions(service, "order.read", "order.export", "order.review")
 	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{
 		{Key: "operator", Permissions: []string{"order.read"}, DataPermissions: []identitymodel.DataPermission{{ObjectKey: "order", Scope: "department", Read: true}}},
 		{Key: "reviewer", Permissions: []string{"order.review"}},
@@ -360,6 +365,40 @@ func TestAuthorizationRevisionChangesForAssignmentWorkforcePermissionSetAndGuard
 	current = assertChanged("guardrail", current)
 	repository.assignments = append(repository.assignments, identitymodel.IdentityUserRoleAssignment{UserID: "user-1", RoleID: "reviewer"})
 	assertChanged("role membership", current)
+}
+
+func TestAuthorizationRevisionIncludesCompletePermissionStateSnapshot(t *testing.T) {
+	repository := &identityPrincipalRoleRepository{identityRolesRepositoryStub: &identityRolesRepositoryStub{
+		users:       []identitymodel.IdentityUser{{ID: "user-1", Status: identitymodel.IdentityStatusActive}},
+		roles:       []identitymodel.IdentityRole{{ID: "operator", Key: "operator", Status: identitymodel.IdentityStatusActive}},
+		assignments: []identitymodel.IdentityUserRoleAssignment{{UserID: "user-1", RoleID: "operator"}},
+	}}
+	service := principalRoleService(t, repository)
+	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{Key: "operator", Permissions: []string{"order.read"}}})
+	service.ReplacePermissionDefinitions([]identitymodel.IdentityPermissionDefinition{
+		{Key: "order.read", DefinitionStatus: identitymodel.IdentityPermissionDefinitionActive, Enabled: true},
+		{Key: "ungranted.write", DefinitionStatus: identitymodel.IdentityPermissionDefinitionActive, Enabled: true},
+	})
+	before, err := service.BuildPrincipal(t.Context(), "user-1")
+	if err != nil || !identitycontract.IdentityRoleHasPermissionKey(before.Role, "order.read") {
+		t.Fatalf("initial principal=%+v err=%v", before, err)
+	}
+	service.ReplacePermissionDefinitions([]identitymodel.IdentityPermissionDefinition{
+		{Key: "order.read", DefinitionStatus: identitymodel.IdentityPermissionDefinitionActive, Enabled: true},
+		{Key: "ungranted.write", DefinitionStatus: identitymodel.IdentityPermissionDefinitionActive, Enabled: false},
+	})
+	afterUngrantChange, err := service.BuildPrincipal(t.Context(), "user-1")
+	if err != nil || afterUngrantChange.AuthorizationRevision == before.AuthorizationRevision {
+		t.Fatalf("ungranted Permission state did not change revision: before=%q after=%q err=%v", before.AuthorizationRevision, afterUngrantChange.AuthorizationRevision, err)
+	}
+	service.ReplacePermissionDefinitions([]identitymodel.IdentityPermissionDefinition{
+		{Key: "order.read", DefinitionStatus: identitymodel.IdentityPermissionDefinitionActive, Enabled: false},
+		{Key: "ungranted.write", DefinitionStatus: identitymodel.IdentityPermissionDefinitionActive, Enabled: false},
+	})
+	afterGrantDisabled, err := service.BuildPrincipal(t.Context(), "user-1")
+	if err != nil || afterGrantDisabled.AuthorizationRevision == afterUngrantChange.AuthorizationRevision || identitycontract.IdentityRoleHasPermissionKey(afterGrantDisabled.Role, "order.read") {
+		t.Fatalf("disabled granted Permission did not change revision/remove grant: principal=%+v err=%v", afterGrantDisabled, err)
+	}
 }
 
 func effectiveAuthorizationDecisionVector(role identitymodel.RoleSchema) []bool {
@@ -439,4 +478,14 @@ func principalRoleService(t *testing.T, repository *identityPrincipalRoleReposit
 	}
 	service.ReplaceRoleDefinitions(definitions)
 	return service
+}
+
+func activateIdentityTestPermissions(service *IdentityDomainService, keys ...string) {
+	definitions := make([]identitymodel.IdentityPermissionDefinition, 0, len(keys))
+	for _, key := range keys {
+		definitions = append(definitions, identitymodel.IdentityPermissionDefinition{
+			Key: key, DefinitionStatus: identitymodel.IdentityPermissionDefinitionActive, Enabled: true,
+		})
+	}
+	service.ReplacePermissionDefinitions(definitions)
 }

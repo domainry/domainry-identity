@@ -63,35 +63,20 @@ func TestExternalAssertionRoleMappingConditions(t *testing.T) {
 	}
 }
 
-func TestPrivilegedExternalAutoRoles(t *testing.T) {
+func TestExternalAutoAssignableRoleUsesDeclaredPolicy(t *testing.T) {
 	tests := []struct {
-		role identitymodel.IdentityRole
+		role identitymodel.RoleSchema
 		want bool
 	}{
-		{role: identitymodel.IdentityRole{Key: "sales"}},
-		{role: identitymodel.IdentityRole{Key: "admin"}, want: true},
-		{role: identitymodel.IdentityRole{Key: "owner"}, want: true},
-		{role: identitymodel.IdentityRole{Key: "regional_workspace_admin"}, want: true},
+		{role: identitymodel.RoleSchema{}, want: true},
+		{role: identitymodel.RoleSchema{Key: "admin", Permissions: []string{"identity.roles.list"}}, want: true},
+		{role: identitymodel.RoleSchema{AssignmentMode: identitymodel.IdentityRoleAssignmentSystemManaged}},
+		{role: identitymodel.RoleSchema{Audience: identitymodel.IdentityRoleAudienceBusiness}},
+		{role: identitymodel.RoleSchema{RiskLevel: identitymodel.IdentityRoleRiskPrivileged}},
 	}
 	for _, testCase := range tests {
-		if got := privilegedExternalAutoRole(testCase.role); got != testCase.want {
+		if got := externalAutoAssignableRole(testCase.role); got != testCase.want {
 			t.Errorf("role %#v: want %v, got %v", testCase.role, testCase.want, got)
 		}
-	}
-	auth, identities, _ := newFaultAuthDomainService()
-	identities.roles = append(identities.roles, identitymodel.IdentityRole{ID: "security", Key: "security"})
-	identities.roleDefinitions["security"] = identitymodel.RoleSchema{Key: "security", Permissions: []string{"workspace.admin"}}
-	if !auth.privilegedExternalAutoRole(t.Context(), identitymodel.IdentityRole{ID: "security", Key: "security"}) {
-		t.Fatal("published workspace administrator role must not be auto-assigned")
-	}
-	if !(&AuthDomainService{}).privilegedExternalAutoRole(t.Context(), identitymodel.IdentityRole{Key: "sales"}) {
-		t.Fatal("missing identity repository should conservatively classify the role as privileged")
-	}
-	if auth.privilegedExternalAutoRole(t.Context(), identitymodel.IdentityRole{Key: "missing"}) {
-		t.Fatal("missing published role was treated as privileged")
-	}
-	identities.roleDefinitions["reader"] = identitymodel.RoleSchema{Key: "reader", Permissions: []string{"order.read"}}
-	if auth.privilegedExternalAutoRole(t.Context(), identitymodel.IdentityRole{Key: "reader"}) {
-		t.Fatal("non-administrator published role was treated as privileged")
 	}
 }

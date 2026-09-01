@@ -4,6 +4,7 @@ package module
 import (
 	"net/http"
 
+	actioncontract "github.com/domainry/domainry-foundation/action"
 	identityhttpapi "github.com/domainry/domainry-identity-sdk/httpapi"
 )
 
@@ -45,7 +46,7 @@ func cloneRoutes(routes []identityhttpapi.Route) []identityhttpapi.Route {
 	result := make([]identityhttpapi.Route, len(routes))
 	for index, route := range routes {
 		result[index] = route
-		result[index].Exposures = append([]identityhttpapi.Exposure(nil), route.Exposures...)
+		result[index].Action = actioncontract.CloneDefinition(route.Action)
 	}
 	return result
 }

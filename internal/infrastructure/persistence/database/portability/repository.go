@@ -14,6 +14,7 @@ import (
 	portabilityapplication "github.com/domainry/domainry-identity/internal/application/portability"
 	portabilitymodel "github.com/domainry/domainry-identity/internal/domain/portability"
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
+	"github.com/domainry/domainry-orm/batch"
 	"github.com/domainry/domainry-orm/query"
 )
 
@@ -217,25 +218,11 @@ func (repository *SQLRepository) Import(ctx context.Context, bundle portabilitym
 	counts = map[string]int64{}
 	for _, dataset := range bundle.Datasets {
 		spec, _ := datasetSpecNamed(dataset.Name)
-		for _, record := range dataset.Records {
-			values, valuesErr := importValues(spec, record, bundle.WorkspaceID)
-			if valuesErr != nil {
-				return portabilitymodel.ImportReceipt{}, valuesErr
-			}
-			columns, workspaceValues, fieldsErr := workspaceDatasetFields(spec, values)
-			if fieldsErr != nil {
-				return portabilitymodel.ImportReceipt{}, fieldsErr
-			}
-			queryValue, arguments, buildErr := query.NewWorkspaceInsertBuilder(repository.store.SQLRenderer, spec.table, bundle.WorkspaceID).
-				Columns(columns...).Values(workspaceValues...).Build()
-			if buildErr != nil {
-				return portabilitymodel.ImportReceipt{}, fmt.Errorf("build Identity dataset %s import: %w", dataset.Name, buildErr)
-			}
-			if _, insertErr := tx.ExecContext(ctx, queryValue, arguments...); insertErr != nil {
-				return portabilitymodel.ImportReceipt{}, fmt.Errorf("import Identity dataset %s: %w", dataset.Name, insertErr)
-			}
-			counts[dataset.Name]++
+		imported, importErr := repository.importDataset(ctx, tx, spec, dataset.Records, bundle.WorkspaceID)
+		if importErr != nil {
+			return portabilitymodel.ImportReceipt{}, importErr
 		}
+		counts[dataset.Name] = imported
 	}
 	if err := repository.verifyAuthorizationState(ctx, tx, bundle); err != nil {
 		return portabilitymodel.ImportReceipt{}, err
@@ -252,6 +239,50 @@ func (repository *SQLRepository) Import(ctx context.Context, bundle portabilitym
 		return portabilitymodel.ImportReceipt{}, err
 	}
 	return receipt, nil
+}
+
+// importDataset decodes one table's complete portable dataset before writing
+// bounded multi-row INSERT statements. Different tables remain separate
+// because they have different schemas and foreign-key ordering, but records in
+// one dataset never cause one database round-trip per row.
+func (repository *SQLRepository) importDataset(ctx context.Context, tx *sql.Tx, spec datasetSpec, records []portabilitymodel.Record, workspaceID string) (int64, error) {
+	if len(records) == 0 {
+		return 0, nil
+	}
+	rows := make([][]any, len(records))
+	var columns []string
+	for index, record := range records {
+		values, err := importValues(spec, record, workspaceID)
+		if err != nil {
+			return 0, err
+		}
+		rowColumns, workspaceValues, err := workspaceDatasetFields(spec, values)
+		if err != nil {
+			return 0, err
+		}
+		if index == 0 {
+			columns = rowColumns
+		}
+		rows[index] = workspaceValues
+	}
+	ranges, err := (batch.Parameters{Max: repository.store.MaxParameters(), PerItem: len(spec.columns)}).Ranges(len(rows))
+	if err != nil {
+		return 0, fmt.Errorf("plan Identity dataset %s import batches: %w", spec.name, err)
+	}
+	for _, batchRange := range ranges {
+		insert := query.NewWorkspaceInsertBuilder(repository.store.SQLRenderer, spec.table, workspaceID).Columns(columns...)
+		for _, values := range rows[batchRange.Start:batchRange.End] {
+			insert.Values(values...)
+		}
+		queryValue, arguments, err := insert.Build()
+		if err != nil {
+			return 0, fmt.Errorf("build Identity dataset %s batch import: %w", spec.name, err)
+		}
+		if _, err := tx.ExecContext(ctx, queryValue, arguments...); err != nil {
+			return 0, fmt.Errorf("import Identity dataset %s batch: %w", spec.name, err)
+		}
+	}
+	return int64(len(rows)), nil
 }
 
 func (repository *SQLRepository) exportDataset(ctx context.Context, spec datasetSpec, workspaceID string) (portabilitymodel.Dataset, error) {

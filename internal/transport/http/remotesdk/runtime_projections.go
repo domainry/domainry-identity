@@ -9,7 +9,7 @@ import (
 // registerRuntimeProjectionRoutes exposes the read-only directory and trusted
 // background-principal boundary used by a SaaS Runtime. These routes are never
 // reachable with an end-user bearer token or the management Admin middleware.
-func registerRuntimeProjectionRoutes(mux *http.ServeMux, binding identitysdk.Binding, support Support, credentials *ApplicationCredentialRegistry) {
+func registerRuntimeProjectionRoutes(registrar RouteRegistrar, binding identitysdk.Binding, support Support, credentials *ApplicationCredentialRegistry) {
 	decodeDirectoryQuery := func(w http.ResponseWriter, r *http.Request) (identitysdk.DirectoryQuery, bool) {
 		var request identitysdk.DirectoryQuery
 		if !support.decodeJSON(w, r, &request) {
@@ -17,7 +17,7 @@ func registerRuntimeProjectionRoutes(mux *http.ServeMux, binding identitysdk.Bin
 		}
 		return request, true
 	}
-	mux.HandleFunc("POST /identity/runtime/directory/user", func(w http.ResponseWriter, r *http.Request) {
+	registrar.HandleFunc("POST /identity/runtime/directory/user", func(w http.ResponseWriter, r *http.Request) {
 		var request identitysdk.UserLookup
 		if !support.decodeJSON(w, r, &request) {
 			return
@@ -35,7 +35,7 @@ func registerRuntimeProjectionRoutes(mux *http.ServeMux, binding identitysdk.Bin
 			Found bool             `json:"found"`
 		}{User: user, Found: found})
 	})
-	mux.HandleFunc("POST /identity/runtime/directory/department", func(w http.ResponseWriter, r *http.Request) {
+	registrar.HandleFunc("POST /identity/runtime/directory/department", func(w http.ResponseWriter, r *http.Request) {
 		var request identitysdk.DepartmentLookup
 		if !support.decodeJSON(w, r, &request) {
 			return
@@ -53,7 +53,7 @@ func registerRuntimeProjectionRoutes(mux *http.ServeMux, binding identitysdk.Bin
 			Found      bool                   `json:"found"`
 		}{Department: department, Found: found})
 	})
-	mux.HandleFunc("POST /identity/runtime/directory/users", func(w http.ResponseWriter, r *http.Request) {
+	registrar.HandleFunc("POST /identity/runtime/directory/users", func(w http.ResponseWriter, r *http.Request) {
 		request, ok := decodeDirectoryQuery(w, r)
 		if !ok {
 			return
@@ -64,7 +64,7 @@ func registerRuntimeProjectionRoutes(mux *http.ServeMux, binding identitysdk.Bin
 		values, err := binding.Directory().ListUsers(r.Context(), request)
 		writeRuntimeProjection(w, r, values, err, support)
 	})
-	mux.HandleFunc("POST /identity/runtime/directory/roles", func(w http.ResponseWriter, r *http.Request) {
+	registrar.HandleFunc("POST /identity/runtime/directory/roles", func(w http.ResponseWriter, r *http.Request) {
 		request, ok := decodeDirectoryQuery(w, r)
 		if !ok {
 			return
@@ -75,7 +75,7 @@ func registerRuntimeProjectionRoutes(mux *http.ServeMux, binding identitysdk.Bin
 		values, err := binding.Directory().ListRoles(r.Context(), request)
 		writeRuntimeProjection(w, r, values, err, support)
 	})
-	mux.HandleFunc("POST /identity/runtime/directory/role-assignments", func(w http.ResponseWriter, r *http.Request) {
+	registrar.HandleFunc("POST /identity/runtime/directory/role-assignments", func(w http.ResponseWriter, r *http.Request) {
 		var request identitysdk.UserRoleAssignmentQuery
 		if !support.decodeJSON(w, r, &request) {
 			return
@@ -86,7 +86,7 @@ func registerRuntimeProjectionRoutes(mux *http.ServeMux, binding identitysdk.Bin
 		values, err := binding.Directory().ListUserRoleAssignments(r.Context(), request)
 		writeRuntimeProjection(w, r, values, err, support)
 	})
-	mux.HandleFunc("POST /identity/runtime/directory/workforce", func(w http.ResponseWriter, r *http.Request) {
+	registrar.HandleFunc("POST /identity/runtime/directory/workforce", func(w http.ResponseWriter, r *http.Request) {
 		request, ok := decodeDirectoryQuery(w, r)
 		if !ok {
 			return
@@ -97,7 +97,7 @@ func registerRuntimeProjectionRoutes(mux *http.ServeMux, binding identitysdk.Bin
 		values, err := binding.Directory().ListWorkforce(r.Context(), request)
 		writeRuntimeProjection(w, r, values, err, support)
 	})
-	mux.HandleFunc("POST /identity/runtime/principal/resolve", func(w http.ResponseWriter, r *http.Request) {
+	registrar.HandleFunc("POST /identity/runtime/principal/resolve", func(w http.ResponseWriter, r *http.Request) {
 		var request identitysdk.PrincipalResolutionRequest
 		if !support.decodeJSON(w, r, &request) {
 			return

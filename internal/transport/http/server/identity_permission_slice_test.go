@@ -9,8 +9,13 @@ import (
 	"reflect"
 	"runtime"
 	"slices"
+	"strings"
+	"sync/atomic"
 	"testing"
 
+	actioncontract "github.com/domainry/domainry-foundation/action"
+	identitysdk "github.com/domainry/domainry-identity-sdk"
+	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
 	identitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity"
@@ -52,18 +57,34 @@ func TestStandalonePermissionAPIProjectsDatabaseStateAndActionBindingsWithRoleEn
 		t.Fatal(err)
 	}
 	_ = allowed.Body.Close()
-	if len(permissions) != 4 {
-		t.Fatalf("permission count=%d values=%+v", len(permissions), permissions)
+	registry, err := identityapplication.NewStandaloneIdentityAuthorizationSliceRegistry()
+	if err != nil {
+		t.Fatal(err)
 	}
+	expectedPermissions := registry.OwnedPermissionDefinitions(identityapplication.IdentityBuiltinAuthorizationOwner)
+	if len(expectedPermissions) != 100 || len(permissions) != 107 {
+		t.Fatalf("database permission count=%d Identity owner registry count=%d", len(permissions), len(expectedPermissions))
+	}
+	ownerCounts := map[string]int{}
 	for _, permission := range permissions {
-		if permission.DefinitionStatus != identitymodel.IdentityPermissionDefinitionActive || !permission.Enabled || permission.SourceOwner != "identity:builtin" || len(permission.ActionUsages) == 0 {
+		ownerCounts[permission.SourceOwner]++
+		if permission.DefinitionStatus != identitymodel.IdentityPermissionDefinitionActive || !permission.Enabled || len(permission.ActionUsages) == 0 {
 			t.Fatalf("permission projection=%+v", permission)
 		}
 		for _, usage := range permission.ActionUsages {
-			if usage.HTTPMethod == "" || usage.RouteTemplate == "" || usage.CapabilityKey == "" || usage.OperationKey == "" {
+			if usage.ActionKey != permission.Key || usage.CapabilityKey == "" || usage.OperationKey == "" {
 				t.Fatalf("incomplete live action usage=%+v", usage)
 			}
+			if permission.SourceOwner == identityapplication.IdentityBuiltinAuthorizationOwner {
+				action, found := registry.Definition(usage.ActionKey)
+				if !found || action.HTTP != nil && (usage.HTTPMethod == "" || usage.RouteTemplate == "") || action.HTTP == nil && (usage.HTTPMethod != "" || usage.RouteTemplate != "") {
+					t.Fatalf("permission usage does not match registered Action: permission=%+v action=%+v", permission, action)
+				}
+			}
 		}
+	}
+	if ownerCounts[identityapplication.IdentityBuiltinAuthorizationOwner] != 100 || ownerCounts["module:audit"] != 7 {
+		t.Fatalf("permission owner counts=%v", ownerCounts)
 	}
 
 	repository, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceEngine())
@@ -80,7 +101,151 @@ func TestStandalonePermissionAPIProjectsDatabaseStateAndActionBindingsWithRoleEn
 	denied := permissionCatalogRequest(t, testServer, limitedToken)
 	defer denied.Body.Close()
 	if denied.StatusCode != http.StatusForbidden {
-		t.Fatalf("system administrator without identity.permissions.read status=%d body=%s", denied.StatusCode, readResponseBody(t, denied))
+		t.Fatalf("system administrator without identity.permissions.list status=%d body=%s", denied.StatusCode, readResponseBody(t, denied))
+	}
+}
+
+func TestStandalonePermissionAPIQueriesRemoteRuntimeUsageWithoutPersistingIt(t *testing.T) {
+	externalAction := inventoryModuleAction("module:inventory")
+	runtimeRegistry := actioncontract.NewRegistry()
+	if err := runtimeRegistry.Register(externalAction); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtimeRegistry.Freeze(); err != nil {
+		t.Fatal(err)
+	}
+	var runtimeAvailable atomic.Bool
+	runtimeAvailable.Store(true)
+	var runtimeCalls atomic.Int64
+	var forwardedAuthorization, forwardedWorkspace, forwardedRequestID atomic.Value
+	runtimeServer := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		runtimeCalls.Add(1)
+		forwardedAuthorization.Store(request.Header.Get("Authorization"))
+		forwardedWorkspace.Store(request.Header.Get("X-Workspace-ID"))
+		forwardedRequestID.Store(request.Header.Get("X-Request-ID"))
+		if request.Method != http.MethodPost || request.URL.Path != "/operations/authorization/action-usages/query" {
+			response.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if !runtimeAvailable.Load() {
+			response.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		var query actioncontract.PermissionUsageRequest
+		if err := json.NewDecoder(request.Body).Decode(&query); err != nil {
+			response.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		snapshot, err := runtimeRegistry.QueryPermissionUsages(request.Context(), query)
+		if err != nil {
+			response.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		response.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(response).Encode(snapshot)
+	}))
+	defer runtimeServer.Close()
+
+	_, sourceFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("resolve server test source")
+	}
+	projectRoot := filepath.Clean(filepath.Join(filepath.Dir(sourceFile), "..", "..", "..", ".."))
+	cfg := config.FromEnv()
+	cfg.Environment = "development"
+	cfg.DatabaseDriver = "sqlite"
+	cfg.DBPath = filepath.Join(t.TempDir(), "identity-remote-action-usage.db")
+	cfg.IdentityWorkspaceID = "workspace-primary"
+	cfg.ManifestPath = filepath.Join(projectRoot, "domainry.template.json")
+	cfg.IdentityActionUsageRuntimeURL = runtimeServer.URL
+	runtimeVerifierCredential := "runtime-verifier-credential-for-action-usage"
+	cfg.IdentityApplicationServiceCredentials = map[string]string{
+		"workspace-primary/domainry-runtime":                                      runtimeVerifierCredential,
+		"workspace-primary/domainry-identity-control-plane#identity-action-usage": "identity-action-usage-source-credential",
+	}
+
+	store, err := database.OpenContext(t.Context(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identityServer, err := httpserver.NewWithStore(t.Context(), cfg, store, httpserver.ServerAssemblyOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = identityServer.CloseContext(t.Context()) })
+	application := identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "domainry-runtime"}
+	if _, err := identityServer.SDKBinding().Applications().Register(t.Context(), identitysdk.ApplicationRegistration{Application: application}); err != nil {
+		t.Fatal(err)
+	}
+	reconcile, err := identitysdk.NewPermissionReconcileRequest(application, externalAction.Permission.Owner, "", []identitysdk.PermissionDefinition{{
+		PermissionKey: externalAction.Permission.Key, ResourceKey: externalAction.Permission.ResourceKey,
+		ActionKey: externalAction.Permission.ActionKey, Label: externalAction.Permission.Label,
+		Category: externalAction.Permission.Category, SourceKind: externalAction.SourceKind,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := identityServer.SDKBinding().Permissions().Reconcile(t.Context(), reconcile); err != nil {
+		t.Fatal(err)
+	}
+
+	identityHTTP := httptest.NewServer(identityServer.Routes())
+	defer identityHTTP.Close()
+	adminToken := loginAccessToken(t, identityHTTP)
+	response := permissionCatalogRequest(t, identityHTTP, adminToken)
+	permissions := decodePermissionDefinitions(t, response)
+	external := permissionDefinitionByKey(t, permissions, externalAction.Key)
+	if external.ActionUsageStatus != identitymodel.IdentityActionUsageAvailable || len(external.ActionUsages) != 1 || external.ActionUsages[0].RouteTemplate != externalAction.HTTP.RouteTemplate {
+		t.Fatalf("remote Action usage=%+v", external)
+	}
+	forwardedBearer, _ := strings.CutPrefix(forwardedAuthorization.Load().(string), "Bearer ")
+	if runtimeCalls.Load() != 1 || strings.TrimSpace(forwardedBearer) == "" || forwardedBearer == adminToken || forwardedWorkspace.Load() != "workspace-primary" || strings.TrimSpace(forwardedRequestID.Load().(string)) == "" {
+		t.Fatalf("Runtime calls=%d authorization=%v workspace=%v request_id=%v", runtimeCalls.Load(), forwardedAuthorization.Load(), forwardedWorkspace.Load(), forwardedRequestID.Load())
+	}
+	serviceBinding, ok := identityServer.SDKBinding().(identitysdk.ApplicationServiceVerificationBinding)
+	if !ok || serviceBinding.ApplicationServiceVerifier() == nil {
+		t.Fatal("Identity SDK binding does not expose service token verification")
+	}
+	servicePrincipal, err := serviceBinding.ApplicationServiceVerifier().Verify(t.Context(), identitysdk.VerifyApplicationServiceTokenRequest{
+		AccessToken: forwardedBearer, Audience: "domainry-runtime",
+		Grant: identitysdk.ApplicationServiceGrant{Resource: "runtime.authorization.action_usages", Action: "query"},
+	})
+	if err != nil || servicePrincipal.Application.ApplicationKey != "domainry-identity-control-plane" || servicePrincipal.Audience != "domainry-runtime" || servicePrincipal.CredentialID != "identity-action-usage" {
+		t.Fatalf("Runtime service principal=%+v err=%v", servicePrincipal, err)
+	}
+	verifyBody, err := json.Marshal(identitysdk.VerifyApplicationServiceTokenRequest{
+		AccessToken: forwardedBearer, Audience: "domainry-runtime",
+		Grant: identitysdk.ApplicationServiceGrant{Resource: "runtime.authorization.action_usages", Action: "query"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	verifyRequest, err := http.NewRequestWithContext(t.Context(), http.MethodPost, identityHTTP.URL+"/identity/application-service/verify", bytes.NewReader(verifyBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	verifyRequest.Header.Set("Authorization", "Bearer "+runtimeVerifierCredential)
+	verifyRequest.Header.Set("Content-Type", "application/json")
+	verifyRequest.Header.Set("X-Domainry-Tenant-ID", "workspace-primary")
+	verifyRequest.Header.Set("X-Domainry-Workspace-ID", "workspace-primary")
+	verifyResponse, err := identityHTTP.Client().Do(verifyRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer verifyResponse.Body.Close()
+	var remotelyVerified identitysdk.ApplicationServicePrincipal
+	if verifyResponse.StatusCode != http.StatusOK || json.NewDecoder(verifyResponse.Body).Decode(&remotelyVerified) != nil || remotelyVerified.CredentialID != "identity-action-usage" {
+		t.Fatalf("remote service-token verification status=%d principal=%+v", verifyResponse.StatusCode, remotelyVerified)
+	}
+
+	runtimeAvailable.Store(false)
+	unavailableResponse := permissionCatalogRequest(t, identityHTTP, adminToken)
+	unavailable := permissionDefinitionByKey(t, decodePermissionDefinitions(t, unavailableResponse), externalAction.Key)
+	if unavailable.ActionUsageStatus != identitymodel.IdentityActionUsageUnavailable || len(unavailable.ActionUsages) != 0 {
+		t.Fatalf("unreachable owner reused persisted usage=%+v", unavailable)
+	}
+	if runtimeCalls.Load() != 2 {
+		t.Fatalf("Runtime query calls=%d want=2", runtimeCalls.Load())
 	}
 }
 
@@ -113,20 +278,20 @@ func TestStandaloneRolePermissionPublicationVersionsRoleSchemaAndSurvivesRestart
 	adminToken := loginAccessToken(t, testServer)
 	initial, initialHash, initialVersion := rolePermissionConfiguration(t, testServer, adminToken, "organization_administrator")
 	initialKeys := rolePermissionKeys(initial)
-	if !slices.Contains(initialKeys, "identity.permissions.read") || !slices.Contains(initialKeys, "identity.permissions.write") {
-		t.Fatalf("organization administrator is missing the S0 permissions: %v", initialKeys)
+	if !slices.Contains(initialKeys, "identity.role_permissions.list") || !slices.Contains(initialKeys, "identity.role_permissions.publish") {
+		t.Fatalf("organization administrator is missing exact role-permission Actions: %v", initialKeys)
 	}
 	beforeRole := storedRoleSchema(t, store, "organization_administrator")
 
 	requestedKeys := slices.DeleteFunc(slices.Clone(initialKeys), func(key string) bool {
-		return key == "identity.permissions.read"
+		return key == "identity.role_permissions.list"
 	})
 	published, publishedHash, publishedVersion := publishRolePermissions(t, testServer, adminToken, "organization_administrator", initialHash, "role-permission-publication-1", requestedKeys, "verify direct RoleSchema publication")
 	if publishedHash == "" || publishedHash == initialHash || publishedVersion == "" || publishedVersion == initialVersion {
 		t.Fatalf("publication revision did not advance: initial=%s/%s published=%s/%s", initialVersion, initialHash, publishedVersion, publishedHash)
 	}
-	if slices.Contains(rolePermissionKeys(published), "identity.permissions.read") {
-		t.Fatalf("published role still grants identity.permissions.read: %+v", published)
+	if slices.Contains(rolePermissionKeys(published), "identity.role_permissions.list") {
+		t.Fatalf("published role still grants identity.role_permissions.list: %+v", published)
 	}
 	afterRole := storedRoleSchema(t, store, "organization_administrator")
 	beforeRole.Permissions, afterRole.Permissions = nil, nil
@@ -140,7 +305,7 @@ func TestStandaloneRolePermissionPublicationVersionsRoleSchemaAndSurvivesRestart
 	}
 	assertRolePermissionPublicationRows(t, store, 2, 1)
 
-	staleKeys := append(slices.Clone(requestedKeys), "identity.permissions.read")
+	staleKeys := append(slices.Clone(requestedKeys), "identity.role_permissions.list")
 	stale := publishRolePermissionsResponse(t, testServer, adminToken, "organization_administrator", initialHash, "role-permission-publication-stale", staleKeys, "verify stale CAS")
 	if stale.StatusCode != http.StatusConflict {
 		t.Fatalf("stale RoleSchema publication status=%d body=%s", stale.StatusCode, readResponseBody(t, stale))
@@ -164,7 +329,7 @@ func TestStandaloneRolePermissionPublicationVersionsRoleSchemaAndSurvivesRestart
 	t.Cleanup(func() { _ = restartedIdentityServer.CloseContext(t.Context()) })
 	restartedAdminToken := loginAccessToken(t, restartedTestServer)
 	restarted, restartedHash, restartedVersion := rolePermissionConfiguration(t, restartedTestServer, restartedAdminToken, "organization_administrator")
-	if restartedHash != publishedHash || restartedVersion != publishedVersion || slices.Contains(rolePermissionKeys(restarted), "identity.permissions.read") {
+	if restartedHash != publishedHash || restartedVersion != publishedVersion || slices.Contains(rolePermissionKeys(restarted), "identity.role_permissions.list") {
 		t.Fatalf("restarted RoleSchema differs from publication: version=%s hash=%s permissions=%v", restartedVersion, restartedHash, rolePermissionKeys(restarted))
 	}
 	assertRolePermissionPublicationRows(t, restartedStore, 2, 1)
@@ -180,11 +345,16 @@ func TestStandaloneRolePermissionPublicationVersionsRoleSchemaAndSurvivesRestart
 		t.Fatal(err)
 	}
 	limitedToken := loginAccessToken(t, restartedTestServer)
-	denied := permissionCatalogRequest(t, restartedTestServer, limitedToken)
-	defer denied.Body.Close()
+	denied := rolePermissionConfigurationResponse(t, restartedTestServer, limitedToken, "organization_administrator")
 	if denied.StatusCode != http.StatusForbidden {
-		t.Fatalf("published role without identity.permissions.read status=%d body=%s", denied.StatusCode, readResponseBody(t, denied))
+		t.Fatalf("published role without identity.role_permissions.list status=%d body=%s", denied.StatusCode, readResponseBody(t, denied))
 	}
+	_ = denied.Body.Close()
+	stillAllowed := permissionCatalogRequest(t, restartedTestServer, limitedToken)
+	if stillAllowed.StatusCode != http.StatusOK {
+		t.Fatalf("removing identity.role_permissions.list affected identity.permissions.list status=%d body=%s", stillAllowed.StatusCode, readResponseBody(t, stillAllowed))
+	}
+	_ = stillAllowed.Body.Close()
 }
 
 func loginAccessToken(t *testing.T, server *httptest.Server) string {
@@ -221,18 +391,33 @@ func permissionCatalogRequest(t *testing.T, server *httptest.Server, accessToken
 	return response
 }
 
+func decodePermissionDefinitions(t *testing.T, response *http.Response) []identitymodel.IdentityPermissionDefinition {
+	t.Helper()
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("permission catalog status=%d body=%s", response.StatusCode, readResponseBody(t, response))
+	}
+	var permissions []identitymodel.IdentityPermissionDefinition
+	if err := json.NewDecoder(response.Body).Decode(&permissions); err != nil {
+		t.Fatal(err)
+	}
+	return permissions
+}
+
+func permissionDefinitionByKey(t *testing.T, permissions []identitymodel.IdentityPermissionDefinition, key string) identitymodel.IdentityPermissionDefinition {
+	t.Helper()
+	for _, permission := range permissions {
+		if permission.Key == key {
+			return permission
+		}
+	}
+	t.Fatalf("permission %q not found", key)
+	return identitymodel.IdentityPermissionDefinition{}
+}
+
 func rolePermissionConfiguration(t *testing.T, server *httptest.Server, accessToken, roleID string) ([]identitymodel.IdentityRolePermissionAssignment, string, string) {
 	t.Helper()
-	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/identity/roles/"+roleID+"/permissions", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	request.Header.Set("Authorization", "Bearer "+accessToken)
-	request.Header.Set("X-Workspace-ID", "workspace-primary")
-	response, err := server.Client().Do(request)
-	if err != nil {
-		t.Fatal(err)
-	}
+	response := rolePermissionConfigurationResponse(t, server, accessToken, roleID)
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("role permission configuration status=%d body=%s", response.StatusCode, readResponseBody(t, response))
 	}
@@ -246,6 +431,21 @@ func rolePermissionConfiguration(t *testing.T, server *httptest.Server, accessTo
 		t.Fatalf("role permission configuration omitted revision headers: hash=%q version=%q", hash, version)
 	}
 	return assignments, hash, version
+}
+
+func rolePermissionConfigurationResponse(t *testing.T, server *httptest.Server, accessToken, roleID string) *http.Response {
+	t.Helper()
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/identity/roles/"+roleID+"/permissions", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Authorization", "Bearer "+accessToken)
+	request.Header.Set("X-Workspace-ID", "workspace-primary")
+	response, err := server.Client().Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return response
 }
 
 func publishRolePermissions(t *testing.T, server *httptest.Server, accessToken, roleID, expectedHash, operationID string, permissionKeys []string, reason string) ([]identitymodel.IdentityRolePermissionAssignment, string, string) {

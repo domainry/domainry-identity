@@ -8,6 +8,7 @@ import (
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	identityprojection "github.com/domainry/domainry-identity/internal/domain/identity/projection"
 	manifestmodel "github.com/domainry/domainry-identity/internal/domain/manifest/model"
+	metadatacontract "github.com/domainry/domainry-identity/internal/domain/metadata/contract"
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
 	metadatarepository "github.com/domainry/domainry-identity/internal/domain/metadata/repository"
 	metadatadomain "github.com/domainry/domainry-identity/internal/domain/metadata/service"
@@ -17,7 +18,7 @@ func (s *MetadataApplicationService) CurrentManifest(ctx context.Context, princi
 	if err := metadataAuthorizeQuery(principal); err != nil {
 		return manifestmodel.ManifestSchema{}, err
 	}
-	if !identitycontract.IdentityRoleHasPermissionKey(principal.Role, "workspace.admin") {
+	if !identitycontract.IdentityRoleHasPermissionKey(principal.Role, metadatacontract.MetadataActionManifestGet) {
 		return manifestmodel.ManifestSchema{}, forbidden("auth.permission_denied")
 	}
 	manifest, err := s.repository.LoadManifest(ctx, metadataInstallationScope("load current Runtime manifest for global validation"))
@@ -48,27 +49,44 @@ func (s *MetadataApplicationService) ReloadMetadata(ctx context.Context, princip
 	if err := metadataAuthorizeCommand(principal); err != nil {
 		return metadatamodel.MetadataSchemaSnapshot{}, err
 	}
-	if !identitycontract.IdentityRoleHasPermissionKey(principal.Role, "workspace.admin") {
+	if !identitycontract.IdentityRoleHasPermissionKey(principal.Role, metadatacontract.MetadataActionReload) {
 		return metadatamodel.MetadataSchemaSnapshot{}, forbidden("auth.permission_denied")
 	}
+	if s == nil || s.repository == nil || s.runtime == nil {
+		return metadatamodel.MetadataSchemaSnapshot{}, metadataInternalError("reload metadata")
+	}
+	s.reloadMu.Lock()
+	defer s.reloadMu.Unlock()
+	current := s.runtime.Schema()
 	manifest, err := s.repository.LoadManifest(ctx, metadataInstallationScope("reload metadata manifest"))
 	if err != nil {
-		return metadatamodel.MetadataSchemaSnapshot{}, err
+		return current, err
 	}
 	if err := s.repository.SyncManifest(ctx, metadataInstallationScope("synchronize metadata manifest"), manifest); err != nil {
-		return metadatamodel.MetadataSchemaSnapshot{}, wrapMetadataError(err)
+		return current, wrapMetadataError(err)
 	}
-	s.runtime.ApplyManifestMetadata(valueOrDefault(manifest.TemplateID, s.templateID), valueOrDefault(manifest.Version, s.version), valueOrDefault(manifest.Name, s.name), manifest.Objects, manifest.Actions, manifest.Roles, manifest.PermissionSets, manifest.PermissionSetGroups, manifest.Guardrails, manifest.IdentityProfileExtensions)
-	snapshot := s.runtime.Schema()
-	s.notifyReloadObservers(snapshot)
-	return snapshot, nil
+	candidate := metadatadomain.BuildSchemaSnapshot(metadatadomain.SchemaSnapshotState{
+		TemplateID: valueOrDefault(manifest.TemplateID, s.templateID), TemplateVersion: valueOrDefault(manifest.Version, s.version), Name: valueOrDefault(manifest.Name, s.name),
+		Objects: manifest.Objects, Actions: manifest.Actions, Roles: manifest.Roles,
+		PermissionSets: manifest.PermissionSets, PermissionSetGroups: manifest.PermissionSetGroups,
+		Guardrails: manifest.Guardrails, IdentityProfileExtensions: manifest.IdentityProfileExtensions,
+	})
+	commits, err := s.prepareReloadObservers(ctx, candidate)
+	if err != nil {
+		return current, err
+	}
+	s.runtime.ActivateMetadata(candidate)
+	for _, commit := range commits {
+		commit()
+	}
+	return candidate, nil
 }
 
 func (s *MetadataApplicationService) MetadataMigrationPlan(ctx context.Context, principal identitymodel.Principal) ([]metadatamodel.MetadataMigrationStep, error) {
 	if err := metadataAuthorizeQuery(principal); err != nil {
 		return nil, err
 	}
-	if !identitycontract.IdentityRoleHasPermissionKey(principal.Role, "workspace.admin") {
+	if !identitycontract.IdentityRoleHasPermissionKey(principal.Role, metadatacontract.MetadataActionMigrationPlanGet) {
 		return nil, forbidden("auth.permission_denied")
 	}
 	manifest, err := s.repository.LoadManifest(ctx, metadataInstallationScope("load metadata migration manifest"))
@@ -87,7 +105,7 @@ func (s *MetadataApplicationService) MetadataObjectRecordCount(ctx context.Conte
 	if err := metadataAuthorizeQuery(principal); err != nil {
 		return 0, err
 	}
-	if !identitycontract.IdentityRoleHasPermissionKey(principal.Role, "metadata.read") {
+	if !identitycontract.IdentityRoleHasPermissionKey(principal.Role, metadatacontract.MetadataActionObjectRecordCountGet) {
 		return 0, forbidden("auth.permission_denied")
 	}
 	objectKey = strings.TrimSpace(objectKey)

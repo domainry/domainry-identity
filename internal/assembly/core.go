@@ -8,6 +8,8 @@ import (
 
 	auditsdk "github.com/domainry/domainry-audit-sdk"
 	auditmoduleimpl "github.com/domainry/domainry-audit/module"
+	actioncontract "github.com/domainry/domainry-foundation/action"
+	"github.com/domainry/domainry-foundation/modulehttp"
 	"github.com/domainry/domainry-foundation/requestcontext"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	identitysdkadapter "github.com/domainry/domainry-identity/internal/adapter/identitysdk"
@@ -20,6 +22,7 @@ import (
 	definitionmodel "github.com/domainry/domainry-identity/internal/domain/definition/model"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	manifestmodel "github.com/domainry/domainry-identity/internal/domain/manifest/model"
+	metadatacontract "github.com/domainry/domainry-identity/internal/domain/metadata/contract"
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
 	metadataservice "github.com/domainry/domainry-identity/internal/domain/metadata/service"
 	identityauditmodule "github.com/domainry/domainry-identity/internal/infrastructure/auditmodule"
@@ -27,14 +30,14 @@ import (
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
 	authpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/auth"
 	identitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity"
-	identitycatalogpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identitycatalog"
 	metadatapersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/metadata"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 )
 
 type Options struct {
-	Clock       identitysdk.Clock
-	WorkspaceID string
+	Clock           identitysdk.Clock
+	WorkspaceID     string
+	ModuleProviders []actioncontract.Provider
 }
 
 // Core is the deployment-neutral Identity application graph shared by the
@@ -45,11 +48,13 @@ type Core struct {
 	MetadataStore         metadatapersistence.MetadataStore
 	IdentityStore         *identitypersistence.SQLIdentityStore
 	AuditBinding          auditsdk.Binding
+	ModuleHTTPProviders   []modulehttp.Provider
 	AuditStore            auditrepository.AuditRepository
 	AuthStore             authpersistence.AuthStore
 	Identity              *identityapplication.IdentityApplicationService
 	Audit                 *auditapplication.AuditApplicationService
 	Auth                  *authapplication.AuthApplicationService
+	Applications          *authapplication.AuthApplicationRegistrationService
 	MetadataRuntime       *MetadataRuntime
 	Metadata              *metadataapplication.MetadataApplicationService
 	MetadataSchema        *metadataapplication.MetadataSchemaApplicationService
@@ -108,19 +113,6 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 		return fail(fmt.Errorf("synchronize Identity bootstrap: %w", err))
 	}
 
-	permissions := identityapplication.MergeIdentityPermissions(seed.Permissions, identityapplication.IdentityPermissionsFromRoles(manifest.Roles, manifest.Objects, cfg.AppLocale))
-	identityApp := identityapplication.NewIdentityApplicationService(identityStore, permissions)
-	identityApp.ReplaceRoleDefinitions(manifest.Roles)
-	identityApp.ReplaceAuthorizationCatalogs(manifest.PermissionSets, manifest.PermissionSetGroups, manifest.Guardrails)
-	identityActions, err := identityapplication.NewStandaloneIdentityAuthorizationSliceRegistry()
-	if err != nil {
-		return fail(fmt.Errorf("assemble Identity authorization Action registry: %w", err))
-	}
-	permissionCatalog, err := identityapplication.NewIdentityPermissionCatalogApplicationService(identityStore, identityActions, workspaceID)
-	if err != nil {
-		return fail(fmt.Errorf("assemble Identity permission catalog: %w", err))
-	}
-
 	auditBinding, err := auditmoduleimpl.NewFactory(auditmoduleimpl.Options{}).OpenModule(ctx,
 		auditsdk.ApplicationRef{InstallationID: defaultString(manifest.TemplateID, "domainry-identity")}, identityauditmodule.NewHost(store))
 	if err != nil {
@@ -139,9 +131,39 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 	if err := auditHostBinder.BindApplicationHost(identityauditmodule.NewApplicationHost(cfg.AuthJWTSecret)); err != nil {
 		return fail(fmt.Errorf("bind Audit application host: %w", err))
 	}
+	auditProvider, ok := auditBinding.(actioncontract.Provider)
+	if !ok {
+		return fail(fmt.Errorf("Audit Binding does not provide its authorization Action manifest"))
+	}
+	moduleProviders := append([]actioncontract.Provider{auditProvider}, options.ModuleProviders...)
+	actionDefinitions, moduleHTTPProviders, err := identityActionDefinitionsWithModuleProviders(identityapplication.IdentityBuiltinAuthorizationActions(), moduleProviders...)
+	if err != nil {
+		return fail(err)
+	}
+	identityActions, err := identityapplication.NewIdentityActionRegistry(actionDefinitions)
+	if err != nil {
+		return fail(fmt.Errorf("assemble Identity authorization Action registry: %w", err))
+	}
+	permissionCatalog, err := identityapplication.NewIdentityPermissionCatalogApplicationService(identityStore, identityActions, workspaceID)
+	if err != nil {
+		return fail(fmt.Errorf("assemble Identity permission catalog: %w", err))
+	}
+	for _, owner := range identityActions.PermissionOwners() {
+		if _, err := permissionCatalog.ReconcileOwner(workspaceCtx, owner); err != nil {
+			return fail(fmt.Errorf("reconcile permissions for %s: %w", owner, err))
+		}
+	}
+	identityApp := identityapplication.NewIdentityApplicationServiceWithPermissionSource(identityStore, permissionCatalog, identityActions)
+	identityApp.ReplaceRoleDefinitions(manifest.Roles)
+	identityApp.ReplaceAuthorizationPolicies(manifest.PermissionSets, manifest.PermissionSetGroups, manifest.Guardrails)
+
 	auditStore := identityauditmodule.NewAuditStore(auditBinding)
 	auditApp := auditapplication.NewAuditApplicationService(auditStore)
 	authStore := authpersistence.NewAuthStoreWithKeyProvider(identityStore, store.SecretKeyProvider(), store.IdempotencyMetrics(ctx))
+	applicationRegistrations, err := authapplication.NewAuthApplicationRegistrationService(authStore, workspaceID)
+	if err != nil {
+		return fail(fmt.Errorf("assemble authentication application registry: %w", err))
+	}
 	authApp := authapplication.NewAuthApplicationService(
 		workspaceAuthIdentity{identity: identityApp}, authStore,
 		cfg.AuthJWTSecret, cfg.AuthDefaultPassword, cfg.AuthAccessTTL, cfg.AuthRefreshTTL,
@@ -169,20 +191,25 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 		Guardrails: manifest.Guardrails, IdentityProfileExtensions: manifest.IdentityProfileExtensions,
 	})
 	metadataApp := metadataapplication.NewMetadataApplicationService(metadataapplication.MetadataApplicationDependencies{
-		Repository: metadataStore, Runtime: metadataRuntime, Audit: auditApp,
+		Repository: metadataStore, Permissions: permissionCatalog, Runtime: metadataRuntime, Audit: auditApp,
 		AuditAppender: auditApp.AppendWithMetadata, TemplateID: metadataRuntime.Schema().TemplateID,
 		Version: metadataRuntime.Schema().TemplateVersion, Name: metadataRuntime.Schema().Name,
 	})
 	metadataSchemaApp := metadataapplication.NewMetadataSchemaApplicationService(metadataRuntime, metadataStore)
-	refreshIdentityCatalog := func(snapshot metadatamodel.MetadataSchemaSnapshot) {
-		identityApp.ReplacePermissionDefinitions(identityapplication.MergeIdentityPermissions(seed.Permissions, identityapplication.IdentityPermissionsFromRuntime(snapshot.Roles, snapshot.Objects, snapshot.Actions, cfg.AppLocale)))
-		identityApp.ReplaceRoleDefinitions(snapshot.Roles)
-		identityApp.ReplaceAuthorizationCatalogs(snapshot.PermissionSets, snapshot.PermissionSetGroups, snapshot.Guardrails)
+	prepareIdentityCatalogRefresh := func(_ context.Context, snapshot metadatamodel.MetadataSchemaSnapshot) (metadataapplication.MetadataReloadCommit, error) {
+		roles := append([]identitymodel.RoleSchema(nil), snapshot.Roles...)
+		permissionSets := append([]identitymodel.IdentityPermissionSet(nil), snapshot.PermissionSets...)
+		permissionSetGroups := append([]identitymodel.IdentityPermissionSetGroup(nil), snapshot.PermissionSetGroups...)
+		guardrails := append([]identitymodel.IdentityGuardrailPolicy(nil), snapshot.Guardrails...)
+		return func() {
+			identityApp.ReplaceRoleDefinitions(roles)
+			identityApp.ReplaceAuthorizationPolicies(permissionSets, permissionSetGroups, guardrails)
+		}, nil
 	}
-	metadataApp.AddReloadObserver(refreshIdentityCatalog)
+	metadataApp.AddReloadObserver(prepareIdentityCatalogRefresh)
 	bootstrapPrincipal := identitymodel.Principal{
 		Known: true, WorkspaceID: workspaceID, UserID: "system",
-		Role: identitymodel.RoleSchema{Key: "system_administrator", Permissions: []string{"workspace.admin"}},
+		Role: identitymodel.RoleSchema{Key: "system_administrator", Permissions: []string{metadatacontract.MetadataActionReload}},
 	}
 	if _, err := metadataApp.ReloadMetadata(workspaceCtx, bootstrapPrincipal); err != nil {
 		return fail(fmt.Errorf("load persisted Identity metadata: %w", err))
@@ -203,23 +230,60 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 	binding, err := identitysdkadapter.NewBinding(identitysdkadapter.BindingDependencies{
 		Config: cfg, Authentication: authApp, ProviderConfiguration: providerConfiguration,
 		ProviderFlows: providerFlows, ProviderCallback: identityprovider.CallbackAdapter{},
-		EffectiveAccess: effectiveAccess, Identity: identityApp, Metadata: metadataRuntime,
-		Clock: options.Clock, Catalog: identitycatalogpersistence.NewStore(identityStore),
-		MutationFence: store, LoginTransactions: authStore,
-		CatalogPublished: func(catalogs []identitysdk.AuthorizationCatalog) {
-			metadataApp.ReplaceAuthorizationObjects(authorizationCatalogObjects(catalogs))
-		},
+		EffectiveAccess: effectiveAccess, Identity: identityApp,
+		Applications: applicationRegistrations, Permissions: permissionCatalog,
+		Clock: options.Clock, MutationFence: store, LoginTransactions: authStore,
 	})
 	if err != nil {
 		return fail(fmt.Errorf("assemble Identity SDK binding: %w", err))
 	}
 	return &Core{
 		Store: store, Manifest: manifest, MetadataStore: metadataStore, IdentityStore: identityStore,
-		AuditBinding: auditBinding, AuditStore: auditStore, AuthStore: authStore, Identity: identityApp, Audit: auditApp, Auth: authApp,
+		AuditBinding: auditBinding, ModuleHTTPProviders: append([]modulehttp.Provider(nil), moduleHTTPProviders...), AuditStore: auditStore, AuthStore: authStore, Identity: identityApp, Audit: auditApp, Auth: authApp,
+		Applications:    applicationRegistrations,
 		MetadataRuntime: metadataRuntime, Metadata: metadataApp, MetadataSchema: metadataSchemaApp,
 		ProviderConfiguration: providerConfiguration, ProviderFlows: providerFlows,
 		EffectiveAccess: effectiveAccess, IdentityActions: identityActions, PermissionCatalog: permissionCatalog, Binding: binding,
 	}, nil
+}
+
+func identityActionDefinitionsWithModuleProviders(base []identitymodel.IdentityActionDefinition, providers ...actioncontract.Provider) ([]identitymodel.IdentityActionDefinition, []modulehttp.Provider, error) {
+	definitions := append([]identitymodel.IdentityActionDefinition(nil), base...)
+	httpProviders := make([]modulehttp.Provider, 0, len(providers))
+	for _, provider := range providers {
+		if provider == nil {
+			return nil, nil, fmt.Errorf("module Action provider is required")
+		}
+		provided, err := provider.AuthorizationActions()
+		if err != nil {
+			return nil, nil, fmt.Errorf("load module authorization Actions: %w", err)
+		}
+		if len(provided) == 0 {
+			return nil, nil, fmt.Errorf("module Action provider returned an empty manifest")
+		}
+		normalized := make([]identitymodel.IdentityActionDefinition, 0, len(provided))
+		for index := range provided {
+			definition, normalizeErr := actioncontract.NormalizeDefinition(provided[index])
+			if normalizeErr != nil {
+				return nil, nil, fmt.Errorf("validate module authorization Action %d: %w", index, normalizeErr)
+			}
+			normalized = append(normalized, definition)
+		}
+		httpProvider, exposesHTTP := provider.(modulehttp.Provider)
+		if exposesHTTP {
+			if err := modulehttp.ValidateSourceOwners(httpProvider); err != nil {
+				return nil, nil, fmt.Errorf("validate module authorization owner: %w", err)
+			}
+		}
+		if err := modulehttp.ValidateAuthorizationProjection(normalized, httpProvider); err != nil {
+			return nil, nil, fmt.Errorf("validate module authorization projection: %w", err)
+		}
+		definitions = append(definitions, normalized...)
+		if exposesHTTP {
+			httpProviders = append(httpProviders, httpProvider)
+		}
+	}
+	return definitions, httpProviders, nil
 }
 
 func (core *Core) CloseContext(ctx context.Context) error {
@@ -246,34 +310,4 @@ func defaultString(value, fallback string) string {
 		return value
 	}
 	return strings.TrimSpace(fallback)
-}
-
-func authorizationCatalogObjects(catalogs []identitysdk.AuthorizationCatalog) []definitionmodel.ObjectSchema {
-	byKey := map[string]definitionmodel.ObjectSchema{}
-	for _, catalog := range catalogs {
-		for _, resource := range catalog.Resources {
-			key := strings.TrimSpace(string(resource.Key))
-			if key == "" {
-				continue
-			}
-			object := byKey[key]
-			object.Key = key
-			fields := map[string]bool{}
-			for _, current := range object.Fields {
-				fields[current.Key] = true
-			}
-			for _, field := range resource.Fields {
-				if field = strings.TrimSpace(field); field != "" && !fields[field] {
-					object.Fields = append(object.Fields, definitionmodel.FieldSchema{Key: field})
-					fields[field] = true
-				}
-			}
-			byKey[key] = object
-		}
-	}
-	objects := make([]definitionmodel.ObjectSchema, 0, len(byKey))
-	for _, object := range byKey {
-		objects = append(objects, object)
-	}
-	return objects
 }

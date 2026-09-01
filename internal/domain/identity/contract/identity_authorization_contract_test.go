@@ -13,20 +13,20 @@ func TestIdentityDataScopeRejectsUnreadableDataPermission(t *testing.T) {
 	}
 }
 
-func TestExactPermissionDoesNotExpandWorkspaceAdministrator(t *testing.T) {
-	role := identitymodel.RoleSchema{Permissions: []string{"workspace.admin", "identity.users.read"}}
+func TestExactPermissionDoesNotExpandToAnotherAction(t *testing.T) {
+	role := identitymodel.RoleSchema{Permissions: []string{"identity.roles.list", "identity.users.list"}}
 	if IdentityRoleHasExactPermissionKey(role, "runtime.worker.control") {
-		t.Fatal("workspace.admin expanded into a Runtime Ops capability")
+		t.Fatal("unrelated Permission expanded into a Runtime Ops capability")
 	}
 	role.Permissions = append(role.Permissions, "runtime.worker.*")
-	if !IdentityRoleHasExactPermissionKey(role, "runtime.worker.control") {
-		t.Fatal("explicit Runtime Ops wildcard was not honored")
+	if IdentityRoleHasExactPermissionKey(role, "runtime.worker.control") {
+		t.Fatal("resource wildcard expanded into a different Action permission")
 	}
 }
 
-func TestGuardrailDenyOverridesPositiveGrantAndWorkspaceAdministrator(t *testing.T) {
+func TestGuardrailDenyOverridesPositiveGrant(t *testing.T) {
 	role := identitymodel.RoleSchema{
-		Permissions:     []string{"workspace.admin", "payment.approve"},
+		Permissions:     []string{"identity.roles.list", "payment.approve"},
 		DataPermissions: []identitymodel.DataPermission{{ObjectKey: "payment", Scope: "all_records", Read: true, Write: true}},
 		Guardrails: []identitymodel.IdentityGuardrailPolicy{{
 			Key:                  "separation_of_duties",
@@ -38,11 +38,12 @@ func TestGuardrailDenyOverridesPositiveGrantAndWorkspaceAdministrator(t *testing
 	if IdentityRoleHasPermissionKey(role, "payment.approve") || IdentityRoleAllows(role, "payment", "approve") {
 		t.Fatal("guardrail did not override positive function grant")
 	}
-	if !IdentityRoleHasPermissionKey(role, "workspace.admin") || !IdentityRoleAllowsData(role, "payment", "read") || IdentityRoleAllowsData(role, "payment", "update") {
+	if !IdentityRoleHasPermissionKey(role, "identity.roles.list") || !IdentityRoleAllowsData(role, "payment", "read") || IdentityRoleAllowsData(role, "payment", "update") {
 		t.Fatal("guardrail data action decision mismatch")
 	}
-	if !IdentityRoleGuardrailDeniesField(role, "payment", "bank_account", "view") ||
+	if !IdentityRoleGuardrailDeniesField(role, "payment", "bank_account", "read") ||
 		!IdentityRoleGuardrailDeniesField(role, "payment", "bank_account", "export") ||
+		IdentityRoleGuardrailDeniesField(role, "payment", "bank_account", "view") ||
 		IdentityRoleGuardrailDeniesField(role, "payment", "amount", "read") {
 		t.Fatal("guardrail field decision mismatch")
 	}
@@ -61,8 +62,8 @@ func TestIdentityAuthorizationContractRemainingShortCircuitOutcomes(t *testing.T
 	if IdentityRoleHasExactPermissionKey(denied, "payment.approve") {
 		t.Fatal("guardrail did not deny exact permission")
 	}
-	if !IdentityRoleHasExactPermissionKey(identitymodel.RoleSchema{Permissions: []string{"*"}}, "runtime.worker.control") {
-		t.Fatal("global exact wildcard was not honored")
+	if IdentityRoleHasExactPermissionKey(identitymodel.RoleSchema{Permissions: []string{"*"}}, "runtime.worker.control") {
+		t.Fatal("global wildcard expanded into an exact Action permission")
 	}
 	if IdentityRoleHasExactPermissionKey(identitymodel.RoleSchema{Permissions: []string{"runtime.worker.*"}}, "runtime.scheduler.control") {
 		t.Fatal("unrelated exact wildcard was honored")
@@ -111,11 +112,11 @@ func TestIdentityAuthorizationContractLocalDecisionMatrix(t *testing.T) {
 	if IdentityRoleHasPermissionKey(identitymodel.RoleSchema{}, "") {
 		t.Fatal("blank permission accepted")
 	}
-	if !IdentityRoleHasPermissionKey(identitymodel.RoleSchema{Permissions: []string{"*"}}, "invoice.read") {
-		t.Fatal("global permission wildcard was not honored")
+	if IdentityRoleHasPermissionKey(identitymodel.RoleSchema{Permissions: []string{"*"}}, "invoice.read") {
+		t.Fatal("global wildcard expanded into an Action permission")
 	}
-	if !IdentityRoleHasPermissionKey(identitymodel.RoleSchema{Permissions: []string{"invoice.*"}}, "invoice.read") {
-		t.Fatal("matching permission wildcard was not honored")
+	if IdentityRoleHasPermissionKey(identitymodel.RoleSchema{Permissions: []string{"invoice.*"}}, "invoice.read") {
+		t.Fatal("resource wildcard expanded into an Action permission")
 	}
 	if IdentityRoleHasPermissionKey(identitymodel.RoleSchema{Permissions: []string{"invoice.*"}}, "payment.read") {
 		t.Fatal("unrelated permission wildcard was honored")
@@ -127,11 +128,11 @@ func TestIdentityAuthorizationContractLocalDecisionMatrix(t *testing.T) {
 	if !IdentityRoleAllows(identitymodel.RoleSchema{Permissions: []string{"invoice.read"}}, "invoice", "read") {
 		t.Fatal("direct object action was not honored")
 	}
-	if !IdentityRoleAllows(identitymodel.RoleSchema{Permissions: []string{"action.invoice.view"}}, "invoice", "read") {
-		t.Fatal("qualified legacy view action was not normalized")
+	if IdentityRoleAllows(identitymodel.RoleSchema{Permissions: []string{"action.invoice.view"}}, "invoice", "read") {
+		t.Fatal("legacy qualified permission was treated as invoice.read")
 	}
-	if !IdentityRoleAllows(identitymodel.RoleSchema{Permissions: []string{"invoice.update"}}, "invoice", "edit") {
-		t.Fatal("legacy edit action was not normalized")
+	if IdentityRoleAllows(identitymodel.RoleSchema{Permissions: []string{"invoice.update"}}, "invoice", "edit") {
+		t.Fatal("legacy edit alias was treated as invoice.update")
 	}
 	if IdentityRoleAllows(identitymodel.RoleSchema{Permissions: []string{"action.payment.view"}}, "invoice", "read") {
 		t.Fatal("qualified permission for another object was honored")
@@ -169,8 +170,8 @@ func TestIdentityAuthorizationContractLocalDecisionMatrix(t *testing.T) {
 		t.Fatal("field restriction for another action was honored")
 	}
 
-	if scope := IdentityDataScope(identitymodel.RoleSchema{Permissions: []string{"workspace.admin"}}, "invoice", false); scope != "all_records" {
-		t.Fatalf("administrator scope=%q", scope)
+	if scope := IdentityDataScope(identitymodel.RoleSchema{Permissions: []string{"identity.roles.list"}}, "invoice", false); scope != "none" {
+		t.Fatalf("functional Permission expanded into data scope=%q", scope)
 	}
 	scopeRole := identitymodel.RoleSchema{DataPermissions: []identitymodel.DataPermission{
 		{ObjectKey: "other", Scope: "all_records", Read: true, Write: true},

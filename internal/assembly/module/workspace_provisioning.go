@@ -11,13 +11,15 @@ import (
 	"unicode"
 
 	identitysdk "github.com/domainry/domainry-identity-sdk"
+	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	identitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity"
+	identitytransaction "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/transaction"
 	"golang.org/x/crypto/bcrypt"
 )
 
 func (binding *moduleBinding) ProvisionWorkspaceIdentity(ctx context.Context, request identitysdk.WorkspaceIdentityProvisionRequest, transaction identitysdk.EmbeddedTransaction) (identitysdk.WorkspaceIdentityProvisionResult, error) {
-	if binding == nil || binding.runtime == nil || binding.runtime.Identity == nil || binding.runtime.IdentityStore == nil {
+	if binding == nil || binding.runtime == nil || binding.runtime.Identity == nil || binding.runtime.IdentityStore == nil || binding.runtime.IdentityActions == nil {
 		return identitysdk.WorkspaceIdentityProvisionResult{}, &identitysdk.Error{Code: "identity.workspace_provisioning_unavailable"}
 	}
 	tx, ok := transaction.Native.(*sql.Tx)
@@ -69,6 +71,14 @@ func (binding *moduleBinding) ProvisionWorkspaceIdentity(ctx context.Context, re
 	}); err != nil {
 		return identitysdk.WorkspaceIdentityProvisionResult{}, err
 	}
+	permissionCatalog, err := identityapplication.NewIdentityPermissionCatalogApplicationService(binding.runtime.IdentityStore, binding.runtime.IdentityActions, request.WorkspaceID)
+	if err != nil {
+		return identitysdk.WorkspaceIdentityProvisionResult{}, fmt.Errorf("assemble workspace Identity permission catalog: %w", err)
+	}
+	txContext := identitytransaction.WithExecutor(ctx, tx)
+	if _, err := permissionCatalog.ReconcileOwner(txContext, identityapplication.IdentityBuiltinAuthorizationOwner); err != nil {
+		return identitysdk.WorkspaceIdentityProvisionResult{}, fmt.Errorf("provision workspace Identity permissions: %w", err)
+	}
 	if err := binding.runtime.AuthStore.UpsertIdentityCredentialWithExecutor(ctx, tx, request.WorkspaceID, identitymodel.IdentityCredential{
 		UserID: "admin", PasswordHash: string(passwordHash), MustChangePassword: true,
 	}); err != nil {
@@ -97,10 +107,8 @@ func (binding *moduleBinding) ReconcileWorkspaceRoles(ctx context.Context, reque
 		return identitysdk.WorkspaceRoleReconcileResult{}, &identitysdk.Error{Code: "identity.workspace_provisioning_invalid", Cause: err}
 	}
 	roles := binding.provisionedWorkspaceRoles(workspaceID)
-	for _, role := range roles {
-		if err := binding.runtime.IdentityStore.UpsertIdentityRoleWithExecutor(ctx, tx, workspaceID, role); err != nil {
-			return identitysdk.WorkspaceRoleReconcileResult{}, fmt.Errorf("reconcile workspace role %s: %w", role.Key, err)
-		}
+	if err := binding.runtime.IdentityStore.UpsertIdentityRolesWithExecutor(ctx, tx, workspaceID, roles); err != nil {
+		return identitysdk.WorkspaceRoleReconcileResult{}, fmt.Errorf("reconcile workspace roles: %w", err)
 	}
 	return identitysdk.WorkspaceRoleReconcileResult{ProvisionedRoles: len(roles)}, nil
 }

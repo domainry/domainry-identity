@@ -39,21 +39,7 @@ func (adapter sdkPrincipalResolver) Resolve(ctx context.Context, request identit
 	if err != nil {
 		return identitysdk.PrincipalResolution{}, sdkBoundaryError(err)
 	}
-	catalog, receipt, found, err := adapter.binding.loadCatalog(ctx, identitysdk.ApplicationRef{
-		TenantID: request.Application.TenantID, WorkspaceID: request.Application.WorkspaceID, ApplicationKey: request.Application.ApplicationKey,
-	})
-	if err != nil {
-		return identitysdk.PrincipalResolution{}, sdkBoundaryError(err)
-	}
-	if !found {
-		return identitysdk.PrincipalResolution{}, &identitysdk.Error{Code: "identity.catalog_not_published"}
-	}
-	bundle := sdkAccessBundle(snapshot, principal, string(receipt.Revision), adapter.binding.clock.Now().UTC())
-	bundle = resolveCatalogRoleAccess(bundle, catalog, principal.Role)
-	bundle, err = accessBundleForCatalog(bundle, catalog)
-	if err != nil {
-		return identitysdk.PrincipalResolution{}, sdkBoundaryError(err)
-	}
+	bundle := sdkAccessBundle(snapshot, principal, adapter.binding.clock.Now().UTC())
 	result := identitysdk.Principal{
 		ContractVersion: identitysdk.PrincipalContextContractVersion, Known: principal.Known,
 		WorkspaceID: principal.WorkspaceID, UserID: principal.UserID, RoleKey: principal.Role.Key,

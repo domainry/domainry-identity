@@ -26,7 +26,6 @@ func IdentityRoleAuthoringCapability() authoringcontract.CapabilityAuthoringDefi
 	input := metadatacontract.VersionedMetadataDefinitionRequestSchema(payload, false)
 	output := metadatacontract.VersionedMetadataDefinitionOutputSchema(payload)
 	execution := metadatacontract.VersionedMetadataDefinitionExecution("identity.role")
-	execution.PermissionModel = "identity.roles.write"
 	return authoringcontract.CapabilityAuthoringDefinition{
 		Key: "identity.role", Status: "supported", Lifecycle: "versioned_metadata",
 		Parameters: []authoringcontract.CapabilityAuthoringParameter{
@@ -39,7 +38,7 @@ func IdentityRoleAuthoringCapability() authoringcontract.CapabilityAuthoringDefi
 			{Key: "permission_set_group_keys", Type: "array", ItemSchema: "permission_set_group_key"},
 			{Key: "guardrail_keys", Type: "array", ItemSchema: "guardrail_key"},
 		},
-		Permissions: []string{"identity.roles.write"}, AuditEvents: []string{"metadata_definition.saved"},
+		AuditEvents:        []string{"metadata_definition.saved"},
 		ValidationEndpoint: "POST /tenant-admin/metadata/definitions/role/{resourceKey}/validate", ConfigurationRoutes: metadatacontract.VersionedMetadataDefinitionRoutes("role"),
 		ResourceOperations:       metadatacontract.VersionedMetadataDefinitionOperations("role"),
 		ResourceKeyPathParameter: "resourceKey", InputSchema: input, OutputSchema: output,
@@ -68,8 +67,8 @@ func IdentityRolePermissionAuthoringCapability() authoringcontract.CapabilityAut
 	output := &authoringcontract.CapabilityAuthoringSchema{Schema: "https://json-schema.org/draft/2020-12/schema", Type: "array", Items: &assignment}
 	return authoringcontract.CapabilityAuthoringDefinition{
 		Key: "identity.role_permission", Status: "supported", Lifecycle: "versioned_metadata", Requires: []string{"identity.role"},
-		Parameters:  []authoringcontract.CapabilityAuthoringParameter{{Key: "permission_keys", Type: "array", Required: true, ItemSchema: "permission_key"}},
-		Permissions: []string{"identity.permissions.write"}, AuditEvents: []string{"metadata_definition.saved"},
+		Parameters:         []authoringcontract.CapabilityAuthoringParameter{{Key: "permission_keys", Type: "array", Required: true, ItemSchema: "permission_key"}},
+		AuditEvents:        []string{"metadata_definition.saved"},
 		ValidationEndpoint: "POST /identity/roles/{roleID}/permissions/validate", ConfigurationRoutes: identityRoleMetadataRoutes("POST /identity/roles/{roleID}/permissions/validate", "GET /identity/roles/{roleID}/permissions"),
 		ResourceKeyPathParameter: "roleID", InputSchema: input, OutputSchema: output,
 		OutputVariables: []authoringcontract.CapabilityAuthoringOutput{{Name: "permission_assignments", JSONPointer: "/", Type: "identity_role_permission_list", VisibleTo: "subsequent_capability_calls"}},
@@ -79,10 +78,12 @@ func IdentityRolePermissionAuthoringCapability() authoringcontract.CapabilityAut
 		},
 		Execution: &authoringcontract.CapabilityAuthoringExecution{
 			ReadSet: []string{"identity.role", "identity.permission_catalog"}, WriteSet: []string{"metadata.definition_version", "identity.role"}, Transaction: "metadata_repository_transaction", Idempotency: "builder_task_id_and_idempotency_key",
-			SideEffects: []string{"audit:metadata_definition.saved", "schema_snapshot_rebuild"}, SideEffectLevel: "internal", Compensation: "restore_prior_version_as_new_revision", PermissionModel: "identity.permissions.write", ChangeControl: "direct_audited_versioned_metadata",
+			SideEffects: []string{"audit:metadata_definition.saved", "schema_snapshot_rebuild"}, SideEffectLevel: "internal", Compensation: "restore_prior_version_as_new_revision", PermissionModel: authoringcontract.CapabilityPermissionModelExactAction, ChangeControl: "direct_audited_versioned_metadata",
 		},
 		Errors: []authoringcontract.CapabilityAuthoringError{
 			{Code: "backend.identity.permission_not_found", FieldPath: "permission_keys[]", ParameterKeys: []string{"allowed", "actual"}, MessageKey: "backend.identity.permission_not_found"},
+			{Code: "backend.identity.permission_retired", FieldPath: "permission_keys[]", ParameterKeys: []string{"allowed", "actual"}, MessageKey: "backend.identity.permission_retired"},
+			{Code: "backend.identity.permission_disabled", FieldPath: "permission_keys[]", ParameterKeys: []string{"allowed", "actual"}, MessageKey: "backend.identity.permission_disabled"},
 			{Code: "backend.identity.permission_duplicate", FieldPath: "permission_keys[]", ParameterKeys: []string{"actual"}, MessageKey: "backend.identity.permission_duplicate"},
 		},
 		Examples: []authoringcontract.CapabilityAuthoringExample{

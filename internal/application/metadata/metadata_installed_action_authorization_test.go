@@ -12,7 +12,7 @@ import (
 func TestInstalledActionAuthorizationRequiresPersistedActionAndRoleGrantMatrix(t *testing.T) {
 	installed := manifestmodel.ManifestSchema{
 		Actions: []definitionmodel.ActionSchema{{
-			Key: "booking.cancel", RequiresPermission: "booking.cancel",
+			Key: "booking.cancel",
 		}},
 		Roles: []identitymodel.RoleSchema{
 			{Key: "member", Permissions: []string{"booking.cancel"}},

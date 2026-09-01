@@ -25,7 +25,7 @@ type IdentityEffectiveAccessWorkspaceScope interface {
 }
 
 func (s *IdentityEffectiveAccessApplicationService) ReverseIndex(ctx context.Context, actor identitymodel.Principal) (identitymodel.IdentityAccessReverseIndex, error) {
-	scoped, workspaceContext, err := s.governanceScope(ctx, actor)
+	scoped, workspaceContext, err := s.governanceScope(ctx, actor, "identity.access.reverse_index")
 	if err != nil {
 		return identitymodel.IdentityAccessReverseIndex{}, err
 	}
@@ -41,7 +41,7 @@ func (s *IdentityEffectiveAccessApplicationService) ReverseIndex(ctx context.Con
 }
 
 func (s *IdentityEffectiveAccessApplicationService) GovernanceReports(ctx context.Context, actor identitymodel.Principal) (identitymodel.IdentityGovernanceReports, error) {
-	scoped, workspaceContext, err := s.governanceScope(ctx, actor)
+	scoped, workspaceContext, err := s.governanceScope(ctx, actor, "identity.access.reports")
 	if err != nil {
 		return identitymodel.IdentityGovernanceReports{}, err
 	}
@@ -72,7 +72,7 @@ func (s *IdentityEffectiveAccessApplicationService) GovernanceReports(ctx contex
 }
 
 func (s *IdentityEffectiveAccessApplicationService) PreviewRoleChange(ctx context.Context, request identitymodel.IdentityRoleChangeImpactRequest, actor identitymodel.Principal) (identitymodel.IdentityRoleChangeImpact, error) {
-	scoped, workspaceContext, err := s.governanceScope(ctx, actor)
+	scoped, workspaceContext, err := s.governanceScope(ctx, actor, IdentityActionRolesImpactPreview)
 	if err != nil {
 		return identitymodel.IdentityRoleChangeImpact{}, err
 	}
@@ -106,11 +106,11 @@ func (s *IdentityEffectiveAccessApplicationService) PreviewRoleChange(ctx contex
 	return identityprojection.IdentityPreviewRoleChange(request, current, directoryRole, assignments, scopedEffectiveAccessObjects(s.dependencies.Objects), append([]definitionmodel.ActionSchema(nil), s.dependencies.Actions()...)), nil
 }
 
-func (s *IdentityEffectiveAccessApplicationService) governanceScope(ctx context.Context, actor identitymodel.Principal) (*IdentityApplicationService, context.Context, error) {
+func (s *IdentityEffectiveAccessApplicationService) governanceScope(ctx context.Context, actor identitymodel.Principal, actionKey string) (*IdentityApplicationService, context.Context, error) {
 	if err := identityAuthorizeQuery(actor); err != nil {
 		return nil, nil, err
 	}
-	if !identitycontract.IdentityRoleHasPermissionKey(actor.Role, "identity.roles.read") {
+	if !identitycontract.IdentityRoleHasPermissionKey(actor.Role, actionKey) {
 		return nil, nil, &apperror.AppError{Kind: apperror.KindForbidden, Code: "backend.permission.denied"}
 	}
 	if s == nil || s.dependencies.Identity == nil || s.dependencies.Objects == nil {
@@ -132,7 +132,11 @@ func NewIdentityEffectiveAccessApplicationService(dependencies IdentityEffective
 }
 
 func (s *IdentityEffectiveAccessApplicationService) Snapshot(ctx context.Context, userID string, actor identitymodel.Principal) (identitymodel.IdentityEffectiveAccessSnapshot, error) {
-	if err := identityAuthorizeEffectiveAccess(actor, userID); err != nil {
+	return s.snapshot(ctx, userID, actor, "identity.users.effective_access")
+}
+
+func (s *IdentityEffectiveAccessApplicationService) snapshot(ctx context.Context, userID string, actor identitymodel.Principal, permission string) (identitymodel.IdentityEffectiveAccessSnapshot, error) {
+	if err := identityAuthorizeEffectiveAccess(actor, userID, permission); err != nil {
 		return identitymodel.IdentityEffectiveAccessSnapshot{}, err
 	}
 	if s == nil || s.dependencies.Identity == nil || s.dependencies.Objects == nil {
@@ -178,7 +182,7 @@ func (s *IdentityEffectiveAccessApplicationService) Snapshot(ctx context.Context
 }
 
 func (s *IdentityEffectiveAccessApplicationService) Explain(ctx context.Context, request identitymodel.IdentityAccessExplainRequest, actor identitymodel.Principal) (identitymodel.IdentityAccessExplainResult, error) {
-	snapshot, err := s.Snapshot(ctx, request.UserID, actor)
+	snapshot, err := s.snapshot(ctx, request.UserID, actor, "identity.access.explain")
 	if err != nil {
 		return identitymodel.IdentityAccessExplainResult{}, err
 	}
@@ -213,11 +217,11 @@ func (s *IdentityEffectiveAccessApplicationService) Explain(ctx context.Context,
 	return result, nil
 }
 
-func identityAuthorizeEffectiveAccess(actor identitymodel.Principal, userID string) error {
+func identityAuthorizeEffectiveAccess(actor identitymodel.Principal, userID, permission string) error {
 	if err := identityAuthorizeQuery(actor); err != nil {
 		return err
 	}
-	if strings.TrimSpace(userID) == actor.UserID || identitycontract.IdentityRoleHasPermissionKey(actor.Role, "identity.roles.read") {
+	if strings.TrimSpace(userID) == actor.UserID || identitycontract.IdentityRoleHasPermissionKey(actor.Role, permission) {
 		return nil
 	}
 	return &apperror.AppError{Kind: apperror.KindForbidden, Code: "backend.permission.denied"}

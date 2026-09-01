@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	identitysdk "github.com/domainry/domainry-identity-sdk"
+	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
 	identitymodule "github.com/domainry/domainry-identity/module"
 	_ "modernc.org/sqlite"
 )
@@ -30,12 +31,12 @@ func TestBootstrapBindingCreatesNoTenantBeforeHostAtomicProvision(t *testing.T) 
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	factory := identitymodule.NewFactory(identitymodule.Options{IdentityVersion: "test", DatabaseDriver: "sqlite", DatabasePath: databasePath})
-	bootstrap, err := factory.OpenBootstrapWithDatabase(t.Context(), "runtime", identitysdk.DatabaseHandle{Pool: db, Driver: "sqlite", FilePath: databasePath})
+	bootstrap, err := factory.OpenBootstrapWithDatabase(t.Context(), "runtime", identitysdk.DatabaseHandle{Pool: db, Driver: "sqlite", FilePath: databasePath, Migrations: &testEmbeddedMigrationRegistrar{}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = bootstrap.Close(t.Context()) })
-	for _, table := range []string{"domainry_identity__identity_users", "domainry_identity__identity_roles", "domainry_identity__identity_user_role_assignments", "domainry_identity__identity_credentials"} {
+	for _, table := range []string{"_identity_users", "_identity_roles", "_identity_user_role_assignments", "_identity_credentials", "_identity_permissions"} {
 		assertAllIdentityRows(t, db, table, 0)
 	}
 	failed, err := db.BeginTx(t.Context(), nil)
@@ -69,9 +70,10 @@ func TestBootstrapBindingCreatesNoTenantBeforeHostAtomicProvision(t *testing.T) 
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	assertIdentityRowCount(t, db, "domainry_identity__identity_users", "workspace-primary", 1)
-	assertIdentityRowCount(t, db, "domainry_identity__identity_user_role_assignments", "workspace-primary", 1)
-	assertIdentityRowCount(t, db, "domainry_identity__identity_credentials", "workspace-primary", 1)
+	assertIdentityRowCount(t, db, "_identity_users", "workspace-primary", 1)
+	assertIdentityRowCount(t, db, "_identity_user_role_assignments", "workspace-primary", 1)
+	assertIdentityRowCount(t, db, "_identity_credentials", "workspace-primary", 1)
+	assertIdentityRowCount(t, db, "_identity_permissions", "workspace-primary", standaloneIdentityPermissionCount())
 }
 
 func TestEmbeddedWorkspaceProvisioningJoinsHostTransaction(t *testing.T) {
@@ -82,7 +84,7 @@ func TestEmbeddedWorkspaceProvisioningJoinsHostTransaction(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	application := identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "runtime"}
-	binding, err := identitymodule.NewFactory(identitymodule.Options{IdentityVersion: "test", DatabaseDriver: "sqlite", DatabasePath: databasePath}).OpenWithDatabase(t.Context(), application, identitysdk.DatabaseHandle{Pool: db, Driver: "sqlite", FilePath: databasePath})
+	binding, err := identitymodule.NewFactory(identitymodule.Options{IdentityVersion: "test", DatabaseDriver: "sqlite", DatabasePath: databasePath}).OpenWithDatabase(t.Context(), application, identitysdk.DatabaseHandle{Pool: db, Driver: "sqlite", FilePath: databasePath, Migrations: &testEmbeddedMigrationRegistrar{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +112,8 @@ func TestEmbeddedWorkspaceProvisioningJoinsHostTransaction(t *testing.T) {
 	if err := rolledBack.Rollback(); err != nil {
 		t.Fatal(err)
 	}
-	assertIdentityRowCount(t, db, "domainry_identity__identity_users", "workspace-rollback", 0)
+	assertIdentityRowCount(t, db, "_identity_users", "workspace-rollback", 0)
+	assertIdentityRowCount(t, db, "_identity_permissions", "workspace-rollback", 0)
 
 	tx, err := db.BeginTx(t.Context(), nil)
 	if err != nil {
@@ -128,10 +131,11 @@ func TestEmbeddedWorkspaceProvisioningJoinsHostTransaction(t *testing.T) {
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	assertIdentityRowCount(t, db, "domainry_identity__identity_users", "workspace-active", 1)
-	assertIdentityRowCount(t, db, "domainry_identity__identity_roles", "workspace-active", 2)
-	assertIdentityRowCount(t, db, "domainry_identity__identity_user_role_assignments", "workspace-active", 1)
-	assertIdentityRowCount(t, db, "domainry_identity__identity_credentials", "workspace-active", 1)
+	assertIdentityRowCount(t, db, "_identity_users", "workspace-active", 1)
+	assertIdentityRowCount(t, db, "_identity_roles", "workspace-active", 2)
+	assertIdentityRowCount(t, db, "_identity_user_role_assignments", "workspace-active", 1)
+	assertIdentityRowCount(t, db, "_identity_credentials", "workspace-active", 1)
+	assertIdentityRowCount(t, db, "_identity_permissions", "workspace-active", standaloneIdentityPermissionCount())
 }
 
 func TestEmbeddedWorkspaceProvisioningRollsBackEveryIdentityBoundary(t *testing.T) {
@@ -150,7 +154,7 @@ func TestEmbeddedWorkspaceProvisioningRollsBackEveryIdentityBoundary(t *testing.
 			}
 			t.Cleanup(func() { _ = db.Close() })
 			application := identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "runtime"}
-			binding, err := identitymodule.NewFactory(identitymodule.Options{IdentityVersion: "test", DatabaseDriver: "sqlite", DatabasePath: databasePath}).OpenWithDatabase(t.Context(), application, identitysdk.DatabaseHandle{Pool: db, Driver: "sqlite", FilePath: databasePath})
+			binding, err := identitymodule.NewFactory(identitymodule.Options{IdentityVersion: "test", DatabaseDriver: "sqlite", DatabasePath: databasePath}).OpenWithDatabase(t.Context(), application, identitysdk.DatabaseHandle{Pool: db, Driver: "sqlite", FilePath: databasePath, Migrations: &testEmbeddedMigrationRegistrar{}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -172,7 +176,7 @@ func TestEmbeddedWorkspaceProvisioningRollsBackEveryIdentityBoundary(t *testing.
 			if err := failedTx.Rollback(); err != nil {
 				t.Fatal(err)
 			}
-			for _, table := range []string{"domainry_identity__identity_users", "domainry_identity__identity_roles", "domainry_identity__identity_user_role_assignments", "domainry_identity__identity_credentials"} {
+			for _, table := range []string{"_identity_users", "_identity_roles", "_identity_user_role_assignments", "_identity_credentials", "_identity_permissions"} {
 				assertIdentityRowCount(t, db, table, request.WorkspaceID, 0)
 			}
 
@@ -188,9 +192,10 @@ func TestEmbeddedWorkspaceProvisioningRollsBackEveryIdentityBoundary(t *testing.
 			if err := retryTx.Commit(); err != nil {
 				t.Fatal(err)
 			}
-			for _, table := range []string{"domainry_identity__identity_users", "domainry_identity__identity_roles", "domainry_identity__identity_user_role_assignments", "domainry_identity__identity_credentials"} {
+			for _, table := range []string{"_identity_users", "_identity_roles", "_identity_user_role_assignments", "_identity_credentials"} {
 				assertIdentityRowCount(t, db, table, request.WorkspaceID, 1)
 			}
+			assertIdentityRowCount(t, db, "_identity_permissions", request.WorkspaceID, standaloneIdentityPermissionCount())
 		})
 	}
 }
@@ -204,6 +209,16 @@ func assertIdentityRowCount(t *testing.T, db *sql.DB, table, workspaceID string,
 	if count != want {
 		t.Fatalf("%s workspace %s count=%d want=%d", table, workspaceID, count, want)
 	}
+}
+
+func standaloneIdentityPermissionCount() int {
+	count := 0
+	for _, action := range identityapplication.StandaloneIdentityAuthorizationSliceActions() {
+		if action.Permission != nil {
+			count++
+		}
+	}
+	return count
 }
 
 func assertAllIdentityRows(t *testing.T, db *sql.DB, table string, want int) {

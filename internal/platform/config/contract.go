@@ -226,6 +226,9 @@ func (c Config) Validate() error {
 	if c.AuthAccessTTL <= 0 || c.AuthRefreshTTL <= c.AuthAccessTTL {
 		return fmt.Errorf("AUTH_REFRESH_TTL must be greater than positive AUTH_ACCESS_TTL")
 	}
+	if err := c.validateRuntimeActionUsageConfiguration(); err != nil {
+		return err
+	}
 	if strings.TrimSpace(c.Port) == "" {
 		return fmt.Errorf("PORT is required")
 	}

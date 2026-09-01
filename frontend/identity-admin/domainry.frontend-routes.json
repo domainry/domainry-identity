@@ -57,7 +57,7 @@
       "surface": "admin_console",
       "feature_module": "src/features/org/identity-accounts-page.tsx",
       "required_permissions": [
-        "identity.users.read"
+        "identity.users.list"
       ],
       "required_roles": [],
       "entrypoint_keys": [],
@@ -89,7 +89,7 @@
           "platform_admin"
         ],
         "required_permissions": [
-          "identity.users.read"
+          "identity.users.list"
         ],
         "exposure_class": "platform_admin",
         "high_risk_action_policy": "none"
@@ -105,7 +105,7 @@
       "surface": "admin_console",
       "feature_module": "src/features/org/identity-user-detail-page.tsx",
       "required_permissions": [
-        "identity.users.read"
+        "identity.users.get"
       ],
       "required_roles": [],
       "entrypoint_keys": [],
@@ -137,7 +137,7 @@
           "platform_admin"
         ],
         "required_permissions": [
-          "identity.users.read"
+          "identity.users.get"
         ],
         "exposure_class": "platform_admin",
         "high_risk_action_policy": "none"
@@ -153,7 +153,7 @@
       "surface": "admin_console",
       "feature_module": "src/features/org/workforce-page.tsx",
       "required_permissions": [
-        "identity.workforce.read"
+        "identity.workforce.list"
       ],
       "required_roles": [],
       "entrypoint_keys": [],
@@ -185,7 +185,7 @@
           "platform_admin"
         ],
         "required_permissions": [
-          "identity.workforce.read"
+          "identity.workforce.list"
         ],
         "exposure_class": "platform_admin",
         "high_risk_action_policy": "none"
@@ -201,7 +201,7 @@
       "surface": "admin_console",
       "feature_module": "src/features/org/workforce-detail-page.tsx",
       "required_permissions": [
-        "identity.workforce.read"
+        "identity.workforce.detail"
       ],
       "required_roles": [],
       "entrypoint_keys": [],
@@ -233,7 +233,7 @@
           "platform_admin"
         ],
         "required_permissions": [
-          "identity.workforce.read"
+          "identity.workforce.detail"
         ],
         "exposure_class": "platform_admin",
         "high_risk_action_policy": "none"
@@ -249,7 +249,7 @@
       "surface": "admin_console",
       "feature_module": "src/features/departments/department-management.tsx",
       "required_permissions": [
-        "identity.departments.read"
+        "identity.departments.list"
       ],
       "required_roles": [],
       "entrypoint_keys": [],
@@ -281,7 +281,7 @@
           "platform_admin"
         ],
         "required_permissions": [
-          "identity.departments.read"
+          "identity.departments.list"
         ],
         "exposure_class": "platform_admin",
         "high_risk_action_policy": "none"
@@ -297,7 +297,7 @@
       "surface": "admin_console",
       "feature_module": "src/features/org/roles.tsx",
       "required_permissions": [
-        "identity.roles.read"
+        "identity.roles.list"
       ],
       "required_roles": [],
       "entrypoint_keys": [],
@@ -329,7 +329,7 @@
           "platform_admin"
         ],
         "required_permissions": [
-          "identity.roles.read"
+          "identity.roles.list"
         ],
         "exposure_class": "platform_admin",
         "high_risk_action_policy": "none"
@@ -345,7 +345,7 @@
       "surface": "admin_console",
       "feature_module": "src/features/org/menus.tsx",
       "required_permissions": [
-        "identity.menus.read"
+        "identity.menus.list"
       ],
       "required_roles": [],
       "entrypoint_keys": [],
@@ -377,7 +377,7 @@
           "platform_admin"
         ],
         "required_permissions": [
-          "identity.menus.read"
+          "identity.menus.list"
         ],
         "exposure_class": "platform_admin",
         "high_risk_action_policy": "none"
@@ -393,7 +393,7 @@
       "surface": "admin_console",
       "feature_module": "src/features/org/data-scopes.tsx",
       "required_permissions": [
-        "identity.data_scopes.read"
+        "identity.role_data_scopes.list"
       ],
       "required_roles": [],
       "entrypoint_keys": [],
@@ -425,7 +425,7 @@
           "platform_admin"
         ],
         "required_permissions": [
-          "identity.data_scopes.read"
+          "identity.role_data_scopes.list"
         ],
         "exposure_class": "platform_admin",
         "high_risk_action_policy": "none"
@@ -441,7 +441,7 @@
       "surface": "admin_console",
       "feature_module": "src/features/org/field-permissions.tsx",
       "required_permissions": [
-        "identity.field_permissions.read"
+        "identity.role_field_permissions.list"
       ],
       "required_roles": [],
       "entrypoint_keys": [],
@@ -473,7 +473,7 @@
           "platform_admin"
         ],
         "required_permissions": [
-          "identity.field_permissions.read"
+          "identity.role_field_permissions.list"
         ],
         "exposure_class": "platform_admin",
         "high_risk_action_policy": "none"
@@ -489,7 +489,7 @@
       "surface": "admin_console",
       "feature_module": "src/features/system/metadata.tsx",
       "required_permissions": [
-        "metadata.read"
+        "identity.metadata.manifest.get"
       ],
       "required_roles": [],
       "entrypoint_keys": [],
@@ -521,7 +521,7 @@
           "platform_admin"
         ],
         "required_permissions": [
-          "metadata.read"
+          "identity.metadata.manifest.get"
         ],
         "exposure_class": "platform_admin",
         "high_risk_action_policy": "none"

@@ -48,7 +48,7 @@ function securityTime(value?: string) {
 export function IdentityUserDetailPage({ userID }: { userID: string }) {
   const { t } = useI18n()
   const navigate = useNavigate()
-  const { can, has } = usePermissions()
+  const { has } = usePermissions()
   const account = useIdentityAccount(userID)
   const security = useIdentityAccountSecurity(userID)
   const update = useUpdateIdentityAccount()
@@ -182,11 +182,11 @@ export function IdentityUserDetailPage({ userID }: { userID: string }) {
     description={t('accounts.detailDesc')}
     actions={<div className='flex flex-wrap gap-2'>
       <Button asChild variant='outline'><Link to='/admin/security/accounts'><ArrowLeft className='size-4' />{t('personDetail.back')}</Link></Button>
-      {can('users', 'edit') ? <Button variant='outline' onClick={openEdit}><Pencil className='size-4' />{t('common.edit')}</Button> : null}
-      {has('identity.security.write') ? <Button variant='outline' onClick={() => setResettingPassword(true)}><KeyRound className='size-4' />{t('accounts.resetPassword')}</Button> : null}
-      {has('identity.security.write') && security.data?.locked ? <Button variant='outline' disabled={Boolean(securityActionPending)} onClick={() => void unlock()}><LockOpen className='size-4' />{t('accounts.unlock')}</Button> : null}
-      {has('identity.security.write') ? <Button variant='outline' disabled={Boolean(securityActionPending)} onClick={() => void forceLogout()}><LogOut className='size-4' />{t('accounts.forceLogout')}</Button> : null}
-      {has('identity.security.write') ? <Button variant={value.status === 'active' ? 'outline' : 'default'} disabled={update.isPending} onClick={() => value.status === 'active' ? setDisableOpen(true) : setRestoreOpen(true)}><Power className='size-4' />{value.status === 'active' ? t('common.disable') : t('common.enable')}</Button> : null}
+	  {has('identity.users.update') ? <Button variant='outline' onClick={openEdit}><Pencil className='size-4' />{t('common.edit')}</Button> : null}
+	  {has('auth.reset_password') ? <Button variant='outline' onClick={() => setResettingPassword(true)}><KeyRound className='size-4' />{t('accounts.resetPassword')}</Button> : null}
+	  {has('identity.users.unlock') && security.data?.locked ? <Button variant='outline' disabled={Boolean(securityActionPending)} onClick={() => void unlock()}><LockOpen className='size-4' />{t('accounts.unlock')}</Button> : null}
+	  {has('identity.users.force_logout') ? <Button variant='outline' disabled={Boolean(securityActionPending)} onClick={() => void forceLogout()}><LogOut className='size-4' />{t('accounts.forceLogout')}</Button> : null}
+	  {has(value.status === 'active' ? 'identity.users.disable' : 'identity.users.enable') ? <Button variant={value.status === 'active' ? 'outline' : 'default'} disabled={update.isPending} onClick={() => value.status === 'active' ? setDisableOpen(true) : setRestoreOpen(true)}><Power className='size-4' />{value.status === 'active' ? t('common.disable') : t('common.enable')}</Button> : null}
     </div>}
   >
     {detailConflict && !editing ? <DetailConflictAlert error={detailConflict} onReload={() => void reloadLatestAccount()} /> : null}
@@ -216,7 +216,7 @@ export function IdentityUserDetailPage({ userID }: { userID: string }) {
         </dl>
       </CardContent>
     </Card>
-    {has('identity.users.read') ? <IdentityRoleAssignmentList userID={value.id} /> : null}
+	{has('identity.user_role_assignments.list') ? <IdentityRoleAssignmentList userID={value.id} /> : null}
     <Card>
       <CardHeader><CardTitle>{t('accounts.securityPosture')}</CardTitle></CardHeader>
       <CardContent>
@@ -250,7 +250,7 @@ export function IdentityUserDetailPage({ userID }: { userID: string }) {
         </Card>
       </div>
     ) : null}
-    {has('identity.roles.read') ? <EffectiveAccessExplainCard userID={value.id} /> : null}
+	{has('identity.access.explain') ? <EffectiveAccessExplainCard userID={value.id} /> : null}
     <Card>
       <CardContent className='p-5 text-sm text-muted-foreground'>{t('accounts.separateDirectories')}</CardContent>
     </Card>

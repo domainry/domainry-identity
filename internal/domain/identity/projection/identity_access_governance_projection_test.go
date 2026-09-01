@@ -30,7 +30,7 @@ func TestIdentityAccessReverseIndexAndGovernanceReportsAreDeterministic(t *testi
 	}
 	reports := IdentityBuildGovernanceReports(
 		time.Date(2026, 7, 25, 0, 0, 0, 0, time.UTC),
-		[]identitymodel.IdentityPermissionDefinition{{Key: "order.read"}, {Key: "unused.permission"}},
+		[]identitymodel.IdentityPermissionDefinition{{Key: "order.read", DefinitionStatus: identitymodel.IdentityPermissionDefinitionActive, Enabled: true}, {Key: "order.export", DefinitionStatus: identitymodel.IdentityPermissionDefinitionActive, Enabled: true}, {Key: "unused.permission", DefinitionStatus: identitymodel.IdentityPermissionDefinitionActive, Enabled: true}},
 		roles, definitions, assignments, map[string]bool{},
 	)
 	if !reflect.DeepEqual(reports.OrphanPermissions, []string{"unused.permission"}) ||
@@ -53,7 +53,7 @@ func TestIdentityRoleChangeImpactCoversUsersProfilesSensitiveFieldsAndHighRiskAc
 			{UserID: "member", RoleID: "operator-id", BindingKey: "member"},
 		},
 		[]definitionmodel.ObjectSchema{{Key: "order", Fields: []definitionmodel.FieldSchema{{Key: "payment_token", Config: map[string]any{"sensitivity": "credential"}}}}},
-		[]definitionmodel.ActionSchema{{Key: "order.refund", RequiresPermission: "order.refund", RiskLevel: "high"}},
+		[]definitionmodel.ActionSchema{{Key: "order.refund", RiskLevel: "high"}},
 	)
 	if impact.AffectedUserCount != 2 ||
 		!reflect.DeepEqual(impact.ProfileTypes, []string{"business_profile:member", "workforce"}) ||

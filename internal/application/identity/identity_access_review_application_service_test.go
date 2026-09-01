@@ -129,7 +129,7 @@ func TestAccessReviewCreatesPrioritizedPeriodicQueueAndAuditsDecisionsOnce(t *te
 	}
 	identity := NewIdentityApplicationService(repository, nil)
 	identity.ReplaceRoleDefinitions([]identitymodel.RoleSchema{
-		{Key: "admin", Permissions: []string{"workspace.admin"}, RiskLevel: identitymodel.IdentityRoleRiskPrivileged, AssignmentMode: identitymodel.IdentityRoleAssignmentManual},
+		{Key: "admin", Permissions: []string{"identity.roles.list"}, RiskLevel: identitymodel.IdentityRoleRiskPrivileged, AssignmentMode: identitymodel.IdentityRoleAssignmentManual},
 		{Key: "reader", Permissions: []string{"crm.member.read"}, RiskLevel: identitymodel.IdentityRoleRiskNormal, AssignmentMode: identitymodel.IdentityRoleAssignmentManual},
 	})
 	now := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
@@ -148,7 +148,7 @@ func TestAccessReviewCreatesPrioritizedPeriodicQueueAndAuditsDecisionsOnce(t *te
 	})
 	actor := identitymodel.Principal{
 		Known: true, UserID: "admin-1", WorkspaceID: "workspace",
-		Role: identitymodel.RoleSchema{Permissions: []string{"workspace.admin"}, GrantableRoleKeys: []string{"*"}},
+		Role: identitymodel.RoleSchema{Permissions: identityAccessReviewTestPermissions(), GrantableRoleKeys: []string{"*"}},
 	}
 	review, err := service.CreateReview(t.Context(), identitymodel.IdentityAccessReviewCreateRequest{
 		ID: "quarter-2", PeriodStart: "2026-04-01T00:00:00Z", PeriodEnd: "2026-06-30T00:00:00Z", DueAt: "2026-07-31T00:00:00Z",
@@ -162,12 +162,22 @@ func TestAccessReviewCreatesPrioritizedPeriodicQueueAndAuditsDecisionsOnce(t *te
 	if review.Items[1].LastUsedAt != "2025-12-01T00:00:00Z" || len(review.Items[1].PriorityReasons) != 1 || review.Items[1].PriorityReasons[0] != "long_unused" {
 		t.Fatalf("long-unused evidence=%#v", review.Items[1])
 	}
+	if len(review.Items[1].PermissionStates) != 1 || review.Items[1].PermissionStates[0].State != "unknown" {
+		t.Fatalf("initial permission state=%#v", review.Items[1].PermissionStates)
+	}
 	if len(audits) != 1 || audits[0] != "identity_access_review_created" {
 		t.Fatalf("create audits=%#v", audits)
 	}
+	identity.ReplacePermissionDefinitions([]identitymodel.IdentityPermissionDefinition{{
+		Key: "crm.member.read", DefinitionStatus: identitymodel.IdentityPermissionDefinitionActive,
+		Enabled: false, SourceOwner: "application:crm",
+	}})
 	reviews, err := service.ListReviews(t.Context(), "open", actor)
 	if err != nil || len(reviews) != 1 {
 		t.Fatalf("reviews=%#v err=%v", reviews, err)
+	}
+	if state := reviews[0].Items[1].PermissionStates; len(state) != 1 || state[0].State != "disabled" || state[0].SourceOwner != "application:crm" {
+		t.Fatalf("current permission state=%#v", state)
 	}
 	readerItem := review.Items[1]
 	request := identitymodel.IdentityAccessReviewDecisionRequest{
@@ -186,7 +196,7 @@ func TestAccessReviewCreatesPrioritizedPeriodicQueueAndAuditsDecisionsOnce(t *te
 	}
 }
 
-func TestAccessReviewDecisionReusesEntitlementGovernanceAndValidatesShape(t *testing.T) {
+func TestAccessReviewDecisionTreatsWorkspaceCapabilityAsOrdinaryExactGrantAndValidatesShape(t *testing.T) {
 	repository := &identityScopedRepository{
 		roles:       []identitymodel.IdentityRole{{ID: "role-admin", Key: "admin", Status: identitymodel.IdentityStatusActive}},
 		assignments: []identitymodel.IdentityUserRoleAssignment{{UserID: "admin-1", RoleID: "role-admin", Status: "active"}},
@@ -197,21 +207,21 @@ func TestAccessReviewDecisionReusesEntitlementGovernanceAndValidatesShape(t *tes
 	}
 	identity := NewIdentityApplicationService(repository, nil)
 	identity.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{
-		Key: "admin", Permissions: []string{"workspace.admin"}, RiskLevel: identitymodel.IdentityRoleRiskPrivileged, AssignmentMode: identitymodel.IdentityRoleAssignmentManual,
+		Key: "admin", Permissions: []string{"identity.roles.list"}, RiskLevel: identitymodel.IdentityRoleRiskPrivileged, AssignmentMode: identitymodel.IdentityRoleAssignmentManual,
 	}})
 	service := NewIdentityAccessReviewApplicationService(IdentityAccessReviewDependencies{Identity: identity, Now: func() time.Time {
 		return time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
 	}})
-	actor := identitymodel.Principal{Known: true, UserID: "reviewer", WorkspaceID: "workspace", Role: identitymodel.RoleSchema{Permissions: []string{"workspace.admin"}, GrantableRoleKeys: []string{"*"}}}
-	if _, err := service.Decide(t.Context(), "item", identitymodel.IdentityAccessReviewDecisionRequest{
-		Decision: identitymodel.IdentityAccessReviewRevoke, Reason: "remove", ExpectedVersion: 1, IdempotencyKey: "revoke",
-	}, actor); apperror.CodeOf(err) != "backend.identity.last_administrator_revocation_denied" {
-		t.Fatalf("last administrator revocation error=%v", err)
-	}
+	actor := identitymodel.Principal{Known: true, UserID: "reviewer", WorkspaceID: "workspace", Role: identitymodel.RoleSchema{Permissions: identityAccessReviewTestPermissions(), GrantableRoleKeys: []string{"*"}}}
 	if _, err := service.Decide(t.Context(), "item", identitymodel.IdentityAccessReviewDecisionRequest{
 		Decision: identitymodel.IdentityAccessReviewSetExpiry, ExpiresAt: "2026-07-25T11:00:00Z", Reason: "temporary", ExpectedVersion: 1, IdempotencyKey: "expiry",
 	}, actor); apperror.CodeOf(err) != "backend.identity.access_review_expiry_invalid" {
 		t.Fatalf("past expiry error=%v", err)
+	}
+	if receipt, err := service.Decide(t.Context(), "item", identitymodel.IdentityAccessReviewDecisionRequest{
+		Decision: identitymodel.IdentityAccessReviewRevoke, Reason: "remove", ExpectedVersion: 1, IdempotencyKey: "revoke",
+	}, actor); err != nil || receipt.Item.Decision != identitymodel.IdentityAccessReviewRevoke {
+		t.Fatalf("ordinary exact workspace capability revocation receipt=%+v err=%v", receipt, err)
 	}
 	outsider := actor
 	outsider.Role = identitymodel.RoleSchema{}
@@ -346,7 +356,7 @@ func TestAccessReviewCreateValidationAndDependencyFailures(t *testing.T) {
 	}
 	actor := identitymodel.Principal{
 		Known: true, UserID: "reviewer", WorkspaceID: "workspace",
-		Role: identitymodel.RoleSchema{Permissions: []string{"workspace.admin"}, GrantableRoleKeys: []string{"*"}},
+		Role: identitymodel.RoleSchema{Permissions: identityAccessReviewTestPermissions(), GrantableRoleKeys: []string{"*"}},
 	}
 	base := &identityScopedRepository{
 		roles: []identitymodel.IdentityRole{{ID: "role", Key: "reader", Status: identitymodel.IdentityStatusActive}},
@@ -448,7 +458,7 @@ func TestAccessReviewListScopeAndDecisionEdgeOutcomes(t *testing.T) {
 	now := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
 	actor := identitymodel.Principal{
 		Known: true, UserID: "reviewer", WorkspaceID: "workspace",
-		Role: identitymodel.RoleSchema{Permissions: []string{"workspace.admin"}, GrantableRoleKeys: []string{"*"}},
+		Role: identitymodel.RoleSchema{Permissions: identityAccessReviewTestPermissions(), GrantableRoleKeys: []string{"*"}},
 	}
 	base := &identityScopedRepository{
 		users: []identitymodel.IdentityUser{{ID: "user", Status: identitymodel.IdentityStatusActive}},
@@ -608,7 +618,7 @@ func TestAccessReviewListScopeAndDecisionEdgeOutcomes(t *testing.T) {
 func TestAccessReviewScopeDefaultsAndWorkforceAggregation(t *testing.T) {
 	actor := identitymodel.Principal{
 		Known: true, UserID: "reviewer", WorkspaceID: "workspace",
-		Role: identitymodel.RoleSchema{Permissions: []string{"workspace.admin"}},
+		Role: identitymodel.RoleSchema{Permissions: identityAccessReviewTestPermissions()},
 	}
 	if _, err := (*IdentityAccessReviewApplicationService)(nil).ListReviews(t.Context(), "", actor); apperror.CodeOf(err) == "" {
 		t.Fatalf("nil service error=%v", err)
@@ -665,5 +675,13 @@ func TestAccessReviewScopeDefaultsAndWorkforceAggregation(t *testing.T) {
 	defaultNow := NewIdentityAccessReviewApplicationService(IdentityAccessReviewDependencies{})
 	if defaultNow.dependencies.Now == nil {
 		t.Fatal("default clock was not installed")
+	}
+}
+
+func identityAccessReviewTestPermissions() []string {
+	return []string{
+		"identity.access_reviews.create",
+		"identity.access_reviews.list",
+		"identity.access_review_items.decide",
 	}
 }

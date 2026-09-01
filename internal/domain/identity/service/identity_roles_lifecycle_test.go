@@ -193,9 +193,6 @@ func TestIdentityRoleAssignmentAndPrivilegeConditionEdges(t *testing.T) {
 	if !identityAssignmentActive(identitymodel.IdentityUserRoleAssignment{ExpiresAt: &empty}, time.Now()) {
 		t.Fatal("empty expiry should remain active")
 	}
-	if identityPrivilegedAutoAssignableRole(identitymodel.IdentityRole{Key: "member"}) {
-		t.Fatal("ordinary permission was treated as privileged")
-	}
 }
 
 func TestIdentityAssignUserRole(t *testing.T) {

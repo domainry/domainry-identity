@@ -9,7 +9,6 @@ import (
 	"github.com/domainry/domainry-foundation/idempotency"
 	identityauthoring "github.com/domainry/domainry-identity/internal/application/authoring"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
-	identitypolicy "github.com/domainry/domainry-identity/internal/domain/identity/policy"
 )
 
 type identityAuthoringCurrent func(context.Context) (any, bool, error)
@@ -48,7 +47,7 @@ func (h *IdentityHandler) writeIdentityAuthoringResource(
 
 func (h *IdentityHandler) executeIdentityAuthoringUpsert(
 	ctx context.Context,
-	capabilityKey, resourceID, permission, builderTaskID, idempotencyKey, expectedResourceHash string,
+	capabilityKey, resourceID, builderTaskID, idempotencyKey, expectedResourceHash string,
 	payload any,
 	principal identitymodel.Principal,
 	current identityAuthoringCurrent,
@@ -61,7 +60,7 @@ func (h *IdentityHandler) executeIdentityAuthoringUpsert(
 		CapabilityKey: capabilityKey, ResourceID: resourceID, BuilderTaskID: builderTaskID,
 		IdempotencyKey: idempotencyKey, ExpectedResourceHash: expectedResourceHash, Payload: payload,
 	}, principal,
-		func() error { return identityAuthoringAllowed(principal, permission) },
+		func() error { return identityAuthoringScopeAllowed(principal) },
 		func() (any, bool, error) { return current(ctx) },
 		func() (any, error) { return execute(ctx) },
 	)
@@ -93,12 +92,9 @@ func writeIdentityOperationHeaders(w http.ResponseWriter, result identityAuthori
 	}
 }
 
-func identityAuthoringAllowed(principal identitymodel.Principal, permission string) error {
+func identityAuthoringScopeAllowed(principal identitymodel.Principal) error {
 	if !principal.Known || strings.TrimSpace(principal.WorkspaceID) == "" {
 		return apperror.New(apperror.KindBadRequest, "backend.workspace_scope_required", nil, nil)
-	}
-	if !identitypolicy.IdentityRoleHasPermissionKey(principal.Role, permission) {
-		return apperror.New(apperror.KindForbidden, "auth.permission_denied", nil, nil)
 	}
 	return nil
 }

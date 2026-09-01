@@ -41,7 +41,7 @@ func TestIdentityPrincipalContextRouteRequiresAuthenticationAndReturnsCurrentPri
 	known = false
 	response = httptest.NewRecorder()
 	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/identity/principal-context", nil))
-	if response.Code != http.StatusForbidden {
+	if response.Code != http.StatusUnauthorized {
 		t.Fatalf("unknown principal status=%d", response.Code)
 	}
 }

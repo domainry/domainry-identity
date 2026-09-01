@@ -19,7 +19,6 @@ const role = (overrides: Partial<Role> = {}): Role => ({
   members: 1,
   builtIn: false,
   status: 'active',
-  perms: {},
   ...overrides,
 })
 
@@ -32,6 +31,7 @@ const point = (resource: string, action: string): RuntimePermissionPoint => ({
   action,
   category: 'object',
   description: '',
+  action_usage_status: 'unavailable',
 })
 
 describe('data scope permission matrix', () => {

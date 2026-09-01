@@ -47,9 +47,8 @@ describe('role creation governance contract', () => {
       members: 0,
       builtIn: false,
       status: 'active',
-      perms: {},
       businessReason: 'Grant the QA operator only the governed acceptance capabilities.',
-      permissionKeys: ['identity.departments.read'],
+	  permissionKeys: ['identity.departments.list'],
       dataPermission: {
         object_key: 'job_definition',
         scope: 'all_records',
@@ -62,6 +61,6 @@ describe('role creation governance contract', () => {
     const saveRequest = JSON.parse(String(fetchMock.mock.calls[3]?.[1]?.body))
     expect(validateRequest.business_reason).toBe('Grant the QA operator only the governed acceptance capabilities.')
     expect(saveRequest.plan.business_reason).toBe('Grant the QA operator only the governed acceptance capabilities.')
-    expect(saveRequest.plan.items[0].after.permissions).toEqual(['identity.departments.read'])
+	 expect(saveRequest.plan.items[0].after.permissions).toEqual(['identity.departments.list'])
   })
 })

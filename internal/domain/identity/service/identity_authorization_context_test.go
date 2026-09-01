@@ -9,7 +9,7 @@ import (
 )
 
 func TestIdentityAuthorizationRejectsCancelledContextBeforeRepositoryAccess(t *testing.T) {
-	service := NewIdentityDomainService(nil, []identitymodel.IdentityPermissionDefinition{{Key: "workspace.admin"}})
+	service := NewIdentityDomainService(nil, []identitymodel.IdentityPermissionDefinition{{Key: "identity.roles.list"}})
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 

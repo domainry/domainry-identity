@@ -440,6 +440,8 @@ const messages = {
   "roles.capabilities.active": "Available",
   "roles.capabilities.retired": "Retired",
   "roles.capabilities.disabled": "Disabled",
+  "roles.capabilities.usageUnavailable": "Usage unavailable",
+  "roles.capabilities.usageUnavailableDescription": "The Action owner's live registry is currently unavailable; no endpoint binding is inferred from the permission definition.",
   "roles.capabilities.nonHttp": "Non-HTTP entry",
   "roles.capabilities.page": "Page",
   "roles.capabilities.technicalDetails": "Technical details",

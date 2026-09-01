@@ -22,7 +22,7 @@ func TestReconcileSystemManagedBusinessRolesPersistsOnlyMatchingPublishedRole(t 
 	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{
 		{Key: "member", Audience: identitymodel.IdentityRoleAudienceBusiness, RequiredBindingKey: "member", AssignmentMode: identitymodel.IdentityRoleAssignmentSystemManaged},
 		{Key: "viewer", Audience: identitymodel.IdentityRoleAudienceBusiness, RequiredBindingKey: "member", AssignmentMode: identitymodel.IdentityRoleAssignmentManual},
-		{Key: "admin", Audience: identitymodel.IdentityRoleAudienceBusiness, RequiredBindingKey: "member", AssignmentMode: identitymodel.IdentityRoleAssignmentSystemManaged, Permissions: []string{"workspace.admin"}},
+		{Key: "admin", Audience: identitymodel.IdentityRoleAudienceBusiness, RequiredBindingKey: "member", AssignmentMode: identitymodel.IdentityRoleAssignmentSystemManaged, Permissions: []string{"identity.roles.list"}, RiskLevel: identitymodel.IdentityRoleRiskPrivileged},
 	})
 	resolver := &businessProfileResolverStub{profiles: []IdentityBusinessProfile{{BindingKey: "member", ProfileID: "member-1"}}}
 	service.UseBusinessProfileResolver(resolver)

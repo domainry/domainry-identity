@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
 
+	actioncontract "github.com/domainry/domainry-foundation/action"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	"github.com/domainry/domainry-identity-sdk/browsergateway"
 	identityauthoring "github.com/domainry/domainry-identity/internal/application/authoring"
@@ -16,12 +18,14 @@ import (
 	portabilityapplication "github.com/domainry/domainry-identity/internal/application/portability"
 	"github.com/domainry/domainry-identity/internal/assembly"
 	definitionmodel "github.com/domainry/domainry-identity/internal/domain/definition/model"
+	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
 	identityprovider "github.com/domainry/domainry-identity/internal/infrastructure/identityprovider"
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
 	identitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity"
 	portabilitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/portability"
+	runtimeactionusage "github.com/domainry/domainry-identity/internal/infrastructure/runtimeactionusage"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 	authhttp "github.com/domainry/domainry-identity/internal/transport/http/auth"
 	identityhttp "github.com/domainry/domainry-identity/internal/transport/http/identity"
@@ -32,6 +36,8 @@ import (
 type Server struct {
 	core                         *assembly.Core
 	routes                       http.Handler
+	actions                      *identityapplication.IdentityActionRegistry
+	routeInventory               []string
 	identityManagementRoutes     []string
 	embeddedPublicAuthRoutes     []string
 	embeddedManagementAuthRoutes []string
@@ -39,15 +45,57 @@ type Server struct {
 
 type recordingRouteRegistrar struct {
 	mux      *http.ServeMux
+	actions  *identityapplication.IdentityActionRegistry
 	patterns []string
+	err      error
 }
 
 func (registrar *recordingRouteRegistrar) HandleFunc(pattern string, handler func(http.ResponseWriter, *http.Request)) {
+	if !registrar.validate(pattern) {
+		return
+	}
 	registrar.patterns = append(registrar.patterns, pattern)
 	registrar.mux.HandleFunc(pattern, handler)
 }
 
-type ServerAssemblyOptions struct{ Clock identitysdk.Clock }
+func (registrar *recordingRouteRegistrar) Handle(pattern string, handler http.Handler) {
+	if !registrar.validate(pattern) {
+		return
+	}
+	registrar.patterns = append(registrar.patterns, pattern)
+	registrar.mux.Handle(pattern, handler)
+}
+
+func (registrar *recordingRouteRegistrar) validate(pattern string) bool {
+	if registrar == nil || registrar.mux == nil {
+		return false
+	}
+	if registrar.err != nil {
+		return false
+	}
+	method, routeTemplate, ok := strings.Cut(strings.TrimSpace(pattern), " ")
+	if !ok || strings.TrimSpace(method) == "" || strings.TrimSpace(routeTemplate) == "" {
+		registrar.err = fmt.Errorf("HTTP route pattern %q must contain method and route template", pattern)
+		return false
+	}
+	if registrar.actions == nil {
+		return true
+	}
+	if _, found := registrar.actions.ResolveHTTP(method, routeTemplate); !found {
+		registrar.err = fmt.Errorf("HTTP route %q has no ActionDefinition in the frozen standalone registry", pattern)
+		return false
+	}
+	return true
+}
+
+func newRecordingRouteRegistrar(mux *http.ServeMux, actions *identityapplication.IdentityActionRegistry) *recordingRouteRegistrar {
+	return &recordingRouteRegistrar{mux: mux, actions: actions}
+}
+
+type ServerAssemblyOptions struct {
+	Clock           identitysdk.Clock
+	ModuleProviders []actioncontract.Provider
+}
 
 func New(ctx context.Context, cfg config.Config) (*Server, error) {
 	store, err := database.OpenContext(ctx, cfg)
@@ -65,13 +113,52 @@ func NewWithStore(ctx context.Context, cfg config.Config, store *database.Identi
 		_ = store.CloseContext(context.Background())
 		return nil, fmt.Errorf("prepare Identity schema: %w", err)
 	}
-	core, err := assembly.New(ctx, cfg, store, assembly.Options{Clock: options.Clock, WorkspaceID: cfg.IdentityWorkspaceID})
+	core, err := assembly.New(ctx, cfg, store, assembly.Options{
+		Clock: options.Clock, WorkspaceID: cfg.IdentityWorkspaceID,
+		ModuleProviders: append([]actioncontract.Provider(nil), options.ModuleProviders...),
+	})
 	if err != nil {
 		return nil, err
 	}
-	if _, err := core.PermissionCatalog.ReconcileOwner(ctx, identityapplication.IdentityBuiltinAuthorizationOwner); err != nil {
-		_ = core.CloseContext(context.Background())
-		return nil, fmt.Errorf("reconcile standalone Identity permissions: %w", err)
+	if runtimeURL := strings.TrimSpace(cfg.IdentityActionUsageRuntimeURL); runtimeURL != "" {
+		credentialID, credentialErr := runtimeActionUsageCredentialID(cfg)
+		if credentialErr != nil {
+			_ = core.CloseContext(context.Background())
+			return nil, credentialErr
+		}
+		usageApplication := identitysdk.ApplicationRef{
+			TenantID: identitysdk.TenantID(cfg.IdentityWorkspaceID), WorkspaceID: identitysdk.WorkspaceID(cfg.IdentityWorkspaceID),
+			ApplicationKey: identitysdk.ApplicationKey(strings.TrimSpace(cfg.IdentityActionUsageApplicationKey)),
+		}
+		if _, registerErr := core.Binding.Applications().Register(ctx, identitysdk.ApplicationRegistration{Application: usageApplication}); registerErr != nil {
+			_ = core.CloseContext(context.Background())
+			return nil, fmt.Errorf("register Identity Action usage service application: %w", registerErr)
+		}
+		issuer, available := core.Binding.(runtimeactionusage.ApplicationServiceTokenIssuer)
+		if !available {
+			_ = core.CloseContext(context.Background())
+			return nil, fmt.Errorf("Identity Action usage service token issuer is unavailable")
+		}
+		tokenSource, tokenErr := runtimeactionusage.NewApplicationServiceTokenSource(issuer, runtimeactionusage.ServiceTokenOptions{
+			Application: usageApplication, Audience: identitysdk.ApplicationKey(strings.TrimSpace(cfg.IdentityActionUsageRuntimeAudience)),
+			Grant:        identitysdk.ApplicationServiceGrant{Resource: "runtime.authorization.action_usages", Action: "query"},
+			CredentialID: credentialID,
+		})
+		if tokenErr != nil {
+			_ = core.CloseContext(context.Background())
+			return nil, fmt.Errorf("configure Runtime Action usage service identity: %w", tokenErr)
+		}
+		provider, providerErr := runtimeactionusage.New(runtimeactionusage.Options{
+			RuntimeURL: runtimeURL, RequestTimeout: cfg.IdentityActionUsageRequestTimeout, TokenSource: tokenSource,
+		})
+		if providerErr != nil {
+			_ = core.CloseContext(context.Background())
+			return nil, fmt.Errorf("configure Runtime Action usage query: %w", providerErr)
+		}
+		if providerErr = core.PermissionCatalog.UseActionUsageProvider(provider); providerErr != nil {
+			_ = core.CloseContext(context.Background())
+			return nil, fmt.Errorf("bind Runtime Action usage query: %w", providerErr)
+		}
 	}
 	server, err := newHTTPServer(ctx, cfg, core)
 	if err != nil {
@@ -81,12 +168,33 @@ func NewWithStore(ctx context.Context, cfg config.Config, store *database.Identi
 	return server, nil
 }
 
+func runtimeActionUsageCredentialID(cfg config.Config) (string, error) {
+	workspaceID := strings.TrimSpace(cfg.IdentityWorkspaceID)
+	applicationKey := strings.TrimSpace(cfg.IdentityActionUsageApplicationKey)
+	credentialID := strings.TrimSpace(cfg.IdentityActionUsageCredentialID)
+	credentialScope := url.PathEscape(workspaceID) + "/" + url.PathEscape(applicationKey) + "#" + url.PathEscape(credentialID)
+	if strings.TrimSpace(cfg.IdentityApplicationServiceCredentials[credentialScope]) == "" {
+		return "", fmt.Errorf("Runtime Action usage service credential scope %q is unavailable", credentialScope)
+	}
+	return credentialID, nil
+}
+
 func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) (*Server, error) {
-	applicationCredentials, err := remotesdkhttp.NewApplicationCredentialRegistry(cfg.IdentityApplicationServiceCredentials, cfg.IdentityApplicationRateLimitPerMinute)
+	if core == nil || core.IdentityActions == nil {
+		return nil, fmt.Errorf("Identity core and Action registry are required")
+	}
+	applicationCredentials, err := remotesdkhttp.NewApplicationCredentialRegistry(cfg.IdentityApplicationServiceCredentials, cfg.IdentityApplicationPermissionOwners, cfg.IdentityApplicationRateLimitPerMinute)
 	if err != nil {
 		return nil, fmt.Errorf("configure Identity application service credentials: %w", err)
 	}
-	capabilityCatalog := identityauthoring.NewAuthoringCatalog()
+	authoringProjection, err := core.IdentityActions.ProjectAuthoringDomain(identitycontract.IdentityAuthoringDomain())
+	if err != nil {
+		return nil, fmt.Errorf("resolve Identity authoring Actions: %w", err)
+	}
+	capabilityCatalog, err := identityauthoring.NewAuthoringCatalog(authoringProjection.Domain())
+	if err != nil {
+		return nil, fmt.Errorf("project Identity authoring catalog: %w", err)
+	}
 	httpSupport := newHTTPSupport(core.Auth, cfg.CORSAllowedOrigins, httpControlConfig{
 		PublicMaxJSONBodyBytes:        int64(cfg.HTTPPublicMaxJSONBodyBytes),
 		TenantAdminMaxJSONBodyBytes:   int64(cfg.HTTPTenantAdminMaxJSONBodyBytes),
@@ -100,8 +208,24 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 	})
 	httpSupport.initializedWorkspaceID = cfg.IdentityWorkspaceID
 	httpSupport.writesFrozen = core.Store.IdentityWritesFrozen
+	actionDefinitions := core.IdentityActions.Definitions()
+	browserActionDefinitions, err := browsergateway.ActionDefinitions("/browser")
+	if err != nil {
+		return nil, fmt.Errorf("resolve standalone browser authentication Actions: %w", err)
+	}
+	actionDefinitions = append(actionDefinitions, browserActionDefinitions...)
+	protocolActionDefinitions, err := standaloneProtocolAuthorizationActions()
+	if err != nil {
+		return nil, fmt.Errorf("resolve standalone protocol Actions: %w", err)
+	}
+	actionDefinitions = append(actionDefinitions, protocolActionDefinitions...)
+	standaloneActions, err := identityapplication.NewIdentityActionRegistry(actionDefinitions)
+	if err != nil {
+		return nil, fmt.Errorf("freeze standalone HTTP Action registry: %w", err)
+	}
 	mux := http.NewServeMux()
-	registerHealthRoutes(mux, httpSupport)
+	healthRoutes := newRecordingRouteRegistrar(mux, standaloneActions)
+	registerHealthRoutes(healthRoutes, httpSupport)
 	portabilityRepository, err := portabilitypersistence.NewSQLRepository(core.Store)
 	if err != nil {
 		return nil, err
@@ -113,33 +237,31 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 	if err != nil {
 		return nil, err
 	}
+	portabilityRoutes := newRecordingRouteRegistrar(mux, standaloneActions)
 	portabilityhttp.NewHandler(portabilityhttp.Dependencies{
 		Service: portabilityService, AccessToken: cfg.IdentityOperationsAccessToken,
 		DecodeJSON: httpSupport.decodeJSON, WriteJSON: httpSupport.writeJSON, WriteError: httpSupport.writeError,
-	}).RegisterRoutes(mux)
+	}).RegisterRoutes(portabilityRoutes)
 
+	actionAuthorization := identityapplication.NewIdentityActionAuthorizationService(standaloneActions, core.PermissionCatalog)
+	httpSupport.actionAuthorization = actionAuthorization
 	authHandler := authhttp.NewAuthHandler(authhttp.AuthDependencies{
 		Passwords: core.Auth, ExternalAccounts: core.Auth, RoleRequests: core.Identity,
 		ProviderConfiguration: core.ProviderConfiguration, ProviderFlows: core.ProviderFlows, ProviderCallback: identityprovider.CallbackAdapter{},
 		Principal: httpSupport.principal, WriteJSON: httpSupport.writeJSON, WriteError: httpSupport.writeError,
 		WriteServiceError: httpSupport.writeServiceError, DecodeJSON: httpSupport.decodeJSON,
-		Admin: httpSupport.admin, Authenticated: httpSupport.authenticated,
+		ActionAuthorization:  actionAuthorization,
 		ProviderFailureAudit: func(*http.Request, string, string) {}, SecurityAudit: func(*http.Request, string, string, map[string]any) {},
 		SecurityAuditForPrincipal: func(*http.Request, identitymodel.Principal, string, string, map[string]any) {},
 		WritesFrozen:              core.Store.IdentityWritesFrozen, FederatedLoginWorkspace: core.AuthStore.FederatedLoginWorkspace,
 		ApplicationRegistered: func(applicationCtx context.Context, workspaceID, applicationKey string) (bool, error) {
-			_, lookupErr := core.Binding.Catalog().CurrentRevision(applicationCtx, identitysdk.ApplicationRef{WorkspaceID: identitysdk.WorkspaceID(workspaceID), ApplicationKey: identitysdk.ApplicationKey(applicationKey)})
-			if lookupErr == nil {
-				return true, nil
-			}
-			var sdkErr *identitysdk.Error
-			if errors.As(lookupErr, &sdkErr) && (sdkErr.Code == "identity.catalog_not_published" || sdkErr.Code == "identity.application_scope_invalid") {
+			if strings.TrimSpace(workspaceID) != core.Applications.WorkspaceID() {
 				return false, nil
 			}
-			return false, lookupErr
+			return core.Applications.Registered(applicationCtx, applicationKey)
 		},
 	})
-	authRoutes := &recordingRouteRegistrar{mux: mux}
+	authRoutes := newRecordingRouteRegistrar(mux, standaloneActions)
 	authHandler.RegisterRoutes(authRoutes)
 
 	objects := func() []definitionmodel.ObjectSchema { return core.MetadataRuntime.Schema().Objects }
@@ -150,7 +272,7 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 		}
 		return result
 	})
-	rolePermissionPublication := identityapplication.NewIdentityRolePermissionPublicationService(core.Identity, governance, core.PermissionCatalog, core.Metadata)
+	rolePermissionPublication := identityapplication.NewIdentityRolePermissionPublicationService(core.Identity, core.PermissionCatalog, core.Metadata)
 	accessReviews := identityapplication.NewIdentityAccessReviewApplicationService(identityapplication.IdentityAccessReviewDependencies{
 		Identity: core.Identity,
 		Audit: func(ctx context.Context, event, recordID string, principal identitymodel.Principal, metadata map[string]any) {
@@ -165,16 +287,18 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 		WriteServiceError: httpSupport.writeServiceError, DecodeJSON: httpSupport.decodeJSON,
 		SecurityAudit: func(*http.Request, string, string, map[string]any) {}, SecurityPrincipal: func(*http.Request, identitymodel.Principal, string, string, map[string]any) {},
 		Authoring: identityauthoring.NewService(identitypersistence.NewIdentityAuthoringRepository(core.IdentityStore), nil, nil),
-		Actions:   core.IdentityActions, PermissionCatalog: core.PermissionCatalog, RolePermissions: rolePermissionPublication,
+		Actions:   standaloneActions, PermissionCatalog: core.PermissionCatalog, ActionAuthorization: actionAuthorization, RolePermissions: rolePermissionPublication,
 	})
-	identityRoutes := &recordingRouteRegistrar{mux: mux}
+	identityRoutes := newRecordingRouteRegistrar(mux, standaloneActions)
 	identityHandler.RegisterRoutes(identityRoutes)
 
-	if err := registerAuditRoutes(mux, core.AuditBinding, httpSupport); err != nil {
+	moduleRoutes := newRecordingRouteRegistrar(mux, standaloneActions)
+	if err := registerModuleRoutes(moduleRoutes, core.ModuleHTTPProviders, httpSupport); err != nil {
 		return nil, err
 	}
 
-	mux.HandleFunc("GET /permissions/effective", httpSupport.authenticated(func(w http.ResponseWriter, r *http.Request) {
+	directRoutes := newRecordingRouteRegistrar(mux, standaloneActions)
+	directRoutes.HandleFunc("GET /permissions/effective", httpSupport.action("identity.permissions.effective", func(w http.ResponseWriter, r *http.Request) {
 		snapshot, err := core.MetadataSchema.FeaturePermissions(r.Context(), httpSupport.principal(r))
 		if err != nil {
 			httpSupport.writeServiceError(w, r, err)
@@ -182,52 +306,94 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 		}
 		httpSupport.writeJSON(w, http.StatusOK, snapshot)
 	}))
-	mux.HandleFunc("GET /tenant-admin/runtime-schema", httpSupport.authenticated(func(w http.ResponseWriter, r *http.Request) {
+	directRoutes.HandleFunc("GET /tenant-admin/runtime-schema", httpSupport.action("identity.runtime_schema.get", func(w http.ResponseWriter, r *http.Request) {
 		httpSupport.writeJSON(w, http.StatusOK, core.MetadataSchema.ForPrincipalLocale(r.Context(), httpSupport.principal(r), r.URL.Query().Get("locale")))
 	}))
-	mux.HandleFunc("GET /tenant-admin/platform-capabilities", httpSupport.admin(func(w http.ResponseWriter, r *http.Request) {
+	directRoutes.HandleFunc("GET /tenant-admin/platform-capabilities", httpSupport.action("identity.platform_capabilities.get", func(w http.ResponseWriter, r *http.Request) {
 		snapshot := core.MetadataRuntime.SchemaForPrincipal(r.Context(), httpSupport.principal(r))
 		httpSupport.writeJSON(w, http.StatusOK, capabilityCatalog.Contract(identityCapabilityInstance(snapshot, core.Identity.PermissionDefinitions())))
 	}))
 
-	remotesdkhttp.RegisterRoutes(mux, core.Binding, remotesdkhttp.Support{
+	remoteSDKRoutes := newRecordingRouteRegistrar(mux, standaloneActions)
+	remotesdkhttp.RegisterRoutes(remoteSDKRoutes, core.Binding, remotesdkhttp.Support{
 		DecodeJSON: httpSupport.decodeJSON, WriteJSON: httpSupport.writeJSON, WriteError: httpSupport.writeError,
 		WriteServiceError: httpSupport.writeServiceError,
 	}, applicationCredentials)
-	if err := remotesdkhttp.RegisterCapabilityRoutes(mux, core.Binding, applicationCredentials); err != nil {
+	if err := remotesdkhttp.RegisterCapabilityRoutes(remoteSDKRoutes, core.Binding, applicationCredentials); err != nil {
 		return nil, fmt.Errorf("register Identity capability routes: %w", err)
 	}
-	browserCatalog := identitysdk.AuthorizationCatalog{
-		ContractVersion: identitysdk.CatalogVersionV1,
-		Application:     identitysdk.ApplicationRef{WorkspaceID: identitysdk.WorkspaceID(cfg.IdentityWorkspaceID), ApplicationKey: identitysdk.ApplicationKey(cfg.IdentityBrowserApplicationKey), RedirectURLs: append([]string(nil), cfg.IdentityBrowserReturnURLs...)},
-		Resources:       []identitysdk.ResourceDefinition{}, Actions: []identitysdk.ActionDefinition{},
-	}
-	if _, err := core.Binding.Catalog().Publish(ctx, browserCatalog); err != nil {
-		return nil, fmt.Errorf("publish Identity browser application catalog: %w", err)
+	if _, err := core.Binding.Applications().Register(ctx, identitysdk.ApplicationRegistration{
+		Application:  identitysdk.ApplicationRef{WorkspaceID: identitysdk.WorkspaceID(cfg.IdentityWorkspaceID), ApplicationKey: identitysdk.ApplicationKey(cfg.IdentityBrowserApplicationKey)},
+		RedirectURLs: append([]string(nil), cfg.IdentityBrowserReturnURLs...),
+	}); err != nil {
+		return nil, fmt.Errorf("register Identity browser application: %w", err)
 	}
 	browserGateway, err := browsergateway.New(core.Binding, browsergateway.Config{
-		ApplicationKey: identitysdk.ApplicationKey(cfg.IdentityBrowserApplicationKey), AllowedReturnURLs: append([]string(nil), cfg.IdentityBrowserReturnURLs...),
+		ApplicationKey:     identitysdk.ApplicationKey(cfg.IdentityBrowserApplicationKey),
 		DefaultWorkspaceID: identitysdk.WorkspaceID(cfg.IdentityWorkspaceID), MaxRequestBodySize: int64(cfg.HTTPPublicMaxJSONBodyBytes),
 		Cookie: browsergateway.CookieConfig{Path: "/browser/auth", Secure: cfg.IsProduction(), SameSite: http.SameSiteLaxMode, MaxAge: cfg.AuthRefreshTTL},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("assemble Identity browser gateway: %w", err)
 	}
-	if err := browserGateway.RegisterRoutes(mux, "/browser"); err != nil {
+	browserMux := http.NewServeMux()
+	if err := browserGateway.RegisterRoutes(browserMux, "/browser"); err != nil {
 		return nil, fmt.Errorf("register Identity browser gateway: %w", err)
 	}
+	browserRoutes := newRecordingRouteRegistrar(mux, standaloneActions)
+	for _, definition := range browserActionDefinitions {
+		if definition.HTTP == nil {
+			return nil, fmt.Errorf("standalone browser Action %q has no HTTP binding", definition.Key)
+		}
+		browserRoutes.Handle(definition.HTTP.Method+" "+definition.HTTP.RouteTemplate, browserMux)
+	}
+	standaloneBrowserRoutes := browserRoutes.patterns
 	embeddedBrowserRoutes, err := browsergateway.RoutePatterns("")
 	if err != nil {
 		return nil, fmt.Errorf("resolve embedded browser authentication routes: %w", err)
 	}
 	embeddedPublicAuthRoutes, embeddedManagementAuthRoutes := embeddedAuthRouteInventory(authRoutes.patterns, embeddedBrowserRoutes)
+	for _, registrar := range []*recordingRouteRegistrar{healthRoutes, portabilityRoutes, authRoutes, identityRoutes, moduleRoutes, directRoutes, remoteSDKRoutes, browserRoutes} {
+		if registrar.err != nil {
+			return nil, registrar.err
+		}
+	}
 	managementRoutes := append([]string(nil), identityRoutes.patterns...)
+	routeInventory := mergeRoutePatterns(
+		healthRoutes.patterns,
+		portabilityRoutes.patterns,
+		authRoutes.patterns,
+		identityRoutes.patterns,
+		moduleRoutes.patterns,
+		directRoutes.patterns,
+		remoteSDKRoutes.patterns,
+		standaloneBrowserRoutes,
+	)
 	return &Server{
-		core: core, routes: httpSupport.middleware(mux),
+		core: core, routes: httpSupport.middleware(mux), actions: standaloneActions,
+		routeInventory:               routeInventory,
 		identityManagementRoutes:     managementRoutes,
 		embeddedPublicAuthRoutes:     embeddedPublicAuthRoutes,
 		embeddedManagementAuthRoutes: embeddedManagementAuthRoutes,
 	}, nil
+}
+
+func mergeRoutePatterns(groups ...[]string) []string {
+	unique := map[string]struct{}{}
+	for _, group := range groups {
+		for _, pattern := range group {
+			pattern = strings.TrimSpace(pattern)
+			if pattern != "" {
+				unique[pattern] = struct{}{}
+			}
+		}
+	}
+	patterns := make([]string, 0, len(unique))
+	for pattern := range unique {
+		patterns = append(patterns, pattern)
+	}
+	sort.Strings(patterns)
+	return patterns
 }
 
 func embeddedAuthRouteInventory(authRoutes, browserRoutes []string) ([]string, []string) {
@@ -298,6 +464,16 @@ func (s *Server) Routes() http.Handler {
 	return s.routes
 }
 
+// RouteInventory returns every route pattern assembled by the standalone
+// Identity server, including auth/browser, management, Remote SDK, Audit,
+// portability operations, health probes and direct tenant-admin routes.
+func (s *Server) RouteInventory() []string {
+	if s == nil {
+		return nil
+	}
+	return append([]string(nil), s.routeInventory...)
+}
+
 // PublicRoutes exposes only browser authentication, protocol discovery,
 // JWKS, health, and Remote SDK endpoints. Management and operations paths are
 // deliberately indistinguishable from missing routes on this listener.
@@ -365,11 +541,13 @@ func (s *Server) CloseContext(ctx context.Context) error {
 	return s.core.CloseContext(ctx)
 }
 
-func registerHealthRoutes(mux *http.ServeMux, support *httpSupport) {
+func registerHealthRoutes(registrar interface {
+	HandleFunc(string, func(http.ResponseWriter, *http.Request))
+}, support *httpSupport) {
 	ready := func(w http.ResponseWriter, _ *http.Request) {
 		support.writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "service": "domainry-identity"})
 	}
-	mux.HandleFunc("GET /live", ready)
-	mux.HandleFunc("GET /ready", ready)
-	mux.HandleFunc("GET /health", ready)
+	registrar.HandleFunc("GET /live", ready)
+	registrar.HandleFunc("GET /ready", ready)
+	registrar.HandleFunc("GET /health", ready)
 }

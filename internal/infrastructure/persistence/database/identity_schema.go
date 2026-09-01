@@ -26,6 +26,8 @@ const (
 	IdentitySchemaVersionProviderCredential = "004_workspace_provider_credential_identity"
 	IdentitySchemaVersionDataExchange       = "005_data_exchange_and_authoring_cleanup"
 	CurrentIdentitySchemaVersion            = "006_identity_authorization_permissions"
+	EmbeddedIdentitySchemaMigrationVersion  = uint(2)
+	EmbeddedIdentitySchemaMigrationName     = "identity_authorization_permissions"
 )
 
 const (
@@ -323,7 +325,7 @@ func (s *IdentityStore) SchemaTableExists(ctx context.Context, table string) (bo
 }
 
 func currentIdentitySchemaChecksum() string {
-	sum := sha256.Sum256([]byte(CurrentIdentitySchemaVersion + ":metadata,identity,audit,authentication,authorization_catalog,identity_permissions,workspace_provider_credential_identity,data_exchange_and_authoring_cleanup,workspace_write_fences,managed_identity_database"))
+	sum := sha256.Sum256([]byte(CurrentIdentitySchemaVersion + ":metadata,identity,audit,authentication,identity_applications,identity_permissions,workspace_provider_credential_identity,data_exchange_and_authoring_cleanup,workspace_write_fences,managed_identity_database"))
 	return hex.EncodeToString(sum[:])
 }
 

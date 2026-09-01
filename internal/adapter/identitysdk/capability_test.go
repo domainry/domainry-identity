@@ -6,6 +6,7 @@ import (
 
 	"github.com/domainry/domainry-foundation/modulecapability"
 	"github.com/domainry/domainry-foundation/modulecapability/contracttest"
+	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
 	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 )
 
@@ -19,7 +20,15 @@ func TestIdentityCapabilityBindingTracksOwnerAuthoringDomain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	domain := identitycontract.IdentityAuthoringDomain()
+	registry, err := identityapplication.NewStandaloneIdentityAuthorizationSliceRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	projection, err := registry.ProjectAuthoringDomain(identitycontract.IdentityAuthoringDomain())
+	if err != nil {
+		t.Fatal(err)
+	}
+	domain := projection.Domain()
 	operations := map[string]bool{}
 	for _, capability := range domain.Capabilities {
 		for _, route := range capability.ConfigurationRoutes {

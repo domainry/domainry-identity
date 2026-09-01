@@ -18,7 +18,7 @@ func TestIdentityWorkforceAuthoringUsesGovernedIdempotencyReceipt(t *testing.T) 
 	handler.principal = func(*http.Request) identitymodel.Principal {
 		return identitymodel.Principal{
 			Known: true, WorkspaceID: "workspace-1", UserID: "hr-1",
-			Role: identitymodel.RoleSchema{Permissions: []string{"identity.workforce.write"}},
+			Role: identitymodel.RoleSchema{Permissions: []string{"identity.workforce.create"}},
 		}
 	}
 	request := workforceRequest(http.MethodPost, "/identity/workforce", []byte(`{"id":"workforce-1","organization_id":"organization-1","identity_user_id":"user-1","worker_no":"E-001","worker_type":"employee","work_status":"active"}`))
@@ -259,7 +259,7 @@ func TestIdentityWorkforceLifecyclePersistsReplayAndRejectsKeyReuse(t *testing.T
 	handler.principal = func(*http.Request) identitymodel.Principal {
 		return identitymodel.Principal{
 			Known: true, WorkspaceID: "workspace-1", UserID: "hr-1",
-			Role: identitymodel.RoleSchema{Permissions: []string{"identity.workforce.write"}},
+			Role: identitymodel.RoleSchema{Permissions: []string{"identity.workforce.lifecycle"}},
 		}
 	}
 	body := []byte(`{

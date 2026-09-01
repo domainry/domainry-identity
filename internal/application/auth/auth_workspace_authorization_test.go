@@ -74,7 +74,7 @@ func (writer *workspaceGuardProviderWriter) UpsertAuthProviderCredential(context
 func TestAuthApplicationAuthorizesWorkspaceBeforeRepositoryAccess(t *testing.T) {
 	repository := &workspaceGuardAuthRepository{}
 	service := &AuthApplicationService{repository: repository, mutations: repository, pepper: []byte("pepper")}
-	principal := identitymodel.Principal{Known: true, UserID: "user", Role: identitymodel.RoleSchema{Permissions: []string{"identity.security.write"}}}
+	principal := identitymodel.Principal{Known: true, UserID: "user", Role: identitymodel.RoleSchema{Permissions: []string{"auth.reset_password"}}}
 	for _, call := range []func() error{
 		func() error {
 			_, err := service.ChangePasswordIdempotent(t.Context(), principal, "key", "old", "new")

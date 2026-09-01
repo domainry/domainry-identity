@@ -214,7 +214,7 @@ func newAuthExternalHandler(t *testing.T) (*AuthHandler, *authExternalIdentityRe
 		assignments:  []identitymodel.IdentityUserRoleAssignment{{UserID: "user-1", RoleID: "role-viewer"}},
 		roleRequests: []identitymodel.IdentityRoleRequest{{ID: "request-existing", UserID: "user-1", RoleIDs: []string{"role-viewer"}, Status: "pending"}},
 	}
-	domain := identityservice.NewIdentityDomainService(identityRepository, nil)
+	domain := identityservice.NewIdentityDomainService(identityRepository, authExecutablePermissionDefinitions("records.read"))
 	domain.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{Key: "viewer", Name: "Viewer", Permissions: []string{"records.read"}, RecordScope: "all_records"}})
 	scoped, err := domain.ForWorkspace("workspace-a")
 	if err != nil {
@@ -233,7 +233,7 @@ func newAuthExternalHandler(t *testing.T) (*AuthHandler, *authExternalIdentityRe
 	if err != nil {
 		t.Fatalf("issue test session: %v", err)
 	}
-	roleRequests := identityapplication.NewIdentityApplicationService(identityRepository, nil)
+	roleRequests := identityapplication.NewIdentityApplicationService(identityRepository, authExecutablePermissionDefinitions("records.read"))
 	roleRequests.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{Key: "viewer", Name: "Viewer", Permissions: []string{"records.read"}, RecordScope: "all_records"}})
 	principal := identitymodel.Principal{Known: true, WorkspaceID: "workspace-a", UserID: "user-1", Role: identitymodel.RoleSchema{Key: "viewer"}}
 	capture := &authExternalHandlerCapture{}

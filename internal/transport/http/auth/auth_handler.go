@@ -45,8 +45,7 @@ type AuthHandler struct {
 	writeError                func(http.ResponseWriter, *http.Request, int, string, ...string)
 	writeServiceError         func(http.ResponseWriter, *http.Request, error)
 	decodeJSON                func(http.ResponseWriter, *http.Request, any) bool
-	admin                     func(http.HandlerFunc) http.HandlerFunc
-	authenticated             func(http.HandlerFunc) http.HandlerFunc
+	actionAuthorization       *identityapplication.IdentityActionAuthorizationService
 	providerFailureAudit      func(*http.Request, string, string)
 	securityAudit             func(*http.Request, string, string, map[string]any)
 	securityAuditForPrincipal func(*http.Request, identitymodel.Principal, string, string, map[string]any)
@@ -67,8 +66,7 @@ type AuthDependencies struct {
 	WriteError                func(http.ResponseWriter, *http.Request, int, string, ...string)
 	WriteServiceError         func(http.ResponseWriter, *http.Request, error)
 	DecodeJSON                func(http.ResponseWriter, *http.Request, any) bool
-	Admin                     func(http.HandlerFunc) http.HandlerFunc
-	Authenticated             func(http.HandlerFunc) http.HandlerFunc
+	ActionAuthorization       *identityapplication.IdentityActionAuthorizationService
 	ProviderFailureAudit      func(*http.Request, string, string)
 	SecurityAudit             func(*http.Request, string, string, map[string]any)
 	SecurityAuditForPrincipal func(*http.Request, identitymodel.Principal, string, string, map[string]any)
@@ -78,12 +76,20 @@ type AuthDependencies struct {
 }
 
 func NewAuthHandler(deps AuthDependencies) *AuthHandler {
+	actionAuthorization := deps.ActionAuthorization
+	if actionAuthorization == nil {
+		registry, err := identityapplication.NewStandaloneIdentityAuthorizationSliceRegistry()
+		if err != nil {
+			panic("compile Identity Action registry for Auth routes: " + err.Error())
+		}
+		actionAuthorization = identityapplication.NewIdentityActionAuthorizationService(registry, nil)
+	}
 	return &AuthHandler{
 		passwords: deps.Passwords, externalAccounts: deps.ExternalAccounts, roleRequests: deps.RoleRequests,
 		providerConfiguration: deps.ProviderConfiguration, providerFlows: deps.ProviderFlows,
 		providerCallback: deps.ProviderCallback, principal: deps.Principal,
 		writeJSON: deps.WriteJSON, writeError: deps.WriteError,
-		writeServiceError: deps.WriteServiceError, decodeJSON: deps.DecodeJSON, admin: deps.Admin, authenticated: deps.Authenticated,
+		writeServiceError: deps.WriteServiceError, decodeJSON: deps.DecodeJSON, actionAuthorization: actionAuthorization,
 		providerFailureAudit: deps.ProviderFailureAudit, securityAudit: deps.SecurityAudit,
 		securityAuditForPrincipal: deps.SecurityAuditForPrincipal, applicationRegistered: deps.ApplicationRegistered,
 		writesFrozen: deps.WritesFrozen, federatedLoginWorkspace: deps.FederatedLoginWorkspace,

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	"github.com/domainry/domainry-orm/batch"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 	"github.com/domainry/domainry-orm/query"
 )
@@ -14,6 +15,7 @@ import (
 type Backend interface {
 	DB() *sql.DB
 	SQLRenderer() ormdialect.Renderer
+	MaxParameters() int
 	ApplyUpsert(*query.InsertBuilder, []string, ...string) *query.InsertBuilder
 	QueryIdentityContext(context.Context, string, ...any) (*sql.Rows, error)
 }
@@ -57,32 +59,68 @@ func (s *Store) List(ctx context.Context, workspaceID string) ([]identitymodel.I
 }
 
 func (s *Store) Upsert(ctx context.Context, workspaceID string, item identitymodel.IdentityRole) error {
-	return s.UpsertWithExecutor(ctx, s.backend.DB(), workspaceID, item)
+	return s.UpsertBatchWithExecutor(ctx, s.backend.DB(), workspaceID, []identitymodel.IdentityRole{item})
 }
 
 func (s *Store) UpsertWithExecutor(ctx context.Context, execer Execer, workspaceID string, item identitymodel.IdentityRole) error {
+	return s.UpsertBatchWithExecutor(ctx, execer, workspaceID, []identitymodel.IdentityRole{item})
+}
+
+// UpsertBatchWithExecutor normalizes the complete role set before issuing
+// bounded multi-row UPSERTs. The caller owns the transaction lifecycle, which
+// lets workspace provisioning commit roles together with users, assignments,
+// credentials and PermissionDefinitions without one database write per role.
+func (s *Store) UpsertBatchWithExecutor(ctx context.Context, execer Execer, workspaceID string, items []identitymodel.IdentityRole) error {
 	workspaceID, err := workspace(workspaceID)
 	if err != nil {
 		return err
 	}
-	if item.ID == "" {
-		return fmt.Errorf("role id is required")
+	if execer == nil {
+		return fmt.Errorf("role executor is required")
 	}
-	if item.Key == "" {
-		item.Key = item.ID
+	normalized := make([]identitymodel.IdentityRole, 0, len(items))
+	positionByID := make(map[string]int, len(items))
+	for _, item := range items {
+		item.ID = strings.TrimSpace(item.ID)
+		item.Key = strings.TrimSpace(item.Key)
+		if item.ID == "" {
+			return fmt.Errorf("role id is required")
+		}
+		if item.Key == "" {
+			item.Key = item.ID
+		}
+		if item.Status == "" {
+			item.Status = identitymodel.IdentityStatusActive
+		}
+		if position, duplicate := positionByID[item.ID]; duplicate {
+			normalized[position] = item
+			continue
+		}
+		positionByID[item.ID] = len(normalized)
+		normalized = append(normalized, item)
 	}
-	if item.Status == "" {
-		item.Status = identitymodel.IdentityStatusActive
+	const parametersPerRole = 8 // workspace_id plus the seven explicit columns below.
+	ranges, err := (batch.Parameters{Max: s.backend.MaxParameters(), PerItem: parametersPerRole}).Ranges(len(normalized))
+	if err != nil {
+		return fmt.Errorf("plan identity role upsert batches: %w", err)
 	}
 	now := s.now()
-	insert := query.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_roles", workspaceID).Columns("id", "role_key", "label", "description", "status", "created_at", "updated_at").Values(item.ID, item.Key, item.Label, item.Description, string(item.Status), now, now)
-	s.backend.ApplyUpsert(insert, []string{"workspace_id", "id"}, "role_key", "label", "description", "status", "updated_at")
-	statement, arguments, err := insert.Build()
-	if err != nil {
-		return fmt.Errorf("build identity role upsert: %w", err)
+	for _, batchRange := range ranges {
+		insert := query.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_roles", workspaceID).
+			Columns("id", "role_key", "label", "description", "status", "created_at", "updated_at")
+		for _, item := range normalized[batchRange.Start:batchRange.End] {
+			insert.Values(item.ID, item.Key, item.Label, item.Description, string(item.Status), now, now)
+		}
+		s.backend.ApplyUpsert(insert, []string{"workspace_id", "id"}, "role_key", "label", "description", "status", "updated_at")
+		statement, arguments, buildErr := insert.Build()
+		if buildErr != nil {
+			return fmt.Errorf("build identity role batch upsert: %w", buildErr)
+		}
+		if _, execErr := execer.ExecContext(ctx, statement, arguments...); execErr != nil {
+			return fmt.Errorf("upsert identity role batch: %w", execErr)
+		}
 	}
-	_, err = execer.ExecContext(ctx, statement, arguments...)
-	return err
+	return nil
 }
 
 func (s *Store) Remove(ctx context.Context, workspaceID, roleID string) error {

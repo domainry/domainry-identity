@@ -5,8 +5,8 @@ import (
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
-// IdentityRoleHasPermissionKey reports whether a role grants an exact permission,
-// the workspace administrator permission, or a matching wildcard permission.
+// IdentityRoleHasPermissionKey reports whether a role grants an exact
+// Permission key after deny guardrails.
 func IdentityRoleHasPermissionKey(role identitymodel.RoleSchema, key string) bool {
 	return identitycontract.IdentityRoleHasPermissionKey(role, key)
 }

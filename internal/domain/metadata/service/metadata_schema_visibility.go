@@ -24,10 +24,6 @@ func SnapshotForPrincipal(snapshot metadatamodel.MetadataSchemaSnapshot, princip
 		snapshot.IdentityProfileExtensions = nil
 		return withSnapshotHash(snapshot)
 	}
-	if identitycontract.IdentityRoleHasPermissionKey(principal.Role, "workspace.admin") {
-		return withSnapshotHash(snapshot)
-	}
-
 	visibleObjectKeys := map[string]bool{}
 	visibleObjects := make([]definitionmodel.ObjectSchema, 0, len(snapshot.Objects))
 	for _, object := range snapshot.Objects {
@@ -41,10 +37,7 @@ func SnapshotForPrincipal(snapshot metadatamodel.MetadataSchemaSnapshot, princip
 	visibleActions := make([]definitionmodel.ActionSchema, 0, len(snapshot.Actions))
 	visibleActionKeys := map[string]bool{}
 	for _, action := range snapshot.Actions {
-		permission := strings.TrimSpace(action.RequiresPermission)
-		if permission == "" {
-			permission = strings.TrimSpace(action.Key)
-		}
+		permission := strings.TrimSpace(action.Key)
 		if visibleObjectKeys[action.ObjectKey] && identitycontract.IdentityRoleHasPermissionKey(principal.Role, permission) {
 			visibleActions = append(visibleActions, action)
 			visibleActionKeys[action.Key] = true

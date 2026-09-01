@@ -1,20 +1,20 @@
 package identitymodel
 
-// IdentityPermissionSet is a reusable positive authorization package. Roles
-// reference permission sets; they remain the assignable business responsibility.
+// IdentityPermissionSet is a reusable non-functional policy package. Functional
+// Action grants live only in RoleSchema.Permissions; a permission set may compose
+// data, field, reference, and export policy without granting an Action.
 type IdentityPermissionSet struct {
 	Key                  string                `json:"key"`
 	Name                 string                `json:"name"`
 	Description          string                `json:"description,omitempty"`
-	Permissions          []string              `json:"permissions,omitempty"`
 	DataPermissions      []DataPermission      `json:"data_permissions,omitempty"`
 	FieldPermissions     []FieldPermission     `json:"field_permissions,omitempty"`
 	ReferencePermissions []ReferencePermission `json:"reference_permissions,omitempty"`
 	ExportRules          []ExportRule          `json:"export_rules,omitempty"`
 }
 
-// IdentityPermissionSetGroup composes reusable permission sets without making
-// the group itself assignable to a user.
+// IdentityPermissionSetGroup composes non-functional permission sets without
+// becoming an Action-grant authority or a directly assignable identity.
 type IdentityPermissionSetGroup struct {
 	Key               string   `json:"key"`
 	Name              string   `json:"name"`

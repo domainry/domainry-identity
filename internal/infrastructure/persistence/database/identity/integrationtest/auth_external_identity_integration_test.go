@@ -234,7 +234,7 @@ func TestExternalLoginGeneratesStableSafeUserIdentifiers(t *testing.T) {
 func newExternalAuthFixture(t *testing.T) (*authdomain.AuthDomainService, *identitybusiness.IdentityDomainService, *externalAuthRepository) {
 	t.Helper()
 	repository := identitypersistence.NewMemoryIdentityStore()
-	identity, _ := identitybusiness.NewIdentityDomainService(repository, []identitymodel.IdentityPermissionDefinition{{Key: "workspace.admin", Resource: "workspace", Action: "admin"}}).ForWorkspace("workspace-primary")
+	identity, _ := identitybusiness.NewIdentityDomainService(repository, []identitymodel.IdentityPermissionDefinition{currentPermission("identity.roles.list", "identity.roles", "list")}).ForWorkspace("workspace-primary")
 	if err := identity.UpsertDepartment(t.Context(), identitymodel.IdentityDepartment{ID: "dept_sales", Name: "Sales", Path: "/sales", Status: identitymodel.IdentityStatusActive}); err != nil {
 		t.Fatalf("seed sales department: %v", err)
 	}
@@ -247,7 +247,7 @@ func newExternalAuthFixture(t *testing.T) (*authdomain.AuthDomainService, *ident
 	}
 	identity.ReplaceRoleDefinitions([]identitymodel.RoleSchema{
 		{Key: "sales", Name: "Sales", RecordScope: "all_records"},
-		{Key: "admin", Name: "Admin", Permissions: []string{"workspace.admin"}, RecordScope: "all_records"},
+		{Key: "admin", Name: "Admin", Permissions: []string{"identity.roles.list"}, RecordScope: "all_records", RiskLevel: identitymodel.IdentityRoleRiskPrivileged},
 		{Key: "disabled", Name: "Disabled", RecordScope: "all_records"},
 	})
 	authRepository := &externalAuthRepository{accounts: map[string]identitymodel.IdentityExternalAccount{}, refreshTokens: map[string]identitymodel.AuthRefreshToken{}}

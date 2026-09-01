@@ -97,7 +97,6 @@ type ActionSchema struct {
 	I18n                  localizationmodel.LocalizedTextMap `json:"i18n,omitempty"`
 	Kind                  string                             `json:"kind"`
 	RiskLevel             string                             `json:"risk_level,omitempty"`
-	RequiresPermission    string                             `json:"requires_permission"`
 	Preconditions         []string                           `json:"preconditions"`
 	AuditEvent            string                             `json:"audit_event"`
 	InputType             string                             `json:"input_type,omitempty"`
@@ -115,14 +114,11 @@ type ActionSchema struct {
 	FileOperations        []string                           `json:"file_operations,omitempty"`
 }
 
-// ActionPermissionSubject derives the canonical object/action pair from the
-// authored Action schema. Multi-segment permissions are interpreted relative
-// to ObjectKey so every authorization boundary evaluates the same subject.
+// ActionPermissionSubject derives the canonical permission subject from the
+// Action key. A grantable Action owns the same-key Permission; there is no
+// separately authored Action-to-Permission mapping.
 func ActionPermissionSubject(action ActionSchema) (string, string) {
-	permission := strings.TrimSpace(action.RequiresPermission)
-	if permission == "" {
-		permission = strings.TrimSpace(action.Key)
-	}
+	permission := strings.TrimSpace(action.Key)
 	objectKey := strings.TrimSpace(action.ObjectKey)
 	if objectKey != "" && strings.HasPrefix(permission, objectKey+".") {
 		return objectKey, strings.TrimSpace(strings.TrimPrefix(permission, objectKey+"."))

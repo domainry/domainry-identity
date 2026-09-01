@@ -179,7 +179,7 @@ type authSessionMutationReceipt struct {
 }
 
 func (s *AuthApplicationService) ForceLogoutUserIdempotent(ctx context.Context, principal identitymodel.Principal, key, userID string) (authdomain.RevokeOtherSessionsResult, bool, error) {
-	if !principal.Known || !identitypolicy.IdentityRoleHasPermissionKey(principal.Role, "identity.security.write") {
+	if !principal.Known || !identitypolicy.IdentityRoleHasPermissionKey(principal.Role, "identity.users.force_logout") {
 		return authdomain.RevokeOtherSessionsResult{}, false, authMutationError(apperror.KindForbidden, "auth.permission_denied")
 	}
 	userID = strings.TrimSpace(userID)

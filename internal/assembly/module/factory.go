@@ -7,6 +7,8 @@ import (
 	"net/http"
 
 	dataexchangemodulehost "github.com/domainry/domainry-data-exchange-sdk/modulehost"
+	actioncontract "github.com/domainry/domainry-foundation/action"
+	"github.com/domainry/domainry-foundation/modulehttp"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	identityapplication "github.com/domainry/domainry-identity-sdk/application"
 	"github.com/domainry/domainry-identity-sdk/browsergateway"
@@ -55,6 +57,9 @@ func (factory *Factory) OpenBootstrapWithDatabase(ctx context.Context, applicati
 	if !applicationKey.Valid() {
 		return nil, &identitysdk.Error{Code: "identity.module_application_scope_required"}
 	}
+	if handle.Migrations == nil {
+		return nil, &identitysdk.Error{Code: "identity.module_migration_registrar_required"}
+	}
 	db, valid := handle.Pool.(*sql.DB)
 	if !valid || db == nil {
 		return nil, &identitysdk.Error{Code: "identity.module_database_required"}
@@ -77,11 +82,7 @@ func (factory *Factory) OpenBootstrapWithDatabase(ctx context.Context, applicati
 		_ = store.CloseContext(context.Background())
 		return nil, err
 	}
-	if handle.Migrations != nil {
-		err = handle.Migrations.ApplyOwnedMigration(ctx, "identity", 1, "identity_foundation", database.EmbeddedSchemaChecksum(), store.EnsureEmbeddedSchema)
-	} else {
-		err = store.EnsureSchema(ctx)
-	}
+	err = handle.Migrations.ApplyOwnedMigration(ctx, "identity", database.EmbeddedIdentitySchemaMigrationVersion, database.EmbeddedIdentitySchemaMigrationName, database.EmbeddedSchemaChecksum(), store.EnsureEmbeddedSchema)
 	if err != nil {
 		return fail(fmt.Errorf("prepare Identity bootstrap schema: %w", err))
 	}
@@ -94,13 +95,15 @@ func (factory *Factory) OpenBootstrapWithDatabase(ctx context.Context, applicati
 	if err != nil {
 		return fail(fmt.Errorf("open Identity bootstrap repository: %w", err))
 	}
-	seed := identityapplicationinternal.FromManifest(manifest)
-	permissions := identityapplicationinternal.MergeIdentityPermissions(seed.Permissions, identityapplicationinternal.IdentityPermissionsFromRoles(manifest.Roles, manifest.Objects, cfg.AppLocale))
-	identityApp := identityapplicationinternal.NewIdentityApplicationService(identityStore, permissions)
+	identityApp := identityapplicationinternal.NewIdentityApplicationService(identityStore, nil)
 	identityApp.ReplaceRoleDefinitions(manifest.Roles)
+	identityActions, err := identityapplicationinternal.NewStandaloneIdentityAuthorizationSliceRegistry()
+	if err != nil {
+		return fail(fmt.Errorf("assemble Identity bootstrap authorization Action registry: %w", err))
+	}
 	authStore := authpersistence.NewAuthStoreWithKeyProvider(identityStore, store.SecretKeyProvider(), store.IdempotencyMetrics(ctx))
 	return &moduleBinding{
-		runtime:     &assembly.Core{Store: store, Manifest: manifest, IdentityStore: identityStore, Identity: identityApp, AuthStore: authStore},
+		runtime:     &assembly.Core{Store: store, Manifest: manifest, IdentityStore: identityStore, Identity: identityApp, IdentityActions: identityActions, AuthStore: authStore},
 		application: identitysdk.ApplicationRef{ApplicationKey: applicationKey},
 	}, nil
 }
@@ -128,6 +131,9 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 	if handle == nil {
 		store, err = database.OpenContext(ctx, cfg)
 	} else {
+		if handle.Migrations == nil {
+			return nil, &identitysdk.Error{Code: "identity.module_migration_registrar_required"}
+		}
 		db, valid := handle.Pool.(*sql.DB)
 		if !valid || db == nil {
 			return nil, &identitysdk.Error{Code: "identity.module_database_required"}
@@ -142,8 +148,8 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 	if err != nil {
 		return nil, fmt.Errorf("open Identity module database: %w", err)
 	}
-	if handle != nil && handle.Migrations != nil {
-		err = handle.Migrations.ApplyOwnedMigration(ctx, "identity", 1, "identity_foundation", database.EmbeddedSchemaChecksum(), store.EnsureEmbeddedSchema)
+	if handle != nil {
+		err = handle.Migrations.ApplyOwnedMigration(ctx, "identity", database.EmbeddedIdentitySchemaMigrationVersion, database.EmbeddedIdentitySchemaMigrationName, database.EmbeddedSchemaChecksum(), store.EnsureEmbeddedSchema)
 	} else {
 		err = store.EnsureSchema(ctx)
 	}
@@ -182,20 +188,22 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 		_ = identityRuntime.CloseContext(ctx)
 		return nil, fmt.Errorf("assemble Identity module management surface: %w", err)
 	}
-	managementRoutes := make([]identityhttpapi.Route, 0)
-	for _, pattern := range managementServer.IdentityManagementRoutes() {
-		managementRoutes = append(managementRoutes, identityhttpapi.Route{Pattern: pattern, Exposures: []identityhttpapi.Exposure{identityhttpapi.ExposureTenantAdmin}, Authentication: identityhttpapi.AuthenticationAuthenticated, PrincipalOnly: true})
+	actionRoutes, err := identityModuleActionRoutes()
+	if err != nil {
+		_ = identityRuntime.CloseContext(ctx)
+		return nil, err
 	}
-	for _, pattern := range managementServer.EmbeddedManagementAuthRoutes() {
-		managementRoutes = append(managementRoutes, identityhttpapi.Route{Pattern: pattern, Exposures: []identityhttpapi.Exposure{identityhttpapi.ExposureTenantAdmin}, Authentication: identityhttpapi.AuthenticationAuthenticated, PrincipalOnly: true})
-	}
-	for _, pattern := range managementServer.EmbeddedPublicAuthRoutes() {
-		managementRoutes = append(managementRoutes, identityhttpapi.Route{Pattern: pattern, Exposures: []identityhttpapi.Exposure{identityhttpapi.ExposurePublic}, Authentication: identityhttpapi.AuthenticationAnonymous})
+	managementPatterns := append([]string(nil), managementServer.IdentityManagementRoutes()...)
+	managementPatterns = append(managementPatterns, managementServer.EmbeddedManagementAuthRoutes()...)
+	managementPatterns = append(managementPatterns, managementServer.EmbeddedPublicAuthRoutes()...)
+	managementRoutes, err := selectIdentityModuleRoutes(actionRoutes, managementPatterns)
+	if err != nil {
+		_ = identityRuntime.CloseContext(ctx)
+		return nil, err
 	}
 	managementSurface := modulehttptransport.NewSurface("identity_management", managementServer.Routes(), managementRoutes)
 	browserGateway, err := browsergateway.New(scopedBinding, browsergateway.Config{
 		ApplicationKey:     application.ApplicationKey,
-		AllowedReturnURLs:  append([]string(nil), application.RedirectURLs...),
 		DefaultWorkspaceID: application.WorkspaceID,
 		MaxRequestBodySize: int64(cfg.HTTPPublicMaxJSONBodyBytes),
 		Cookie: browsergateway.CookieConfig{
@@ -219,15 +227,19 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 	browserRoutes := make([]identityhttpapi.Route, 0, len(browserPatterns))
 	managementOwned := make(map[string]struct{}, len(managementRoutes))
 	for _, route := range managementRoutes {
-		managementOwned[route.Pattern] = struct{}{}
+		managementOwned[route.Pattern()] = struct{}{}
 	}
+	var browserOnlyPatterns []string
 	for _, pattern := range browserPatterns {
 		if _, owned := managementOwned[pattern]; owned {
 			continue
 		}
-		browserRoutes = append(browserRoutes, identityhttpapi.Route{
-			Pattern: pattern, Exposures: []identityhttpapi.Exposure{identityhttpapi.ExposurePublic, identityhttpapi.ExposureTenantAdmin}, Authentication: identityhttpapi.AuthenticationAnonymous,
-		})
+		browserOnlyPatterns = append(browserOnlyPatterns, pattern)
+	}
+	browserRoutes, err = selectIdentityModuleRoutes(actionRoutes, browserOnlyPatterns)
+	if err != nil {
+		_ = identityRuntime.CloseContext(ctx)
+		return nil, err
 	}
 	browserSurface := modulehttptransport.NewSurface("browser_authentication", browserMux, browserRoutes)
 	portabilityRepository, err := portabilitypersistence.NewSQLRepository(store)
@@ -244,6 +256,37 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 		Binding: scopedBinding, runtime: identityRuntime, application: application, surfaces: []identityhttpapi.Surface{browserSurface, managementSurface},
 		portability: &identityPortabilityDataExchangeProvider{service: portabilityService},
 	}, nil
+}
+
+func identityModuleActionRoutes() (map[string]identityhttpapi.Route, error) {
+	routes := make(map[string]identityhttpapi.Route)
+	for _, definition := range identityapplicationinternal.IdentityBuiltinAuthorizationActions() {
+		if definition.HTTP == nil {
+			continue
+		}
+		route, err := modulehttp.RouteFromAction(definition)
+		if err != nil {
+			return nil, fmt.Errorf("project Identity module action %q: %w", definition.Key, err)
+		}
+		pattern := route.Pattern()
+		if previous, duplicate := routes[pattern]; duplicate {
+			return nil, fmt.Errorf("Identity module actions %q and %q repeat route %q", previous.Action.Key, route.Action.Key, pattern)
+		}
+		routes[pattern] = route
+	}
+	return routes, nil
+}
+
+func selectIdentityModuleRoutes(index map[string]identityhttpapi.Route, patterns []string) ([]identityhttpapi.Route, error) {
+	routes := make([]identityhttpapi.Route, 0, len(patterns))
+	for _, pattern := range patterns {
+		route, found := index[pattern]
+		if !found {
+			return nil, fmt.Errorf("Identity module route %q has no canonical Action", pattern)
+		}
+		routes = append(routes, route)
+	}
+	return routes, nil
 }
 
 type moduleOrganizationScopeResolver struct {
@@ -299,6 +342,24 @@ func (binding *moduleBinding) HTTPSurfaces() []identityhttpapi.Surface {
 	return append([]identityhttpapi.Surface(nil), binding.surfaces...)
 }
 
+func (binding *moduleBinding) BindPermissionUsageProvider(provider actioncontract.PermissionUsageProvider) error {
+	if binding == nil || binding.runtime == nil || binding.runtime.PermissionCatalog == nil {
+		return fmt.Errorf("Identity module Permission catalog is unavailable")
+	}
+	return binding.runtime.PermissionCatalog.UseActionUsageProvider(provider)
+}
+
+func (binding *moduleBinding) ApplicationServiceVerifier() identitysdk.ApplicationServiceTokenVerifier {
+	if binding == nil || binding.Binding == nil {
+		return nil
+	}
+	services, ok := binding.Binding.(identitysdk.ApplicationServiceVerificationBinding)
+	if !ok {
+		return nil
+	}
+	return services.ApplicationServiceVerifier()
+}
+
 func (binding *moduleBinding) Close(ctx context.Context) error {
 	if binding == nil || binding.runtime == nil {
 		return nil
@@ -310,5 +371,7 @@ var _ identitysdk.Factory = (*Factory)(nil)
 var _ identitysdk.DatabaseFactory = (*Factory)(nil)
 var _ identitysdk.BootstrapDatabaseFactory = (*Factory)(nil)
 var _ identitysdk.Binding = (*moduleBinding)(nil)
+var _ identitysdk.PermissionUsageProviderBinder = (*moduleBinding)(nil)
+var _ identitysdk.ApplicationServiceVerificationBinding = (*moduleBinding)(nil)
 var _ identitysdk.ProjectRoleCatalogPublisher = (*moduleBinding)(nil)
 var _ identityhttpapi.Provider = (*moduleBinding)(nil)

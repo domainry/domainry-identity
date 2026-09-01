@@ -20,7 +20,7 @@ func TestIdentityAuthoringValidationHandlersUseExactCapabilityPayloads(t *testin
 		call func(http.ResponseWriter, *http.Request)
 	}{
 		{name: "role", body: `{"id":"sales_manager","key":"sales_manager","label":"Sales Manager","status":"active"}`, call: handler.validateIdentityRoleAuthoring},
-		{name: "role permission", body: `{"permission_keys":["customer.read"]}`, call: handler.validateIdentityRolePermissionAuthoring},
+		{name: "role permission", body: `{"permission_keys":["identity.users.list"]}`, call: handler.validateIdentityRolePermissionAuthoring},
 		{name: "role menu assignment", body: `{"menu_ids":["orders"]}`, call: handler.validateIdentityRoleMenuAssignmentAuthoring},
 		{name: "user", body: `{"id":"sales_manager","name":"Sales Manager","email":"sales.manager@example.com","status":"active"}`, call: handler.validateIdentityUserAuthoring},
 		{name: "department", body: `{"id":"sales","name":"Sales","status":"active"}`, call: handler.validateIdentityDepartmentAuthoring},

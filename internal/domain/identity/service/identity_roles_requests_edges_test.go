@@ -175,18 +175,15 @@ func TestIdentityGovernedRoleRemovalFailureEdges(t *testing.T) {
 	repository, service = identityRolesFixture()
 	repository.listAssignmentsErr = errIdentityRolesRepository
 	if err := service.RemoveUserRole(t.Context(), "user-1", "admin-id"); err != errIdentityRolesRepository {
-		t.Fatalf("administrator assignment lookup error=%v", err)
+		t.Fatalf("role assignment lookup error=%v", err)
 	}
 	repository, service = identityRolesFixture()
 	repository.assignments = []identitymodel.IdentityUserRoleAssignment{
 		{UserID: "user-1", RoleID: "admin-id", Status: "active"},
 	}
-	if err := service.RemoveUserRole(t.Context(), "user-1", "admin-id"); apperror.CodeOf(err) != "backend.identity.last_administrator_revocation_denied" {
-		t.Fatalf("last administrator error=%v", err)
+	if err := service.RemoveUserRole(t.Context(), "user-1", "admin-id"); err != nil || len(repository.assigned) != 1 || repository.assigned[0].Status != "revoked" {
+		t.Fatalf("ordinary exact workspace capability revocation assignments=%+v err=%v", repository.assigned, err)
 	}
-	repository.assignments = append(repository.assignments,
-		identitymodel.IdentityUserRoleAssignment{UserID: "user-2", RoleID: "owner-id", Status: "active"},
-	)
 	repository.assignErr = errIdentityRolesRepository
 	if err := service.RemoveUserRoleGoverned(t.Context(), "user-1", "admin-id", "actor", ""); err != errIdentityRolesRepository {
 		t.Fatalf("revocation write error=%v", err)
@@ -206,19 +203,6 @@ func TestIdentityGovernedRoleRemovalFailureEdges(t *testing.T) {
 	repository.removeErr = errIdentityRolesRepository
 	if err := service.RemoveUserRole(t.Context(), "user-1", "member-id"); err != errIdentityRolesRepository {
 		t.Fatalf("physical removal error=%v", err)
-	}
-}
-
-func TestIdentityEnsureAnotherAdministratorRepositoryEdges(t *testing.T) {
-	repository, service := identityRolesFixture()
-	repository.listAssignmentsErr = errIdentityRolesRepository
-	if err := service.ensureAnotherActiveAdministrator(t.Context(), "user-1", "admin-id"); err != errIdentityRolesRepository {
-		t.Fatalf("assignment error=%v", err)
-	}
-	repository.listAssignmentsErr = nil
-	repository.listRolesErr = errIdentityRolesRepository
-	if err := service.ensureAnotherActiveAdministrator(t.Context(), "user-1", "admin-id"); err != errIdentityRolesRepository {
-		t.Fatalf("roles error=%v", err)
 	}
 }
 
@@ -271,6 +255,10 @@ func TestIdentityListAssignableRolesFailureAndRiskEdges(t *testing.T) {
 		t.Fatalf("self privileged roles=%v err=%v", roles, err)
 	}
 
+	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{
+		Key: "privileged", AssignmentMode: identitymodel.IdentityRoleAssignmentManual,
+		RiskLevel: identitymodel.IdentityRoleRiskElevated,
+	}})
 	repository.listAssignmentsErr = errIdentityRolesRepository
 	actor.Role.GrantableRoleKeys = []string{"privileged"}
 	if _, err := service.ListAssignableRoles(t.Context(), "user-1", actor); err != errIdentityRolesRepository {
@@ -381,18 +369,6 @@ func TestIdentityRoleRequestRemainingShortCircuitOutcomes(t *testing.T) {
 		service.ReplaceRoleDefinitions(nil)
 		if err := service.RemoveUserRole(t.Context(), "user-1", "member-id"); err != nil || repository.removedUserRole != "member-id" {
 			t.Fatalf("unpublished role removal=%q err=%v", repository.removedUserRole, err)
-		}
-	})
-
-	t.Run("administrator assignment exclusions", func(t *testing.T) {
-		repository, service := identityRolesFixture()
-		repository.assignments = []identitymodel.IdentityUserRoleAssignment{
-			{UserID: "other", RoleID: "member-id", Status: "active"},
-			{UserID: "excluded", RoleID: "admin-id", Status: "active"},
-			{UserID: "other", RoleID: "admin-id", Status: "revoked"},
-		}
-		if err := service.ensureAnotherActiveAdministrator(t.Context(), "excluded", "admin-id"); apperror.CodeOf(err) != "backend.identity.last_administrator_revocation_denied" {
-			t.Fatalf("administrator exclusion error=%v", err)
 		}
 	})
 

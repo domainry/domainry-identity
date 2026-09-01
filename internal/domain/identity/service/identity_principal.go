@@ -90,6 +90,7 @@ func (s *IdentityDomainService) BuildPrincipal(ctx context.Context, userID strin
 		role.Permissions = append(role.Permissions, key)
 	}
 	sort.Strings(role.Permissions)
+	role.Permissions = s.identityFilterExecutablePermissions(role.Permissions)
 	role.Permissions = identityFilterGuardrailDeniedPermissions(role)
 	if len(activeIdentityRoles) == 1 {
 		published := activePublishedRoles[0]
@@ -97,10 +98,11 @@ func (s *IdentityDomainService) BuildPrincipal(ctx context.Context, userID strin
 		published.Name = valueOrDefault(published.Name, activeIdentityRoles[0].Label)
 		published.RecordScope = valueOrDefault(published.RecordScope, role.RecordScope)
 		identityCanonicalizeEffectiveRole(&published)
+		published.Permissions = s.identityFilterExecutablePermissions(published.Permissions)
 		published.Permissions = identityFilterGuardrailDeniedPermissions(published)
 		role = published
 	}
-	authorizationRevision := identityAuthorizationRevision(user, workforce, organizationScopes, activeAssignments, activeIdentityRoles, role)
+	authorizationRevision := identityAuthorizationRevision(user, workforce, organizationScopes, activeAssignments, activeIdentityRoles, role, identityPermissionStateFingerprint(s.PermissionDefinitions()))
 	return identitymodel.Principal{
 		UserID:                user.ID,
 		WorkspaceID:           s.workspace,
@@ -187,8 +189,9 @@ func (s *IdentityDomainService) BuildPrincipalForRole(ctx context.Context, userI
 	// a bearer-session request and a durable worker reauthorization produce the
 	// same RoleSchema and authorization revision.
 	identityCanonicalizeEffectiveRole(&published)
+	published.Permissions = s.identityFilterExecutablePermissions(published.Permissions)
 	published.Permissions = identityFilterGuardrailDeniedPermissions(published)
-	authorizationRevision := identityAuthorizationRevision(user, workforce, organizationScopes, []identitymodel.IdentityUserRoleAssignment{activeAssignment}, []identitymodel.IdentityRole{identityRole}, published)
+	authorizationRevision := identityAuthorizationRevision(user, workforce, organizationScopes, []identitymodel.IdentityUserRoleAssignment{activeAssignment}, []identitymodel.IdentityRole{identityRole}, published, identityPermissionStateFingerprint(s.PermissionDefinitions()))
 	return identitymodel.Principal{
 		UserID:                user.ID,
 		WorkspaceID:           s.workspace,
@@ -207,7 +210,25 @@ func (s *IdentityDomainService) BuildPrincipalForRole(ctx context.Context, userI
 	}, nil
 }
 
-func identityAuthorizationRevision(user identitymodel.IdentityUser, workforce identityWorkforceFacts, organizationScopes identitymodel.IdentityOrganizationScopeFacts, assignments []identitymodel.IdentityUserRoleAssignment, roles []identitymodel.IdentityRole, role identitymodel.RoleSchema) string {
+// identityFilterExecutablePermissions compiles RoleSchema grants against the
+// current database-backed PermissionDefinition snapshot. RoleSchema remains
+// the grant authority, while an unknown, retired, or administratively disabled
+// Permission can never enter a newly resolved principal.
+func (s *IdentityDomainService) identityFilterExecutablePermissions(keys []string) []string {
+	definitions := s.PermissionDefinitions()
+	filtered := make([]string, 0, len(keys))
+	for _, raw := range keys {
+		key := strings.TrimSpace(raw)
+		definition, found := definitions[key]
+		if !found || definition.DefinitionStatus != identitymodel.IdentityPermissionDefinitionActive || !definition.Enabled {
+			continue
+		}
+		filtered = append(filtered, key)
+	}
+	return identityUniqueSortedStrings(filtered)
+}
+
+func identityAuthorizationRevision(user identitymodel.IdentityUser, workforce identityWorkforceFacts, organizationScopes identitymodel.IdentityOrganizationScopeFacts, assignments []identitymodel.IdentityUserRoleAssignment, roles []identitymodel.IdentityRole, role identitymodel.RoleSchema, permissionStateFingerprint string) string {
 	sort.Slice(assignments, func(left, right int) bool {
 		return identityCanonicalJSON(assignments[left]) < identityCanonicalJSON(assignments[right])
 	})
@@ -222,7 +243,31 @@ func identityAuthorizationRevision(user identitymodel.IdentityUser, workforce id
 		Assignments       []identitymodel.IdentityUserRoleAssignment   `json:"assignments"`
 		Roles             []identitymodel.IdentityRole                 `json:"roles"`
 		EffectiveRole     identitymodel.RoleSchema                     `json:"effective_role"`
-	}{user, workforce.Revision, workforce, organizationScopes, assignments, roles, role})
+		PermissionState   string                                       `json:"permission_state"`
+	}{user, workforce.Revision, workforce, organizationScopes, assignments, roles, role, permissionStateFingerprint})
+	return fmt.Sprintf("%x", sha256.Sum256(encoded))
+}
+
+// identityPermissionStateFingerprint captures the authorization-relevant
+// current database snapshot without coupling bearer revisions to labels or
+// timestamps. Any key becoming unknown, disabled, retired, or active changes
+// the fingerprint, including when that key is not granted by the current role.
+func identityPermissionStateFingerprint(definitions map[string]identitymodel.IdentityPermissionDefinition) string {
+	type state struct {
+		Key     string `json:"key"`
+		Status  string `json:"status"`
+		Enabled bool   `json:"enabled"`
+	}
+	values := make([]state, 0, len(definitions))
+	for key, definition := range definitions {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		values = append(values, state{Key: key, Status: strings.TrimSpace(definition.DefinitionStatus), Enabled: definition.Enabled})
+	}
+	sort.Slice(values, func(left, right int) bool { return values[left].Key < values[right].Key })
+	encoded, _ := json.Marshal(values)
 	return fmt.Sprintf("%x", sha256.Sum256(encoded))
 }
 

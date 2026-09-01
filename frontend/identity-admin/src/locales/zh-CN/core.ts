@@ -428,6 +428,8 @@ const messages = {
   "roles.capabilities.active": "可用",
   "roles.capabilities.retired": "已退役",
   "roles.capabilities.disabled": "已停用",
+  "roles.capabilities.usageUnavailable": "使用信息不可用",
+  "roles.capabilities.usageUnavailableDescription": "当前无法访问 Action owner 的实时注册表；系统不会根据 PermissionDefinition 猜测接口绑定。",
   "roles.capabilities.nonHttp": "非 HTTP 入口",
   "roles.capabilities.page": "页面",
   "roles.capabilities.technicalDetails": "技术详情",

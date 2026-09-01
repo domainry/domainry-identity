@@ -89,7 +89,7 @@ func (s *IdentityDomainService) PrepareIdentityEntitlementBatch(ctx context.Cont
 		normalized = append(normalized, item)
 		prepared = append(prepared, assignment)
 	}
-	if err := validateIdentityEntitlementFinalState(final, definitionByID, current, now); err != nil {
+	if err := validateIdentityEntitlementFinalState(final, definitionByID, now); err != nil {
 		return nil, nil, err
 	}
 	return normalized, prepared, nil
@@ -128,7 +128,7 @@ func validateIdentityEntitlementGrantCeiling(actor identitymodel.Principal, assi
 	return nil
 }
 
-func validateIdentityEntitlementFinalState(final map[string]identitymodel.IdentityUserRoleAssignment, definitions map[string]identitymodel.RoleSchema, current []identitymodel.IdentityUserRoleAssignment, now time.Time) error {
+func validateIdentityEntitlementFinalState(final map[string]identitymodel.IdentityUserRoleAssignment, definitions map[string]identitymodel.RoleSchema, now time.Time) error {
 	activeByUser := map[string][]identitymodel.RoleSchema{}
 	for _, assignment := range final {
 		if !identityAssignmentActive(assignment, now) {
@@ -149,24 +149,5 @@ func validateIdentityEntitlementFinalState(final map[string]identitymodel.Identi
 			}
 		}
 	}
-	currentAdmins := identityEntitlementActiveAdministratorCount(current, definitions, now)
-	finalAssignments := make([]identitymodel.IdentityUserRoleAssignment, 0, len(final))
-	for _, assignment := range final {
-		finalAssignments = append(finalAssignments, assignment)
-	}
-	if currentAdmins > 0 && identityEntitlementActiveAdministratorCount(finalAssignments, definitions, now) == 0 {
-		return forbidden("backend.identity.last_administrator_revocation_denied")
-	}
 	return nil
-}
-
-func identityEntitlementActiveAdministratorCount(assignments []identitymodel.IdentityUserRoleAssignment, definitions map[string]identitymodel.RoleSchema, now time.Time) int {
-	users := map[string]bool{}
-	for _, assignment := range assignments {
-		definition, found := definitions[assignment.RoleID]
-		if found && identityStringSliceContains(definition.Permissions, "workspace.admin") && identityAssignmentActive(assignment, now) {
-			users[assignment.UserID] = true
-		}
-	}
-	return len(users)
 }

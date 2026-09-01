@@ -9,6 +9,11 @@ import (
 
 const (
 	RuntimeAuthoringContractVersion = "runtime-authoring-v1"
+	// CapabilityPermissionModelExactAction documents that authorization is
+	// resolved per operation from the canonical Action registry. It is a model
+	// identifier, not a grant key; concrete grants remain in Permissions after
+	// the owner projection has resolved every advertised operation.
+	CapabilityPermissionModelExactAction = "exact_action_same_key_permission"
 	// RuntimeAuthoringContractHash identifies the published, canonical authoring catalog.
 	// The Application catalog test fails whenever catalog content changes without updating it.
 	RuntimeAuthoringContractHash = "39897291f005fb901b6b0da84c652d14d8aa21b6dc2aba40ff7f5a23d67a592b"

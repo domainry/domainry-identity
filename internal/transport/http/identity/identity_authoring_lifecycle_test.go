@@ -79,7 +79,7 @@ func TestIdentityAuthoringLifecycleCoversLookupMissesAndFailures(t *testing.T) {
 	handler, response := newIdentityHTTPHandler(&identityHTTPRepository{})
 	handler.audit = auditapplication.NewAuditApplicationService(&identityAuthoringAuditRepository{err: errors.New("audit unavailable")})
 	handler.principal = func(*http.Request) identitymodel.Principal {
-		return identitymodel.Principal{Known: true, WorkspaceID: "workspace-1", Role: identitymodel.RoleSchema{Permissions: []string{"identity.audit.view"}}}
+		return identitymodel.Principal{Known: true, WorkspaceID: "workspace-1", Role: identitymodel.RoleSchema{Permissions: []string{"audit.governance.read"}}}
 	}
 	request := httptest.NewRequest(http.MethodGet, "/identity/roles/manager/versions", nil)
 	request.SetPathValue("roleID", "manager")
@@ -134,7 +134,7 @@ func TestIdentityAuthoringLifecycleReadsResourcesAndAuditRevisions(t *testing.T)
 		{ID: "ignored-resource", WorkspaceID: "workspace-1", Event: "identity_role_updated", ObjectKey: "identity_role", RecordID: "other"},
 	}})
 	handler.principal = func(*http.Request) identitymodel.Principal {
-		return identitymodel.Principal{Known: true, UserID: "reviewer-1", WorkspaceID: "workspace-1", Role: identitymodel.RoleSchema{Permissions: []string{"identity.audit.view"}}}
+		return identitymodel.Principal{Known: true, UserID: "reviewer-1", WorkspaceID: "workspace-1", Role: identitymodel.RoleSchema{Permissions: []string{"audit.governance.read"}}}
 	}
 	request := httptest.NewRequest(http.MethodGet, "/identity/roles/manager/versions", nil)
 	request.SetPathValue("roleID", "manager")

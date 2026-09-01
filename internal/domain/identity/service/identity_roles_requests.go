@@ -280,11 +280,6 @@ func (s *IdentityDomainService) RemoveUserRoleGoverned(ctx context.Context, user
 			if definition.AssignmentMode == identitymodel.IdentityRoleAssignmentSystemManaged {
 				return forbidden("backend.identity.system_managed_role_assignment_denied")
 			}
-			if identityStringSliceContains(definition.Permissions, "workspace.admin") {
-				if err := s.ensureAnotherActiveAdministrator(ctx, userID, roleID); err != nil {
-					return err
-				}
-			}
 		}
 	}
 	assignments, err := s.repo.ListIdentityUserRoleAssignments(ctx, s.workspace, userID)
@@ -302,34 +297,6 @@ func (s *IdentityDomainService) RemoveUserRoleGoverned(ctx context.Context, user
 		return s.repo.AssignIdentityUserRole(ctx, s.workspace, assignment)
 	}
 	return s.repo.RemoveIdentityUserRole(ctx, s.workspace, userID, roleID)
-}
-
-func (s *IdentityDomainService) ensureAnotherActiveAdministrator(ctx context.Context, excludedUserID, _ string) error {
-	assignments, err := s.repo.ListIdentityUserRoleAssignments(ctx, s.workspace, "")
-	if err != nil {
-		return err
-	}
-	roles, err := s.repo.ListIdentityRoles(ctx, s.workspace)
-	if err != nil {
-		return err
-	}
-	adminRoleIDs := map[string]bool{}
-	for _, role := range roles {
-		if definition, published := s.publishedRoleDefinition(role); published && identityStringSliceContains(definition.Permissions, "workspace.admin") {
-			adminRoleIDs[role.ID] = true
-		}
-	}
-	active := 0
-	now := time.Now()
-	for _, assignment := range assignments {
-		if adminRoleIDs[assignment.RoleID] && assignment.UserID != excludedUserID && identityAssignmentActive(assignment, now) {
-			active++
-		}
-	}
-	if active == 0 {
-		return forbidden("backend.identity.last_administrator_revocation_denied")
-	}
-	return nil
 }
 
 func (s *IdentityDomainService) ListUserRoleAssignments(ctx context.Context, userID string) ([]identitymodel.IdentityUserRoleAssignment, error) {

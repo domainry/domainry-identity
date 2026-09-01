@@ -76,6 +76,22 @@ func TestIdentityMenuReadAndLocalizationHelpers(t *testing.T) {
 	}
 }
 
+func TestIdentityPermissionEnablementChangesDatabaseBackedSnapshot(t *testing.T) {
+	handler, response := newIdentityHTTPHandler(&identityHTTPRepository{})
+	permissionKey := "identity.departments.list"
+	if !handler.permissionCatalog.PermissionIsExecutable(permissionKey) {
+		t.Fatalf("test permission %q was not initialized", permissionKey)
+	}
+	w, request := identityRoleRequest(http.MethodPut, "/identity/permissions/"+permissionKey+"/enabled", `{"enabled":false,"business_reason":"temporarily suspend department directory access"}`, map[string]string{"permissionKey": permissionKey})
+	handler.setIdentityPermissionEnabled(w, request)
+	if response.status != http.StatusOK || response.err != nil {
+		t.Fatalf("enablement response status=%d value=%#v err=%v", response.status, response.value, response.err)
+	}
+	if handler.permissionCatalog.PermissionIsExecutable(permissionKey) {
+		t.Fatal("disabled permission remained executable")
+	}
+}
+
 func TestIdentityMenuAndPermissionLocalization(t *testing.T) {
 	repository := &identityLocalizationRepository{values: []metadatamodel.LocalizedText{
 		{EntityType: "menu", EntityKey: "customers", Property: "name", Text: "客户"},

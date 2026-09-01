@@ -42,7 +42,7 @@ func TestIdentityActorRoleTargetScopeEdges(t *testing.T) {
 		t.Fatal("unknown actor managed role target")
 	}
 	for _, actor := range []identitymodel.Principal{
-		{Known: true, UserID: "admin", Role: identitymodel.RoleSchema{Permissions: []string{"workspace.admin"}}},
+		{Known: true, UserID: "admin", Role: identitymodel.RoleSchema{RecordScope: "all_records"}},
 		{Known: true, UserID: "user"},
 		{Known: true, UserID: "manager", ReportingUserIDs: []string{"user"}, Role: identitymodel.RoleSchema{RecordScope: "subordinates"}},
 		{Known: true, UserID: "manager", DepartmentID: "department", Role: identitymodel.RoleSchema{RecordScope: "department"}},
@@ -51,6 +51,9 @@ func TestIdentityActorRoleTargetScopeEdges(t *testing.T) {
 		if !identityActorCanManageRoleTarget(actor, "user", target) {
 			t.Fatalf("actor=%+v was denied", actor)
 		}
+	}
+	if identityActorCanManageRoleTarget(identitymodel.Principal{Known: true, UserID: "admin", Role: identitymodel.RoleSchema{Permissions: []string{"identity.roles.list"}}}, "user", target) {
+		t.Fatal("functional Permission expanded into role-target data scope")
 	}
 	if identityActorCanManageRoleTarget(identitymodel.Principal{Known: true, UserID: "manager", Role: identitymodel.RoleSchema{RecordScope: "none"}}, "user", target) {
 		t.Fatal("unsupported scope managed target")
@@ -190,9 +193,9 @@ func TestIdentityAssignmentActivityAndPrivilegedRoleEdges(t *testing.T) {
 	if service.identityPrivilegedAutoAssignableRole(identitymodel.IdentityRole{Key: "unpublished"}) {
 		t.Fatal("unpublished role was privileged")
 	}
-	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{Key: "member", Permissions: []string{"other", " workspace.admin "}}})
+	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{Key: "member", Permissions: []string{"other", " identity.roles.list "}, RiskLevel: identitymodel.IdentityRoleRiskPrivileged}})
 	if !service.identityPrivilegedAutoAssignableRole(identitymodel.IdentityRole{ID: "member-id", Key: "member"}) {
-		t.Fatal("published workspace administrator was not privileged")
+		t.Fatal("published privileged risk level was not enforced")
 	}
 	repository.roles = nil
 }

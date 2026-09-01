@@ -236,9 +236,9 @@ func newAuthPasswordHandler(t *testing.T) (*AuthHandler, *authExternalIdentityRe
 		},
 		assignments: []identitymodel.IdentityUserRoleAssignment{{UserID: "user-1", RoleID: "role-viewer"}},
 	}
-	domain := identityservice.NewIdentityDomainService(identityRepository, nil)
+	domain := identityservice.NewIdentityDomainService(identityRepository, authExecutablePermissionDefinitions("records.read"))
 	roleDefinitions := []identitymodel.RoleSchema{
-		{Key: "viewer", Name: "Viewer", Permissions: []string{"identity.users.read"}},
+		{Key: "viewer", Name: "Viewer", Permissions: []string{"records.read"}},
 		{Key: "customer", Name: "Customer"},
 	}
 	domain.ReplaceRoleDefinitions(roleDefinitions)
@@ -256,7 +256,7 @@ func newAuthPasswordHandler(t *testing.T) (*AuthHandler, *authExternalIdentityRe
 	}
 	service := authapplication.NewAuthApplicationService(scoped, repository, "test-secret", "", time.Hour, 24*time.Hour, 5, time.Minute, time.Minute, 3, authpolicy.AuthPasswordPolicy{})
 	principal := &identitymodel.Principal{Known: true, WorkspaceID: "workspace-a", UserID: "user-1", Role: identitymodel.RoleSchema{Key: "viewer"}}
-	roleRequests := identityapplication.NewIdentityApplicationService(identityRepository, nil)
+	roleRequests := identityapplication.NewIdentityApplicationService(identityRepository, authExecutablePermissionDefinitions("records.read"))
 	roleRequests.ReplaceRoleDefinitions(roleDefinitions)
 	capture := &authExternalHandlerCapture{}
 	handler := NewAuthHandler(AuthDependencies{
@@ -293,6 +293,16 @@ func newAuthPasswordHandler(t *testing.T) (*AuthHandler, *authExternalIdentityRe
 	return handler, identityRepository, repository, capture, principal
 }
 
+func authExecutablePermissionDefinitions(keys ...string) []identitymodel.IdentityPermissionDefinition {
+	definitions := make([]identitymodel.IdentityPermissionDefinition, 0, len(keys))
+	for _, key := range keys {
+		definitions = append(definitions, identitymodel.IdentityPermissionDefinition{
+			Key: key, DefinitionStatus: identitymodel.IdentityPermissionDefinitionActive, Enabled: true,
+		})
+	}
+	return definitions
+}
+
 func TestPasswordSessionHandlersLoginGuestRefreshAndLogout(t *testing.T) {
 	handler, identities, repository, _, _ := newAuthPasswordHandler(t)
 	repository.credential.MustChangePassword = true
@@ -306,7 +316,7 @@ func TestPasswordSessionHandlersLoginGuestRefreshAndLogout(t *testing.T) {
 	handler.authLogin(loginResponse, surfaceRequest("/auth/login", `{"workspace_id":" workspace-a ","email":" user@example.com ","password":"Password1!"}`, "admin_console"))
 	var loginSession authmodel.AuthSession
 	if loginResponse.Code != http.StatusOK || json.Unmarshal(loginResponse.Body.Bytes(), &loginSession) != nil || loginSession.User.ID != "user-1" || loginSession.RefreshToken == "" || !loginSession.MustChangePassword ||
-		!slices.Contains(loginSession.Permissions, "identity.users.read") ||
+		!slices.Contains(loginSession.Permissions, "records.read") ||
 		repository.loginUserID != "user-1" {
 		t.Fatalf("login status=%d session=%#v loginUser=%q body=%s", loginResponse.Code, loginSession, repository.loginUserID, loginResponse.Body.String())
 	}
@@ -318,7 +328,7 @@ func TestPasswordSessionHandlersLoginGuestRefreshAndLogout(t *testing.T) {
 	handler.authRefresh(refreshResponse, surfaceRequest("/auth/refresh", `{"workspace_id":"workspace-a","refresh_token":"`+loginSession.RefreshToken+`"}`, "admin_console"))
 	var refreshed authmodel.AuthSession
 	if refreshResponse.Code != http.StatusOK || json.Unmarshal(refreshResponse.Body.Bytes(), &refreshed) != nil || refreshed.RefreshToken == "" || refreshed.RefreshToken == loginSession.RefreshToken || !refreshed.MustChangePassword ||
-		!slices.Contains(refreshed.Permissions, "identity.users.read") ||
+		!slices.Contains(refreshed.Permissions, "records.read") ||
 		repository.refreshes[0].RevokedAt == "" || repository.refreshes[0].ReplacedByID == "" {
 		t.Fatalf("refresh status=%d session=%#v refreshes=%#v body=%s", refreshResponse.Code, refreshed, repository.refreshes, refreshResponse.Body.String())
 	}
@@ -523,7 +533,7 @@ func TestPasswordMutationHandlersAuthorizationIdempotencyAndReplay(t *testing.T)
 	handler.authChangePassword(changed, changeRequest("change-1", "Password1!", "Password2!"))
 	var changedSession authmodel.AuthSession
 	if changed.Code != http.StatusOK || json.Unmarshal(changed.Body.Bytes(), &changedSession) != nil || changedSession.AccessToken == "" || changedSession.RefreshToken == "" || changedSession.MustChangePassword ||
-		!slices.Contains(changedSession.Permissions, "identity.users.read") ||
+		!slices.Contains(changedSession.Permissions, "records.read") ||
 		changed.Header().Get("Idempotency-Replayed") != "" || bcrypt.CompareHashAndPassword([]byte(repository.credential.PasswordHash), []byte("Password2!")) != nil {
 		t.Fatalf("change status=%d replay=%q credential=%#v body=%s", changed.Code, changed.Header().Get("Idempotency-Replayed"), repository.credential, changed.Body.String())
 	}
@@ -565,11 +575,11 @@ func TestResetPasswordHandlerAuthorizationValidationAndReplay(t *testing.T) {
 	*principal = identitymodel.Principal{Known: true, WorkspaceID: "workspace-a", UserID: "user-1", Role: identitymodel.RoleSchema{Key: "viewer"}}
 	forbidden := httptest.NewRecorder()
 	handler.authResetPassword(forbidden, resetRequest("reset-1", "Password4!"))
-	if forbidden.Code != http.StatusForbidden || capture.errorCode != "auth.permission_denied" {
-		t.Fatalf("forbidden status=%d code=%q", forbidden.Code, capture.errorCode)
+	if forbidden.Code != http.StatusUnprocessableEntity || apperror.CodeOf(capture.serviceErr) != "auth.permission_denied" {
+		t.Fatalf("application authorization status=%d error=%v", forbidden.Code, capture.serviceErr)
 	}
 
-	principal.Role.Permissions = []string{"identity.security.write"}
+	principal.Role.Permissions = []string{"auth.reset_password"}
 	badJSON := httptest.NewRecorder()
 	handler.authResetPassword(badJSON, httptest.NewRequest(http.MethodPost, "/auth/password/reset", strings.NewReader("{")))
 	if badJSON.Code != http.StatusBadRequest {

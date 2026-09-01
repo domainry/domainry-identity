@@ -31,6 +31,10 @@ func (s *SQLIdentityStore) UpsertIdentityRoleWithExecutor(ctx context.Context, e
 	return s.roleStore().UpsertWithExecutor(ctx, execer, workspaceID, role)
 }
 
+func (s *SQLIdentityStore) UpsertIdentityRolesWithExecutor(ctx context.Context, execer identityUserExecer, workspaceID string, roles []identitymodel.IdentityRole) error {
+	return s.roleStore().UpsertBatchWithExecutor(ctx, execer, workspaceID, roles)
+}
+
 func (s *SQLIdentityStore) RemoveIdentityRole(ctx context.Context, workspaceID, roleID string) error {
 	return s.roleStore().Remove(ctx, workspaceID, roleID)
 }

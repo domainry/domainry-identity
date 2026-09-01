@@ -23,21 +23,18 @@ func validateBusinessActionDefinitionIssuesWithObjects(action definitionmodel.Ac
 	return actionvalidation.ActionValidateDefinitionIssuesWithObjects(action, objects)
 }
 
-// Dedicated Action permissions are definition-owned catalog entries. Removing
-// or replacing their last Action owner must update every Role assignment in
-// the same system draft, otherwise publication would leave a permission key
-// that no longer has executable semantics.
+// Action permissions are same-key definition-owned catalog entries. Removing
+// an Action must update every Role assignment in the same system draft,
+// otherwise publication would leave a grant with no executable semantics.
 func validateRetiredActionPermissionAssignments(active, candidate []definitionmodel.ActionSchema, roles []identitymodel.RoleSchema) error {
 	activeOwned := map[string]bool{}
 	for _, action := range active {
-		if metadataActionUsesDedicatedPermission(action) {
-			activeOwned[strings.TrimSpace(action.RequiresPermission)] = true
+		if key := strings.TrimSpace(action.Key); key != "" {
+			activeOwned[key] = true
 		}
 	}
 	for _, action := range candidate {
-		if metadataActionUsesDedicatedPermission(action) {
-			delete(activeOwned, strings.TrimSpace(action.RequiresPermission))
-		}
+		delete(activeOwned, strings.TrimSpace(action.Key))
 	}
 	for _, role := range roles {
 		for _, permission := range role.Permissions {
@@ -48,16 +45,6 @@ func validateRetiredActionPermissionAssignments(active, candidate []definitionmo
 		}
 	}
 	return nil
-}
-
-func metadataActionUsesDedicatedPermission(action definitionmodel.ActionSchema) bool {
-	permission := strings.TrimSpace(action.RequiresPermission)
-	for _, operation := range []string{"create", "read", "update", "delete"} {
-		if permission == strings.TrimSpace(action.ObjectKey)+"."+operation {
-			return false
-		}
-	}
-	return true
 }
 
 func ValidateStructuredMetadataDefinition(resourceType string, payload json.RawMessage) ([]metadatamodel.MetadataDefinitionValidationIssue, bool) {
@@ -120,17 +107,13 @@ func validateInstalledActionAuthorization(installed, persisted manifestmodel.Man
 	actionPermissions := make(map[string]struct{}, len(installed.Actions))
 	for _, action := range installed.Actions {
 		actionKey := strings.TrimSpace(action.Key)
-		requiredPermission := strings.TrimSpace(action.RequiresPermission)
-		actionPermissions[requiredPermission] = struct{}{}
+		actionPermissions[actionKey] = struct{}{}
 		persistedAction, exists := persistedActions[actionKey]
 		if !exists {
 			return fmt.Errorf("Runtime metadata initialization is incomplete: installed Action %q was not persisted", actionKey)
 		}
-		if strings.TrimSpace(persistedAction.RequiresPermission) != requiredPermission {
-			return fmt.Errorf(
-				"Runtime metadata initialization is incomplete: persisted Action %q requires permission %q, want %q",
-				actionKey, persistedAction.RequiresPermission, requiredPermission,
-			)
+		if strings.TrimSpace(persistedAction.Key) != actionKey {
+			return fmt.Errorf("Runtime metadata initialization is incomplete: persisted Action key %q does not match %q", persistedAction.Key, actionKey)
 		}
 	}
 	for _, installedRole := range installed.Roles {

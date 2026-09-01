@@ -17,7 +17,7 @@ import (
 func TestIdentityGovernanceValidationAggregatesCrossReferenceIssuesWithoutPersistence(t *testing.T) {
 	objects := identityValidationObjects()
 	store := identitypersistence.NewMemoryIdentityStore()
-	identity, _ := identitybusiness.NewIdentityDomainService(store, []identitymodel.IdentityPermissionDefinition{{Key: "order.read", Resource: "order", Action: "read"}}).ForWorkspace("workspace-a")
+	identity, _ := identitybusiness.NewIdentityDomainService(store, []identitymodel.IdentityPermissionDefinition{currentPermission("order.read", "order", "read")}).ForWorkspace("workspace-a")
 	seedIdentityDirectoryRole(t, store, "workspace-a", identitymodel.IdentityRole{ID: "sales", Key: "sales", Label: "Sales", Status: identitymodel.IdentityStatusActive})
 	if err := identity.UpsertMenu(t.Context(), identitymodel.IdentityMenu{ID: "orders", Key: "orders", Label: "Orders", Status: identitymodel.IdentityStatusActive}); err != nil {
 		t.Fatal(err)
@@ -60,7 +60,7 @@ func TestIdentityGovernanceValidationAggregatesCrossReferenceIssuesWithoutPersis
 func TestIdentityGovernanceValidatorAcceptsExistingBusinessReferences(t *testing.T) {
 	objects := identityValidationObjects()
 	store := identitypersistence.NewMemoryIdentityStore()
-	identity, _ := identitybusiness.NewIdentityDomainService(store, []identitymodel.IdentityPermissionDefinition{{Key: "order.read", Resource: "order", Action: "read"}}).ForWorkspace("workspace-a")
+	identity, _ := identitybusiness.NewIdentityDomainService(store, []identitymodel.IdentityPermissionDefinition{currentPermission("order.read", "order", "read")}).ForWorkspace("workspace-a")
 	seedIdentityDirectoryRole(t, store, "workspace-a", identitymodel.IdentityRole{ID: "sales", Key: "sales", Label: "Sales", Status: identitymodel.IdentityStatusActive})
 	if err := identity.UpsertMenu(t.Context(), identitymodel.IdentityMenu{ID: "orders", Key: "orders", Label: "Orders", Status: identitymodel.IdentityStatusActive}); err != nil {
 		t.Fatal(err)
@@ -72,6 +72,13 @@ func TestIdentityGovernanceValidatorAcceptsExistingBusinessReferences(t *testing
 	}, identityGovernancePrincipal())
 	if err != nil || !result.Valid || len(result.Errors) != 0 {
 		t.Fatalf("valid governance result=%#v err=%v", result, err)
+	}
+}
+
+func currentPermission(key, resource, action string) identitymodel.IdentityPermissionDefinition {
+	return identitymodel.IdentityPermissionDefinition{
+		Key: key, Resource: resource, Action: action,
+		DefinitionStatus: identitymodel.IdentityPermissionDefinitionActive, Enabled: true,
 	}
 }
 

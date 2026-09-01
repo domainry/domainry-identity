@@ -386,7 +386,6 @@ export interface IdentityActionPermissionUsage {
   operation_label?: string
   object_key: string
   action_label: string
-  authorization_strategy: 'inherit_object_permission' | 'dedicated_permission' | 'static_all'
   http_method?: string
   route_template?: string
   display_route_template?: string
@@ -411,7 +410,6 @@ export interface IdentityPermissionPoint {
   source_action_key?: string
   object_key?: string
   action_label?: string
-  authorization_strategy?: 'inherit_object_permission' | 'dedicated_permission'
   risk_level?: 'low' | 'medium' | 'high' | 'critical'
   approval_required?: boolean
   assurance_required?: string[]
@@ -422,6 +420,7 @@ export interface IdentityPermissionPoint {
   source_owner?: string
   definition_hash?: string
   source_snapshot_hash?: string
+  action_usage_status: 'available' | 'unavailable'
   action_usages?: IdentityActionPermissionUsage[]
 }
 

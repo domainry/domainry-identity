@@ -275,10 +275,10 @@ func identityRolesFixture() (*identityRolesRepositoryStub, *IdentityDomainServic
 	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{
 		{Key: "member", Name: "Member", RecordScope: "all_records"},
 		{Key: "viewer", Name: "Viewer", RecordScope: "all_records"},
-		{Key: "admin", Name: "Admin", Permissions: []string{"workspace.admin"}, RecordScope: "all_records"},
-		{Key: "owner", Name: "Owner", Permissions: []string{"workspace.admin"}, RecordScope: "all_records"},
-		{Key: "team_workspace_admin", Name: "Workspace Admin", Permissions: []string{"workspace.admin"}, RecordScope: "all_records"},
-		{Key: "security", Name: "Security", Permissions: []string{"workspace.admin"}, RecordScope: "all_records"},
+		{Key: "admin", Name: "Admin", Permissions: []string{"identity.roles.list"}, RecordScope: "all_records", RiskLevel: identitymodel.IdentityRoleRiskPrivileged},
+		{Key: "owner", Name: "Owner", Permissions: []string{"identity.roles.list"}, RecordScope: "all_records", RiskLevel: identitymodel.IdentityRoleRiskPrivileged},
+		{Key: "team_workspace_admin", Name: "Workspace Admin", Permissions: []string{"identity.roles.list"}, RecordScope: "all_records", RiskLevel: identitymodel.IdentityRoleRiskPrivileged},
+		{Key: "security", Name: "Security", Permissions: []string{"identity.roles.list"}, RecordScope: "all_records", RiskLevel: identitymodel.IdentityRoleRiskPrivileged},
 	})
 	return repository, service
 }

@@ -1,0 +1,71 @@
+{
+  "contract_version": "identity-admin-page-permissions-v1",
+  "pages": [
+    {
+      "route": "/admin/org/data-scopes",
+      "action_key": "identity.role_data_scopes.list",
+      "permission_key": "identity.role_data_scopes.list",
+      "source_owner": "identity:builtin"
+    },
+    {
+      "route": "/admin/org/departments",
+      "action_key": "identity.departments.list",
+      "permission_key": "identity.departments.list",
+      "source_owner": "identity:builtin"
+    },
+    {
+      "route": "/admin/org/field-permissions",
+      "action_key": "identity.role_field_permissions.list",
+      "permission_key": "identity.role_field_permissions.list",
+      "source_owner": "identity:builtin"
+    },
+    {
+      "route": "/admin/org/menus",
+      "action_key": "identity.menus.list",
+      "permission_key": "identity.menus.list",
+      "source_owner": "identity:builtin"
+    },
+    {
+      "route": "/admin/org/roles",
+      "action_key": "identity.roles.list",
+      "permission_key": "identity.roles.list",
+      "source_owner": "identity:builtin"
+    },
+    {
+      "route": "/admin/org/workforce",
+      "action_key": "identity.workforce.list",
+      "permission_key": "identity.workforce.list",
+      "source_owner": "identity:builtin"
+    },
+    {
+      "route": "/admin/org/workforce/$profileID",
+      "action_key": "identity.workforce.detail",
+      "permission_key": "identity.workforce.detail",
+      "source_owner": "identity:builtin"
+    },
+    {
+      "route": "/admin/security/accounts",
+      "action_key": "identity.users.list",
+      "permission_key": "identity.users.list",
+      "source_owner": "identity:builtin"
+    },
+    {
+      "route": "/admin/security/accounts/$userId",
+      "action_key": "identity.users.get",
+      "permission_key": "identity.users.get",
+      "source_owner": "identity:builtin"
+    },
+    {
+      "route": "/admin/system/audit",
+      "action_key": "audit.governance.read",
+      "permission_key": "audit.governance.read",
+      "source_owner": "module:audit"
+    },
+    {
+      "route": "/admin/system/metadata",
+      "action_key": "identity.metadata.manifest.get",
+      "permission_key": "identity.metadata.manifest.get",
+      "source_owner": "identity:builtin"
+    }
+  ]
+}

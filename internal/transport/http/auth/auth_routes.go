@@ -1,40 +1,72 @@
 package auth
 
-import "net/http"
+import (
+	"net/http"
+
+	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
+	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+)
 
 type routeRegistrar interface {
 	HandleFunc(string, func(http.ResponseWriter, *http.Request))
 }
 
 func (h *AuthHandler) RegisterRoutes(mux routeRegistrar) {
-	authenticated := h.authenticated
-	if authenticated == nil {
-		authenticated = h.admin
+	h.registerAuthAction(mux, "auth.discovery.jwks", h.authJSONWebKeySet)
+	h.registerAuthAction(mux, "auth.discovery.openid_configuration", h.authOpenIDConfiguration)
+	h.registerAuthAction(mux, "auth.login", h.authLogin)
+	h.registerAuthAction(mux, "auth.guest", h.authGuest)
+	h.registerAuthAction(mux, "auth.refresh", h.authRefresh)
+	h.registerAuthAction(mux, "auth.logout", h.authLogout)
+	h.registerAuthAction(mux, "auth.sessions.revoke_others", h.authRevokeOtherSessions)
+	h.registerAuthAction(mux, "auth.change_password", h.authChangePassword)
+	h.registerAuthAction(mux, "auth.reset_password", h.authResetPassword)
+	h.registerAuthAction(mux, "auth.providers.list", h.authProviders)
+	h.registerAuthAction(mux, "auth.providers.setup_check", h.authProviderSetupCheck)
+	h.registerAuthAction(mux, "auth.providers.setup", h.authProviderSetupSave)
+	h.registerAuthAction(mux, "auth.providers.start_get", h.authProviderStart)
+	h.registerAuthAction(mux, "auth.providers.start_post", h.authProviderStart)
+	h.registerAuthAction(mux, "auth.providers.callback_get", h.authProviderCallback)
+	h.registerAuthAction(mux, "auth.providers.callback_post", h.authProviderCallback)
+	h.registerAuthAction(mux, "auth.providers.verify", h.authProviderVerify)
+	h.registerAuthAction(mux, "auth.providers.exchange", h.authProviderExchange)
+	h.registerAuthAction(mux, "auth.external_accounts.list", h.authExternalAccounts)
+	h.registerAuthAction(mux, "auth.external_accounts.bind", h.authBindExternalAccount)
+	h.registerAuthAction(mux, "auth.external_accounts.unbind", h.authUnbindExternalAccount)
+	h.registerAuthAction(mux, "auth.me.get", h.authMe)
+	h.registerAuthAction(mux, "auth.me.update", h.authUpdateCurrentUserLocale)
+	h.registerAuthAction(mux, "auth.role_options.list", h.authRoleOptions)
+	h.registerAuthAction(mux, "auth.role_requests.list", h.authRoleRequests)
+	h.registerAuthAction(mux, "auth.role_requests.create", h.authCreateRoleRequest)
+}
+
+func (h *AuthHandler) registerAuthAction(mux routeRegistrar, actionKey string, next http.HandlerFunc) {
+	action, found := h.actionAuthorization.Definition(actionKey)
+	if !found || action.HTTP == nil {
+		panic("Auth route references unregistered action " + actionKey)
 	}
-	mux.HandleFunc("GET /.well-known/jwks.json", h.authJSONWebKeySet)
-	mux.HandleFunc("GET /.well-known/openid-configuration", h.authOpenIDConfiguration)
-	mux.HandleFunc("POST /auth/login", h.authLogin)
-	mux.HandleFunc("POST /auth/guest", h.authGuest)
-	mux.HandleFunc("POST /auth/refresh", h.authRefresh)
-	mux.HandleFunc("POST /auth/logout", h.authLogout)
-	mux.HandleFunc("POST /auth/sessions/revoke-others", authenticated(h.authRevokeOtherSessions))
-	mux.HandleFunc("POST /auth/change-password", h.authChangePassword)
-	mux.HandleFunc("POST /auth/reset-password", h.authResetPassword)
-	mux.HandleFunc("GET /auth/providers", h.authProviders)
-	mux.HandleFunc("GET /auth/providers/{provider}/setup-check", h.authProviderSetupCheck)
-	mux.HandleFunc("PUT /auth/providers/{provider}/setup", authenticated(h.authProviderSetupSave))
-	mux.HandleFunc("GET /auth/providers/{provider}/start", h.authProviderStart)
-	mux.HandleFunc("POST /auth/providers/{provider}/start", h.authProviderStart)
-	mux.HandleFunc("GET /auth/providers/{provider}/callback", h.authProviderCallback)
-	mux.HandleFunc("POST /auth/providers/{provider}/callback", h.authProviderCallback)
-	mux.HandleFunc("POST /auth/providers/{provider}/verify", h.authProviderVerify)
-	mux.HandleFunc("POST /auth/providers/{provider}/exchange", h.authProviderExchange)
-	mux.HandleFunc("GET /auth/external-accounts", h.authExternalAccounts)
-	mux.HandleFunc("POST /auth/external-accounts/{provider}/bind", h.authBindExternalAccount)
-	mux.HandleFunc("DELETE /auth/external-accounts/{provider}/{accountID}", h.authUnbindExternalAccount)
-	mux.HandleFunc("GET /auth/me", h.authMe)
-	mux.HandleFunc("PATCH /auth/me", h.authUpdateCurrentUserLocale)
-	mux.HandleFunc("GET /auth/role-options", h.authRoleOptions)
-	mux.HandleFunc("GET /auth/role-requests", h.authRoleRequests)
-	mux.HandleFunc("POST /auth/role-requests", h.authCreateRoleRequest)
+	mux.HandleFunc(action.HTTP.Method+" "+action.HTTP.RouteTemplate, func(w http.ResponseWriter, r *http.Request) {
+		principal := identitymodel.Principal{}
+		if h.principal != nil {
+			principal = h.principal(r)
+		}
+		if !h.actionAuthorization.Allows(action, principal, identityapplication.IdentityActionAuthorizationContext{}) {
+			if h.securityAudit != nil {
+				h.securityAudit(r, "auth_api_denied", "Auth API action denied", map[string]any{
+					"action_key": action.Key, "path": r.URL.Path, "method": r.Method, "strategy": action.Authorization.Strategy,
+				})
+			}
+			if h.writeError != nil {
+				if !principal.Known {
+					h.writeError(w, r, http.StatusUnauthorized, "auth.token_required")
+					return
+				}
+				h.writeError(w, r, http.StatusForbidden, "auth.permission_denied")
+				return
+			}
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		next(w, r)
+	})
 }

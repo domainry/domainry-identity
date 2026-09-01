@@ -92,7 +92,7 @@ export function IdentityRoleAssignmentList({ userID }: { userID: string }) {
   return <Card>
     <CardHeader className='flex-row items-center justify-between gap-3'>
       <CardTitle>{t('roleAssignments.title')}</CardTitle>
-      {has('identity.roles.write') ? <Button size='sm' onClick={() => setAssignOpen(true)}><Plus />{t('roleAssignments.assign')}</Button> : null}
+	  {has('identity.user_role_assignments.assign') ? <Button size='sm' onClick={() => setAssignOpen(true)}><Plus />{t('roleAssignments.assign')}</Button> : null}
     </CardHeader>
     <CardContent className='space-y-4'>
       <DataTable

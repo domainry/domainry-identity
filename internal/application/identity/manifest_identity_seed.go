@@ -17,7 +17,6 @@ import (
 )
 
 type Seed struct {
-	Permissions          []identitymodel.IdentityPermissionDefinition
 	Roles                []identitymodel.IdentityRole
 	Departments          []identitymodel.IdentityDepartment
 	Users                []identitymodel.IdentityUser
@@ -67,9 +66,6 @@ func FromManifest(manifest manifestmodel.ManifestSchema) Seed {
 				Status: identitymodel.IdentityStatusActive,
 			})
 			seed.UserRoles = append(seed.UserRoles, identitymodel.IdentityUserRoleAssignment{UserID: roleID + "_user", RoleID: roleID})
-		}
-		if roleID != "admin" && manifestRoleHasPermission(role.Permissions, "workspace.admin") {
-			seed.RoleMenus = append(seed.RoleMenus, generatedIdentityRoleMenus(roleID, seed.Menus)...)
 		}
 	}
 	userIndexByID := map[string]int{}
@@ -122,15 +118,6 @@ func FromManifest(manifest manifestmodel.ManifestSchema) Seed {
 		}
 	}
 	return seed
-}
-
-func manifestRoleHasPermission(permissions []string, expected string) bool {
-	for _, permission := range permissions {
-		if strings.EqualFold(strings.TrimSpace(permission), expected) {
-			return true
-		}
-	}
-	return false
 }
 
 func manifestIdentityWorkforceProfiles(bootstrap *identitymodel.ManifestIdentityBootstrapSchema) []identitymodel.IdentityWorkforceProfile {

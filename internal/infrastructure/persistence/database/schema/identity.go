@@ -360,25 +360,6 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"consumed_at " + text,
 			"created_at " + text + " NOT NULL",
 		},
-		"_identity_authorization_catalogs": {
-			"application_key " + text + " PRIMARY KEY",
-			"workspace_id " + text + " NOT NULL",
-			"catalog_json TEXT NOT NULL",
-			"revision " + text + " NOT NULL",
-			"sha256 " + text + " NOT NULL",
-			"published_at " + text + " NOT NULL",
-			"updated_at " + text + " NOT NULL",
-		},
-		"_identity_authorization_catalog_revisions": {
-			"id " + text + " PRIMARY KEY",
-			"workspace_id " + text + " NOT NULL",
-			"application_key " + text + " NOT NULL",
-			"catalog_json TEXT NOT NULL",
-			"revision " + text + " NOT NULL",
-			"sha256 " + text + " NOT NULL",
-			"published_at " + text + " NOT NULL",
-			"created_at " + text + " NOT NULL",
-		},
 		"_identity_auth_mutation_receipts": {
 			"id " + text + " PRIMARY KEY",
 			"workspace_id " + text + " NOT NULL",
@@ -481,12 +462,6 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 	}
 	if err := ensureWorkspaceScopedIdentities(ctx, s, workspaceIdentities); err != nil {
 		return err
-	}
-	if err := s.CreateIndexIfMissing(ctx, "_identity_authorization_catalog_revisions", "uniq_identity_authorization_catalog_revision", true, "workspace_id", "application_key", "revision"); err != nil {
-		return fmt.Errorf("create authorization catalog revision identity: %w", err)
-	}
-	if err := s.CreateIndexIfMissing(ctx, "_identity_authorization_catalog_revisions", "idx_identity_authorization_catalog_history", false, "workspace_id", "application_key", "published_at"); err != nil {
-		return fmt.Errorf("create authorization catalog history index: %w", err)
 	}
 	if err := migrateLegacyIdentityUserWorkforceFacts(ctx, s); err != nil {
 		return err
@@ -627,6 +602,9 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 		}
 	}
 	if err := ensureIdentityPermissionsSchema(ctx, s); err != nil {
+		return err
+	}
+	if err := ensureIdentityApplicationsSchema(ctx, s); err != nil {
 		return err
 	}
 	return nil

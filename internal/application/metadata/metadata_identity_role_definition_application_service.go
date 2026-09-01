@@ -18,7 +18,7 @@ func (s *MetadataApplicationService) IdentityRoleDefinition(ctx context.Context,
 	if err := metadataAuthorizeQuery(principal); err != nil {
 		return identitymodel.RoleSchema{}, identitymodel.IdentityRoleDefinitionRevision{}, false, err
 	}
-	if !identitycontract.IdentityRoleHasPermissionKey(principal.Role, "identity.permissions.read") && !identitycontract.IdentityRoleHasPermissionKey(principal.Role, "identity.permissions.write") {
+	if !identitycontract.IdentityRoleHasPermissionKey(principal.Role, "identity.role_permissions.list") {
 		return identitymodel.RoleSchema{}, identitymodel.IdentityRoleDefinitionRevision{}, false, forbidden("auth.permission_denied")
 	}
 	roleKey = strings.TrimSpace(roleKey)
@@ -46,7 +46,7 @@ func (s *MetadataApplicationService) PublishIdentityRolePermissions(ctx context.
 	if err := metadataAuthorizeCommand(principal); err != nil {
 		return identitymodel.IdentityRoleDefinitionRevision{}, err
 	}
-	if !identitycontract.IdentityRoleHasPermissionKey(principal.Role, "identity.permissions.write") {
+	if !identitycontract.IdentityRoleHasPermissionKey(principal.Role, "identity.role_permissions.publish") {
 		return identitymodel.IdentityRoleDefinitionRevision{}, forbidden("auth.permission_denied")
 	}
 	expectedSchemaHash = strings.TrimSpace(expectedSchemaHash)

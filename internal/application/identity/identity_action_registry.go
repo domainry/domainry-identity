@@ -5,175 +5,248 @@ import (
 	"sort"
 	"strings"
 
+	actioncontract "github.com/domainry/domainry-foundation/action"
+	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
-// IdentityActionRegistry is immutable after construction. S0 resolves route
-// registration and permission usage projections from this same snapshot.
+// IdentityActionRegistry is an Identity projection over Foundation's shared,
+// frozen Action registry. Domain-specific Permission records and usage DTOs
+// are derived from that one immutable snapshot and are never registered as a
+// second Action authority.
 type IdentityActionRegistry struct {
-	definitions []identitymodel.IdentityActionDefinition
-	byKey       map[string]identitymodel.IdentityActionDefinition
-	byHTTP      map[string]string
-	ownedByKey  map[string]identitymodel.IdentityPermissionDefinitionRecord
-	usageByKey  map[string][]identitymodel.IdentityActionPermissionUsage
+	shared                *actioncontract.Registry
+	permissionOwnerByKey  map[string]string
+	permissionOwners      map[string]struct{}
+	permissionRecordByKey map[string]identitymodel.IdentityPermissionDefinitionRecord
+	permissionUsagesByKey map[string][]identitymodel.IdentityActionPermissionUsage
+	pagePermissionByRoute map[string]string
 }
 
 func NewIdentityActionRegistry(definitions []identitymodel.IdentityActionDefinition) (*IdentityActionRegistry, error) {
+	shared := actioncontract.NewRegistry()
+	if err := shared.Register(definitions...); err != nil {
+		return nil, err
+	}
+	if err := shared.Freeze(); err != nil {
+		return nil, err
+	}
 	registry := &IdentityActionRegistry{
-		byKey:      make(map[string]identitymodel.IdentityActionDefinition, len(definitions)),
-		byHTTP:     make(map[string]string, len(definitions)),
-		ownedByKey: map[string]identitymodel.IdentityPermissionDefinitionRecord{},
-		usageByKey: map[string][]identitymodel.IdentityActionPermissionUsage{},
+		shared:                shared,
+		permissionOwnerByKey:  map[string]string{},
+		permissionOwners:      map[string]struct{}{},
+		permissionRecordByKey: map[string]identitymodel.IdentityPermissionDefinitionRecord{},
+		permissionUsagesByKey: map[string][]identitymodel.IdentityActionPermissionUsage{},
+		pagePermissionByRoute: map[string]string{},
 	}
-	for index := range definitions {
-		definition := cloneIdentityActionDefinition(definitions[index])
-		if err := validateIdentityActionDefinition(definition); err != nil {
-			return nil, fmt.Errorf("Identity action %d: %w", index, err)
-		}
-		if _, duplicate := registry.byKey[definition.Key]; duplicate {
-			return nil, fmt.Errorf("Identity action key %q is duplicated", definition.Key)
-		}
-		httpIdentity := definition.HTTP.Method + " " + definition.HTTP.RouteTemplate
-		if existing, duplicate := registry.byHTTP[httpIdentity]; duplicate {
-			return nil, fmt.Errorf("Identity HTTP action %q is owned by both %q and %q", httpIdentity, existing, definition.Key)
-		}
-		registry.byKey[definition.Key] = definition
-		registry.byHTTP[httpIdentity] = definition.Key
-		registry.definitions = append(registry.definitions, definition)
-		for _, owned := range definition.OwnedPermissions {
-			if current, duplicate := registry.ownedByKey[owned.Key]; duplicate {
-				return nil, fmt.Errorf("Identity permission %q has duplicate owners %q and %q", owned.Key, current.SourceOwner, definition.Owner)
+	for _, definition := range shared.Definitions() {
+		for _, page := range definition.Pages {
+			if definition.Permission == nil || definition.Permission.Key != definition.Key {
+				return nil, fmt.Errorf("page %q action %q has no same-key permission", page.Route, definition.Key)
 			}
-			registry.ownedByKey[owned.Key] = identitymodel.IdentityPermissionDefinitionRecord{
-				PermissionKey: owned.Key, ResourceKey: owned.ResourceKey, ActionKey: owned.ActionKey,
-				Label: owned.Label, Description: owned.Description, Category: owned.Category,
-				SourceKind: definition.SourceKind, SourceOwner: definition.Owner,
-				DefinitionStatus: identitymodel.IdentityPermissionDefinitionActive, Enabled: true,
+			if existing := registry.pagePermissionByRoute[page.Route]; existing != "" && existing != definition.Key {
+				return nil, fmt.Errorf("page %q is owned by both actions %q and %q", page.Route, existing, definition.Key)
 			}
+			registry.pagePermissionByRoute[page.Route] = definition.Key
+		}
+		if definition.Permission == nil {
+			continue
+		}
+		permission := *definition.Permission
+		registry.permissionOwnerByKey[permission.Key] = permission.Owner
+		registry.permissionOwners[permission.Owner] = struct{}{}
+		registry.permissionRecordByKey[permission.Key] = identitymodel.IdentityPermissionDefinitionRecord{
+			PermissionKey: permission.Key, ResourceKey: permission.ResourceKey, ActionKey: permission.ActionKey,
+			Label: permission.Label, Description: permission.Description, Category: permission.Category,
+			SourceKind: definition.SourceKind, SourceOwner: permission.Owner,
+			DefinitionStatus: identityPermissionLifecycle(permission.LifecycleStatus), Enabled: true,
 		}
 	}
-	for _, definition := range registry.definitions {
-		for _, permission := range definition.RequiredPermissions {
-			if _, defined := registry.ownedByKey[permission]; !defined {
-				return nil, fmt.Errorf("Identity action %q references permission %q without a canonical owner", definition.Key, permission)
-			}
-			usage := identitymodel.IdentityActionPermissionUsage{
-				ActionKey: definition.Key, CapabilityKey: definition.CapabilityKey, CapabilityLabel: definition.CapabilityLabel,
-				OperationKey: definition.OperationKey, OperationLabel: definition.OperationLabel,
-				ActionLabel: definition.Label, AuthorizationStrategy: string(definition.AuthorizationStrategy),
-				HTTPMethod: definition.HTTP.Method, RouteTemplate: definition.HTTP.RouteTemplate,
-				DisplayRouteTemplate: definition.HTTP.DisplayRouteTemplate,
-				RiskLevel:            definition.RiskLevel, ApprovalRequired: definition.ApprovalRequired,
-				AssuranceRequired: append([]string(nil), definition.AssuranceRequired...), LifecycleStatus: definition.LifecycleStatus,
-			}
-			if definition.Page != nil {
-				usage.PageRoute, usage.PageLabel = definition.Page.Route, definition.Page.Label
-			}
-			registry.usageByKey[permission] = append(registry.usageByKey[permission], usage)
+	for permissionKey, owner := range registry.permissionOwnerByKey {
+		for _, usage := range shared.PermissionUsages(owner, permissionKey) {
+			registry.permissionUsagesByKey[permissionKey] = append(registry.permissionUsagesByKey[permissionKey], projectIdentityActionPermissionUsage(usage))
 		}
-	}
-	sort.Slice(registry.definitions, func(i, j int) bool { return registry.definitions[i].Key < registry.definitions[j].Key })
-	for key := range registry.usageByKey {
-		sort.Slice(registry.usageByKey[key], func(i, j int) bool {
-			left, right := registry.usageByKey[key][i], registry.usageByKey[key][j]
-			if left.HTTPMethod != right.HTTPMethod {
-				return left.HTTPMethod < right.HTTPMethod
-			}
-			return left.RouteTemplate < right.RouteTemplate
-		})
 	}
 	return registry, nil
 }
 
-func validateIdentityActionDefinition(definition identitymodel.IdentityActionDefinition) error {
-	for field, value := range map[string]string{
-		"key": definition.Key, "owner": definition.Owner, "source kind": definition.SourceKind,
-		"capability key": definition.CapabilityKey, "capability label": definition.CapabilityLabel,
-		"operation key": definition.OperationKey, "operation label": definition.OperationLabel,
-		"label": definition.Label, "exposure": definition.Exposure, "HTTP method": definition.HTTP.Method,
-		"HTTP route template": definition.HTTP.RouteTemplate, "risk level": definition.RiskLevel,
-		"audit class": definition.AuditClass, "lifecycle status": definition.LifecycleStatus,
-	} {
-		if strings.TrimSpace(value) == "" {
-			return fmt.Errorf("%s is required", field)
-		}
+func projectIdentityActionPermissionUsage(usage actioncontract.PermissionUsage) identitymodel.IdentityActionPermissionUsage {
+	definition := usage.Action
+	projected := identitymodel.IdentityActionPermissionUsage{
+		ActionKey: definition.Key, CapabilityKey: definition.CapabilityKey, CapabilityLabel: definition.CapabilityLabel,
+		OperationKey: definition.OperationKey, OperationLabel: definition.OperationLabel,
+		ActionLabel: definition.Label,
+		RiskLevel:   string(definition.RiskLevel), ApprovalRequired: len(definition.ApprovalPolicies) != 0,
+		AssuranceRequired: append([]string(nil), definition.AssuranceRequired...), LifecycleStatus: string(definition.LifecycleStatus),
 	}
-	if definition.AuthorizationStrategy != identitymodel.IdentityActionStaticAll {
-		return fmt.Errorf("authorization strategy %q is unsupported by the S0 registry", definition.AuthorizationStrategy)
+	if definition.HTTP != nil {
+		projected.HTTPMethod = definition.HTTP.Method
+		projected.RouteTemplate = definition.HTTP.RouteTemplate
+		projected.DisplayRouteTemplate = definition.HTTP.DisplayRouteTemplate
 	}
-	if len(definition.RequiredPermissions) == 0 {
-		return fmt.Errorf("static-all authorization requires a permission")
+	if len(definition.Pages) != 0 {
+		projected.PageRoute, projected.PageLabel = definition.Pages[0].Route, definition.Pages[0].Label
 	}
-	seen := map[string]bool{}
-	for _, permission := range definition.RequiredPermissions {
-		permission = strings.TrimSpace(permission)
-		if permission == "" || seen[permission] {
-			return fmt.Errorf("required permissions contain an empty or duplicate key")
-		}
-		seen[permission] = true
-	}
-	for _, permission := range definition.OwnedPermissions {
-		if strings.TrimSpace(permission.Key) == "" || strings.TrimSpace(permission.ResourceKey) == "" ||
-			strings.TrimSpace(permission.ActionKey) == "" || strings.TrimSpace(permission.Label) == "" || strings.TrimSpace(permission.Category) == "" {
-			return fmt.Errorf("owned permission definition is incomplete")
-		}
-	}
-	return nil
+	return projected
 }
 
-func cloneIdentityActionDefinition(definition identitymodel.IdentityActionDefinition) identitymodel.IdentityActionDefinition {
-	definition.RequiredPermissions = append([]string(nil), definition.RequiredPermissions...)
-	definition.OwnedPermissions = append([]identitymodel.IdentityOwnedPermissionDefinition(nil), definition.OwnedPermissions...)
-	definition.AssuranceRequired = append([]string(nil), definition.AssuranceRequired...)
-	if definition.Page != nil {
-		page := *definition.Page
-		definition.Page = &page
+// RequiredPermissionsForPage returns the exact entry Action permission for an
+// Admin page. Page bindings are validated as one-to-one during registry
+// construction, so menu validation cannot accidentally require every Action
+// used inside a page.
+func (registry *IdentityActionRegistry) RequiredPermissionsForPage(route string) ([]string, bool) {
+	if registry == nil {
+		return nil, false
 	}
-	return definition
+	permission := registry.pagePermissionByRoute[strings.TrimSpace(route)]
+	if permission == "" {
+		return nil, false
+	}
+	return []string{permission}, true
+}
+
+func identityPermissionLifecycle(status actioncontract.LifecycleStatus) string {
+	if status == actioncontract.LifecycleRetired {
+		return identitymodel.IdentityPermissionDefinitionRetired
+	}
+	return identitymodel.IdentityPermissionDefinitionActive
 }
 
 func (registry *IdentityActionRegistry) Definition(key string) (identitymodel.IdentityActionDefinition, bool) {
 	if registry == nil {
 		return identitymodel.IdentityActionDefinition{}, false
 	}
-	definition, ok := registry.byKey[strings.TrimSpace(key)]
-	return cloneIdentityActionDefinition(definition), ok
+	return registry.shared.Definition(key)
 }
 
 func (registry *IdentityActionRegistry) Definitions() []identitymodel.IdentityActionDefinition {
 	if registry == nil {
 		return nil
 	}
-	out := make([]identitymodel.IdentityActionDefinition, len(registry.definitions))
-	for index := range registry.definitions {
-		out[index] = cloneIdentityActionDefinition(registry.definitions[index])
+	return registry.shared.Definitions()
+}
+
+func (registry *IdentityActionRegistry) ResolveHTTP(method, routeTemplate string) (identitymodel.IdentityActionDefinition, bool) {
+	if registry == nil {
+		return identitymodel.IdentityActionDefinition{}, false
 	}
-	return out
+	return registry.shared.ResolveHTTP(method, routeTemplate)
+}
+
+func (registry *IdentityActionRegistry) ResolveNonHTTP(kind, invocationKey string) (identitymodel.IdentityActionDefinition, bool) {
+	if registry == nil {
+		return identitymodel.IdentityActionDefinition{}, false
+	}
+	return registry.shared.ResolveNonHTTP(kind, invocationKey)
 }
 
 func (registry *IdentityActionRegistry) OwnedPermissionDefinitions(sourceOwner string) []identitymodel.IdentityPermissionDefinitionRecord {
 	if registry == nil {
 		return nil
 	}
-	out := []identitymodel.IdentityPermissionDefinitionRecord{}
-	for _, definition := range registry.ownedByKey {
-		if definition.SourceOwner == strings.TrimSpace(sourceOwner) {
-			out = append(out, definition)
+	sourceOwner = strings.TrimSpace(sourceOwner)
+	result := []identitymodel.IdentityPermissionDefinitionRecord{}
+	for _, definition := range registry.permissionRecordByKey {
+		if definition.SourceOwner == sourceOwner {
+			result = append(result, definition)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].PermissionKey < out[j].PermissionKey })
-	return out
+	sort.Slice(result, func(i, j int) bool { return result[i].PermissionKey < result[j].PermissionKey })
+	return result
+}
+
+func (registry *IdentityActionRegistry) PermissionOwners() []string {
+	if registry == nil {
+		return nil
+	}
+	owners := make([]string, 0, len(registry.permissionOwners))
+	for owner := range registry.permissionOwners {
+		owners = append(owners, owner)
+	}
+	sort.Strings(owners)
+	return owners
+}
+
+// PermissionUsageAvailable reports whether this process has the canonical
+// owner's frozen Action registry. A missing owner is not treated as an empty
+// registry: remote usage must be queried from that owner or shown unavailable.
+func (registry *IdentityActionRegistry) PermissionUsageAvailable(sourceOwner string) bool {
+	if registry == nil {
+		return false
+	}
+	_, found := registry.permissionOwners[strings.TrimSpace(sourceOwner)]
+	return found
 }
 
 func (registry *IdentityActionRegistry) PermissionUsages(permissionKey string) []identitymodel.IdentityActionPermissionUsage {
 	if registry == nil {
 		return nil
 	}
-	values := registry.usageByKey[strings.TrimSpace(permissionKey)]
-	out := make([]identitymodel.IdentityActionPermissionUsage, len(values))
-	copy(out, values)
-	for index := range out {
-		out[index].AssuranceRequired = append([]string(nil), out[index].AssuranceRequired...)
+	values := registry.permissionUsagesByKey[strings.TrimSpace(permissionKey)]
+	result := make([]identitymodel.IdentityActionPermissionUsage, len(values))
+	copy(result, values)
+	for index := range result {
+		result[index].AssuranceRequired = append([]string(nil), result[index].AssuranceRequired...)
 	}
-	return out
+	return result
+}
+
+// IdentityActionAuthorizationContext contains only caller-resolved facts. It
+// deliberately has no permission-key override: a normal Action always checks
+// the Permission with the same key as the Action.
+type IdentityActionAuthorizationContext struct {
+	SelfSatisfied     bool
+	DeferSelfToDomain bool
+}
+
+// IdentityActionAuthorizationService is the shared request-path evaluator for
+// Identity-owned HTTP surfaces. It combines the immutable Action registry with
+// the database-backed Permission snapshot; transports only resolve path/body
+// facts and never choose a different Permission.
+type IdentityActionAuthorizationService struct {
+	registry *IdentityActionRegistry
+	catalog  *IdentityPermissionCatalogApplicationService
+}
+
+func NewIdentityActionAuthorizationService(registry *IdentityActionRegistry, catalog *IdentityPermissionCatalogApplicationService) *IdentityActionAuthorizationService {
+	return &IdentityActionAuthorizationService{registry: registry, catalog: catalog}
+}
+
+func (service *IdentityActionAuthorizationService) Definition(actionKey string) (identitymodel.IdentityActionDefinition, bool) {
+	if service == nil || service.registry == nil {
+		return identitymodel.IdentityActionDefinition{}, false
+	}
+	return service.registry.Definition(actionKey)
+}
+
+func (service *IdentityActionAuthorizationService) Allows(action identitymodel.IdentityActionDefinition, principal identitymodel.Principal, facts IdentityActionAuthorizationContext) bool {
+	if service == nil {
+		return false
+	}
+	switch action.Authorization.Strategy {
+	case actioncontract.AuthorizationAnonymousProtocol:
+		return true
+	case actioncontract.AuthorizationAuthenticatedPrincipal:
+		return principal.Known
+	case actioncontract.AuthorizationSelfOrPermission:
+		if !principal.Known || action.Permission == nil || action.Permission.Key != action.Key {
+			return false
+		}
+		if facts.SelfSatisfied || facts.DeferSelfToDomain {
+			return true
+		}
+		return service.allowsExactPermission(action, principal)
+	case actioncontract.AuthorizationExactRolePermission:
+		return service.allowsExactPermission(action, principal)
+	default:
+		// service_identity and operations_identity are executed by their own
+		// credential boundaries, never by a human RoleSchema evaluator.
+		return false
+	}
+}
+
+func (service *IdentityActionAuthorizationService) allowsExactPermission(action identitymodel.IdentityActionDefinition, principal identitymodel.Principal) bool {
+	return principal.Known && action.Permission != nil && action.Permission.Key == action.Key &&
+		service.catalog != nil && service.catalog.PermissionIsExecutable(action.Key) &&
+		identitycontract.IdentityRoleHasPermissionKey(principal.Role, action.Key)
 }

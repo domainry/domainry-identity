@@ -3,6 +3,7 @@ import type {
   FrontendSurface,
   SurfaceAudience,
 } from "@domainry/surface-contract";
+import pagePermissionContract from "@domainry/identity-management-contract/identity-admin-page-permissions.json";
 
 export type NavKey =
   | "users"
@@ -15,7 +16,7 @@ export type NavKey =
   | "metadata"
   | "audit";
 
-export interface AppRouteContract {
+interface AppRouteDefinition {
   routeKey: string;
   navKey?: NavKey;
   path: string;
@@ -23,7 +24,6 @@ export interface AppRouteContract {
   navigation: "platform_admin";
   surface: FrontendSurface;
   featureModule: string;
-  requiredPermissions: string[];
   requiredRoles?: string[];
   acceptanceTests: string[];
   routePurpose: string;
@@ -31,7 +31,15 @@ export interface AppRouteContract {
   actorAudiences: SurfaceAudience[];
 }
 
-export const APP_ROUTE_REGISTRY = [
+export interface AppRouteContract extends AppRouteDefinition {
+  requiredPermissions: string[];
+}
+
+const PAGE_PERMISSION_BY_ROUTE = new Map(
+  pagePermissionContract.pages.map((page) => [page.route, page.permission_key]),
+);
+
+export const APP_ROUTE_DEFINITIONS = [
   {
     routeKey: "runtime.admin_home",
     path: "/admin",
@@ -42,7 +50,6 @@ export const APP_ROUTE_REGISTRY = [
     actorAudiences: ["platform_admin"],
     routePurpose: "Resolve an authenticated user to the Identity Admin Console shell.",
     featureModule: "src/router.tsx",
-    requiredPermissions: [],
     acceptanceTests: ["tests/e2e/organization-management.spec.ts"],
   },
   {
@@ -56,7 +63,6 @@ export const APP_ROUTE_REGISTRY = [
     actorAudiences: ["platform_admin"],
     routePurpose: "Manage tenant login accounts and account security.",
     featureModule: "src/features/org/identity-accounts-page.tsx",
-    requiredPermissions: ["identity.users.read"],
     acceptanceTests: ["tests/e2e/organization-management.spec.ts"],
   },
   {
@@ -69,7 +75,6 @@ export const APP_ROUTE_REGISTRY = [
     actorAudiences: ["platform_admin"],
     routePurpose: "Review one tenant login account and its security state.",
     featureModule: "src/features/org/identity-user-detail-page.tsx",
-    requiredPermissions: ["identity.users.read"],
     acceptanceTests: ["tests/e2e/organization-management.spec.ts"],
   },
   {
@@ -83,7 +88,6 @@ export const APP_ROUTE_REGISTRY = [
     actorAudiences: ["platform_admin"],
     routePurpose: "Manage tenant workforce profiles and assignments.",
     featureModule: "src/features/org/workforce-page.tsx",
-    requiredPermissions: ["identity.workforce.read"],
     acceptanceTests: ["src/features/org/workforce-page.test.ts"],
   },
   {
@@ -96,7 +100,6 @@ export const APP_ROUTE_REGISTRY = [
     actorAudiences: ["platform_admin"],
     routePurpose: "Review one Workforce profile and its effective assignments.",
     featureModule: "src/features/org/workforce-detail-page.tsx",
-    requiredPermissions: ["identity.workforce.read"],
     acceptanceTests: ["src/features/org/workforce-detail-page.test.ts"],
   },
   {
@@ -110,7 +113,6 @@ export const APP_ROUTE_REGISTRY = [
     actorAudiences: ["platform_admin"],
     routePurpose: "Manage tenant organization departments.",
     featureModule: "src/features/departments/department-management.tsx",
-    requiredPermissions: ["identity.departments.read"],
     acceptanceTests: ["tests/e2e/organization-management.spec.ts"],
   },
   {
@@ -124,7 +126,6 @@ export const APP_ROUTE_REGISTRY = [
     actorAudiences: ["platform_admin"],
     routePurpose: "Govern tenant roles and effective access.",
     featureModule: "src/features/org/roles.tsx",
-    requiredPermissions: ["identity.roles.read"],
     acceptanceTests: ["tests/e2e/role-server-search.spec.ts"],
   },
   {
@@ -138,7 +139,6 @@ export const APP_ROUTE_REGISTRY = [
     actorAudiences: ["platform_admin"],
     routePurpose: "Manage tenant navigation definitions.",
     featureModule: "src/features/org/menus.tsx",
-    requiredPermissions: ["identity.menus.read"],
     acceptanceTests: ["tests/e2e/menu-tree-management.spec.ts"],
   },
   {
@@ -152,7 +152,6 @@ export const APP_ROUTE_REGISTRY = [
     actorAudiences: ["platform_admin"],
     routePurpose: "Manage tenant record data-scope policies.",
     featureModule: "src/features/org/data-scopes.tsx",
-    requiredPermissions: ["identity.data_scopes.read"],
     acceptanceTests: ["tests/e2e/data-scopes-layout.spec.ts"],
   },
   {
@@ -166,7 +165,6 @@ export const APP_ROUTE_REGISTRY = [
     actorAudiences: ["platform_admin"],
     routePurpose: "Manage tenant field access policies.",
     featureModule: "src/features/org/field-permissions.tsx",
-    requiredPermissions: ["identity.field_permissions.read"],
     acceptanceTests: ["tests/e2e/business-configuration-surfaces.spec.ts"],
   },
   {
@@ -180,7 +178,6 @@ export const APP_ROUTE_REGISTRY = [
     actorAudiences: ["platform_admin"],
     routePurpose: "Manage tenant Metadata definitions and revisions used by Identity authorization.",
     featureModule: "src/features/system/metadata.tsx",
-    requiredPermissions: ["metadata.read"],
     acceptanceTests: ["tests/e2e/business-configuration-surfaces.spec.ts"],
   },
   {
@@ -194,10 +191,20 @@ export const APP_ROUTE_REGISTRY = [
     actorAudiences: ["platform_admin"],
     routePurpose: "Review Identity governance and security audit history.",
     featureModule: "src/features/system/audit.tsx",
-    requiredPermissions: ["audit.governance.read"],
     acceptanceTests: ["src/features/system/audit-explorer-contract.test.ts"],
   },
-] as const satisfies readonly AppRouteContract[];
+] as const satisfies readonly AppRouteDefinition[];
+
+export const APP_ROUTE_REGISTRY: readonly AppRouteContract[] = APP_ROUTE_DEFINITIONS.map((route) => {
+  if (route.routeKey === "runtime.admin_home") {
+    return { ...route, requiredPermissions: [] };
+  }
+  const permission = PAGE_PERMISSION_BY_ROUTE.get(route.path);
+  if (!permission) {
+    throw new Error(`Admin page ${route.path} has no ActionRegistry page binding`);
+  }
+  return { ...route, requiredPermissions: [permission] };
+});
 
 export const NAV_PATHS = Object.fromEntries(
   (APP_ROUTE_REGISTRY as readonly AppRouteContract[]).flatMap((route) =>

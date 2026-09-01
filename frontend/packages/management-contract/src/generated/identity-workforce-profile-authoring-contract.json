@@ -68,16 +68,20 @@
     "identity.user"
   ],
   "permissions": [
-    "identity.workforce.write"
+    "identity.workforce.create",
+    "identity.workforce.get",
+    "identity.workforce.update",
+    "identity.workforce.validate"
   ],
   "audit_events": [
     "identity_workforce_profile_upserted"
   ],
   "validation_endpoint": "POST /identity/workforce/{profileID}/validate",
   "configuration_routes": [
-    "POST /identity/workforce",
+    "GET /identity/workforce/{profileID}",
     "PATCH /identity/workforce/{profileID}",
-    "GET /identity/workforce/{profileID}"
+    "POST /identity/workforce",
+    "POST /identity/workforce/{profileID}/validate"
   ],
   "resource_key_path_parameter": "profileID",
   "errors": [
@@ -297,7 +301,7 @@
       "audit:identity_workforce_profile_upserted"
     ],
     "side_effect_level": "internal",
-    "permission_model": "identity.workforce.write",
+    "permission_model": "exact_action_same_key_permission",
     "change_control": "direct_audited_configuration"
   },
   "sources": [

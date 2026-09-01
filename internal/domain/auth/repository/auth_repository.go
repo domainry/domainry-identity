@@ -86,6 +86,8 @@ type AuthAuthorizationCodeRepository interface {
 }
 
 type AuthApplicationRepository interface {
+	GetAuthApplication(context.Context, string, string) (authmodel.AuthApplicationRegistration, bool, error)
+	UpsertAuthApplications(context.Context, string, []authmodel.AuthApplicationRegistration) error
 	AuthorizationRedirectRegistered(context.Context, string, string, string) (bool, error)
 }
 

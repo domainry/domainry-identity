@@ -42,8 +42,8 @@ factory := identitymodule.NewFactory(identitymodule.OptionsFromEnvironment())
 数据库连接池借给 Identity。Identity 会：
 
 - 使用 Runtime 拥有的连接池，且不会关闭它；
-- 自己执行和校验 Identity schema migration；
-- 在共享 schema 中用 `domainry_identity_` 表前缀隔离 Identity 表；
+- 通过 Runtime Host 的 migration registrar 提交 Identity source-owned migration；
+- 直接使用宿主指定的 schema，不额外改写任何表名；
 - 使用 Module 自己的 Clock（测试可通过 `Options.Clock` 覆盖）；
 - 使用 `Factory.Open` 显式传入的 workspace、application key 与回调地址，
   并拒绝跨 workspace/audience 复用同一个 Binding；
@@ -65,7 +65,7 @@ go build -o domainry-identity ./cmd/identity-server
 
 Runtime 切换到远程模式后只依赖 Identity SDK，通过 `IDENTITY_ENDPOINT` 等配置访问独立 Identity 服务；业务层仍使用相同的 `identitysdk.Binding`。
 远程 Factory 在开放 Binding 前会读取 `/identity/discovery`，校验协议、
-策略包、Catalog、issuer、SaaS 模式与必要能力；refresh token 也会在原子
+策略包、授权合约版本、issuer、SaaS 模式与必要能力；refresh token 也会在原子
 轮换之前校验所属 application audience。
 
 ## 数据库
@@ -112,7 +112,13 @@ AUTH_JWT_SECRET
 AUTH_DEFAULT_PASSWORD
 IDENTITY_DATA_SECRET_KEY
 IDENTITY_APPLICATION_SERVICE_CREDENTIALS
+IDENTITY_APPLICATION_PERMISSION_OWNERS
 IDENTITY_APPLICATION_RATE_LIMIT_PER_MINUTE
+IDENTITY_ACTION_USAGE_RUNTIME_URL
+IDENTITY_ACTION_USAGE_REQUEST_TIMEOUT
+IDENTITY_ACTION_USAGE_APPLICATION_KEY
+IDENTITY_ACTION_USAGE_RUNTIME_AUDIENCE
+IDENTITY_ACTION_USAGE_CREDENTIAL_ID
 CORS_ALLOWED_ORIGINS
 ```
 
@@ -121,8 +127,35 @@ CORS_ALLOWED_ORIGINS
 `workspace/application#credential-id=token`，省略 `credential-id` 时默认为 `default`。
 多个条目以逗号分隔；同一应用可在轮换窗口配置两个不同 ID 的凭证。每个凭证只能访问
 绑定的应用作用域，不同作用域不得复用同一凭证。
+`IDENTITY_APPLICATION_PERMISSION_OWNERS` 使用
+`tenant/workspace/application=source_owner|source_owner` 格式（tenant 与 workspace 相同时同样可省略 tenant），
+显式限制该应用凭证可以 reconcile 的 Permission source owner；多个应用条目以逗号分隔。未列入该集合的
+owner 即使使用有效应用凭证也返回 `identity.permission_source_owner_forbidden`。
 `IDENTITY_APPLICATION_RATE_LIMIT_PER_MINUTE` 为每个已注册应用独立计算的分钟请求上限，
 不会让一个 Runtime 应用耗尽其他应用的额度。
+
+独立部署需要在权限管理页展示 Runtime/module 当前 Action 使用关系时，设置
+`IDENTITY_ACTION_USAGE_RUNTIME_URL` 为 Runtime 基础 URL。Identity 会把同一次权限目录请求中的
+多个 source owner/key 合并为一个批量请求，调用 Runtime 的
+`POST /operations/authorization/action-usages/query`；默认超时由
+`IDENTITY_ACTION_USAGE_REQUEST_TIMEOUT=3s` 控制。生产环境只接受 HTTPS URL。
+
+该跨服务调用不转发管理员浏览器 token，也不复用 ops token。Identity 使用
+`IDENTITY_ACTION_USAGE_APPLICATION_KEY`（默认 `domainry-identity-control-plane`）、
+`IDENTITY_ACTION_USAGE_RUNTIME_AUDIENCE`（默认 `domainry-runtime`）和
+`IDENTITY_ACTION_USAGE_CREDENTIAL_ID`（默认 `identity-action-usage`）签发只包含
+`runtime.authorization.action_usages#query` 的短期 service token。对应 source credential 必须作为
+真实轮换记录存在于 `IDENTITY_APPLICATION_SERVICE_CREDENTIALS`，例如：
+
+```text
+workspace-primary/domainry-identity-control-plane#identity-action-usage=<source-secret>
+```
+
+Runtime 用自己已配置的 verifier credential 调用 Identity 的 token verification endpoint。Runtime
+不可达、owner 未加载或响应不合法时，`GET /identity/permissions` 仍返回数据库中的
+PermissionDefinition，但该 owner 的 `action_usage_status` 明确为 `unavailable`；Action usage 不写入数据库，
+也不会使用上一次远程响应兜底。嵌入部署不配置这些环境变量，Runtime 直接把同一份冻结 Action registry
+以进程内 provider 绑定给 Identity。
 
 生产环境会额外校验监听地址、CORS、密钥、PostgreSQL TLS 和数据库能力。不要直接把开发环境默认密钥用于生产。
 

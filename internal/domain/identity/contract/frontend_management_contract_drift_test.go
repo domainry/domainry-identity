@@ -1,4 +1,4 @@
-package contract
+package contract_test
 
 import (
 	"bytes"
@@ -7,16 +7,30 @@ import (
 	"path/filepath"
 	"testing"
 
+	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
 	authoringcontract "github.com/domainry/domainry-identity/internal/domain/authoring"
+	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 )
 
 func TestFrontendManagementAuthoringContractsMatchIdentityOwner(t *testing.T) {
 	t.Parallel()
 	root := filepath.Join("..", "..", "..", "..", "frontend", "packages", "management-contract", "src", "generated")
+	registry, err := identityapplication.NewStandaloneIdentityAuthorizationSliceRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	projection, err := registry.ProjectAuthoringDomain(identitycontract.IdentityAuthoringDomain())
+	if err != nil {
+		t.Fatal(err)
+	}
+	byKey := map[string]authoringcontract.CapabilityAuthoringDefinition{}
+	for _, definition := range projection.Domain().Capabilities {
+		byKey[definition.Key] = definition
+	}
 	contracts := map[string]authoringcontract.CapabilityAuthoringDefinition{
-		"identity-user-authoring-contract.json":                 IdentityUserAuthoringCapability(),
-		"identity-workforce-profile-authoring-contract.json":    IdentityWorkforceProfileAuthoringCapability(),
-		"identity-workforce-assignment-authoring-contract.json": IdentityWorkforceAssignmentAuthoringCapability(),
+		"identity-user-authoring-contract.json":                 byKey["identity.user"],
+		"identity-workforce-profile-authoring-contract.json":    byKey["identity.workforce_profile"],
+		"identity-workforce-assignment-authoring-contract.json": byKey["identity.workforce_assignment"],
 	}
 	for name, definition := range contracts {
 		name, definition := name, definition

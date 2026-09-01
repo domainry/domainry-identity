@@ -453,7 +453,6 @@ func TestLinkedExternalLoginBackfillsOnlySafeDefaultRole(t *testing.T) {
 	for name, definition := range map[string]identitymodel.RoleSchema{
 		"system managed":  {Key: "default-role", AssignmentMode: identitymodel.IdentityRoleAssignmentSystemManaged},
 		"privileged risk": {Key: "default-role", AssignmentMode: identitymodel.IdentityRoleAssignmentManual, RiskLevel: identitymodel.IdentityRoleRiskPrivileged},
-		"workspace admin": {Key: "default-role", AssignmentMode: identitymodel.IdentityRoleAssignmentManual, Permissions: []string{"workspace.admin"}},
 	} {
 		t.Run(name+" is denied", func(t *testing.T) {
 			auth, identities, _ := newFixture(definition)
@@ -465,6 +464,19 @@ func TestLinkedExternalLoginBackfillsOnlySafeDefaultRole(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("exact permission does not imply privileged risk", func(t *testing.T) {
+		auth, identities, _ := newFixture(identitymodel.RoleSchema{
+			Key: "default-role", AssignmentMode: identitymodel.IdentityRoleAssignmentManual,
+			Permissions: []string{"identity.roles.list"}, RiskLevel: identitymodel.IdentityRoleRiskNormal,
+		})
+		if _, err := auth.ExternalLoginWithPolicy(t.Context(), "workspace-primary", authmodel.AuthExternalIdentityAssertion{Provider: "oidc", Subject: "subject"}, authmodel.AuthExternalLoginPolicy{DefaultRoleKey: "default-role"}); err != nil {
+			t.Fatalf("linked login with exact-permission default role: %v", err)
+		}
+		if len(identities.roleAssignments) != 1 {
+			t.Fatalf("normal-risk role was inferred as privileged: %+v", identities.roleAssignments)
+		}
+	})
 }
 
 type assertionAdapter struct {

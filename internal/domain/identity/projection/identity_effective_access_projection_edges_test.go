@@ -34,8 +34,8 @@ func TestIdentityBuildEffectiveAccessSnapshotEdges(t *testing.T) {
 			{Key: "role-2", Permissions: []string{"domain.order.update"}},
 		},
 		PermissionSets: []identitymodel.IdentityPermissionSet{
-			{Key: "direct", Permissions: []string{"order.read"}},
-			{Key: "grouped", Permissions: []string{"order.read"}},
+			{Key: "direct", DataPermissions: []identitymodel.DataPermission{{ObjectKey: "order", Scope: "department", Read: true}}},
+			{Key: "grouped", FieldPermissions: []identitymodel.FieldPermission{{ObjectKey: "order", FieldKey: "plain", Read: true}}},
 		},
 		PermissionSetGroups: []identitymodel.IdentityPermissionSetGroup{{Key: "group", PermissionSetKeys: []string{"grouped"}}},
 		RoleMenus: []identitymodel.IdentityRoleMenuAssignment{
@@ -71,6 +71,13 @@ func TestIdentityBuildEffectiveAccessSnapshotEdges(t *testing.T) {
 	}
 	if len(snapshot.DataAccess) != 2 || len(snapshot.Permissions) != 3 {
 		t.Fatalf("data/permissions = %#v %#v", snapshot.DataAccess, snapshot.Permissions)
+	}
+	for _, permission := range snapshot.Permissions {
+		for _, source := range permission.Sources {
+			if source.PermissionSetKey != "" || source.PermissionSetGroup != "" {
+				t.Fatalf("functional permission %q was attributed to non-functional policy source: %#v", permission.Key, permission.Sources)
+			}
+		}
 	}
 	if !snapshot.DataAccess[0].AuditDenial && !snapshot.DataAccess[1].AuditDenial {
 		t.Fatalf("data denial-audit intent was lost: %#v", snapshot.DataAccess)
@@ -188,7 +195,7 @@ func TestIdentityEffectiveAccessProjectionHelpers(t *testing.T) {
 		t.Fatal("unexpected field permission")
 	}
 
-	for input, wantObject := range map[string]string{"read": "", "order.read": "order", "domain.order.read": "order", "domain.nested.order.read": "domain.nested.order"} {
+	for input, wantObject := range map[string]string{"read": "", "order.read": "order", "domain.order.read": "domain.order", "domain.nested.order.read": "domain.nested.order"} {
 		if object, _ := identityProjectionPermissionParts(input); object != wantObject {
 			t.Fatalf("permission parts %q object = %q", input, object)
 		}

@@ -251,7 +251,7 @@ func TestUpdateIdentityUserUsesCurrentResourceForOwnerControlledAuthoring(t *tes
 	handler.principal = func(*http.Request) identitymodel.Principal {
 		return identitymodel.Principal{
 			Known: true, WorkspaceID: "workspace-1", UserID: "builder",
-			Role: identitymodel.RoleSchema{Permissions: []string{"identity.users.write"}},
+			Role: identitymodel.RoleSchema{Permissions: []string{"identity.users.update"}},
 		}
 	}
 	w, request := identityRoleRequest(
@@ -285,7 +285,7 @@ func TestDeleteIdentityUserWithoutProfileReferences(t *testing.T) {
 			}
 			handler, response := newIdentityHTTPHandler(repository)
 			handler.principal = func(*http.Request) identitymodel.Principal {
-				return identitymodel.Principal{Known: true, WorkspaceID: "workspace-1", Role: identitymodel.RoleSchema{Permissions: []string{"workspace.admin"}, RecordScope: "all_records"}}
+				return identitymodel.Principal{Known: true, WorkspaceID: "workspace-1", Role: identitymodel.RoleSchema{Permissions: []string{"identity.users.delete"}, RecordScope: "all_records"}}
 			}
 			w, request := identityRoleRequest(http.MethodDelete, "/identity/users/user-1", "", map[string]string{"userID": " user-1 "})
 			handler.deleteIdentityUser(w, request)

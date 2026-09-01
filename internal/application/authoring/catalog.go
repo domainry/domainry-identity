@@ -4,7 +4,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"sort"
+
+	authoringcontract "github.com/domainry/domainry-identity/internal/domain/authoring"
 )
 
 const (
@@ -71,29 +74,24 @@ type AuthoringCatalog struct {
 	contractHash string
 }
 
-func NewAuthoringCatalog() *AuthoringCatalog {
-	minimumZero, maximumThirtyEight := number(0), number(38)
-	domains := []Domain{
-		{Key: "schema", Capabilities: []Definition{
-			definition("schema.field", "versioned_metadata", []string{"metadata.read", "metadata.write"}, nil,
-				Parameter{Key: "type", Type: "string", Required: true, Enum: []string{"boolean", "currency", "date", "datetime", "email", "integer", "long_text", "number", "percent", "phone", "relation", "select", "text", "url", "user"}},
-				Parameter{Key: "precision", Type: "integer", Default: 19, Minimum: number(1), Maximum: maximumThirtyEight},
-				Parameter{Key: "scale", Type: "integer", Default: 2, Minimum: minimumZero, Maximum: maximumThirtyEight}),
-			definition("schema.relation", "versioned_metadata", []string{"metadata.read", "metadata.write"}, []string{"schema.field"},
-				Parameter{Key: "cardinality", Type: "string", Default: "many_to_one", Enum: []string{"many_to_one", "one_to_one"}},
-				Parameter{Key: "on_delete", Type: "string", Default: "restrict", Enum: []string{"cascade", "restrict", "set_null"}}),
-		}},
-		{Key: "identity", Capabilities: []Definition{
-			definition("identity.user", "immediate_audited_configuration", []string{"identity.users.write"}, nil),
-			definition("identity.department", "immediate_audited_configuration", []string{"identity.departments.write"}, nil),
-			definition("identity.role", "versioned_metadata", []string{"identity.roles.write"}, nil),
-			definition("identity.user_role_assignment", "immediate_audited_configuration", []string{"identity.roles.write"}, []string{"identity.user", "identity.role"}),
-			definition("identity.role_permission", "versioned_metadata", []string{"identity.permissions.write"}, []string{"identity.role"}),
-			definition("identity.role_data_scope", "versioned_metadata", []string{"identity.data_scopes.write"}, []string{"identity.role", "schema.field"},
-				Parameter{Key: "data_scope", Type: "string", Required: true, Enum: []string{"all_records", "custom", "department", "department_and_children", "none", "owned_records", "subordinates", "team"}}),
-			definition("identity.role_field_permission", "versioned_metadata", []string{"identity.field_permissions.write"}, []string{"identity.role", "schema.field"}),
-			definition("identity.menu", "immediate_audited_configuration", []string{"identity.menus.write"}, nil),
-		}},
+func NewAuthoringCatalog(ownerDomain authoringcontract.CapabilityAuthoringDomain) (*AuthoringCatalog, error) {
+	if ownerDomain.Key != "identity" {
+		return nil, fmt.Errorf("Identity authoring domain is required")
+	}
+	domains := []Domain{{Key: ownerDomain.Key, Capabilities: make([]Definition, 0, len(ownerDomain.Capabilities))}}
+	for _, capability := range ownerDomain.Capabilities {
+		if capability.Execution == nil || capability.Execution.PermissionModel != authoringcontract.CapabilityPermissionModelExactAction || len(capability.Permissions) == 0 {
+			return nil, fmt.Errorf("Identity authoring capability %q has not been projected from Actions", capability.Key)
+		}
+		parameters := make([]Parameter, 0, len(capability.Parameters))
+		for _, parameter := range capability.Parameters {
+			parameters = append(parameters, legacyAuthoringParameter(parameter))
+		}
+		domains[0].Capabilities = append(domains[0].Capabilities, Definition{
+			Key: capability.Key, Status: capability.Status, Lifecycle: capability.Lifecycle,
+			Requires: append([]string(nil), capability.Requires...), Parameters: parameters,
+			Permissions: append([]string(nil), capability.Permissions...),
+		})
 	}
 	for domainIndex := range domains {
 		sort.Slice(domains[domainIndex].Capabilities, func(left, right int) bool {
@@ -103,7 +101,7 @@ func NewAuthoringCatalog() *AuthoringCatalog {
 	sort.Slice(domains, func(left, right int) bool { return domains[left].Key < domains[right].Key })
 	catalog := &AuthoringCatalog{domains: domains}
 	catalog.contractHash = hash(domains)
-	return catalog
+	return catalog, nil
 }
 
 func (c *AuthoringCatalog) Contract(instance Instance) Contract {
@@ -136,12 +134,10 @@ func (c *AuthoringCatalog) Keys() []string {
 	return result
 }
 
-func definition(key, lifecycle string, permissions, requires []string, parameters ...Parameter) Definition {
-	return Definition{
-		Key: key, Status: "supported", Lifecycle: lifecycle,
-		Permissions: append([]string(nil), permissions...),
-		Requires:    append([]string(nil), requires...),
-		Parameters:  append([]Parameter(nil), parameters...),
+func legacyAuthoringParameter(source authoringcontract.CapabilityAuthoringParameter) Parameter {
+	return Parameter{
+		Key: source.Key, Type: source.Type, Required: source.Required, Default: source.Default,
+		Enum: append([]string(nil), source.Enum...), Minimum: source.Minimum, Maximum: source.Maximum,
 	}
 }
 
@@ -169,5 +165,3 @@ func hash(value any) string {
 	digest := sha256.Sum256(raw)
 	return hex.EncodeToString(digest[:])
 }
-
-func number(value float64) *float64 { return &value }

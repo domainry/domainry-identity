@@ -101,7 +101,7 @@ func (adapter sdkDirectory) scoped(ctx context.Context, scope identitysdk.Applic
 		return nil, ctx, &identitysdk.Error{Code: "identity.directory_unavailable"}
 	}
 	application := identitysdk.ApplicationRef{TenantID: scope.TenantID, WorkspaceID: scope.WorkspaceID, ApplicationKey: scope.ApplicationKey}
-	if _, _, found, err := adapter.binding.loadCatalog(ctx, application); err != nil {
+	if found, err := adapter.binding.applicationRegistered(ctx, application); err != nil {
 		return nil, ctx, sdkBoundaryError(err)
 	} else if !found {
 		return nil, ctx, &identitysdk.Error{Code: "identity.application_not_registered"}

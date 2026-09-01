@@ -19,7 +19,12 @@ func TestWithStandaloneIdentityRoleDefinitionsProvidesAdminAuthorityAndHonorsOve
 		t.Fatalf("configured admin override = %#v", got)
 	}
 	organization := byKey["organization_administrator"]
-	for _, expected := range []string{"identity.users.read", "identity.roles.write", "audit.governance.read", "metadata.write"} {
+	for _, expected := range []string{
+		"identity.users.list",
+		"identity.users.update",
+		"identity.roles.list",
+		"identity.role_permissions.publish",
+	} {
 		found := false
 		for _, permission := range organization.Permissions {
 			found = found || permission == expected
@@ -27,6 +32,9 @@ func TestWithStandaloneIdentityRoleDefinitionsProvidesAdminAuthorityAndHonorsOve
 		if !found {
 			t.Fatalf("organization administrator missing %s", expected)
 		}
+	}
+	if system := byKey["system_administrator"]; len(system.Permissions) == 0 {
+		t.Fatalf("system administrator has no explicitly owned system permissions: %#v", system)
 	}
 }
 

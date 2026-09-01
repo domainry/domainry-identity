@@ -109,7 +109,7 @@ func TestValidateRoleMenusCoversRoleMenuAndRoutePolicies(t *testing.T) {
 	}
 	repository := &effectiveAccessFaultRepository{identityScopedRepository: base}
 	service := NewIdentityApplicationService(repository, nil)
-	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{Key: "role", Permissions: []string{"identity.users.read"}}})
+	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{Key: "role", Permissions: []string{"identity.users.list"}}})
 
 	if err := service.ValidateRoleMenus(t.Context(), "role", nil); apperror.CodeOf(err) != "backend.workspace_scope_required" {
 		t.Fatalf("missing scope=%v", err)
@@ -157,7 +157,7 @@ func TestValidateRoleMenusCoversRoleMenuAndRoutePolicies(t *testing.T) {
 	if err := service.ValidateRoleMenus(ctx, "role", []string{"account"}); apperror.CodeOf(err) != "backend.identity.menu_route_permission_missing" {
 		t.Fatalf("missing permission=%v", err)
 	}
-	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{Key: "role", Permissions: []string{"identity.users.read"}}})
+	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{Key: "role", Permissions: []string{"identity.users.list"}}})
 	if err := service.SetRoleMenus(ctx, "role", []string{"account"}); err != nil {
 		t.Fatalf("valid role menus=%v", err)
 	}

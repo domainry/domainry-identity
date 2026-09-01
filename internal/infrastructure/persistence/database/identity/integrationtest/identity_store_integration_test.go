@@ -17,8 +17,8 @@ import (
 func TestIdentityServiceValidatesPermissionsAndComputesEffectiveKeys(t *testing.T) {
 	repo := identitypersistence.NewMemoryIdentityStore()
 	service, _ := identitybusiness.NewIdentityDomainService(repo, []identitymodel.IdentityPermissionDefinition{
-		{Key: "crm.customer.view", System: "crm", Resource: "customer", Action: "view"},
-		{Key: "crm.customer.edit", System: "crm", Resource: "customer", Action: "edit"},
+		currentPermission("crm.customer.view", "crm.customer", "view"),
+		currentPermission("crm.customer.edit", "crm.customer", "edit"),
 	}).ForWorkspace("workspace-primary")
 	if err := service.UpsertDepartment(t.Context(), identitymodel.IdentityDepartment{ID: "company", Name: "Company", Path: "/company"}); err != nil {
 		t.Fatalf("upsert company department: %v", err)
@@ -111,7 +111,7 @@ func TestIdentityServiceValidatesPermissionsAndComputesEffectiveKeys(t *testing.
 	if principal.Role.Key != "admin" {
 		t.Fatalf("single identity role should keep its role key, got %q", principal.Role.Key)
 	}
-	if !identitypolicy.IdentityRoleAllows(principal.Role, "customer", "edit") {
+	if !identitypolicy.IdentityRoleAllows(principal.Role, "crm.customer", "edit") {
 		t.Fatalf("expected identity principal to allow customer edit, got %#v", principal.Role.Permissions)
 	}
 	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{

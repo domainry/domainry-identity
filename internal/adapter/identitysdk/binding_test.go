@@ -21,7 +21,7 @@ func TestSDKBoundaryNormalizesDomainErrors(t *testing.T) {
 	if sdkError.StatusCode != http.StatusForbidden || sdkError.Code != "auth.invalid_credentials" || sdkError.Params["attempt"] != "login" || !errors.Is(sdkError, domainError) {
 		t.Fatalf("sdk error=%#v", sdkError)
 	}
-	contractError := &identitysdk.Error{Code: "identity.catalog_invalid"}
+	contractError := &identitysdk.Error{Code: "identity.permission_definition_invalid"}
 	if err := sdkBoundaryError(contractError); !errors.As(err, &sdkError) || sdkError.StatusCode != http.StatusBadRequest || sdkError == contractError {
 		t.Fatalf("contract error=%#v original=%#v", sdkError, contractError)
 	}
@@ -56,21 +56,20 @@ func TestSDKAccessBundleDoesNotInventDataAccessFromFunctionGrant(t *testing.T) {
 	bundle := sdkAccessBundle(identitymodel.IdentityEffectiveAccessSnapshot{
 		AuthorizationRevision: "revision-1",
 		Permissions:           []identitymodel.IdentityEffectivePermissionGrant{{ObjectKey: "order", Action: "read"}},
-	}, identitymodel.Principal{WorkspaceID: "workspace-primary", UserID: "user-1"}, "catalog-1", time.Now())
+	}, identitymodel.Principal{WorkspaceID: "workspace-primary", UserID: "user-1"}, time.Now())
 	if len(bundle.FunctionGrants) != 1 || len(bundle.DataPolicies) != 0 {
 		t.Fatalf("bundle=%#v", bundle)
 	}
-
 	bundle = sdkAccessBundle(identitymodel.IdentityEffectiveAccessSnapshot{
 		AuthorizationRevision: "revision-1",
 		DataAccess:            []identitymodel.IdentityEffectiveDataAccess{{ObjectKey: "order", Action: "read", Allowed: true, Scope: "all_records"}},
-	}, identitymodel.Principal{WorkspaceID: "workspace-primary", UserID: "user-1"}, "catalog-1", time.Now())
+	}, identitymodel.Principal{WorkspaceID: "workspace-primary", UserID: "user-1"}, time.Now())
 	if len(bundle.DataPolicies) != 1 || bundle.DataPolicies[0].Predicate.Operator != identitysdk.OperatorExists {
 		t.Fatalf("all-records policy=%#v", bundle.DataPolicies)
 	}
 }
 
-func TestSDKAccessBundlePreservesCompleteV2PolicySemantics(t *testing.T) {
+func TestSDKAccessBundlePreservesCompleteV4PolicySemantics(t *testing.T) {
 	relation := &identitymodel.IdentityPolicyExpression{
 		Operator: "eq", FieldKey: "owner_id", ValueSource: "actor_claim", ClaimKey: "business_profile_id",
 		Path: []identitymodel.IdentityPolicyRelationSegment{{Direction: "forward", RelationFieldKey: "account_id", TargetObjectKey: "account"}},
@@ -87,9 +86,9 @@ func TestSDKAccessBundlePreservesCompleteV2PolicySemantics(t *testing.T) {
 	}, identitymodel.Principal{
 		WorkspaceID: "workspace-primary", UserID: "user-1",
 		Role: identitymodel.RoleSchema{Guardrails: []identitymodel.IdentityGuardrailPolicy{{Key: "regulated", FieldRestrictions: []identitymodel.IdentityFieldRestriction{{ObjectKey: "invoice", FieldKey: "phone", Actions: []string{"export"}, Reason: "legal hold"}}}}},
-	}, "catalog-2", time.Now())
+	}, time.Now())
 	if bundle.ContractVersion != identitysdk.CurrentPolicyBundleVersion || len(bundle.DataPolicies) != 1 || !bundle.DataPolicies[0].AuditDenial || len(bundle.DataPolicies[0].Predicate.Path) != 1 || bundle.DataPolicies[0].Predicate.Value != "$context.business_profile_id" {
-		t.Fatalf("data policy lost V2 semantics: %#v", bundle.DataPolicies)
+		t.Fatalf("data policy lost V3 semantics: %#v", bundle.DataPolicies)
 	}
 	if len(bundle.FieldPolicies) != 1 || bundle.FieldPolicies[0].Reason != "personal data" || len(bundle.FieldPolicies[0].Rules) != 1 || len(bundle.FieldPolicies[0].Rules[0].Predicate.Path) != 1 {
 		t.Fatalf("field policy lost contextual semantics: %#v", bundle.FieldPolicies)
@@ -102,150 +101,30 @@ func TestSDKAccessBundlePreservesCompleteV2PolicySemantics(t *testing.T) {
 	}
 }
 
-func TestAccessBundleIsConstrainedByPublishedCatalog(t *testing.T) {
-	catalog := identitysdk.AuthorizationCatalog{
-		ContractVersion: identitysdk.CatalogVersionV1,
-		Application:     identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "runtime-app"},
-		Resources: []identitysdk.ResourceDefinition{
-			{Key: "customer", Fields: []string{"id"}, SupportedFacts: []string{"owner_id"}},
-		},
-		Actions: []identitysdk.ActionDefinition{{Resource: "customer", Action: "read"}},
-	}
-	bundle := identitysdk.AccessBundle{
-		FunctionGrants: []identitysdk.FunctionGrant{
-			{Resource: "customer", Action: "read", Effect: identitysdk.EffectAllow},
-			{Resource: "internal_admin", Action: "read", Effect: identitysdk.EffectAllow},
-		},
-		DataPolicies: []identitysdk.DataPolicy{{Key: "owned", Resource: "customer", Action: "read", Effect: identitysdk.EffectAllow, Predicate: identitysdk.Predicate{Fact: "owner_id", Operator: identitysdk.OperatorEqual, Value: "$subject.id"}}},
-		FieldPolicies: []identitysdk.FieldPolicy{
-			{Resource: "customer", Field: "id", Read: true},
-			{Resource: "customer", Field: "secret", Read: true},
-		},
-	}
-	constrained, err := accessBundleForCatalog(bundle, catalog)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(constrained.FunctionGrants) != 1 || constrained.FunctionGrants[0].Resource != "customer" || len(constrained.FieldPolicies) != 1 || constrained.FieldPolicies[0].Field != "id" {
-		t.Fatalf("constrained bundle=%#v", constrained)
-	}
-	bundle.DataPolicies[0].Predicate.Fact = "undeclared_fact"
-	if _, err := accessBundleForCatalog(bundle, catalog); err == nil {
-		t.Fatal("policy using undeclared Runtime fact was accepted")
-	}
-}
-
-func TestGymOnboardingWritePolicySurvivesCatalogAndAuthorizesExactMutations(t *testing.T) {
+func TestSDKAccessBundleAuthorizesOnlyExactPermissionGrant(t *testing.T) {
 	now := time.Now().UTC()
-	catalog := identitysdk.AuthorizationCatalog{
-		ContractVersion: identitysdk.CatalogVersionV1,
-		Application:     identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "runtime-app"},
-		Resources: []identitysdk.ResourceDefinition{
-			{Key: "course_favorite", Fields: []string{"id", "identity_user_id", "course_template_id"}, SupportedFacts: []string{"id", "identity_user_id"}},
-			{Key: "member", Fields: []string{"id", "identity_user_id"}, SupportedFacts: []string{"id", "identity_user_id"}},
-		},
-		Actions: []identitysdk.ActionDefinition{
-			{Resource: "course_favorite", Action: "create"}, {Resource: "course_favorite", Action: "read"}, {Resource: "course_favorite", Action: "delete"},
-			{Resource: "member", Action: "read"}, {Resource: "member", Action: "self_enroll"},
-		},
-	}
 	predicate := identitymodel.IdentityPolicyExpression{Operator: "eq", FieldKey: "identity_user_id", ValueSource: "actor_claim", ClaimKey: "user_id"}
-	snapshot := identitymodel.IdentityEffectiveAccessSnapshot{
+	bundle := sdkAccessBundle(identitymodel.IdentityEffectiveAccessSnapshot{
 		AuthorizationRevision: "authz",
-		Permissions: []identitymodel.IdentityEffectivePermissionGrant{
-			{Key: "course_favorite.create", ObjectKey: "course_favorite", Action: "create"},
-			{Key: "member.self_enroll", ObjectKey: "member", Action: "self_enroll"},
-		},
-		DataAccess: []identitymodel.IdentityEffectiveDataAccess{
-			{ObjectKey: "course_favorite", Action: "write", Allowed: true, Scope: "custom", Predicate: &predicate},
-			{ObjectKey: "member", Action: "write", Allowed: true, Scope: "custom", Predicate: &predicate},
-		},
+		Permissions:           []identitymodel.IdentityEffectivePermissionGrant{{Key: "course_favorite.create", ObjectKey: "course_favorite", Action: "create"}},
+		DataAccess:            []identitymodel.IdentityEffectiveDataAccess{{ObjectKey: "course_favorite", Action: "write", Allowed: true, Scope: "custom", Predicate: &predicate}},
+	}, identitymodel.Principal{Known: true, WorkspaceID: "workspace-primary", UserID: "wechat-user"}, now)
+	allowed, err := identityevaluator.Evaluate(bundle, identitysdk.AccessRequest{ObjectKey: "course_favorite", Action: "create", DataAction: identitysdk.DataActionWrite}, identitysdk.ResourceFacts{"identity_user_id": "wechat-user"}, now)
+	if err != nil || !allowed.Allowed {
+		t.Fatalf("exact action decision=%+v err=%v bundle=%+v", allowed, err, bundle)
 	}
-	principal := identitymodel.Principal{Known: true, WorkspaceID: "workspace-primary", UserID: "wechat-user"}
-	bundle := sdkAccessBundle(snapshot, principal, "catalog", now)
-	bundle = resolveCatalogRoleAccess(bundle, catalog, identitymodel.RoleSchema{Permissions: []string{"course_favorite.create", "member.self_enroll"}})
-	bundle, err := accessBundleForCatalog(bundle, catalog)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(bundle.DataPolicies) != 2 {
-		t.Fatalf("write policies were removed by catalog constraint: %+v", bundle.DataPolicies)
-	}
-	for _, request := range []identitysdk.AccessRequest{{ObjectKey: "course_favorite", Action: "create"}, {ObjectKey: "member", Action: "self_enroll"}} {
-		decision, err := identityevaluator.Evaluate(bundle, request, identitysdk.ResourceFacts{"identity_user_id": "wechat-user"}, now)
-		if err != nil || !decision.Allowed {
-			t.Fatalf("request=%+v decision=%+v err=%v bundle=%+v", request, decision, err, bundle)
-		}
-	}
-	readOnlyCatalog := catalog
-	readOnlyCatalog.Actions = []identitysdk.ActionDefinition{{Resource: "course_favorite", Action: "read"}, {Resource: "member", Action: "read"}}
-	readOnlyBundle, err := accessBundleForCatalog(sdkAccessBundle(snapshot, principal, "catalog", now), readOnlyCatalog)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(readOnlyBundle.DataPolicies) != 0 {
-		t.Fatalf("write policy survived a read-only catalog: %+v", readOnlyBundle.DataPolicies)
+	denied, err := identityevaluator.Evaluate(bundle, identitysdk.AccessRequest{ObjectKey: "course_favorite", Action: "read", DataAction: identitysdk.DataActionRead}, identitysdk.ResourceFacts{"identity_user_id": "wechat-user"}, now)
+	if err != nil || denied.Allowed {
+		t.Fatalf("undeclared action decision=%+v err=%v bundle=%+v", denied, err, bundle)
 	}
 }
 
-func TestCatalogAcceptsDeclaredRelationshipPredicatesAndRejectsDrift(t *testing.T) {
-	catalog := identitysdk.AuthorizationCatalog{
-		ContractVersion: identitysdk.CatalogVersionV1,
-		Application:     identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "runtime-app"},
-		Resources: []identitysdk.ResourceDefinition{
-			{Key: "invoice", Fields: []string{"id", "account_id", "phone"}, SupportedFacts: []string{"id"}, References: []identitysdk.ReferenceDefinition{{Key: "account_id", TargetResource: "account"}}},
-			{Key: "account", Fields: []string{"id", "owner_id"}, SupportedFacts: []string{"owner_id"}},
-		},
-		Actions: []identitysdk.ActionDefinition{{Resource: "invoice", Action: "read"}},
-	}
-	predicate := identitysdk.Predicate{Fact: "owner_id", Operator: identitysdk.OperatorEqual, Value: "$subject.id", Path: []identitysdk.RelationSegment{{Direction: identitysdk.RelationForward, Reference: "account_id", TargetResource: "account"}}}
-	bundle := identitysdk.AccessBundle{
-		DataPolicies:  []identitysdk.DataPolicy{{Key: "account-owner", Resource: "invoice", Action: "read", Effect: identitysdk.EffectAllow, Predicate: predicate}},
-		FieldPolicies: []identitysdk.FieldPolicy{{Resource: "invoice", Field: "phone", Read: true, Rules: []identitysdk.FieldRule{{Key: "owner-clear", Priority: 10, Actions: []identitysdk.Action{"read"}, Effect: identitysdk.FieldEffectAllow, Predicate: &predicate}}}},
-	}
-	if _, err := accessBundleForCatalog(bundle, catalog); err != nil {
-		t.Fatalf("declared relationship predicate rejected: %v", err)
-	}
-	bundle.DataPolicies[0].Predicate.Path[0].Reference = "missing"
-	if _, err := accessBundleForCatalog(bundle, catalog); err == nil {
-		t.Fatal("drifted relationship predicate was accepted")
-	}
-}
-
-func TestPublishedCatalogMaterializesWorkspaceAdministratorAuthority(t *testing.T) {
-	catalog := identitysdk.AuthorizationCatalog{
-		ContractVersion: identitysdk.CatalogVersionV1,
-		Application:     identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "runtime-app"},
-		Resources:       []identitysdk.ResourceDefinition{{Key: "customer", Fields: []string{"id", "secret"}, SupportedFacts: []string{"id"}}},
-		Actions:         []identitysdk.ActionDefinition{{Resource: "customer", Action: "read"}},
-	}
-	bundle := identitysdk.AccessBundle{
-		ContractVersion:       identitysdk.CurrentPolicyBundleVersion,
-		CatalogRevision:       "catalog-revision",
-		AuthorizationRevision: "authorization-revision",
-		ExpiresAt:             time.Now().Add(time.Minute),
-		Subject:               identitysdk.Subject{WorkspaceID: "workspace-primary", SubjectID: "admin"},
-	}
-	bundle = resolveCatalogRoleAccess(bundle, catalog, identitymodel.RoleSchema{Permissions: []string{"workspace.admin"}})
-	bundle, err := accessBundleForCatalog(bundle, catalog)
-	if err != nil {
-		t.Fatal(err)
-	}
-	decision, err := identityevaluator.Evaluate(bundle, identitysdk.AccessRequest{ObjectKey: "customer", Action: "read", FieldKey: "secret"}, identitysdk.ResourceFacts{"id": "customer-1"}, time.Now())
-	if err != nil || !decision.Allowed {
-		t.Fatalf("workspace administrator decision=%+v err=%v bundle=%+v", decision, err, bundle)
-	}
-}
-
-func TestPublishedCatalogDoesNotInventDataAuthority(t *testing.T) {
-	catalog := identitysdk.AuthorizationCatalog{
-		ContractVersion: identitysdk.CatalogVersionV1,
-		Application:     identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "runtime-app"},
-		Resources:       []identitysdk.ResourceDefinition{{Key: "customer", Fields: []string{"id"}, SupportedFacts: []string{"id"}}},
-		Actions:         []identitysdk.ActionDefinition{{Resource: "customer", Action: "read"}},
-	}
-	bundle := resolveCatalogRoleAccess(identitysdk.AccessBundle{}, catalog, identitymodel.RoleSchema{Permissions: []string{"customer.read"}})
-	if len(bundle.FunctionGrants) != 1 || len(bundle.DataPolicies) != 0 {
-		t.Fatalf("catalog authority=%+v", bundle)
+func TestFunctionGrantRemainsExact(t *testing.T) {
+	bundle := sdkAccessBundle(identitymodel.IdentityEffectiveAccessSnapshot{
+		AuthorizationRevision: "authz",
+		Permissions:           []identitymodel.IdentityEffectivePermissionGrant{{Key: "identity.roles.list", ObjectKey: "identity.roles", Action: "list"}},
+	}, identitymodel.Principal{Known: true, WorkspaceID: "workspace-primary", UserID: "admin"}, time.Now())
+	if len(bundle.FunctionGrants) != 1 || bundle.FunctionGrants[0].Resource != "identity.roles" || bundle.FunctionGrants[0].Action != "list" {
+		t.Fatalf("function grant changed unexpectedly: %+v", bundle.FunctionGrants)
 	}
 }

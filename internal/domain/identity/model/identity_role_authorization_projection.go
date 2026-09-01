@@ -6,9 +6,9 @@ import (
 	"strings"
 )
 
-// IdentityExpandRoleAuthorization projects reusable authorization packages
-// into immutable effective Role schemas. It is a schema projection shared by
-// Identity policy and Manifest validation, not an authorization decision.
+// IdentityExpandRoleAuthorization projects reusable non-functional policy and
+// deny guardrails into immutable effective Role schemas. RoleSchema.Permissions
+// is copied only from the role itself and is never expanded by a permission set.
 func IdentityExpandRoleAuthorization(roles []RoleSchema, sets []IdentityPermissionSet, groups []IdentityPermissionSetGroup, guardrails []IdentityGuardrailPolicy) []RoleSchema {
 	setByKey := map[string]IdentityPermissionSet{}
 	for _, set := range sets {
@@ -65,7 +65,6 @@ func IdentityExpandRoleAuthorization(roles []RoleSchema, sets []IdentityPermissi
 			if !ok {
 				continue
 			}
-			role.Permissions = append(role.Permissions, set.Permissions...)
 			role.DataPermissions = append(role.DataPermissions, set.DataPermissions...)
 			role.FieldPermissions = append(role.FieldPermissions, set.FieldPermissions...)
 			role.ReferencePermissions = append(role.ReferencePermissions, set.ReferencePermissions...)

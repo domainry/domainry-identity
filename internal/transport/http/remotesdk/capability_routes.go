@@ -13,8 +13,8 @@ import (
 // wire contract. It authenticates the same application-scoped service
 // credential used by Identity's other Remote SDK calls; product disclosure is
 // never made public merely because it contains no live grants or credentials.
-func RegisterCapabilityRoutes(mux *http.ServeMux, binding identitysdk.Binding, credentials *ApplicationCredentialRegistry) error {
-	if mux == nil || binding == nil {
+func RegisterCapabilityRoutes(registrar RouteRegistrar, binding identitysdk.Binding, credentials *ApplicationCredentialRegistry) error {
+	if registrar == nil || binding == nil {
 		return fmt.Errorf("Identity capability routes require a mux and Binding")
 	}
 	handler, err := modulecapability.NewHTTPHandler(binding, func(request *http.Request) error {
@@ -42,6 +42,8 @@ func RegisterCapabilityRoutes(mux *http.ServeMux, binding identitysdk.Binding, c
 	if err != nil {
 		return err
 	}
-	mux.Handle(modulecapability.HTTPPrefix+"/", handler)
+	registrar.Handle("GET "+modulecapability.SummaryPath, handler)
+	registrar.Handle("GET "+modulecapability.CategoriesPath+"{key}", handler)
+	registrar.Handle("POST "+modulecapability.ValidationPath, handler)
 	return nil
 }

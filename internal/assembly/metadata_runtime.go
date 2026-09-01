@@ -4,7 +4,6 @@ import (
 	"context"
 	"sync"
 
-	definitionmodel "github.com/domainry/domainry-identity/internal/domain/definition/model"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
 	metadataservice "github.com/domainry/domainry-identity/internal/domain/metadata/service"
@@ -21,15 +20,10 @@ func NewMetadataRuntime(state metadataservice.SchemaSnapshotState) *MetadataRunt
 	return &MetadataRuntime{snapshot: metadataservice.BuildSchemaSnapshot(state)}
 }
 
-func (r *MetadataRuntime) ApplyManifestMetadata(templateID, templateVersion, name string, objects []definitionmodel.ObjectSchema, actions []definitionmodel.ActionSchema, roles []identitymodel.RoleSchema, permissionSets []identitymodel.IdentityPermissionSet, permissionSetGroups []identitymodel.IdentityPermissionSetGroup, guardrails []identitymodel.IdentityGuardrailPolicy, profileExtensions []identitymodel.IdentityProfileExtension) {
+func (r *MetadataRuntime) ActivateMetadata(snapshot metadatamodel.MetadataSchemaSnapshot) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.snapshot = metadataservice.BuildSchemaSnapshot(metadataservice.SchemaSnapshotState{
-		TemplateID: templateID, TemplateVersion: templateVersion, Name: name,
-		Objects: objects, Actions: actions, Roles: roles,
-		PermissionSets: permissionSets, PermissionSetGroups: permissionSetGroups,
-		Guardrails: guardrails, IdentityProfileExtensions: profileExtensions,
-	})
+	r.snapshot = metadataservice.BuildSchemaSnapshot(snapshotState(snapshot))
 }
 
 func (r *MetadataRuntime) Schema() metadatamodel.MetadataSchemaSnapshot {

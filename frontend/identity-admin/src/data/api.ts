@@ -3,8 +3,6 @@ import type {
   Department,
   IdentityAccount,
   OrgUser,
-  PermAction,
-  PermMatrix,
   Role,
   WorkforceProfile,
   WorkforceAssignment,
@@ -703,31 +701,6 @@ export const workforceApi = {
   },
 };
 
-const MODULE_PERMISSION_KEYS: Record<string, { read: string; write?: string }> =
-  {
-    users: { read: "identity.users.read", write: "identity.users.write" },
-    departments: {
-      read: "identity.departments.read",
-      write: "identity.departments.write",
-    },
-    roles: { read: "identity.roles.read", write: "identity.roles.write" },
-    menus: { read: "identity.menus.read", write: "identity.menus.write" },
-    metadata: { read: "metadata.read", write: "metadata.write" },
-  };
-
-function permissionKeysToMatrix(keys: string[] | null): PermMatrix {
-  const set = new Set(keys ?? []);
-  return Object.fromEntries(
-    Object.entries(MODULE_PERMISSION_KEYS).map(([module, permission]) => {
-      const actions: PermAction[] = [];
-      if (set.has(permission.read)) actions.push("view", "export");
-      if (permission.write && set.has(permission.write))
-        actions.push("create", "edit", "delete");
-      return [module, actions];
-    }),
-  );
-}
-
 async function runtimeRoles(): Promise<RuntimeRole[]> {
   return runtimeRequest<RuntimeRole[]>("/identity/roles");
 }
@@ -763,7 +736,6 @@ async function mapRoles(roles: RuntimeRole[]): Promise<Role[]> {
     members: counts.get(role.id) ?? 0,
     builtIn: role.id === "admin",
     status: role.status,
-    perms: permissionKeysToMatrix(role.permission_keys),
   }));
 }
 

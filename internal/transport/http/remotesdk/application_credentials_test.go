@@ -13,13 +13,19 @@ func TestApplicationCredentialRegistryAuthorizesOnlyItsBoundScope(t *testing.T) 
 	registry, err := NewApplicationCredentialRegistry(map[string]string{
 		"tenant-a/workspace-a/orders-runtime": "orders-service-secret",
 		"workspace-b/notify-runtime":          "notify-service-secret",
-	}, 100)
+	}, map[string][]string{"tenant-a/workspace-a/orders-runtime": {"application:orders-runtime"}}, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
 	orders := identitysdk.ApplicationScope{TenantID: "tenant-a", WorkspaceID: "workspace-a", ApplicationKey: "orders-runtime"}
 	if decision := registry.Authorize("Bearer orders-service-secret", orders); !decision.Authenticated || decision.RateLimited {
 		t.Fatal("matching application credential was rejected")
+	}
+	if decision := registry.AuthorizeSourceOwner("Bearer orders-service-secret", orders, "application:orders-runtime"); !decision.Authenticated || !decision.SourceOwnerAllowed || decision.RateLimited {
+		t.Fatalf("configured permission owner scope was rejected: %+v", decision)
+	}
+	if decision := registry.AuthorizeSourceOwner("Bearer orders-service-secret", orders, "module:notification"); !decision.Authenticated || decision.SourceOwnerAllowed {
+		t.Fatalf("credential escaped its permission owner scope: %+v", decision)
 	}
 	for name, scope := range map[string]identitysdk.ApplicationScope{
 		"wrong tenant":      {TenantID: "tenant-b", WorkspaceID: "workspace-a", ApplicationKey: "orders-runtime"},
@@ -43,7 +49,7 @@ func TestApplicationCredentialRegistryAuthorizesOnlyItsBoundScope(t *testing.T) 
 }
 
 func TestApplicationCredentialRegistryDefaultsTenantToWorkspace(t *testing.T) {
-	registry, err := NewApplicationCredentialRegistry(map[string]string{"workspace-primary/orders-runtime": "service-secret"}, 100)
+	registry, err := NewApplicationCredentialRegistry(map[string]string{"workspace-primary/orders-runtime": "service-secret"}, nil, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +60,7 @@ func TestApplicationCredentialRegistryDefaultsTenantToWorkspace(t *testing.T) {
 }
 
 func TestApplicationCredentialRegistryParsesEscapedIdentifiersAndRejectsInvalidConfiguration(t *testing.T) {
-	registry, err := NewApplicationCredentialRegistry(map[string]string{"tenant%2Fone/workspace%2Fone/app%2Fone": "service-secret"}, 100)
+	registry, err := NewApplicationCredentialRegistry(map[string]string{"tenant%2Fone/workspace%2Fone/app%2Fone": "service-secret"}, nil, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,8 +75,23 @@ func TestApplicationCredentialRegistryParsesEscapedIdentifiersAndRejectsInvalidC
 		"duplicate credential": {"workspace-primary/orders-runtime": "same", "workspace-primary/notify-runtime": "same"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := NewApplicationCredentialRegistry(values, 100); err == nil {
+			if _, err := NewApplicationCredentialRegistry(values, nil, 100); err == nil {
 				t.Fatal("invalid application service credential configuration was accepted")
+			}
+		})
+	}
+}
+
+func TestApplicationCredentialRegistryRejectsInvalidPermissionOwnerScopes(t *testing.T) {
+	credentials := map[string]string{"workspace-primary/orders-runtime": "service-secret"}
+	for name, owners := range map[string]map[string][]string{
+		"invalid owner": {"workspace-primary/orders-runtime": {"Application Owner"}},
+		"orphan scope":  {"workspace-primary/other-runtime": {"application:other-runtime"}},
+		"empty owners":  {"workspace-primary/orders-runtime": nil},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := NewApplicationCredentialRegistry(credentials, owners, 100); err == nil {
+				t.Fatal("invalid application permission owner configuration was accepted")
 			}
 		})
 	}
@@ -80,7 +101,7 @@ func TestApplicationCredentialRotationSharesOneApplicationRateBucket(t *testing.
 	registry, err := NewApplicationCredentialRegistry(map[string]string{
 		"workspace-primary/orders-runtime#old": "old-service-secret",
 		"workspace-primary/orders-runtime#new": "new-service-secret",
-	}, 2)
+	}, nil, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +125,7 @@ func TestApplicationCredentialRateLimitsAreIndependentPerApplication(t *testing.
 	registry, err := NewApplicationCredentialRegistry(map[string]string{
 		"workspace-primary/orders-runtime": "orders-service-secret",
 		"workspace-primary/notify-runtime": "notify-service-secret",
-	}, 1)
+	}, nil, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +144,7 @@ func TestApplicationCredentialRateLimitsAreIndependentPerApplication(t *testing.
 }
 
 func TestApplicationCredentialHTTPBoundaryReturnsRateLimitResponse(t *testing.T) {
-	registry, err := NewApplicationCredentialRegistry(map[string]string{"workspace-primary/orders-runtime": "orders-service-secret"}, 1)
+	registry, err := NewApplicationCredentialRegistry(map[string]string{"workspace-primary/orders-runtime": "orders-service-secret"}, nil, 1)
 	if err != nil {
 		t.Fatal(err)
 	}

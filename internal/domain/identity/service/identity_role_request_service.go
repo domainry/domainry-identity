@@ -40,7 +40,7 @@ func identityActorCanManageRoleTarget(actor identitymodel.Principal, targetUserI
 	if !actor.Known || strings.TrimSpace(actor.UserID) == "" {
 		return false
 	}
-	if identityStringSliceContains(actor.Role.Permissions, "workspace.admin") || strings.TrimSpace(actor.Role.RecordScope) == "all_records" {
+	if strings.TrimSpace(actor.Role.RecordScope) == "all_records" {
 		return true
 	}
 	if actor.UserID == targetUserID {
@@ -214,7 +214,7 @@ func (s *IdentityDomainService) ApproveRoleRequest(ctx context.Context, requestI
 	for _, assignment := range assignments {
 		final[identityEntitlementAssignmentKey(assignment.UserID, assignment.RoleID)] = assignment
 	}
-	if err := validateIdentityEntitlementFinalState(final, definitionsByRoleID, currentAssignments, time.Now()); err != nil {
+	if err := validateIdentityEntitlementFinalState(final, definitionsByRoleID, time.Now()); err != nil {
 		return identitymodel.IdentityRoleRequest{}, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -301,25 +301,9 @@ func identityAssignmentActive(assignment identitymodel.IdentityUserRoleAssignmen
 	return true
 }
 
-func identityPrivilegedAutoAssignableRole(role identitymodel.IdentityRole) bool {
-	roleKey := strings.ToLower(strings.TrimSpace(valueOrDefault(role.Key, role.ID)))
-	return roleKey == "admin" || roleKey == "owner" || strings.Contains(roleKey, "workspace_admin")
-}
-
 func (s *IdentityDomainService) identityPrivilegedAutoAssignableRole(role identitymodel.IdentityRole) bool {
-	if identityPrivilegedAutoAssignableRole(role) {
-		return true
-	}
-	published, ok := s.publishedRoleDefinition(role)
-	if !ok {
-		return false
-	}
-	for _, permission := range published.Permissions {
-		if strings.TrimSpace(permission) == "workspace.admin" {
-			return true
-		}
-	}
-	return false
+	definition, published := s.publishedRoleDefinition(role)
+	return published && definition.RiskLevel == identitymodel.IdentityRoleRiskPrivileged
 }
 
 func (s *IdentityDomainService) RoleByID(ctx context.Context, roleID string) (identitymodel.IdentityRole, bool, error) {

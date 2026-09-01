@@ -23,15 +23,27 @@ type IdentityApplicationService struct {
 	workforceOnboarding    identityrepository.IdentityWorkforceOnboardingRepository
 	userDeletionInspector  IdentityUserDeletionInspector
 	positionResolver       IdentityWorkforcePositionResolver
+	pagePermissions        identityAdminPagePermissionSource
+}
+
+type identityAdminPagePermissionSource interface {
+	RequiredPermissionsForPage(string) ([]string, bool)
 }
 
 func NewIdentityApplicationService(repository identityrepository.IdentityRepository, permissions []identitymodel.IdentityPermissionDefinition) *IdentityApplicationService {
 	return NewIdentityApplicationServiceWithDependencies(repository, permissions, IdentityApplicationServiceDependencies{})
 }
 
+func NewIdentityApplicationServiceWithPermissionSource(repository identityrepository.IdentityRepository, source identitydomain.IdentityPermissionDefinitionSource, actions *IdentityActionRegistry) *IdentityApplicationService {
+	service := NewIdentityApplicationServiceWithDependencies(repository, nil, IdentityApplicationServiceDependencies{Actions: actions})
+	service.IdentityDomainService = identitydomain.NewIdentityDomainServiceWithPermissionSource(repository, source)
+	return service
+}
+
 type IdentityApplicationServiceDependencies struct {
 	UserDeletionInspector IdentityUserDeletionInspector
 	PositionResolver      IdentityWorkforcePositionResolver
+	Actions               *IdentityActionRegistry
 }
 
 type IdentityWorkforcePositionResolver interface {
@@ -47,6 +59,10 @@ func NewIdentityApplicationServiceWithDependencies(repository identityrepository
 		IdentityDomainService: identitydomain.NewIdentityDomainService(repository, permissions),
 		userDeletionInspector: deletionInspector,
 		positionResolver:      dependencies.PositionResolver,
+		pagePermissions:       identityBuiltinPagePermissions{},
+	}
+	if dependencies.Actions != nil {
+		service.pagePermissions = dependencies.Actions
 	}
 	if workforce, ok := repository.(identityrepository.IdentityWorkforceRepository); ok {
 		service.workforceRepository = workforce
@@ -79,7 +95,7 @@ func (s *IdentityApplicationService) ForWorkspace(workspaceID string) (*Identity
 	if err != nil {
 		return nil, err
 	}
-	clone := &IdentityApplicationService{IdentityDomainService: scoped, workforceRepository: s.workforceRepository, workforceTermination: s.workforceTermination, workforceLifecycle: s.workforceLifecycle, workforceOnboarding: s.workforceOnboarding, userDeletionInspector: s.userDeletionInspector, positionResolver: s.positionResolver}
+	clone := &IdentityApplicationService{IdentityDomainService: scoped, workforceRepository: s.workforceRepository, workforceTermination: s.workforceTermination, workforceLifecycle: s.workforceLifecycle, workforceOnboarding: s.workforceOnboarding, userDeletionInspector: s.userDeletionInspector, positionResolver: s.positionResolver, pagePermissions: s.pagePermissions}
 	if s.WorkforceDomainService != nil {
 		// IdentityDomainService accepted the same workspace identifier above, so
 		// the workforce view cannot independently reject it.
@@ -104,7 +120,7 @@ func identityWorkforceReadScopeAllows(principal identitymodel.Principal, profile
 	if scope == "none" {
 		scope = strings.TrimSpace(principal.Role.RecordScope)
 	}
-	if identitycontract.IdentityRoleHasPermissionKey(principal.Role, "workspace.admin") || scope == "all_records" {
+	if scope == "all_records" {
 		return true
 	}
 	if profile.IdentityUserID == principal.UserID {
@@ -348,9 +364,6 @@ func identityWorkforceReadScope(principal identitymodel.Principal) string {
 	scope := strings.TrimSpace(identitycontract.IdentityDataScope(principal.Role, "identity_workforce_profile", false))
 	if scope == "none" {
 		scope = strings.TrimSpace(principal.Role.RecordScope)
-	}
-	if identitycontract.IdentityRoleHasPermissionKey(principal.Role, "workspace.admin") {
-		return "all_records"
 	}
 	return scope
 }

@@ -58,7 +58,7 @@ func TestIdentityDomainConstructionAndPermissionCatalogEdges(t *testing.T) {
 	if replaced := service.ListPermissions(t.Context()); len(replaced) != 1 || replaced[0].Key != "replacement.permission" {
 		t.Fatalf("replaced permissions=%+v", replaced)
 	}
-	service.ReplaceAuthorizationCatalogs(
+	service.ReplaceAuthorizationPolicies(
 		[]identitymodel.IdentityPermissionSet{{Key: " "}, {Key: " z-set "}, {Key: " a-set "}},
 		[]identitymodel.IdentityPermissionSetGroup{{Key: " "}, {Key: " z-group "}, {Key: " a-group "}},
 		[]identitymodel.IdentityGuardrailPolicy{{Key: " "}, {Key: " z-guardrail "}, {Key: " a-guardrail "}},

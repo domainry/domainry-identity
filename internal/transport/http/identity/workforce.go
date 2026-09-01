@@ -34,7 +34,7 @@ func (h *IdentityHandler) executeWorkforceOwnerOperation(
 	result, err := h.authoring.ExecuteCommand(r.Context(), identityauthoring.CommandRequest{
 		UseCase: kind, ResourceType: "identity_workforce_profile", ResourceID: resourceID,
 		IdempotencyKey: r.Header.Get("Idempotency-Key"), Payload: payload,
-	}, principal, func() error { return identityAuthoringAllowed(principal, "identity.workforce.write") }, func() (any, error) { return execute(r.Context()) })
+	}, principal, func() error { return identityAuthoringScopeAllowed(principal) }, func() (any, error) { return execute(r.Context()) })
 	if err == nil {
 		writeIdentityOperationHeaders(w, result)
 	}
@@ -218,7 +218,7 @@ func (h *IdentityHandler) upsertIdentityWorkforceProfile(w http.ResponseWriter, 
 		profile.ID = pathID
 	}
 	principal := h.principal(r)
-	result, err := h.executeIdentityAuthoringUpsert(r.Context(), "identity.workforce_profile", profile.ID, "identity.workforce.write", r.Header.Get("Builder-Task-ID"), r.Header.Get("Idempotency-Key"), r.Header.Get("Expected-Schema-Hash"), profile, principal,
+	result, err := h.executeIdentityAuthoringUpsert(r.Context(), "identity.workforce_profile", profile.ID, r.Header.Get("Builder-Task-ID"), r.Header.Get("Idempotency-Key"), r.Header.Get("Expected-Schema-Hash"), profile, principal,
 		func(ctx context.Context) (any, bool, error) { return h.users.GetWorkforceProfile(ctx, profile.ID) },
 		func(ctx context.Context) (any, error) {
 			if executeErr := h.users.UpsertWorkforceProfile(ctx, profile); executeErr != nil {
@@ -321,7 +321,7 @@ func (h *IdentityHandler) upsertIdentityWorkforceAssignment(w http.ResponseWrite
 	}
 	assignment.WorkforceProfileID = profileID
 	principal := h.principal(r)
-	result, err := h.executeIdentityAuthoringUpsert(r.Context(), "identity.workforce_assignment", profileID, "identity.workforce.write", r.Header.Get("Builder-Task-ID"), r.Header.Get("Idempotency-Key"), r.Header.Get("Expected-Schema-Hash"), assignment, principal,
+	result, err := h.executeIdentityAuthoringUpsert(r.Context(), "identity.workforce_assignment", profileID, r.Header.Get("Builder-Task-ID"), r.Header.Get("Idempotency-Key"), r.Header.Get("Expected-Schema-Hash"), assignment, principal,
 		func(ctx context.Context) (any, bool, error) {
 			items, loadErr := h.users.ListWorkforceAssignments(ctx, profileID)
 			if loadErr != nil {

@@ -12,53 +12,33 @@ import (
 func TestIdentityAuthorizationMiddlewareMatrix(t *testing.T) {
 	var principal identitymodel.Principal
 	denials := 0
+	permissionCatalog, _ := newIdentityHTTPPermissionCatalog()
 	handler := NewIdentityHandler(IdentityDependencies{
 		Principal: func(*http.Request) identitymodel.Principal { return principal },
 		WriteError: func(w http.ResponseWriter, _ *http.Request, status int, _ string, _ ...string) {
 			w.WriteHeader(status)
 		},
-		SecurityAudit: func(*http.Request, string, string, map[string]any) { denials++ },
+		SecurityAudit:     func(*http.Request, string, string, map[string]any) { denials++ },
+		PermissionCatalog: permissionCatalog,
 	})
 	next := func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }
 	tests := []struct {
 		name       string
-		wrap       func(http.HandlerFunc) http.HandlerFunc
+		actionKey  string
 		principal  identitymodel.Principal
 		pathValues map[string]string
 		wantStatus int
 	}{
-		{name: "permission denied", wrap: func(next http.HandlerFunc) http.HandlerFunc {
-			return handler.identityPermission("identity.user.read", next)
-		}, principal: identitymodel.Principal{Known: true}, wantStatus: http.StatusForbidden},
-		{name: "permission unknown", wrap: func(next http.HandlerFunc) http.HandlerFunc {
-			return handler.identityPermission("identity.user.read", next)
-		}, wantStatus: http.StatusForbidden},
-		{name: "permission allowed", wrap: func(next http.HandlerFunc) http.HandlerFunc {
-			return handler.identityPermission("identity.user.read", next)
-		}, principal: identitymodel.Principal{Known: true, Role: identitymodel.RoleSchema{Permissions: []string{"identity.user.read"}}}, wantStatus: http.StatusNoContent},
-		{name: "all permissions unknown", wrap: func(next http.HandlerFunc) http.HandlerFunc {
-			return handler.identityPermissions([]string{"identity.users.write", "identity.roles.write"}, next)
-		}, wantStatus: http.StatusForbidden},
-		{name: "all permissions missing one", wrap: func(next http.HandlerFunc) http.HandlerFunc {
-			return handler.identityPermissions([]string{"identity.users.write", "identity.roles.write"}, next)
-		}, principal: identitymodel.Principal{Known: true, Role: identitymodel.RoleSchema{Permissions: []string{"identity.users.write"}}}, wantStatus: http.StatusForbidden},
-		{name: "all permissions allowed", wrap: func(next http.HandlerFunc) http.HandlerFunc {
-			return handler.identityPermissions([]string{"identity.users.write", "identity.roles.write"}, next)
-		}, principal: identitymodel.Principal{Known: true, Role: identitymodel.RoleSchema{Permissions: []string{"identity.users.write", "identity.roles.write"}}}, wantStatus: http.StatusNoContent},
-		{name: "self allowed", wrap: func(next http.HandlerFunc) http.HandlerFunc {
-			return handler.identityPermissionOrSelf("identity.user.update", "userID", next)
-		}, principal: identitymodel.Principal{Known: true, UserID: "user-1"}, pathValues: map[string]string{"userID": "user-1"}, wantStatus: http.StatusNoContent},
-		{name: "non-self denied", wrap: func(next http.HandlerFunc) http.HandlerFunc {
-			return handler.identityPermissionOrSelf("identity.user.update", "userID", next)
-		}, principal: identitymodel.Principal{Known: true, UserID: "user-1"}, pathValues: map[string]string{"userID": "user-2"}, wantStatus: http.StatusForbidden},
-		{name: "non-self unknown", wrap: func(next http.HandlerFunc) http.HandlerFunc {
-			return handler.identityPermissionOrSelf("identity.user.update", "userID", next)
-		}, pathValues: map[string]string{"userID": "user-2"}, wantStatus: http.StatusForbidden},
-		{name: "non-self permission", wrap: func(next http.HandlerFunc) http.HandlerFunc {
-			return handler.identityPermissionOrSelf("identity.user.update", "userID", next)
-		}, principal: identitymodel.Principal{Known: true, UserID: "user-1", Role: identitymodel.RoleSchema{Permissions: []string{"identity.user.update"}}}, pathValues: map[string]string{"userID": "user-2"}, wantStatus: http.StatusNoContent},
-		{name: "authenticated denied", wrap: handler.Authenticated, wantStatus: http.StatusForbidden},
-		{name: "authenticated allowed", wrap: handler.Authenticated, principal: identitymodel.Principal{Known: true}, wantStatus: http.StatusNoContent},
+		{name: "permission denied", actionKey: "identity.roles.list", principal: identitymodel.Principal{Known: true}, wantStatus: http.StatusForbidden},
+		{name: "permission unknown", actionKey: "identity.roles.list", wantStatus: http.StatusUnauthorized},
+		{name: "another exact Permission is not alias", actionKey: "identity.roles.list", principal: identitymodel.Principal{Known: true, Role: identitymodel.RoleSchema{Permissions: []string{"identity.permissions.list"}}}, wantStatus: http.StatusForbidden},
+		{name: "permission allowed", actionKey: "identity.roles.list", principal: identitymodel.Principal{Known: true, Role: identitymodel.RoleSchema{Permissions: []string{"identity.roles.list"}}}, wantStatus: http.StatusNoContent},
+		{name: "self allowed", actionKey: "identity.users.get", principal: identitymodel.Principal{Known: true, UserID: "user-1"}, pathValues: map[string]string{"userID": "user-1"}, wantStatus: http.StatusNoContent},
+		{name: "non-self denied", actionKey: "identity.users.get", principal: identitymodel.Principal{Known: true, UserID: "user-1"}, pathValues: map[string]string{"userID": "user-2"}, wantStatus: http.StatusForbidden},
+		{name: "non-self permission", actionKey: "identity.users.get", principal: identitymodel.Principal{Known: true, UserID: "user-1", Role: identitymodel.RoleSchema{Permissions: []string{"identity.users.get"}}}, pathValues: map[string]string{"userID": "user-2"}, wantStatus: http.StatusNoContent},
+		{name: "authenticated denied", actionKey: "identity.effective_menus.get", wantStatus: http.StatusUnauthorized},
+		{name: "authenticated allowed", actionKey: "identity.effective_menus.get", principal: identitymodel.Principal{Known: true}, wantStatus: http.StatusNoContent},
+		{name: "domain self deferred", actionKey: "identity.profile_bindings.get", principal: identitymodel.Principal{Known: true}, wantStatus: http.StatusNoContent},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -68,55 +48,17 @@ func TestIdentityAuthorizationMiddlewareMatrix(t *testing.T) {
 			for key, value := range test.pathValues {
 				request.SetPathValue(key, value)
 			}
-			test.wrap(next).ServeHTTP(response, request)
+			action, found := handler.actions.Definition(test.actionKey)
+			if !found {
+				t.Fatalf("missing test Action %q", test.actionKey)
+			}
+			handler.identityAction(action, next).ServeHTTP(response, request)
 			if response.Code != test.wantStatus {
 				t.Fatalf("status=%d want=%d", response.Code, test.wantStatus)
 			}
 		})
 	}
-	if denials != 7 {
-		t.Fatalf("security denials=%d", denials)
-	}
-}
-
-func TestIdentityAdminMiddlewareMatrix(t *testing.T) {
-	var principal identitymodel.Principal
-	denials := 0
-	handler := NewIdentityHandler(IdentityDependencies{
-		Principal: func(*http.Request) identitymodel.Principal { return principal },
-		WriteError: func(w http.ResponseWriter, _ *http.Request, status int, _ string, _ ...string) {
-			w.WriteHeader(status)
-		},
-		SecurityAudit: func(*http.Request, string, string, map[string]any) { denials++ },
-	})
-	next := func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }
-	tests := []struct {
-		name       string
-		principal  identitymodel.Principal
-		wantStatus int
-	}{
-		{name: "unknown principal", wantStatus: http.StatusForbidden},
-		{name: "permission missing", principal: identitymodel.Principal{Known: true}, wantStatus: http.StatusForbidden},
-		{
-			name: "allowed",
-			principal: identitymodel.Principal{
-				Known: true,
-				Role:  identitymodel.RoleSchema{Permissions: []string{"workspace.admin"}},
-			},
-			wantStatus: http.StatusNoContent,
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			principal = test.principal
-			response := httptest.NewRecorder()
-			handler.Admin(next).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/admin/test", nil))
-			if response.Code != test.wantStatus {
-				t.Fatalf("status=%d want=%d", response.Code, test.wantStatus)
-			}
-		})
-	}
-	if denials != 2 {
+	if denials != 5 {
 		t.Fatalf("security denials=%d", denials)
 	}
 }
@@ -125,7 +67,7 @@ func TestEffectiveMenusRejectsUnknownPrincipalAndPropagatesServiceError(t *testi
 	handler, response := newIdentityHTTPHandler(&identityHTTPRepository{})
 	handler.principal = func(*http.Request) identitymodel.Principal { return identitymodel.Principal{} }
 	handler.EffectiveMenus(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/identity/effective-menus?surface=admin_console", nil))
-	if response.status != http.StatusForbidden {
+	if response.status != http.StatusUnauthorized {
 		t.Fatalf("unknown principal status=%d", response.status)
 	}
 
@@ -295,10 +237,14 @@ func TestIdentityDepartmentOwnerControlledAuthoringCurrentResource(t *testing.T)
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			handler, response := newIdentityHTTPHandler(test.repository)
+			actionKey := "identity.departments.create"
+			if test.update {
+				actionKey = "identity.departments.update"
+			}
 			handler.principal = func(*http.Request) identitymodel.Principal {
 				return identitymodel.Principal{
 					Known: true, WorkspaceID: "workspace-1", UserID: "builder",
-					Role: identitymodel.RoleSchema{Permissions: []string{"identity.departments.write"}},
+					Role: identitymodel.RoleSchema{Permissions: []string{actionKey}},
 				}
 			}
 			if test.expected == "" {

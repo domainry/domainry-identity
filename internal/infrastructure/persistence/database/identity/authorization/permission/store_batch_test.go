@@ -33,6 +33,9 @@ func (backend permissionBatchRenderBackend) ApplyUpsert(builder *query.InsertBui
 func (permissionBatchRenderBackend) QueryIdentityContext(context.Context, string, ...any) (*sql.Rows, error) {
 	return nil, nil
 }
+func (permissionBatchRenderBackend) QueryIdentityRowContext(context.Context, string, ...any) *sql.Row {
+	return nil
+}
 
 func TestPermissionReconcileUsesMultiRowUpsertAcrossDialects(t *testing.T) {
 	for _, test := range []struct {
@@ -67,6 +70,41 @@ func TestPermissionReconcileUsesMultiRowUpsertAcrossDialects(t *testing.T) {
 			}
 			if strings.Contains(parts[1], renderer.Identifier("enabled")+" =") || strings.Contains(parts[1], renderer.Identifier("created_at")+" =") {
 				t.Fatalf("permission upsert overwrites administrator state or creation time: %s", statement)
+			}
+		})
+	}
+}
+
+func TestPermissionEnablementUsesCurrentStateOnlyAcrossDialects(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		engine persistencedriver.Engine
+	}{
+		{name: "sqlite", engine: sqlitepersistence.NewEngine()},
+		{name: "mysql", engine: mysqlpersistence.NewEngine()},
+		{name: "postgres", engine: postgrespersistence.NewEngine()},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			renderer, err := test.engine.SQLDialect().WithNamespace(test.engine.RendererSchema("identity"), "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			statement, arguments, err := permissionEnablementBuilder(renderer, "workspace-primary", "identity.roles.get", false, "now").Build()
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, required := range []string{renderer.Table("_identity_permissions"), renderer.Identifier("workspace_id"), renderer.Identifier("permission_key"), renderer.Identifier("definition_status"), renderer.Identifier("enabled"), renderer.Identifier("updated_at")} {
+				if !strings.Contains(statement, required) {
+					t.Fatalf("permission enablement SQL is missing %q: %s", required, statement)
+				}
+			}
+			if len(arguments) != 6 {
+				t.Fatalf("permission enablement args=%d SQL=%s", len(arguments), statement)
+			}
+			for _, forbidden := range []string{"source_owner", "definition_hash", "source_snapshot_hash", "definition_status ="} {
+				if strings.Contains(statement, forbidden) {
+					t.Fatalf("permission enablement mutates source-owned definition field %q: %s", forbidden, statement)
+				}
 			}
 		})
 	}

@@ -80,7 +80,14 @@
     }
   ],
   "permissions": [
-    "identity.users.write"
+    "identity.users.create",
+    "identity.users.delete",
+    "identity.users.disable",
+    "identity.users.enable",
+    "identity.users.get",
+    "identity.users.update",
+    "identity.users.validate",
+    "identity.users.versions"
   ],
   "audit_events": [
     "identity_user_created",
@@ -88,13 +95,14 @@
   ],
   "validation_endpoint": "POST /identity/users/{userID}/validate",
   "configuration_routes": [
-    "POST /identity/users",
-    "PATCH /identity/users/{userID}",
+    "DELETE /identity/users/{userID}",
     "GET /identity/users/{userID}",
     "GET /identity/users/{userID}/versions",
-    "DELETE /identity/users/{userID}",
+    "PATCH /identity/users/{userID}",
+    "POST /identity/users",
     "POST /identity/users/{userID}/disable",
-    "POST /identity/users/{userID}/enable"
+    "POST /identity/users/{userID}/enable",
+    "POST /identity/users/{userID}/validate"
   ],
   "resource_operations": {
     "persistence_mode": "audited_resource",
@@ -459,7 +467,7 @@
       "audit:identity_user_updated"
     ],
     "side_effect_level": "internal",
-    "permission_model": "identity.users.write",
+    "permission_model": "exact_action_same_key_permission",
     "change_control": "direct_audited_configuration"
   },
   "sources": [

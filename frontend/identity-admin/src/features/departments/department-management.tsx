@@ -329,7 +329,7 @@ function DepartmentFormDialog({
 
 export function DepartmentManagementPage() {
   const { t } = useI18n()
-  const { can } = usePermissions()
+  const { has } = usePermissions()
   const { data: departments = [], isLoading, isError, refetch } = useDepartments()
   const createDepartment = useCreateDepartment()
   const updateDepartment = useUpdateDepartment()
@@ -454,7 +454,7 @@ export function DepartmentManagementPage() {
               onChange={(event) => setKeyword(event.target.value)}
             />
           </InputGroup>
-          <Button variant='primary-glow' disabled={!can('departments', 'create')} onClick={() => openCreate()}>
+          <Button variant='primary-glow' disabled={!has('identity.departments.create')} onClick={() => openCreate()}>
             <Plus data-icon='inline-start' />
             {t('dept.new')}
           </Button>
@@ -523,7 +523,7 @@ export function DepartmentManagementPage() {
           searchPlaceholder={t('dept.tree.searchPlaceholder')}
           nodes={treeNodes}
           selectedId={selectedId}
-          disabled={!can('departments', 'edit') || isLoading}
+          disabled={!has('identity.departments.update') || isLoading}
           onSelect={setSelectedId}
           onMove={moveDepartment}
           onMoveError={(error) => toast.error(error instanceof Error ? error.message : t('dept.tree.moveFailed'))}
@@ -543,7 +543,7 @@ export function DepartmentManagementPage() {
                 <Button
                   variant='outline'
                   size='sm'
-                  disabled={!can('departments', 'create')}
+                  disabled={!has('identity.departments.create')}
                   onClick={() => openCreate(selectedId)}
                 >
                   <Plus data-icon='inline-start' />
@@ -558,7 +558,7 @@ export function DepartmentManagementPage() {
                 icon={Users}
                 title={t(keyword.trim() || selectedId ? 'dept.filteredEmpty.title' : 'dept.empty.title')}
                 description={t(keyword.trim() || selectedId ? 'dept.filteredEmpty.desc' : 'dept.empty.desc')}
-                action={<Button size='sm' variant='outline' disabled={!can('departments', 'create')} onClick={() => openCreate(selectedId ?? null)}>{t('dept.new')}</Button>}
+                action={<Button size='sm' variant='outline' disabled={!has('identity.departments.create')} onClick={() => openCreate(selectedId ?? null)}>{t('dept.new')}</Button>}
               />
             ) : (
               <Table>
@@ -596,10 +596,10 @@ export function DepartmentManagementPage() {
                       <TableCell className='sticky right-0 z-10 w-[1%] whitespace-nowrap border-l bg-background px-3 group-hover:bg-(--surface-hover)'>
                         <DataTableRowActions
                           menuLabel={t('dept.actionsAria')}
-                          primary={[{ label: t('dept.menu.edit'), icon: Pencil, disabled: !can('departments', 'edit'), onSelect: () => openEdit(dept) }]}
+                          primary={[{ label: t('dept.menu.edit'), icon: Pencil, disabled: !has('identity.departments.update'), onSelect: () => openEdit(dept) }]}
                           secondary={[
-                            { label: t('dept.addChild'), icon: Plus, disabled: !can('departments', 'create'), onSelect: () => openCreate(dept.id) },
-                            { label: dept.status === 'active' ? t('dept.menu.disable') : t('dept.menu.enable'), icon: Power, disabled: !can('departments', 'edit'), onSelect: () => toggleStatus(dept) },
+							{ label: t('dept.addChild'), icon: Plus, disabled: !has('identity.departments.create'), onSelect: () => openCreate(dept.id) },
+							{ label: dept.status === 'active' ? t('dept.menu.disable') : t('dept.menu.enable'), icon: Power, disabled: !has('identity.departments.update'), onSelect: () => toggleStatus(dept) },
                           ]}
                         />
                       </TableCell>

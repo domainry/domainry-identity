@@ -19,12 +19,12 @@ func IdentityRoleDataScopeAuthoringCapability() authoringcontract.CapabilityAuth
 	return authoringcontract.CapabilityAuthoringDefinition{
 		Key: "identity.role_data_scope", Status: "supported", Lifecycle: "versioned_metadata", Requires: []string{"identity.role", "schema.object"},
 		Parameters:  []authoringcontract.CapabilityAuthoringParameter{{Key: "data_scopes", Type: "array", Required: true, ItemSchema: "identity_data_scope_policy"}},
-		Permissions: []string{"identity.data_scopes.write"}, AuditEvents: []string{"metadata_definition.saved"}, ValidationEndpoint: "POST /identity/roles/{roleID}/data-scopes/validate",
+		AuditEvents: []string{"metadata_definition.saved"}, ValidationEndpoint: "POST /identity/roles/{roleID}/data-scopes/validate",
 		ConfigurationRoutes: identityRoleMetadataRoutes("POST /identity/roles/{roleID}/data-scopes/validate", "GET /identity/roles/{roleID}/data-scopes"), ResourceKeyPathParameter: "roleID",
 		InputSchema: input, OutputSchema: output,
 		OutputVariables:    []authoringcontract.CapabilityAuthoringOutput{{Name: "data_scopes", JSONPointer: "/", Type: "identity_data_scope_list", VisibleTo: "subsequent_capability_calls"}},
 		ReferenceContracts: []authoringcontract.CapabilityAuthoringReference{{Kind: "role_id", InputJSONPointer: "/@path/roleID", ResolverEndpoint: "GET /tenant-admin/platform-capabilities/references/role_id"}, {Kind: "object_key", InputJSONPointer: "/data_scopes/*/resource", ResolverEndpoint: "GET /tenant-admin/platform-capabilities/references/object_key"}},
-		Execution:          identityPolicyExecution("identity.role_data_scope", "replace_data_scope_set", "identity_role_data_scopes_updated", "identity.data_scopes.write"),
+		Execution:          identityPolicyExecution("identity.role_data_scope", "replace_data_scope_set", "identity_role_data_scopes_updated"),
 		Errors: []authoringcontract.CapabilityAuthoringError{
 			{Code: "backend.identity.data_scope_invalid", FieldPath: "data_scopes[].scope", ParameterKeys: []string{"allowed", "actual"}, MessageKey: "backend.identity.data_scope_invalid"},
 			{Code: "backend.identity.data_scope_resource_required", FieldPath: "data_scopes[].resource", MessageKey: "backend.identity.data_scope_resource_required"},
@@ -54,12 +54,12 @@ func IdentityRoleFieldPermissionAuthoringCapability() authoringcontract.Capabili
 	output := &authoringcontract.CapabilityAuthoringSchema{Schema: input.Schema, Type: "array", Items: &permission, Definitions: definitions}
 	return authoringcontract.CapabilityAuthoringDefinition{
 		Key: "identity.role_field_permission", Status: "supported", Lifecycle: "versioned_metadata", Requires: []string{"identity.role", "schema.field"},
-		Parameters: []authoringcontract.CapabilityAuthoringParameter{{Key: "field_permissions", Type: "array", Required: true, ItemSchema: "identity_field_permission"}}, Permissions: []string{"identity.field_permissions.write"}, AuditEvents: []string{"metadata_definition.saved"},
+		Parameters: []authoringcontract.CapabilityAuthoringParameter{{Key: "field_permissions", Type: "array", Required: true, ItemSchema: "identity_field_permission"}}, AuditEvents: []string{"metadata_definition.saved"},
 		ValidationEndpoint: "POST /identity/roles/{roleID}/field-permissions/validate", ConfigurationRoutes: identityRoleMetadataRoutes("POST /identity/roles/{roleID}/field-permissions/validate", "GET /identity/roles/{roleID}/field-permissions"), ResourceKeyPathParameter: "roleID",
 		InputSchema: input, OutputSchema: output,
 		OutputVariables:    []authoringcontract.CapabilityAuthoringOutput{{Name: "field_permissions", JSONPointer: "/", Type: "identity_field_permission_list", VisibleTo: "subsequent_capability_calls"}},
 		ReferenceContracts: []authoringcontract.CapabilityAuthoringReference{{Kind: "role_id", InputJSONPointer: "/@path/roleID", ResolverEndpoint: "GET /tenant-admin/platform-capabilities/references/role_id"}, {Kind: "object_key", InputJSONPointer: "/field_permissions/*/resource", ResolverEndpoint: "GET /tenant-admin/platform-capabilities/references/object_key"}, {Kind: "field_key", InputJSONPointer: "/field_permissions/*/field", ScopeFrom: "/field_permissions/*/resource", ResolverEndpoint: "GET /tenant-admin/platform-capabilities/references/field_key?scope={object_key}"}},
-		Execution:          identityPolicyExecution("identity.role_field_permission", "replace_field_permission_set", "identity_role_field_permissions_updated", "identity.field_permissions.write"),
+		Execution:          identityPolicyExecution("identity.role_field_permission", "replace_field_permission_set", "identity_role_field_permissions_updated"),
 		Errors: []authoringcontract.CapabilityAuthoringError{
 			{Code: "backend.identity.field_permission_resource_not_found", FieldPath: "field_permissions[].resource", ParameterKeys: []string{"actual"}, MessageKey: "backend.identity.field_permission_resource_not_found"},
 			{Code: "backend.identity.field_permission_field_not_found", FieldPath: "field_permissions[].field", ParameterKeys: []string{"resource", "actual"}, MessageKey: "backend.identity.field_permission_field_not_found"},
@@ -81,11 +81,11 @@ func IdentityMenuAuthoringCapability() authoringcontract.CapabilityAuthoringDefi
 	}}
 	return authoringcontract.CapabilityAuthoringDefinition{
 		Key: "identity.menu", Status: "supported", Lifecycle: "immediate_audited_configuration", Parameters: []authoringcontract.CapabilityAuthoringParameter{{Key: "id", Type: "string", Required: true}, {Key: "key", Type: "string", Required: true}, {Key: "label", Type: "string", Required: true}, {Key: "description", Type: "string"}, {Key: "route", Type: "string"}, {Key: "icon", Type: "string"}, {Key: "parent_id", Type: "string"}, {Key: "sort_order", Type: "integer", Minimum: identityFloatPointer(0)}, {Key: "audience", Type: "string"}, {Key: "status", Type: "string", Required: true, Enum: []string{"active", "disabled"}}},
-		Permissions: []string{"identity.menus.write"}, AuditEvents: []string{"identity_menu_upserted", "identity_menu_deleted"}, ValidationEndpoint: "POST /identity/menus/{menuID}/validate", ConfigurationRoutes: []string{"PUT /identity/menus/{menuID}", "GET /identity/menus/{menuID}", "GET /identity/menus/{menuID}/versions", "DELETE /identity/menus/{menuID}"}, ResourceKeyPathParameter: "menuID", InputSchema: input, OutputSchema: input,
+		AuditEvents: []string{"identity_menu_upserted", "identity_menu_deleted"}, ValidationEndpoint: "POST /identity/menus/{menuID}/validate", ConfigurationRoutes: []string{"PUT /identity/menus/{menuID}", "GET /identity/menus/{menuID}", "GET /identity/menus/{menuID}/versions", "DELETE /identity/menus/{menuID}"}, ResourceKeyPathParameter: "menuID", InputSchema: input, OutputSchema: input,
 		ResourceOperations: identityAuditedResourceOperations("POST /identity/menus/{menuID}/validate", "PUT /identity/menus/{menuID}", "GET /identity/menus/{menuID}", "GET /identity/menus/{menuID}/versions", "DELETE /identity/menus/{menuID}"),
 		OutputVariables:    []authoringcontract.CapabilityAuthoringOutput{{Name: "menu_id", JSONPointer: "/id", Type: "menu_id", VisibleTo: "subsequent_capability_calls"}},
 		ReferenceContracts: []authoringcontract.CapabilityAuthoringReference{{Kind: "menu_id", InputJSONPointer: "/parent_id", ResolverEndpoint: "GET /tenant-admin/platform-capabilities/references/menu_id"}},
-		Execution:          identityDirectPolicyExecution("identity.menu", "stable_menu_id_upsert", "identity_menu_upserted", "identity.menus.write"),
+		Execution:          identityDirectPolicyExecution("identity.menu", "stable_menu_id_upsert", "identity_menu_upserted"),
 		Errors:             []authoringcontract.CapabilityAuthoringError{{Code: "backend.identity.menu_parent_not_found", FieldPath: "parent_id", ParameterKeys: []string{"actual"}, MessageKey: "backend.identity.menu_parent_not_found"}, {Code: "backend.identity.menu_parent_cycle", FieldPath: "parent_id", MessageKey: "backend.identity.menu_parent_cycle"}},
 		Examples:           []authoringcontract.CapabilityAuthoringExample{{Name: "minimal_valid", Value: map[string]any{"id": "orders", "key": "orders", "label": "Orders", "status": "active"}}, {Name: "representative", Value: map[string]any{"id": "orders", "key": "orders", "label": "Orders", "route": "/objects/order", "icon": "shopping-cart", "sort_order": 100, "status": "active"}}, {Name: "invalid_with_repair", Value: map[string]any{"id": "orders", "key": "orders", "label": "Orders", "parent_id": "missing", "status": "active"}, ExpectedErrorCodes: []string{"backend.identity.menu_parent_not_found"}}}, Sources: identityPolicyAuthoringSources("IdentityMenu", "ValidateMenu"),
 	}
@@ -111,8 +111,8 @@ func IdentityRoleMenuAssignmentAuthoringCapability() authoringcontract.Capabilit
 	}
 	return authoringcontract.CapabilityAuthoringDefinition{
 		Key: "identity.role_menu_assignment", Status: "supported", Lifecycle: "immediate_audited_configuration", Requires: []string{"identity.role", "identity.menu"},
-		Parameters:  []authoringcontract.CapabilityAuthoringParameter{{Key: "menu_ids", Type: "array", Required: true, ItemSchema: "menu_id"}},
-		Permissions: []string{"identity.menus.write"}, AuditEvents: []string{"identity_role_menus_updated"},
+		Parameters:         []authoringcontract.CapabilityAuthoringParameter{{Key: "menu_ids", Type: "array", Required: true, ItemSchema: "menu_id"}},
+		AuditEvents:        []string{"identity_role_menus_updated"},
 		ValidationEndpoint: "POST /identity/roles/{roleID}/menus/validate", ConfigurationRoutes: []string{"PUT /identity/roles/{roleID}/menus", "GET /identity/roles/{roleID}/menus", "GET /identity/roles/{roleID}/menus/versions"},
 		ResourceOperations:       identityAuditedResourceOperations("POST /identity/roles/{roleID}/menus/validate", "PUT /identity/roles/{roleID}/menus", "GET /identity/roles/{roleID}/menus", "GET /identity/roles/{roleID}/menus/versions", ""),
 		ResourceKeyPathParameter: "roleID", InputSchema: input, OutputSchema: output,
@@ -123,7 +123,7 @@ func IdentityRoleMenuAssignmentAuthoringCapability() authoringcontract.Capabilit
 		},
 		Execution: &authoringcontract.CapabilityAuthoringExecution{
 			ReadSet: []string{"identity.role", "identity.menu"}, WriteSet: []string{"identity.role_menu_assignment"}, Transaction: "identity_repository_transaction", Idempotency: "replace_menu_assignment_set",
-			SideEffects: []string{"audit:identity_role_menus_updated"}, SideEffectLevel: "internal", PermissionModel: "identity.menus.write", ChangeControl: "direct_audited_configuration",
+			SideEffects: []string{"audit:identity_role_menus_updated"}, SideEffectLevel: "internal", PermissionModel: authoringcontract.CapabilityPermissionModelExactAction, ChangeControl: "direct_audited_configuration",
 		},
 		Errors: []authoringcontract.CapabilityAuthoringError{
 			{Code: "backend.identity.role_not_found", FieldPath: "role_id", ParameterKeys: []string{"actual"}, MessageKey: "backend.identity.role_not_found"},
@@ -148,12 +148,12 @@ func identityPolicySchemaDefinitions() map[string]authoringcontract.CapabilityAu
 	return map[string]authoringcontract.CapabilityAuthoringSchema{"identity_policy_relation_segment": segment, "identity_policy_expression": expression}
 }
 
-func identityPolicyExecution(writeSet, idempotency, event, permission string) *authoringcontract.CapabilityAuthoringExecution {
-	return &authoringcontract.CapabilityAuthoringExecution{ReadSet: []string{"identity.role", "metadata.schema"}, WriteSet: []string{"metadata.definition_version", writeSet}, Transaction: "metadata_repository_transaction", Idempotency: idempotency, SideEffects: []string{"audit:" + event, "schema_snapshot_rebuild"}, SideEffectLevel: "internal", Compensation: "restore_prior_version_as_new_revision", PermissionModel: permission, ChangeControl: "direct_audited_versioned_metadata"}
+func identityPolicyExecution(writeSet, idempotency, event string) *authoringcontract.CapabilityAuthoringExecution {
+	return &authoringcontract.CapabilityAuthoringExecution{ReadSet: []string{"identity.role", "metadata.schema"}, WriteSet: []string{"metadata.definition_version", writeSet}, Transaction: "metadata_repository_transaction", Idempotency: idempotency, SideEffects: []string{"audit:" + event, "schema_snapshot_rebuild"}, SideEffectLevel: "internal", Compensation: "restore_prior_version_as_new_revision", PermissionModel: authoringcontract.CapabilityPermissionModelExactAction, ChangeControl: "direct_audited_versioned_metadata"}
 }
 
-func identityDirectPolicyExecution(writeSet, idempotency, event, permission string) *authoringcontract.CapabilityAuthoringExecution {
-	return &authoringcontract.CapabilityAuthoringExecution{ReadSet: []string{writeSet}, WriteSet: []string{writeSet}, Transaction: "identity_repository_transaction", Idempotency: idempotency, SideEffects: []string{"audit:" + event}, SideEffectLevel: "internal", PermissionModel: permission, ChangeControl: "immediate_audited_configuration"}
+func identityDirectPolicyExecution(writeSet, idempotency, event string) *authoringcontract.CapabilityAuthoringExecution {
+	return &authoringcontract.CapabilityAuthoringExecution{ReadSet: []string{writeSet}, WriteSet: []string{writeSet}, Transaction: "identity_repository_transaction", Idempotency: idempotency, SideEffects: []string{"audit:" + event}, SideEffectLevel: "internal", PermissionModel: authoringcontract.CapabilityPermissionModelExactAction, ChangeControl: "immediate_audited_configuration"}
 }
 
 func identityPolicyAuthoringSources(modelSymbol, validationSymbol string) []authoringcontract.CapabilityAuthoringSource {

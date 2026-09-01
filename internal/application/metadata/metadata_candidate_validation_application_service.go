@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	definitionmodel "github.com/domainry/domainry-identity/internal/domain/definition/model"
@@ -12,6 +13,14 @@ import (
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
 	metadatavalidation "github.com/domainry/domainry-identity/internal/domain/metadata/validation"
 )
+
+// MetadataPermissionSelectionValidator validates functional grants against
+// Identity's current PermissionDefinition state. The metadata boundary owns
+// RoleSchema structure, while the permission registry remains the authority
+// for whether an external key is active and selectable.
+type MetadataPermissionSelectionValidator interface {
+	ValidatePermissionSelections([]string) error
+}
 
 // ValidateMetadataCandidate validates the complete Identity metadata graph
 // after applying a mutation set. Object, field, relation and authorization
@@ -30,7 +39,7 @@ func (s *MetadataApplicationService) ValidateMetadataCandidate(ctx context.Conte
 			return badRequest("backend.metadata.candidate_invalid", "resource_type", mutation.ResourceType, "resource_key", mutation.ResourceKey, "diagnostic", err.Error())
 		}
 	}
-	if err := metadatavalidation.MetadataValidateIdentitySchemaWithAuthorizationObjects(candidate, s.currentAuthorizationObjects()); err != nil {
+	if err := metadatavalidation.MetadataValidateIdentitySchema(candidate); err != nil {
 		return badRequest("backend.metadata.candidate_invalid", "diagnostic", err.Error())
 	}
 	if err := validateRetiredActionPermissionAssignments(activeActions, candidate.Actions, candidate.Roles); err != nil {
@@ -40,6 +49,52 @@ func (s *MetadataApplicationService) ValidateMetadataCandidate(ctx context.Conte
 		if issues := validateBusinessActionDefinitionIssuesWithObjects(action, candidate.Objects); len(issues) > 0 {
 			return badRequest("backend.metadata.candidate_invalid", "resource_type", "action", "resource_key", action.Key, "diagnostic", issues[0].ErrorCode+":"+issues[0].FieldPath)
 		}
+	}
+	if err := s.validateCandidatePermissionSelections(candidate); err != nil {
+		return badRequest("backend.metadata.candidate_invalid", "diagnostic", err.Error())
+	}
+	return nil
+}
+
+func (s *MetadataApplicationService) validateCandidatePermissionSelections(candidate manifestmodel.ManifestSchema) error {
+	candidateOwned := make(map[string]struct{}, len(candidate.Actions))
+	for _, action := range candidate.Actions {
+		if key := strings.TrimSpace(action.Key); key != "" {
+			candidateOwned[key] = struct{}{}
+		}
+	}
+	requested := map[string]struct{}{}
+	collect := func(values []string) {
+		for _, raw := range values {
+			key := strings.TrimSpace(raw)
+			if key == "" {
+				continue
+			}
+			if _, definedByCandidate := candidateOwned[key]; definedByCandidate {
+				continue
+			}
+			requested[key] = struct{}{}
+		}
+	}
+	for _, role := range candidate.Roles {
+		collect(role.Permissions)
+	}
+	for _, binding := range candidate.IdentityProfileExtensions {
+		collect(binding.RequiredPermissions)
+	}
+	if len(requested) == 0 {
+		return nil
+	}
+	if s.permissions == nil {
+		return fmt.Errorf("Identity permission selection validator is unavailable")
+	}
+	keys := make([]string, 0, len(requested))
+	for key := range requested {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	if err := s.permissions.ValidatePermissionSelections(keys); err != nil {
+		return fmt.Errorf("validate current PermissionDefinitions for %v: %w", keys, err)
 	}
 	return nil
 }

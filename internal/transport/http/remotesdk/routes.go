@@ -22,6 +22,11 @@ type Support struct {
 	WriteServiceError func(http.ResponseWriter, *http.Request, error)
 }
 
+type RouteRegistrar interface {
+	Handle(string, http.Handler)
+	HandleFunc(string, func(http.ResponseWriter, *http.Request))
+}
+
 func (s Support) decodeJSON(w http.ResponseWriter, r *http.Request, value any) bool {
 	return s.DecodeJSON(w, r, value)
 }
@@ -38,8 +43,8 @@ func (s Support) writeServiceError(w http.ResponseWriter, r *http.Request, err e
 	s.WriteServiceError(w, r, err)
 }
 
-func RegisterRoutes(mux *http.ServeMux, binding identitysdk.Binding, support Support, credentials *ApplicationCredentialRegistry) {
-	mux.HandleFunc("GET /identity/discovery", func(w http.ResponseWriter, _ *http.Request) {
+func RegisterRoutes(registrar RouteRegistrar, binding identitysdk.Binding, support Support, credentials *ApplicationCredentialRegistry) {
+	registrar.HandleFunc("GET /identity/discovery", func(w http.ResponseWriter, _ *http.Request) {
 		descriptor := binding.Descriptor()
 		descriptor.Mode = identitysdk.DeploymentModeSaaS
 		// SaaS serves multiple registered applications. The caller's expected
@@ -48,7 +53,7 @@ func RegisterRoutes(mux *http.ServeMux, binding identitysdk.Binding, support Sup
 		descriptor.Audience = ""
 		support.writeJSON(w, http.StatusOK, descriptor)
 	})
-	mux.HandleFunc("POST /identity/application-service/token", func(w http.ResponseWriter, r *http.Request) {
+	registrar.HandleFunc("POST /identity/application-service/token", func(w http.ResponseWriter, r *http.Request) {
 		var request identitysdk.ExchangeApplicationServiceTokenRequest
 		if !support.decodeJSON(w, r, &request) {
 			return
@@ -79,7 +84,7 @@ func RegisterRoutes(mux *http.ServeMux, binding identitysdk.Binding, support Sup
 		}
 		support.writeJSON(w, http.StatusOK, token)
 	})
-	mux.HandleFunc("POST /identity/application-service/verify", func(w http.ResponseWriter, r *http.Request) {
+	registrar.HandleFunc("POST /identity/application-service/verify", func(w http.ResponseWriter, r *http.Request) {
 		var request identitysdk.VerifyApplicationServiceTokenRequest
 		if !support.decodeJSON(w, r, &request) {
 			return
@@ -123,7 +128,7 @@ func RegisterRoutes(mux *http.ServeMux, binding identitysdk.Binding, support Sup
 		}
 		support.writeJSON(w, http.StatusOK, principal)
 	})
-	mux.HandleFunc("GET /auth/session", func(w http.ResponseWriter, r *http.Request) {
+	registrar.HandleFunc("GET /auth/session", func(w http.ResponseWriter, r *http.Request) {
 		token := sdkBearerToken(r.Header.Get("Authorization"))
 		if token == "" {
 			support.writeError(w, r, http.StatusUnauthorized, "auth.token_required")
@@ -136,7 +141,7 @@ func RegisterRoutes(mux *http.ServeMux, binding identitysdk.Binding, support Sup
 		}
 		support.writeJSON(w, http.StatusOK, session)
 	})
-	mux.HandleFunc("POST /auth/code/exchange", func(w http.ResponseWriter, r *http.Request) {
+	registrar.HandleFunc("POST /auth/code/exchange", func(w http.ResponseWriter, r *http.Request) {
 		var request identitysdk.ExchangeAuthorizationCodeRequest
 		if !support.decodeJSON(w, r, &request) {
 			return
@@ -148,7 +153,7 @@ func RegisterRoutes(mux *http.ServeMux, binding identitysdk.Binding, support Sup
 		}
 		support.writeJSON(w, http.StatusOK, session)
 	})
-	mux.HandleFunc("POST /identity/access-bundle", func(w http.ResponseWriter, r *http.Request) {
+	registrar.HandleFunc("POST /identity/access-bundle", func(w http.ResponseWriter, r *http.Request) {
 		var request struct {
 			ResourceType identitysdk.ResourceType `json:"resource_type"`
 			Action       identitysdk.Action       `json:"action"`
@@ -168,7 +173,7 @@ func RegisterRoutes(mux *http.ServeMux, binding identitysdk.Binding, support Sup
 		}
 		support.writeJSON(w, http.StatusOK, bundle)
 	})
-	mux.HandleFunc("POST /identity/reauthorize", func(w http.ResponseWriter, r *http.Request) {
+	registrar.HandleFunc("POST /identity/reauthorize", func(w http.ResponseWriter, r *http.Request) {
 		var request struct {
 			Access identitysdk.AccessRequest `json:"access"`
 			Facts  identitysdk.ResourceFacts `json:"facts,omitempty"`
@@ -195,38 +200,83 @@ func RegisterRoutes(mux *http.ServeMux, binding identitysdk.Binding, support Sup
 		}
 		support.writeJSON(w, http.StatusOK, decision)
 	})
-	publishCatalog := func(w http.ResponseWriter, r *http.Request) {
-		var catalog identitysdk.AuthorizationCatalog
-		if !support.decodeJSON(w, r, &catalog) {
+	registrar.HandleFunc("PUT /identity/applications/current", func(w http.ResponseWriter, r *http.Request) {
+		var registration identitysdk.ApplicationRegistration
+		if !support.decodeJSON(w, r, &registration) {
 			return
 		}
-		if !authorizeApplicationCredential(w, r, support, credentials, applicationScope(catalog.Application)) {
+		if !authorizeApplicationCredential(w, r, support, credentials, applicationScope(registration.Application)) {
 			return
 		}
-		receipt, err := binding.Catalog().Publish(r.Context(), catalog)
-		if err != nil {
-			support.writeServiceError(w, r, err)
-			return
-		}
-		support.writeJSON(w, http.StatusOK, receipt)
-	}
-	mux.HandleFunc("PUT /identity/catalog", publishCatalog)
-	mux.HandleFunc("POST /identity/catalog/revision", func(w http.ResponseWriter, r *http.Request) {
-		var application identitysdk.ApplicationRef
-		if !support.decodeJSON(w, r, &application) {
-			return
-		}
-		if !authorizeApplicationCredential(w, r, support, credentials, applicationScope(application)) {
-			return
-		}
-		receipt, err := binding.Catalog().CurrentRevision(r.Context(), application)
+		receipt, err := binding.Applications().Register(r.Context(), registration)
 		if err != nil {
 			support.writeServiceError(w, r, err)
 			return
 		}
 		support.writeJSON(w, http.StatusOK, receipt)
 	})
-	registerRuntimeProjectionRoutes(mux, binding, support, credentials)
+	registrar.HandleFunc("PUT /identity/permissions/reconcile", func(w http.ResponseWriter, r *http.Request) {
+		var request identitysdk.PermissionReconcileRequest
+		if !support.decodeJSON(w, r, &request) {
+			return
+		}
+		if !authorizeApplicationCredentialSourceOwner(w, r, support, credentials, applicationScope(request.Application), request.SourceOwner) {
+			return
+		}
+		receipt, err := binding.Permissions().Reconcile(r.Context(), request)
+		if err != nil {
+			support.writeServiceError(w, r, err)
+			return
+		}
+		support.writeJSON(w, http.StatusOK, receipt)
+	})
+	registrar.HandleFunc("POST /identity/permissions/source-snapshot", func(w http.ResponseWriter, r *http.Request) {
+		var request identitysdk.PermissionSourceSnapshotRequest
+		if !support.decodeJSON(w, r, &request) {
+			return
+		}
+		if !authorizeApplicationCredentialSourceOwner(w, r, support, credentials, applicationScope(request.Application), request.SourceOwner) {
+			return
+		}
+		reader, ok := binding.Permissions().(identitysdk.PermissionSnapshotReader)
+		if !ok {
+			support.writeError(w, r, http.StatusNotImplemented, "identity.permission_snapshot_reader_unavailable")
+			return
+		}
+		snapshot, err := reader.CurrentSourceSnapshot(r.Context(), request)
+		if err != nil {
+			support.writeServiceError(w, r, err)
+			return
+		}
+		if err := snapshot.ValidateFor(request); err != nil {
+			support.writeServiceError(w, r, err)
+			return
+		}
+		support.writeJSON(w, http.StatusOK, snapshot)
+	})
+	registerRuntimeProjectionRoutes(registrar, binding, support, credentials)
+}
+
+func authorizeApplicationCredentialSourceOwner(w http.ResponseWriter, r *http.Request, support Support, credentials *ApplicationCredentialRegistry, scope identitysdk.ApplicationScope, sourceOwner string) bool {
+	if credentials == nil {
+		support.writeError(w, r, http.StatusUnauthorized, "identity.service_credential_required")
+		return false
+	}
+	decision := credentials.AuthorizeSourceOwner(r.Header.Get("Authorization"), scope, sourceOwner)
+	if !decision.Authenticated {
+		support.writeError(w, r, http.StatusUnauthorized, "identity.service_credential_required")
+		return false
+	}
+	if !decision.SourceOwnerAllowed {
+		support.writeError(w, r, http.StatusForbidden, "identity.permission_source_owner_forbidden")
+		return false
+	}
+	writeApplicationCredentialRateLimit(w, decision)
+	if decision.RateLimited {
+		support.writeError(w, r, http.StatusTooManyRequests, "identity.application_rate_limited")
+		return false
+	}
+	return true
 }
 
 func authorizeApplicationCredential(w http.ResponseWriter, r *http.Request, support Support, credentials *ApplicationCredentialRegistry, scope identitysdk.ApplicationScope) bool {

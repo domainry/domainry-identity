@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/domainry/domainry-foundation/secrets"
 	"github.com/domainry/domainry-identity/internal/platform/config"
+	_ "modernc.org/sqlite"
 )
 
 func TestIdentityStoreNilAndDialectContracts(t *testing.T) {
@@ -79,6 +81,55 @@ func TestIdentityStoreOpenContextAndKeyProviderEdges(t *testing.T) {
 	}
 	if err := store.CloseContext(t.Context()); err != nil {
 		t.Fatalf("close context: %v", err)
+	}
+}
+
+func TestOpenBorrowedContextUsesHostDialectWithoutRelationPrefix(t *testing.T) {
+	for _, test := range []struct {
+		driver      string
+		placeholder string
+	}{
+		{driver: "sqlite", placeholder: "?"},
+		{driver: "mysql", placeholder: "?"},
+		{driver: "postgres", placeholder: "$1"},
+	} {
+		t.Run(test.driver, func(t *testing.T) {
+			db, err := sql.Open("sqlite", ":memory:")
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = db.Close() })
+			store, err := OpenBorrowedContext(t.Context(), config.Config{
+				DatabaseDriver: test.driver,
+				DatabaseSchema: "host_schema",
+			}, db)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !store.borrowedDatabase || store.RelationPrefix() != "" {
+				t.Fatalf("borrowed=%t relation prefix=%q", store.borrowedDatabase, store.RelationPrefix())
+			}
+			renderer := store.BuilderRenderer()
+			if table := renderer.Table("_identity_users"); strings.Contains(table, "domainry_identity_") || !strings.Contains(table, "_identity_users") {
+				t.Fatalf("borrowed %s table=%q", test.driver, table)
+			}
+			if placeholder := renderer.Placeholder(1); placeholder != test.placeholder {
+				t.Fatalf("borrowed %s placeholder=%q want=%q", test.driver, placeholder, test.placeholder)
+			}
+			if store.Coordinator == nil || store.Coordinator.Ledger == nil {
+				t.Fatal("borrowed store has no host-ledger adapter")
+			}
+			ledgerDDL := store.Coordinator.Ledger.SchemaSQL()
+			if strings.Contains(ledgerDDL, "domainry_identity_") || !strings.Contains(ledgerDDL, "_schema_migrations") {
+				t.Fatalf("borrowed %s ledger DDL=%q", test.driver, ledgerDDL)
+			}
+			if err := store.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := db.PingContext(t.Context()); err != nil {
+				t.Fatalf("borrowed pool was closed: %v", err)
+			}
+		})
 	}
 }
 

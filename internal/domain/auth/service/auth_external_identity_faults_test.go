@@ -171,7 +171,7 @@ func newFaultAuthDomainService() (*AuthDomainService, *faultExternalIdentityRepo
 		},
 		roleDefinitions: map[string]identitymodel.RoleSchema{
 			"sales": {Key: "sales", Name: "Sales", RecordScope: "all_records"},
-			"admin": {Key: "admin", Name: "Admin", Permissions: []string{"workspace.admin"}, RecordScope: "all_records"},
+			"admin": {Key: "admin", Name: "Admin", Permissions: []string{"identity.roles.list"}, RecordScope: "all_records", RiskLevel: identitymodel.IdentityRoleRiskPrivileged},
 		},
 	}
 	authRepository := &faultExternalAuthRepository{}

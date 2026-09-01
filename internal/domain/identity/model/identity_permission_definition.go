@@ -36,11 +36,13 @@ type IdentityPermissionReconcileRequest struct {
 }
 
 type IdentityPermissionReconcileReceipt struct {
-	WorkspaceID  string `json:"workspace_id"`
-	SourceOwner  string `json:"source_owner"`
-	SnapshotHash string `json:"snapshot_hash"`
-	Inserted     int    `json:"inserted"`
-	Updated      int    `json:"updated"`
-	Retired      int    `json:"retired"`
-	Unchanged    int    `json:"unchanged"`
+	WorkspaceID          string `json:"workspace_id"`
+	SourceOwner          string `json:"source_owner"`
+	PreviousSnapshotHash string `json:"previous_snapshot_hash,omitempty"`
+	SnapshotHash         string `json:"snapshot_hash"`
+	DefinitionCount      int    `json:"definition_count"`
+	Inserted             int    `json:"inserted"`
+	Updated              int    `json:"updated"`
+	Retired              int    `json:"retired"`
+	Unchanged            int    `json:"unchanged"`
 }

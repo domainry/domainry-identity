@@ -25,7 +25,7 @@ func TestIdentityValidationAndAuditRemainingEdges(t *testing.T) {
 	auditRepository := &identityAuthoringAuditRepository{}
 	handler.audit = auditapplication.NewAuditApplicationService(auditRepository)
 	handler.principal = func(*http.Request) identitymodel.Principal {
-		return identitymodel.Principal{Known: true, UserID: "auditor", WorkspaceID: "workspace-1", Role: identitymodel.RoleSchema{Permissions: []string{"identity.audit.view"}}}
+		return identitymodel.Principal{Known: true, UserID: "auditor", WorkspaceID: "workspace-1", Role: identitymodel.RoleSchema{Permissions: []string{"audit.governance.read"}}}
 	}
 	auditRequest := httptest.NewRequest(http.MethodPost, "/identity/audit", nil)
 	handler.appendIdentityMutationAudit(auditRequest, "identity_tested", "identity_role", "role-1", "Tested identity audit", map[string]any{"source": "test"})
@@ -108,7 +108,7 @@ func TestIdentityMenuOwnerCurrentStateEdges(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			handler, response := newIdentityHTTPHandler(test.repository)
 			handler.principal = func(*http.Request) identitymodel.Principal {
-				return identitymodel.Principal{Known: true, UserID: "builder", WorkspaceID: "workspace-1", Role: identitymodel.RoleSchema{Permissions: []string{"identity.menus.write"}}}
+				return identitymodel.Principal{Known: true, UserID: "builder", WorkspaceID: "workspace-1", Role: identitymodel.RoleSchema{Permissions: []string{"identity.menus.upsert"}}}
 			}
 			if test.expected == "" {
 				test.expected, _ = identityAuthoringResourceHash("identity.menu", "menu-1", test.repository.menus[len(test.repository.menus)-1], true)
@@ -170,7 +170,7 @@ func TestIdentityWorkforceRemainingReadAndCurrentEdges(t *testing.T) {
 	}
 
 	handler.principal = func(*http.Request) identitymodel.Principal {
-		return identitymodel.Principal{Known: true, UserID: "builder", WorkspaceID: "workspace-1", Role: identitymodel.RoleSchema{Permissions: []string{"identity.workforce.write"}}}
+		return identitymodel.Principal{Known: true, UserID: "builder", WorkspaceID: "workspace-1", Role: identitymodel.RoleSchema{Permissions: []string{"identity.workforce_assignments.upsert"}}}
 	}
 	_, upsert := identityRoleRequest(http.MethodPut, "/identity/workforce/profile-1/assignments/assignment-1", `{"id":"assignment-1","workforce_profile_id":"profile-1","organization_unit_id":"sales","assignment_type":"primary","status":"active"}`, map[string]string{"profileID": "profile-1"})
 	upsert.Header.Set("Builder-Task-ID", "task-1")
@@ -201,7 +201,9 @@ func TestIdentityRoleAndMenuOwnerCurrentCallbacks(t *testing.T) {
 	}
 	handler, response := newIdentityHTTPHandler(repository)
 	handler.principal = func(*http.Request) identitymodel.Principal {
-		return identitymodel.Principal{Known: true, UserID: "builder", WorkspaceID: "workspace-1", Role: identitymodel.RoleSchema{Permissions: []string{"identity.roles.write", "identity.menus.write"}}}
+		return identitymodel.Principal{Known: true, UserID: "builder", WorkspaceID: "workspace-1", Role: identitymodel.RoleSchema{Permissions: []string{
+			"identity.user_role_assignments.assign", "identity.role_menus.publish",
+		}}}
 	}
 	_, assign := identityRoleRequest(http.MethodPost, "/identity/users/user-1/roles", `{"role_id":"role-1"}`, map[string]string{"userID": "user-1"})
 	assign.Header.Set("Builder-Task-ID", "task-1")

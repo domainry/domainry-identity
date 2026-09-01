@@ -14,6 +14,8 @@ import (
 	"github.com/domainry/domainry-foundation/requestcontext"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	authapplication "github.com/domainry/domainry-identity/internal/application/auth"
+	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
+	authpolicy "github.com/domainry/domainry-identity/internal/domain/auth/policy"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
@@ -25,6 +27,7 @@ type httpSupport struct {
 	writesFrozen           func(context.Context, string) (bool, error)
 	controls               *httpSurfaceControls
 	initializedWorkspaceID string
+	actionAuthorization    *identityapplication.IdentityActionAuthorizationService
 }
 
 func newHTTPSupport(auth *authapplication.AuthApplicationService, allowedOrigins []string, controlConfig ...httpControlConfig) *httpSupport {
@@ -149,24 +152,30 @@ func (h *httpSupport) authenticated(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func (h *httpSupport) admin(next http.HandlerFunc) http.HandlerFunc {
+func (h *httpSupport) action(actionKey string, next http.HandlerFunc) http.HandlerFunc {
+	action, found := h.actionAuthorization.Definition(actionKey)
+	if !found || action.HTTP == nil {
+		panic("HTTP route references unregistered action " + actionKey)
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		principal := h.principal(r)
-		if !principal.Known || !hasPermission(principal.Role.Permissions, "workspace.admin") {
+		if !h.actionAuthorization.Allows(action, principal, identityapplication.IdentityActionAuthorizationContext{}) {
+			if !principal.Known {
+				h.writeError(w, r, http.StatusUnauthorized, "auth.token_required")
+				return
+			}
 			h.writeError(w, r, http.StatusForbidden, "auth.permission_denied")
 			return
 		}
+		if principal.Known {
+			requestIdentity := identitysdk.RequestIdentity{
+				Principal:   identityModuleSDKPrincipal(principal, action.Key),
+				AccessToken: authpolicy.AuthBearerToken(r.Header.Get("Authorization")),
+			}
+			r = r.WithContext(identitysdk.WithRequestIdentity(r.Context(), requestIdentity))
+		}
 		next(w, r)
 	}
-}
-
-func hasPermission(values []string, expected string) bool {
-	for _, value := range values {
-		if strings.EqualFold(strings.TrimSpace(value), expected) {
-			return true
-		}
-	}
-	return false
 }
 
 func (h *httpSupport) middleware(next http.Handler) http.Handler {

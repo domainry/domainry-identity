@@ -1,6 +1,7 @@
 package projection
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -24,7 +25,7 @@ func TestIdentityAccessReverseIndexEdgeInputs(t *testing.T) {
 		len(index.UserRoles["fallback-user"]) != 1 || index.UserRoles["fallback-user"][0] != "fallback" {
 		t.Fatalf("user roles=%+v", index.UserRoles)
 	}
-	if len(index.ObjectActionRoles["object.update"]) != 1 ||
+	if len(index.ObjectActionRoles["namespace.object.update"]) != 1 ||
 		len(index.ObjectActionRoles["standalone"]) != 0 {
 		t.Fatalf("object action roles=%+v", index.ObjectActionRoles)
 	}
@@ -51,7 +52,7 @@ func TestIdentityGovernanceReportsEdgeInputs(t *testing.T) {
 	}
 	report := IdentityBuildGovernanceReports(
 		now,
-		[]identitymodel.IdentityPermissionDefinition{{Key: " "}, {Key: "orphan"}},
+		[]identitymodel.IdentityPermissionDefinition{{Key: " "}, {Key: "orphan", DefinitionStatus: identitymodel.IdentityPermissionDefinitionActive, Enabled: true}, {Key: "published.read", DefinitionStatus: identitymodel.IdentityPermissionDefinitionActive, Enabled: true}},
 		roles,
 		[]identitymodel.RoleSchema{{Key: "published", Permissions: []string{"published.read"}}},
 		assignments,
@@ -63,6 +64,29 @@ func TestIdentityGovernanceReportsEdgeInputs(t *testing.T) {
 	}
 	if len(report.RolesWithoutMembers) != 2 {
 		t.Fatalf("roles without members=%+v", report.RolesWithoutMembers)
+	}
+}
+
+func TestIdentityGovernanceReportsPermissionDefinitionDrift(t *testing.T) {
+	report := IdentityBuildGovernanceReports(
+		time.Date(2026, 7, 26, 0, 0, 0, 0, time.UTC),
+		[]identitymodel.IdentityPermissionDefinition{
+			{Key: "active", DefinitionStatus: identitymodel.IdentityPermissionDefinitionActive, Enabled: true},
+			{Key: "disabled", DefinitionStatus: identitymodel.IdentityPermissionDefinitionActive, Enabled: false},
+			{Key: "retired", DefinitionStatus: identitymodel.IdentityPermissionDefinitionRetired, Enabled: true},
+		},
+		nil,
+		[]identitymodel.RoleSchema{{Key: "role", Permissions: []string{"active", "disabled", "retired", "unknown"}}},
+		nil,
+		nil,
+	)
+	want := []string{
+		"role:role:permission:disabled:disabled",
+		"role:role:permission:retired:retired",
+		"role:role:permission:unknown:unknown",
+	}
+	if !reflect.DeepEqual(report.AuthorizationDrift, want) {
+		t.Fatalf("authorization drift=%#v want=%#v", report.AuthorizationDrift, want)
 	}
 }
 
@@ -89,11 +113,11 @@ func TestIdentityRoleChangeImpactEdgeInputs(t *testing.T) {
 			{Key: "account", Fields: []definitionmodel.FieldSchema{{Key: "ordinary"}, {Key: "secret", Config: map[string]any{"sensitive": true}}}},
 		},
 		[]definitionmodel.ActionSchema{
-			{Key: "wrong-permission", RequiresPermission: "unrelated"},
-			{Key: "ordinary", RequiresPermission: "account.update"},
-			{Key: "critical", RequiresPermission: "account.critical", RiskLevel: "critical"},
-			{Key: "approval", RequiresPermission: "account.approval", AssurancePolicy: assuranceApproval},
-			{Key: "assurance", RequiresPermission: "account.assurance", AssurancePolicy: assuranceOTP},
+			{Key: "unrelated"},
+			{Key: "account.update"},
+			{Key: "account.critical", RiskLevel: "critical"},
+			{Key: "account.approval", AssurancePolicy: assuranceApproval},
+			{Key: "account.assurance", AssurancePolicy: assuranceOTP},
 		},
 	)
 	if impact.RoleKey != "fallback-role" || impact.AffectedUserCount != 1 ||

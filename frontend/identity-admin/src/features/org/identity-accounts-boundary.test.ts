@@ -7,21 +7,21 @@ describe('identity account directory boundary', () => {
   it('publishes only the restricted security account route', () => {
     expect(isRegisteredMenuPath('/admin/security/accounts')).toBe(true)
     expect(isRegisteredMenuPath('/admin/org/users')).toBe(false)
-    expect(routeContractForPath('/admin/security/accounts')?.requiredPermissions).toEqual(['identity.users.read'])
+	 expect(routeContractForPath('/admin/security/accounts')?.requiredPermissions).toEqual(['identity.users.list'])
     expect(readFileSync(new URL('../../router.tsx', import.meta.url), 'utf8')).toContain("path: '/admin/security/accounts/$userId'")
   })
 
   it('does not grant the full account directory to a business Profile operator', () => {
-    const businessPermissions = ['identity.profile_binding.manage', 'member_profile.read']
+		const businessPermissions = ['identity.profile_bindings.command', 'member_profile.read']
     expect(isRouteAllowed('/business-profiles/member', ['/business-profiles/member'], businessPermissions)).toBe(false)
     expect(isRouteAllowed('/admin/security/accounts', ['/business-profiles/member'], businessPermissions)).toBe(false)
     expect(isRouteAllowed('/admin/org/roles', ['/business-profiles/member'], businessPermissions)).toBe(false)
-    expect(routeContractForPath('/admin/org/roles')?.requiredPermissions).toEqual(['identity.roles.read'])
+	 expect(routeContractForPath('/admin/org/roles')?.requiredPermissions).toEqual(['identity.roles.list'])
     expect(
       isRouteAllowed(
         '/admin/security/accounts',
         ['/admin/security/accounts'],
-        ['identity.users.read'],
+		['identity.users.list'],
         [],
       ),
     ).toBe(true)
@@ -101,7 +101,7 @@ describe('identity account directory boundary', () => {
 
   it('lists accounts without per-user role or security requests', () => {
     const api = readFileSync(new URL('../../data/api.ts', import.meta.url), 'utf8')
-    const accountApi = api.slice(api.indexOf('export const identityAccountsApi'), api.indexOf('const MODULE_PERMISSION_KEYS'))
+    const accountApi = api.slice(api.indexOf('export const identityAccountsApi'), api.indexOf('function mapWorkforceProfile'))
     expect(accountApi).toContain('return (await runtimeUsers()).map((user) => mapIdentityAccount(user))')
     expect(accountApi).not.toContain('userRoleAssignments')
     const listPage = readFileSync(new URL('./identity-accounts-page.tsx', import.meta.url), 'utf8')
@@ -109,7 +109,9 @@ describe('identity account directory boundary', () => {
     expect(accountApi).toContain('"/auth/reset-password"')
     expect(accountApi).toContain('"Idempotency-Key"')
     const detail = readFileSync(new URL('./identity-user-detail-page.tsx', import.meta.url), 'utf8')
-    expect(detail).toContain("has('identity.security.write')")
+	 expect(detail).toContain("has('auth.reset_password')")
+	 expect(detail).toContain("has('identity.users.unlock')")
+	 expect(detail).toContain("has('identity.users.force_logout')")
   })
 
   it('renders only the safe account security projection', () => {

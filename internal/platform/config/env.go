@@ -116,6 +116,30 @@ func keyMapEnv(key string) map[string]string {
 	return out
 }
 
+func keyListMapEnv(key string) map[string][]string {
+	out := map[string][]string{}
+	for _, item := range strings.Split(strings.TrimSpace(os.Getenv(key)), ",") {
+		id, rawValues, ok := strings.Cut(item, "=")
+		id, rawValues = strings.TrimSpace(id), strings.TrimSpace(rawValues)
+		if !ok || id == "" || rawValues == "" {
+			continue
+		}
+		seen := map[string]struct{}{}
+		for _, rawValue := range strings.Split(rawValues, "|") {
+			value := strings.TrimSpace(rawValue)
+			if value == "" {
+				continue
+			}
+			if _, duplicate := seen[value]; duplicate {
+				continue
+			}
+			seen[value] = struct{}{}
+			out[id] = append(out[id], value)
+		}
+	}
+	return out
+}
+
 func providerConfigured(values ...string) bool {
 	for _, value := range values {
 		if strings.TrimSpace(value) == "" {
@@ -138,4 +162,29 @@ func validateProductionRedirectURL(key string, value string) error {
 		return fmt.Errorf("%s must use HTTPS in production", key)
 	}
 	return nil
+}
+
+func validateRuntimeActionUsageURL(value string, requireHTTPS bool) error {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return fmt.Errorf("IDENTITY_ACTION_USAGE_RUNTIME_URL must be an absolute HTTP(S) URL")
+	}
+	if !strings.EqualFold(parsed.Scheme, "http") && !strings.EqualFold(parsed.Scheme, "https") {
+		return fmt.Errorf("IDENTITY_ACTION_USAGE_RUNTIME_URL must use HTTP or HTTPS")
+	}
+	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return fmt.Errorf("IDENTITY_ACTION_USAGE_RUNTIME_URL must not contain credentials, query, or fragment")
+	}
+	if requireHTTPS && !strings.EqualFold(parsed.Scheme, "https") {
+		return fmt.Errorf("IDENTITY_ACTION_USAGE_RUNTIME_URL must use HTTPS in production")
+	}
+	return nil
+}
+
+func runtimeActionUsageCredentialScope(workspaceID, applicationKey, credentialID string) string {
+	return url.PathEscape(strings.TrimSpace(workspaceID)) + "/" + url.PathEscape(strings.TrimSpace(applicationKey)) + "#" + url.PathEscape(strings.TrimSpace(credentialID))
 }

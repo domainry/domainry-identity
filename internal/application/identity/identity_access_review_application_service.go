@@ -43,7 +43,7 @@ func NewIdentityAccessReviewApplicationService(dependencies IdentityAccessReview
 }
 
 func (s *IdentityAccessReviewApplicationService) CreateReview(ctx context.Context, request identitymodel.IdentityAccessReviewCreateRequest, actor identitymodel.Principal) (identitymodel.IdentityAccessReview, error) {
-	scoped, repository, workspaceContext, err := s.scope(ctx, actor)
+	scoped, repository, workspaceContext, err := s.scope(ctx, actor, "identity.access_reviews.create")
 	if err != nil {
 		return identitymodel.IdentityAccessReview{}, err
 	}
@@ -103,7 +103,8 @@ func (s *IdentityAccessReviewApplicationService) CreateReview(ctx context.Contex
 			ReviewID: request.ID, UserID: assignment.UserID, RoleID: assignment.RoleID, RoleKey: role.Key,
 			WorkforceProfileID: assignment.WorkforceProfileID, BindingKey: assignment.BindingKey, ProfileID: assignment.ProfileID,
 			RiskLevel: risk, Priority: priority, PriorityReasons: priorityReasons, LastUsedAt: lastUsedAt,
-			Status: "pending", Version: 1, CreatedAt: now.Format(time.RFC3339), UpdatedAt: now.Format(time.RFC3339),
+			PermissionStates: identityAccessReviewPermissionStates(definition, scoped.PermissionDefinitions()),
+			Status:           "pending", Version: 1, CreatedAt: now.Format(time.RFC3339), UpdatedAt: now.Format(time.RFC3339),
 		}
 		items = append(items, item)
 	}
@@ -130,7 +131,7 @@ func (s *IdentityAccessReviewApplicationService) CreateReview(ctx context.Contex
 }
 
 func (s *IdentityAccessReviewApplicationService) ListReviews(ctx context.Context, status string, actor identitymodel.Principal) ([]identitymodel.IdentityAccessReview, error) {
-	_, repository, workspaceContext, err := s.scope(ctx, actor)
+	scoped, repository, workspaceContext, err := s.scope(ctx, actor, "identity.access_reviews.list")
 	if err != nil {
 		return nil, err
 	}
@@ -138,11 +139,23 @@ func (s *IdentityAccessReviewApplicationService) ListReviews(ctx context.Context
 	if status != "" && status != string(identitymodel.IdentityAccessReviewOpen) && status != string(identitymodel.IdentityAccessReviewCompleted) {
 		return nil, apperror.New(apperror.KindBadRequest, "backend.identity.access_review_status_invalid", nil, nil)
 	}
-	return repository.ListIdentityAccessReviews(workspaceContext, actor.WorkspaceID, status)
+	reviews, err := repository.ListIdentityAccessReviews(workspaceContext, actor.WorkspaceID, status)
+	if err != nil {
+		return nil, err
+	}
+	permissions := scoped.PermissionDefinitions()
+	for reviewIndex := range reviews {
+		for itemIndex := range reviews[reviewIndex].Items {
+			item := &reviews[reviewIndex].Items[itemIndex]
+			definition, _ := scoped.PublishedRoleDefinition(workspaceContext, item.RoleKey)
+			item.PermissionStates = identityAccessReviewPermissionStates(definition, permissions)
+		}
+	}
+	return reviews, nil
 }
 
 func (s *IdentityAccessReviewApplicationService) Decide(ctx context.Context, itemID string, request identitymodel.IdentityAccessReviewDecisionRequest, actor identitymodel.Principal) (identitymodel.IdentityAccessReviewDecisionReceipt, error) {
-	scoped, repository, workspaceContext, err := s.scope(ctx, actor)
+	scoped, repository, workspaceContext, err := s.scope(ctx, actor, "identity.access_review_items.decide")
 	if err != nil {
 		return identitymodel.IdentityAccessReviewDecisionReceipt{}, err
 	}
@@ -162,6 +175,8 @@ func (s *IdentityAccessReviewApplicationService) Decide(ctx context.Context, ite
 			return identitymodel.IdentityAccessReviewDecisionReceipt{}, apperror.New(apperror.KindConflict, "backend.idempotency_key_reused", nil, nil)
 		}
 		receipt.Replayed = true
+		definition, _ := scoped.PublishedRoleDefinition(workspaceContext, receipt.Item.RoleKey)
+		receipt.Item.PermissionStates = identityAccessReviewPermissionStates(definition, scoped.PermissionDefinitions())
 		return receipt, nil
 	}
 	item, found, err := repository.GetIdentityAccessReviewItem(workspaceContext, actor.WorkspaceID, itemID)
@@ -219,7 +234,38 @@ func (s *IdentityAccessReviewApplicationService) Decide(ctx context.Context, ite
 			"replacement_role_id": request.ReplacementRoleID, "expires_at": request.ExpiresAt, "reason": request.Reason,
 		})
 	}
+	definition, _ := scoped.PublishedRoleDefinition(workspaceContext, receipt.Item.RoleKey)
+	receipt.Item.PermissionStates = identityAccessReviewPermissionStates(definition, scoped.PermissionDefinitions())
 	return receipt, nil
+}
+
+func identityAccessReviewPermissionStates(role identitymodel.RoleSchema, definitions map[string]identitymodel.IdentityPermissionDefinition) []identitymodel.IdentityAccessReviewPermissionState {
+	keys := append([]string(nil), role.Permissions...)
+	sort.Strings(keys)
+	states := make([]identitymodel.IdentityAccessReviewPermissionState, 0, len(keys))
+	for _, key := range keys {
+		key = strings.TrimSpace(key)
+		if key == "" || len(states) != 0 && states[len(states)-1].PermissionKey == key {
+			continue
+		}
+		definition, found := definitions[key]
+		state := identitymodel.IdentityAccessReviewPermissionState{PermissionKey: key, State: "unknown"}
+		if found {
+			state.DefinitionStatus = definition.DefinitionStatus
+			state.Enabled = definition.Enabled
+			state.SourceOwner = definition.SourceOwner
+			switch {
+			case definition.DefinitionStatus != identitymodel.IdentityPermissionDefinitionActive:
+				state.State = "retired"
+			case !definition.Enabled:
+				state.State = "disabled"
+			default:
+				state.State = "active"
+			}
+		}
+		states = append(states, state)
+	}
+	return states
 }
 
 func (s *IdentityAccessReviewApplicationService) validateReducedRole(ctx context.Context, scoped *IdentityApplicationService, item identitymodel.IdentityAccessReviewItem, request identitymodel.IdentityAccessReviewDecisionRequest, actor identitymodel.Principal) error {
@@ -253,11 +299,11 @@ func (s *IdentityAccessReviewApplicationService) validateReducedRole(ctx context
 	return err
 }
 
-func (s *IdentityAccessReviewApplicationService) scope(ctx context.Context, actor identitymodel.Principal) (*IdentityApplicationService, identityrepository.IdentityAccessReviewRepository, context.Context, error) {
+func (s *IdentityAccessReviewApplicationService) scope(ctx context.Context, actor identitymodel.Principal, actionKey string) (*IdentityApplicationService, identityrepository.IdentityAccessReviewRepository, context.Context, error) {
 	if err := identityAuthorizeQuery(actor); err != nil {
 		return nil, nil, nil, err
 	}
-	if !identitycontract.IdentityRoleHasPermissionKey(actor.Role, "identity.roles.write") {
+	if !identitycontract.IdentityRoleHasPermissionKey(actor.Role, actionKey) {
 		return nil, nil, nil, apperror.New(apperror.KindForbidden, "backend.permission.denied", nil, nil)
 	}
 	if s == nil || s.dependencies.Identity == nil {

@@ -27,6 +27,20 @@ func TestIdentityPermissionsSchemaRendersThroughDomainryORM(t *testing.T) {
 			if len(arguments) != 0 {
 				t.Fatalf("DDL arguments=%v", arguments)
 			}
+			for _, index := range identityPermissionIndexSpecs {
+				statement, arguments, err := identityPermissionIndexDefinition(renderer, index).Build()
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, required := range append([]string{identityPermissionsTable, index.name}, index.columns...) {
+					if !strings.Contains(statement, required) {
+						t.Fatalf("index statement %q is missing %q", statement, required)
+					}
+				}
+				if len(arguments) != 0 {
+					t.Fatalf("index DDL arguments=%v", arguments)
+				}
+			}
 		})
 	}
 }

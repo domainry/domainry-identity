@@ -3,33 +3,18 @@ package contract
 import (
 	"testing"
 
+	authoringcontract "github.com/domainry/domainry-identity/internal/domain/authoring"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
-func TestIdentityAuthoringContractsPublishDutySpecificPermissions(t *testing.T) {
-	tests := []struct {
-		name       string
-		permission string
-		actual     string
-	}{
-		{"account", "identity.users.write", IdentityUserAuthoringCapability().Execution.PermissionModel},
-		{"department", "identity.departments.write", IdentityDepartmentAuthoringCapability().Execution.PermissionModel},
-		{"role assignment", "identity.roles.write", IdentityUserRoleAssignmentAuthoringCapability().Execution.PermissionModel},
-		{"role", "identity.roles.write", IdentityRoleAuthoringCapability().Execution.PermissionModel},
-		{"permission", "identity.permissions.write", IdentityRolePermissionAuthoringCapability().Execution.PermissionModel},
-		{"data scope", "identity.data_scopes.write", IdentityRoleDataScopeAuthoringCapability().Execution.PermissionModel},
-		{"field policy", "identity.field_permissions.write", IdentityRoleFieldPermissionAuthoringCapability().Execution.PermissionModel},
-		{"menu", "identity.menus.write", IdentityMenuAuthoringCapability().Execution.PermissionModel},
-		{"role menu", "identity.menus.write", IdentityRoleMenuAssignmentAuthoringCapability().Execution.PermissionModel},
-		{"business profile", "identity.profile_binding.manage", IdentityProfileBindingAuthoringCapability().Execution.PermissionModel},
-		{"workforce profile", "identity.workforce.write", IdentityWorkforceProfileAuthoringCapability().Execution.PermissionModel},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			if test.actual != test.permission {
-				t.Fatalf("permission model=%q want=%q", test.actual, test.permission)
-			}
-		})
+func TestIdentityAuthoringContractsDeclareRegistryResolvedPermissionModel(t *testing.T) {
+	for _, capability := range IdentityAuthoringDomain().Capabilities {
+		if capability.Execution == nil || capability.Execution.PermissionModel != authoringcontract.CapabilityPermissionModelExactAction {
+			t.Fatalf("capability %q permission model=%v", capability.Key, capability.Execution)
+		}
+		if len(capability.Permissions) != 0 {
+			t.Fatalf("capability %q hard-codes permissions %v before Action projection", capability.Key, capability.Permissions)
+		}
 	}
 }
 
@@ -39,10 +24,10 @@ func TestIdentityManagementDutiesDoNotGrantEachOther(t *testing.T) {
 		granted string
 		denied  []string
 	}{
-		{"workforce administrator", "identity.workforce.write", []string{"identity.profile_binding.manage", "identity.roles.write", "identity.security.write"}},
-		{"member operations", "identity.profile_binding.manage", []string{"identity.users.read", "identity.users.write", "identity.workforce.write", "identity.roles.write", "identity.security.write"}},
-		{"authorization administrator", "identity.roles.write", []string{"identity.workforce.write", "identity.profile_binding.manage", "identity.security.write"}},
-		{"security administrator", "identity.security.write", []string{"identity.workforce.write", "identity.profile_binding.manage", "identity.roles.write"}},
+		{"workforce administrator", "identity.workforce.update", []string{"identity.profile_bindings.command", "identity.role_permissions.publish", "identity.users.force_logout"}},
+		{"member operations", "identity.profile_bindings.command", []string{"identity.users.get", "identity.users.update", "identity.workforce.update", "identity.role_permissions.publish", "identity.users.force_logout"}},
+		{"authorization administrator", "identity.role_permissions.publish", []string{"identity.workforce.update", "identity.profile_bindings.command", "identity.users.force_logout"}},
+		{"security administrator", "identity.users.force_logout", []string{"identity.workforce.update", "identity.profile_bindings.command", "identity.role_permissions.publish"}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

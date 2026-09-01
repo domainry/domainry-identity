@@ -2,6 +2,7 @@ package identitysdkadapter
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -10,25 +11,35 @@ import (
 	authmodel "github.com/domainry/domainry-identity/internal/domain/auth/model"
 )
 
-// IssueApplicationServiceToken is consumed only by Identity's authenticated
-// remote transport after the ApplicationCredentialRegistry has matched the
-// exact tenant/workspace/application credential and returned its rotation ID.
+type sdkApplicationServiceVerifier struct{ binding *sdkBinding }
+
+func (adapter sdkApplicationServiceVerifier) Verify(ctx context.Context, request identitysdk.VerifyApplicationServiceTokenRequest) (identitysdk.ApplicationServicePrincipal, error) {
+	if adapter.binding == nil {
+		return identitysdk.ApplicationServicePrincipal{}, fmt.Errorf("Identity application service verifier is unavailable")
+	}
+	return adapter.binding.VerifyApplicationServiceToken(ctx, request)
+}
+
+// IssueApplicationServiceToken is consumed by Identity's authenticated remote
+// transport and by trusted same-process infrastructure after the registered
+// source application and exact credential rotation have both been validated.
 func (binding *sdkBinding) IssueApplicationServiceToken(ctx context.Context, request identitysdk.ExchangeApplicationServiceTokenRequest, credentialID string) (identitysdk.ApplicationServiceToken, error) {
 	if binding == nil || binding.auth == nil || !request.Application.TenantID.Valid() || !request.Application.WorkspaceID.Valid() || !request.Application.ApplicationKey.Valid() || !request.Audience.Valid() || strings.TrimSpace(credentialID) == "" || len(request.Grants) == 0 {
 		return identitysdk.ApplicationServiceToken{}, &identitysdk.Error{StatusCode: http.StatusBadRequest, Code: "identity.application_service_exchange_invalid"}
 	}
-	targetCatalog, _, found, err := binding.loadCatalog(ctx, identitysdk.ApplicationRef{TenantID: request.Application.TenantID, WorkspaceID: request.Application.WorkspaceID, ApplicationKey: request.Audience})
+	registered, err := binding.applicationRegistered(ctx, identitysdk.ApplicationRef{TenantID: request.Application.TenantID, WorkspaceID: request.Application.WorkspaceID, ApplicationKey: request.Application.ApplicationKey})
 	if err != nil {
 		return identitysdk.ApplicationServiceToken{}, sdkBoundaryError(err)
 	}
-	if !found {
-		return identitysdk.ApplicationServiceToken{}, &identitysdk.Error{StatusCode: http.StatusForbidden, Code: "identity.application_service_audience_not_registered"}
+	if !registered {
+		return identitysdk.ApplicationServiceToken{}, &identitysdk.Error{StatusCode: http.StatusForbidden, Code: "identity.application_service_source_not_registered"}
 	}
-	callable := make(map[string]struct{}, len(targetCatalog.Actions))
-	for _, action := range targetCatalog.Actions {
-		if action.ServiceCallable {
-			callable[string(action.Resource)+"\x00"+string(action.Action)] = struct{}{}
-		}
+	registered, err = binding.applicationRegistered(ctx, identitysdk.ApplicationRef{TenantID: request.Application.TenantID, WorkspaceID: request.Application.WorkspaceID, ApplicationKey: request.Audience})
+	if err != nil {
+		return identitysdk.ApplicationServiceToken{}, sdkBoundaryError(err)
+	}
+	if !registered {
+		return identitysdk.ApplicationServiceToken{}, &identitysdk.Error{StatusCode: http.StatusForbidden, Code: "identity.application_service_audience_not_registered"}
 	}
 	grants := make([]authmodel.AuthServiceGrant, 0, len(request.Grants))
 	seen := map[string]struct{}{}
@@ -39,9 +50,6 @@ func (binding *sdkBinding) IssueApplicationServiceToken(ctx context.Context, req
 		}
 		if _, duplicate := seen[key]; duplicate {
 			return identitysdk.ApplicationServiceToken{}, &identitysdk.Error{StatusCode: http.StatusBadRequest, Code: "identity.application_service_grant_duplicate"}
-		}
-		if _, allowed := callable[key]; !allowed {
-			return identitysdk.ApplicationServiceToken{}, &identitysdk.Error{StatusCode: http.StatusForbidden, Code: "identity.application_service_grant_not_callable"}
 		}
 		seen[key] = struct{}{}
 		grants = append(grants, authmodel.AuthServiceGrant{Resource: string(grant.Resource), Action: string(grant.Action)})
@@ -79,3 +87,6 @@ var _ interface {
 	IssueApplicationServiceToken(context.Context, identitysdk.ExchangeApplicationServiceTokenRequest, string) (identitysdk.ApplicationServiceToken, error)
 	VerifyApplicationServiceToken(context.Context, identitysdk.VerifyApplicationServiceTokenRequest) (identitysdk.ApplicationServicePrincipal, error)
 } = (*sdkBinding)(nil)
+
+var _ identitysdk.ApplicationServiceVerificationBinding = (*sdkBinding)(nil)
+var _ identitysdk.ApplicationServiceTokenVerifier = sdkApplicationServiceVerifier{}

@@ -192,7 +192,7 @@ func TestProfileBindingClaimRejectsUntrustedOrMismatchedProof(t *testing.T) {
 }
 
 func TestProfileBindingManagedCommandPolicyAndTransitions(t *testing.T) {
-	admin := profileBindingPrincipal("admin", "workspace.admin")
+	admin := profileBindingPrincipal("admin", "identity.profile_bindings.command")
 	for _, test := range []struct {
 		name      string
 		operation identitymodel.IdentityProfileBindingOperation
@@ -235,7 +235,7 @@ func TestProfileBindingManagedCommandPolicyAndTransitions(t *testing.T) {
 
 func TestProfileBindingApplicationBoundaryFailures(t *testing.T) {
 	validRecord := map[string]any{"email": "member@example.com"}
-	admin := profileBindingPrincipal("admin", "workspace.admin")
+	admin := profileBindingPrincipal("admin", "identity.profile_bindings.command")
 	request := profileBindingCommand(identitymodel.IdentityProfileBindingInvite)
 	request.InvitationChannel = "email"
 	for _, test := range []struct {
@@ -290,8 +290,8 @@ func TestProfileBindingReadIsLimitedToManagerOrBoundIdentity(t *testing.T) {
 		code      string
 	}{
 		{name: "bound identity", principal: profileBindingPrincipal("member-user", "member.self")},
-		{name: "manager", principal: profileBindingPrincipal("admin", "identity.profile_binding.manage")},
-		{name: "workspace admin", principal: profileBindingPrincipal("admin", "workspace.admin")},
+		{name: "manager", principal: profileBindingPrincipal("admin", "identity.profile_bindings.get")},
+		{name: "another exact Permission is not an alias", principal: profileBindingPrincipal("admin", "identity.roles.list"), code: "backend.identity.profile_binding_read_denied"},
 		{name: "different identity", principal: profileBindingPrincipal("other", "member.self"), code: "backend.identity.profile_binding_read_denied"},
 		{name: "unknown", principal: identitymodel.Principal{}, code: "backend.workspace_scope_required"},
 	} {
@@ -309,11 +309,11 @@ func TestProfileBindingReadIsLimitedToManagerOrBoundIdentity(t *testing.T) {
 		})
 	}
 	repository.found = false
-	if _, found, err := service.Get(t.Context(), "member_profile", "missing", profileBindingPrincipal("admin", "workspace.admin")); err != nil || found {
+	if _, found, err := service.Get(t.Context(), "member_profile", "missing", profileBindingPrincipal("admin", "identity.profile_bindings.get")); err != nil || found {
 		t.Fatalf("missing found=%v err=%v", found, err)
 	}
 	repository.found, repository.err = true, errors.New("read failed")
-	if _, _, err := service.Get(t.Context(), "member_profile", "member-1", profileBindingPrincipal("admin", "workspace.admin")); !errors.Is(err, repository.err) {
+	if _, _, err := service.Get(t.Context(), "member_profile", "member-1", profileBindingPrincipal("admin", "identity.profile_bindings.get")); !errors.Is(err, repository.err) {
 		t.Fatalf("error=%v", err)
 	}
 }
@@ -327,28 +327,28 @@ func TestProfileBindingHighRiskRebindRequiresApprovalAndRevokesOldSessions(t *te
 	service.dependencies.Extensions = func() []identitymodel.IdentityProfileExtension { return extensions }
 	request := profileBindingCommand(identitymodel.IdentityProfileBindingRebind)
 	request.IdentityUserID, request.Reason = "target", "verified account takeover recovery"
-	if _, err := service.Execute(t.Context(), request, profileBindingPrincipal("admin", "workspace.admin")); apperror.CodeOf(err) != "backend.identity.profile_rebind_approval_required" {
+	if _, err := service.Execute(t.Context(), request, profileBindingPrincipal("admin", "identity.profile_bindings.command")); apperror.CodeOf(err) != "backend.identity.profile_rebind_approval_required" {
 		t.Fatalf("missing approval error=%v", err)
 	}
 	request.ApprovalID = "approval-1"
 	service.dependencies.RebindApprovals = profileBindingApprovalStub{}
-	if _, err := service.Execute(t.Context(), request, profileBindingPrincipal("admin", "workspace.admin")); apperror.CodeOf(err) != "backend.identity.profile_rebind_approval_required" {
+	if _, err := service.Execute(t.Context(), request, profileBindingPrincipal("admin", "identity.profile_bindings.command")); apperror.CodeOf(err) != "backend.identity.profile_rebind_approval_required" {
 		t.Fatalf("denied approval error=%v", err)
 	}
 	service.dependencies.RebindApprovals = profileBindingApprovalStub{approved: true}
-	if _, err := service.Execute(t.Context(), request, profileBindingPrincipal("admin", "workspace.admin")); apperror.CodeOf(err) != "backend.identity.profile_rebind_session_revocation_unavailable" {
+	if _, err := service.Execute(t.Context(), request, profileBindingPrincipal("admin", "identity.profile_bindings.command")); apperror.CodeOf(err) != "backend.identity.profile_rebind_session_revocation_unavailable" {
 		t.Fatalf("revoker unavailable error=%v", err)
 	}
 	revoker := &profileBindingSessionRevokerStub{}
 	service.dependencies.SessionRevoker = revoker
-	if _, err := service.Execute(t.Context(), request, profileBindingPrincipal("admin", "workspace.admin")); err != nil {
+	if _, err := service.Execute(t.Context(), request, profileBindingPrincipal("admin", "identity.profile_bindings.command")); err != nil {
 		t.Fatal(err)
 	}
 	if len(revoker.users) != 1 || revoker.users[0] != "old" || repository.lastMutation.ApprovalID != "approval-1" {
 		t.Fatalf("revoked=%v mutation=%#v", revoker.users, repository.lastMutation)
 	}
 	revoker.err = errors.New("revoke sessions")
-	if _, err := service.Execute(t.Context(), request, profileBindingPrincipal("admin", "workspace.admin")); !errors.Is(err, revoker.err) {
+	if _, err := service.Execute(t.Context(), request, profileBindingPrincipal("admin", "identity.profile_bindings.command")); !errors.Is(err, revoker.err) {
 		t.Fatalf("revoker error=%v", err)
 	}
 }
@@ -368,7 +368,7 @@ func TestProfileBindingSupportNormalizesMembershipAndUniqueValues(t *testing.T) 
 }
 
 func TestProfileBindingExecuteCoversInputSystemRoleReceiptAndMutationFailures(t *testing.T) {
-	admin := profileBindingPrincipal("admin", "workspace.admin")
+	admin := profileBindingPrincipal("admin", "identity.profile_bindings.command")
 	validRecord := map[string]any{"identity_user": nil}
 	repository := &profileBindingRepositoryStub{}
 	service := profileBindingTestService(repository, validRecord, true)

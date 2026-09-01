@@ -71,7 +71,7 @@ func workforceProjectionFixture() (*IdentityApplicationService, *directoryProjec
 		{Key: "revoked_role", Permissions: []string{"revoked.permission"}},
 		{Key: "disabled_role", Permissions: []string{"disabled.permission"}},
 	})
-	principal := identitymodel.Principal{Known: true, WorkspaceID: "workspace-primary", UserID: "admin", Role: identitymodel.RoleSchema{Permissions: []string{"workspace.admin"}}}
+	principal := identitymodel.Principal{Known: true, WorkspaceID: "workspace-primary", UserID: "admin", Role: identitymodel.RoleSchema{RecordScope: "all_records"}}
 	return service, repository, principal, requestcontext.WithWorkspaceID(context.Background(), "workspace-primary")
 }
 

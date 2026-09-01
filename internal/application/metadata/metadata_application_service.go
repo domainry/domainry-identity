@@ -3,12 +3,11 @@ package metadata
 import (
 	"bytes"
 	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
+	metadatacontract "github.com/domainry/domainry-identity/internal/domain/metadata/contract"
 	metadatarepository "github.com/domainry/domainry-identity/internal/domain/metadata/repository"
 	metadatavalidation "github.com/domainry/domainry-identity/internal/domain/metadata/validation"
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
-
-	definitionmodel "github.com/domainry/domainry-identity/internal/domain/definition/model"
 
 	"context"
 	"encoding/json"
@@ -28,41 +27,30 @@ import (
 // runtime ports; the service does not retain the aggregate RuntimeServices.
 // MetadataApplicationService owns metadata lifecycle behavior.
 type MetadataApplicationService struct {
-	repository             metadatarepository.MetadataRepository
-	runtime                LifecycleRuntime
-	audit                  auditcontract.AuditEventFactory
-	templateID             string
-	version                string
-	name                   string
-	auditAppender          MetadataAuditAppender
-	authorizationObjectsMu sync.RWMutex
-	authorizationObjects   []definitionmodel.ObjectSchema
-	reloadObserversMu      sync.RWMutex
-	reloadObservers        []func(metadatamodel.MetadataSchemaSnapshot)
+	repository        metadatarepository.MetadataRepository
+	permissions       MetadataPermissionSelectionValidator
+	runtime           LifecycleRuntime
+	audit             auditcontract.AuditEventFactory
+	templateID        string
+	version           string
+	name              string
+	auditAppender     MetadataAuditAppender
+	reloadObserversMu sync.RWMutex
+	reloadObservers   []MetadataReloadObserver
+	reloadMu          sync.Mutex
 }
 
-// ReplaceAuthorizationObjects supplies the application object catalog used by
-// Identity-owned role policy validation. These objects remain externally owned:
-// they are reference targets only and are never persisted as Identity metadata.
-func (s *MetadataApplicationService) ReplaceAuthorizationObjects(objects []definitionmodel.ObjectSchema) {
-	if s == nil {
-		return
-	}
-	s.authorizationObjectsMu.Lock()
-	s.authorizationObjects = append([]definitionmodel.ObjectSchema(nil), objects...)
-	s.authorizationObjectsMu.Unlock()
-}
+// MetadataReloadCommit publishes one already-prepared dependent snapshot. It
+// cannot fail: every validation and external reconciliation step must finish
+// before the observer returns it.
+type MetadataReloadCommit func()
 
-func (s *MetadataApplicationService) currentAuthorizationObjects() []definitionmodel.ObjectSchema {
-	if s == nil {
-		return nil
-	}
-	s.authorizationObjectsMu.RLock()
-	defer s.authorizationObjectsMu.RUnlock()
-	return append([]definitionmodel.ObjectSchema(nil), s.authorizationObjects...)
-}
+// MetadataReloadObserver prepares a dependent snapshot without publishing it.
+// Returning an error aborts activation and leaves both the runtime snapshot and
+// every previously prepared dependent snapshot unchanged.
+type MetadataReloadObserver func(context.Context, metadatamodel.MetadataSchemaSnapshot) (MetadataReloadCommit, error)
 
-func (s *MetadataApplicationService) AddReloadObserver(observer func(metadatamodel.MetadataSchemaSnapshot)) {
+func (s *MetadataApplicationService) AddReloadObserver(observer MetadataReloadObserver) {
 	if s == nil || observer == nil {
 		return
 	}
@@ -71,24 +59,33 @@ func (s *MetadataApplicationService) AddReloadObserver(observer func(metadatamod
 	s.reloadObservers = append(s.reloadObservers, observer)
 }
 
-func (s *MetadataApplicationService) notifyReloadObservers(snapshot metadatamodel.MetadataSchemaSnapshot) {
+func (s *MetadataApplicationService) prepareReloadObservers(ctx context.Context, snapshot metadatamodel.MetadataSchemaSnapshot) ([]MetadataReloadCommit, error) {
 	s.reloadObserversMu.RLock()
-	observers := append([]func(metadatamodel.MetadataSchemaSnapshot){}, s.reloadObservers...)
+	observers := append([]MetadataReloadObserver(nil), s.reloadObservers...)
 	s.reloadObserversMu.RUnlock()
+	commits := make([]MetadataReloadCommit, 0, len(observers))
 	for _, observer := range observers {
-		observer(snapshot)
+		commit, err := observer(ctx, snapshot)
+		if err != nil {
+			return nil, err
+		}
+		if commit != nil {
+			commits = append(commits, commit)
+		}
 	}
+	return commits, nil
 }
 
 type MetadataAuditAppender func(context.Context, string, string, string, identitymodel.Principal, string, map[string]any, map[string]any, map[string]any)
 
 type LifecycleRuntime interface {
-	ApplyManifestMetadata(string, string, string, []definitionmodel.ObjectSchema, []definitionmodel.ActionSchema, []identitymodel.RoleSchema, []identitymodel.IdentityPermissionSet, []identitymodel.IdentityPermissionSetGroup, []identitymodel.IdentityGuardrailPolicy, []identitymodel.IdentityProfileExtension)
+	ActivateMetadata(metadatamodel.MetadataSchemaSnapshot)
 	Schema() metadatamodel.MetadataSchemaSnapshot
 }
 
 type MetadataApplicationDependencies struct {
 	Repository    metadatarepository.MetadataRepository
+	Permissions   MetadataPermissionSelectionValidator
 	Runtime       LifecycleRuntime
 	Audit         auditcontract.AuditEventFactory
 	TemplateID    string
@@ -99,7 +96,7 @@ type MetadataApplicationDependencies struct {
 
 func NewMetadataApplicationService(dependencies MetadataApplicationDependencies) *MetadataApplicationService {
 	return &MetadataApplicationService{
-		repository: dependencies.Repository, runtime: dependencies.Runtime,
+		repository: dependencies.Repository, permissions: dependencies.Permissions, runtime: dependencies.Runtime,
 		audit: dependencies.Audit, templateID: dependencies.TemplateID,
 		version: dependencies.Version, name: dependencies.Name,
 		auditAppender: dependencies.AuditAppender,
@@ -110,7 +107,7 @@ func (s *MetadataApplicationService) RollbackMetadataDefinition(ctx context.Cont
 	if err := metadataAuthorizeCommand(principal); err != nil {
 		return metadatamodel.MetadataDefinition{}, metadatamodel.MetadataSchemaSnapshot{}, err
 	}
-	if !identitycontract.IdentityRoleHasPermissionKey(principal.Role, "workspace.admin") {
+	if !identitycontract.IdentityRoleHasPermissionKey(principal.Role, metadatacontract.MetadataActionDefinitionRollback) {
 		return metadatamodel.MetadataDefinition{}, metadatamodel.MetadataSchemaSnapshot{}, forbidden("auth.permission_denied")
 	}
 	resourceType, resourceKey = strings.TrimSpace(resourceType), strings.TrimSpace(resourceKey)
@@ -179,7 +176,7 @@ func (s *MetadataApplicationService) DisableMetadataDefinition(ctx context.Conte
 	if err := metadataAuthorizeCommand(principal); err != nil {
 		return err
 	}
-	if !identitycontract.IdentityRoleHasPermissionKey(principal.Role, "workspace.admin") {
+	if !identitycontract.IdentityRoleHasPermissionKey(principal.Role, metadatacontract.MetadataActionDefinitionDisable) {
 		return forbidden("auth.permission_denied")
 	}
 	resourceType, resourceKey = strings.TrimSpace(resourceType), strings.TrimSpace(resourceKey)
@@ -219,7 +216,7 @@ func (s *MetadataApplicationService) UpsertMetadataDefinition(ctx context.Contex
 	if err := metadataAuthorizeCommand(principal); err != nil {
 		return metadatamodel.MetadataDefinition{}, metadatamodel.MetadataSchemaSnapshot{}, err
 	}
-	if !identitycontract.IdentityRoleHasPermissionKey(principal.Role, "workspace.admin") {
+	if !identitycontract.IdentityRoleHasPermissionKey(principal.Role, metadatacontract.MetadataActionDefinitionUpsert) {
 		return metadatamodel.MetadataDefinition{}, metadatamodel.MetadataSchemaSnapshot{}, forbidden("auth.permission_denied")
 	}
 	return s.upsertMetadataDefinition(ctx, resourceType, resourceKey, request, principal, metadataDefinitionPublicationOptions{})

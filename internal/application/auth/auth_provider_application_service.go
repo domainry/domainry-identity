@@ -38,7 +38,7 @@ func (s *AuthProviderApplicationService) SaveSetup(ctx context.Context, provider
 	if _, err := identitymodel.NewWorkspaceCommandScope(principal.WorkspaceID); err != nil {
 		return authmodel.AuthProviderConfig{}, &apperror.AppError{Kind: apperror.KindForbidden, Code: "backend.workspace_scope_required", Err: err}
 	}
-	if !identitypolicy.IdentityRoleHasPermissionKey(principal.Role, "workspace.admin") {
+	if !identitypolicy.IdentityRoleHasPermissionKey(principal.Role, "auth.providers.setup") {
 		return authmodel.AuthProviderConfig{}, authProviderApplicationError(apperror.KindForbidden, "auth.permission_denied")
 	}
 	config, ok := s.Find(ctx, provider)

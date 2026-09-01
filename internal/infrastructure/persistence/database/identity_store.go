@@ -157,28 +157,23 @@ func OpenBorrowedContext(ctx context.Context, cfg config.Config, db *sql.DB) (*I
 		return nil, fmt.Errorf("initialize Identity data key ring: %w", err)
 	}
 	schema := engine.DatabaseSchema(cfg)
-	sqlDatabase := base.NewSQLDatabase(db, engine, schema, "domainry_identity_")
+	sqlDatabase := base.NewSQLDatabase(db, engine, schema, "")
 	operationalMetrics := observability.NewMetrics(cfg.MigrationBackupLastSuccessAt, cfg.MigrationRestoreDrillSuccessAt)
-	coordinator := newMigrationCoordinator(db, nil, db, db, db, engine, sqlDatabase.SQLRenderer, schema, "domainry_identity_", cfg, activeMaterial, operationalMetrics)
+	coordinator := newMigrationCoordinator(db, nil, db, db, db, engine, sqlDatabase.SQLRenderer, schema, "", cfg, activeMaterial, operationalMetrics)
 	store := &IdentityStore{
 		SQLDatabase: sqlDatabase, WriteFenceStore: workspace.NewWriteFenceStore(db, sqlDatabase.SQLRenderer),
-		ScopeValidator: workspace.NewScopeValidator(db, engine, sqlDatabase.SQLRenderer, schema, "domainry_identity_"),
+		ScopeValidator: workspace.NewScopeValidator(db, engine, sqlDatabase.SQLRenderer, schema, ""),
 		Coordinator:    coordinator,
 		db:             db, engine: engine, config: cfg, databaseSchema: schema,
 		secretMaterialKey: activeMaterial, secretKeyProvider: keyRing,
 		idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096),
 		sqlMetrics:         telemetry.NewSQLMetrics(), operationalMetrics: operationalMetrics,
 		borrowedDatabase: true,
-		relationPrefix:   "domainry_identity_",
+		relationPrefix:   "",
 	}
-	if cfg.EffectiveDatabaseMigrationMode() == "verify" {
-		err = store.Coordinator.Verify(ctx, cfg)
-	} else {
-		err = store.Coordinator.Apply(ctx, cfg)
-	}
-	if err != nil {
-		return nil, err
-	}
+	// A borrowed database is migrated exclusively by the embedding host. The
+	// module factory submits source-owned schema work through the host registrar
+	// after this connection-only store is prepared.
 	store.migrationCompatible = true
 	return store, nil
 }

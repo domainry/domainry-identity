@@ -173,6 +173,7 @@ func TestWorkforceBoundRoleEndsWithoutEndingUnboundMemberRole(t *testing.T) {
 		},
 	}
 	service := principalRoleService(t, repository)
+	activateIdentityTestPermissions(service, "backoffice.read", "member.self.read")
 	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{
 		{Key: "employee", Permissions: []string{"backoffice.read"}},
 		{Key: "member", Permissions: []string{"member.self.read"}},

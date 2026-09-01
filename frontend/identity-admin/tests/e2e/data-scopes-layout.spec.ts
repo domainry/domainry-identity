@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 
 const user = { id: 'admin', name: 'Administrator', email: 'admin@example.com', department_id: 'root', department_path: '/root', status: 'active' }
 const roles = [
-  { id: 'admin', key: 'admin', label: 'Admin', status: 'active', permission_keys: ['workspace.admin'], data_scopes: [], field_permissions: [] },
+  { id: 'admin', key: 'admin', label: 'Admin', status: 'active', permission_keys: ['identity.role_data_scopes.list'], data_scopes: [], field_permissions: [] },
   { id: 'manager', key: 'manager', label: '部门经理', status: 'active', permission_keys: ['employee_profile.read'], data_scopes: [], field_permissions: [] },
 ]
 
@@ -19,7 +19,7 @@ async function mockDataScopeMatrix(page: import('@playwright/test').Page) {
       remember: true,
       user,
       roles: [{ id: 'admin', key: 'admin', label: 'Admin' }],
-      permissions: ['workspace.admin'],
+      permissions: ['identity.role_data_scopes.list'],
     },
   })
   await page.route('**/api/**', async (route) => {
@@ -29,9 +29,9 @@ async function mockDataScopeMatrix(page: import('@playwright/test').Page) {
       session_id: 'data-scopes-layout-session', workspace_id: 'default', access_token: 'data-scopes-layout-token',
       token_type: 'Bearer', expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
       user, roles: [{ id: 'admin', key: 'admin', label: 'Admin' }], default_role: 'admin',
-      permissions: ['workspace.admin'], must_change_password: false,
+      permissions: ['identity.role_data_scopes.list'], must_change_password: false,
     }
-    else if (pathname === '/auth/me') body = { user, roles: [{ id: 'admin', key: 'admin', label: 'Admin' }], default_role: 'admin', permissions: ['workspace.admin'] }
+    else if (pathname === '/auth/me') body = { user, roles: [{ id: 'admin', key: 'admin', label: 'Admin' }], default_role: 'admin', permissions: ['identity.role_data_scopes.list'] }
     else if (pathname === '/identity/effective-menus') body = []
     else if (pathname === '/permissions/effective') body = { function_permissions: [], objects: [] }
     else if (pathname === '/identity/users') body = []
@@ -44,7 +44,7 @@ async function mockDataScopeMatrix(page: import('@playwright/test').Page) {
       ...['create', 'read', 'update', 'delete'].flatMap((action) => ['employee_profile', 'position'].map((resource) => ({
         key: `${resource}.${action}`, label: `${resource} ${action}`, system: 'domain', resource, resource_label: resource, action, category: 'object', description: '',
       }))),
-      { key: 'workspace.admin', label: 'Workspace Admin', system: 'platform', resource: 'workspace', resource_label: 'Workspace', action: 'admin', category: 'platform', description: '' },
+      { key: 'identity.roles.list', label: 'List roles', system: 'platform', resource: 'identity.roles', resource_label: 'Roles', action: 'list', category: 'platform', description: '' },
       { key: 'leave_request.approve', label: 'Approve', system: 'domain', resource: 'leave_request', resource_label: '请假申请', action: 'approve', category: 'workflow', description: '' },
       { key: 'task.act', label: 'Task Act', system: 'platform', resource: 'task', resource_label: 'Task', action: 'act', category: 'platform', description: '' },
     ]
@@ -54,7 +54,7 @@ async function mockDataScopeMatrix(page: import('@playwright/test').Page) {
     }
     else if (/^\/identity\/roles\/[^/]+\/permissions$/.test(pathname)) {
       const roleID = pathname.split('/')[3]
-      body = roleID === 'admin' ? [{ role_id: 'admin', permission_key: 'workspace.admin' }] : [{ role_id: 'manager', permission_key: 'employee_profile.read' }]
+      body = roleID === 'admin' ? [{ role_id: 'admin', permission_key: 'identity.role_data_scopes.list' }] : [{ role_id: 'manager', permission_key: 'employee_profile.read' }]
     } else if (/^\/identity\/roles\/[^/]+\/data-scopes$/.test(pathname)) {
       const roleID = pathname.split('/')[3]
       body = roleID === 'manager' ? [{ resource: 'employee_profile', scope: 'department' }] : []

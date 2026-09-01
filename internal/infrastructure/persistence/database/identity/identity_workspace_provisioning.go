@@ -38,10 +38,8 @@ func (s *SQLIdentityStore) ProvisionWorkspaceIdentityWithExecutor(
 			return err
 		}
 	}
-	for _, role := range roles {
-		if err := s.roleStore().UpsertWithExecutor(ctx, execer, workspaceID, role); err != nil {
-			return fmt.Errorf("provision workspace role %s: %w", role.Key, err)
-		}
+	if err := s.roleStore().UpsertBatchWithExecutor(ctx, execer, workspaceID, roles); err != nil {
+		return fmt.Errorf("provision workspace roles: %w", err)
 	}
 	if after != nil {
 		if err := after(WorkspaceIdentityProvisionStageRole); err != nil {

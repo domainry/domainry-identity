@@ -536,8 +536,67 @@ type identityHTTPResponse struct {
 	err    error
 }
 
+type identityHTTPPermissionRepository struct {
+	records []identitymodel.IdentityPermissionDefinitionRecord
+}
+
+func (r *identityHTTPPermissionRepository) ListIdentityPermissionDefinitions(context.Context, string) ([]identitymodel.IdentityPermissionDefinitionRecord, error) {
+	return append([]identitymodel.IdentityPermissionDefinitionRecord(nil), r.records...), nil
+}
+
+func (r *identityHTTPPermissionRepository) GetIdentityPermissionDefinition(_ context.Context, _ string, key string) (identitymodel.IdentityPermissionDefinitionRecord, bool, error) {
+	for _, record := range r.records {
+		if record.PermissionKey == key {
+			return record, true, nil
+		}
+	}
+	return identitymodel.IdentityPermissionDefinitionRecord{}, false, nil
+}
+
+func (r *identityHTTPPermissionRepository) SetIdentityPermissionDefinitionEnabled(_ context.Context, _ string, key string, enabled bool) (bool, error) {
+	for index := range r.records {
+		if r.records[index].PermissionKey == key && r.records[index].DefinitionStatus == identitymodel.IdentityPermissionDefinitionActive && r.records[index].Enabled != enabled {
+			r.records[index].Enabled = enabled
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (r *identityHTTPPermissionRepository) ReconcileIdentityPermissionDefinitions(_ context.Context, request identitymodel.IdentityPermissionReconcileRequest) (identitymodel.IdentityPermissionReconcileReceipt, error) {
+	r.records = append([]identitymodel.IdentityPermissionDefinitionRecord(nil), request.Definitions...)
+	return identitymodel.IdentityPermissionReconcileReceipt{WorkspaceID: request.WorkspaceID, SourceOwner: request.SourceOwner, SnapshotHash: request.SnapshotHash}, nil
+}
+
+func newIdentityHTTPPermissionCatalog() (*identityapplication.IdentityPermissionCatalogApplicationService, []string) {
+	registry, err := identityapplication.NewStandaloneIdentityAuthorizationSliceRegistry()
+	if err != nil {
+		panic(err)
+	}
+	records := registry.OwnedPermissionDefinitions(identityapplication.IdentityBuiltinAuthorizationOwner)
+	keys := make([]string, 0, len(records))
+	for index := range records {
+		records[index].WorkspaceID = "workspace-1"
+		records[index].DefinitionStatus = identitymodel.IdentityPermissionDefinitionActive
+		records[index].Enabled = true
+		keys = append(keys, records[index].PermissionKey)
+	}
+	repository := &identityHTTPPermissionRepository{records: records}
+	catalog, err := identityapplication.NewIdentityPermissionCatalogApplicationService(repository, registry, "workspace-1")
+	if err != nil {
+		panic(err)
+	}
+	if err := catalog.ReloadCurrentSnapshot(context.Background()); err != nil {
+		panic(err)
+	}
+	return catalog, keys
+}
+
 func newIdentityHTTPHandler(repo *identityHTTPRepository, inspectors ...identityapplication.IdentityUserDeletionInspector) (*IdentityHandler, *identityHTTPResponse) {
-	permissions := []identitymodel.IdentityPermissionDefinition{{Key: "customer.read", Label: "Read customers"}}
+	permissions := []identitymodel.IdentityPermissionDefinition{{
+		Key: "identity.users.list", Label: "List users",
+		DefinitionStatus: identitymodel.IdentityPermissionDefinitionActive, Enabled: true,
+	}}
 	var inspector identityapplication.IdentityUserDeletionInspector = &identityHTTPDeletionInspector{}
 	if len(inspectors) > 0 {
 		inspector = inspectors[0]
@@ -545,14 +604,13 @@ func newIdentityHTTPHandler(repo *identityHTTPRepository, inspectors ...identity
 	service := identityapplication.NewIdentityApplicationServiceWithDependencies(repo, permissions, identityapplication.IdentityApplicationServiceDependencies{UserDeletionInspector: inspector})
 	roleDefinitions := make([]identitymodel.RoleSchema, 0, len(repo.roles))
 	for _, role := range repo.roles {
-		roleDefinitions = append(roleDefinitions, identitymodel.RoleSchema{Key: role.Key, Permissions: []string{"customer.read"}})
+		roleDefinitions = append(roleDefinitions, identitymodel.RoleSchema{Key: role.Key, Permissions: []string{"identity.users.list"}})
 	}
 	service.ReplaceRoleDefinitions(roleDefinitions)
 	permissionMap := service.PermissionDefinitions()
 	response := &identityHTTPResponse{}
-	principal := identitymodel.Principal{Known: true, UserID: "reviewer-1", WorkspaceID: "workspace-1", Role: identitymodel.RoleSchema{Permissions: []string{
-		"identity.security.write", "identity.departments.write", "identity.menus.write", "identity.roles.write", "identity.users.write", "identity.workforce.write",
-	}, RecordScope: "all_records"}}
+	permissionCatalog, permissionKeys := newIdentityHTTPPermissionCatalog()
+	principal := identitymodel.Principal{Known: true, UserID: "reviewer-1", WorkspaceID: "workspace-1", Role: identitymodel.RoleSchema{Permissions: permissionKeys, RecordScope: "all_records"}}
 	return NewIdentityHandler(IdentityDependencies{
 		Users: service, Roles: service, Policies: service, Menus: service, Authorization: service,
 		UserSecurity: &identityHTTPUserSecurity{},
@@ -585,7 +643,8 @@ func newIdentityHTTPHandler(repo *identityHTTPRepository, inspectors ...identity
 		SecurityAudit: func(*http.Request, string, string, map[string]any) {},
 		SecurityPrincipal: func(*http.Request, identitymodel.Principal, string, string, map[string]any) {
 		},
-		Authoring: identityauthoring.NewService(identityauthoring.NewMemoryRepository(), nil, nil),
+		Authoring:         identityauthoring.NewService(identityauthoring.NewMemoryRepository(), nil, nil),
+		PermissionCatalog: permissionCatalog,
 	}), response
 }
 

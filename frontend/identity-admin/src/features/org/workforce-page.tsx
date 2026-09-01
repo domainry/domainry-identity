@@ -99,7 +99,9 @@ export function WorkforcePage() {
   const [operationError, setOperationError] = useState('')
   const rows = workforce.data?.items ?? []
   const hasFilters = Boolean(search.trim() || statusFilter)
-  const canWrite = has('identity.workforce.write')
+	const canOnboard = has('identity.workforce.onboard')
+	const canLifecycle = has('identity.workforce.lifecycle')
+	const canTerminate = has('identity.workforce.terminate')
   const busy = lifecycle.isPending || onboard.isPending || terminate.isPending
   const operationReady = Boolean(operation && draft.profileID.trim() && draft.reason.trim() && (
     operation !== 'invite'
@@ -153,19 +155,19 @@ export function WorkforcePage() {
       cell: ({ row }) => {
         const profile = row.original
         return <div className='flex flex-wrap justify-end gap-1'>
-          {profile.workStatus === 'pending' ? <Button size='sm' variant='outline' disabled={!canWrite || busy} onClick={() => openOperation('onboard', profile)}>{t('workforce.action.onboard')}</Button> : null}
-          {profile.workStatus === 'active' ? <>
-            <Button size='sm' variant='outline' disabled={!canWrite || busy} onClick={() => openOperation('assign', profile)}>{t('workforce.action.assign')}</Button>
-            <Button size='sm' variant='outline' disabled={!canWrite || busy} onClick={() => openOperation('transfer', profile)}>{t('workforce.action.transfer')}</Button>
-            <Button size='sm' variant='outline' disabled={!canWrite || busy} onClick={() => openOperation('add_secondary', profile)}>{t('workforce.action.secondary')}</Button>
-            <Button size='sm' variant='outline' disabled={!canWrite || busy} onClick={() => openOperation('suspend', profile)}>{t('workforce.action.suspend')}</Button>
-            <Button size='sm' variant='outline' disabled={!canWrite || busy} onClick={() => openOperation('revoke_access', profile)}>{t('workforce.action.revokeAccess')}</Button>
-            <Button size='sm' variant='destructive' disabled={!canWrite || busy} onClick={() => openOperation('terminate', profile)}>{t('workforce.action.terminate')}</Button>
-          </> : null}
+		  {profile.workStatus === 'pending' ? <Button size='sm' variant='outline' disabled={!canLifecycle || busy} onClick={() => openOperation('onboard', profile)}>{t('workforce.action.onboard')}</Button> : null}
+		  {profile.workStatus === 'active' ? <>
+			<Button size='sm' variant='outline' disabled={!canLifecycle || busy} onClick={() => openOperation('assign', profile)}>{t('workforce.action.assign')}</Button>
+			<Button size='sm' variant='outline' disabled={!canLifecycle || busy} onClick={() => openOperation('transfer', profile)}>{t('workforce.action.transfer')}</Button>
+			<Button size='sm' variant='outline' disabled={!canLifecycle || busy} onClick={() => openOperation('add_secondary', profile)}>{t('workforce.action.secondary')}</Button>
+			<Button size='sm' variant='outline' disabled={!canLifecycle || busy} onClick={() => openOperation('suspend', profile)}>{t('workforce.action.suspend')}</Button>
+			<Button size='sm' variant='outline' disabled={!canLifecycle || busy} onClick={() => openOperation('revoke_access', profile)}>{t('workforce.action.revokeAccess')}</Button>
+			<Button size='sm' variant='destructive' disabled={!canTerminate || busy} onClick={() => openOperation('terminate', profile)}>{t('workforce.action.terminate')}</Button>
+		  </> : null}
         </div>
       },
     },
-  ], [busy, canWrite, sort, t])
+	], [busy, canLifecycle, canTerminate, sort, t])
 
   function openOperation(next: WorkforceOperation, profile: WorkforceProfile | null = null) {
     setOperationError('')
@@ -252,7 +254,7 @@ export function WorkforcePage() {
     <PageShell
       title={t('workforce.title')}
       description={t('workforce.desc')}
-      actions={canWrite ? <Button onClick={() => openOperation('invite')}>{t('workforce.action.invite')}</Button> : null}
+	  actions={canOnboard ? <Button onClick={() => openOperation('invite')}>{t('workforce.action.invite')}</Button> : null}
     >
       <Card>
         <CardContent className='space-y-4 p-4'>

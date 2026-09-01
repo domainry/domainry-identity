@@ -122,7 +122,7 @@ func (s *AuthApplicationService) ChangePasswordAndReissueSessionForAudience(ctx 
 }
 
 func (s *AuthApplicationService) ResetPasswordIdempotent(ctx context.Context, principal identitymodel.Principal, key, userID, newPassword string, mustChangePassword bool) (bool, error) {
-	if !principal.Known || !identitypolicy.IdentityRoleHasPermissionKey(principal.Role, "identity.security.write") {
+	if !principal.Known || !identitypolicy.IdentityRoleHasPermissionKey(principal.Role, "auth.reset_password") {
 		return false, authMutationError(apperror.KindForbidden, "auth.permission_denied")
 	}
 	if _, err := identitymodel.NewWorkspaceCommandScope(principal.WorkspaceID); err != nil {

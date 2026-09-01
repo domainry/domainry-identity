@@ -15,7 +15,7 @@ The target authorization chain is:
 ```text
 ObjectSchema / built-in surface / module surface / authored business Action
   -> canonical ActionDefinition
-  -> ActionDefinition.AuthorizationStrategy + owned/referenced Permissions
+  -> ActionDefinition.AuthorizationStrategy + same-key Permission when role-authorized
   -> current PermissionDefinition rows in _identity_permissions
   -> RoleSchema.Permissions selection
   -> effective AccessBundle
@@ -38,14 +38,14 @@ The following Identity capabilities remain in scope and retain their current bus
 | Business-profile bindings and workforce-to-business identity projection | Identity directory | Keep |
 | Operational roles, role requests and user-role assignments | Identity authorization | Keep |
 | Versioned RoleSchema definitions | Identity authorization metadata | Keep; RoleSchema.Permissions remains the role configuration source |
-| Permission sets, permission-set groups and deny-only guardrails | Identity authorization policy | Keep |
+| Permission sets and permission-set groups | Identity data/governance policy | Keep only for non-functional policy composition; they do not grant Action Permissions |
 | Data, field, reference and export policies | Identity policy administration; Runtime enforcement for Runtime objects | Keep and separate from functional PermissionDefinition |
 | Menus and role-menu assignments | Identity navigation authorization | Keep |
 | Effective-access explain, reverse index, reports and access reviews | Identity governance | Keep |
 | Audit binding and governance audit surfaces | Audit owner embedded by Identity | Keep |
 | Embedded module and standalone SaaS deployment | Identity assembly | Keep |
 | Embedded-to-SaaS portability and write fences | Identity portability | Keep and update table ownership |
-| Runtime application catalog publication | Compatibility boundary | Replace, then remove |
+| Runtime application catalog publication | Obsolete boundary | Remove directly; the code has not shipped and no compatibility adapter is permitted |
 
 ## 3. Current problems to remove
 
@@ -68,8 +68,8 @@ An ActionDefinition is the executable authorization boundary. It has a stable ke
 - owner and source kind;
 - method/path or non-HTTP invocation identity;
 - exposure and authentication mode;
-- an explicit authorization strategy: anonymous protocol, authenticated principal, self-or-permission, service identity, static all/any permissions, dynamic permission resolver, or operations identity;
-- required permission references and, only when it is the canonical owner, owned PermissionDefinitions;
+- an explicit authorization strategy: anonymous protocol, authenticated principal, self action, service identity, exact role permission, or operations identity;
+- exactly one same-key owned PermissionDefinition when the Action is role-authorized; exceptional non-role strategies own no role Permission;
 - risk, assurance, approval, idempotency and audit metadata;
 - lifecycle status.
 
@@ -86,11 +86,11 @@ A PermissionDefinition is a role-selectable capability key. It owns:
 - administrative enablement;
 - definition hash and audit timestamps.
 
-A Permission does not own URLs, risk, approval, assurance, or a list of Action usages. Multiple Actions may require the same Permission.
+A Permission does not own URLs, risk, approval, assurance, or a list of Action usages. A role-authorized Action and its Permission use the same stable key; Permission reuse, all/any lists, aliases, and dynamic permission callbacks are not part of the model.
 
 ### 4.3 Role and policies
 
-RoleSchema remains the assignable responsibility definition. `RoleSchema.Permissions` stores selected functional permission keys. Data, field, reference, export, permission-set and guardrail configuration remains part of RoleSchema/authorization metadata and is not flattened into PermissionDefinition.
+RoleSchema remains the assignable responsibility definition. `RoleSchema.Permissions` is the only functional Action-grant authority. Data, field, reference, export, permission-set and guardrail configuration remains separate policy metadata and cannot add functional Action grants.
 
 Operational `_identity_roles` and `_identity_user_role_assignments` remain the user assignment layer. They must not become a second functional-permission definition source.
 
@@ -101,11 +101,11 @@ The complete Action registry is the union of four sources:
 | Source | Examples | Permission ownership |
 | --- | --- | --- |
 | Object default Actions | customer create/read/update/delete/export | Object owner |
-| Authored business Actions | refund.approve, order.complete | Action owner unless explicitly reusing an object permission |
+| Authored business Actions | refund.approve, order.complete | Action owner; the same-key Permission is owned with the Action |
 | Built-in Identity/Runtime surfaces | Identity user, role, menu and security management | Owning module |
 | Module-contributed surfaces | Notification, Audit and future embedded modules | Contributing module |
 
-Every surface must register an ActionDefinition, including reviewed public/protocol surfaces. A route without a registered Action and explicit strategy is an assembly/test failure. Role-authorized Actions referencing an unknown, retired or disabled Permission fail closed; service, self and operations strategies are validated by their declared identity policy rather than by inventing a role Permission.
+Every surface must register an ActionDefinition, including reviewed public/protocol surfaces. A route without a registered Action and explicit strategy is an assembly/test failure. A role-authorized Action checks only its same-key Permission; an unknown, retired or disabled definition fails closed. Service, self and operations strategies are validated by their declared identity policy and own no role Permission.
 
 ### 5.1 Default Object Actions
 
@@ -121,7 +121,7 @@ The generator is capability-aware. It omits an operation only when the ObjectSch
 
 ### 5.2 Built-in Identity Actions
 
-Identity management routes move from raw `HandleFunc(pattern, permissionWrapper(handler))` calls to registered route Actions. Management resources use read/create/update/delete plus explicit semantic commands. Existing broad `*.write` keys are compatibility inputs: a migration creates audited new RoleSchema versions that expand them to equivalent granular permissions; the broad keys are retired after no active role or permission set references them. Route registration and permission reconciliation consume the same definitions.
+Identity management routes move from raw `HandleFunc(pattern, permissionWrapper(handler))` calls to registered route Actions. Management resources use exact list/get/create/update/delete and semantic command Actions. Because the code has not shipped, old broad `*.write` keys are removed from production definitions and seeds directly; no alias evaluator, compatibility migration, or dual vocabulary is introduced. Route registration and permission reconciliation consume the same definitions.
 
 ### 5.3 Module Actions
 
@@ -149,7 +149,7 @@ The table contains current configuration, not publication versions:
 | `source_snapshot_hash` | compare-and-swap hash for the owner's complete reconcile set; not a publication version |
 | `created_at` / `updated_at` | audit timestamps |
 
-Unique identity is `(workspace_id, permission_key)`. Permission keys are workspace-global because RoleSchema currently stores bare permission strings. A conflicting second canonical owner is rejected. Actions may reuse a Permission without becoming an owner.
+Unique identity is `(workspace_id, permission_key)`. Permission keys are workspace-global because RoleSchema stores bare permission strings. A conflicting second canonical owner is rejected. Each role-authorized Action owns its same-key Permission; another Action cannot reuse it.
 
 Reconciliation updates source-controlled fields and `definition_status` but never resets an existing `enabled` decision. Missing definitions owned by the reconciled source become `retired`; they are not physically deleted while roles may still reference them. A caller that only references an existing Permission does not become its owner. `previous_snapshot_hash` compare-and-swap rejects out-of-order remote activation.
 
@@ -157,14 +157,14 @@ Reconciliation updates source-controlled fields and `definition_status` but neve
 
 Application authentication registration is separated from authorization metadata. The current row stores workspace/application identity, redirect URLs, status, and timestamps. Service credential secrets remain in the existing secret/config boundary; they are not copied into this table.
 
-### 6.3 Remove catalog tables after compatibility cutover
+### 6.3 Remove catalog tables by direct cutover
 
 Remove:
 
 - `_identity_authorization_catalogs`
 - `_identity_authorization_catalog_revisions`
 
-The current Catalog endpoint remains temporarily as a compatibility adapter. During migration, catalog publication translates catalog Actions into permission reconciliation and application redirect registration. It must no longer be used as the runtime policy source. After Runtime and the SDK use the new contracts, the endpoint, store, schema ownership entries and tables are removed.
+The code has not shipped, so no compatibility adapter or catalog backfill is implemented. Runtime and the SDK switch directly to application registration plus PermissionDefinition reconciliation; the endpoint, store, schema ownership entries, tables, and CatalogRevision field are then deleted in the same refactor.
 
 ### 6.4 Tables not added
 
@@ -188,13 +188,13 @@ load metadata and built-in/module surfaces
   -> expose listeners and report ready
 ```
 
-New or changed metadata is not activated until permission reconciliation succeeds. Embedded deployment uses the host database/migration/transaction contracts. Remote deployment uses an idempotent reconciliation API and an activation receipt; it must not expose a new Action before Identity acknowledges the permission snapshot.
+New or changed metadata is not activated until permission reconciliation succeeds. Embedded deployment uses the host database/schema/migration/transaction contracts and the original source-owned relation names; Identity must not inject a `domainry_identity_` relation prefix. The host owns the only `_schema_migrations` ledger, and Identity submits its schema callback through the host migration registrar. Remote deployment uses an idempotent reconciliation API and an activation receipt; it must not expose a new Action before Identity acknowledges the permission snapshot.
 
 ### 7.2 Role configuration
 
 `GET /identity/permissions` reads current database PermissionDefinitions. Normal role authoring selects keys from active/enabled definitions and saves them in RoleSchema. Assigned retired/disabled keys remain visible with a warning so administrators can repair roles.
 
-Saving a role or permission set rejects unknown keys. Retired or disabled keys cannot be newly selected. Unknown role references never create PermissionDefinitions. Principal construction filters unknown, retired and disabled direct/set-derived grants before guardrails. Permission state is part of the deterministic authorization-revision fingerprint, so disabling a Permission removes it from newly issued AccessBundles without rewriting every RoleSchema.
+Saving a role rejects unknown keys. Retired or disabled keys cannot be newly selected. Unknown role references never create PermissionDefinitions. Principal construction filters unknown, retired and disabled `RoleSchema.Permissions` before guardrails. Permission-set/group data cannot add a functional Action grant. The filtered RoleSchema is part of the deterministic authorization-revision fingerprint, so disabling a Permission removes it from newly issued AccessBundles without rewriting every RoleSchema.
 
 ### 7.3 Request authorization
 
@@ -202,16 +202,18 @@ Saving a role or permission set rejects unknown keys. Retired or disabled keys c
 request/invocation
   -> resolve registered ActionDefinition
   -> authenticate principal
-  -> evaluate required Permission key(s) against current AccessBundle
+  -> for a role-authorized Action, evaluate its same-key Permission against the current AccessBundle
   -> evaluate data/field/reference/export policy at the owning Runtime
   -> execute or deny and audit
 ```
 
 The hot path does not parse catalog JSON or Permission usage rows and does not require one database query per request. AccessBundle/authorization snapshots are revisioned and cached. Unknown Action, unknown Permission or stale incompatible policy fails closed.
 
-### 7.4 Workspace administrator
+Permission administration is a read-side exception to the request hot path: `/identity/permissions` joins persisted current PermissionDefinition state with a live, batched Action-registry query. Embedded Runtime binds its frozen registry directly. Standalone Identity calls the Runtime owner endpoint with a short-lived service token restricted to the exact `runtime.authorization.action_usages#query` grant. Browser tokens and ops credentials are not forwarded, responses are never persisted, and an unreachable or unloaded owner is returned as `unavailable` rather than an empty authoritative registry.
 
-`workspace.admin` remains a reserved workspace/tenant-admin Permission. Identity issues wildcard functional authority without enumerating every catalog Action. It does not grant operations, service protocol or cross-workspace authority. Permission active/enabled checks and deny guardrails run before/over the wildcard. Runtime interprets it against its current ActionRegistry/ObjectSchema for data and field policy. Catalog-based expansion is removed.
+### 7.4 No aggregate administrator permission
+
+Identity does not define a reserved workspace-wide administrator Permission. Administrative roles receive an explicit list of same-key Permissions for the Actions they may execute. A request for `identity.users.list`, `customer.read`, or any other Action succeeds only when the role has that exact same-key Permission and its current definition is active and enabled.
 
 ## 8. Identity/SDK/Runtime responsibility split
 
@@ -234,13 +236,13 @@ The hot path does not parse catalog JSON or Permission usage rows and does not r
 
 Before the cross-repository batches, run Identity as the authorization-management SaaS and validate one narrow vertical slice using Identity role-management and permission-management routes:
 
-1. Define their ActionKey, capability/operation labels, Method+router template, page binding and required/owned Permission in code.
+1. Define their ActionKey, capability/operation labels, Method+router template, page binding and same-key Permission in code.
 2. Persist only derived PermissionDefinitions in `_identity_permissions`; Action and URL usage remain a live registry projection.
 3. Make `/identity/permissions` combine database Permission state with current Identity Action usages.
-4. Update the existing Identity Admin role flow to present capability/operation/Method+URL while continuing to save versioned RoleSchema permissions.
+4. Update the existing Identity Admin role flow to present capability/operation/Method+URL and directly publish a normal RoleSchema version with schema-hash CAS, idempotency and audit.
 5. Run the standalone backend and Vite admin against real APIs, then verify one allowed and one denied management request plus restart persistence.
 
-Keep the current catalog compatibility and application registration path during S0. Do not involve Runtime, Notification, remote module reconciliation, catalog deletion, all dialects, or the full policy strategy matrix until the user accepts the UI and API shape.
+S0 is historical evidence only. The accepted implementation now proceeds through the full direct cutover and must not preserve Catalog compatibility, aliases, or the earlier broad-permission prototype.
 
 ### Batch A — current PermissionDefinition persistence
 
@@ -258,12 +260,12 @@ Keep the current catalog compatibility and application registration path during 
 4. Add coverage tests proving every protected Identity route has exactly one Action and declared permission.
 5. Remove duplicate platform-permission lists after all non-route capabilities have explicit owners.
 
-### Batch C — application registration and compatibility projection
+### Batch C — application registration and direct Catalog removal
 
 1. Add `_identity_applications` and move redirect validation/application existence checks to it.
-2. Change Catalog Publish compatibility code to reconcile PermissionDefinitions and application registration.
+2. Move browser and Runtime registration to the application-registration contract.
 3. Stop AccessBundle resolution from requiring or filtering through catalog JSON.
-4. Represent administrator authority without catalog enumeration.
+4. Delete Catalog APIs and persistence once both direct contracts are wired; do not introduce an adapter.
 
 ### Batch D — SDK and Runtime cutover
 
@@ -277,13 +279,13 @@ Keep the current catalog compatibility and application registration path during 
 1. Remove catalog SDK/HTTP APIs and Runtime catalog publisher.
 2. Remove `identitycatalog` persistence and catalog policy expansion/filtering.
 3. Remove catalog schemas, revisions, indexes, portability specs and tests.
-4. Migrate/backfill existing application redirects and PermissionDefinitions before dropping tables.
+4. Verify fresh-database installation and direct-cutover tests; no historical backfill is required because the code has not shipped.
 
 ### Batch F — administration and governance completion
 
 1. Add current Permission enable/disable API with audit and last-admin safety.
 2. Update permission UI to show active, disabled and retired states and live Action usage projection.
-3. Keep role authorization changes on the normal RoleSchema configuration path; do not create a versioned Permission publication page.
+3. Keep role authorization changes on the normal RoleSchema version path; do not create a second workflow or a versioned Permission publication page.
 4. Add governance reports for disabled/retired permissions still referenced by roles.
 
 ## 10. Acceptance contract
@@ -291,7 +293,7 @@ Keep the current catalog compatibility and application registration path during 
 The refactor is complete only when all of the following hold:
 
 1. Every Identity, Runtime and module surface, including public/protocol surfaces, resolves a registered ActionDefinition with an explicit authorization strategy.
-2. Every role-authorized Action required Permission exists as an active PermissionDefinition before the surface is ready; self, service and operations Actions use their explicit non-role strategy.
+2. Every role-authorized Action's same-key Permission exists as an active PermissionDefinition before the surface is ready; anonymous, authenticated, self, service and operations Actions use their explicit non-role strategy.
 3. Every exposed ObjectSchema receives exactly the supported default Action permissions.
 4. Built-in Identity role-management Actions and permissions are present in the database and selectable by roles.
 5. Disabling a Permission changes newly resolved access without a code deployment and survives restart/reconciliation.
@@ -310,4 +312,4 @@ The refactor is complete only when all of the following hold:
 - Converting Permission keys into literal URLs.
 - Persisting Runtime ObjectSchema or Action usage lists in Identity.
 - Creating a second role-permission assignment source.
-- Rewriting the existing role/version/change-plan model in the first permission-persistence batch.
+- Rewriting the broader role authoring governance model in the first permission-persistence batch.

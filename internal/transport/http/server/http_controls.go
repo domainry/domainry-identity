@@ -124,7 +124,8 @@ func classifyRouteSurface(method, path string) routeSurface {
 	}
 	for _, publicIdentityPath := range []string{
 		"/identity/discovery", "/identity/access-bundle", "/identity/reauthorize",
-		"/identity/catalog", "/identity/catalog/revision",
+		"/identity/application-service/token", "/identity/application-service/verify",
+		"/identity/applications/current", "/identity/permissions/reconcile", "/identity/permissions/source-snapshot",
 	} {
 		if path == publicIdentityPath {
 			return routeSurfacePublic

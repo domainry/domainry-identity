@@ -138,7 +138,7 @@ func (h *IdentityHandler) assignIdentityUserRole(w http.ResponseWriter, r *http.
 		ValidFrom: strings.TrimSpace(req.ValidFrom), ValidUntil: strings.TrimSpace(req.ValidUntil), GrantReason: strings.TrimSpace(req.GrantReason),
 	}
 	principal := h.principal(r)
-	result, err := h.executeIdentityAuthoringUpsert(r.Context(), "identity.user_role_assignment", assignment.UserID, "identity.roles.write", r.Header.Get("Builder-Task-ID"), r.Header.Get("Idempotency-Key"), r.Header.Get("Expected-Schema-Hash"), assignment, principal,
+	result, err := h.executeIdentityAuthoringUpsert(r.Context(), "identity.user_role_assignment", assignment.UserID, r.Header.Get("Builder-Task-ID"), r.Header.Get("Idempotency-Key"), r.Header.Get("Expected-Schema-Hash"), assignment, principal,
 		func(ctx context.Context) (any, bool, error) {
 			items, loadErr := h.roles.ListUserRoleAssignments(ctx, assignment.UserID)
 			return items, len(items) > 0, loadErr

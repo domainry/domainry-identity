@@ -10,7 +10,7 @@ import (
 	"github.com/domainry/domainry-identity/internal/platform/config"
 )
 
-func TestSQLiteBackupRestorePreservesAccountAndWorkforceGraph(t *testing.T) {
+func TestSQLiteBackupRestorePreservesIdentityAuthorizationAndWorkforceState(t *testing.T) {
 	directory := t.TempDir()
 	databasePath := filepath.Join(directory, "runtime.db")
 	backupDirectory := filepath.Join(directory, "backups")
@@ -28,6 +28,12 @@ func TestSQLiteBackupRestorePreservesAccountAndWorkforceGraph(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, statement := range []string{
+		`INSERT INTO _identity_applications
+		 (id, workspace_id, application_key, redirect_urls_json, status, created_at, updated_at)
+		 VALUES ('application-1', 'workspace-a', 'orders-runtime', '["https://orders.example/callback"]', 'active', '2026-07-25T00:00:00Z', '2026-07-25T00:00:00Z')`,
+		`INSERT INTO _identity_permissions
+		 (id, workspace_id, permission_key, resource_key, action_key, label, description, category, source_kind, source_owner, definition_status, enabled, definition_hash, source_snapshot_hash, created_at, updated_at)
+		 VALUES ('permission-1', 'workspace-a', 'customer.export', 'customer', 'export', 'Export customers', '', 'CRM', 'object_default', 'application:orders-runtime', 'active', FALSE, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', '2026-07-25T00:00:00Z', '2026-07-25T00:00:00Z')`,
 		`INSERT INTO _identity_users (id, workspace_id, name, email, phone, status, created_at, updated_at)
 		 VALUES ('user-1', 'workspace-a', 'Account One', 'one@example.com', '', 'active', '2026-07-25T00:00:00Z', '2026-07-25T00:00:00Z')`,
 		`INSERT INTO _identity_workforce_profiles
@@ -65,7 +71,14 @@ func TestSQLiteBackupRestorePreservesAccountAndWorkforceGraph(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = restored.Close() })
 
-	var accountName, workerNumber, organizationUnitID, managerProfileID, legacyFacts string
+	var applicationKey, permissionKey, accountName, workerNumber, organizationUnitID, managerProfileID, legacyFacts string
+	var permissionEnabled bool
+	if err := restored.QueryRowContext(t.Context(), `SELECT application_key FROM _identity_applications WHERE workspace_id = 'workspace-a' AND id = 'application-1'`).Scan(&applicationKey); err != nil {
+		t.Fatal(err)
+	}
+	if err := restored.QueryRowContext(t.Context(), `SELECT permission_key, enabled FROM _identity_permissions WHERE workspace_id = 'workspace-a' AND id = 'permission-1'`).Scan(&permissionKey, &permissionEnabled); err != nil {
+		t.Fatal(err)
+	}
 	if err := restored.QueryRowContext(t.Context(), `SELECT name FROM _identity_users WHERE workspace_id = 'workspace-a' AND id = 'user-1'`).Scan(&accountName); err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +91,13 @@ func TestSQLiteBackupRestorePreservesAccountAndWorkforceGraph(t *testing.T) {
 	if err := restored.QueryRowContext(t.Context(), `SELECT legacy_facts_json FROM _identity_workforce_migration_receipts WHERE workspace_id = 'workspace-a' AND id = 'receipt-1'`).Scan(&legacyFacts); err != nil {
 		t.Fatal(err)
 	}
-	if accountName != "Account One" || workerNumber != "E-001" || organizationUnitID != "department-1" || managerProfileID != "manager-1" || legacyFacts != `{"employee_number":"E-001"}` {
-		t.Fatalf("restored identity graph drifted: account=%q worker=%q unit=%q manager=%q legacy=%q", accountName, workerNumber, organizationUnitID, managerProfileID, legacyFacts)
+	if applicationKey != "orders-runtime" || permissionKey != "customer.export" || permissionEnabled || accountName != "Account One" || workerNumber != "E-001" || organizationUnitID != "department-1" || managerProfileID != "manager-1" || legacyFacts != `{"employee_number":"E-001"}` {
+		t.Fatalf("restored Identity state drifted: application=%q permission=%q enabled=%t account=%q worker=%q unit=%q manager=%q legacy=%q", applicationKey, permissionKey, permissionEnabled, accountName, workerNumber, organizationUnitID, managerProfileID, legacyFacts)
+	}
+	for _, retiredTable := range []string{"_identity_authorization_catalogs", "_identity_authorization_catalog_revisions"} {
+		var count int
+		if err := restored.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, retiredTable).Scan(&count); err != nil || count != 0 {
+			t.Fatalf("restored retired authorization table %s count=%d err=%v", retiredTable, count, err)
+		}
 	}
 }

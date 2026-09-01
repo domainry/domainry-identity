@@ -9,14 +9,14 @@ import (
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
-func TestPrepareEntitlementBatchValidatesFinalConflictsAndAllAdministratorRoles(t *testing.T) {
+func TestPrepareEntitlementBatchValidatesFinalConflictsAndTreatsWorkspaceCapabilityAsOrdinaryGrant(t *testing.T) {
 	repository, service := identityRolesFixture()
 	repository.users = append(repository.users, identitymodel.IdentityUser{ID: "admin-2", Status: identitymodel.IdentityStatusActive})
 	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{
 		{Key: "member", AssignmentMode: identitymodel.IdentityRoleAssignmentManual, ConflictRoleKeys: []string{"viewer"}},
 		{Key: "viewer", AssignmentMode: identitymodel.IdentityRoleAssignmentManual},
-		{Key: "admin", AssignmentMode: identitymodel.IdentityRoleAssignmentManual, Permissions: []string{"workspace.admin"}},
-		{Key: "owner", AssignmentMode: identitymodel.IdentityRoleAssignmentManual, Permissions: []string{"workspace.admin"}},
+		{Key: "admin", AssignmentMode: identitymodel.IdentityRoleAssignmentManual, Permissions: []string{"identity.roles.list"}},
+		{Key: "owner", AssignmentMode: identitymodel.IdentityRoleAssignmentManual, Permissions: []string{"identity.roles.list"}},
 	})
 	actor := identitymodel.Principal{Known: true, UserID: "admin-2"}
 	if _, _, err := service.PrepareIdentityEntitlementBatch(t.Context(), []identitymodel.IdentityEntitlementBatchItem{
@@ -36,10 +36,11 @@ func TestPrepareEntitlementBatchValidatesFinalConflictsAndAllAdministratorRoles(
 		t.Fatalf("cross-role administrator preservation items=%#v assignments=%#v err=%v", items, assignments, err)
 	}
 	repository.assignments = repository.assignments[:1]
-	if _, _, err := service.PrepareIdentityEntitlementBatch(t.Context(), []identitymodel.IdentityEntitlementBatchItem{
+	items, assignments, err = service.PrepareIdentityEntitlementBatch(t.Context(), []identitymodel.IdentityEntitlementBatchItem{
 		{Operation: "revoke", UserID: "user-1", RoleID: "admin-id", Reason: "unsafe"},
-	}, actor); apperror.CodeOf(err) != "backend.identity.last_administrator_revocation_denied" {
-		t.Fatalf("last administrator error=%v", err)
+	}, actor)
+	if err != nil || len(items) != 1 || len(assignments) != 1 || assignments[0].Status != "revoked" {
+		t.Fatalf("ordinary exact workspace capability revocation items=%#v assignments=%#v err=%v", items, assignments, err)
 	}
 }
 
@@ -219,12 +220,7 @@ func TestIdentityEntitlementGrantCeilingAndFinalStateRemainingOutcomes(t *testin
 		"left":    {UserID: "user", RoleID: "left", Status: "active"},
 		"right":   {UserID: "user", RoleID: "right", Status: "active"},
 	}
-	if err := validateIdentityEntitlementFinalState(final, definitions, nil, now); apperror.CodeOf(err) != "backend.identity.role_conflict" {
+	if err := validateIdentityEntitlementFinalState(final, definitions, now); apperror.CodeOf(err) != "backend.identity.role_conflict" {
 		t.Fatalf("reverse conflict error=%v", err)
-	}
-	if count := identityEntitlementActiveAdministratorCount([]identitymodel.IdentityUserRoleAssignment{
-		{UserID: "user", RoleID: "missing", Status: "active"},
-	}, definitions, now); count != 0 {
-		t.Fatalf("unknown definition administrator count=%d", count)
 	}
 }

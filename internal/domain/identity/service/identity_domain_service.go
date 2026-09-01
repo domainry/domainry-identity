@@ -13,8 +13,8 @@ import (
 // IdentityDomainService owns identity governance and authorization behavior.
 type IdentityDomainService struct {
 	repo                identityrepository.IdentityRepository
-	permission          map[string]identitymodel.IdentityPermissionDefinition
-	permissionMu        *sync.RWMutex
+	permissionSource    IdentityPermissionDefinitionSource
+	mutablePermissions  *identityMutablePermissionDefinitionSource
 	role                map[string]identitymodel.RoleSchema
 	roleMu              *sync.RWMutex
 	permissionSets      map[string]identitymodel.IdentityPermissionSet
@@ -26,6 +26,46 @@ type IdentityDomainService struct {
 	bindingEligibility  IdentityRoleBindingEligibilityResolver
 	businessProfiles    IdentityBusinessProfileResolver
 	organizationScopes  IdentityOrganizationScopeResolver
+}
+
+// IdentityPermissionDefinitionSource is the domain-facing view of the current
+// database-backed Permission snapshot. The domain depends on this narrow port,
+// not on the application catalog implementation that owns reconciliation.
+type IdentityPermissionDefinitionSource interface {
+	PermissionDefinitions() map[string]identitymodel.IdentityPermissionDefinition
+}
+
+type identityMutablePermissionDefinitionSource struct {
+	mu    sync.RWMutex
+	byKey map[string]identitymodel.IdentityPermissionDefinition
+}
+
+func newIdentityMutablePermissionDefinitionSource(permissions []identitymodel.IdentityPermissionDefinition) *identityMutablePermissionDefinitionSource {
+	source := &identityMutablePermissionDefinitionSource{byKey: map[string]identitymodel.IdentityPermissionDefinition{}}
+	source.replace(permissions)
+	return source
+}
+
+func (source *identityMutablePermissionDefinitionSource) PermissionDefinitions() map[string]identitymodel.IdentityPermissionDefinition {
+	source.mu.RLock()
+	defer source.mu.RUnlock()
+	out := make(map[string]identitymodel.IdentityPermissionDefinition, len(source.byKey))
+	for key, permission := range source.byKey {
+		out[key] = permission
+	}
+	return out
+}
+
+func (source *identityMutablePermissionDefinitionSource) replace(permissions []identitymodel.IdentityPermissionDefinition) {
+	source.mu.Lock()
+	defer source.mu.Unlock()
+	clear(source.byKey)
+	for _, permission := range permissions {
+		if key := strings.TrimSpace(permission.Key); key != "" {
+			permission.Key = key
+			source.byKey[key] = permission
+		}
+	}
 }
 
 type IdentityRoleBindingEligibilityResolver interface {
@@ -95,14 +135,18 @@ func (s *IdentityDomainService) UseOrganizationScopeResolver(resolver IdentityOr
 }
 
 func NewIdentityDomainService(repo identityrepository.IdentityRepository, permissions []identitymodel.IdentityPermissionDefinition) *IdentityDomainService {
-	byKey := map[string]identitymodel.IdentityPermissionDefinition{}
-	for _, permission := range permissions {
-		if permission.Key != "" {
-			byKey[permission.Key] = permission
-		}
+	source := newIdentityMutablePermissionDefinitionSource(permissions)
+	service := NewIdentityDomainServiceWithPermissionSource(repo, source)
+	service.mutablePermissions = source
+	return service
+}
+
+func NewIdentityDomainServiceWithPermissionSource(repo identityrepository.IdentityRepository, source IdentityPermissionDefinitionSource) *IdentityDomainService {
+	if source == nil {
+		source = newIdentityMutablePermissionDefinitionSource(nil)
 	}
 	return &IdentityDomainService{
-		repo: repo, permission: byKey, permissionMu: &sync.RWMutex{},
+		repo: repo, permissionSource: source,
 		role: map[string]identitymodel.RoleSchema{}, roleMu: &sync.RWMutex{},
 		permissionSets: map[string]identitymodel.IdentityPermissionSet{}, permissionSetGroups: map[string]identitymodel.IdentityPermissionSetGroup{},
 		guardrails: map[string]identitymodel.IdentityGuardrailPolicy{}, authorizationMu: &sync.RWMutex{},
@@ -126,9 +170,9 @@ func (s *IdentityDomainService) ReplaceRoleDefinitions(roles []identitymodel.Rol
 	}
 }
 
-// ReplaceAuthorizationCatalogs atomically refreshes the reusable authorization
-// source catalogs used by Effective Access and impact projections.
-func (s *IdentityDomainService) ReplaceAuthorizationCatalogs(sets []identitymodel.IdentityPermissionSet, groups []identitymodel.IdentityPermissionSetGroup, guardrails []identitymodel.IdentityGuardrailPolicy) {
+// ReplaceAuthorizationPolicies atomically refreshes the reusable policy
+// definitions used by Effective Access and impact projections.
+func (s *IdentityDomainService) ReplaceAuthorizationPolicies(sets []identitymodel.IdentityPermissionSet, groups []identitymodel.IdentityPermissionSetGroup, guardrails []identitymodel.IdentityGuardrailPolicy) {
 	s.authorizationMu.Lock()
 	defer s.authorizationMu.Unlock()
 	clear(s.permissionSets)
@@ -244,34 +288,24 @@ func (s *IdentityDomainService) WorkspaceID() string {
 }
 
 func (s *IdentityDomainService) PermissionDefinitions() map[string]identitymodel.IdentityPermissionDefinition {
-	s.permissionMu.RLock()
-	defer s.permissionMu.RUnlock()
-	out := make(map[string]identitymodel.IdentityPermissionDefinition, len(s.permission))
-	for key, permission := range s.permission {
-		out[key] = permission
+	if s == nil || s.permissionSource == nil {
+		return map[string]identitymodel.IdentityPermissionDefinition{}
 	}
-	return out
+	return s.permissionSource.PermissionDefinitions()
 }
 
 // ReplacePermissionDefinitions refreshes the owner validation catalog in
 // place so already-scoped service views observe the same immutable snapshot.
 func (s *IdentityDomainService) ReplacePermissionDefinitions(permissions []identitymodel.IdentityPermissionDefinition) {
-	s.permissionMu.Lock()
-	defer s.permissionMu.Unlock()
-	clear(s.permission)
-	for _, permission := range permissions {
-		if key := strings.TrimSpace(permission.Key); key != "" {
-			permission.Key = key
-			s.permission[key] = permission
-		}
+	if s != nil && s.mutablePermissions != nil {
+		s.mutablePermissions.replace(permissions)
 	}
 }
 
 func (s *IdentityDomainService) ListPermissions(_ context.Context) []identitymodel.IdentityPermissionDefinition {
-	s.permissionMu.RLock()
-	defer s.permissionMu.RUnlock()
-	values := make([]identitymodel.IdentityPermissionDefinition, 0, len(s.permission))
-	for _, permission := range s.permission {
+	definitions := s.PermissionDefinitions()
+	values := make([]identitymodel.IdentityPermissionDefinition, 0, len(definitions))
+	for _, permission := range definitions {
 		values = append(values, permission)
 	}
 	sort.Slice(values, func(i, j int) bool { return values[i].Key < values[j].Key })

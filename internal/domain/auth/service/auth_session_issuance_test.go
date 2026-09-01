@@ -46,7 +46,7 @@ func TestSessionIssuance(t *testing.T) {
 		auth, identityRepository, authRepository := newFaultAuthDomainService()
 		identityRepository.roleAssignments = []identitymodel.IdentityUserRoleAssignment{{UserID: user.ID, RoleID: "role-sales"}}
 		auth.authorization = &faultSessionAuthorization{
-			permissions: []string{"operations.read", "identity.users.read"},
+			permissions: []string{"operations.read", "identity.users.list"},
 		}
 		authRepository.credentials = map[string]identitymodel.IdentityCredential{
 			user.ID: {UserID: user.ID, MustChangePassword: true},

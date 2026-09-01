@@ -16,15 +16,7 @@ import (
 // references. It deliberately knows nothing about workflow, automation,
 // reporting, agents or integrations.
 func MetadataValidateIdentitySchema(schema manifestmodel.ManifestSchema) error {
-	return MetadataValidateIdentitySchemaWithAuthorizationObjects(schema, nil)
-}
-
-// MetadataValidateIdentitySchemaWithAuthorizationObjects validates Identity's
-// owned graph while allowing role policies to reference application objects
-// published through the authorization catalog. External objects participate in
-// reference lookup only; their shape is not treated as Identity-owned metadata.
-func MetadataValidateIdentitySchemaWithAuthorizationObjects(schema manifestmodel.ManifestSchema, authorizationObjects []definitionmodel.ObjectSchema) error {
-	validator := newIdentitySchemaValidator(schema, authorizationObjects)
+	validator := newIdentitySchemaValidator(schema)
 	validator.validateObjects()
 	validator.validateViewsAndActions()
 	validator.validateAuthorization()
@@ -45,26 +37,13 @@ type identitySchemaValidator struct {
 	issues  []string
 }
 
-func newIdentitySchemaValidator(schema manifestmodel.ManifestSchema, authorizationObjects []definitionmodel.ObjectSchema) *identitySchemaValidator {
+func newIdentitySchemaValidator(schema manifestmodel.ManifestSchema) *identitySchemaValidator {
 	validator := &identitySchemaValidator{
 		schema:  schema,
 		objects: map[string]definitionmodel.ObjectSchema{},
 		fields:  map[string]map[string]definitionmodel.FieldSchema{},
 		actions: map[string]definitionmodel.ActionSchema{},
 		roles:   map[string]identitymodel.RoleSchema{},
-	}
-	for _, object := range authorizationObjects {
-		key := strings.TrimSpace(object.Key)
-		if key == "" {
-			continue
-		}
-		validator.objects[key] = object
-		validator.fields[key] = map[string]definitionmodel.FieldSchema{}
-		for _, field := range object.Fields {
-			if fieldKey := strings.TrimSpace(field.Key); fieldKey != "" {
-				validator.fields[key][fieldKey] = field
-			}
-		}
 	}
 	for _, object := range schema.Objects {
 		key := strings.TrimSpace(object.Key)
@@ -172,9 +151,6 @@ func (validator *identitySchemaValidator) validateViewsAndActions() {
 		if _, exists := validator.objects[strings.TrimSpace(action.ObjectKey)]; !exists {
 			validator.add(path+".object_key", "references unknown object %q", action.ObjectKey)
 		}
-		if strings.TrimSpace(action.RequiresPermission) == "" {
-			validator.add(path+".requires_permission", "is required")
-		}
 	}
 }
 
@@ -204,8 +180,8 @@ func (validator *identitySchemaValidator) validateAuthorization() {
 		}
 		for index, permission := range role.DataPermissions {
 			permissionPath := fmt.Sprintf("%s.data_permissions[%d]", path, index)
-			if _, exists := validator.objects[strings.TrimSpace(permission.ObjectKey)]; !exists {
-				validator.add(permissionPath+".object_key", "references unknown object %q", permission.ObjectKey)
+			if strings.TrimSpace(permission.ObjectKey) == "" {
+				validator.add(permissionPath+".object_key", "is required")
 			}
 			if _, ok := identitymodel.CanonicalIdentityDataScope(strings.TrimSpace(permission.Scope)); !ok {
 				validator.add(permissionPath+".scope", "unsupported scope %q", permission.Scope)
@@ -216,10 +192,19 @@ func (validator *identitySchemaValidator) validateAuthorization() {
 			if strings.TrimSpace(permission.Scope) != "custom" && permission.Predicate != nil {
 				validator.add(permissionPath+".predicate", "is only valid for custom scope")
 			}
+			if permission.Predicate != nil {
+				validator.validatePolicyExpression(permissionPath+".predicate", *permission.Predicate, 0)
+			}
 		}
 		for index, permission := range role.FieldPermissions {
 			permissionPath := fmt.Sprintf("%s.field_permissions[%d]", path, index)
-			if validator.fields[strings.TrimSpace(permission.ObjectKey)][strings.TrimSpace(permission.FieldKey)].Key == "" {
+			objectKey, fieldKey := strings.TrimSpace(permission.ObjectKey), strings.TrimSpace(permission.FieldKey)
+			if objectKey == "" {
+				validator.add(permissionPath+".object_key", "is required")
+			}
+			if fieldKey == "" {
+				validator.add(permissionPath+".field_key", "is required")
+			} else if _, localObject := validator.objects[objectKey]; localObject && fieldKey != "*" && validator.fields[objectKey][fieldKey].Key == "" {
 				validator.add(permissionPath+".field_key", "references unknown field %s.%s", permission.ObjectKey, permission.FieldKey)
 			}
 		}
@@ -229,11 +214,14 @@ func (validator *identitySchemaValidator) validateAuthorization() {
 		for index, rule := range role.ExportRules {
 			rulePath := fmt.Sprintf("%s.export_rules[%d]", path, index)
 			objectKey := strings.TrimSpace(rule.ObjectKey)
-			if _, exists := validator.objects[objectKey]; !exists {
-				validator.add(rulePath+".object_key", "references unknown object %q", objectKey)
+			if objectKey == "" {
+				validator.add(rulePath+".object_key", "is required")
 			}
-			for _, fieldKey := range rule.Fields {
-				if fieldKey != "id" && validator.fields[objectKey][strings.TrimSpace(fieldKey)].Key == "" {
+			for fieldIndex, rawFieldKey := range rule.Fields {
+				fieldKey := strings.TrimSpace(rawFieldKey)
+				if fieldKey == "" {
+					validator.add(fmt.Sprintf("%s.fields[%d]", rulePath, fieldIndex), "is required")
+				} else if _, localObject := validator.objects[objectKey]; localObject && fieldKey != "id" && validator.fields[objectKey][fieldKey].Key == "" {
 					validator.add(rulePath+".fields", "references unknown field %s.%s", objectKey, fieldKey)
 				}
 			}
@@ -244,33 +232,91 @@ func (validator *identitySchemaValidator) validateAuthorization() {
 func (validator *identitySchemaValidator) validateReferencePermission(path string, permission identitymodel.ReferencePermission) {
 	sourceKey := strings.TrimSpace(permission.SourceObjectKey)
 	targetKey := strings.TrimSpace(permission.TargetObjectKey)
-	field := validator.fields[sourceKey][strings.TrimSpace(permission.RelationFieldKey)]
-	if validator.objects[sourceKey].Key == "" {
-		validator.add(path+".source_object_key", "references unknown object %q", sourceKey)
-	} else if field.Key == "" {
+	relationKey := strings.TrimSpace(permission.RelationFieldKey)
+	if sourceKey == "" {
+		validator.add(path+".source_object_key", "is required")
+	}
+	if targetKey == "" {
+		validator.add(path+".target_object_key", "is required")
+	}
+	if relationKey == "" {
+		validator.add(path+".relation_field_key", "is required")
+	}
+	field := validator.fields[sourceKey][relationKey]
+	if _, localSource := validator.objects[sourceKey]; localSource && field.Key == "" {
 		validator.add(path+".relation_field_key", "references unknown field %q", permission.RelationFieldKey)
 	} else if strings.TrimSpace(field.Type) != "relation" {
-		validator.add(path+".relation_field_key", "must reference a relation field")
+		if field.Key != "" {
+			validator.add(path+".relation_field_key", "must reference a relation field")
+		}
 	} else if relationTarget := identityRelationTarget(field); relationTarget != "" && relationTarget != targetKey {
 		validator.add(path+".target_object_key", "must match relation target %q", relationTarget)
 	}
-	if validator.objects[targetKey].Key == "" && !identitycontract.IsFoundationObjectKey(targetKey) {
-		validator.add(path+".target_object_key", "references unknown object %q", targetKey)
-	}
-	for _, fieldKey := range permission.DisplayFields {
-		if validator.fields[targetKey][strings.TrimSpace(fieldKey)].Key == "" {
+	for index, rawFieldKey := range permission.DisplayFields {
+		fieldKey := strings.TrimSpace(rawFieldKey)
+		if fieldKey == "" {
+			validator.add(fmt.Sprintf("%s.display_fields[%d]", path, index), "is required")
+		} else if _, localTarget := validator.objects[targetKey]; localTarget && fieldKey != "id" && validator.fields[targetKey][fieldKey].Key == "" {
 			validator.add(path+".display_fields", "references unknown field %s.%s", targetKey, fieldKey)
 		}
 	}
 }
 
-func (validator *identitySchemaValidator) validateProfileBindings() {
-	permissions := map[string]bool{}
-	for _, role := range validator.schema.Roles {
-		for _, permission := range role.Permissions {
-			permissions[strings.TrimSpace(permission)] = true
+func (validator *identitySchemaValidator) validatePolicyExpression(path string, expression identitymodel.IdentityPolicyExpression, depth int) {
+	if depth > 16 {
+		validator.add(path, "exceeds maximum depth")
+		return
+	}
+	operator := strings.ToLower(strings.TrimSpace(expression.Operator))
+	if operator == "" {
+		validator.add(path+".operator", "is required")
+		return
+	}
+	switch operator {
+	case "and", "or":
+		if len(expression.Children) == 0 {
+			validator.add(path+".children", "must not be empty for %s", operator)
+		}
+		for index, child := range expression.Children {
+			validator.validatePolicyExpression(fmt.Sprintf("%s.children[%d]", path, index), child, depth+1)
+		}
+		return
+	case "not":
+		if len(expression.Children) != 1 {
+			validator.add(path+".children", "must contain exactly one expression for not")
+		}
+		for index, child := range expression.Children {
+			validator.validatePolicyExpression(fmt.Sprintf("%s.children[%d]", path, index), child, depth+1)
+		}
+		return
+	}
+	if len(expression.Path) > 3 {
+		validator.add(path+".path", "must contain at most 3 relation segments")
+	}
+	for index, segment := range expression.Path {
+		segmentPath := fmt.Sprintf("%s.path[%d]", path, index)
+		if direction := strings.TrimSpace(segment.Direction); direction != "forward" && direction != "reverse" {
+			validator.add(segmentPath+".direction", "must be forward or reverse")
+		}
+		if strings.TrimSpace(segment.RelationFieldKey) == "" {
+			validator.add(segmentPath+".relation_field_key", "is required")
+		}
+		if strings.TrimSpace(segment.TargetObjectKey) == "" {
+			validator.add(segmentPath+".target_object_key", "is required")
 		}
 	}
+	if strings.TrimSpace(expression.FieldKey) == "" {
+		validator.add(path+".field_key", "is required")
+	}
+	valueSource := strings.TrimSpace(expression.ValueSource)
+	if valueSource != "literal" && valueSource != "actor_claim" {
+		validator.add(path+".value_source", "must be literal or actor_claim")
+	} else if valueSource == "actor_claim" && strings.TrimSpace(expression.ClaimKey) == "" {
+		validator.add(path+".claim_key", "is required for actor_claim")
+	}
+}
+
+func (validator *identitySchemaValidator) validateProfileBindings() {
 	seenObjects, seenBindings := map[string]bool{}, map[string]bool{}
 	for index, binding := range validator.schema.IdentityProfileExtensions {
 		path := fmt.Sprintf("identity_profile_extensions[%d]", index)
@@ -307,11 +353,6 @@ func (validator *identitySchemaValidator) validateProfileBindings() {
 		validator.validateProfileFieldReferences(path, binding)
 		if binding.DefaultVisibility != "when_readable" && binding.DefaultVisibility != "hidden" {
 			validator.add(path+".default_visibility", "must be when_readable or hidden")
-		}
-		for _, permission := range binding.RequiredPermissions {
-			if !permissions[strings.TrimSpace(permission)] {
-				validator.add(path+".required_permissions", "references unknown permission %q", permission)
-			}
 		}
 	}
 }

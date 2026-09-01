@@ -2,7 +2,11 @@ import { expect, test, type Page } from '@playwright/test'
 
 const user = { id: 'metadata-author', name: 'Metadata author', email: 'metadata@example.com', status: 'active' }
 const roles = [{ id: 'metadata-author', key: 'metadata-author', label: 'Metadata author' }]
-const permissions = ['metadata.read', 'metadata.write']
+const permissions = [
+  'identity.metadata.manifest.get',
+  'identity.metadata.definition.upsert',
+  'identity.metadata.definition.disable',
+]
 
 const schema = {
   name: 'Metadata acceptance',

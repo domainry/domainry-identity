@@ -102,6 +102,54 @@ func TestProductionSaaSDeploymentRequiresAnApplicationCredential(t *testing.T) {
 	}
 }
 
+func TestActionUsageRuntimeConfigurationIsOptionalAndBounded(t *testing.T) {
+	t.Setenv("IDENTITY_ACTION_USAGE_RUNTIME_URL", "https://runtime.example.com/base")
+	t.Setenv("IDENTITY_ACTION_USAGE_REQUEST_TIMEOUT", "1500ms")
+	cfg := FromEnv()
+	if cfg.IdentityActionUsageRuntimeURL != "https://runtime.example.com/base" || cfg.IdentityActionUsageRequestTimeout != 1500*time.Millisecond || cfg.IdentityActionUsageApplicationKey != "domainry-identity-control-plane" || cfg.IdentityActionUsageRuntimeAudience != "domainry-runtime" || cfg.IdentityActionUsageCredentialID != "identity-action-usage" {
+		t.Fatalf("Action usage configuration=%+v", cfg)
+	}
+	if err := (Config{Environment: "development"}).ValidateSaaSDeployment(); err != nil {
+		t.Fatalf("optional development Runtime query: %v", err)
+	}
+	development := Config{
+		Environment: "development", IdentityActionUsageRuntimeURL: "http://runtime.internal", IdentityActionUsageRequestTimeout: time.Second,
+		IdentityActionUsageApplicationKey: "domainry-identity-control-plane", IdentityActionUsageRuntimeAudience: "domainry-runtime", IdentityActionUsageCredentialID: "identity-action-usage",
+		IdentityWorkspaceID: "workspace-primary", IdentityApplicationServiceCredentials: map[string]string{"workspace-primary/domainry-identity-control-plane#identity-action-usage": "identity-action-usage-credential"},
+	}
+	if err := development.ValidateSaaSDeployment(); err != nil {
+		t.Fatalf("development Runtime query: %v", err)
+	}
+	production := Config{
+		Environment: "production", IdentityApplicationServiceCredentials: map[string]string{"default/runtime": "secret", "workspace-primary/domainry-identity-control-plane#identity-action-usage": "identity-action-usage-credential"},
+		IdentityActionUsageRuntimeURL: "http://runtime.internal", IdentityActionUsageRequestTimeout: time.Second,
+		IdentityActionUsageApplicationKey: "domainry-identity-control-plane", IdentityActionUsageRuntimeAudience: "domainry-runtime", IdentityActionUsageCredentialID: "identity-action-usage", IdentityWorkspaceID: "workspace-primary",
+	}
+	if err := production.ValidateSaaSDeployment(); err == nil || !strings.Contains(err.Error(), "HTTPS") {
+		t.Fatalf("insecure production Runtime URL error=%v", err)
+	}
+	production.IdentityActionUsageRuntimeURL = "https://runtime.internal?ambiguous=true"
+	if err := production.ValidateSaaSDeployment(); err == nil || !strings.Contains(err.Error(), "query") {
+		t.Fatalf("ambiguous Runtime URL error=%v", err)
+	}
+	production.IdentityActionUsageRuntimeURL = "https://runtime.internal"
+	production.IdentityActionUsageRequestTimeout = 0
+	if err := production.ValidateSaaSDeployment(); err == nil || !strings.Contains(err.Error(), "REQUEST_TIMEOUT") {
+		t.Fatalf("zero Runtime query timeout error=%v", err)
+	}
+	production.IdentityActionUsageRequestTimeout = time.Second
+	production.IdentityActionUsageApplicationKey = ""
+	production.IdentityActionUsageRuntimeAudience = "domainry-runtime"
+	if err := production.ValidateSaaSDeployment(); err == nil || !strings.Contains(err.Error(), "APPLICATION_KEY") {
+		t.Fatalf("missing Action usage application error=%v", err)
+	}
+	production.IdentityActionUsageApplicationKey = "domainry-identity-control-plane"
+	delete(production.IdentityApplicationServiceCredentials, "workspace-primary/domainry-identity-control-plane#identity-action-usage")
+	if err := production.ValidateSaaSDeployment(); err == nil || !strings.Contains(err.Error(), "IDENTITY_APPLICATION_SERVICE_CREDENTIALS") {
+		t.Fatalf("missing Action usage credential error=%v", err)
+	}
+}
+
 func TestAuthProviderMarketOrderingAndClassification(t *testing.T) {
 	providers := []map[string]any{
 		{"key": "fallback", "label": "Zulu", "priority": "unknown"},
@@ -215,6 +263,10 @@ func TestConfigEnvironmentHelperEdges(t *testing.T) {
 	t.Setenv("CONFIG_EDGE_MAP", "one=1,invalid,=missing,empty=, two = 2")
 	if got := keyMapEnv("CONFIG_EDGE_MAP"); !reflect.DeepEqual(got, map[string]string{"one": "1", "two": "2"}) {
 		t.Fatalf("key map = %#v", got)
+	}
+	t.Setenv("CONFIG_EDGE_LIST_MAP", "runtime=application:runtime|runtime:builtin|application:runtime,invalid,empty=")
+	if got := keyListMapEnv("CONFIG_EDGE_LIST_MAP"); !reflect.DeepEqual(got, map[string][]string{"runtime": {"application:runtime", "runtime:builtin"}}) {
+		t.Fatalf("key list map = %#v", got)
 	}
 	if !providerConfigured("one", " two ") || providerConfigured("one", " ") || !providerConfigured() {
 		t.Fatal("provider configured contract mismatch")
