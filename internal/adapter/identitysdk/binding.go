@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/domainry/domainry-foundation/apperror"
+	"github.com/domainry/domainry-foundation/modulecapability"
 	"github.com/domainry/domainry-foundation/requestcontext"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	identityevaluator "github.com/domainry/domainry-identity-sdk/authorization/evaluator"
@@ -81,6 +83,7 @@ type sdkBinding struct {
 	mutationFence      IdentityMutationFence
 	loginTransactions  FederatedLoginTransactionReader
 	catalogPublished   func([]identitysdk.AuthorizationCatalog)
+	capabilities       *modulecapability.StaticBinding
 }
 
 func NewBinding(dependencies BindingDependencies) (identitysdk.Binding, error) {
@@ -103,10 +106,24 @@ func NewBinding(dependencies BindingDependencies) (identitysdk.Binding, error) {
 		catalogReceipts: map[sdkCatalogRevisionScope]identitysdk.CatalogReceipt{}, catalogStore: dependencies.Catalog, clock: dependencies.Clock,
 		mutationFence: dependencies.MutationFence, loginTransactions: dependencies.LoginTransactions,
 		catalogPublished: dependencies.CatalogPublished}
+	capabilities, err := NewCapabilityBinding()
+	if err != nil {
+		return nil, fmt.Errorf("assemble Identity capability binding: %w", err)
+	}
+	binding.capabilities = capabilities
 	return binding, nil
 }
 
 func (binding *sdkBinding) Descriptor() identitysdk.Descriptor { return binding.descriptor }
+func (binding *sdkBinding) CapabilitySummary(ctx context.Context) (modulecapability.ModuleSummary, error) {
+	return binding.capabilities.CapabilitySummary(ctx)
+}
+func (binding *sdkBinding) CapabilityCategory(ctx context.Context, key string) (modulecapability.CategoryDocument, error) {
+	return binding.capabilities.CapabilityCategory(ctx, key)
+}
+func (binding *sdkBinding) ValidateCapabilityCandidate(ctx context.Context, request modulecapability.ValidationRequest) (modulecapability.ValidationResult, error) {
+	return binding.capabilities.ValidateCapabilityCandidate(ctx, request)
+}
 func (binding *sdkBinding) Authentication() identitysdk.Authentication {
 	return sdkAuthentication{binding}
 }

@@ -56,6 +56,8 @@ type Core struct {
 	ProviderConfiguration *authapplication.AuthProviderApplicationService
 	ProviderFlows         *authapplication.AuthProviderFlowApplicationService
 	EffectiveAccess       *identityapplication.IdentityEffectiveAccessApplicationService
+	IdentityActions       *identityapplication.IdentityActionRegistry
+	PermissionCatalog     *identityapplication.IdentityPermissionCatalogApplicationService
 	Binding               identitysdk.Binding
 }
 
@@ -110,6 +112,14 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 	identityApp := identityapplication.NewIdentityApplicationService(identityStore, permissions)
 	identityApp.ReplaceRoleDefinitions(manifest.Roles)
 	identityApp.ReplaceAuthorizationCatalogs(manifest.PermissionSets, manifest.PermissionSetGroups, manifest.Guardrails)
+	identityActions, err := identityapplication.NewStandaloneIdentityAuthorizationSliceRegistry()
+	if err != nil {
+		return fail(fmt.Errorf("assemble Identity authorization Action registry: %w", err))
+	}
+	permissionCatalog, err := identityapplication.NewIdentityPermissionCatalogApplicationService(identityStore, identityActions, workspaceID)
+	if err != nil {
+		return fail(fmt.Errorf("assemble Identity permission catalog: %w", err))
+	}
 
 	auditBinding, err := auditmoduleimpl.NewFactory(auditmoduleimpl.Options{}).OpenModule(ctx,
 		auditsdk.ApplicationRef{InstallationID: defaultString(manifest.TemplateID, "domainry-identity")}, identityauditmodule.NewHost(store))
@@ -208,7 +218,7 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 		AuditBinding: auditBinding, AuditStore: auditStore, AuthStore: authStore, Identity: identityApp, Audit: auditApp, Auth: authApp,
 		MetadataRuntime: metadataRuntime, Metadata: metadataApp, MetadataSchema: metadataSchemaApp,
 		ProviderConfiguration: providerConfiguration, ProviderFlows: providerFlows,
-		EffectiveAccess: effectiveAccess, Binding: binding,
+		EffectiveAccess: effectiveAccess, IdentityActions: identityActions, PermissionCatalog: permissionCatalog, Binding: binding,
 	}, nil
 }
 

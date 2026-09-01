@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
+	ormdialect "github.com/domainry/domainry-orm/dialect"
 )
 
 // SQLDatabase is the transaction/connection-neutral DDL surface used by the
@@ -22,6 +23,7 @@ type SQLDatabase interface {
 // Store is the schema migration persistence contract.
 type Store interface {
 	SchemaDB() SQLDatabase
+	SchemaRenderer() ormdialect.Renderer
 	DatabaseSchema() string
 	Identifier(string) string
 	TableIdentifier(string) string

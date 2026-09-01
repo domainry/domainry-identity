@@ -10,6 +10,10 @@ type datasetSpec struct {
 
 var portableDatasetSpecs = []datasetSpec{
 	{
+		name: "permissions", table: "_identity_permissions", workspace: "workspace_id", orderBy: []string{"permission_key", "id"},
+		columns: []string{"id", "workspace_id", "permission_key", "resource_key", "action_key", "label", "description", "category", "source_kind", "source_owner", "definition_status", "enabled", "definition_hash", "source_snapshot_hash", "created_at", "updated_at"},
+	},
+	{
 		name: "_identity_authorization_catalog_revisions", table: "_identity_authorization_catalog_revisions", workspace: "workspace_id", orderBy: []string{"application_key", "revision", "id"},
 		columns: []string{"id", "workspace_id", "application_key", "catalog_json", "revision", "sha256", "published_at", "created_at"},
 	},

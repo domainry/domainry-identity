@@ -69,6 +69,10 @@ func NewWithStore(ctx context.Context, cfg config.Config, store *database.Identi
 	if err != nil {
 		return nil, err
 	}
+	if _, err := core.PermissionCatalog.ReconcileOwner(ctx, identityapplication.IdentityBuiltinAuthorizationOwner); err != nil {
+		_ = core.CloseContext(context.Background())
+		return nil, fmt.Errorf("reconcile standalone Identity permissions: %w", err)
+	}
 	server, err := newHTTPServer(ctx, cfg, core)
 	if err != nil {
 		_ = core.CloseContext(context.Background())
@@ -146,6 +150,7 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 		}
 		return result
 	})
+	rolePermissionPublication := identityapplication.NewIdentityRolePermissionPublicationService(core.Identity, governance, core.PermissionCatalog, core.Metadata)
 	accessReviews := identityapplication.NewIdentityAccessReviewApplicationService(identityapplication.IdentityAccessReviewDependencies{
 		Identity: core.Identity,
 		Audit: func(ctx context.Context, event, recordID string, principal identitymodel.Principal, metadata map[string]any) {
@@ -160,6 +165,7 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 		WriteServiceError: httpSupport.writeServiceError, DecodeJSON: httpSupport.decodeJSON,
 		SecurityAudit: func(*http.Request, string, string, map[string]any) {}, SecurityPrincipal: func(*http.Request, identitymodel.Principal, string, string, map[string]any) {},
 		Authoring: identityauthoring.NewService(identitypersistence.NewIdentityAuthoringRepository(core.IdentityStore), nil, nil),
+		Actions:   core.IdentityActions, PermissionCatalog: core.PermissionCatalog, RolePermissions: rolePermissionPublication,
 	})
 	identityRoutes := &recordingRouteRegistrar{mux: mux}
 	identityHandler.RegisterRoutes(identityRoutes)
@@ -188,6 +194,9 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 		DecodeJSON: httpSupport.decodeJSON, WriteJSON: httpSupport.writeJSON, WriteError: httpSupport.writeError,
 		WriteServiceError: httpSupport.writeServiceError,
 	}, applicationCredentials)
+	if err := remotesdkhttp.RegisterCapabilityRoutes(mux, core.Binding, applicationCredentials); err != nil {
+		return nil, fmt.Errorf("register Identity capability routes: %w", err)
+	}
 	browserCatalog := identitysdk.AuthorizationCatalog{
 		ContractVersion: identitysdk.CatalogVersionV1,
 		Application:     identitysdk.ApplicationRef{WorkspaceID: identitysdk.WorkspaceID(cfg.IdentityWorkspaceID), ApplicationKey: identitysdk.ApplicationKey(cfg.IdentityBrowserApplicationKey), RedirectURLs: append([]string(nil), cfg.IdentityBrowserReturnURLs...)},

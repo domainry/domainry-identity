@@ -626,5 +626,8 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			return fmt.Errorf("create %s: %w", index.name, err)
 		}
 	}
+	if err := ensureIdentityPermissionsSchema(ctx, s); err != nil {
+		return err
+	}
 	return nil
 }

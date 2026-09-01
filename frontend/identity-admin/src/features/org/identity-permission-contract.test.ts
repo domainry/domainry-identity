@@ -10,18 +10,21 @@ function source(name: string) {
 }
 
 describe('identity permission authoring surfaces', () => {
-  it('builds the role permission matrix from the Runtime catalog and publishes through a reviewed system draft', () => {
+  it('builds the role permission view from DB-backed definitions and publishes a normal RoleSchema version', () => {
     const roles = source('roles.tsx')
     expect(roles).toContain('permissionsApi.catalog')
-    expect(roles).toContain('buildRoleAuthorizationChangePlan')
-    expect(roles).toContain('systemChangePlansApi.save')
-    expect(roles).toContain('systemChangePlansApi.review')
-    expect(roles).toContain('systemChangePlansApi.approve')
-    expect(roles).toContain('systemChangePlansApi.publish')
-    expect(roles).not.toContain('identityPoliciesApi.saveRolePermissions')
+    expect(roles).toContain('identityPoliciesApi.saveRolePermissions')
+    expect(roles).toContain('rolePermissionsQuery.data.schemaHash')
+    expect(roles).not.toContain('buildRoleAuthorizationChangePlan')
+    expect(roles).not.toContain('systemChangePlansApi')
     expect(roles).toContain('permissionCatalogQuery.data')
+    expect(roles).toContain('buildPermissionCapabilityView')
+    expect(roles).toContain('binding.method')
+    expect(roles).toContain('binding.route')
+    expect(roles).toContain('operation.permissionKeys')
     expect(roles).not.toContain('PERM_MODULES')
     expect(roles).not.toContain('PERM_ACTIONS')
+    expect(roles).not.toContain('businessActionPermissionRows')
   })
 
   it('loads and saves explicit role-menu assignments through Runtime', () => {
@@ -50,18 +53,20 @@ describe('identity permission authoring surfaces', () => {
     expect(fields).not.toContain('identityPoliciesApi.saveFieldPermissions')
   })
 
-  it('shares one revision-checked role Change Plan across permission, scope, and field pages', () => {
+  it('keeps functional-permission publication independent from the host change-plan client', () => {
     const rolePolicy = source('roles.tsx')
     const scopes = source('data-scopes.tsx')
     const fields = source('field-permissions.tsx')
-    for (const surface of [rolePolicy, scopes, fields]) {
+    expect(rolePolicy).toContain('identityPoliciesApi.saveRolePermissions')
+    expect(rolePolicy).not.toContain('roleAuthorizationPlanID')
+    expect(rolePolicy).not.toContain('existingDraft:')
+    for (const surface of [scopes, fields]) {
       expect(surface).toContain('roleAuthorizationPlanID')
       expect(surface).toContain('existingDraft:')
       expect(surface).toContain('systemChangePlansApi.review')
       expect(surface).toContain('systemChangePlansApi.approve')
       expect(surface).toContain('systemChangePlansApi.publish')
     }
-    expect(rolePolicy).not.toContain('-permissions-${revision}')
     expect(scopes).not.toContain('role-data-scopes-')
     expect(fields).not.toContain('-fields-${')
   })

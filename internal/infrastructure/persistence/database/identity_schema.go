@@ -24,18 +24,19 @@ const (
 	IdentitySchemaVersionBaseline           = "001_identity_service_baseline"
 	IdentitySchemaVersionPortability        = "002_identity_portability_cutover"
 	IdentitySchemaVersionProviderCredential = "004_workspace_provider_credential_identity"
-	CurrentIdentitySchemaVersion            = "005_data_exchange_and_authoring_cleanup"
+	IdentitySchemaVersionDataExchange       = "005_data_exchange_and_authoring_cleanup"
+	CurrentIdentitySchemaVersion            = "006_identity_authorization_permissions"
 )
 
 const (
 	managedIdentityDatabaseTable           = "_identity_managed_database"
 	managedIdentityDatabaseContractVersion = "domainry-managed-identity-database-v1"
 	identitySchemaMigrationKind            = "identity_schema"
-	identitySchemaMigrationName            = "data_exchange_and_authoring_cleanup"
+	identitySchemaMigrationName            = "identity_authorization_permissions"
 )
 
 func SupportedIdentitySchemaVersions() []string {
-	return []string{IdentitySchemaVersionBaseline, IdentitySchemaVersionPortability, IdentitySchemaVersionProviderCredential, CurrentIdentitySchemaVersion}
+	return []string{IdentitySchemaVersionBaseline, IdentitySchemaVersionPortability, IdentitySchemaVersionProviderCredential, IdentitySchemaVersionDataExchange, CurrentIdentitySchemaVersion}
 }
 
 func (s *IdentityStore) EnsureSchema(ctx context.Context) error {
@@ -322,7 +323,7 @@ func (s *IdentityStore) SchemaTableExists(ctx context.Context, table string) (bo
 }
 
 func currentIdentitySchemaChecksum() string {
-	sum := sha256.Sum256([]byte(CurrentIdentitySchemaVersion + ":metadata,identity,audit,authentication,authorization_catalog,workspace_provider_credential_identity,data_exchange_and_authoring_cleanup,workspace_write_fences,managed_identity_database"))
+	sum := sha256.Sum256([]byte(CurrentIdentitySchemaVersion + ":metadata,identity,audit,authentication,authorization_catalog,identity_permissions,workspace_provider_credential_identity,data_exchange_and_authoring_cleanup,workspace_write_fences,managed_identity_database"))
 	return hex.EncodeToString(sum[:])
 }
 

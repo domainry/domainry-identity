@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import type { ColumnDef } from '@tanstack/react-table'
-import { FileText, Folder, Plus, Search, Send, ShieldCheck, Upload } from 'lucide-react'
+import { FileText, Folder, Plus, Search, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import { z } from 'zod'
 import {
@@ -52,19 +52,13 @@ import { PageShell } from '@/components/page-shell'
 import { StatusBadge } from '@/components/status-badge'
 import { TableColumnHeader } from '@domainry/ui/components/kibo-ui/table'
 import { cn } from '@/lib/utils'
-import { useI18n, type MessageKey } from '@/lib/i18n'
+import { useI18n } from '@/lib/i18n'
 import { displayText } from '@/data/text'
 import { useCreateRole, useRolePage } from '@/data/hooks'
 import { identityPoliciesApi, menusApi, objectsApi, permissionsApi, type RoleCreateInput } from '@/data/api'
 import type { Role } from '@/data/types'
 import { runtimeApiError } from '@/lib/runtime-api'
 import { runtimeErrorConstraintMessage } from '@/lib/runtime-error-details'
-import {
-  buildRoleAuthorizationChangePlan,
-  roleAuthorizationPlanID,
-  systemChangePlansApi,
-  type RuntimeChangePlanDraft,
-} from '@/data/action-definition-api'
 import { roleFormControl } from './identity-form-error'
 import {
   buildRoleMenuTree,
@@ -77,6 +71,7 @@ import { DataScopesPage } from './data-scopes'
 import { FieldPermissionsPage } from './field-permissions'
 import { EffectiveAccessWorkspace } from './effective-access-workspace'
 import { RoleGovernanceDetail } from './role-governance-detail'
+import { buildPermissionCapabilityView } from './permission-capability-view'
 
 interface RoleMenuRowProps {
   node: RoleMenuTreeNode
@@ -194,28 +189,9 @@ function RolePolicyWorkspace() {
   )
   const rolePermissionsQuery = useQuery({
     queryKey: ['runtime', 'identity', 'role-permissions', selected?.id],
-    queryFn: () => identityPoliciesApi.rolePermissions(selected!.id),
+    queryFn: () => identityPoliciesApi.rolePermissionConfiguration(selected!.id),
     enabled: Boolean(selected?.id),
   })
-  const systemSnapshotQuery = useQuery({ queryKey: ['runtime', 'system-snapshot'], queryFn: systemChangePlansApi.snapshot })
-  const referenceGraphQuery = useQuery({ queryKey: ['runtime', 'reference-graph'], queryFn: systemChangePlansApi.graph })
-  const rolePlanID = useMemo(() => {
-    return roleAuthorizationPlanID(systemSnapshotQuery.data?.snapshot_hash ?? '')
-  }, [systemSnapshotQuery.data?.snapshot_hash])
-  const roleDraftQuery = useQuery({
-    queryKey: ['runtime', 'change-plan', rolePlanID],
-    queryFn: async (): Promise<RuntimeChangePlanDraft | null> => {
-      try {
-        return await systemChangePlansApi.get(rolePlanID)
-      } catch (error) {
-        if (runtimeApiError(error)?.status === 404) return null
-        throw error
-      }
-    },
-    enabled: Boolean(rolePlanID),
-    retry: false,
-  })
-  const roleDraft = roleDraftQuery.data
   const menusQuery = useQuery({ queryKey: ['runtime', 'identity', 'menus'], queryFn: menusApi.list })
   const roleMenusQuery = useQuery({
     queryKey: ['runtime', 'identity', 'role-menus', selected?.id],
@@ -224,54 +200,23 @@ function RolePolicyWorkspace() {
   })
   const savePermissions = useMutation({
     mutationFn: async () => {
-      if (!selected || !systemSnapshotQuery.data || !referenceGraphQuery.data || !rolePlanID) throw new Error('system-draft-not-ready')
+      if (!selected) throw new Error('role-not-ready')
       if (!permissionChangeReason.trim()) throw new Error('reason-required')
-      const plan = buildRoleAuthorizationChangePlan({
-        snapshot: systemSnapshotQuery.data,
-        graph: referenceGraphQuery.data,
-        roleKey: selected.code,
-        roleName: displayText(t, selected.name),
-        permissionKeys: draftPermissionKeys,
-        reason: permissionChangeReason.trim(),
-        planID: rolePlanID,
-        existingDraft: roleDraft,
-      })
-      const validation = await systemChangePlansApi.validate(plan)
-      const blockingIssues = validation.issues.filter((issue) => issue.code !== 'backend.change_plan.review_required')
-      if (blockingIssues.length || (validation.valid && !validation.apply_allowed)) throw new Error('plan-invalid')
-      return systemChangePlansApi.save(plan, roleDraft?.revision ?? 0)
+      if (!rolePermissionsQuery.data?.schemaHash) throw new Error('role-permission-revision-not-ready')
+      return identityPoliciesApi.saveRolePermissions(selected.id, draftPermissionKeys, permissionChangeReason.trim(), rolePermissionsQuery.data.schemaHash)
     },
-    onSuccess: async (saved) => {
-      queryClient.setQueryData(['runtime', 'change-plan', rolePlanID], saved)
+    onSuccess: async (configuration) => {
+      setDraftPermissionKeys(configuration.permissionKeys)
       setPermsDirty(false)
-      toast.success(t('roles.systemDraft.toast.saved'))
-    },
-    onError: (error) => toast.error(error instanceof Error && error.message === 'reason-required' ? t('roles.systemDraft.reasonRequired') : t('roles.systemDraft.toast.failed')),
-  })
-  const reviewRoleDraft = useMutation({
-    mutationFn: () => systemChangePlansApi.review(roleDraft!),
-    onSuccess: ({ draft }) => { queryClient.setQueryData(['runtime', 'change-plan', rolePlanID], draft); toast.success(t('roles.systemDraft.toast.reviewed')) },
-    onError: () => toast.error(t('roles.systemDraft.toast.failed')),
-  })
-  const approveRoleDraft = useMutation({
-    mutationFn: () => systemChangePlansApi.approve(roleDraft!),
-    onSuccess: ({ draft }) => { queryClient.setQueryData(['runtime', 'change-plan', rolePlanID], draft); toast.success(t('roles.systemDraft.toast.approved')) },
-    onError: () => toast.error(t('roles.systemDraft.toast.failed')),
-  })
-  const publishRoleDraft = useMutation({
-    mutationFn: () => systemChangePlansApi.publish(roleDraft!),
-    onSuccess: async () => {
       setPermissionChangeReason('')
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['runtime', 'identity', 'role-permissions', selected?.id] }),
         queryClient.invalidateQueries({ queryKey: ['runtime', 'identity', 'roles'] }),
         queryClient.invalidateQueries({ queryKey: ['runtime', 'permissions', 'effective'] }),
-        queryClient.invalidateQueries({ queryKey: ['runtime', 'system-snapshot'] }),
-        queryClient.invalidateQueries({ queryKey: ['runtime', 'reference-graph'] }),
       ])
-      toast.success(t('roles.systemDraft.toast.published'))
+      toast.success(t('roles.permissionPublication.toast.published'))
     },
-    onError: () => toast.error(t('roles.systemDraft.toast.failed')),
+    onError: (error) => toast.error(error instanceof Error && error.message === 'reason-required' ? t('roles.permissionPublication.reasonRequired') : t('roles.permissionPublication.toast.failed')),
   })
   const saveMenus = useMutation({
     mutationFn: () => identityPoliciesApi.saveRoleMenus(selected!.id, draftMenuIDs),
@@ -286,22 +231,15 @@ function RolePolicyWorkspace() {
     },
     onError: () => toast.error(t('roles.menus.toast.failed')),
   })
-  const businessActionPermissionRows = useMemo(() => (permissionCatalogQuery.data ?? []).flatMap((point) =>
-    (point.action_usages ?? []).map((usage) => ({ permissionKey: point.key, usage }))), [permissionCatalogQuery.data])
-  const objectPermissionPoints = useMemo(() => (permissionCatalogQuery.data ?? []).filter((point) => point.source_type !== 'business_action'), [permissionCatalogQuery.data])
+  const permissionCapabilities = useMemo(() => buildPermissionCapabilityView(permissionCatalogQuery.data ?? []), [permissionCatalogQuery.data])
+  const permissionOperations = useMemo(() => permissionCapabilities.flatMap((capability) => capability.operations), [permissionCapabilities])
   const createPermissionOptions = useMemo(() => {
     const query = createPermissionSearch.trim().toLowerCase()
-    return (permissionCatalogQuery.data ?? [])
-      .filter((point) => !query || `${point.key} ${point.label} ${point.description}`.toLowerCase().includes(query))
+    return permissionOperations
+      .filter((operation) => !query || `${operation.capabilityLabel} ${operation.operationLabel} ${operation.permissionKeys.join(' ')} ${operation.bindings.map((binding) => `${binding.method} ${binding.route}`).join(' ')}`.toLowerCase().includes(query))
       .slice(0, 100)
-  }, [createPermissionSearch, permissionCatalogQuery.data])
+  }, [createPermissionSearch, permissionOperations])
   const createDataObjects = useMemo(() => schemaQuery.data?.objects ?? [], [schemaQuery.data?.objects])
-  const permissionResources = useMemo(() => {
-    const resources = new Map<string, string>()
-    for (const point of objectPermissionPoints) resources.set(point.resource, point.resource_label || point.resource)
-    return [...resources].map(([key, label]) => ({ key, label })).sort((left, right) => left.label.localeCompare(right.label))
-  }, [objectPermissionPoints])
-  const permissionActions = useMemo(() => [...new Set(objectPermissionPoints.map((point) => point.action))].sort(), [objectPermissionPoints])
   const menuTree = useMemo(() => buildRoleMenuTree(menusQuery.data ?? []), [menusQuery.data])
   const filteredMenuTree = useMemo(
     () => filterRoleMenuTree(menuTree, menuSearch, (node) => displayText(t, node.name)),
@@ -315,19 +253,9 @@ function RolePolicyWorkspace() {
     setMenuSearch('')
   }, [selected?.id])
   useEffect(() => {
-    if (!roleDraft) return
-    const roleItem = roleDraft.payload.items.find((item) => item.resource_type === 'role' && item.resource_key === selected?.code)
-    const after = roleItem?.after as { permissions?: string[] } | undefined
-    if (after?.permissions) setDraftPermissionKeys([...after.permissions].sort())
-    else if (rolePermissionsQuery.data) setDraftPermissionKeys([...rolePermissionsQuery.data].sort())
-    setPermissionChangeReason(roleDraft.payload.business_reason)
-    setPermsDirty(false)
-  }, [roleDraft, rolePermissionsQuery.data, selected?.code])
-  useEffect(() => {
-    const selectedInDraft = roleDraft?.payload.items.some((item) => item.resource_type === 'role' && item.resource_key === selected?.code)
-    if (selectedInDraft || permsDirty || !rolePermissionsQuery.data) return
-    setDraftPermissionKeys(rolePermissionsQuery.data)
-  }, [permsDirty, roleDraft, rolePermissionsQuery.data, selected?.code])
+    if (permsDirty || !rolePermissionsQuery.data) return
+    setDraftPermissionKeys(rolePermissionsQuery.data.permissionKeys)
+  }, [permsDirty, rolePermissionsQuery.data, selected?.code])
   useEffect(() => {
     if (menusDirty || !roleMenusQuery.data) return
     setDraftMenuIDs(roleMenusQuery.data)
@@ -347,55 +275,17 @@ function RolePolicyWorkspace() {
     { accessorKey: 'status', header: ({ column }) => <TableColumnHeader column={column} title={t('common.status')} />, cell: ({ row }) => <StatusBadge value={row.original.status}>{row.original.status === 'active' ? t('common.enabled') : t('common.disabled')}</StatusBadge> },
   ], [menusDirty, permsDirty, selected?.id, t])
 
-  function permissionPoints(resource: string, action: string) {
-    return objectPermissionPoints.filter((point) => point.resource === resource && point.action === action)
-  }
-
-  function togglePermission(resource: string, action: string) {
-    if (!selected) return
-    if (selected.builtIn) {
-      toast.info(t('roles.toast.builtInLocked'))
-      return
-    }
-    const points = permissionPoints(resource, action)
-    const next = new Set(draftPermissionKeys)
-    const checked = points.length > 0 && points.every((point) => next.has(point.key))
-    for (const point of points) checked ? next.delete(point.key) : next.add(point.key)
-    setDraftPermissionKeys([...next].sort())
-    setPermsDirty(true)
-  }
-
-  function setResource(resource: string, checked: boolean) {
-    const keys = objectPermissionPoints.filter((point) => point.resource === resource).map((point) => point.key)
-    const next = new Set(draftPermissionKeys)
-    for (const key of keys) checked ? next.add(key) : next.delete(key)
-    setDraftPermissionKeys([...next].sort())
-    setPermsDirty(true)
-  }
-
-  function setAction(action: string, checked: boolean) {
-    const keys = objectPermissionPoints.filter((point) => point.action === action).map((point) => point.key)
-    const next = new Set(draftPermissionKeys)
-    for (const key of keys) checked ? next.add(key) : next.delete(key)
-    setDraftPermissionKeys([...next].sort())
-    setPermsDirty(true)
-  }
-
-  function togglePermissionKey(permissionKey: string) {
+  function togglePermissionKeys(permissionKeys: string[]) {
     if (!selected) return
     if (selected.builtIn) {
       toast.info(t('roles.toast.builtInLocked'))
       return
     }
     const next = new Set(draftPermissionKeys)
-    next.has(permissionKey) ? next.delete(permissionKey) : next.add(permissionKey)
+    const checked = permissionKeys.length > 0 && permissionKeys.every((key) => next.has(key))
+    for (const key of permissionKeys) checked ? next.delete(key) : next.add(key)
     setDraftPermissionKeys([...next].sort())
     setPermsDirty(true)
-  }
-
-  function actionLabel(action: string) {
-    const aliases: Record<string, MessageKey> = { read: 'roles.perm.view', view: 'roles.perm.view', create: 'roles.perm.create', update: 'roles.perm.edit', edit: 'roles.perm.edit', delete: 'roles.perm.delete', export: 'roles.perm.export' }
-    return aliases[action] ? t(aliases[action]) : action
   }
 
   function requestRoleSelection(roleID: string) {
@@ -483,8 +373,7 @@ function RolePolicyWorkspace() {
     return <PageShell title={t('roles.title')} description={t('roles.desc')}><p role='alert' className='text-sm text-destructive'>{t('dataTable.errorDescription')}</p></PageShell>
   }
 
-  const rolePolicyLocked = Boolean(roleDraft && roleDraft.status !== 'draft')
-  const roleDraftBusy = savePermissions.isPending || reviewRoleDraft.isPending || approveRoleDraft.isPending || publishRoleDraft.isPending
+  const rolePublicationBusy = savePermissions.isPending
 
   return (
     <PageShell
@@ -522,10 +411,7 @@ function RolePolicyWorkspace() {
                 </CardDescription>
               </div>
               {activePolicyTab === 'permissions' ? <div className='flex flex-wrap gap-2'>
-                {(!roleDraft || roleDraft.status === 'draft') ? <Button size='sm' disabled={selected.builtIn || !permsDirty || roleDraftBusy || !permissionChangeReason.trim()} onClick={() => savePermissions.mutate()}>{t('roles.systemDraft.save')}</Button> : null}
-                {roleDraft?.status === 'draft' ? <Button size='sm' disabled={roleDraftBusy} onClick={() => reviewRoleDraft.mutate()}><Send data-icon='inline-start' />{t('roles.systemDraft.review')}</Button> : null}
-                {roleDraft?.status === 'in_review' ? <Button size='sm' disabled={roleDraftBusy} onClick={() => approveRoleDraft.mutate()}><ShieldCheck data-icon='inline-start' />{t('roles.systemDraft.approve')}</Button> : null}
-                {roleDraft?.status === 'approved' ? <Button size='sm' disabled={roleDraftBusy} onClick={() => publishRoleDraft.mutate()}><Upload data-icon='inline-start' />{t('roles.systemDraft.publish')}</Button> : null}
+                <Button size='sm' disabled={selected.builtIn || !permsDirty || rolePublicationBusy || !permissionChangeReason.trim()} onClick={() => savePermissions.mutate()}>{t('roles.permissionPublication.publish')}</Button>
               </div> : activePolicyTab === 'menus' ? <Button size='sm' disabled={selected.builtIn || !menusDirty || saveMenus.isPending} onClick={() => saveMenus.mutate()}>{menusDirty ? t('roles.menus.saveDirty') : t('roles.menus.save')}</Button> : null}
             </div>
           </CardHeader>
@@ -544,101 +430,48 @@ function RolePolicyWorkspace() {
                 <div className='mb-4 space-y-2 rounded-md border bg-muted/20 p-3'>
                   <div className='flex flex-wrap items-center justify-between gap-2'>
                     <div>
-                      <p className='text-sm font-medium'>{t('roles.systemDraft.title')}</p>
-                      <p className='text-xs text-muted-foreground'>{t('roles.systemDraft.description')}</p>
+                      <p className='text-sm font-medium'>{t('roles.permissionPublication.title')}</p>
+                      <p className='text-xs text-muted-foreground'>{t('roles.permissionPublication.description')}</p>
                     </div>
-                    {roleDraft ? <Badge variant='outline'>{t('roles.systemDraft.status', { status: roleDraft.status, revision: roleDraft.revision })}</Badge> : null}
                   </div>
-                  <Textarea aria-label={t('roles.systemDraft.reason')} value={permissionChangeReason} onChange={(event) => setPermissionChangeReason(event.target.value)} placeholder={t('roles.systemDraft.reasonPlaceholder')} disabled={rolePolicyLocked} rows={2} />
-                  {roleDraft ? <code className='block break-all text-xs text-muted-foreground'>{roleDraft.plan_id}</code> : null}
+                  <Textarea aria-label={t('roles.permissionPublication.reason')} value={permissionChangeReason} onChange={(event) => setPermissionChangeReason(event.target.value)} placeholder={t('roles.permissionPublication.reasonPlaceholder')} rows={2} />
                 </div>
-                <p className='mb-3 text-xs font-medium tracking-wide text-muted-foreground uppercase'>
-                  {t('roles.matrix.title')}
-                </p>
-                <div className='max-w-full overflow-x-auto rounded-md border overscroll-x-contain'>
-              <table className='min-w-[620px] w-full text-sm'>
-                <thead>
-                  <tr className='border-b'>
-                    <th className='sticky left-0 z-20 bg-background py-2 pr-4 text-left font-medium text-muted-foreground'>
-                      {t('roles.matrix.module')}
-                    </th>
-                    {permissionActions.map((action) => (
-                      <th key={action} className='px-3 py-2 text-center font-medium text-muted-foreground'>
-                        <button className='rounded px-1 py-0.5 hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50' disabled={selected.builtIn || rolePolicyLocked} onClick={() => { const points = objectPermissionPoints.filter((point) => point.action === action); const all = points.length > 0 && points.every((point) => draftPermissionKeys.includes(point.key)); setAction(action, !all) }}>{actionLabel(action)}</button>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {permissionResources.map((resource) => (
-                    <tr key={resource.key} className='group border-b last:border-0 hover:bg-muted/40'>
-                      <td className='sticky left-0 z-10 bg-background py-2.5 pr-4 font-medium group-hover:bg-muted'>
-                        <button className='rounded px-1 py-0.5 text-left hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50' disabled={selected.builtIn || rolePolicyLocked} onClick={() => { const points = objectPermissionPoints.filter((point) => point.resource === resource.key); const all = points.length > 0 && points.every((point) => draftPermissionKeys.includes(point.key)); setResource(resource.key, !all) }}>{resource.label}</button>
-                      </td>
-                      {permissionActions.map((action) => {
-                        const points = permissionPoints(resource.key, action)
-                        return <td key={action} className='px-3 py-2.5 text-center'>
-                          {points.length > 0 ? <Checkbox
-                            aria-label={`${resource.label} - ${actionLabel(action)}`}
-                            checked={points.every((point) => draftPermissionKeys.includes(point.key))}
-                            disabled={selected.builtIn || rolePermissionsQuery.isPending || rolePolicyLocked}
-                            onCheckedChange={() => togglePermission(resource.key, action)}
-                          /> : <span className='text-muted-foreground'>—</span>}
-                        </td>
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                <div className='mb-3'>
+                  <p className='text-xs font-medium tracking-wide text-muted-foreground uppercase'>{t('roles.capabilities.title')}</p>
+                  <p className='mt-1 text-xs text-muted-foreground'>{t('roles.capabilities.description')}</p>
                 </div>
-                <div className='mt-6'>
-                  <div className='mb-3'>
-                    <p className='text-xs font-medium tracking-wide text-muted-foreground uppercase'>{t('roles.businessActions.title')}</p>
-                    <p className='mt-1 text-xs text-muted-foreground'>{t('roles.businessActions.description')}</p>
-                  </div>
-                  <div className='max-w-full overflow-x-auto rounded-md border'>
-                    <table className='min-w-[760px] w-full text-sm'>
-                      <thead>
-                        <tr className='border-b bg-muted/30'>
-                          <th className='px-3 py-2 text-left font-medium'>{t('roles.businessActions.action')}</th>
-                          <th className='px-3 py-2 text-left font-medium'>{t('roles.businessActions.object')}</th>
-                          <th className='px-3 py-2 text-left font-medium'>{t('roles.businessActions.strategy')}</th>
-                          <th className='px-3 py-2 text-left font-medium'>{t('roles.businessActions.governance')}</th>
-                          <th className='px-3 py-2 text-center font-medium'>{t('roles.businessActions.granted')}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {businessActionPermissionRows.map(({ permissionKey, usage }) => (
-                          <tr key={`${permissionKey}:${usage.action_key}`} className='border-b last:border-0'>
-                            <td className='px-3 py-3'>
-                              <div className='font-medium'>{usage.action_label || usage.action_key}</div>
-                              <code className='text-xs text-muted-foreground'>{usage.action_key}</code>
-                            </td>
-                            <td className='px-3 py-3'>{usage.object_key}</td>
-                            <td className='px-3 py-3'>
-                              <Badge variant='outline'>{usage.authorization_strategy === 'inherit_object_permission' ? t('roles.businessActions.inherited') : t('roles.businessActions.dedicated')}</Badge>
-                            </td>
-                            <td className='px-3 py-3'>
-                              <div className='flex flex-wrap gap-1'>
-                                <Badge variant={usage.risk_level === 'critical' || usage.risk_level === 'high' ? 'destructive' : 'secondary'}>{usage.risk_level}</Badge>
-                                {usage.approval_required ? <Badge variant='outline'>{t('roles.businessActions.approval')}</Badge> : null}
-                                {usage.assurance_required.map((method) => <Badge key={method} variant='outline'>{method}</Badge>)}
+                <div className='space-y-4'>
+                  {permissionCapabilities.map((capability) => (
+                    <section key={capability.key} className='overflow-hidden rounded-md border'>
+                      <div className='border-b bg-muted/30 px-4 py-3'>
+                        <p className='font-medium'>{capability.label}</p>
+                      </div>
+                      <div className='divide-y'>
+                        {capability.operations.map((operation) => {
+                          const checked = operation.permissionKeys.every((key) => draftPermissionKeys.includes(key))
+                          const selectable = operation.active && operation.enabled
+                          return <div key={operation.key} className='grid gap-3 p-4 md:grid-cols-[minmax(120px,0.35fr)_minmax(0,1fr)_auto]'>
+                            <div>
+                              <p className='text-sm font-medium'>{operation.operationLabel}</p>
+                              <div className='mt-1 flex flex-wrap gap-1'>
+                                <Badge variant={operation.active ? 'secondary' : 'outline'}>{operation.active ? t('roles.capabilities.active') : t('roles.capabilities.retired')}</Badge>
+                                {!operation.enabled ? <Badge variant='destructive'>{t('roles.capabilities.disabled')}</Badge> : null}
                               </div>
-                            </td>
-                            <td className='px-3 py-3 text-center'>
-                              <Checkbox
-                                aria-label={`${usage.action_label || usage.action_key} - ${t('roles.businessActions.granted')}`}
-                                checked={draftPermissionKeys.includes(permissionKey)}
-                                disabled={selected.builtIn || rolePermissionsQuery.isPending || rolePolicyLocked}
-                                onCheckedChange={() => togglePermissionKey(permissionKey)}
-                              />
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    {!businessActionPermissionRows.length ? <p className='p-6 text-center text-sm text-muted-foreground'>{t('roles.businessActions.empty')}</p> : null}
-                  </div>
+                            </div>
+                            <div className='space-y-2'>
+                              {operation.bindings.map((binding) => <div key={binding.actionKey} className='rounded border bg-background px-3 py-2'>
+                                <div className='flex flex-wrap items-center gap-2 text-sm'><Badge variant='outline'>{binding.method}</Badge><code className='break-all'>{binding.route || t('roles.capabilities.nonHttp')}</code></div>
+                                <div className='mt-1 text-xs text-muted-foreground'>{binding.actionLabel}{binding.pageRoute ? ` · ${binding.pageLabel || t('roles.capabilities.page')} ${binding.pageRoute}` : ''}</div>
+                              </div>)}
+                              <details className='text-xs text-muted-foreground'><summary className='cursor-pointer'>{t('roles.capabilities.technicalDetails')}</summary><div className='mt-1 flex flex-wrap gap-1'>{operation.permissionKeys.map((key) => <code key={key} className='rounded bg-muted px-1.5 py-0.5'>{key}</code>)}</div></details>
+                            </div>
+                            <Checkbox aria-label={`${capability.label} - ${operation.operationLabel}`} checked={checked} disabled={selected.builtIn || rolePermissionsQuery.isPending || !selectable} onCheckedChange={() => togglePermissionKeys(operation.permissionKeys)} />
+                          </div>
+                        })}
+                      </div>
+                    </section>
+                  ))}
+                  {!permissionCapabilities.length ? <p className='rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground'>{t('roles.capabilities.empty')}</p> : null}
                 </div>
                 {selected.builtIn ? (
                   <p className='mt-3 text-xs text-muted-foreground'>{t('roles.builtInHint')}</p>
@@ -702,12 +535,11 @@ function RolePolicyWorkspace() {
               <FieldLabel htmlFor='role-permission-search'>{t('roles.create.permissions')}</FieldLabel>
               <Input id='role-permission-search' value={createPermissionSearch} placeholder={t('roles.create.permissionsSearch')} onChange={(event) => setCreatePermissionSearch(event.target.value)} />
               <div className='max-h-48 space-y-1 overflow-y-auto rounded-md border p-2'>
-                {createPermissionOptions.map((point) => {
-                  const checked = createPermissionKeys.includes(point.key)
-                  return <label key={point.key} className='flex min-h-9 cursor-pointer items-center gap-2 rounded px-2 text-sm hover:bg-muted'>
-                    <Checkbox checked={checked} onCheckedChange={(next) => setCreatePermissionKeys((current) => next === true ? [...new Set([...current, point.key])].sort() : current.filter((key) => key !== point.key))} />
-                    <code className='text-xs'>{point.key}</code>
-                    <span className='min-w-0 truncate text-muted-foreground'>{point.label}</span>
+                {createPermissionOptions.map((operation) => {
+                  const checked = operation.permissionKeys.every((key) => createPermissionKeys.includes(key))
+                  return <label key={operation.key} className='flex min-h-12 cursor-pointer items-start gap-2 rounded px-2 py-2 text-sm hover:bg-muted'>
+                    <Checkbox className='mt-0.5' checked={checked} disabled={!operation.active || !operation.enabled} onCheckedChange={(next) => setCreatePermissionKeys((current) => { const values = new Set(current); for (const key of operation.permissionKeys) next === true ? values.add(key) : values.delete(key); return [...values].sort() })} />
+                    <span className='min-w-0'><span className='block font-medium'>{operation.capabilityLabel} · {operation.operationLabel}</span><span className='block truncate text-xs text-muted-foreground'>{operation.bindings.map((binding) => `${binding.method} ${binding.route}`).join(' · ')}</span></span>
                   </label>
                 })}
               </div>

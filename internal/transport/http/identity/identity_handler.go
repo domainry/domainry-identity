@@ -36,6 +36,9 @@ type IdentityHandler struct {
 	securityAudit     func(*http.Request, string, string, map[string]any)
 	securityPrincipal func(*http.Request, identitymodel.Principal, string, string, map[string]any)
 	authoring         *identityauthoring.Service
+	actions           *identityapplication.IdentityActionRegistry
+	permissionCatalog *identityapplication.IdentityPermissionCatalogApplicationService
+	rolePermissions   *identityapplication.IdentityRolePermissionPublicationService
 }
 
 type IdentityUserSecurity interface {
@@ -72,9 +75,16 @@ type IdentityDependencies struct {
 	SecurityAudit     func(*http.Request, string, string, map[string]any)
 	SecurityPrincipal func(*http.Request, identitymodel.Principal, string, string, map[string]any)
 	Authoring         *identityauthoring.Service
+	Actions           *identityapplication.IdentityActionRegistry
+	PermissionCatalog *identityapplication.IdentityPermissionCatalogApplicationService
+	RolePermissions   *identityapplication.IdentityRolePermissionPublicationService
 }
 
 func NewIdentityHandler(deps IdentityDependencies) *IdentityHandler {
+	actions := deps.Actions
+	if actions == nil {
+		actions, _ = identityapplication.NewStandaloneIdentityAuthorizationSliceRegistry()
+	}
 	return &IdentityHandler{
 		users: deps.Users, roles: deps.Roles, policies: deps.Policies, menus: deps.Menus,
 		authorization: deps.Authorization, effectiveAccess: deps.EffectiveAccess, accessReviews: deps.AccessReviews, governance: deps.Governance, profileBindings: deps.ProfileBindings, localization: deps.Localization,
@@ -82,6 +92,7 @@ func NewIdentityHandler(deps IdentityDependencies) *IdentityHandler {
 		writeJSON: deps.WriteJSON, writeError: deps.WriteError, writeServiceError: deps.WriteServiceError,
 		decodeJSON: deps.DecodeJSON, securityAudit: deps.SecurityAudit, securityPrincipal: deps.SecurityPrincipal,
 		authoring: deps.Authoring,
+		actions:   actions, permissionCatalog: deps.PermissionCatalog, rolePermissions: deps.RolePermissions,
 	}
 }
 
@@ -118,6 +129,38 @@ func (h *IdentityHandler) identityPermission(permission string, next http.Handle
 			h.securityAudit(r, "auth_api_denied", "Identity API permission denied", map[string]any{"path": r.URL.Path, "method": r.Method, "permission": permission})
 			h.writeError(w, r, http.StatusForbidden, "auth.permission_denied")
 			return
+		}
+		next(w, r)
+	}
+}
+
+func (h *IdentityHandler) registerIdentityAction(mux routeRegistrar, actionKey string, next http.HandlerFunc) {
+	action, ok := h.actions.Definition(actionKey)
+	if !ok {
+		panic("Identity route references unregistered action " + actionKey)
+	}
+	mux.HandleFunc(action.HTTP.Method+" "+action.HTTP.RouteTemplate, h.identityAction(action, next))
+}
+
+func (h *IdentityHandler) identityAction(action identitymodel.IdentityActionDefinition, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		principal := h.principal(r)
+		if action.AuthorizationStrategy != identitymodel.IdentityActionStaticAll {
+			h.securityAudit(r, "auth_api_denied", "Identity API action strategy unsupported", map[string]any{"action_key": action.Key, "path": r.URL.Path, "method": r.Method})
+			h.writeError(w, r, http.StatusForbidden, "auth.permission_denied")
+			return
+		}
+		for _, permission := range action.RequiredPermissions {
+			if h.permissionCatalog != nil && !h.permissionCatalog.PermissionIsExecutable(permission) {
+				h.securityAudit(r, "auth_api_denied", "Identity API action permission is not executable", map[string]any{"action_key": action.Key, "path": r.URL.Path, "method": r.Method, "permission": permission})
+				h.writeError(w, r, http.StatusForbidden, "auth.permission_denied")
+				return
+			}
+			if !principal.Known || !identitypolicy.IdentityRoleHasPermissionKey(principal.Role, permission) {
+				h.securityAudit(r, "auth_api_denied", "Identity API action permission denied", map[string]any{"action_key": action.Key, "path": r.URL.Path, "method": r.Method, "permission": permission})
+				h.writeError(w, r, http.StatusForbidden, "auth.permission_denied")
+				return
+			}
 		}
 		next(w, r)
 	}

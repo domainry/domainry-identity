@@ -380,9 +380,18 @@ export interface IdentityFieldPermission {
 
 export interface IdentityActionPermissionUsage {
   action_key: string
+  capability_key?: string
+  capability_label?: string
+  operation_key?: string
+  operation_label?: string
   object_key: string
   action_label: string
-  authorization_strategy: 'inherit_object_permission' | 'dedicated_permission'
+  authorization_strategy: 'inherit_object_permission' | 'dedicated_permission' | 'static_all'
+  http_method?: string
+  route_template?: string
+  display_route_template?: string
+  page_route?: string
+  page_label?: string
   risk_level: 'low' | 'medium' | 'high' | 'critical'
   approval_required: boolean
   assurance_required: string[]
@@ -407,6 +416,12 @@ export interface IdentityPermissionPoint {
   approval_required?: boolean
   assurance_required?: string[]
   lifecycle_status?: string
+  definition_status?: 'active' | 'retired'
+  enabled?: boolean
+  source_kind?: string
+  source_owner?: string
+  definition_hash?: string
+  source_snapshot_hash?: string
   action_usages?: IdentityActionPermissionUsage[]
 }
 

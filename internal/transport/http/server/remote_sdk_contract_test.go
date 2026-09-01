@@ -6,11 +6,15 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
+	"github.com/domainry/domainry-foundation/modulecapability"
+	capabilitycontracttest "github.com/domainry/domainry-foundation/modulecapability/contracttest"
 	identity "github.com/domainry/domainry-identity-sdk"
 	identitycontracttest "github.com/domainry/domainry-identity-sdk/contracttest"
 	identityremote "github.com/domainry/domainry-identity-sdk/remote"
+	identitycapability "github.com/domainry/domainry-identity/capability"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 	httpserver "github.com/domainry/domainry-identity/internal/transport/http/server"
 )
@@ -74,11 +78,20 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 	if wrongScopeResponse.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("directory endpoint accepted service credential for wrong application, status=%d", wrongScopeResponse.StatusCode)
 	}
+	sourceBinding, err := identitycapability.Open(identitycapability.Inputs{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceSummary, err := sourceBinding.CapabilitySummary(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	factory := identityremote.NewFactory(identityremote.Config{
 		Endpoint: testServer.URL, WorkspaceID: "workspace-primary", Issuer: issuer,
 		Audience: "orders-runtime", ServiceAccessToken: serviceCredential,
-		HTTPClient: testServer.Client(),
+		CapabilityContractSHA256: sourceSummary.Identity.ContractSHA256,
+		HTTPClient:               testServer.Client(),
 	})
 	binding, err := factory.Open(t.Context(), identity.ApplicationRef{})
 	if err != nil {
@@ -88,10 +101,32 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 	if binding.Descriptor().Mode != identity.DeploymentModeSaaS {
 		t.Fatalf("mode=%q", binding.Descriptor().Mode)
 	}
+	capabilitycontracttest.VerifyBinding(t, binding)
+	capabilitySummary, err := binding.CapabilitySummary(t.Context())
+	if err != nil || capabilitySummary.Identity.Key != "identity" || capabilitySummary.Identity.ContractSHA256 == "" {
+		t.Fatalf("capability summary=%+v err=%v", capabilitySummary, err)
+	}
+	validation, err := binding.ValidateCapabilityCandidate(t.Context(), modulecapability.ValidationRequest{
+		ContractVersion: modulecapability.ValidationContractVersion, ModuleKey: "identity", CategoryKey: "identity.roles",
+		ContractSHA256: capabilitySummary.Identity.ContractSHA256, Kind: "identity.role",
+		Candidate: modulecapability.AuthoringFragment{Collection: "roles", Key: "sales", Value: []byte(`{"key":"sales","permissions":[],"record_scope":"all_records","unknown":true}`)},
+	})
+	if err != nil || len(validation.Diagnostics) == 0 || validation.Diagnostics[0].Owner != "identity" {
+		t.Fatalf("capability validation=%+v err=%v", validation, err)
+	}
+	staleFactory := identityremote.NewFactory(identityremote.Config{
+		Endpoint: testServer.URL, WorkspaceID: "workspace-primary", Issuer: issuer,
+		Audience: "orders-runtime", ServiceAccessToken: serviceCredential,
+		CapabilityContractSHA256: strings.Repeat("0", 64), HTTPClient: testServer.Client(),
+	})
+	if _, err := staleFactory.Open(t.Context(), identity.ApplicationRef{}); err == nil {
+		t.Fatal("Identity Remote accepted a stale capability digest")
+	}
 	notificationFactory := identityremote.NewFactory(identityremote.Config{
 		Endpoint: testServer.URL, TenantID: "tenant-primary", WorkspaceID: "workspace-primary", Issuer: issuer,
 		Audience: "domainry-notification", ServiceAccessToken: notificationCredential,
-		HTTPClient: testServer.Client(),
+		CapabilityContractSHA256: sourceSummary.Identity.ContractSHA256,
+		HTTPClient:               testServer.Client(),
 	})
 	notificationBinding, err := notificationFactory.Open(t.Context(), identity.ApplicationRef{})
 	if err != nil {

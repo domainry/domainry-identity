@@ -3,6 +3,7 @@ import {
   RuntimeApiError,
   runtimeRequest,
   runtimeRequestWithResponse,
+  type RuntimeResponse,
 } from "@/lib/runtime-api";
 import type { RuntimeProductSurface } from "@domainry/surface-contract";
 import type {
@@ -116,6 +117,36 @@ export const permissionsApi = {
     runtimeRequest<RuntimePermissionPoint[]>("/identity/permissions"),
 };
 
+export interface IdentityRolePermissionConfiguration {
+  permissionKeys: string[];
+  schemaHash: string;
+  schemaVersion: string;
+}
+
+function rolePermissionConfiguration(
+  response: RuntimeResponse<RuntimeRolePermissionAssignment[]>,
+): IdentityRolePermissionConfiguration {
+  const schemaHash = response.headers.get("X-Resource-Hash")?.trim() ?? "";
+  if (!schemaHash) {
+    throw new RuntimeApiError(
+      503,
+      { code: "backend.authoring.resource_projection_unavailable" },
+      "Identity did not publish the authoritative RoleSchema hash",
+    );
+  }
+  return {
+    permissionKeys: response.data.map((item) => item.permission_key).sort(),
+    schemaHash,
+    schemaVersion: response.headers.get("X-Schema-Version")?.trim() ?? "",
+  };
+}
+
+function fetchRolePermissionConfiguration(roleID: string) {
+  return runtimeRequestWithResponse<RuntimeRolePermissionAssignment[]>(
+    `/identity/roles/${encodeURIComponent(roleID)}/permissions`,
+  ).then(rolePermissionConfiguration);
+}
+
 export const identityPoliciesApi = {
   roleMenus(roleID: string) {
     return runtimeRequest<RuntimeRoleMenuAssignment[]>(
@@ -146,15 +177,29 @@ export const identityPoliciesApi = {
     });
   },
   rolePermissions(roleID: string) {
-    return runtimeRequest<RuntimeRolePermissionAssignment[]>(
-      `/identity/roles/${encodeURIComponent(roleID)}/permissions`,
-    ).then((items) => items.map((item) => item.permission_key));
+    return fetchRolePermissionConfiguration(roleID).then((configuration) => configuration.permissionKeys);
   },
-  saveRolePermissions(roleID: string, permissionKeys: string[]) {
-    return runtimeRequest<RuntimeRolePermissionAssignment[]>(
-      `/identity/roles/${encodeURIComponent(roleID)}/permissions`,
-      { method: "PUT", body: { permission_keys: permissionKeys } },
-    );
+  rolePermissionConfiguration(roleID: string) {
+    return fetchRolePermissionConfiguration(roleID);
+  },
+  saveRolePermissions(roleID: string, permissionKeys: string[], businessReason: string, expectedSchemaHash: string) {
+    const path = `/identity/roles/${encodeURIComponent(roleID)}/permissions`;
+    if (!expectedSchemaHash.trim()) {
+      throw new RuntimeApiError(
+        503,
+        { code: "backend.authoring.resource_projection_unavailable" },
+        "Identity did not publish the authoritative RoleSchema hash",
+      );
+    }
+    const requestID = createRuntimeRequestID();
+    return runtimeRequestWithResponse<RuntimeRolePermissionAssignment[]>(path, {
+      method: "PUT",
+      headers: {
+        "Idempotency-Key": requestID,
+        "Expected-Schema-Hash": expectedSchemaHash,
+      },
+      body: { permission_keys: permissionKeys, business_reason: businessReason },
+    }).then(rolePermissionConfiguration);
   },
   dataScopes(roleID: string) {
     return runtimeRequest<RuntimeDataScopePolicy[] | null>(

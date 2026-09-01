@@ -4,9 +4,9 @@ const endpoint = (import.meta.env.VITE_IDENTITY_BROWSER_API_URL ?? '/api/browser
 const managementEndpoint = (import.meta.env.VITE_IDENTITY_API_URL ?? '/api').replace(/\/$/, '')
 
 export const identityClient = new IdentityClient({
-	endpoint,
-	managementEndpoint,
+  endpoint,
+  managementEndpoint,
   tenantId: import.meta.env.VITE_IDENTITY_TENANT_ID,
-  workspaceId: import.meta.env.VITE_IDENTITY_WORKSPACE_ID ?? 'default',
+  workspaceId: import.meta.env.VITE_IDENTITY_WORKSPACE_ID ?? 'workspace-primary',
   applicationKey: import.meta.env.VITE_IDENTITY_APPLICATION_KEY ?? 'domainry-identity-admin',
 })

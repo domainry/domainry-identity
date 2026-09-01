@@ -107,14 +107,29 @@ type IdentityPermissionDefinition struct {
 	ApprovalRequired      bool                            `json:"approval_required,omitempty"`
 	AssuranceRequired     []string                        `json:"assurance_required,omitempty"`
 	LifecycleStatus       string                          `json:"lifecycle_status,omitempty"`
+	DefinitionStatus      string                          `json:"definition_status,omitempty"`
+	Enabled               bool                            `json:"enabled"`
+	SourceKind            string                          `json:"source_kind,omitempty"`
+	SourceOwner           string                          `json:"source_owner,omitempty"`
+	DefinitionHash        string                          `json:"definition_hash,omitempty"`
+	SourceSnapshotHash    string                          `json:"source_snapshot_hash,omitempty"`
 	ActionUsages          []IdentityActionPermissionUsage `json:"action_usages,omitempty"`
 }
 
 type IdentityActionPermissionUsage struct {
 	ActionKey             string   `json:"action_key"`
+	CapabilityKey         string   `json:"capability_key,omitempty"`
+	CapabilityLabel       string   `json:"capability_label,omitempty"`
+	OperationKey          string   `json:"operation_key,omitempty"`
+	OperationLabel        string   `json:"operation_label,omitempty"`
 	ObjectKey             string   `json:"object_key"`
 	ActionLabel           string   `json:"action_label"`
 	AuthorizationStrategy string   `json:"authorization_strategy"`
+	HTTPMethod            string   `json:"http_method,omitempty"`
+	RouteTemplate         string   `json:"route_template,omitempty"`
+	DisplayRouteTemplate  string   `json:"display_route_template,omitempty"`
+	PageRoute             string   `json:"page_route,omitempty"`
+	PageLabel             string   `json:"page_label,omitempty"`
 	RiskLevel             string   `json:"risk_level"`
 	ApprovalRequired      bool     `json:"approval_required"`
 	AssuranceRequired     []string `json:"assurance_required"`

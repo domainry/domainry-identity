@@ -12,7 +12,16 @@ import (
 )
 
 func (h *IdentityHandler) listIdentityPermissions(w http.ResponseWriter, r *http.Request) {
-	h.writeJSON(w, http.StatusOK, h.localizedIdentityPermissions(r, h.menus.ListPermissions(r.Context())))
+	if h.permissionCatalog == nil {
+		h.writeJSON(w, http.StatusOK, h.localizedIdentityPermissions(r, h.menus.ListPermissions(r.Context())))
+		return
+	}
+	permissions, err := h.permissionCatalog.List(r.Context())
+	if err != nil {
+		h.writeServiceError(w, r, err)
+		return
+	}
+	h.writeJSON(w, http.StatusOK, h.localizedIdentityPermissions(r, permissions))
 }
 
 func (h *IdentityHandler) listIdentityMenus(w http.ResponseWriter, r *http.Request) {

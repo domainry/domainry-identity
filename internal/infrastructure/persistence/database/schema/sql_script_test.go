@@ -119,7 +119,8 @@ type scriptedSchemaStore struct {
 	driver    string
 }
 
-func (s scriptedSchemaStore) SchemaDB() SQLDatabase { return s.db }
+func (s scriptedSchemaStore) SchemaDB() SQLDatabase               { return s.db }
+func (s scriptedSchemaStore) SchemaRenderer() ormdialect.Renderer { return s.renderer() }
 func (s scriptedSchemaStore) Driver() string {
 	if s.driver != "" {
 		return s.driver

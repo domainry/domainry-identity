@@ -222,6 +222,16 @@ func (s *MetadataApplicationService) UpsertMetadataDefinition(ctx context.Contex
 	if !identitycontract.IdentityRoleHasPermissionKey(principal.Role, "workspace.admin") {
 		return metadatamodel.MetadataDefinition{}, metadatamodel.MetadataSchemaSnapshot{}, forbidden("auth.permission_denied")
 	}
+	return s.upsertMetadataDefinition(ctx, resourceType, resourceKey, request, principal, metadataDefinitionPublicationOptions{})
+}
+
+type metadataDefinitionPublicationOptions struct {
+	event    string
+	summary  string
+	metadata map[string]any
+}
+
+func (s *MetadataApplicationService) upsertMetadataDefinition(ctx context.Context, resourceType, resourceKey string, request metadatamodel.MetadataDefinitionUpsertRequest, principal identitymodel.Principal, options metadataDefinitionPublicationOptions) (metadatamodel.MetadataDefinition, metadatamodel.MetadataSchemaSnapshot, error) {
 	resourceType, resourceKey = strings.TrimSpace(resourceType), strings.TrimSpace(resourceKey)
 	normalizedPayload, issues, err := s.ValidateMetadataDefinitionRequestPayload(ctx, resourceType, resourceKey, request)
 	if err != nil {
@@ -246,10 +256,15 @@ func (s *MetadataApplicationService) UpsertMetadataDefinition(ctx context.Contex
 	if s.audit == nil {
 		return metadatamodel.MetadataDefinition{}, metadatamodel.MetadataSchemaSnapshot{}, metadataInternalError("build metadata publication audit")
 	}
+	auditMetadata := map[string]any{"source_kind": normalized.SourceKind, "source_id": normalized.SourceID}
+	for key, value := range options.metadata {
+		auditMetadata[key] = value
+	}
+	event := valueOrDefault(options.event, "metadata_definition.saved")
+	summary := valueOrDefault(options.summary, "Saved "+resourceType+" "+resourceKey)
 	audit := s.audit.NewAuditEvent(ctx, auditcontract.AuditAppendRequest{
-		Event: "metadata_definition.saved", ObjectKey: resourceType, RecordID: resourceKey, Principal: principal,
-		Summary: "Saved " + resourceType + " " + resourceKey, Before: DefinitionAuditValue(before, beforeFound),
-		Metadata: map[string]any{"source_kind": normalized.SourceKind, "source_id": normalized.SourceID},
+		Event: event, ObjectKey: resourceType, RecordID: resourceKey, Principal: principal,
+		Summary: summary, Before: DefinitionAuditValue(before, beforeFound), Metadata: auditMetadata,
 	})
 	definition, err := s.repository.PublishDefinition(ctx, metadataInstallationScope("publish metadata definition"), resourceType, resourceKey, normalized, audit, metadataPublicationForPrincipal(principal))
 	if err != nil {

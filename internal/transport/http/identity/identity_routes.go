@@ -1,6 +1,10 @@
 package identity
 
-import "net/http"
+import (
+	"net/http"
+
+	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
+)
 
 type routeRegistrar interface {
 	HandleFunc(string, func(http.ResponseWriter, *http.Request))
@@ -69,27 +73,28 @@ func (h *IdentityHandler) RegisterRoutes(mux routeRegistrar) {
 	mux.HandleFunc("GET /identity/role-requests", h.identityPermission("identity.roles.read", h.listIdentityRoleRequests))
 	mux.HandleFunc("POST /identity/role-requests/{requestID}/approve", h.identityPermission("identity.roles.write", h.approveIdentityRoleRequest))
 	mux.HandleFunc("POST /identity/role-requests/{requestID}/reject", h.identityPermission("identity.roles.write", h.rejectIdentityRoleRequest))
-	mux.HandleFunc("GET /identity/roles", h.identityPermission("identity.roles.read", h.listIdentityRoles))
-	mux.HandleFunc("GET /identity/roles/{roleID}", h.identityPermission("identity.roles.read", h.getIdentityRole))
-	mux.HandleFunc("GET /identity/roles/{roleID}/governance-detail", h.identityPermission("identity.roles.read", h.getIdentityRoleGovernanceDetail))
-	mux.HandleFunc("GET /identity/roles/{roleID}/versions", h.identityPermission("identity.roles.read", h.identityAuthoringVersions("identity.role", "identity_role", "roleID", "identity_role_created", "identity_role_updated", "identity_role_disabled", "identity_role_enabled", "identity_role_deleted")))
-	mux.HandleFunc("POST /identity/governance/validate", h.identityPermission("identity.roles.write", h.validateIdentityGovernance))
-	mux.HandleFunc("GET /identity/roles/search", h.identityPermission("identity.roles.read", h.searchIdentityRoles))
-	mux.HandleFunc("POST /identity/roles/{roleID}/validate", h.identityPermission("identity.roles.write", h.validateIdentityRoleAuthoring))
-	mux.HandleFunc("POST /identity/roles/{roleID}/impact-preview", h.identityPermission("identity.roles.read", h.previewIdentityRoleChangeImpact))
+	h.registerIdentityAction(mux, identityapplication.IdentityActionRolesList, h.listIdentityRoles)
+	h.registerIdentityAction(mux, identityapplication.IdentityActionRolesGet, h.getIdentityRole)
+	h.registerIdentityAction(mux, identityapplication.IdentityActionRolesGovernanceDetail, h.getIdentityRoleGovernanceDetail)
+	h.registerIdentityAction(mux, identityapplication.IdentityActionRolesVersions, h.identityAuthoringVersions("identity.role", "identity_role", "roleID", "identity_role_created", "identity_role_updated", "identity_role_disabled", "identity_role_enabled", "identity_role_deleted"))
+	h.registerIdentityAction(mux, identityapplication.IdentityActionRolesValidateGovernance, h.validateIdentityGovernance)
+	h.registerIdentityAction(mux, identityapplication.IdentityActionRolesSearch, h.searchIdentityRoles)
+	h.registerIdentityAction(mux, identityapplication.IdentityActionRolesValidate, h.validateIdentityRoleAuthoring)
+	h.registerIdentityAction(mux, identityapplication.IdentityActionRolesImpactPreview, h.previewIdentityRoleChangeImpact)
 	mux.HandleFunc("GET /identity/menus", h.identityPermission("identity.menus.read", h.listIdentityMenus))
 	mux.HandleFunc("GET /identity/menus/{menuID}", h.identityPermission("identity.menus.read", h.getIdentityMenu))
 	mux.HandleFunc("GET /identity/menus/{menuID}/versions", h.identityPermission("identity.menus.read", h.identityAuthoringVersions("identity.menu", "identity_menu", "menuID", "identity_menu_upserted", "identity_menu_deleted")))
 	mux.HandleFunc("POST /identity/menus/{menuID}/validate", h.identityPermission("identity.menus.write", h.validateIdentityMenuAuthoring))
 	mux.HandleFunc("PUT /identity/menus/{menuID}", h.identityPermission("identity.menus.write", h.upsertIdentityMenu))
 	mux.HandleFunc("DELETE /identity/menus/{menuID}", h.identityPermission("identity.menus.write", h.deleteIdentityMenu))
-	mux.HandleFunc("GET /identity/permissions", h.identityPermission("identity.permissions.read", h.listIdentityPermissions))
+	h.registerIdentityAction(mux, identityapplication.IdentityActionPermissionsList, h.listIdentityPermissions)
 	mux.HandleFunc("GET /identity/roles/{roleID}/menus", h.identityPermission("identity.menus.read", h.listIdentityRoleMenus))
 	mux.HandleFunc("GET /identity/roles/{roleID}/menus/versions", h.identityPermission("identity.menus.read", h.identityAuthoringVersions("identity.role_menu_assignment", "identity_role", "roleID", "identity_role_menus_updated")))
 	mux.HandleFunc("POST /identity/roles/{roleID}/menus/validate", h.identityPermission("identity.menus.write", h.validateIdentityRoleMenuAssignmentAuthoring))
 	mux.HandleFunc("PUT /identity/roles/{roleID}/menus", h.identityPermission("identity.menus.write", h.setIdentityRoleMenus))
-	mux.HandleFunc("GET /identity/roles/{roleID}/permissions", h.identityPermission("identity.permissions.read", h.listIdentityRolePermissions))
-	mux.HandleFunc("POST /identity/roles/{roleID}/permissions/validate", h.identityPermission("identity.permissions.write", h.validateIdentityRolePermissionAuthoring))
+	h.registerIdentityAction(mux, identityapplication.IdentityActionRolePermissionsList, h.listIdentityRolePermissions)
+	h.registerIdentityAction(mux, identityapplication.IdentityActionRolePermissionsValidate, h.validateIdentityRolePermissionAuthoring)
+	h.registerIdentityAction(mux, identityapplication.IdentityActionRolePermissionsPublish, h.publishIdentityRolePermissions)
 	mux.HandleFunc("GET /identity/roles/{roleID}/data-scopes", h.identityPermission("identity.data_scopes.read", h.listIdentityRoleDataScopes))
 	mux.HandleFunc("POST /identity/roles/{roleID}/data-scopes/validate", h.identityPermission("identity.data_scopes.write", h.validateIdentityRoleDataScopeAuthoring))
 	mux.HandleFunc("GET /identity/roles/{roleID}/field-permissions", h.identityPermission("identity.field_permissions.read", h.listIdentityRoleFieldPermissions))

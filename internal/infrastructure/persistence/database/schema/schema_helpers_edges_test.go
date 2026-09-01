@@ -5,11 +5,16 @@ import (
 	"testing"
 
 	persistencedriver "github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
+	ormdialect "github.com/domainry/domainry-orm/dialect"
 )
 
 type schemaHelperStore struct{}
 
-func (schemaHelperStore) SchemaDB() SQLDatabase  { return nil }
+func (schemaHelperStore) SchemaDB() SQLDatabase { return nil }
+func (schemaHelperStore) SchemaRenderer() ormdialect.Renderer {
+	dialect, _ := ormdialect.New(ormdialect.SQLite)
+	return dialect.WithSchema("")
+}
 func (schemaHelperStore) Driver() string         { return "sqlite" }
 func (schemaHelperStore) DatabaseSchema() string { return "" }
 func (schemaHelperStore) Identifier(value string) string {

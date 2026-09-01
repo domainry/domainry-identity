@@ -55,6 +55,7 @@ var identityTableOwnership = []TableOwnership{
 	{Name: "_identity_external_accounts", Boundary: TableBoundaryAuthentication, MigrationDisposition: MigrationPortable},
 	{Name: "_identity_localized_texts", Boundary: TableBoundaryMetadata, MigrationDisposition: MigrationPortable},
 	{Name: "_identity_menus", Boundary: TableBoundaryAuthorization, MigrationDisposition: MigrationPortable},
+	{Name: "_identity_permissions", Boundary: TableBoundaryAuthorization, MigrationDisposition: MigrationPortable},
 	{Name: "_identity_metadata_refresh_intents", Boundary: TableBoundaryMetadata, MigrationDisposition: MigrationExcluded},
 	{Name: "_identity_mfa_factors", Boundary: TableBoundaryAuthentication, MigrationDisposition: MigrationExcluded, ContainsSecret: true},
 	{Name: "_identity_profile_binding_events", Boundary: TableBoundaryDirectory, MigrationDisposition: MigrationEvidenceOnly},

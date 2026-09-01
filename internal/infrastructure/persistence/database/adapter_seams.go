@@ -14,6 +14,7 @@ import (
 	migrationcontract "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/migration"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	"github.com/domainry/domainry-identity/internal/platform/config"
+	ormdialect "github.com/domainry/domainry-orm/dialect"
 )
 
 func MutationConstraintError(err error, resource, identifier string, kind mutation.MutationConflictKind) error {
@@ -70,7 +71,8 @@ func (s *IdentityStore) EnsureColumn(ctx context.Context, table, column, definit
 	return s.ensureColumn(ctx, table, column, definition)
 }
 
-func (s *IdentityStore) MetadataIDColumnType() string { return s.metadataIDColumnType() }
+func (s *IdentityStore) MetadataIDColumnType() string        { return s.metadataIDColumnType() }
+func (s *IdentityStore) SchemaRenderer() ormdialect.Renderer { return s.sqlBase().SQLRenderer }
 func (s *IdentityStore) LocalizedTextKeyColumnType() string {
 	return s.sqlBase().Engine.TextKeyColumnType(128)
 }
