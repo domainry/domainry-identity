@@ -7,6 +7,7 @@ import (
 
 	actioncontract "github.com/domainry/domainry-foundation/action"
 	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
+	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
 	identitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity"
@@ -48,7 +49,7 @@ func TestStandalonePermissionReconcileIsIdempotentAndSurvivesRestart(t *testing.
 	if err != nil || first.Inserted != wantCount || first.DefinitionCount != wantCount {
 		t.Fatalf("first reconcile=%+v err=%v", first, err)
 	}
-	if !service.PermissionIsExecutable(identityapplication.IdentityActionRolesList) || service.PermissionIsExecutable("identity.unknown") {
+	if !service.PermissionIsExecutable(identitycontract.IdentityActionRolesList) || service.PermissionIsExecutable("identity.unknown") {
 		t.Fatal("first reconcile did not publish a fail-closed executable permission snapshot")
 	}
 	second, err := service.ReconcileOwner(t.Context(), identityapplication.IdentityBuiltinAuthorizationOwner)
@@ -59,10 +60,10 @@ func TestStandalonePermissionReconcileIsIdempotentAndSurvivesRestart(t *testing.
 	if err != nil || len(rows) != wantCount {
 		t.Fatalf("permission rows=%+v err=%v", rows, err)
 	}
-	if changed, err := repository.SetIdentityPermissionDefinitionEnabled(t.Context(), "workspace-primary", identityapplication.IdentityActionRolesList, false); err != nil || !changed {
+	if changed, err := repository.SetIdentityPermissionDefinitionEnabled(t.Context(), "workspace-primary", identitycontract.IdentityActionRolesList, false); err != nil || !changed {
 		t.Fatalf("disable Identity permission changed=%t err=%v", changed, err)
 	}
-	if changed, err := repository.SetIdentityPermissionDefinitionEnabled(t.Context(), "workspace-primary", identityapplication.IdentityActionRolesList, false); err != nil || changed {
+	if changed, err := repository.SetIdentityPermissionDefinitionEnabled(t.Context(), "workspace-primary", identitycontract.IdentityActionRolesList, false); err != nil || changed {
 		t.Fatalf("idempotent disable changed=%t err=%v", changed, err)
 	}
 	if err := store.Close(); err != nil {
@@ -75,7 +76,7 @@ func TestStandalonePermissionReconcileIsIdempotentAndSurvivesRestart(t *testing.
 	if err != nil || restarted.Unchanged != wantCount {
 		t.Fatalf("restart reconcile=%+v err=%v", restarted, err)
 	}
-	if restartedService.PermissionIsExecutable(identityapplication.IdentityActionRolesList) || !restartedService.PermissionIsExecutable(identityapplication.IdentityActionPermissionsList) {
+	if restartedService.PermissionIsExecutable(identitycontract.IdentityActionRolesList) || !restartedService.PermissionIsExecutable(identitycontract.IdentityActionPermissionsList) {
 		t.Fatal("restart runtime snapshot did not preserve disabled and enabled permission states")
 	}
 	restartedRows, err := restartedRepository.ListIdentityPermissionDefinitions(t.Context(), "workspace-primary")
@@ -83,7 +84,7 @@ func TestStandalonePermissionReconcileIsIdempotentAndSurvivesRestart(t *testing.
 		t.Fatal(err)
 	}
 	for _, definition := range restartedRows {
-		if definition.PermissionKey == identityapplication.IdentityActionRolesList && definition.Enabled {
+		if definition.PermissionKey == identitycontract.IdentityActionRolesList && definition.Enabled {
 			t.Fatal("reconcile reset the persisted administrator enablement decision")
 		}
 		if definition.DefinitionStatus != identitymodel.IdentityPermissionDefinitionActive {
@@ -108,7 +109,7 @@ func TestPermissionReconcileRetiresRestoresAndRejectsConflictingSnapshots(t *tes
 	}
 	definition := func(workspaceID, owner, key, snapshot, hash string) identitymodel.IdentityPermissionDefinitionRecord {
 		return identitymodel.IdentityPermissionDefinitionRecord{
-			WorkspaceID: workspaceID, PermissionKey: key, ResourceKey: "roles", ActionKey: "read",
+			WorkspaceID: workspaceID, PermissionKey: key, ResourceKey: "roles", OperationKey: "read",
 			Label: key, Category: "Identity", SourceKind: "builtin_surface", SourceOwner: owner,
 			DefinitionHash: hash, SourceSnapshotHash: snapshot,
 		}
@@ -127,6 +128,15 @@ func TestPermissionReconcileRetiresRestoresAndRejectsConflictingSnapshots(t *tes
 		definition(workspaceID, owner, "permission.two", "snapshot-1", "hash-two"),
 	); err != nil || receipt.Inserted != 2 {
 		t.Fatalf("initial receipt=%+v err=%v", receipt, err)
+	}
+	// A caller that committed snapshot-1 but lost the response retries the exact
+	// original request, including its now-stale empty previous hash. Matching the
+	// current target snapshot must be idempotent rather than treated as stale.
+	if receipt, err := reconcile(workspaceID, owner, "", "snapshot-1",
+		definition(workspaceID, owner, "permission.one", "snapshot-1", "hash-one"),
+		definition(workspaceID, owner, "permission.two", "snapshot-1", "hash-two"),
+	); err != nil || receipt.Unchanged != 2 || receipt.SnapshotHash != "snapshot-1" {
+		t.Fatalf("lost-response retry receipt=%+v err=%v", receipt, err)
 	}
 	if changed, err := repository.SetIdentityPermissionDefinitionEnabled(t.Context(), workspaceID, "permission.two", false); err != nil || !changed {
 		t.Fatalf("disable permission.two changed=%t err=%v", changed, err)
@@ -204,7 +214,7 @@ func TestPermissionReconcileParticipatesInHostTransaction(t *testing.T) {
 	request := identitymodel.IdentityPermissionReconcileRequest{
 		WorkspaceID: "workspace-primary", SourceOwner: "identity:builtin", SnapshotHash: "snapshot-1",
 		Definitions: []identitymodel.IdentityPermissionDefinitionRecord{{
-			WorkspaceID: "workspace-primary", PermissionKey: "identity.roles.get", ResourceKey: "identity.roles", ActionKey: "get",
+			WorkspaceID: "workspace-primary", PermissionKey: "identity.roles.get", ResourceKey: "identity.roles", OperationKey: "get",
 			Label: "Get role", Category: "Identity", SourceKind: "builtin_surface", SourceOwner: "identity:builtin",
 			DefinitionHash: "definition-1", SourceSnapshotHash: "snapshot-1",
 		}},

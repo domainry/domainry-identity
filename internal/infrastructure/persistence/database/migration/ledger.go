@@ -6,6 +6,7 @@ import (
 
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
+	"github.com/domainry/domainry-orm/query"
 )
 
 type Ledger struct {
@@ -29,6 +30,9 @@ func (ledger *Ledger) Columns() string {
 }
 
 func (ledger *Ledger) SchemaSQL() string {
+	// The host ledger must preserve engine-provided legacy physical types.
+	// domainry-orm's schema types cannot represent those arbitrary type strings,
+	// so only this DDL rendering remains in the migration adapter.
 	types := ledger.engine.MigrationLedgerTypes()
 	pathType, timeType := types.Key, types.Timestamp
 	i, table := ledger.renderer.Identifier, ledger.renderer.Table
@@ -45,11 +49,18 @@ func (ledger *Ledger) Ensure(ctx context.Context) error {
 	textType := ledger.engine.MigrationLedgerTypes().Key + " NOT NULL DEFAULT ''"
 	columns := []struct{ name, definition string }{{"version", textType}, {"name", textType}, {"kind", textType}, {"checksum", textType}, {"dirty", "BOOLEAN NOT NULL DEFAULT FALSE"}, {"service_version", textType}, {"duration_ms", "BIGINT NOT NULL DEFAULT 0"}, {"operator", textType}, {"instance_id", textType}, {"backup_id", textType}}
 	for _, column := range columns {
-		rows, queryErr := ledger.database.QueryContext(ctx, "SELECT "+ledger.renderer.Identifier(column.name)+" FROM "+ledger.renderer.Table("_schema_migrations")+" WHERE 1 = 0")
+		statement, arguments, buildErr := query.NewSelectBuilder(ledger.renderer, "_schema_migrations").
+			Columns(column.name).Where(query.AlwaysFalse()).Build()
+		if buildErr != nil {
+			return buildErr
+		}
+		rows, queryErr := ledger.database.QueryContext(ctx, statement, arguments...)
 		if queryErr == nil {
 			_ = rows.Close()
 			continue
 		}
+		// The arbitrary engine-provided legacy definition above has no ORM column
+		// type equivalent; keep the compatibility ALTER beside that reason.
 		if _, alterErr := ledger.database.ExecContext(ctx, "ALTER TABLE "+ledger.renderer.Table("_schema_migrations")+" ADD COLUMN "+ledger.renderer.Identifier(column.name)+" "+column.definition); alterErr != nil {
 			return alterErr
 		}

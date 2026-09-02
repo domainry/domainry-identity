@@ -35,7 +35,7 @@ func TestExternalLoginCreatesLinksAndReusesIdentity(t *testing.T) {
 		DisplayName: " Sales User ",
 		AvatarURL:   " https://example.com/avatar.png ",
 		Metadata:    " {\"tenant\":\"example\"} ",
-		Claims:      map[string]string{"department_id": "dept_sales", "department_path": "/sales", "group": "seller"},
+		Claims:      map[string]string{"org_id": "dept_sales", "organization_path": "/sales", "group": "seller"},
 	}
 	policy := authmodel.AuthExternalLoginPolicy{
 		AutoCreateUsers: true,
@@ -235,8 +235,8 @@ func newExternalAuthFixture(t *testing.T) (*authdomain.AuthDomainService, *ident
 	t.Helper()
 	repository := identitypersistence.NewMemoryIdentityStore()
 	identity, _ := identitybusiness.NewIdentityDomainService(repository, []identitymodel.IdentityPermissionDefinition{currentPermission("identity.roles.list", "identity.roles", "list")}).ForWorkspace("workspace-primary")
-	if err := identity.UpsertDepartment(t.Context(), identitymodel.IdentityDepartment{ID: "dept_sales", Name: "Sales", Path: "/sales", Status: identitymodel.IdentityStatusActive}); err != nil {
-		t.Fatalf("seed sales department: %v", err)
+	if err := identity.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{ID: "dept_sales", Code: "dept_sales", NodeType: identitymodel.IdentityOrganizationUnitDepartment, Name: "Sales", Path: "/sales", Status: identitymodel.IdentityStatusActive}); err != nil {
+		t.Fatalf("seed sales organizationUnit: %v", err)
 	}
 	for _, role := range []identitymodel.IdentityRole{
 		{ID: "role-sales", Key: "sales", Label: "Sales", Status: identitymodel.IdentityStatusActive},

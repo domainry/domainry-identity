@@ -300,12 +300,9 @@ func TestDeleteIdentityUserWithoutProfileReferences(t *testing.T) {
 	}
 }
 
-func TestDisableIdentityUserRevokesSessionsAndPreservesBusinessIdentities(t *testing.T) {
+func TestDisableIdentityUserRevokesSessionsAndPreservesBusinessProfiles(t *testing.T) {
 	repository := &identityHTTPRepository{
-		users: []identitymodel.IdentityUser{{ID: "user-1", Status: identitymodel.IdentityStatusActive}},
-		workforceProfiles: []identitymodel.IdentityWorkforceProfile{{
-			ID: "worker-1", IdentityUserID: "user-1", WorkStatus: identitymodel.IdentityWorkActive,
-		}},
+		users: []identitymodel.IdentityUser{{ID: "user-1", WorkerNo: "E001", WorkStatus: identitymodel.IdentityWorkActive, Status: identitymodel.IdentityStatusActive}},
 		profileBindings: []identitymodel.IdentityProfileBinding{{
 			IdentityUserID: "user-1", ObjectKey: "member_profile", ProfileID: "member-1", Status: identitymodel.IdentityProfileBindingActive,
 		}},
@@ -317,9 +314,8 @@ func TestDisableIdentityUserRevokesSessionsAndPreservesBusinessIdentities(t *tes
 	if writer.Code != http.StatusNoContent || response.err != nil || security.revoked != 1 {
 		t.Fatalf("status=%d revoked=%d err=%v", writer.Code, security.revoked, response.err)
 	}
-	if repository.workforceProfiles[0].WorkStatus != identitymodel.IdentityWorkActive ||
-		repository.profileBindings[0].Status != identitymodel.IdentityProfileBindingActive {
-		t.Fatalf("business identities changed: workforce=%#v profiles=%#v", repository.workforceProfiles, repository.profileBindings)
+	if repository.users[0].WorkStatus != identitymodel.IdentityWorkActive || repository.profileBindings[0].Status != identitymodel.IdentityProfileBindingActive {
+		t.Fatalf("business facts changed: users=%#v profiles=%#v", repository.users, repository.profileBindings)
 	}
 }
 
@@ -423,14 +419,13 @@ func TestIdentityUserDisableImpactHandler(t *testing.T) {
 		profileBindings: []identitymodel.IdentityProfileBinding{{
 			IdentityUserID: "user-1", BindingKey: "member", ObjectKey: "member_profile", ProfileID: "member-1", Status: identitymodel.IdentityProfileBindingActive,
 		}},
-		workforceProfiles: []identitymodel.IdentityWorkforceProfile{{ID: "workforce-1", IdentityUserID: "user-1", WorkStatus: identitymodel.IdentityWorkActive}},
-		assignments:       []identitymodel.IdentityUserRoleAssignment{{UserID: "user-1", RoleID: "member", Status: "active"}},
+		assignments: []identitymodel.IdentityUserRoleAssignment{{UserID: "user-1", RoleID: "member", Status: "active"}},
 	}
 	handler, response := newIdentityHTTPHandler(repository)
 	w, request := identityRoleRequest(http.MethodGet, "/identity/users/user-1/disable-impact", "", map[string]string{"userID": " user-1 "})
 	handler.getIdentityUserDisableImpact(w, request)
 	impact, ok := response.value.(identitymodel.IdentityUserDisableImpact)
-	if response.status != http.StatusOK || !ok || len(impact.ProfileBindings) != 1 || len(impact.WorkforceProfileIDs) != 1 || len(impact.ActiveEntitlementRoleIDs) != 1 || !impact.SessionsWillBeRevoked || !impact.BusinessFactsPreserved {
+	if response.status != http.StatusOK || !ok || len(impact.ProfileBindings) != 1 || len(impact.ActiveEntitlementRoleIDs) != 1 || !impact.SessionsWillBeRevoked || !impact.BusinessFactsPreserved {
 		t.Fatalf("response=%+v impact=%+v", response, impact)
 	}
 }

@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-const user = { id: 'admin', name: 'Administrator', email: 'admin@example.com', department_id: 'root', department_path: '/root', status: 'active' }
+const user = { id: 'admin', name: 'Administrator', email: 'admin@example.com', org_id: 'root', organization_path: '/root', status: 'active' }
 const roles = [
   { id: 'admin', key: 'admin', label: 'Admin', status: 'active', permission_keys: ['identity.role_data_scopes.list'], data_scopes: [], field_permissions: [] },
   { id: 'manager', key: 'manager', label: '部门经理', status: 'active', permission_keys: ['employee_profile.read'], data_scopes: [], field_permissions: [] },

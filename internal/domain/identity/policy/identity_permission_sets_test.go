@@ -9,10 +9,10 @@ import (
 
 func TestExpandRolePermissionSetsComposesGroupsDeterministically(t *testing.T) {
 	sets := []identitymodel.IdentityPermissionSet{
-		{Key: "case_read", DataPermissions: []identitymodel.DataPermission{{ObjectKey: "case", Scope: "owned_records", Read: true}}},
+		{Key: "case_read", DataPermissions: []identitymodel.DataPermission{{ObjectKey: "case", Scope: "owned_records"}}},
 		{
 			Key:              "case_department",
-			DataPermissions:  []identitymodel.DataPermission{{ObjectKey: "case", Scope: "department", Read: true}},
+			DataPermissions:  []identitymodel.DataPermission{{ObjectKey: "case", Scope: "organization"}},
 			FieldPermissions: []identitymodel.FieldPermission{{ObjectKey: "case", FieldKey: "amount", Read: true}},
 			ReferencePermissions: []identitymodel.ReferencePermission{{
 				SourceObjectKey: "case", RelationFieldKey: "customer_id", TargetObjectKey: "customer", DisplayFields: []string{"name"},

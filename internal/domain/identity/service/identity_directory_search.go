@@ -135,6 +135,18 @@ func identityUserValue(user identitymodel.IdentityUser, field string) string {
 		return user.Locale
 	case "timezone":
 		return user.Timezone
+	case "org_id":
+		return user.OrgID
+	case "worker_no":
+		return user.WorkerNo
+	case "worker_type":
+		return string(user.WorkerType)
+	case "work_status":
+		return string(user.WorkStatus)
+	case "start_date":
+		return user.StartDate
+	case "end_date":
+		return user.EndDate
 	case "email":
 		return user.Email
 	case "phone":
@@ -150,9 +162,11 @@ func (s *IdentityDomainService) SearchUsers(ctx context.Context, query identitym
 	allowed := map[string]bool{
 		"id": true, "name": true, "given_name": true, "middle_name": true, "family_name": true,
 		"name_prefix": true, "name_suffix": true, "native_name": true, "name_locale": true,
-		"account_type": true, "locale": true, "timezone": true, "email": true, "phone": true, "status": true,
+		"account_type": true, "locale": true, "timezone": true, "org_id": true,
+		"worker_no": true, "worker_type": true, "work_status": true, "start_date": true, "end_date": true,
+		"email": true, "phone": true, "status": true,
 	}
-	fields, err := identityDirectoryFields(query.SearchFields, []string{"name", "given_name", "middle_name", "family_name", "native_name", "email", "phone"}, allowed, "backend.identity.user_search_field_invalid")
+	fields, err := identityDirectoryFields(query.SearchFields, []string{"name", "given_name", "middle_name", "family_name", "native_name", "email", "phone", "worker_no"}, allowed, "backend.identity.user_search_field_invalid")
 	if err != nil {
 		return identitymodel.IdentityUserPage{}, err
 	}
@@ -195,164 +209,6 @@ func (s *IdentityDomainService) SearchUsers(ctx context.Context, query identitym
 	return identitymodel.IdentityUserPage{Items: page.Items, PageSize: cursor.PageSize(), Total: len(filtered), HasNext: page.HasNext, NextID: page.NextID}, nil
 }
 
-func identityWorkforceValue(profile identitymodel.IdentityWorkforceProfile, field string) string {
-	switch field {
-	case "id":
-		return profile.ID
-	case "organization_id":
-		return profile.OrganizationID
-	case "identity_user_id":
-		return profile.IdentityUserID
-	case "worker_no":
-		return profile.WorkerNo
-	case "worker_type":
-		return string(profile.WorkerType)
-	case "work_status":
-		return string(profile.WorkStatus)
-	case "start_date":
-		return profile.StartDate
-	case "end_date":
-		return profile.EndDate
-	default:
-		return ""
-	}
-}
-
-func (s *IdentityDomainService) SearchWorkforceProfiles(ctx context.Context, query identitymodel.IdentityListQuery) (identitymodel.IdentityWorkforceProfilePage, error) {
-	workforce, ok := s.repo.(interface {
-		ListIdentityWorkforceProfiles(context.Context, string) ([]identitymodel.IdentityWorkforceProfile, error)
-	})
-	if !ok {
-		return identitymodel.IdentityWorkforceProfilePage{}, badRequest("backend.identity.workforce_unavailable")
-	}
-	allowed := map[string]bool{"id": true, "organization_id": true, "identity_user_id": true, "worker_no": true, "worker_type": true, "work_status": true, "start_date": true, "end_date": true}
-	fields, err := identityDirectoryFields(query.SearchFields, []string{"worker_no", "identity_user_id", "organization_id"}, allowed, "backend.identity.workforce_search_field_invalid")
-	if err != nil {
-		return identitymodel.IdentityWorkforceProfilePage{}, err
-	}
-	filters, err := identityDirectoryFilters(query.Filters, allowed, "backend.identity.workforce_filter_field_invalid")
-	if err != nil {
-		return identitymodel.IdentityWorkforceProfilePage{}, err
-	}
-	rules, err := identityDirectorySort(query, []identitymodel.IdentitySortRule{{Field: "worker_no", Direction: "asc"}, {Field: "id", Direction: "asc"}}, allowed, "backend.identity.workforce_sort_invalid")
-	if err != nil {
-		return identitymodel.IdentityWorkforceProfilePage{}, err
-	}
-	cursor := identityDirectoryPagination(query)
-	query.PageSize, query.SearchFields, query.Filters, query.Sort = cursor.PageSize(), fields, mapStringAny(filters), rules
-	if repository, ok := s.repo.(interface {
-		SearchIdentityWorkforceProfiles(context.Context, string, identitymodel.IdentityListQuery) (identitymodel.IdentityWorkforceProfilePage, error)
-	}); ok && (strings.TrimSpace(query.Scope) == "" || strings.TrimSpace(query.Scope) == "all_records") {
-		return repository.SearchIdentityWorkforceProfiles(ctx, s.workspace, query)
-	}
-	profiles, err := workforce.ListIdentityWorkforceProfiles(ctx, s.workspace)
-	if err != nil {
-		return identitymodel.IdentityWorkforceProfilePage{}, err
-	}
-	needle := strings.ToLower(strings.TrimSpace(query.Search))
-	filtered := make([]identitymodel.IdentityWorkforceProfile, 0, len(profiles))
-	allowedProfileIDs, err := s.identityWorkforceScopedProfileIDs(ctx, query, profiles)
-	if err != nil {
-		return identitymodel.IdentityWorkforceProfilePage{}, err
-	}
-	for _, profile := range profiles {
-		if allowedProfileIDs != nil && !allowedProfileIDs[profile.ID] {
-			continue
-		}
-		value := func(field string) string { return identityWorkforceValue(profile, field) }
-		if identityDirectoryMatchesSearch(needle, fields, value) && identityDirectoryMatchesFilters(filters, value) {
-			filtered = append(filtered, profile)
-		}
-	}
-	sort.SliceStable(filtered, func(left, right int) bool {
-		return identityDirectoryLess(rules,
-			func(field string) string { return identityWorkforceValue(filtered[left], field) },
-			func(field string) string { return identityWorkforceValue(filtered[right], field) })
-	})
-	page, err := identityDirectoryPage(cursor, filtered, func(profile identitymodel.IdentityWorkforceProfile) string { return profile.ID })
-	if err != nil {
-		return identitymodel.IdentityWorkforceProfilePage{}, err
-	}
-	return identitymodel.IdentityWorkforceProfilePage{Items: page.Items, PageSize: cursor.PageSize(), Total: len(filtered), HasNext: page.HasNext, NextID: page.NextID}, nil
-}
-
-func (s *IdentityDomainService) identityWorkforceScopedProfileIDs(ctx context.Context, query identitymodel.IdentityListQuery, profiles []identitymodel.IdentityWorkforceProfile) (map[string]bool, error) {
-	scope := strings.TrimSpace(query.Scope)
-	if scope == "" || scope == "all_records" {
-		return nil, nil
-	}
-	allowed := map[string]bool{}
-	for _, profile := range profiles {
-		if profile.IdentityUserID == strings.TrimSpace(query.PrincipalUserID) &&
-			(scope == "owned_records" || scope == "subordinates" || scope == "team" || scope == "department" || scope == "department_and_children") {
-			allowed[profile.ID] = true
-		}
-	}
-	if scope == "owned_records" || scope == "none" || scope == "custom" {
-		return allowed, nil
-	}
-	if scope == "subordinates" || scope == "team" {
-		users := map[string]bool{}
-		for _, userID := range query.PrincipalReportingUserIDs {
-			users[strings.TrimSpace(userID)] = true
-		}
-		for _, profile := range profiles {
-			if users[profile.IdentityUserID] {
-				allowed[profile.ID] = true
-			}
-		}
-		return allowed, nil
-	}
-	if scope != "department" && scope != "department_and_children" {
-		return allowed, nil
-	}
-	repository := s.workforceRepository()
-	if repository == nil {
-		return nil, internalError("identity workforce repository", nil)
-	}
-	assignments, err := repository.ListIdentityWorkforceAssignments(ctx, s.workspace, "")
-	if err != nil {
-		return nil, err
-	}
-	departments, err := s.repo.ListIdentityDepartments(ctx, s.workspace)
-	if err != nil {
-		return nil, err
-	}
-	departmentPaths := make(map[string]string, len(departments))
-	for _, department := range departments {
-		departmentPaths[department.ID] = strings.TrimRight(strings.TrimSpace(department.Path), "/")
-	}
-	principalPath := strings.TrimRight(strings.TrimSpace(query.PrincipalDepartmentPath), "/")
-	for _, profile := range profiles {
-		assignment, found := workforcePrimaryAssignmentForSearch(profile, assignments)
-		if !found {
-			continue
-		}
-		targetPath := departmentPaths[assignment.OrganizationUnitID]
-		if principalPath != "" && (targetPath == principalPath || scope == "department_and_children" && strings.HasPrefix(targetPath, principalPath+"/")) {
-			allowed[profile.ID] = true
-		}
-	}
-	return allowed, nil
-}
-
-func workforcePrimaryAssignmentForSearch(profile identitymodel.IdentityWorkforceProfile, assignments []identitymodel.IdentityWorkforceAssignment) (identitymodel.IdentityWorkforceAssignment, bool) {
-	for _, assignment := range assignments {
-		if assignment.WorkforceProfileID != profile.ID {
-			continue
-		}
-		if profile.PrimaryAssignmentID != "" && assignment.ID == profile.PrimaryAssignmentID {
-			return assignment, true
-		}
-	}
-	for _, assignment := range assignments {
-		if assignment.WorkforceProfileID == profile.ID && assignment.AssignmentType == identitymodel.IdentityWorkforceAssignmentPrimary && assignment.Status == identitymodel.IdentityStatusActive {
-			return assignment, true
-		}
-	}
-	return identitymodel.IdentityWorkforceAssignment{}, false
-}
-
 func mapStringAny(values map[string]string) map[string]any {
 	result := make(map[string]any, len(values))
 	for key, value := range values {
@@ -367,8 +223,6 @@ func identityRoleAssignmentValue(assignment identitymodel.IdentityUserRoleAssign
 		return assignment.UserID
 	case "role_id":
 		return assignment.RoleID
-	case "workforce_profile_id":
-		return assignment.WorkforceProfileID
 	case "binding_key":
 		return assignment.BindingKey
 	case "profile_id":
@@ -395,7 +249,7 @@ func (s *IdentityDomainService) SearchUserRoleAssignments(ctx context.Context, u
 	if err != nil {
 		return identitymodel.IdentityUserRoleAssignmentPage{}, err
 	}
-	allowed := map[string]bool{"user_id": true, "role_id": true, "workforce_profile_id": true, "binding_key": true, "profile_id": true, "source": true, "status": true, "valid_from": true, "valid_until": true, "granted_by": true, "created_at": true}
+	allowed := map[string]bool{"user_id": true, "role_id": true, "binding_key": true, "profile_id": true, "source": true, "status": true, "valid_from": true, "valid_until": true, "granted_by": true, "created_at": true}
 	fields, err := identityDirectoryFields(query.SearchFields, []string{"role_id", "source", "granted_by"}, allowed, "backend.identity.role_assignment_search_field_invalid")
 	if err != nil {
 		return identitymodel.IdentityUserRoleAssignmentPage{}, err

@@ -85,18 +85,18 @@ export function PendingSystemDrafts() {
           return (
             <div key={draft.plan_id} className='flex flex-col gap-1.5 rounded-md border bg-background/70 px-2.5 py-2 text-sm'>
               <div className='flex flex-wrap items-center gap-2'>
-                <span className='font-medium'>{t('roles.systemDraft.title')}</span>
+                <span className='font-medium'>{t('system.changePlan.title')}</span>
                 <code className='text-xs text-muted-foreground'>{draft.plan_id}</code>
-                <Badge variant='outline'>{t('roles.systemDraft.status', { status: draft.status, revision: draft.revision })}</Badge>
+                <Badge variant='outline'>{t('system.changePlan.status', { status: draft.status, revision: draft.revision })}</Badge>
                 <span className='min-w-0 flex-1 truncate text-xs text-muted-foreground'>{draft.payload.business_reason}</span>
-                {draft.status === 'draft' ? <Button size='sm' disabled={busy} onClick={() => transition.mutate({ draft, action: 'review' })}><Send data-icon='inline-start' />{t('roles.systemDraft.review')}</Button> : null}
-                {draft.status === 'in_review' ? <Button size='sm' disabled={busy} onClick={() => transition.mutate({ draft, action: 'approve' })}><ShieldCheck data-icon='inline-start' />{t('roles.systemDraft.approve')}</Button> : null}
-                {draft.status === 'approved' ? <Button size='sm' disabled={busy} onClick={() => transition.mutate({ draft, action: 'publish' })}><Upload data-icon='inline-start' />{t('roles.systemDraft.publish')}</Button> : null}
+                {draft.status === 'draft' ? <Button size='sm' disabled={busy} onClick={() => transition.mutate({ draft, action: 'review' })}><Send data-icon='inline-start' />{t('system.changePlan.review')}</Button> : null}
+                {draft.status === 'in_review' ? <Button size='sm' disabled={busy} onClick={() => transition.mutate({ draft, action: 'approve' })}><ShieldCheck data-icon='inline-start' />{t('system.changePlan.approve')}</Button> : null}
+                {draft.status === 'approved' ? <Button size='sm' disabled={busy} onClick={() => transition.mutate({ draft, action: 'publish' })}><Upload data-icon='inline-start' />{t('system.changePlan.publish')}</Button> : null}
                 <Button
                   size='xs'
                   variant='ghost'
                   disabled={busy}
-                  aria-label={t('roles.systemDraft.dismiss')}
+                  aria-label={t('system.changePlan.dismiss')}
                   onClick={() => forgetPendingSystemDraft(draft.plan_id)}
                 >
                   <X />
@@ -105,8 +105,8 @@ export function PendingSystemDrafts() {
               {issues.length > 0 ? (
                 <div className='flex flex-wrap items-center gap-2 text-xs text-destructive' role='alert'>
                   <span>{issues.includes('backend.change_plan.snapshot_stale')
-                    ? t('roles.systemDraft.snapshotStale')
-                    : t('roles.systemDraft.publishBlocked')}</span>
+                    ? t('system.changePlan.snapshotStale')
+                    : t('system.changePlan.publishBlocked')}</span>
                   <code>{issues.join(', ')}</code>
                 </div>
               ) : null}

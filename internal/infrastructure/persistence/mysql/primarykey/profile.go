@@ -14,6 +14,8 @@ type Profile struct{}
 func NewProfile() Profile { return Profile{} }
 
 func (Profile) EnsureCompositePrimaryKey(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _, relationPrefix, table string, columns ...string) error {
+	// MySQL key inspection and DROP/ADD PRIMARY KEY are server-catalog and
+	// constraint-alter operations that domainry-orm does not expose.
 	physicalTable := relationPrefix + table
 	rows, err := database.QueryContext(ctx, "SELECT COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND CONSTRAINT_NAME = 'PRIMARY' ORDER BY ORDINAL_POSITION", physicalTable)
 	if err != nil {

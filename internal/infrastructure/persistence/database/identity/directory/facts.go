@@ -14,7 +14,7 @@ import (
 const BatchMaxItems = 500
 
 func (s Store) ListUserFacts(ctx context.Context, workspaceID string, userIDs []string) (identitymodel.IdentityUserDirectoryFacts, error) {
-	facts := identitymodel.IdentityUserDirectoryFacts{RoleAssignments: []identitymodel.IdentityUserRoleAssignment{}, WorkforceProfiles: []identitymodel.IdentityWorkforceProfile{}, ProfileBindings: []identitymodel.IdentityProfileBinding{}}
+	facts := identitymodel.IdentityUserDirectoryFacts{RoleAssignments: []identitymodel.IdentityUserRoleAssignment{}, ProfileBindings: []identitymodel.IdentityProfileBinding{}}
 	workspaceID, err := identityWorkspaceID(workspaceID)
 	if err != nil {
 		return facts, err
@@ -32,9 +32,6 @@ func (s Store) ListUserFacts(ctx context.Context, workspaceID string, userIDs []
 		if err := s.appendIdentityDirectoryRoles(ctx, workspaceID, batchUserIDs, &facts); err != nil {
 			return facts, err
 		}
-		if err := s.appendIdentityDirectoryProfiles(ctx, workspaceID, batchUserIDs, &facts); err != nil {
-			return facts, err
-		}
 		if err := s.appendIdentityDirectoryBindings(ctx, workspaceID, batchUserIDs, &facts); err != nil {
 			return facts, err
 		}
@@ -44,7 +41,7 @@ func (s Store) ListUserFacts(ctx context.Context, workspaceID string, userIDs []
 
 func (s Store) appendIdentityDirectoryRoles(ctx context.Context, workspaceID string, userIDs []string, facts *identitymodel.IdentityUserDirectoryFacts) error {
 	queryValue, args, err := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_user_role_assignments", workspaceID).
-		Columns("user_id", "role_id", "workforce_profile_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason", "expires_at", "created_at", "updated_at").
+		Columns("user_id", "role_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason", "expires_at", "created_at", "updated_at").
 		Where(query.In("user_id", stringValues(userIDs)...)).Build()
 	if err != nil {
 		return err
@@ -56,36 +53,14 @@ func (s Store) appendIdentityDirectoryRoles(ctx context.Context, workspaceID str
 	defer rows.Close()
 	for rows.Next() {
 		var assignment identitymodel.IdentityUserRoleAssignment
-		var workforceID, bindingKey, profileID, validFrom, validUntil, grantedBy, grantReason, revokedBy, revokedAt, revokeReason, expiresAt sql.NullString
-		if err := rows.Scan(&assignment.UserID, &assignment.RoleID, &workforceID, &bindingKey, &profileID, &assignment.Source, &assignment.Status, &validFrom, &validUntil, &grantedBy, &grantReason, &revokedBy, &revokedAt, &revokeReason, &expiresAt, &assignment.CreatedAt, &assignment.UpdatedAt); err != nil {
+		var bindingKey, profileID, validFrom, validUntil, grantedBy, grantReason, revokedBy, revokedAt, revokeReason, expiresAt sql.NullString
+		if err := rows.Scan(&assignment.UserID, &assignment.RoleID, &bindingKey, &profileID, &assignment.Source, &assignment.Status, &validFrom, &validUntil, &grantedBy, &grantReason, &revokedBy, &revokedAt, &revokeReason, &expiresAt, &assignment.CreatedAt, &assignment.UpdatedAt); err != nil {
 			return err
 		}
-		assignment.WorkforceProfileID, assignment.BindingKey, assignment.ProfileID = workforceID.String, bindingKey.String, profileID.String
+		assignment.BindingKey, assignment.ProfileID = bindingKey.String, profileID.String
 		assignment.ValidFrom, assignment.ValidUntil, assignment.GrantedBy, assignment.GrantReason = validFrom.String, validUntil.String, grantedBy.String, grantReason.String
 		assignment.RevokedBy, assignment.RevokedAt, assignment.RevokeReason, assignment.ExpiresAt = revokedBy.String, revokedAt.String, revokeReason.String, pointerFromNull(expiresAt)
 		facts.RoleAssignments = append(facts.RoleAssignments, assignment)
-	}
-	return rows.Err()
-}
-
-func (s Store) appendIdentityDirectoryProfiles(ctx context.Context, workspaceID string, userIDs []string, facts *identitymodel.IdentityUserDirectoryFacts) error {
-	queryValue, args, err := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_workforce_profiles", workspaceID).
-		Columns("id", "organization_id", "identity_user_id", "worker_no", "worker_type", "work_status", "start_date", "end_date", "primary_assignment_id", "version").
-		Where(query.In("identity_user_id", stringValues(userIDs)...)).Build()
-	if err != nil {
-		return err
-	}
-	rows, err := s.backend.QueryIdentityContext(ctx, queryValue, args...)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		profile, err := scanIdentityWorkforceProfile(rows)
-		if err != nil {
-			return err
-		}
-		facts.WorkforceProfiles = append(facts.WorkforceProfiles, profile)
 	}
 	return rows.Err()
 }

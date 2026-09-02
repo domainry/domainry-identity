@@ -111,7 +111,7 @@ describe('RuntimeApiError', () => {
   })
 
   it('uses the current-user locale contract without a generic identity write', async () => {
-    const response = { user: { id: 'employee-1', name: 'Employee', email: 'employee@example.com', locale: 'zh-CN', version: 2, department_id: '', department_path: '', status: 'active' }, roles: [], default_role: '', permissions: [] }
+    const response = { user: { id: 'employee-1', name: 'Employee', email: 'employee@example.com', locale: 'zh-CN', version: 2, org_id: '', organization_path: '', status: 'active' }, roles: [], default_role: '', permissions: [] }
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(response), { status: 200, headers: { 'content-type': 'application/json' } }))
     vi.stubGlobal('fetch', fetchMock)
     await expect(updateRuntimeCurrentUserLocale({ locale: 'zh_cn', expected_version: 1 }, 'locale-change-1', 'access-token')).resolves.toEqual(response)

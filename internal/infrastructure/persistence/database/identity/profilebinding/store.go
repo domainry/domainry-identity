@@ -225,8 +225,8 @@ func (s *Store) synchronizeSystemManagedRoles(ctx context.Context, tx *sql.Tx, m
 	}
 	for _, roleID := range roleIDs {
 		insert := query.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_user_role_assignments", mutation.WorkspaceID).
-			Columns("id", "user_id", "role_id", "workforce_profile_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason", "expires_at", "created_at", "updated_at").
-			Values(profileBindingStableID("profile_role", mutation.WorkspaceID, nextUserID, roleID), nextUserID, roleID, nil, mutation.BindingKey, mutation.ProfileID, "profile_binding", "active", nil, nil, mutation.ActorID, string(mutation.Operation), nil, nil, nil, nil, now, now)
+			Columns("id", "user_id", "role_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason", "expires_at", "created_at", "updated_at").
+			Values(profileBindingStableID("profile_role", mutation.WorkspaceID, nextUserID, roleID), nextUserID, roleID, mutation.BindingKey, mutation.ProfileID, "profile_binding", "active", nil, nil, mutation.ActorID, string(mutation.Operation), nil, nil, nil, nil, now, now)
 		s.store.ApplyUpsert(insert, []string{"workspace_id", "id"}, "binding_key", "profile_id", "source", "status", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason", "updated_at")
 		statement, arguments, buildErr := insert.Build()
 		if buildErr != nil {

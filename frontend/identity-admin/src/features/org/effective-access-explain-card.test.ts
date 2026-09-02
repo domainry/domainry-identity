@@ -27,7 +27,7 @@ describe('account Effective Access Explain', () => {
     for (const field of ['reason.effect', 'reason.layer', 'reason.code', 'reason.subject', 'reason.details', 'reason.sources', 'reason.children']) {
       expect(card).toContain(field)
     }
-    for (const source of ['role_key', 'permission_set_key', 'permission_set_group_key', 'assignment_source', 'binding_key', 'workforce_profile_id']) {
+    for (const source of ['role_key', 'permission_set_key', 'permission_set_group_key', 'assignment_source', 'binding_key']) {
       expect(card).toContain(source)
     }
     expect(card).toContain('result.allowed')

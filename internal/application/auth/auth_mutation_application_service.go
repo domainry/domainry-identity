@@ -17,8 +17,8 @@ import (
 	authpolicy "github.com/domainry/domainry-identity/internal/domain/auth/policy"
 	authprojection "github.com/domainry/domainry-identity/internal/domain/auth/projection"
 	authdomain "github.com/domainry/domainry-identity/internal/domain/auth/service"
+	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
-	identitypolicy "github.com/domainry/domainry-identity/internal/domain/identity/policy"
 	"github.com/domainry/domainry-identity/internal/platform/localization"
 )
 
@@ -179,7 +179,7 @@ type authSessionMutationReceipt struct {
 }
 
 func (s *AuthApplicationService) ForceLogoutUserIdempotent(ctx context.Context, principal identitymodel.Principal, key, userID string) (authdomain.RevokeOtherSessionsResult, bool, error) {
-	if !principal.Known || !identitypolicy.IdentityRoleHasPermissionKey(principal.Role, "identity.users.force_logout") {
+	if !principal.Known || !identitycontract.IdentityRoleHasPermissionKey(principal.Role, identitycontract.IdentityActionUsersForceLogout) {
 		return authdomain.RevokeOtherSessionsResult{}, false, authMutationError(apperror.KindForbidden, "auth.permission_denied")
 	}
 	userID = strings.TrimSpace(userID)

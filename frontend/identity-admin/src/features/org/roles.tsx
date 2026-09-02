@@ -36,11 +36,6 @@ import {
   Input,
   Skeleton,
   Separator,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
   Tabs,
   TabsContent,
   TabsList,
@@ -159,9 +154,6 @@ function RolePolicyWorkspace() {
   const [discardOpen, setDiscardOpen] = useState(false)
   const [createPermissionKeys, setCreatePermissionKeys] = useState<string[]>([])
   const [createPermissionSearch, setCreatePermissionSearch] = useState('')
-  const [createDataObject, setCreateDataObject] = useState('')
-  const [createDataScope, setCreateDataScope] = useState('all_records')
-  const [createDataWrite, setCreateDataWrite] = useState(false)
   const permissionCatalogQuery = useQuery({ queryKey: ['runtime', 'identity', 'permission-catalog'], queryFn: permissionsApi.catalog })
   const schemaQuery = useQuery({ queryKey: ['runtime', 'schema', 'role-create'], queryFn: objectsApi.schemaSnapshot })
   const roleSearch = useMemo<DataTableSearch>(() => ({
@@ -174,7 +166,7 @@ function RolePolicyWorkspace() {
     name: z.string().trim().min(1, t('roles.validation.nameRequired')),
     code: z.string().trim().min(1, t('roles.validation.codeRequired')).regex(/^[A-Za-z][A-Za-z0-9_]*$/, t('roles.validation.codeFormat')),
     description: z.string(),
-    businessReason: z.string().trim().min(1, t('roles.systemDraft.reasonRequired')),
+    businessReason: z.string().trim().min(1, t('roles.permissionPublication.reasonRequired')),
   }).superRefine((values, context) => {
     if (roles.some((role) => role.code.toLowerCase() === values.code.trim().toLowerCase())) {
       context.addIssue({ code: 'custom', path: ['code'], message: t('roles.validation.codeUnique') })
@@ -241,7 +233,6 @@ function RolePolicyWorkspace() {
       .filter((operation) => !query || `${operation.capabilityLabel} ${operation.operationLabel} ${operation.permissionKeys.join(' ')} ${operation.bindings.map((binding) => `${binding.method} ${binding.route}`).join(' ')}`.toLowerCase().includes(query))
       .slice(0, 100)
   }, [createPermissionSearch, permissionOperations])
-  const createDataObjects = useMemo(() => schemaQuery.data?.objects ?? [], [schemaQuery.data?.objects])
   const menuTree = useMemo(() => buildRoleMenuTree(menusQuery.data ?? []), [menusQuery.data])
   const filteredMenuTree = useMemo(
     () => filterRoleMenuTree(menuTree, menuSearch, (node) => displayText(t, node.name)),
@@ -269,7 +260,7 @@ function RolePolicyWorkspace() {
       header: ({ column }) => <TableColumnHeader column={column} title={t('roles.form.name')} />,
       cell: ({ row }) => {
         const role = row.original
-        return <button className={cn('flex w-full items-center gap-2 rounded-md p-1 text-left', role.id === selected?.id && 'bg-accent')} onClick={() => requestRoleSelection(role.id)}><ShieldCheck className='size-4 shrink-0 text-muted-foreground' /><span className='min-w-0'><span className='flex items-center gap-1.5'><span className='truncate font-medium'>{displayText(t, role.name)}</span>{role.builtIn ? <Badge variant='secondary' className='px-1.5 text-[10px]'>{t('roles.builtIn')}</Badge> : null}</span><span className='block truncate text-xs text-muted-foreground'>{displayText(t, role.description) || t('roles.noDescription')}</span></span></button>
+		return <button className={cn('flex w-full items-center gap-2 rounded-md p-1 text-left', role.id === selected?.id && 'bg-accent')} onClick={() => requestRoleSelection(role.id)}><ShieldCheck className='size-4 shrink-0 text-muted-foreground' /><span className='min-w-0'><span className='truncate font-medium'>{displayText(t, role.name)}</span><span className='block truncate text-xs text-muted-foreground'>{displayText(t, role.description) || t('roles.noDescription')}</span></span></button>
       },
     },
     { accessorKey: 'code', header: ({ column }) => <TableColumnHeader column={column} title={t('roles.form.code')} />, cell: ({ row }) => <code className='text-xs'>{row.original.code}</code> },
@@ -279,10 +270,6 @@ function RolePolicyWorkspace() {
 
   function togglePermissionKeys(permissionKeys: string[]) {
     if (!selected) return
-    if (selected.builtIn) {
-      toast.info(t('roles.toast.builtInLocked'))
-      return
-    }
     const next = new Set(draftPermissionKeys)
     const checked = permissionKeys.length > 0 && permissionKeys.every((key) => next.has(key))
     for (const key of permissionKeys) checked ? next.delete(key) : next.add(key)
@@ -302,10 +289,6 @@ function RolePolicyWorkspace() {
 
   function toggleMenu(menuID: string, checked: boolean) {
     if (!selected) return
-    if (selected.builtIn) {
-      toast.info(t('roles.toast.builtInLocked'))
-      return
-    }
     setDraftMenuIDs(toggleRoleMenuSelection(menusQuery.data ?? [], draftMenuIDs, menuID, checked))
     setMenusDirty(true)
   }
@@ -314,9 +297,6 @@ function RolePolicyWorkspace() {
     reset({ name: '', code: '', description: '', businessReason: '' })
     setCreatePermissionKeys([])
     setCreatePermissionSearch('')
-    setCreateDataObject('')
-    setCreateDataScope('all_records')
-    setCreateDataWrite(false)
     setCreateOpen(true)
   }
 
@@ -326,37 +306,21 @@ function RolePolicyWorkspace() {
   }
 
   async function createRole(values: RoleFormValues) {
-    if (createPermissionKeys.length === 0) {
-      setError('root', { message: t('roles.validation.permissionRequired') })
-      return
-    }
-    if (!createDataObject) {
-      setError('root', { message: t('roles.validation.dataObjectRequired') })
-      return
-    }
     const input: RoleCreateInput = {
       name: values.name.trim(),
       code: values.code.trim().toUpperCase(),
       description: values.description.trim(),
       members: 0,
-      builtIn: false,
       status: 'active',
       businessReason: values.businessReason.trim(),
       permissionKeys: createPermissionKeys,
-      dataPermission: {
-        object_key: createDataObject,
-        scope: createDataScope,
-        read: createDataScope !== 'none',
-        write: createDataScope !== 'none' && createDataWrite,
-      },
     }
     try {
       await createRoleMut.mutateAsync(input)
-      toast.success(t('roles.systemDraft.toast.saved'))
+      toast.success(t('roles.create.toast.created'))
       setCreateOpen(false)
       reset({ name: '', code: '', description: '', businessReason: '' })
       setCreatePermissionKeys([])
-      setCreateDataObject('')
     } catch (error) {
       const structured = runtimeApiError(error)
       setError(roleFormControl(structured) ?? 'root', { message: runtimeErrorConstraintMessage(t, structured, error instanceof Error ? error.message : t('dataTable.errorDescription')) })
@@ -412,8 +376,8 @@ function RolePolicyWorkspace() {
                 </CardDescription>
               </div>
               {activePolicyTab === 'permissions' ? <div className='flex flex-wrap gap-2'>
-                <Button size='sm' disabled={selected.builtIn || !permsDirty || rolePublicationBusy || !permissionChangeReason.trim()} onClick={() => savePermissions.mutate()}>{t('roles.permissionPublication.publish')}</Button>
-              </div> : activePolicyTab === 'menus' ? <Button size='sm' disabled={selected.builtIn || !menusDirty || saveMenus.isPending} onClick={() => saveMenus.mutate()}>{menusDirty ? t('roles.menus.saveDirty') : t('roles.menus.save')}</Button> : null}
+				<Button size='sm' disabled={!permsDirty || rolePublicationBusy || !permissionChangeReason.trim()} onClick={() => savePermissions.mutate()}>{t('roles.permissionPublication.publish')}</Button>
+			  </div> : activePolicyTab === 'menus' ? <Button size='sm' disabled={!menusDirty || saveMenus.isPending} onClick={() => saveMenus.mutate()}>{menusDirty ? t('roles.menus.saveDirty') : t('roles.menus.save')}</Button> : null}
             </div>
           </CardHeader>
           <Separator />
@@ -476,7 +440,7 @@ function RolePolicyWorkspace() {
 							  {!operation.usageAvailable ? <p className='rounded border border-dashed px-3 py-2 text-xs text-muted-foreground'>{t('roles.capabilities.usageUnavailableDescription')}</p> : null}
                               <details className='text-xs text-muted-foreground'><summary className='cursor-pointer'>{t('roles.capabilities.technicalDetails')}</summary><div className='mt-1 flex flex-wrap gap-1'>{operation.permissionKeys.map((key) => <code key={key} className='rounded bg-muted px-1.5 py-0.5'>{key}</code>)}</div></details>
                             </div>
-                            <Checkbox aria-label={`${capability.label} - ${operation.operationLabel}`} checked={checked} disabled={selected.builtIn || rolePermissionsQuery.isPending || !selectable} onCheckedChange={() => togglePermissionKeys(operation.permissionKeys)} />
+							<Checkbox aria-label={`${capability.label} - ${operation.operationLabel}`} checked={checked} disabled={rolePermissionsQuery.isPending || !selectable} onCheckedChange={() => togglePermissionKeys(operation.permissionKeys)} />
                           </div>
 						  })}
 						</div>
@@ -485,9 +449,6 @@ function RolePolicyWorkspace() {
 				  ))}
 				  {!permissionCatalogGroups.length ? <p className='rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground'>{t('roles.capabilities.empty')}</p> : null}
                 </div>
-                {selected.builtIn ? (
-                  <p className='mt-3 text-xs text-muted-foreground'>{t('roles.builtInHint')}</p>
-                ) : null}
               </TabsContent>
               <TabsContent value='menus' className='mt-3'>
                 <div className='mb-3 flex flex-wrap items-center gap-2'>
@@ -496,7 +457,7 @@ function RolePolicyWorkspace() {
                     <Input value={menuSearch} onChange={(event) => setMenuSearch(event.target.value)} placeholder={t('roles.menus.search')} className='pl-9' />
                   </div>
                   <Badge variant='secondary'>{t('roles.menus.selectedCount', { count: draftMenuIDs.length })}</Badge>
-                  <Button variant='outline' size='sm' disabled={selected.builtIn || draftMenuIDs.length === 0} onClick={() => { setDraftMenuIDs([]); setMenusDirty(true) }}>
+				  <Button variant='outline' size='sm' disabled={draftMenuIDs.length === 0} onClick={() => { setDraftMenuIDs([]); setMenusDirty(true) }}>
                     {t('roles.menus.clear')}
                   </Button>
                 </div>
@@ -518,10 +479,10 @@ function RolePolicyWorkspace() {
                   </div>
                 ) : (
                   <div className='max-h-[560px] overflow-y-auto rounded-md border'>
-                    {filteredMenuTree.map((node) => <RoleMenuRow key={node.id} node={node} selectedIDs={selectedMenuIDs} disabled={selected.builtIn || saveMenus.isPending} onToggle={toggleMenu} t={t} />)}
+					{filteredMenuTree.map((node) => <RoleMenuRow key={node.id} node={node} selectedIDs={selectedMenuIDs} disabled={saveMenus.isPending} onToggle={toggleMenu} t={t} />)}
                   </div>
                 )}
-                <p className='mt-3 text-xs text-muted-foreground'>{selected.builtIn ? t('roles.builtInHint') : t('roles.menus.hint')}</p>
+				<p className='mt-3 text-xs text-muted-foreground'>{t('roles.menus.hint')}</p>
               </TabsContent>
             </Tabs>
           </CardContent>
@@ -539,7 +500,7 @@ function RolePolicyWorkspace() {
             <Field data-invalid={Boolean(errors.code)}><FieldLabel htmlFor='role-code'>{t('roles.form.code')}</FieldLabel><Input id='role-code' placeholder='SALES_LEAD' aria-invalid={Boolean(errors.code)} {...register('code')} /><FieldError errors={[errors.code]} /></Field>
             <Field><FieldLabel htmlFor='role-desc'>{t('roles.form.desc')}</FieldLabel><Textarea id='role-desc' placeholder={t('roles.form.descPlaceholder')} {...register('description')} /></Field>
             <Field data-invalid={Boolean(errors.businessReason)}>
-              <FieldLabel htmlFor='role-business-reason'>{t('roles.systemDraft.reason')}</FieldLabel>
+              <FieldLabel htmlFor='role-business-reason'>{t('roles.permissionPublication.reason')}</FieldLabel>
               <Textarea id='role-business-reason' placeholder={t('roles.create.reasonPlaceholder')} aria-invalid={Boolean(errors.businessReason)} {...register('businessReason')} />
               <FieldError errors={[errors.businessReason]} />
             </Field>
@@ -557,23 +518,6 @@ function RolePolicyWorkspace() {
               </div>
               <p className='text-xs text-muted-foreground'>{t('roles.create.permissionsSelected', { count: createPermissionKeys.length })}</p>
             </Field>
-            <div className='grid gap-4 sm:grid-cols-2'>
-              <Field>
-                <FieldLabel>{t('roles.create.dataObject')}</FieldLabel>
-                <Select value={createDataObject} onValueChange={setCreateDataObject}>
-                  <SelectTrigger><SelectValue placeholder={t('roles.create.dataObjectPlaceholder')} /></SelectTrigger>
-                  <SelectContent>{createDataObjects.map((object) => <SelectItem key={object.key} value={object.key}>{object.name || object.label || object.key}</SelectItem>)}</SelectContent>
-                </Select>
-              </Field>
-              <Field>
-                <FieldLabel>{t('roles.create.dataScope')}</FieldLabel>
-                <Select value={createDataScope} onValueChange={setCreateDataScope}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectItem value='all_records'>{t('roles.create.scopeAll')}</SelectItem><SelectItem value='owned_records'>{t('roles.create.scopeOwned')}</SelectItem><SelectItem value='none'>{t('common.none')}</SelectItem></SelectContent>
-                </Select>
-              </Field>
-            </div>
-            <label className='flex items-center gap-2 text-sm'><Checkbox checked={createDataWrite} onCheckedChange={(checked) => setCreateDataWrite(checked === true)} />{t('roles.create.dataWrite')}</label>
           </FieldGroup>
           <FieldError errors={[errors.root]} />
           <DialogFooter>

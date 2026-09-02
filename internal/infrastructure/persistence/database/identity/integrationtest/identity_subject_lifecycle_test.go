@@ -33,7 +33,8 @@ func TestIdentitySubjectLifecycleContract(t *testing.T) {
 	user := identitymodel.IdentityUser{
 		ID: "user", Name: "Dr. User Example", GivenName: "User", MiddleName: "Middle", FamilyName: "Example",
 		NamePrefix: "Dr.", NameSuffix: "PhD", NativeName: "用户", NameLocale: "en-US",
-		Email: "user@example.com", Phone: "1",
+		Email: "user@example.com", Phone: "1", OrgID: "organization-unit", SupportOrgID: "supported-organization-unit", WorkerNo: "E-1",
+		WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive,
 	}
 	if err := identity.UpsertIdentityUser(t.Context(), "workspace-primary", user); err != nil {
 		t.Fatal(err)
@@ -44,20 +45,8 @@ func TestIdentitySubjectLifecycleContract(t *testing.T) {
 	if _, err := store.DB().ExecContext(t.Context(), "INSERT INTO _identity_mfa_factors (id, workspace_id, user_id, factor_type, status, verified_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", "factor", "workspace-primary", "user", "totp", "active", "now", "now", "now"); err != nil {
 		t.Fatal(err)
 	}
-	if err := identity.UpsertIdentityWorkforceProfile(t.Context(), "workspace-primary", identitymodel.IdentityWorkforceProfile{
-		ID: "workforce", OrganizationID: "organization", IdentityUserID: "user", WorkerNo: "E-1",
-		WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive, PrimaryAssignmentID: "assignment",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := identity.UpsertIdentityWorkforceAssignment(t.Context(), "workspace-primary", identitymodel.IdentityWorkforceAssignment{
-		ID: "assignment", WorkforceProfileID: "workforce", OrganizationUnitID: "department",
-		AssignmentType: identitymodel.IdentityWorkforceAssignmentPrimary, Status: identitymodel.IdentityStatusActive,
-	}); err != nil {
-		t.Fatal(err)
-	}
 	if err := identity.AssignIdentityUserRole(t.Context(), "workspace-primary", identitymodel.IdentityUserRoleAssignment{
-		UserID: "user", RoleID: "employee", WorkforceProfileID: "workforce", Source: "workforce", Status: "active",
+		UserID: "user", RoleID: "employee", Source: "manual", Status: "active",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -87,9 +76,9 @@ func TestIdentitySubjectLifecycleContract(t *testing.T) {
 	exported, err := lifecycle.ExportSubject(t.Context(), "workspace-primary", "user")
 	if err != nil || !strings.Contains(string(exported), `"email":"user@example.com"`) ||
 		!strings.Contains(string(exported), `"family_name":"Example"`) || !strings.Contains(string(exported), `"native_name":"用户"`) ||
-		strings.Contains(string(exported), "employee_no") ||
-		!strings.Contains(string(exported), `"workforce_profiles":[{"`) ||
-		!strings.Contains(string(exported), `"workforce_assignments":[{"`) ||
+		!strings.Contains(string(exported), `"worker_no":"E-1"`) ||
+		!strings.Contains(string(exported), `"org_id":"organization-unit"`) ||
+		!strings.Contains(string(exported), `"support_org_id":"supported-organization-unit"`) ||
 		!strings.Contains(string(exported), `"role_assignments":[{"`) ||
 		!strings.Contains(string(exported), `"profile_relations":[{"`) ||
 		!strings.Contains(string(exported), `"object_key":"member_profile"`) {
@@ -102,7 +91,7 @@ func TestIdentitySubjectLifecycleContract(t *testing.T) {
 	loaded, found, err := identity.GetIdentityUser(t.Context(), "workspace-primary", "user")
 	if err != nil || !found || loaded.Status != "erased" || loaded.Email == user.Email ||
 		loaded.GivenName != "" || loaded.MiddleName != "" || loaded.FamilyName != "" || loaded.NamePrefix != "" ||
-		loaded.NameSuffix != "" || loaded.NativeName != "" || loaded.NameLocale != "" {
+		loaded.NameSuffix != "" || loaded.NativeName != "" || loaded.NameLocale != "" || loaded.SupportOrgID != "" {
 		t.Fatalf("loaded=%#v found=%v err=%v", loaded, found, err)
 	}
 	var factorCount int

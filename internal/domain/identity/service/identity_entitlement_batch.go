@@ -58,7 +58,7 @@ func (s *IdentityDomainService) PrepareIdentityEntitlementBatch(ctx context.Cont
 		switch item.Operation {
 		case identitymodel.IdentityEntitlementOperationGrant:
 			assignment = identitymodel.IdentityUserRoleAssignment{
-				UserID: item.UserID, RoleID: item.RoleID, WorkforceProfileID: item.WorkforceProfileID,
+				UserID: item.UserID, RoleID: item.RoleID,
 				BindingKey: item.BindingKey, ProfileID: item.ProfileID, ValidFrom: item.ValidFrom, ValidUntil: item.ValidUntil,
 				GrantedBy: actor.UserID, GrantReason: item.Reason,
 			}
@@ -99,7 +99,6 @@ func normalizeIdentityEntitlementBatchItem(item identitymodel.IdentityEntitlemen
 	item.Operation = strings.TrimSpace(item.Operation)
 	item.UserID = strings.TrimSpace(item.UserID)
 	item.RoleID = strings.TrimSpace(item.RoleID)
-	item.WorkforceProfileID = strings.TrimSpace(item.WorkforceProfileID)
 	item.BindingKey = strings.TrimSpace(item.BindingKey)
 	item.ProfileID = strings.TrimSpace(item.ProfileID)
 	item.ValidFrom = strings.TrimSpace(item.ValidFrom)

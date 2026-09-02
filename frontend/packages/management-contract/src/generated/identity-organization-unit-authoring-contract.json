@@ -1,0 +1,405 @@
+{
+  "key": "identity.organization_unit",
+  "status": "supported",
+  "lifecycle": "immediate_audited_configuration",
+  "parameters": [
+    {
+      "key": "id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "key": "code",
+      "type": "string",
+      "required": true
+    },
+    {
+      "key": "name",
+      "type": "string",
+      "required": true
+    },
+    {
+      "key": "node_type",
+      "type": "string",
+      "required": true,
+      "enum": [
+        "company",
+        "region",
+        "store",
+        "department",
+        "team",
+        "warehouse"
+      ]
+    },
+    {
+      "key": "parent_id",
+      "type": "string"
+    },
+    {
+      "key": "sort_order",
+      "type": "integer"
+    },
+    {
+      "key": "status",
+      "type": "string",
+      "default": "active",
+      "enum": [
+        "active",
+        "disabled"
+      ]
+    }
+  ],
+  "permissions": [
+    "identity.organization_units.create",
+    "identity.organization_units.get",
+    "identity.organization_units.update",
+    "identity.organization_units.validate",
+    "identity.organization_units.versions"
+  ],
+  "audit_events": [
+    "identity_organization_unit_created",
+    "identity_organization_unit_updated"
+  ],
+  "validation_endpoint": "POST /identity/organization-units/{organizationUnitID}/validate",
+  "configuration_routes": [
+    "GET /identity/organization-units/{organizationUnitID}",
+    "GET /identity/organization-units/{organizationUnitID}/versions",
+    "PATCH /identity/organization-units/{organizationUnitID}",
+    "POST /identity/organization-units",
+    "POST /identity/organization-units/{organizationUnitID}/validate"
+  ],
+  "resource_operations": {
+    "persistence_mode": "audited_resource",
+    "validate": "POST /identity/organization-units/{organizationUnitID}/validate",
+    "upsert": "PATCH /identity/organization-units/{organizationUnitID}",
+    "upsert_headers": [
+      {
+        "name": "Builder-Task-ID",
+        "required": true,
+        "value_source": "builder_task_id",
+        "description": "Stable identity of the project-owned builder task."
+      },
+      {
+        "name": "Idempotency-Key",
+        "required": true,
+        "value_source": "request_fingerprint",
+        "description": "Stable key for this capability, resource, and canonical payload."
+      },
+      {
+        "name": "Expected-Schema-Hash",
+        "required": true,
+        "value_source": "expected_resource_hash",
+        "description": "Last observed resource hash, or empty when the resource does not exist."
+      }
+    ],
+    "success_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "available_successors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "detail_endpoint": {
+                "type": "string"
+              },
+              "domain": {
+                "type": "string"
+              },
+              "key": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "validation_endpoint": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "key",
+              "domain",
+              "status",
+              "detail_endpoint"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "resource": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": true
+            },
+            {
+              "type": "array"
+            }
+          ]
+        },
+        "resource_hash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "snapshot_hash": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "resource",
+        "resource_hash",
+        "snapshot_hash",
+        "available_successors"
+      ],
+      "additionalProperties": true
+    },
+    "get": "GET /identity/organization-units/{organizationUnitID}",
+    "versions": "GET /identity/organization-units/{organizationUnitID}/versions"
+  },
+  "resource_key_path_parameter": "organizationUnitID",
+  "errors": [
+    {
+      "code": "backend.identity.org_id_required",
+      "field_path": "id",
+      "message_key": "backend.identity.org_id_required"
+    },
+    {
+      "code": "backend.identity.organization_unit_code_required",
+      "field_path": "code",
+      "message_key": "backend.identity.organization_unit_code_required"
+    },
+    {
+      "code": "backend.identity.organization_unit_name_required",
+      "field_path": "name",
+      "message_key": "backend.identity.organization_unit_name_required"
+    },
+    {
+      "code": "backend.identity.organization_unit_name_exists",
+      "field_path": "name",
+      "parameter_keys": [
+        "actual"
+      ],
+      "message_key": "backend.identity.organization_unit_name_exists"
+    },
+    {
+      "code": "backend.identity.parent_organization_unit_not_found",
+      "field_path": "parent_id",
+      "parameter_keys": [
+        "actual"
+      ],
+      "message_key": "backend.identity.parent_organization_unit_not_found"
+    },
+    {
+      "code": "backend.identity.organization_unit_parent_self",
+      "field_path": "parent_id",
+      "parameter_keys": [
+        "actual"
+      ],
+      "message_key": "backend.identity.organization_unit_parent_self"
+    },
+    {
+      "code": "backend.identity.organization_unit_cycle",
+      "field_path": "parent_id",
+      "parameter_keys": [
+        "actual"
+      ],
+      "message_key": "backend.identity.organization_unit_cycle"
+    }
+  ],
+  "examples": [
+    {
+      "name": "minimal_valid",
+      "value": {
+        "code": "SALES",
+        "id": "sales",
+        "name": "Sales",
+        "node_type": "department",
+        "status": "active"
+      }
+    },
+    {
+      "name": "representative",
+      "value": {
+        "code": "EAST_STORE",
+        "id": "east_store",
+        "name": "East Store",
+        "node_type": "store",
+        "sort_order": 10,
+        "status": "active"
+      }
+    },
+    {
+      "name": "invalid_with_repair",
+      "value": {
+        "code": "SALES",
+        "id": "sales",
+        "name": "Sales",
+        "node_type": "department",
+        "parent_id": "sales",
+        "status": "active"
+      },
+      "expected_error_codes": [
+        "backend.identity.organization_unit_parent_self"
+      ]
+    }
+  ],
+  "input_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "code": {
+        "type": "string",
+        "minLength": 1
+      },
+      "id": {
+        "type": "string",
+        "minLength": 1
+      },
+      "name": {
+        "type": "string",
+        "minLength": 1
+      },
+      "node_type": {
+        "type": "string",
+        "enum": [
+          "company",
+          "region",
+          "store",
+          "department",
+          "team",
+          "warehouse"
+        ]
+      },
+      "parent_id": {
+        "type": "string"
+      },
+      "sort_order": {
+        "type": "integer"
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "active",
+          "disabled"
+        ],
+        "default": "active"
+      }
+    },
+    "required": [
+      "id",
+      "code",
+      "name",
+      "node_type"
+    ],
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "ancestor_ids": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "code": {
+        "type": "string"
+      },
+      "depth": {
+        "type": "integer"
+      },
+      "id": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "node_type": {
+        "type": "string"
+      },
+      "parent_id": {
+        "type": "string"
+      },
+      "path": {
+        "type": "string"
+      },
+      "sort_order": {
+        "type": "integer"
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "active",
+          "disabled"
+        ]
+      }
+    },
+    "required": [
+      "id",
+      "code",
+      "name",
+      "node_type",
+      "path",
+      "ancestor_ids",
+      "depth",
+      "sort_order",
+      "status"
+    ],
+    "additionalProperties": false
+  },
+  "output_variables": [
+    {
+      "name": "org_id",
+      "json_pointer": "/id",
+      "type": "org_id",
+      "visible_to": "subsequent_capability_calls"
+    }
+  ],
+  "reference_contracts": [
+    {
+      "kind": "org_id",
+      "input_json_pointer": "/parent_id",
+      "resolver_endpoint": "GET /tenant-admin/platform-capabilities/references/org_id"
+    }
+  ],
+  "execution": {
+    "read_set": [
+      "identity.organization_unit"
+    ],
+    "write_set": [
+      "identity.organization_unit"
+    ],
+    "boundary_class": "",
+    "transaction": "identity_repository_transaction",
+    "idempotency": "stable_org_id_upsert",
+    "side_effects": [
+      "audit:identity_organization_unit_updated"
+    ],
+    "side_effect_level": "internal",
+    "permission_model": "exact_action_same_key_permission",
+    "change_control": "direct_audited_configuration"
+  },
+  "sources": [
+    {
+      "kind": "contract",
+      "path": "internal/domain/identity/contract/identity_management_authoring.go"
+    },
+    {
+      "kind": "model",
+      "path": "internal/domain/identity/model/identity_model.go",
+      "symbol": "IdentityOrganizationUnit"
+    },
+    {
+      "kind": "validation",
+      "path": "internal/domain/identity/service/identity_configuration_domain_service.go",
+      "symbol": "ValidateOrganizationUnitConfiguration"
+    },
+    {
+      "kind": "http",
+      "path": "internal/transport/http/identity/identity_routes.go",
+      "symbol": "RegisterRoutes"
+    }
+  ]
+}

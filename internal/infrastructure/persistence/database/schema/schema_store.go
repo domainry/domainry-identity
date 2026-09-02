@@ -24,6 +24,7 @@ type SQLDatabase interface {
 type Store interface {
 	SchemaDB() SQLDatabase
 	SchemaRenderer() ormdialect.Renderer
+	MaxParameters() int
 	DatabaseSchema() string
 	Identifier(string) string
 	TableIdentifier(string) string

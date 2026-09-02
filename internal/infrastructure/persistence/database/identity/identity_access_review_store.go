@@ -2,6 +2,7 @@ package identity
 
 import (
 	"context"
+	"database/sql"
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	accessreviewpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/accessreview"
@@ -11,6 +12,10 @@ type identityAccessReviewQueryer = accessreviewpersistence.Queryer
 
 func (s *SQLIdentityStore) accessReviewStore() *accessreviewpersistence.Store {
 	return accessreviewpersistence.New(s, nowString, s.writeIdentityUserRoleAssignmentTx)
+}
+
+func (s *SQLIdentityStore) writeIdentityUserRoleAssignmentTx(ctx context.Context, tx *sql.Tx, workspaceID string, assignment identitymodel.IdentityUserRoleAssignment) error {
+	return s.writeIdentityUserRoleAssignment(ctx, tx, workspaceID, assignment)
 }
 
 func (s *SQLIdentityStore) CreateIdentityAccessReview(ctx context.Context, review identitymodel.IdentityAccessReview) error {

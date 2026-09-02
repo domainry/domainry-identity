@@ -21,7 +21,7 @@ func TestMetadataIdentityAuthorizationValidatesStructureWithoutMirroringRuntimeO
 			Roles: []identitymodel.RoleSchema{{
 				Key: "operator", RecordScope: "custom",
 				DataPermissions: []identitymodel.DataPermission{{
-					ObjectKey: "runtime_booking", Scope: "custom", Read: true,
+					ObjectKey: "runtime_booking", Scope: "custom",
 					Predicate: &identitymodel.IdentityPolicyExpression{
 						Operator: "eq", Path: []identitymodel.IdentityPolicyRelationSegment{{Direction: "forward", RelationFieldKey: "member_id", TargetObjectKey: "runtime_member"}},
 						FieldKey: "name", ValueSource: "actor_claim", ClaimKey: "member_name",

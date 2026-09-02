@@ -15,6 +15,7 @@ func (schemaHelperStore) SchemaRenderer() ormdialect.Renderer {
 	dialect, _ := ormdialect.New(ormdialect.SQLite)
 	return dialect.WithSchema("")
 }
+func (schemaHelperStore) MaxParameters() int     { return 999 }
 func (schemaHelperStore) Driver() string         { return "sqlite" }
 func (schemaHelperStore) DatabaseSchema() string { return "" }
 func (schemaHelperStore) Identifier(value string) string {

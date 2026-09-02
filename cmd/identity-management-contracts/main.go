@@ -54,9 +54,8 @@ func generate(outputDir string) error {
 		authoringByKey[definition.Key] = definition
 	}
 	contracts := map[string]authoringcontract.CapabilityAuthoringDefinition{
-		"identity-user-authoring-contract.json":                 authoringByKey["identity.user"],
-		"identity-workforce-profile-authoring-contract.json":    authoringByKey["identity.workforce_profile"],
-		"identity-workforce-assignment-authoring-contract.json": authoringByKey["identity.workforce_assignment"],
+		"identity-user-authoring-contract.json":              authoringByKey["identity.user"],
+		"identity-organization-unit-authoring-contract.json": authoringByKey["identity.organization_unit"],
 	}
 	for name, definition := range contracts {
 		content, err := json.MarshalIndent(definition, "", "  ")

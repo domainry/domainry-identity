@@ -115,10 +115,7 @@ func TestIdentityPagedListHandlers(t *testing.T) {
 	repository := &identityHTTPRepository{
 		users: []identitymodel.IdentityUser{
 			{ID: "user-2", Name: "Bob", Email: "bob@example.test", Status: identitymodel.IdentityStatusDisabled},
-			{ID: "user-1", Name: "Alice", Email: "alice@example.test", Status: identitymodel.IdentityStatusActive},
-		},
-		workforceProfiles: []identitymodel.IdentityWorkforceProfile{
-			{ID: "worker-1", IdentityUserID: "user-1", OrganizationID: "org", WorkerNo: "001", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive},
+			{ID: "user-1", Name: "Alice", Email: "alice@example.test", WorkerNo: "001", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive, Status: identitymodel.IdentityStatusActive},
 		},
 		assignments: []identitymodel.IdentityUserRoleAssignment{
 			{UserID: "user-1", RoleID: "viewer", Source: "manual", Status: "active"},
@@ -132,7 +129,7 @@ func TestIdentityPagedListHandlers(t *testing.T) {
 		path map[string]string
 	}{
 		{name: "users", call: handler.searchIdentityUsers, url: "/identity/users/search?page=1&page_size=1&search=alice&filters=%7B%22status%22%3A%22active%22%7D&sort=name:asc"},
-		{name: "workforce", call: handler.searchIdentityWorkforceProfiles, url: "/identity/workforce/search?page=1&page_size=10&search=001&sort=worker_no:asc"},
+		{name: "workers", call: handler.searchIdentityUsers, url: "/identity/users/search?page=1&page_size=10&search=001&search_fields=worker_no&sort=worker_no:asc"},
 		{name: "assignments", call: handler.searchIdentityUserRoleAssignments, url: "/identity/users/user-1/role-assignments/search?page=1&page_size=10&search=viewer&sort=role_id:asc", path: map[string]string{"userID": " user-1 "}},
 	}
 	for _, test := range tests {

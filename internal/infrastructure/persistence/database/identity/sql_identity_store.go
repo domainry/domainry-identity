@@ -41,7 +41,6 @@ type SQLIdentityStore struct {
 }
 
 var _ identityrepository.IdentityRepository = (*SQLIdentityStore)(nil)
-var _ identityrepository.IdentityWorkforceRepository = (*SQLIdentityStore)(nil)
 
 func (s *SQLIdentityStore) sqlRenderer() ormdialect.Renderer {
 	return s.renderer

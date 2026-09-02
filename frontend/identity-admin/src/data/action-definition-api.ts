@@ -179,28 +179,6 @@ export interface RuntimeChangePlanValidation {
   risk_summary: Record<string, number>
 }
 
-export interface RoleAuthorizationChangePlanInput {
-  snapshot: RuntimeSystemSnapshot
-  graph: RuntimeReferenceGraph
-  roleKey: string
-  roleName: string
-  permissionKeys?: string[]
-  dataScopes?: Array<{ resource: string; scope: string; audit_denial?: boolean; predicate?: unknown }>
-  fieldPermissions?: Array<{ resource: string; field: string; visible: boolean; editable: boolean; masked?: boolean; policies?: unknown[] }>
-  reason: string
-  planID: string
-  existingDraft?: RuntimeChangePlanDraft | null
-}
-
-export interface RoleAuthorizationBatchChangePlanInput {
-  snapshot: RuntimeSystemSnapshot
-  graph: RuntimeReferenceGraph
-  changes: Array<Omit<RoleAuthorizationChangePlanInput, 'snapshot' | 'graph' | 'reason' | 'planID' | 'existingDraft'>>
-  reason: string
-  planID: string
-  existingDraft?: RuntimeChangePlanDraft | null
-}
-
 export interface SystemResourceChangePlanInput {
   snapshot: RuntimeSystemSnapshot
   graph: RuntimeReferenceGraph
@@ -316,64 +294,6 @@ export async function saveSystemResourceDraft(input: PublishSystemResourceChange
   const draft = await systemChangePlansApi.save(plan, 0)
   rememberPendingSystemDraft(draft.plan_id)
   return draft
-}
-
-export function buildRoleAuthorizationChangePlan(input: RoleAuthorizationChangePlanInput): RuntimeChangePlan {
-  return buildRoleAuthorizationBatchChangePlan({ snapshot: input.snapshot, graph: input.graph, changes: [input], reason: input.reason, planID: input.planID, existingDraft: input.existingDraft })
-}
-
-export function roleAuthorizationPlanID(snapshotHash: string): string {
-  const revision = snapshotHash.trim().replace(/[^a-zA-Z0-9_.-]+/g, '-').slice(0, 16)
-  return revision ? `identity-role-authorization-${revision}` : ''
-}
-
-export function buildRoleAuthorizationBatchChangePlan(input: RoleAuthorizationBatchChangePlanInput): RuntimeChangePlan {
-  const changes = new Map(input.changes.map((change) => [change.roleKey, change]))
-  const existingItems = new Map(
-    (input.existingDraft?.payload.items ?? [])
-      .filter((item) => item.resource_type === 'role')
-      .map((item) => [item.resource_key, item]),
-  )
-  const roleKeys = [...new Set([...existingItems.keys(), ...changes.keys()])].sort()
-  const items = roleKeys.map((roleKey): RuntimeChangePlanItem => {
-    const change = changes.get(roleKey)
-    const current = input.snapshot.schema.roles?.find((role) => role.key === roleKey)
-    const source = input.snapshot.resource_sources.find((item) => item.resource_type === 'role' && item.resource_key === roleKey)
-    const existing = existingItems.get(roleKey)
-    const existingAfter = existing?.after as RuntimeManifestRole | undefined
-    const base = existingAfter ?? current ?? {
-      key: roleKey,
-      name: change?.roleName ?? roleKey,
-      permissions: [],
-      record_scope: 'all_records',
-    }
-    const itemID = `role:${roleKey}`
-    const after: RuntimeManifestRole = {
-      ...base,
-      permissions: change?.permissionKeys === undefined ? [...(base.permissions ?? [])] : Array.from(new Set(change.permissionKeys)).sort(),
-      data_permissions: change?.dataScopes === undefined ? base.data_permissions : change.dataScopes.map((scope) => ({
-        object_key: scope.resource, scope: scope.scope, read: true, write: true,
-        ...(scope.audit_denial ? { audit_denial: true } : {}), ...(scope.predicate ? { predicate: scope.predicate } : {}),
-      })),
-      field_permissions: change?.fieldPermissions === undefined ? base.field_permissions : change.fieldPermissions.map((permission) => ({
-        object_key: permission.resource, field_key: permission.field, read: permission.visible, write: permission.editable, export: permission.visible,
-        ...(permission.masked ? { masked: true } : {}), ...(permission.policies?.length ? { policies: permission.policies } : {}),
-      })),
-    }
-    return {
-      item_id: itemID, operation: current ? 'update' : 'create', change_kind: current ? 'compatible' : 'additive', risk_level: 'high',
-      resource_type: 'role', resource_key: roleKey, resource_owner: systemResourceOwner(source?.source_kind ?? 'manual'), owner_authorized: true, capability_key: 'identity.role',
-      expected_resource_hash: source?.schema_hash,
-      before: current, after, validation_methods: ['identity.validate', 'permission_catalog.validate'], rollback_method: 'restore_as_new_system_draft',
-    }
-  })
-  const releaseOrder = items.map((item) => item.item_id)
-  return {
-    plan_version: 'domain-system-change-plan-v1', plan_id: input.planID, business_reason: input.reason,
-    snapshot_hash: input.snapshot.snapshot_hash, reference_graph_hash: input.graph.hash, runtime_version: input.snapshot.runtime_version,
-    authoring_contract_version: input.snapshot.authoring_contract_version, authoring_contract_hash: input.snapshot.authoring_contract_hash,
-    reviewed: false, release_order: releaseOrder, rollback_order: [...releaseOrder].reverse(), items,
-  }
 }
 
 export const actionDefinitionsApi = {

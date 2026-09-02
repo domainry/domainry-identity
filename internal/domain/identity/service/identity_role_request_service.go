@@ -9,55 +9,36 @@ import (
 	identityrepository "github.com/domainry/domainry-identity/internal/domain/identity/repository"
 )
 
-func (s *IdentityDomainService) ListAssignableWorkforceRoles(ctx context.Context, workforceProfileID string, actor identitymodel.Principal) ([]identitymodel.IdentityRole, error) {
-	repository := s.workforceRepository()
-	if repository == nil {
-		return nil, internalError("identity workforce repository", nil)
-	}
-	profile, found, err := repository.GetIdentityWorkforceProfile(ctx, s.workspace, strings.TrimSpace(workforceProfileID))
-	if err != nil {
-		return nil, err
-	}
-	if !found || profile.WorkStatus != identitymodel.IdentityWorkActive {
-		return []identitymodel.IdentityRole{}, nil
-	}
-	roles, err := s.ListAssignableRoles(ctx, profile.IdentityUserID, actor)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]identitymodel.IdentityRole, 0, len(roles))
-	for _, role := range roles {
-		// ListAssignableRoles already excludes unpublished definitions.
-		definition, _ := s.publishedRoleDefinition(role)
-		if definition.Audience == identitymodel.IdentityRoleAudienceAny || definition.Audience == identitymodel.IdentityRoleAudienceWorkforce {
-			out = append(out, role)
-		}
-	}
-	return out, nil
-}
-
-func identityActorCanManageRoleTarget(actor identitymodel.Principal, targetUserID string, target identityWorkforceFacts) bool {
+func identityActorCanManageRoleTarget(actor identitymodel.Principal, target identitymodel.IdentityUser) bool {
 	if !actor.Known || strings.TrimSpace(actor.UserID) == "" {
 		return false
 	}
-	if strings.TrimSpace(actor.Role.RecordScope) == "all_records" {
+	if actor.UserID == target.ID {
 		return true
 	}
-	if actor.UserID == targetUserID {
-		return true
+	scopes := actor.EffectiveRecordScopes
+	if len(scopes) == 0 {
+		scopes = identityEffectiveRecordScopes(actor.Role.RecordScope)
 	}
-	switch strings.TrimSpace(actor.Role.RecordScope) {
-	case "subordinates", "team":
-		return identityStringSliceContains(actor.ReportingUserIDs, targetUserID)
-	case "department":
-		return actor.DepartmentID != "" && actor.DepartmentID == target.DepartmentID
-	case "department_and_children":
-		path := strings.TrimSuffix(strings.TrimSpace(actor.DepartmentPath), "/")
-		targetPath := strings.TrimSpace(target.DepartmentPath)
-		return path != "" && (targetPath == path || strings.HasPrefix(targetPath, path+"/"))
-	default:
-		return false
+	for _, scope := range scopes {
+		switch scope {
+		case "all_records":
+			return true
+		case "organization":
+			if actor.OrgID != "" && actor.OrgID == target.OrgID {
+				return true
+			}
+		case "organization_and_children":
+			if identityStringSliceContains(actor.OrgScopeIDs, strings.TrimSpace(target.OrgID)) {
+				return true
+			}
+		case "self_and_subordinates":
+			if identityStringSliceContains(actor.ReportingScopeUserIDs, strings.TrimSpace(target.ID)) {
+				return true
+			}
+		}
 	}
+	return false
 }
 
 func (s *IdentityDomainService) listRequestableRoles(ctx context.Context) ([]identitymodel.IdentityRole, error) {

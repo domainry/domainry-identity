@@ -42,7 +42,7 @@ func TestIdentityGovernanceReportsEdgeInputs(t *testing.T) {
 		{ID: "fallback", Key: " "},
 	}
 	assignments := []identitymodel.IdentityUserRoleAssignment{
-		{UserID: "active", RoleID: "published", Status: string(identitymodel.IdentityStatusActive), WorkforceProfileID: "active-profile"},
+		{UserID: "active", RoleID: "published", Status: string(identitymodel.IdentityStatusActive)},
 		{UserID: "unpublished", RoleID: "unpublished", Status: string(identitymodel.IdentityStatusDisabled)},
 		{UserID: "future", RoleID: "published", ValidUntil: future},
 		{UserID: "invalid", RoleID: "published", ExpiresAt: &invalid},
@@ -56,7 +56,6 @@ func TestIdentityGovernanceReportsEdgeInputs(t *testing.T) {
 		roles,
 		[]identitymodel.RoleSchema{{Key: "published", Permissions: []string{"published.read"}}},
 		assignments,
-		map[string]bool{"active-profile": true},
 	)
 	if len(report.AuthorizationDrift) != 1 || len(report.ExpiredEntitlements) != 2 ||
 		len(report.UnboundAssignments) != 1 || len(report.OrphanPermissions) != 1 {
@@ -77,7 +76,6 @@ func TestIdentityGovernanceReportsPermissionDefinitionDrift(t *testing.T) {
 		},
 		nil,
 		[]identitymodel.RoleSchema{{Key: "role", Permissions: []string{"active", "disabled", "retired", "unknown"}}},
-		nil,
 		nil,
 	)
 	want := []string{

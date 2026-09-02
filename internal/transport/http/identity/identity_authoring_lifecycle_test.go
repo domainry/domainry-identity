@@ -43,17 +43,17 @@ func TestIdentityAuthoringLifecycleCoversLookupMissesAndFailures(t *testing.T) {
 		pathKey string
 		call    func(*IdentityHandler, http.ResponseWriter, *http.Request)
 	}{
-		{name: "department", pathKey: "departmentID", call: func(handler *IdentityHandler, w http.ResponseWriter, r *http.Request) {
-			handler.getIdentityDepartment(w, r)
+		{name: "organizationUnit", pathKey: "organizationUnitID", call: func(handler *IdentityHandler, w http.ResponseWriter, r *http.Request) {
+			handler.getIdentityOrganizationUnit(w, r)
 		}},
 		{name: "role", pathKey: "roleID", call: func(handler *IdentityHandler, w http.ResponseWriter, r *http.Request) { handler.getIdentityRole(w, r) }},
 		{name: "menu", pathKey: "menuID", call: func(handler *IdentityHandler, w http.ResponseWriter, r *http.Request) { handler.getIdentityMenu(w, r) }},
 	} {
 		t.Run(test.name+" miss", func(t *testing.T) {
 			repository := &identityHTTPRepository{
-				departments: []identitymodel.IdentityDepartment{{ID: "other"}},
-				roles:       []identitymodel.IdentityRole{{ID: "other"}},
-				menus:       []identitymodel.IdentityMenu{{ID: "other"}},
+				organizationUnits: []identitymodel.IdentityOrganizationUnit{{ID: "other"}},
+				roles:             []identitymodel.IdentityRole{{ID: "other"}},
+				menus:             []identitymodel.IdentityMenu{{ID: "other"}},
 			}
 			handler, response := newIdentityHTTPHandler(repository)
 			request := httptest.NewRequest(http.MethodGet, "/identity/missing", nil)
@@ -99,9 +99,9 @@ func (*identityAuthoringAuditRepository) ListAuditOptions(context.Context, strin
 
 func TestIdentityAuthoringLifecycleReadsResourcesAndAuditRevisions(t *testing.T) {
 	repository := &identityHTTPRepository{
-		departments: []identitymodel.IdentityDepartment{{ID: "sales", Name: "Sales"}},
-		roles:       []identitymodel.IdentityRole{{ID: "manager", Key: "manager", Label: "Manager", Status: identitymodel.IdentityStatusActive}},
-		menus:       []identitymodel.IdentityMenu{{ID: "orders", Key: "orders", Label: "Orders", Status: identitymodel.IdentityStatusActive}},
+		organizationUnits: []identitymodel.IdentityOrganizationUnit{{ID: "sales", Name: "Sales"}},
+		roles:             []identitymodel.IdentityRole{{ID: "manager", Key: "manager", Label: "Manager", Status: identitymodel.IdentityStatusActive}},
+		menus:             []identitymodel.IdentityMenu{{ID: "orders", Key: "orders", Label: "Orders", Status: identitymodel.IdentityStatusActive}},
 	}
 	handler, response := newIdentityHTTPHandler(repository)
 
@@ -110,7 +110,7 @@ func TestIdentityAuthoringLifecycleReadsResourcesAndAuditRevisions(t *testing.T)
 		id      string
 		call    func(http.ResponseWriter, *http.Request)
 	}{
-		{pathKey: "departmentID", id: "sales", call: handler.getIdentityDepartment},
+		{pathKey: "organizationUnitID", id: "sales", call: handler.getIdentityOrganizationUnit},
 		{pathKey: "roleID", id: "manager", call: handler.getIdentityRole},
 		{pathKey: "menuID", id: "orders", call: handler.getIdentityMenu},
 	} {

@@ -57,12 +57,13 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"created_at " + text + " NOT NULL",
 			"updated_at " + text + " NOT NULL",
 		},
-		"_identity_departments": {
+		"_identity_organization_units": {
 			"id " + text + " PRIMARY KEY",
 			"workspace_id " + text + " NOT NULL",
+			"code " + text + " NOT NULL",
 			"name TEXT NOT NULL",
+			"node_type " + text + " NOT NULL",
 			"parent_id " + text,
-			"leader_workforce_profile_id " + text,
 			"path TEXT NOT NULL",
 			"ancestor_ids TEXT NOT NULL",
 			"depth INTEGER NOT NULL",
@@ -87,45 +88,15 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"account_type " + text + " NOT NULL DEFAULT 'human'",
 			"locale " + defaultText + " NOT NULL DEFAULT ''",
 			"timezone " + defaultText + " NOT NULL DEFAULT ''",
-			"status " + text + " NOT NULL",
-			"version BIGINT NOT NULL DEFAULT 1",
-			"created_at " + text + " NOT NULL",
-			"updated_at " + text + " NOT NULL",
-		},
-		"_identity_workforce_migration_receipts": {
-			"id " + text + " PRIMARY KEY",
-			"workspace_id " + text + " NOT NULL",
-			"identity_user_id " + text + " NOT NULL",
-			"workforce_profile_id " + text + " NOT NULL",
-			"workforce_assignment_id " + text,
-			"legacy_facts_json TEXT NOT NULL",
-			"migrated_at " + text + " NOT NULL",
-		},
-		"_identity_workforce_profiles": {
-			"id " + text + " PRIMARY KEY",
-			"workspace_id " + text + " NOT NULL",
-			"organization_id " + text + " NOT NULL",
-			"identity_user_id " + text + " NOT NULL",
-			"worker_no " + text + " NOT NULL",
-			"worker_type " + text + " NOT NULL",
-			"work_status " + text + " NOT NULL",
+			"org_id " + text,
+			"support_org_id " + text,
+			"manager_user_id " + text,
+			"reporting_path TEXT NOT NULL DEFAULT ''",
+			"worker_no " + defaultText + " NOT NULL DEFAULT ''",
+			"worker_type " + defaultText + " NOT NULL DEFAULT ''",
+			"work_status " + defaultText + " NOT NULL DEFAULT ''",
 			"start_date " + text,
 			"end_date " + text,
-			"primary_assignment_id " + text,
-			"version BIGINT NOT NULL DEFAULT 1",
-			"created_at " + text + " NOT NULL",
-			"updated_at " + text + " NOT NULL",
-		},
-		"_identity_workforce_assignments": {
-			"id " + text + " PRIMARY KEY",
-			"workspace_id " + text + " NOT NULL",
-			"workforce_profile_id " + text + " NOT NULL",
-			"organization_unit_id " + text + " NOT NULL",
-			"position_id " + text,
-			"manager_workforce_profile_id " + text,
-			"assignment_type " + text + " NOT NULL",
-			"effective_from " + text,
-			"effective_to " + text,
 			"status " + text + " NOT NULL",
 			"version BIGINT NOT NULL DEFAULT 1",
 			"created_at " + text + " NOT NULL",
@@ -162,7 +133,6 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"workspace_id " + text + " NOT NULL",
 			"user_id " + text + " NOT NULL",
 			"role_id " + text + " NOT NULL",
-			"workforce_profile_id " + text,
 			"binding_key " + text,
 			"profile_id " + text,
 			"source " + text + " NOT NULL DEFAULT 'manual'",
@@ -213,15 +183,6 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"result_json TEXT NOT NULL",
 			"created_at " + text + " NOT NULL",
 		},
-		"_identity_workforce_transfer_batch_receipts": {
-			"id " + text + " PRIMARY KEY",
-			"workspace_id " + text + " NOT NULL",
-			"actor_id " + text + " NOT NULL",
-			"idempotency_key " + text + " NOT NULL",
-			"request_fingerprint " + text + " NOT NULL",
-			"result_json TEXT NOT NULL",
-			"created_at " + text + " NOT NULL",
-		},
 		"_identity_access_reviews": {
 			"id " + text + " PRIMARY KEY",
 			"workspace_id " + text + " NOT NULL",
@@ -240,7 +201,6 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"user_id " + text + " NOT NULL",
 			"role_id " + text + " NOT NULL",
 			"role_key " + text + " NOT NULL",
-			"workforce_profile_id " + text,
 			"binding_key " + text,
 			"profile_id " + text,
 			"risk_level " + text + " NOT NULL",
@@ -452,6 +412,9 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 		},
 	}
 	workspaceIdentities := prepareWorkspaceScopedIdentities(tables)
+	// This compatibility map preserves legacy engine-provided physical types
+	// and defaults that domainry-orm cannot express as a custom ColumnType. New
+	// owned schemas are declared with ORM builders in their dedicated files.
 	for _, table := range sortedSchemaTables(tables) {
 		if _, err := s.SchemaDB().ExecContext(ctx, "CREATE TABLE IF NOT EXISTS "+s.TableIdentifier(table)+" ("+quotedColumnDefinitions(s, tables[table])+")"); err != nil {
 			return fmt.Errorf("create %s: %w", table, err)
@@ -461,9 +424,6 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 		return fmt.Errorf("ensure workspace auth provider credential identity: %w", err)
 	}
 	if err := ensureWorkspaceScopedIdentities(ctx, s, workspaceIdentities); err != nil {
-		return err
-	}
-	if err := migrateLegacyIdentityUserWorkforceFacts(ctx, s); err != nil {
 		return err
 	}
 	if err := migrateLegacyIdentityMenuAudience(ctx, s); err != nil {
@@ -487,9 +447,6 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 	if err := s.CreateIndexIfMissing(ctx, "_identity_authoring_receipts", "idx_identity_authoring_receipt_lease", false, "status", "lease_expires_at"); err != nil {
 		return fmt.Errorf("create identity authoring receipt lease index: %w", err)
 	}
-	if err := s.CreateIndexIfMissing(ctx, "_identity_workforce_transfer_batch_receipts", "uniq_identity_workforce_transfer_batch_receipt", true, "workspace_id", "idempotency_key"); err != nil {
-		return fmt.Errorf("create identity workforce transfer batch receipt unique index: %w", err)
-	}
 	if err := s.CreateIndexIfMissing(ctx, "_identity_access_review_items", "uniq_identity_access_review_assignment", true, "workspace_id", "review_id", "user_id", "role_id"); err != nil {
 		return fmt.Errorf("create identity access review item unique index: %w", err)
 	}
@@ -502,10 +459,7 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 	if err := s.EnsureColumn(ctx, "_identity_access_review_items", "last_used_at", text); err != nil {
 		return err
 	}
-	if err := s.EnsureColumn(ctx, "_identity_departments", "sort_order", "INTEGER NOT NULL DEFAULT 0"); err != nil {
-		return err
-	}
-	if err := s.EnsureColumn(ctx, "_identity_departments", "leader_workforce_profile_id", text); err != nil {
+	if err := s.EnsureColumn(ctx, "_identity_organization_units", "sort_order", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return err
 	}
 	for _, column := range []string{"given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale"} {
@@ -514,17 +468,23 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 		}
 	}
 	for column, definition := range map[string]string{
-		"account_type": text + " NOT NULL DEFAULT 'human'",
-		"locale":       "TEXT NOT NULL DEFAULT ''",
-		"timezone":     "TEXT NOT NULL DEFAULT ''",
-		"version":      "BIGINT NOT NULL DEFAULT 1",
+		"account_type":    text + " NOT NULL DEFAULT 'human'",
+		"locale":          "TEXT NOT NULL DEFAULT ''",
+		"timezone":        "TEXT NOT NULL DEFAULT ''",
+		"org_id":          text,
+		"support_org_id":  text,
+		"manager_user_id": text,
+		"reporting_path":  "TEXT NOT NULL DEFAULT ''",
+		"worker_no":       "TEXT NOT NULL DEFAULT ''",
+		"worker_type":     "TEXT NOT NULL DEFAULT ''",
+		"work_status":     "TEXT NOT NULL DEFAULT ''",
+		"start_date":      text,
+		"end_date":        text,
+		"version":         "BIGINT NOT NULL DEFAULT 1",
 	} {
 		if err := s.EnsureColumn(ctx, "_identity_users", column, definition); err != nil {
 			return err
 		}
-	}
-	if err := s.EnsureColumn(ctx, "_identity_user_role_assignments", "workforce_profile_id", text); err != nil {
-		return err
 	}
 	if err := s.EnsureColumn(ctx, "_identity_role_requests", "requested_by", text); err != nil {
 		return err
@@ -557,14 +517,13 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 		name    string
 		columns []string
 	}{
-		{table: "_identity_departments", name: "idx_identity_departments_parent", columns: []string{"workspace_id", "parent_id"}},
-		{table: "_identity_workforce_profiles", name: "idx_identity_workforce_profiles_user", columns: []string{"workspace_id", "identity_user_id"}},
-		{table: "_identity_workforce_assignments", name: "idx_identity_workforce_assignments_profile", columns: []string{"workspace_id", "workforce_profile_id"}},
-		{table: "_identity_workforce_assignments", name: "idx_identity_workforce_assignments_unit", columns: []string{"workspace_id", "organization_unit_id"}},
-		{table: "_identity_workforce_assignments", name: "idx_identity_workforce_assignments_manager", columns: []string{"workspace_id", "manager_workforce_profile_id"}},
+		{table: "_identity_organization_units", name: "idx_identity_organization_units_parent", columns: []string{"workspace_id", "parent_id"}},
+		{table: "_identity_users", name: "idx_identity_users_organization_unit", columns: []string{"workspace_id", "org_id"}},
+		{table: "_identity_users", name: "idx_identity_users_support_organization_unit", columns: []string{"workspace_id", "support_org_id"}},
+		{table: "_identity_users", name: "idx_identity_users_manager", columns: []string{"workspace_id", "manager_user_id"}},
+		{table: "_identity_users", name: "idx_identity_users_reporting_path", columns: []string{"workspace_id", "reporting_path"}},
 		{table: "_identity_user_role_assignments", name: "idx_identity_user_roles_user", columns: []string{"workspace_id", "user_id"}},
 		{table: "_identity_user_role_assignments", name: "idx_identity_user_roles_role", columns: []string{"workspace_id", "role_id"}},
-		{table: "_identity_user_role_assignments", name: "idx_identity_user_roles_workforce", columns: []string{"workspace_id", "workforce_profile_id"}},
 		{table: "_identity_menus", name: "idx_identity_menus_parent", columns: []string{"workspace_id", "parent_id"}},
 		{table: "_identity_role_menu_assignments", name: "idx_identity_role_menus_role", columns: []string{"workspace_id", "role_id"}},
 		{table: "_identity_role_menu_assignments", name: "idx_identity_role_menus_menu", columns: []string{"workspace_id", "menu_id"}},
@@ -589,9 +548,7 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 		{table: "_identity_role_definition_versions", name: "uniq_identity_role_definition_version", columns: []string{"resource_type", "resource_key", "schema_version", "schema_hash"}},
 		{table: "_identity_profile_binding_definitions", name: "uniq_identity_profile_binding_definition_key", columns: []string{"resource_key"}},
 		{table: "_identity_profile_binding_definition_versions", name: "uniq_identity_profile_binding_definition_version", columns: []string{"resource_type", "resource_key", "schema_version", "schema_hash"}},
-		{table: "_identity_workforce_profiles", name: "uniq_identity_workforce_profiles_user", columns: []string{"workspace_id", "organization_id", "identity_user_id"}},
-		{table: "_identity_workforce_profiles", name: "uniq_identity_workforce_profiles_worker_no", columns: []string{"workspace_id", "organization_id", "worker_no"}},
-		{table: "_identity_workforce_migration_receipts", name: "uniq_identity_workforce_legacy_migration_user", columns: []string{"workspace_id", "identity_user_id"}},
+		{table: "_identity_organization_units", name: "uniq_identity_organization_unit_code", columns: []string{"workspace_id", "code"}},
 		{table: "_identity_profile_bindings", name: "uniq_identity_profile_binding_profile", columns: []string{"workspace_id", "object_key", "profile_id"}},
 		{table: "_identity_profile_bindings", name: "uniq_identity_profile_binding_user", columns: []string{"workspace_id", "binding_key", "identity_user_id"}},
 		{table: "_identity_profile_binding_receipts", name: "uniq_identity_profile_binding_receipt", columns: []string{"workspace_id", "object_key", "profile_id", "operation", "idempotency_key"}},

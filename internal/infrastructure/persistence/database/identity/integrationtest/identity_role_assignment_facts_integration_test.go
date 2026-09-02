@@ -28,22 +28,21 @@ func TestIdentityRoleAssignmentFactsRoundTrip(t *testing.T) {
 	}
 	expiresAt := "2027-01-01T00:00:00Z"
 	want := identitymodel.IdentityUserRoleAssignment{
-		UserID:             "user-1",
-		RoleID:             "role-1",
-		WorkforceProfileID: "workforce-1",
-		BindingKey:         "member",
-		ProfileID:          "member-1",
-		Source:             "governance_request",
-		Status:             "revoked",
-		ValidFrom:          "2026-01-01T00:00:00Z",
-		ValidUntil:         expiresAt,
-		GrantedBy:          "grantor-1",
-		GrantReason:        "approved request",
-		RevokedBy:          "reviewer-1",
-		RevokedAt:          "2026-06-01T00:00:00Z",
-		RevokeReason:       "access review",
-		ExpiresAt:          &expiresAt,
-		CreatedAt:          "2026-01-01T00:00:00Z",
+		UserID:       "user-1",
+		RoleID:       "role-1",
+		BindingKey:   "member",
+		ProfileID:    "member-1",
+		Source:       "governance_request",
+		Status:       "revoked",
+		ValidFrom:    "2026-01-01T00:00:00Z",
+		ValidUntil:   expiresAt,
+		GrantedBy:    "grantor-1",
+		GrantReason:  "approved request",
+		RevokedBy:    "reviewer-1",
+		RevokedAt:    "2026-06-01T00:00:00Z",
+		RevokeReason: "access review",
+		ExpiresAt:    &expiresAt,
+		CreatedAt:    "2026-01-01T00:00:00Z",
 	}
 	if err := repository.AssignIdentityUserRole(t.Context(), "workspace-primary", want); err != nil {
 		t.Fatal(err)
@@ -57,7 +56,6 @@ func TestIdentityRoleAssignmentFactsRoundTrip(t *testing.T) {
 	}
 	actual := got[0]
 	if actual.UserID != want.UserID || actual.RoleID != want.RoleID ||
-		actual.WorkforceProfileID != want.WorkforceProfileID ||
 		actual.BindingKey != want.BindingKey || actual.ProfileID != want.ProfileID ||
 		actual.Source != want.Source || actual.Status != want.Status ||
 		actual.ValidFrom != want.ValidFrom || actual.ValidUntil != want.ValidUntil ||

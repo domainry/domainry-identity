@@ -6,15 +6,14 @@ const (
 )
 
 type IdentityEntitlementBatchItem struct {
-	Operation          string `json:"operation"`
-	UserID             string `json:"user_id"`
-	RoleID             string `json:"role_id"`
-	WorkforceProfileID string `json:"workforce_profile_id,omitempty"`
-	BindingKey         string `json:"binding_key,omitempty"`
-	ProfileID          string `json:"profile_id,omitempty"`
-	ValidFrom          string `json:"valid_from,omitempty"`
-	ValidUntil         string `json:"valid_until,omitempty"`
-	Reason             string `json:"reason,omitempty"`
+	Operation  string `json:"operation"`
+	UserID     string `json:"user_id"`
+	RoleID     string `json:"role_id"`
+	BindingKey string `json:"binding_key,omitempty"`
+	ProfileID  string `json:"profile_id,omitempty"`
+	ValidFrom  string `json:"valid_from,omitempty"`
+	ValidUntil string `json:"valid_until,omitempty"`
+	Reason     string `json:"reason,omitempty"`
 }
 
 type IdentityEntitlementBatchMutation struct {

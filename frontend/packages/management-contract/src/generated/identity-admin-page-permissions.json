@@ -8,12 +8,6 @@
       "source_owner": "identity:builtin"
     },
     {
-      "route": "/admin/org/departments",
-      "action_key": "identity.departments.list",
-      "permission_key": "identity.departments.list",
-      "source_owner": "identity:builtin"
-    },
-    {
       "route": "/admin/org/field-permissions",
       "action_key": "identity.role_field_permissions.list",
       "permission_key": "identity.role_field_permissions.list",
@@ -26,21 +20,15 @@
       "source_owner": "identity:builtin"
     },
     {
+      "route": "/admin/org/organization-units",
+      "action_key": "identity.organization_units.list",
+      "permission_key": "identity.organization_units.list",
+      "source_owner": "identity:builtin"
+    },
+    {
       "route": "/admin/org/roles",
       "action_key": "identity.roles.list",
       "permission_key": "identity.roles.list",
-      "source_owner": "identity:builtin"
-    },
-    {
-      "route": "/admin/org/workforce",
-      "action_key": "identity.workforce.list",
-      "permission_key": "identity.workforce.list",
-      "source_owner": "identity:builtin"
-    },
-    {
-      "route": "/admin/org/workforce/$profileID",
-      "action_key": "identity.workforce.detail",
-      "permission_key": "identity.workforce.detail",
       "source_owner": "identity:builtin"
     },
     {

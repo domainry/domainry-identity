@@ -15,20 +15,11 @@ func IdentityBuildPrincipalContext(principal identitymodel.Principal) identitymo
 		UserID:                strings.TrimSpace(principal.UserID),
 		RoleKey:               strings.TrimSpace(principal.Role.Key),
 		AuthorizationRevision: strings.TrimSpace(principal.AuthorizationRevision),
-		WorkforceProfileID:    strings.TrimSpace(principal.WorkforceProfileID),
-		DepartmentID:          strings.TrimSpace(principal.DepartmentID),
-		DepartmentPath:        strings.TrimSpace(principal.DepartmentPath),
-		ReportingPath:         strings.TrimSpace(principal.ReportingPath),
-		ReportingUserIDs:      identityPrincipalUniqueStrings(principal.ReportingUserIDs),
-		OrganizationScopes: identitymodel.IdentityOrganizationScopeFacts{
-			TeamIDs:      identityPrincipalUniqueStrings(principal.TeamIDs),
-			StoreIDs:     identityPrincipalUniqueStrings(principal.StoreIDs),
-			TerritoryIDs: identityPrincipalUniqueStrings(principal.TerritoryIDs),
-			WarehouseIDs: identityPrincipalUniqueStrings(principal.WarehouseIDs),
-		},
-		SurfaceKey:       strings.TrimSpace(principal.SurfaceKey),
-		BusinessProfiles: []identitymodel.IdentityPrincipalBusinessProfileContext{},
-		RequestContexts:  []identitymodel.IdentityPrincipalRequestContext{},
+		OrgID:                 strings.TrimSpace(principal.OrgID),
+		OrganizationPath:      strings.TrimSpace(principal.OrganizationPath),
+		SurfaceKey:            strings.TrimSpace(principal.SurfaceKey),
+		BusinessProfiles:      []identitymodel.IdentityPrincipalBusinessProfileContext{},
+		RequestContexts:       []identitymodel.IdentityPrincipalRequestContext{},
 	}
 	if !principal.Known {
 		return context
@@ -37,12 +28,6 @@ func IdentityBuildPrincipalContext(principal identitymodel.Principal) identitymo
 	context.RequestContexts = append(context.RequestContexts, identitymodel.IdentityPrincipalRequestContext{
 		Key: "identity", SubjectKind: "identity", CanonicalRequestHeader: baseHeaders,
 	})
-	if context.WorkforceProfileID != "" {
-		context.RequestContexts = append(context.RequestContexts, identitymodel.IdentityPrincipalRequestContext{
-			Key: "workforce/" + context.WorkforceProfileID, SubjectKind: "workforce",
-			WorkforceProfileID: context.WorkforceProfileID, CanonicalRequestHeader: identityPrincipalWorkspaceHeaders(context.WorkspaceID),
-		})
-	}
 	profiles := append([]identitymodel.BusinessProfileReference(nil), principal.BusinessProfiles...)
 	sort.Slice(profiles, func(left, right int) bool {
 		return identityPrincipalBusinessProfileKey(profiles[left]) < identityPrincipalBusinessProfileKey(profiles[right])

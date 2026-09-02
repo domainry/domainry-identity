@@ -9,6 +9,7 @@ import (
 
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
+	"github.com/domainry/domainry-orm/query"
 )
 
 type scopeDatabase interface {
@@ -37,12 +38,23 @@ func (validator *ScopeValidator) ValidateLegacyWorkspaceScopes(ctx context.Conte
 	}
 	findings := []string{}
 	for _, table := range tables {
-		workspaceColumn := validator.renderer.Identifier("workspace_id")
-		query := "SELECT COALESCE(" + workspaceColumn + ", ''), COUNT(*) FROM " + validator.renderer.Table(table) +
-			" WHERE " + workspaceColumn + " IS NULL OR TRIM(" + workspaceColumn + ") = ''" +
-			" OR LOWER(TRIM(" + workspaceColumn + ")) = 'default'" +
-			" GROUP BY " + workspaceColumn
-		rows, queryErr := validator.database.QueryContext(ctx, query)
+		workspaceColumn := query.Column("workspace_id")
+		trimmedWorkspace := query.Func("TRIM", workspaceColumn)
+		statement, arguments, buildErr := query.NewSelectBuilder(validator.renderer, table).
+			Projections(
+				query.Project(query.Coalesce(workspaceColumn, query.Value(""))),
+				query.Project(query.CountAll()),
+			).
+			Where(query.Or(
+				query.IsNull("workspace_id"),
+				query.EqualValue(trimmedWorkspace, ""),
+				query.EqualValue(query.Lower(trimmedWorkspace), "default"),
+			)).
+			GroupBy(workspaceColumn).Build()
+		if buildErr != nil {
+			return fmt.Errorf("build legacy workspace inspection for %s: %w", table, buildErr)
+		}
+		rows, queryErr := validator.database.QueryContext(ctx, statement, arguments...)
 		if queryErr != nil {
 			return fmt.Errorf("inspect legacy workspace values for %s: %w", table, queryErr)
 		}

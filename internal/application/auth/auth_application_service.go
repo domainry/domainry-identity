@@ -16,8 +16,8 @@ import (
 	authpolicy "github.com/domainry/domainry-identity/internal/domain/auth/policy"
 	authrepository "github.com/domainry/domainry-identity/internal/domain/auth/repository"
 	authdomain "github.com/domainry/domainry-identity/internal/domain/auth/service"
+	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
-	identitypolicy "github.com/domainry/domainry-identity/internal/domain/identity/policy"
 	"github.com/domainry/domainry-identity/internal/platform/localization"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -122,14 +122,14 @@ func (s *AuthApplicationService) ChangePasswordAndReissueSessionForAudience(ctx 
 }
 
 func (s *AuthApplicationService) ResetPasswordIdempotent(ctx context.Context, principal identitymodel.Principal, key, userID, newPassword string, mustChangePassword bool) (bool, error) {
-	if !principal.Known || !identitypolicy.IdentityRoleHasPermissionKey(principal.Role, "auth.reset_password") {
+	if !principal.Known || !identitycontract.IdentityRoleHasPermissionKey(principal.Role, identitycontract.IdentityActionAuthResetPassword) {
 		return false, authMutationError(apperror.KindForbidden, "auth.permission_denied")
 	}
 	if _, err := identitymodel.NewWorkspaceCommandScope(principal.WorkspaceID); err != nil {
 		return false, authMutationErrorWithCause(apperror.KindForbidden, "backend.workspace_scope_required", err)
 	}
 	input := authpolicy.AuthPasswordMutationInput{UserID: userID, NewPassword: newPassword, MustChangePassword: mustChangePassword}
-	return s.executePasswordMutation(ctx, principal, key, "auth.reset_password", input, func() error {
+	return s.executePasswordMutation(ctx, principal, key, identitycontract.IdentityActionAuthResetPassword, input, func() error {
 		return s.ResetPassword(requestcontext.WithWorkspaceID(ctx, principal.WorkspaceID), principal.WorkspaceID, userID, newPassword, mustChangePassword)
 	})
 }

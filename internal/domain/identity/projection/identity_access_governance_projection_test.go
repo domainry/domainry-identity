@@ -18,7 +18,7 @@ func TestIdentityAccessReverseIndexAndGovernanceReportsAreDeterministic(t *testi
 	definitions := []identitymodel.RoleSchema{{Key: "reader", Permissions: []string{"order.read", "order.export"}}}
 	assignments := []identitymodel.IdentityUserRoleAssignment{
 		{UserID: "user-b", RoleID: "reader-id", BindingKey: "member"},
-		{UserID: "user-a", RoleID: "reader-id", WorkforceProfileID: "inactive-workforce"},
+		{UserID: "user-a", RoleID: "reader-id"},
 		{UserID: "expired", RoleID: "reader-id", ExpiresAt: &expires},
 		{UserID: "drift", RoleID: "missing"},
 	}
@@ -31,11 +31,11 @@ func TestIdentityAccessReverseIndexAndGovernanceReportsAreDeterministic(t *testi
 	reports := IdentityBuildGovernanceReports(
 		time.Date(2026, 7, 25, 0, 0, 0, 0, time.UTC),
 		[]identitymodel.IdentityPermissionDefinition{{Key: "order.read", DefinitionStatus: identitymodel.IdentityPermissionDefinitionActive, Enabled: true}, {Key: "order.export", DefinitionStatus: identitymodel.IdentityPermissionDefinitionActive, Enabled: true}, {Key: "unused.permission", DefinitionStatus: identitymodel.IdentityPermissionDefinitionActive, Enabled: true}},
-		roles, definitions, assignments, map[string]bool{},
+		roles, definitions, assignments,
 	)
 	if !reflect.DeepEqual(reports.OrphanPermissions, []string{"unused.permission"}) ||
 		!reflect.DeepEqual(reports.RolesWithoutMembers, []string{"empty"}) ||
-		len(reports.ExpiredEntitlements) != 1 || len(reports.UnboundAssignments) != 2 ||
+		len(reports.ExpiredEntitlements) != 1 || len(reports.UnboundAssignments) != 1 ||
 		!reflect.DeepEqual(reports.AuthorizationDrift, []string{"assignment:drift:missing:unknown_role"}) {
 		t.Fatalf("governance reports=%#v", reports)
 	}
@@ -49,14 +49,14 @@ func TestIdentityRoleChangeImpactCoversUsersProfilesSensitiveFieldsAndHighRiskAc
 		current,
 		identitymodel.IdentityRole{ID: "operator-id", Key: "operator"},
 		[]identitymodel.IdentityUserRoleAssignment{
-			{UserID: "employee", RoleID: "operator-id", WorkforceProfileID: "worker"},
+			{UserID: "employee", RoleID: "operator-id"},
 			{UserID: "member", RoleID: "operator-id", BindingKey: "member"},
 		},
 		[]definitionmodel.ObjectSchema{{Key: "order", Fields: []definitionmodel.FieldSchema{{Key: "payment_token", Config: map[string]any{"sensitivity": "credential"}}}}},
 		[]definitionmodel.ActionSchema{{Key: "order.refund", RiskLevel: "high"}},
 	)
 	if impact.AffectedUserCount != 2 ||
-		!reflect.DeepEqual(impact.ProfileTypes, []string{"business_profile:member", "workforce"}) ||
+		!reflect.DeepEqual(impact.ProfileTypes, []string{"account", "business_profile:member"}) ||
 		!reflect.DeepEqual(impact.AddedPermissions, []string{"order.refund"}) ||
 		!reflect.DeepEqual(impact.SensitiveFields, []string{"order.payment_token"}) ||
 		!reflect.DeepEqual(impact.HighRiskCapabilities, []string{"order.refund"}) {

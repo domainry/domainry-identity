@@ -14,7 +14,7 @@ import (
 
 // IdentitySessionRevoker is the account-security boundary required by the
 // account-disable use case. Business identities are deliberately outside this
-// contract: disabling sign-in must not mutate workforce or profile state.
+// contract: disabling sign-in must not mutate profile state.
 type IdentitySessionRevoker interface {
 	ForceLogoutUser(context.Context, string, string) (int, error)
 }
@@ -95,12 +95,12 @@ func (s *IdentityApplicationService) FindUser(ctx context.Context, userID string
 	return scoped.FindUser(ctx, userID)
 }
 
-func (s *IdentityApplicationService) FindDepartment(ctx context.Context, departmentID string) (identitymodel.IdentityDepartment, bool, error) {
+func (s *IdentityApplicationService) FindOrganizationUnit(ctx context.Context, organizationUnitID string) (identitymodel.IdentityOrganizationUnit, bool, error) {
 	scoped, err := s.domainForContext(ctx)
 	if err != nil {
-		return identitymodel.IdentityDepartment{}, false, err
+		return identitymodel.IdentityOrganizationUnit{}, false, err
 	}
-	return scoped.FindDepartment(ctx, departmentID)
+	return scoped.FindOrganizationUnit(ctx, organizationUnitID)
 }
 
 func (s *IdentityApplicationService) ListDirectoryUsers(ctx context.Context) ([]identitymodel.IdentityUser, error) {
@@ -109,14 +109,6 @@ func (s *IdentityApplicationService) ListDirectoryUsers(ctx context.Context) ([]
 		return nil, err
 	}
 	return scoped.ListDirectoryUsers(ctx)
-}
-
-func (s *IdentityApplicationService) ListDirectoryWorkforce(ctx context.Context) ([]identitymodel.IdentityWorkforceDirectoryEntry, error) {
-	scoped, err := s.domainForContext(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return scoped.ListDirectoryWorkforce(ctx)
 }
 
 func (s *IdentityApplicationService) ListDirectoryRoles(ctx context.Context) ([]identitymodel.IdentityRole, error) {
@@ -135,20 +127,20 @@ func (s *IdentityApplicationService) ListDirectoryUserRoleAssignments(ctx contex
 	return scoped.ListDirectoryUserRoleAssignments(ctx, userID)
 }
 
-func (s *IdentityApplicationService) ListDepartments(ctx context.Context) ([]identitymodel.IdentityDepartment, error) {
+func (s *IdentityApplicationService) ListOrganizationUnits(ctx context.Context) ([]identitymodel.IdentityOrganizationUnit, error) {
 	scoped, err := s.domainForContext(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return scoped.ListDepartments(ctx)
+	return scoped.ListOrganizationUnits(ctx)
 }
 
-func (s *IdentityApplicationService) UpsertDepartment(ctx context.Context, department identitymodel.IdentityDepartment) error {
+func (s *IdentityApplicationService) UpsertOrganizationUnit(ctx context.Context, organizationUnit identitymodel.IdentityOrganizationUnit) error {
 	scoped, err := s.domainForContext(ctx)
 	if err != nil {
 		return err
 	}
-	return scoped.UpsertDepartment(ctx, department)
+	return scoped.UpsertOrganizationUnit(ctx, organizationUnit)
 }
 
 func (s *IdentityApplicationService) ListUsers(ctx context.Context) ([]identitymodel.IdentityUser, error) {
@@ -245,7 +237,6 @@ func (s *IdentityApplicationService) UserDisableImpact(ctx context.Context, user
 	}
 	return identitymodel.IdentityUserDisableImpact{
 		UserID: impact.UserID, ProfileBindings: append([]identitymodel.IdentityProfileBinding{}, impact.ProfileBindings...),
-		WorkforceProfileIDs:      append([]string{}, impact.WorkforceProfileIDs...),
 		ActiveEntitlementRoleIDs: append([]string{}, impact.ActiveRoleIDs...),
 		SessionsWillBeRevoked:    true, BusinessFactsPreserved: true,
 	}, nil
@@ -254,7 +245,7 @@ func (s *IdentityApplicationService) UserDisableImpact(ctx context.Context, user
 func identityUserDeletionBlockers(impact identitymodel.IdentityUserDeletionImpact) []string {
 	blockers := []string{}
 	for code, blocked := range map[string]bool{
-		"business_profile": len(impact.ProfileBindings) > 0 || len(impact.BusinessProfileReferences) > 0 || len(impact.WorkforceProfileIDs) > 0,
+		"business_profile": len(impact.ProfileBindings) > 0 || len(impact.BusinessProfileReferences) > 0,
 		"record_ownership": len(impact.OwnedRecordReferences) > 0,
 		"approval_task":    len(impact.PendingApprovalTaskIDs) > 0,
 		"audit_retention":  len(impact.RetainedAuditEventIDs) > 0,

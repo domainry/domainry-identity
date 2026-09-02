@@ -51,22 +51,6 @@ func (s *IdentityStore) updateSystemRowContext(ctx context.Context, table, id st
 	return nil
 }
 
-func quotedColumns(s *IdentityStore, columns []string) []string {
-	quoted := make([]string, 0, len(columns))
-	for _, column := range columns {
-		quoted = append(quoted, s.identifier(column))
-	}
-	return quoted
-}
-
-func placeholders(s *IdentityStore, count int) []string {
-	values := make([]string, 0, count)
-	for idx := 0; idx < count; idx++ {
-		values = append(values, s.placeholder(idx+1))
-	}
-	return values
-}
-
 func (s *IdentityStore) identifier(value string) string {
 	return s.sqlBase().SQLRenderer.Identifier(value)
 }

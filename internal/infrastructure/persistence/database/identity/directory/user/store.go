@@ -103,8 +103,10 @@ func (s *Store) Upsert(ctx context.Context, execer Execer, workspaceID string, i
 		return existingErr
 	}
 	item.UpdatedAt = now
-	insert := query.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_users", workspaceID).Columns("id", "name", "given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale", "email", "phone", "account_type", "locale", "timezone", "status", "version", "created_at", "updated_at").Values(item.ID, item.Name, item.GivenName, item.MiddleName, item.FamilyName, item.NamePrefix, item.NameSuffix, item.NativeName, item.NameLocale, item.Email, item.Phone, string(item.AccountType), item.Locale, item.Timezone, string(item.Status), item.Version, item.CreatedAt, item.UpdatedAt)
-	s.backend.ApplyUpsert(insert, []string{"workspace_id", "id"}, "name", "given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale", "email", "phone", "account_type", "locale", "timezone", "status", "version", "updated_at")
+	insert := query.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_users", workspaceID).
+		Columns("id", "name", "given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale", "email", "phone", "account_type", "locale", "timezone", "org_id", "support_org_id", "manager_user_id", "reporting_path", "worker_no", "worker_type", "work_status", "start_date", "end_date", "status", "version", "created_at", "updated_at").
+		Values(item.ID, item.Name, item.GivenName, item.MiddleName, item.FamilyName, item.NamePrefix, item.NameSuffix, item.NativeName, item.NameLocale, item.Email, item.Phone, string(item.AccountType), item.Locale, item.Timezone, nullable(item.OrgID), nullable(item.SupportOrgID), nullable(item.ManagerUserID), item.ReportingPath, item.WorkerNo, string(item.WorkerType), string(item.WorkStatus), nullable(item.StartDate), nullable(item.EndDate), string(item.Status), item.Version, item.CreatedAt, item.UpdatedAt)
+	s.backend.ApplyUpsert(insert, []string{"workspace_id", "id"}, "name", "given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale", "email", "phone", "account_type", "locale", "timezone", "org_id", "support_org_id", "manager_user_id", "reporting_path", "worker_no", "worker_type", "work_status", "start_date", "end_date", "status", "version", "updated_at")
 	statement, arguments, err = insert.Build()
 	if err != nil {
 		return fmt.Errorf("build identity user upsert: %w", err)
@@ -197,14 +199,27 @@ func (s *Store) SetStatus(ctx context.Context, workspaceID, userID string, statu
 }
 
 func selectUsers(renderer ormdialect.Renderer, workspaceID string) *query.SelectBuilder {
-	return query.NewWorkspaceSelectBuilder(renderer, "_identity_users", workspaceID).Columns("id", "name", "given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale", "email", "phone", "account_type", "locale", "timezone", "status", "version", "created_at", "updated_at")
+	return query.NewWorkspaceSelectBuilder(renderer, "_identity_users", workspaceID).Columns("id", "name", "given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale", "email", "phone", "account_type", "locale", "timezone", "org_id", "support_org_id", "manager_user_id", "reporting_path", "worker_no", "worker_type", "work_status", "start_date", "end_date", "status", "version", "created_at", "updated_at")
 }
 func scan(scanner interface{ Scan(...any) error }) (identitymodel.IdentityUser, error) {
 	var item identitymodel.IdentityUser
-	var accountType, status string
-	err := scanner.Scan(&item.ID, &item.Name, &item.GivenName, &item.MiddleName, &item.FamilyName, &item.NamePrefix, &item.NameSuffix, &item.NativeName, &item.NameLocale, &item.Email, &item.Phone, &accountType, &item.Locale, &item.Timezone, &status, &item.Version, &item.CreatedAt, &item.UpdatedAt)
+	var accountType, workerType, workStatus, status string
+	var organizationUnitID, supportOrganizationUnitID, managerUserID, startDate, endDate sql.NullString
+	err := scanner.Scan(&item.ID, &item.Name, &item.GivenName, &item.MiddleName, &item.FamilyName, &item.NamePrefix, &item.NameSuffix, &item.NativeName, &item.NameLocale, &item.Email, &item.Phone, &accountType, &item.Locale, &item.Timezone, &organizationUnitID, &supportOrganizationUnitID, &managerUserID, &item.ReportingPath, &item.WorkerNo, &workerType, &workStatus, &startDate, &endDate, &status, &item.Version, &item.CreatedAt, &item.UpdatedAt)
 	item.AccountType, item.Status = identitymodel.IdentityAccountType(accountType), identitymodel.IdentityStatus(status)
+	item.OrgID = organizationUnitID.String
+	item.SupportOrgID = supportOrganizationUnitID.String
+	item.ManagerUserID = managerUserID.String
+	item.WorkerType, item.WorkStatus = identitymodel.IdentityWorkerType(workerType), identitymodel.IdentityWorkStatus(workStatus)
+	item.StartDate, item.EndDate = startDate.String, endDate.String
 	return item, err
+}
+
+func nullable(value string) any {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return value
 }
 func workspace(value string) (string, error) {
 	id, err := identitymodel.NewWorkspaceID(value)

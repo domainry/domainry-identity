@@ -1,5 +1,4 @@
 import type { RuntimeDataScopePolicy, RuntimePermissionPoint } from '@/data/api'
-import type { Role } from '@/data/types'
 
 const OBJECT_CRUD_ACTION_ORDER = 'create|read|update|delete'
 
@@ -37,19 +36,14 @@ export function shouldHydrateRoleAuthorizationDraft(status: string | undefined):
   return Boolean(status && status !== 'published')
 }
 
-export function roleHasImplicitObjectAccess(role: Role, _permissionKeys: string[]): boolean {
-  return role.builtIn
-}
-
-export function effectiveObjectScope(role: Role, permissionKeys: string[], directScope: string): string {
-  return roleHasImplicitObjectAccess(role, permissionKeys) ? 'all_records' : directScope
+export function effectiveObjectScope(directScope: string): string {
+	return directScope
 }
 
 export function effectiveObjectPermission(
-  role: Role,
-  permissionKeys: string[],
-  point: RuntimePermissionPoint | undefined,
+	permissionKeys: string[],
+	point: RuntimePermissionPoint | undefined,
 ): boolean {
-  if (!point) return false
-  return roleHasImplicitObjectAccess(role, permissionKeys) || permissionKeys.includes(point.key)
+	if (!point) return false
+	return permissionKeys.includes(point.key)
 }

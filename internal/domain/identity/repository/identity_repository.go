@@ -7,8 +7,9 @@ import (
 )
 
 type IdentityRepository interface {
-	ListIdentityDepartments(context.Context, string) ([]identitymodel.IdentityDepartment, error)
-	UpsertIdentityDepartment(context.Context, string, identitymodel.IdentityDepartment) error
+	ListIdentityOrganizationUnits(context.Context, string) ([]identitymodel.IdentityOrganizationUnit, error)
+	UpsertIdentityOrganizationUnit(context.Context, string, identitymodel.IdentityOrganizationUnit) error
+	UpsertIdentityOrganizationUnitsAtomically(context.Context, string, []identitymodel.IdentityOrganizationUnit) error
 	ListIdentityUsers(context.Context, string) ([]identitymodel.IdentityUser, error)
 	ListIdentityProfileBindingsByUser(context.Context, string, string) ([]identitymodel.IdentityProfileBinding, error)
 	GetIdentityUser(context.Context, string, string) (identitymodel.IdentityUser, bool, error)
@@ -30,32 +31,6 @@ type IdentityRepository interface {
 	RemoveIdentityMenu(context.Context, string, string) error
 	SetIdentityRoleMenus(context.Context, string, string, []string) error
 	ListIdentityRoleMenuAssignments(context.Context, string, string) ([]identitymodel.IdentityRoleMenuAssignment, error)
-}
-
-type IdentityWorkforceRepository interface {
-	ListIdentityWorkforceProfiles(context.Context, string) ([]identitymodel.IdentityWorkforceProfile, error)
-	GetIdentityWorkforceProfile(context.Context, string, string) (identitymodel.IdentityWorkforceProfile, bool, error)
-	UpsertIdentityWorkforceProfile(context.Context, string, identitymodel.IdentityWorkforceProfile) error
-	ListIdentityWorkforceAssignments(context.Context, string, string) ([]identitymodel.IdentityWorkforceAssignment, error)
-	GetIdentityWorkforceAssignment(context.Context, string, string) (identitymodel.IdentityWorkforceAssignment, bool, error)
-	UpsertIdentityWorkforceAssignment(context.Context, string, identitymodel.IdentityWorkforceAssignment) error
-}
-
-type IdentityWorkforceTerminationRepository interface {
-	TerminateIdentityWorkforce(context.Context, identitymodel.IdentityWorkforceTerminationMutation) (identitymodel.IdentityWorkforceTerminationResult, error)
-}
-
-type IdentityWorkforceLifecycleRepository interface {
-	ApplyIdentityWorkforceLifecycle(context.Context, identitymodel.IdentityWorkforceLifecycleMutation) (identitymodel.IdentityWorkforceLifecycleResult, error)
-}
-
-type IdentityWorkforceOnboardingRepository interface {
-	ApplyIdentityWorkforceOnboarding(context.Context, identitymodel.IdentityWorkforceOnboardingMutation) (identitymodel.IdentityWorkforceOnboardingResult, error)
-}
-
-type IdentityWorkforceTransferBatchRepository interface {
-	GetIdentityWorkforceTransferBatchReceipt(context.Context, string, string) (identitymodel.IdentityWorkforceTransferBatchReceipt, bool, error)
-	ApplyIdentityWorkforceTransferBatch(context.Context, identitymodel.IdentityWorkforceTransferBatchMutation) (identitymodel.IdentityWorkforceTransferBatchReceipt, error)
 }
 
 type IdentityUserLookupRepository interface {
@@ -115,7 +90,7 @@ type IdentityAtomicMutationRepository interface {
 type IdentitySeedRepository interface {
 	ListIdentityRoles(context.Context, string) ([]identitymodel.IdentityRole, error)
 	UpsertIdentityRole(context.Context, string, identitymodel.IdentityRole) error
-	ApplyIdentityBootstrapAtomically(context.Context, string, []identitymodel.IdentityDepartment, []identitymodel.IdentityUser, []identitymodel.IdentityWorkforceProfile, []identitymodel.IdentityWorkforceAssignment, []identitymodel.IdentityUserRoleAssignment) error
+	ApplyIdentityBootstrapAtomically(context.Context, string, []identitymodel.IdentityOrganizationUnit, []identitymodel.IdentityUser, []identitymodel.IdentityUserRoleAssignment) error
 	UpsertIdentityUser(context.Context, string, identitymodel.IdentityUser) error
 	AssignIdentityUserRole(context.Context, string, identitymodel.IdentityUserRoleAssignment) error
 	ListIdentityMenus(context.Context, string) ([]identitymodel.IdentityMenu, error)

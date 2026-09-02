@@ -1,19 +1,14 @@
 import { createRuntimeRequestID, RuntimeApiError, runtimeRequest, runtimeRequestWithResponse } from "@/lib/runtime-api";
 import type {
-  Department,
+  OrganizationUnit,
   IdentityAccount,
   OrgUser,
   Role,
-  WorkforceProfile,
-  WorkforceAssignment,
-  WorkforceDetail,
-  WorkforceAssignableRole,
 } from "./types";
 import {
   identityListParams,
   type IdentityAccountSecurity,
-  type IdentityBatchReceipt,
-  type IdentityDepartment as RuntimeDepartment,
+  type IdentityOrganizationUnit as RuntimeOrganizationUnit,
   type IdentityListQuery,
   type IdentityPage,
   type IdentityRole as RuntimeRole,
@@ -23,20 +18,9 @@ import {
   type IdentityUserDeletionImpact,
   type IdentityUserDirectoryEntry as RuntimeUserDirectoryEntry,
   type IdentityUserDisableImpact,
-  type IdentityWorkforceAssignment as RuntimeWorkforceAssignment,
-  type IdentityWorkforceDetail as RuntimeWorkforceDetail,
-  type IdentityWorkforceProfile as RuntimeWorkforceProfile,
-  type IdentityWorkforceProfilePage as RuntimeWorkforceProfilePage,
-  type EntitlementBatchItem,
-  type WorkforceLifecycleInput,
-  type WorkforceLifecycleResult,
-  type WorkforceOnboardingInput,
-  type WorkforceOnboardingResult,
-  type WorkforceTransferBatchItem,
 } from "@domainry/identity-management-contract";
 export type {
   IdentityAccountSecurity,
-  IdentityBatchReceipt,
   IdentityDataScopePolicy as RuntimeDataScopePolicy,
   IdentityFieldPermission as RuntimeFieldPermission,
   IdentityListQuery,
@@ -53,16 +37,8 @@ export type {
   EffectiveActionPermission,
   EffectivePermissionDecision,
   EffectivePermissions,
-  EntitlementBatchItem,
-  WorkforceLifecycleInput,
-  WorkforceLifecycleOperation,
-  WorkforceLifecycleResult,
-  WorkforceOnboardingInput,
-  WorkforceOnboardingResult,
-  WorkforceTransferBatchItem,
 } from "@domainry/identity-management-contract";
 import identityUserAuthoringContract from "@domainry/identity-management-contract/identity-user-authoring-contract.json";
-import { saveSystemResourceDraft } from "./action-definition-api";
 
 const identityUserWritableFields = new Set(
   identityUserAuthoringContract.parameters
@@ -93,6 +69,15 @@ function mapIdentityAccount(user: RuntimeUser, resourceHash?: string): IdentityA
     accountType: user.account_type,
     locale: user.locale ?? "",
     timezone: user.timezone ?? "",
+    organizationUnitId: user.org_id ?? "",
+    supportOrganizationUnitId: user.support_org_id ?? "",
+    managerUserId: user.manager_user_id ?? "",
+    reportingPath: user.reporting_path ?? `/${user.id}`,
+    workerNo: user.worker_no ?? "",
+    workerType: user.worker_type ?? "",
+    workStatus: user.work_status ?? "",
+    startDate: user.start_date ?? "",
+    endDate: user.end_date ?? "",
     email: user.email,
     phone: user.phone ?? "",
     status: user.status,
@@ -121,12 +106,6 @@ export interface RolePage {
 export interface RoleCreateInput extends Omit<Role, "id"> {
   businessReason: string;
   permissionKeys: string[];
-  dataPermission: {
-    object_key: string;
-    scope: string;
-    read: boolean;
-    write: boolean;
-  };
 }
 
 export interface RuntimeSchema {
@@ -212,12 +191,13 @@ function makeID(prefix: string, source: string): string {
   return `${prefix}_${normalized || crypto.randomUUID().slice(0, 8)}`;
 }
 
-function mapDepartment(value: RuntimeDepartment, memberCount = 0): Department {
+function mapOrganizationUnit(value: RuntimeOrganizationUnit, memberCount = 0): OrganizationUnit {
   return {
     id: value.id,
+    code: value.code,
     parentId: value.parent_id ?? null,
     name: value.name,
-    leader: "",
+    nodeType: value.node_type,
     memberCount,
     sort: value.sort_order ?? 0,
     status: value.status || "active",
@@ -244,73 +224,76 @@ function runtimeAuthoringResource<T>(
   return value as T;
 }
 
-async function runtimeDepartments(): Promise<RuntimeDepartment[]> {
-  return runtimeRequest<RuntimeDepartment[]>("/identity/departments");
+async function runtimeOrganizationUnits(): Promise<RuntimeOrganizationUnit[]> {
+  return runtimeRequest<RuntimeOrganizationUnit[]>("/identity/organization-units");
 }
 
 async function runtimeUsers(): Promise<RuntimeUser[]> {
   return runtimeRequest<RuntimeUser[]>("/identity/users");
 }
 
-export const departmentsApi = {
-  async list(): Promise<Department[]> {
-    return (await runtimeDepartments()).map((department) => mapDepartment(department));
+export const organizationUnitsApi = {
+  async list(): Promise<OrganizationUnit[]> {
+    return (await runtimeOrganizationUnits()).map((unit) => mapOrganizationUnit(unit));
   },
-  async create(input: Omit<Department, "id">): Promise<Department> {
+  async create(input: Omit<OrganizationUnit, "id">): Promise<OrganizationUnit> {
     const requestID = createRuntimeRequestID();
     const result = await runtimeRequest<
-      RuntimeDepartment | RuntimeAuthoringResult<RuntimeDepartment>
+      RuntimeOrganizationUnit | RuntimeAuthoringResult<RuntimeOrganizationUnit>
     >(
-      "/identity/departments",
+      "/identity/organization-units",
       {
         method: "POST",
         headers: {
-          "Builder-Task-ID": `tenant-admin.identity-department.${requestID}`,
+          "Builder-Task-ID": `tenant-admin.identity-organization-unit.${requestID}`,
           "Idempotency-Key": requestID,
           "Expected-Schema-Hash": "empty",
         },
         body: {
-          id: makeID("dept", String(input.name)),
+          id: makeID("org", String(input.code || input.name)),
+          code: input.code,
           name: input.name,
+          node_type: input.nodeType,
           parent_id: input.parentId || undefined,
           sort_order: input.sort,
           status: input.status,
         },
       },
     );
-    const department = runtimeAuthoringResource(result);
-    return mapDepartment(department);
+    return mapOrganizationUnit(runtimeAuthoringResource(result));
   },
   async update(
     id: string,
-    patch: Partial<Omit<Department, "id">>,
-  ): Promise<Department> {
-    const path = `/identity/departments/${encodeURIComponent(id)}`;
-    const current = await runtimeRequestWithResponse<RuntimeDepartment>(path);
+    patch: Partial<Omit<OrganizationUnit, "id">>,
+  ): Promise<OrganizationUnit> {
+    const path = `/identity/organization-units/${encodeURIComponent(id)}`;
+    const current = await runtimeRequestWithResponse<RuntimeOrganizationUnit>(path);
     const existing = current.data;
     const expectedResourceHash = current.headers.get("X-Resource-Hash")?.trim();
     if (!expectedResourceHash) {
       throw new RuntimeApiError(
         503,
         { code: "backend.authoring.resource_projection_unavailable" },
-        "Runtime did not publish the authoritative department resource hash",
+        "Runtime did not publish the authoritative organization-unit resource hash",
       );
     }
     const requestID = createRuntimeRequestID();
     const result = await runtimeRequest<
-      RuntimeDepartment | RuntimeAuthoringResult<RuntimeDepartment>
+      RuntimeOrganizationUnit | RuntimeAuthoringResult<RuntimeOrganizationUnit>
     >(
       path,
       {
         method: "PATCH",
         headers: {
-          "Builder-Task-ID": `tenant-admin.identity-department.${requestID}`,
+          "Builder-Task-ID": `tenant-admin.identity-organization-unit.${requestID}`,
           "Idempotency-Key": requestID,
           "Expected-Schema-Hash": expectedResourceHash,
         },
         body: {
           ...existing,
+          code: patch.code ?? existing.code,
           name: patch.name ?? existing.name,
+          node_type: patch.nodeType ?? existing.node_type,
           parent_id:
             patch.parentId === undefined
               ? existing.parent_id
@@ -320,14 +303,13 @@ export const departmentsApi = {
         },
       },
     );
-    const department = runtimeAuthoringResource(result);
-    return mapDepartment(department, patch.memberCount);
+    return mapOrganizationUnit(runtimeAuthoringResource(result), patch.memberCount);
   },
   async remove(): Promise<void> {
     throw new RuntimeApiError(
       405,
       {},
-      "The runtime does not expose destructive department deletion",
+      "The runtime does not expose destructive organization-unit deletion",
     );
   },
 };
@@ -345,7 +327,6 @@ async function assignIdentityUserRole(
   body: {
     role_id: string;
     grant_reason: string;
-    workforce_profile_id?: string;
   },
 ): Promise<void> {
   const path = `/identity/users/${encodeURIComponent(userID)}/role-assignments`;
@@ -381,17 +362,18 @@ function mapUser(
     id: user.id,
     name: user.name,
     email: user.email,
-    employeeNo: "",
+    workerNo: user.worker_no ?? "",
     phone: user.phone ?? "",
     gender: "",
-    hireDate: "",
+    startDate: user.start_date ?? "",
+    endDate: user.end_date ?? "",
     jobTitle: "",
     jobLevel: "",
-    managerId: "",
-    managerPath: [user.id],
-    employmentType: "",
-    employmentStatus: "",
-    deptId: "",
+    managerId: user.manager_user_id ?? "",
+    managerPath: (user.reporting_path || `/${user.id}`).split("/").filter(Boolean),
+    workerType: user.worker_type ?? "",
+    workStatus: user.work_status ?? "",
+    organizationUnitId: user.org_id ?? "",
     roleIds,
     status: user.status,
     lastLogin,
@@ -441,7 +423,7 @@ export const usersApi = {
     throw new RuntimeApiError(
       410,
       {},
-      "The mixed account/employee editor is retired; create Workforce through the atomic onboarding command",
+      "Create users through the identity user API",
     );
   },
   async update(
@@ -451,7 +433,7 @@ export const usersApi = {
     throw new RuntimeApiError(
       410,
       {},
-      "The mixed account/employee editor is retired; update account and Workforce through their independent commands",
+      "Update users through the identity user API",
     );
   },
   async remove(id: string): Promise<void> {
@@ -471,7 +453,7 @@ export const identityAccountsApi = {
     const response = await runtimeRequestWithResponse<RuntimeUser>(`/identity/users/${encodeURIComponent(id)}`);
     return mapIdentityAccount(response.data, response.headers.get("X-Resource-Hash")?.trim() || undefined);
   },
-  async provision(input: Omit<IdentityAccount, "id" | "version" | "createdAt" | "updatedAt">): Promise<{
+  async provision(input: Omit<IdentityAccount, "id" | "reportingPath" | "version" | "createdAt" | "updatedAt">): Promise<{
     account: IdentityAccount;
     initialPassword: string;
     mustChangePassword: boolean;
@@ -492,6 +474,14 @@ export const identityAccountsApi = {
         account_type: input.accountType,
         locale: input.locale,
         timezone: input.timezone,
+        org_id: input.organizationUnitId,
+        support_org_id: input.supportOrganizationUnitId,
+        manager_user_id: input.managerUserId,
+        worker_no: input.workerNo,
+        worker_type: input.workerType || undefined,
+        work_status: input.workStatus || undefined,
+        start_date: input.startDate,
+        end_date: input.endDate,
         email: input.email,
         phone: input.phone,
         status: input.status,
@@ -510,10 +500,10 @@ export const identityAccountsApi = {
       mustChangePassword: user.must_change_password,
     };
   },
-  async create(input: Omit<IdentityAccount, "id" | "version" | "createdAt" | "updatedAt">): Promise<IdentityAccount> {
+  async create(input: Omit<IdentityAccount, "id" | "reportingPath" | "version" | "createdAt" | "updatedAt">): Promise<IdentityAccount> {
     return (await this.provision(input)).account;
   },
-  async update(id: string, patch: Partial<Omit<IdentityAccount, "id" | "version" | "createdAt" | "updatedAt">> & { expectedResourceHash?: string }): Promise<IdentityAccount> {
+  async update(id: string, patch: Partial<Omit<IdentityAccount, "id" | "reportingPath" | "version" | "createdAt" | "updatedAt">> & { expectedResourceHash?: string }): Promise<IdentityAccount> {
     const path = `/identity/users/${encodeURIComponent(id)}`;
     const currentResponse = await runtimeRequestWithResponse<RuntimeUser>(path);
     const current = currentResponse.data;
@@ -557,6 +547,14 @@ export const identityAccountsApi = {
         account_type: patch.accountType ?? current.account_type,
         locale: patch.locale ?? current.locale ?? "",
         timezone: patch.timezone ?? current.timezone ?? "",
+        org_id: patch.organizationUnitId ?? current.org_id ?? "",
+        support_org_id: patch.supportOrganizationUnitId ?? current.support_org_id ?? "",
+        manager_user_id: patch.managerUserId ?? current.manager_user_id ?? "",
+        worker_no: patch.workerNo ?? current.worker_no ?? "",
+        worker_type: patch.workerType ?? current.worker_type ?? "",
+        work_status: patch.workStatus ?? current.work_status ?? "",
+        start_date: patch.startDate ?? current.start_date ?? "",
+        end_date: patch.endDate ?? current.end_date ?? "",
         email: patch.email ?? current.email,
         phone: patch.phone ?? current.phone ?? "",
         status: patch.status ?? current.status,
@@ -600,107 +598,6 @@ export const identityAccountsApi = {
   },
 };
 
-function mapWorkforceProfile(profile: RuntimeWorkforceProfile): WorkforceProfile {
-  return {
-    id: profile.id,
-    organizationId: profile.organization_id,
-    identityUserId: profile.identity_user_id,
-    workerNo: profile.worker_no,
-    workerType: profile.worker_type,
-    workStatus: profile.work_status,
-    startDate: profile.start_date ?? "",
-    endDate: profile.end_date ?? "",
-    primaryAssignmentId: profile.primary_assignment_id ?? "",
-    version: profile.version,
-  };
-}
-
-function mapWorkforceAssignment(assignment: RuntimeWorkforceAssignment): WorkforceAssignment {
-  return {
-    id: assignment.id,
-    workforceProfileId: assignment.workforce_profile_id,
-    organizationUnitId: assignment.organization_unit_id,
-    positionId: assignment.position_id ?? "",
-    managerWorkforceProfileId: assignment.manager_workforce_profile_id ?? "",
-    assignmentType: assignment.assignment_type,
-    effectiveFrom: assignment.effective_from ?? "",
-    effectiveTo: assignment.effective_to ?? "",
-    status: assignment.status,
-    version: assignment.version,
-  };
-}
-
-export const workforceApi = {
-  async list(): Promise<WorkforceProfile[]> {
-    const page = await runtimeRequest<RuntimeWorkforceProfilePage>("/identity/workforce");
-    return page.items.map(mapWorkforceProfile);
-  },
-  async search(query: IdentityListQuery): Promise<IdentityPage<WorkforceProfile>> {
-    const page = await runtimeRequest<IdentityPage<RuntimeWorkforceProfile>>(`/identity/workforce/search?${identityListParams(query)}`);
-    return { ...page, items: page.items.map(mapWorkforceProfile) };
-  },
-  async detail(profileID: string): Promise<WorkforceDetail> {
-    const detail = await runtimeRequest<RuntimeWorkforceDetail>(`/identity/workforce/${encodeURIComponent(profileID)}/detail`);
-    return {
-      profile: mapWorkforceProfile(detail.profile),
-      assignments: detail.assignments.map(mapWorkforceAssignment),
-      account: mapIdentityAccount(detail.account),
-      businessProfiles: detail.business_profiles.map((binding) => ({
-        bindingKey: binding.binding_key,
-        objectKey: binding.object_key,
-        profileId: binding.profile_id,
-        status: binding.status,
-      })),
-    };
-  },
-  async assignableRoles(workforceProfileID: string): Promise<WorkforceAssignableRole[]> {
-    const roles = await runtimeRequest<RuntimeRole[]>(`/identity/workforce/${encodeURIComponent(workforceProfileID)}/assignable-roles`);
-    return roles.map((role) => ({ id: role.id, key: role.key, label: role.label, description: role.description }));
-  },
-  async grantRole(identityUserID: string, workforceProfileID: string, roleID: string, reason: string): Promise<void> {
-    await assignIdentityUserRole(identityUserID, {
-      role_id: roleID,
-      workforce_profile_id: workforceProfileID,
-      grant_reason: reason,
-    });
-  },
-  onboard(input: WorkforceOnboardingInput): Promise<WorkforceOnboardingResult> {
-    return runtimeRequest("/identity/workforce/onboard", {
-      method: "POST",
-      headers: { "Idempotency-Key": createRuntimeRequestID() },
-      body: input,
-    });
-  },
-  transferBatch(items: WorkforceTransferBatchItem[]): Promise<IdentityBatchReceipt<WorkforceTransferBatchItem>> {
-    return runtimeRequest("/identity/workforce/transfers/batch", {
-      method: "POST",
-      headers: { "Idempotency-Key": createRuntimeRequestID() },
-      body: { items },
-    });
-  },
-  entitlementBatch(items: EntitlementBatchItem[]): Promise<IdentityBatchReceipt<EntitlementBatchItem>> {
-    return runtimeRequest("/identity/entitlements/batch", {
-      method: "POST",
-      headers: { "Idempotency-Key": createRuntimeRequestID() },
-      body: { items },
-    });
-  },
-  lifecycle(input: WorkforceLifecycleInput): Promise<WorkforceLifecycleResult> {
-    return runtimeRequest(`/identity/workforce/${encodeURIComponent(input.profile.id)}/lifecycle`, {
-      method: "POST",
-      headers: { "Idempotency-Key": createRuntimeRequestID() },
-      body: input,
-    });
-  },
-  terminate(profileID: string, input: { effective_at: string; reason: string }): Promise<RuntimeWorkforceProfile> {
-    return runtimeRequest(`/identity/workforce/${encodeURIComponent(profileID)}/terminate`, {
-      method: "POST",
-      headers: { "Idempotency-Key": createRuntimeRequestID() },
-      body: input,
-    });
-  },
-};
-
 async function runtimeRoles(): Promise<RuntimeRole[]> {
   return runtimeRequest<RuntimeRole[]>("/identity/roles");
 }
@@ -734,7 +631,6 @@ async function mapRoles(roles: RuntimeRole[]): Promise<Role[]> {
     code: role.key,
     description: role.description,
     members: counts.get(role.id) ?? 0,
-    builtIn: role.id === "admin",
     status: role.status,
   }));
 }
@@ -755,25 +651,26 @@ export const rolesApi = {
   },
   async create(input: RoleCreateInput): Promise<Role> {
     const key = input.code.toLowerCase();
-    const { businessReason, permissionKeys, dataPermission, ...role } = input;
-    await saveSystemResourceDraft({
-      resourceType: "role",
-      resourceKey: key,
-      after: {
+    const { businessReason, permissionKeys, ...role } = input;
+    const requestID = createRuntimeRequestID();
+    await runtimeRequest(`/identity/roles`, {
+      method: "POST",
+      headers: { "Idempotency-Key": requestID },
+      body: {
+        role: {
         key,
         name: input.name,
+        description: input.description,
         permissions: Array.from(new Set(permissionKeys)).sort(),
-        record_scope: dataPermission.scope,
-        data_permissions: [dataPermission],
+        record_scope: "none",
+        data_permissions: [],
         field_permissions: [],
+        audience: "any",
+        assignment_mode: "manual",
+        risk_level: "normal",
+        },
+        business_reason: businessReason,
       },
-      operation: "create",
-      resourceOwner: "manual",
-      capabilityKey: "identity.role",
-      riskLevel: "high",
-      validationMethods: ["identity.validate", "permission_catalog.validate"],
-      reason: businessReason,
-      planIDPrefix: "identity-role",
     });
     return { ...role, id: key };
   },

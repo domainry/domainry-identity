@@ -8,7 +8,6 @@ import {
 import { Link, useRouter, useRouterState } from "@tanstack/react-router";
 import {
   Braces,
-  BriefcaseBusiness,
   Building2,
   Languages,
   LogOut,
@@ -78,7 +77,7 @@ import {
 import { useTheme, type Palette } from "@/context/theme-provider";
 import { useAuth } from "@/lib/auth";
 import {
-  useDepartments,
+  useOrganizationUnits,
   useEffectiveMenus,
   useUsers,
 } from "@/data/hooks";
@@ -115,8 +114,7 @@ const NAV_GROUPS: NavGroup[] = [
     labelKey: "nav.group.org",
     items: [
       { key: "users", labelKey: "nav.users", icon: Users },
-      { key: "workforce", labelKey: "nav.workforce", icon: BriefcaseBusiness },
-      { key: "departments", labelKey: "nav.departments", icon: Building2 },
+      { key: "organizationUnits", labelKey: "nav.organizationUnits", icon: Building2 },
       { key: "roles", labelKey: "nav.roles", icon: ShieldCheck },
       { key: "menus", labelKey: "nav.menus", icon: SquareMenu },
     ],
@@ -186,12 +184,12 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const canSearchUsers = effectiveMenus.some(
     (menu) => menu.route === NAV_PATHS.users,
   );
-  const canSearchDepartments = effectiveMenus.some(
-    (menu) => menu.route === NAV_PATHS.departments,
+  const canSearchOrganizationUnits = effectiveMenus.some(
+    (menu) => menu.route === NAV_PATHS.organizationUnits,
   );
   const { data: commandUsers = [] } = useUsers(commandOpen && canSearchUsers);
-  const { data: commandDepartments = [] } = useDepartments(
-    commandOpen && canSearchDepartments,
+  const { data: commandOrganizationUnits = [] } = useOrganizationUnits(
+    commandOpen && canSearchOrganizationUnits,
   );
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -291,7 +289,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
         if (item) return item.icon;
       }
     }
-    return BriefcaseBusiness;
+    return SquareMenu;
   };
 
   return (
@@ -570,16 +568,16 @@ export function AdminShell({ children }: { children: ReactNode }) {
               })}
             </CommandGroup>
           ) : null}
-          {canSearchDepartments && commandDepartments.length ? (
-            <CommandGroup heading={t("command.departments")}>
-              {commandDepartments.map((department) => (
+          {canSearchOrganizationUnits && commandOrganizationUnits.length ? (
+            <CommandGroup heading={t("command.organizationUnits")}>
+              {commandOrganizationUnits.map((unit) => (
                 <CommandItem
-                  key={department.id}
-                  value={`${displayText(t, department.name)} ${t("command.departments")}`}
-                  onSelect={() => runCommand(NAV_PATHS.departments)}
+                  key={unit.id}
+                  value={`${displayText(t, unit.name)} ${t("command.organizationUnits")}`}
+                  onSelect={() => runCommand(NAV_PATHS.organizationUnits)}
                 >
                   <Building2 />
-                  <span>{displayText(t, department.name)}</span>
+                  <span>{displayText(t, unit.name)}</span>
                 </CommandItem>
               ))}
             </CommandGroup>

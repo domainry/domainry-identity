@@ -9,7 +9,6 @@ const sharedTable = source("./data-table.tsx");
 
 const dataTableListPages = [
   "../features/org/identity-accounts-page.tsx",
-  "../features/org/workforce-page.tsx",
   "../features/org/roles.tsx",
   "../features/org/menus.tsx",
   "../features/system/metadata.tsx",
@@ -45,9 +44,9 @@ describe("production list page state contract", () => {
   });
 
   it("keeps custom list implementations on explicit query and empty-state contracts", () => {
-    const departments = source("../features/departments/department-management.tsx");
-    expect(departments).toContain("<Skeleton");
-    expect(departments).toContain("common.retry");
-    expect(departments).toContain("dept.filteredEmpty.title");
+    const organizationUnits = source("../features/organization-units/organization-unit-management.tsx");
+    expect(organizationUnits).toContain("<Skeleton");
+    expect(organizationUnits).toContain("common.retry");
+    expect(organizationUnits).toContain("organizationUnit.filteredEmpty.title");
   });
 });

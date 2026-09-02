@@ -19,7 +19,7 @@ import { PageShell } from "@/components/page-shell";
 import { StatCard, StatGrid } from "@/components/stat-card";
 import { StatusBadge } from "@/components/status-badge";
 import {
-  departmentsApi,
+  organizationUnitsApi,
   identityAccountsApi,
   identityServiceApi,
   objectsApi,
@@ -55,10 +55,10 @@ export function ManagementSurfaceHomePage({
     queryFn: identityAccountsApi.list,
     enabled: ready && has("identity.users.list"),
   });
-  const departments = useQuery({
-    queryKey: ["identity", "management-home", "departments"],
-    queryFn: departmentsApi.list,
-    enabled: ready && has("identity.departments.list"),
+  const organizationUnits = useQuery({
+    queryKey: ["identity", "management-home", "organization-units"],
+    queryFn: organizationUnitsApi.list,
+    enabled: ready && has("identity.organization_units.list"),
   });
   const roles = useQuery({
     queryKey: ["identity", "management-home", "roles"],
@@ -77,9 +77,9 @@ export function ManagementSurfaceHomePage({
       delta: t("managementHome.admin.accountsHint"),
     },
     {
-      label: t("managementHome.admin.departments"),
-      value: queryCount(departments.data?.length, departments.isPending),
-      delta: t("managementHome.admin.departmentsHint"),
+      label: t("managementHome.admin.organizationUnits"),
+      value: queryCount(organizationUnits.data?.length, organizationUnits.isPending),
+      delta: t("managementHome.admin.organizationUnitsHint"),
     },
     {
       label: t("managementHome.admin.roles"),
@@ -150,8 +150,8 @@ function queryCount(value: number | undefined, pending: boolean) {
 }
 
 function MenuIcon({ route }: { route: string }) {
-  if (route.includes("accounts") || route.includes("workforce")) return <Users className="size-5" />;
-  if (route.includes("departments")) return <Building2 className="size-5" />;
+  if (route.includes("accounts")) return <Users className="size-5" />;
+  if (route.includes("organization-units")) return <Building2 className="size-5" />;
   if (route.includes("roles") || route.includes("permissions")) return <ShieldCheck className="size-5" />;
   return <Database className="size-5" />;
 }

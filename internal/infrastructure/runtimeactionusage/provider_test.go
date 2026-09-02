@@ -163,7 +163,7 @@ func testPermissionAction(key, owner, route string) actioncontract.ActionDefinit
 		Authorization: actioncontract.Authorization{Strategy: actioncontract.AuthorizationExactRolePermission},
 		HTTP:          &actioncontract.HTTPBinding{Method: http.MethodGet, RouteTemplate: route},
 		Permission: &actioncontract.PermissionDefinition{
-			Key: key, Owner: owner, ResourceKey: resource, ActionKey: operation, Label: key, Category: resource, LifecycleStatus: actioncontract.LifecycleActive,
+			Key: key, Owner: owner, ResourceKey: resource, OperationKey: operation, Label: key, Category: resource, LifecycleStatus: actioncontract.LifecycleActive,
 		},
 		EffectClass: actioncontract.EffectRead, RiskLevel: actioncontract.RiskLow, IdempotencyDecision: "not_applicable", AuditClass: "test", LifecycleStatus: actioncontract.LifecycleActive,
 	}

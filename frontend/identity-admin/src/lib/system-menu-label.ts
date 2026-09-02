@@ -7,8 +7,7 @@ import type { MessageKey, Translate } from '@/lib/i18n'
 const SYSTEM_MENU_LABEL_KEYS: Readonly<Record<string, MessageKey>> = {
   org_access: 'nav.group.org',
   org_users: 'nav.users',
-  org_workforce: 'nav.workforce',
-  org_departments: 'nav.departments',
+  org_organization_units: 'nav.organizationUnits',
   org_roles: 'nav.roles',
   org_menus: 'nav.menus',
   org_data_scopes: 'nav.dataScopes',

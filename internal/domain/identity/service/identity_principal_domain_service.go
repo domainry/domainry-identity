@@ -19,12 +19,15 @@ func NewIdentityPrincipalDomainService(roles func() []identitymodel.RoleSchema, 
 }
 
 func (s *IdentityPrincipalDomainService) Resolve(ctx context.Context, userID, roleKey, alternateRoleKey string) identitymodel.Principal {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return identitymodel.Principal{Known: false}
+	}
 	workspace, err := identitymodel.NewWorkspaceID(requestcontext.WorkspaceID(ctx))
 	if err != nil {
-		return identitymodel.Principal{UserID: strings.TrimSpace(userID), Known: false}
+		return identitymodel.Principal{UserID: userID, Known: false}
 	}
 	workspaceID := workspace.String()
-	userID = valueOrDefault(userID, "admin")
 	if strings.TrimSpace(roleKey) == "" {
 		roleKey = alternateRoleKey
 	}
@@ -36,7 +39,7 @@ func (s *IdentityPrincipalDomainService) Resolve(ctx context.Context, userID, ro
 		roles = s.roles()
 	}
 	if len(roles) == 0 {
-		return identitymodel.Principal{UserID: userID, WorkspaceID: workspaceID, Known: true, Role: identitymodel.RoleSchema{Key: "developer", Name: "Developer", RecordScope: "all_records"}}
+		return identitymodel.Principal{UserID: userID, WorkspaceID: workspaceID, Known: false}
 	}
 	for _, role := range roles {
 		if role.Key == strings.TrimSpace(roleKey) {

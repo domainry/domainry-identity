@@ -13,7 +13,7 @@ import (
 
 const InsertBatchSize = 40
 
-var columns = []string{"id", "workspace_id", "user_id", "role_id", "workforce_profile_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason", "expires_at", "created_at", "updated_at"}
+var columns = []string{"id", "workspace_id", "user_id", "role_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason", "expires_at", "created_at", "updated_at"}
 
 type Backend interface {
 	SQLRenderer() ormdialect.Renderer
@@ -113,7 +113,7 @@ func values(workspaceID string, assignment identitymodel.IdentityUserRoleAssignm
 		createdAt = now
 	}
 	return []any{identifier("identity_user_role", workspaceID, assignment.UserID, assignment.RoleID), workspaceID, assignment.UserID, assignment.RoleID,
-		nullIfBlank(assignment.WorkforceProfileID), nullIfBlank(assignment.BindingKey), nullIfBlank(assignment.ProfileID), assignment.Source, assignment.Status,
+		nullIfBlank(assignment.BindingKey), nullIfBlank(assignment.ProfileID), assignment.Source, assignment.Status,
 		nullIfBlank(assignment.ValidFrom), nullIfBlank(assignment.ValidUntil), nullIfBlank(assignment.GrantedBy), nullIfBlank(assignment.GrantReason),
 		nullIfBlank(assignment.RevokedBy), nullIfBlank(assignment.RevokedAt), nullIfBlank(assignment.RevokeReason), nullableString(assignment.ExpiresAt), createdAt, now}
 }

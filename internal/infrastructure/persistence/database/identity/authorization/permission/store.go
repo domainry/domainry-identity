@@ -242,7 +242,7 @@ func (store *Store) reconcileWithExecutor(ctx context.Context, executor reconcil
 
 func permissionSelectBuilder(renderer ormdialect.Renderer, workspaceID string) *query.SelectBuilder {
 	return query.NewWorkspaceSelectBuilder(renderer, "_identity_permissions", workspaceID).
-		Columns("id", "workspace_id", "permission_key", "resource_key", "action_key", "label", "description", "category", "source_kind", "source_owner", "definition_status", "enabled", "definition_hash", "source_snapshot_hash", "created_at", "updated_at")
+		Columns("id", "workspace_id", "permission_key", "resource_key", "operation_key", "label", "description", "category", "source_kind", "source_owner", "definition_status", "enabled", "definition_hash", "source_snapshot_hash", "created_at", "updated_at")
 }
 
 func permissionListBuilder(renderer ormdialect.Renderer, workspaceID string) *query.SelectBuilder {
@@ -281,7 +281,7 @@ type permissionDefinitionScanner interface {
 func scanPermissionDefinition(scanner permissionDefinitionScanner) (identitymodel.IdentityPermissionDefinitionRecord, error) {
 	var definition identitymodel.IdentityPermissionDefinitionRecord
 	err := scanner.Scan(
-		&definition.ID, &definition.WorkspaceID, &definition.PermissionKey, &definition.ResourceKey, &definition.ActionKey,
+		&definition.ID, &definition.WorkspaceID, &definition.PermissionKey, &definition.ResourceKey, &definition.OperationKey,
 		&definition.Label, &definition.Description, &definition.Category, &definition.SourceKind, &definition.SourceOwner,
 		&definition.DefinitionStatus, &definition.Enabled, &definition.DefinitionHash, &definition.SourceSnapshotHash,
 		&definition.CreatedAt, &definition.UpdatedAt,
@@ -326,18 +326,18 @@ func upsertDefinitions(ctx context.Context, executor reconcileExecutor, backend 
 
 func permissionUpsertBuilder(backend Backend, workspaceID string, keys []string, incoming map[string]identitymodel.IdentityPermissionDefinitionRecord, now string) *query.InsertBuilder {
 	insert := query.NewWorkspaceInsertBuilder(backend.SQLRenderer(), "_identity_permissions", workspaceID).
-		Columns("id", "permission_key", "resource_key", "action_key", "label", "description", "category", "source_kind", "source_owner", "definition_status", "enabled", "definition_hash", "source_snapshot_hash", "created_at", "updated_at")
+		Columns("id", "permission_key", "resource_key", "operation_key", "label", "description", "category", "source_kind", "source_owner", "definition_status", "enabled", "definition_hash", "source_snapshot_hash", "created_at", "updated_at")
 	for _, key := range keys {
 		definition := incoming[key]
 		insert.Values(
-			permissionRowID(workspaceID, key), key, definition.ResourceKey, definition.ActionKey,
+			permissionRowID(workspaceID, key), key, definition.ResourceKey, definition.OperationKey,
 			definition.Label, definition.Description, definition.Category, definition.SourceKind, definition.SourceOwner,
 			identitymodel.IdentityPermissionDefinitionActive, true, definition.DefinitionHash, definition.SourceSnapshotHash,
 			now, now,
 		)
 	}
 	return backend.ApplyUpsert(insert, []string{"workspace_id", "permission_key"},
-		"resource_key", "action_key", "label", "description", "category", "source_kind", "source_owner",
+		"resource_key", "operation_key", "label", "description", "category", "source_kind", "source_owner",
 		"definition_status", "definition_hash", "source_snapshot_hash", "updated_at",
 	)
 }

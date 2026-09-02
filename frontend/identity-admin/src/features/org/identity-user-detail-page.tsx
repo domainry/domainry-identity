@@ -29,7 +29,7 @@ import { DetailConflictAlert, DetailPageState, isDetailConflictError } from '@/c
 import { DestructiveConfirmationDialog } from '@/components/destructive-confirmation-dialog'
 import { identityAccountsApi } from '@/data/api'
 import { displayText } from '@/data/text'
-import { useIdentityAccount, useIdentityAccountSecurity, useUpdateIdentityAccount } from '@/data/hooks'
+import { useIdentityAccount, useIdentityAccounts, useIdentityAccountSecurity, useOrganizationUnits, useUpdateIdentityAccount } from '@/data/hooks'
 import type { IdentityAccount } from '@/data/types'
 import { useI18n } from '@/lib/i18n'
 import { usePermissions } from '@/lib/permissions'
@@ -51,6 +51,8 @@ export function IdentityUserDetailPage({ userID }: { userID: string }) {
   const { has } = usePermissions()
   const account = useIdentityAccount(userID)
   const security = useIdentityAccountSecurity(userID)
+  const { data: organizationUnits = [] } = useOrganizationUnits()
+  const { data: accountOptions = [] } = useIdentityAccounts()
   const update = useUpdateIdentityAccount()
   const [editing, setEditing] = useState(false)
   const [resettingPassword, setResettingPassword] = useState(false)
@@ -61,8 +63,8 @@ export function IdentityUserDetailPage({ userID }: { userID: string }) {
   const [securityActionPending, setSecurityActionPending] = useState<'unlock' | 'force_logout' | ''>('')
   const [mutationResult, setMutationResult] = useState<{ message: string; error?: boolean } | null>(null)
   const [detailConflict, setDetailConflict] = useState<Error | null>(null)
-  const [draft, setDraft] = useState<Pick<IdentityAccount, 'name' | 'givenName' | 'middleName' | 'familyName' | 'namePrefix' | 'nameSuffix' | 'nativeName' | 'nameLocale' | 'email' | 'phone' | 'accountType' | 'locale' | 'timezone'>>({
-    name: '', givenName: '', middleName: '', familyName: '', namePrefix: '', nameSuffix: '', nativeName: '', nameLocale: '', email: '', phone: '', accountType: 'human', locale: '', timezone: '',
+  const [draft, setDraft] = useState<Pick<IdentityAccount, 'name' | 'givenName' | 'middleName' | 'familyName' | 'namePrefix' | 'nameSuffix' | 'nativeName' | 'nameLocale' | 'email' | 'phone' | 'accountType' | 'locale' | 'timezone' | 'organizationUnitId' | 'supportOrganizationUnitId' | 'managerUserId' | 'workerNo' | 'workerType' | 'workStatus' | 'startDate' | 'endDate'>>({
+    name: '', givenName: '', middleName: '', familyName: '', namePrefix: '', nameSuffix: '', nativeName: '', nameLocale: '', email: '', phone: '', accountType: 'human', locale: '', timezone: '', organizationUnitId: '', supportOrganizationUnitId: '', managerUserId: '', workerNo: '', workerType: '', workStatus: '', startDate: '', endDate: '',
   })
   const backToAccounts = () => void navigate({ to: '/admin/security/accounts' })
   if (account.isPending) return <DetailPageState title={t('accounts.title')} />
@@ -83,6 +85,14 @@ export function IdentityUserDetailPage({ userID }: { userID: string }) {
       accountType: value.accountType,
       locale: value.locale,
       timezone: value.timezone,
+      organizationUnitId: value.organizationUnitId,
+      supportOrganizationUnitId: value.supportOrganizationUnitId,
+      managerUserId: value.managerUserId,
+      workerNo: value.workerNo,
+      workerType: value.workerType,
+      workStatus: value.workStatus,
+      startDate: value.startDate,
+      endDate: value.endDate,
     })
     setEditing(true)
   }
@@ -106,6 +116,14 @@ export function IdentityUserDetailPage({ userID }: { userID: string }) {
           accountType: draft.accountType,
           locale: draft.locale.trim(),
           timezone: draft.timezone.trim(),
+          organizationUnitId: draft.organizationUnitId.trim(),
+          supportOrganizationUnitId: draft.supportOrganizationUnitId.trim(),
+          managerUserId: draft.managerUserId.trim(),
+          workerNo: draft.workerNo.trim(),
+          workerType: draft.workerType,
+          workStatus: draft.workStatus,
+          startDate: draft.startDate.trim(),
+          endDate: draft.endDate.trim(),
         },
       })
       setDetailConflict(null)
@@ -208,6 +226,15 @@ export function IdentityUserDetailPage({ userID }: { userID: string }) {
           <AccountField label={t('accounts.form.accountType')} value={t(`accounts.accountType.${value.accountType}`)} />
           <AccountField label={t('accounts.form.locale')} value={value.locale} />
           <AccountField label={t('accounts.form.timezone')} value={value.timezone} />
+          <AccountField label={t('accounts.form.organizationUnit')} value={organizationUnits.find((unit) => unit.id === value.organizationUnitId)?.name ? displayText(t, organizationUnits.find((unit) => unit.id === value.organizationUnitId)!.name) : value.organizationUnitId} />
+          <AccountField label={t('accounts.form.supportOrganizationUnit')} value={organizationUnits.find((unit) => unit.id === value.supportOrganizationUnitId)?.name ? displayText(t, organizationUnits.find((unit) => unit.id === value.supportOrganizationUnitId)!.name) : value.supportOrganizationUnitId} />
+          <AccountField label={t('accounts.form.manager')} value={accountOptions.find((account) => account.id === value.managerUserId)?.name ? displayText(t, accountOptions.find((account) => account.id === value.managerUserId)!.name) : value.managerUserId} />
+          <AccountField label={t('accounts.form.reportingPath')} value={value.reportingPath} />
+          <AccountField label={t('accounts.form.workerNo')} value={value.workerNo} />
+          <AccountField label={t('accounts.form.workerType')} value={value.workerType ? t(`accounts.workerType.${value.workerType}`) : ''} />
+          <AccountField label={t('accounts.form.workStatus')} value={value.workStatus ? t(`accounts.workStatus.${value.workStatus}`) : ''} />
+          <AccountField label={t('accounts.form.startDate')} value={value.startDate} />
+          <AccountField label={t('accounts.form.endDate')} value={value.endDate} />
           <AccountField label={t('accounts.version')} value={String(value.version)} />
           <AccountField label={t('accounts.createdAt')} value={value.createdAt} />
           <AccountField label={t('accounts.updatedAt')} value={value.updatedAt} />
@@ -272,6 +299,14 @@ export function IdentityUserDetailPage({ userID }: { userID: string }) {
           <Field><FieldLabel>{t('accounts.form.accountType')}</FieldLabel><Select value={draft.accountType} onValueChange={(accountType) => setDraft((current) => ({ ...current, accountType: accountType as IdentityAccount['accountType'] }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value='human'>{t('accounts.accountType.human')}</SelectItem><SelectItem value='service'>{t('accounts.accountType.service')}</SelectItem><SelectItem value='automation'>{t('accounts.accountType.automation')}</SelectItem></SelectContent></Select></Field>
           <Field><FieldLabel>{t('accounts.form.locale')}</FieldLabel><Input value={draft.locale} placeholder='en-US' onChange={(event) => setDraft((current) => ({ ...current, locale: event.target.value }))} /></Field>
           <Field><FieldLabel>{t('accounts.form.timezone')}</FieldLabel><Input value={draft.timezone} placeholder='America/New_York' onChange={(event) => setDraft((current) => ({ ...current, timezone: event.target.value }))} /></Field>
+          <Field><FieldLabel>{t('accounts.form.organizationUnit')}</FieldLabel><Select value={draft.organizationUnitId || '__none__'} onValueChange={(selected) => setDraft((current) => ({ ...current, organizationUnitId: selected === '__none__' ? '' : selected }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value='__none__'>{t('common.none')}</SelectItem>{organizationUnits.map((unit) => <SelectItem key={unit.id} value={unit.id}>{displayText(t, unit.name)} · {t(`organizationUnit.nodeType.${unit.nodeType}`)}</SelectItem>)}</SelectContent></Select></Field>
+          <Field><FieldLabel>{t('accounts.form.supportOrganizationUnit')}</FieldLabel><Select value={draft.supportOrganizationUnitId || '__none__'} onValueChange={(selected) => setDraft((current) => ({ ...current, supportOrganizationUnitId: selected === '__none__' ? '' : selected }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value='__none__'>{t('common.none')}</SelectItem>{organizationUnits.filter((unit) => unit.status === 'active').map((unit) => <SelectItem key={unit.id} value={unit.id}>{displayText(t, unit.name)} · {t(`organizationUnit.nodeType.${unit.nodeType}`)}</SelectItem>)}</SelectContent></Select></Field>
+          <Field><FieldLabel>{t('accounts.form.manager')}</FieldLabel><Select value={draft.managerUserId || '__none__'} onValueChange={(selected) => setDraft((current) => ({ ...current, managerUserId: selected === '__none__' ? '' : selected }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value='__none__'>{t('common.none')}</SelectItem>{accountOptions.map((account) => account.id === value.id ? null : <SelectItem key={account.id} value={account.id}>{displayText(t, account.name)} · {account.email}</SelectItem>)}</SelectContent></Select></Field>
+          <Field><FieldLabel>{t('accounts.form.workerNo')}</FieldLabel><Input value={draft.workerNo} onChange={(event) => setDraft((current) => ({ ...current, workerNo: event.target.value }))} /></Field>
+          <Field><FieldLabel>{t('accounts.form.workerType')}</FieldLabel><Select value={draft.workerType || '__none__'} onValueChange={(selected) => setDraft((current) => ({ ...current, workerType: selected === '__none__' ? '' : selected as IdentityAccount['workerType'] }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value='__none__'>{t('common.none')}</SelectItem>{(['employee', 'contractor', 'partner_staff', 'temporary'] as const).map((type) => <SelectItem key={type} value={type}>{t(`accounts.workerType.${type}`)}</SelectItem>)}</SelectContent></Select></Field>
+          <Field><FieldLabel>{t('accounts.form.workStatus')}</FieldLabel><Select value={draft.workStatus || '__none__'} onValueChange={(selected) => setDraft((current) => ({ ...current, workStatus: selected === '__none__' ? '' : selected as IdentityAccount['workStatus'] }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value='__none__'>{t('common.none')}</SelectItem>{(['pending', 'active', 'suspended', 'terminated'] as const).map((status) => <SelectItem key={status} value={status}>{t(`accounts.workStatus.${status}`)}</SelectItem>)}</SelectContent></Select></Field>
+          <Field><FieldLabel>{t('accounts.form.startDate')}</FieldLabel><Input type='date' value={draft.startDate} onChange={(event) => setDraft((current) => ({ ...current, startDate: event.target.value }))} /></Field>
+          <Field><FieldLabel>{t('accounts.form.endDate')}</FieldLabel><Input type='date' value={draft.endDate} onChange={(event) => setDraft((current) => ({ ...current, endDate: event.target.value }))} /></Field>
         </div>
         <DialogFooter><Button variant='outline' onClick={() => setEditing(false)}>{t('common.cancel')}</Button><Button disabled={update.isPending || !String(draft.name).trim() || !draft.email.trim()} onClick={() => void save()}>{t('common.save')}</Button></DialogFooter>
       </DialogContent>

@@ -48,6 +48,40 @@ func (s *IdentityConfigurationDomainService) ValidateUserConfiguration(ctx conte
 	if user.AccountType != "" && user.AccountType != identitymodel.IdentityAccountHuman && user.AccountType != identitymodel.IdentityAccountService && user.AccountType != identitymodel.IdentityAccountAutomation {
 		issues = append(issues, identityConfigurationIssue("user.account_type", "backend.identity.user_account_type_invalid", "identity.user", map[string]string{"actual": string(user.AccountType), "allowed": "human,service,automation"}))
 	}
+	if user.WorkerType != "" && user.WorkerType != identitymodel.IdentityWorkerEmployee && user.WorkerType != identitymodel.IdentityWorkerContractor && user.WorkerType != identitymodel.IdentityWorkerPartnerStaff && user.WorkerType != identitymodel.IdentityWorkerTemporary {
+		issues = append(issues, identityConfigurationIssue("user.worker_type", "backend.identity.user_worker_type_invalid", "identity.user", map[string]string{"actual": string(user.WorkerType)}))
+	}
+	if user.WorkStatus != "" && user.WorkStatus != identitymodel.IdentityWorkPending && user.WorkStatus != identitymodel.IdentityWorkActive && user.WorkStatus != identitymodel.IdentityWorkSuspended && user.WorkStatus != identitymodel.IdentityWorkTerminated {
+		issues = append(issues, identityConfigurationIssue("user.work_status", "backend.identity.user_work_status_invalid", "identity.user", map[string]string{"actual": string(user.WorkStatus)}))
+	}
+	for field, value := range map[string]string{"user.start_date": user.StartDate, "user.end_date": user.EndDate} {
+		if value = strings.TrimSpace(value); value != "" {
+			if _, err := time.Parse("2006-01-02", value); err != nil {
+				issues = append(issues, identityConfigurationIssue(field, "backend.identity.user_work_date_invalid", "identity.user", map[string]string{"actual": value}))
+			}
+		}
+	}
+	if strings.TrimSpace(user.StartDate) != "" && strings.TrimSpace(user.EndDate) != "" && user.EndDate < user.StartDate {
+		issues = append(issues, identityConfigurationIssue("user.end_date", "backend.identity.user_work_period_invalid", "identity.user", nil))
+	}
+	organizationUnitID := strings.TrimSpace(user.OrgID)
+	supportOrganizationUnitID := strings.TrimSpace(user.SupportOrgID)
+	if organizationUnitID != "" || supportOrganizationUnitID != "" {
+		units, err := s.repository.ListIdentityOrganizationUnits(ctx, s.workspace)
+		if err != nil {
+			return nil, err
+		}
+		unitsByID := make(map[string]identitymodel.IdentityOrganizationUnit, len(units))
+		for _, unit := range units {
+			unitsByID[strings.TrimSpace(unit.ID)] = unit
+		}
+		if _, found := unitsByID[organizationUnitID]; organizationUnitID != "" && !found {
+			issues = append(issues, identityConfigurationIssue("user.org_id", "backend.identity.organization_unit_not_found", "identity.user", map[string]string{"actual": organizationUnitID}))
+		}
+		if unit, found := unitsByID[supportOrganizationUnitID]; supportOrganizationUnitID != "" && (!found || unit.Status == identitymodel.IdentityStatusDisabled) {
+			issues = append(issues, identityConfigurationIssue("user.support_org_id", "backend.identity.support_organization_unit_not_found", "identity.user", map[string]string{"actual": supportOrganizationUnitID}))
+		}
+	}
 	if timezone := strings.TrimSpace(user.Timezone); timezone != "" {
 		if _, err := time.LoadLocation(timezone); err != nil {
 			issues = append(issues, identityConfigurationIssue("user.timezone", "backend.identity.user_timezone_invalid", "identity.user", map[string]string{"actual": timezone, "expected": "IANA timezone"}))
@@ -56,6 +90,36 @@ func (s *IdentityConfigurationDomainService) ValidateUserConfiguration(ctx conte
 	users, err := s.repository.ListIdentityUsers(ctx, s.workspace)
 	if err != nil {
 		return nil, err
+	}
+	managerUserID := strings.TrimSpace(user.ManagerUserID)
+	if managerUserID != "" {
+		if managerUserID == user.ID {
+			issues = append(issues, identityConfigurationIssue("user.manager_user_id", "backend.identity.user_manager_self_reference", "identity.user", map[string]string{"actual": managerUserID}))
+		} else {
+			byID := make(map[string]identitymodel.IdentityUser, len(users))
+			for _, existing := range users {
+				byID[existing.ID] = existing
+			}
+			manager, found := byID[managerUserID]
+			if !found || manager.Status != identitymodel.IdentityStatusActive || manager.WorkStatus == identitymodel.IdentityWorkTerminated {
+				issues = append(issues, identityConfigurationIssue("user.manager_user_id", "backend.identity.user_manager_invalid", "identity.user", map[string]string{"actual": managerUserID}))
+			} else {
+				visited := map[string]bool{user.ID: true}
+				for cursor := managerUserID; cursor != ""; {
+					if visited[cursor] {
+						issues = append(issues, identityConfigurationIssue("user.manager_user_id", "backend.identity.user_reporting_cycle", "identity.user", map[string]string{"actual": managerUserID}))
+						break
+					}
+					visited[cursor] = true
+					ancestor, exists := byID[cursor]
+					if !exists {
+						issues = append(issues, identityConfigurationIssue("user.manager_user_id", "backend.identity.user_manager_invalid", "identity.user", map[string]string{"actual": cursor}))
+						break
+					}
+					cursor = strings.TrimSpace(ancestor.ManagerUserID)
+				}
+			}
+		}
 	}
 	issues = append(issues, validateUserUniqueness(user, users)...)
 	return issues, nil
@@ -70,55 +134,67 @@ func validateUserUniqueness(user identitymodel.IdentityUser, users []identitymod
 		if user.Email != "" && strings.EqualFold(strings.TrimSpace(existing.Email), user.Email) {
 			issues = append(issues, identityConfigurationIssue("user.email", "backend.identity.user_email_exists", "identity.user", map[string]string{"actual": user.Email}))
 		}
+		if strings.TrimSpace(user.WorkerNo) != "" && strings.EqualFold(strings.TrimSpace(existing.WorkerNo), strings.TrimSpace(user.WorkerNo)) {
+			issues = append(issues, identityConfigurationIssue("user.worker_no", "backend.identity.user_worker_no_exists", "identity.user", map[string]string{"actual": user.WorkerNo}))
+		}
 	}
 	return issues
 }
 
-func (s *IdentityConfigurationDomainService) ValidateDepartmentConfiguration(ctx context.Context, department identitymodel.IdentityDepartment) ([]identitycontract.IdentityGovernanceValidationIssue, error) {
-	department.ID, department.Name = strings.TrimSpace(department.ID), strings.TrimSpace(department.Name)
+func (s *IdentityConfigurationDomainService) ValidateOrganizationUnitConfiguration(ctx context.Context, organizationUnit identitymodel.IdentityOrganizationUnit) ([]identitycontract.IdentityGovernanceValidationIssue, error) {
+	organizationUnit.ID, organizationUnit.Code, organizationUnit.Name = strings.TrimSpace(organizationUnit.ID), strings.TrimSpace(organizationUnit.Code), strings.TrimSpace(organizationUnit.Name)
 	issues := []identitycontract.IdentityGovernanceValidationIssue{}
-	if department.ID == "" {
-		issues = append(issues, identityConfigurationIssue("department.id", "backend.identity.department_id_required", "identity.department", map[string]string{"actual": department.ID}))
+	if organizationUnit.ID == "" {
+		issues = append(issues, identityConfigurationIssue("organization_unit.id", "backend.identity.org_id_required", "identity.organization_unit", map[string]string{"actual": organizationUnit.ID}))
 	}
-	if department.Name == "" {
-		issues = append(issues, identityConfigurationIssue("department.name", "backend.identity.department_name_required", "identity.department", map[string]string{"actual": department.Name}))
+	if organizationUnit.Code == "" {
+		issues = append(issues, identityConfigurationIssue("organization_unit.code", "backend.identity.organization_unit_code_required", "identity.organization_unit", nil))
 	}
-	if department.Status != "" && department.Status != identitymodel.IdentityStatusActive && department.Status != identitymodel.IdentityStatusDisabled {
-		issues = append(issues, identityConfigurationIssue("department.status", "backend.identity.department_status_invalid", "identity.department", map[string]string{"actual": string(department.Status), "allowed": "active,disabled"}))
+	if organizationUnit.Name == "" {
+		issues = append(issues, identityConfigurationIssue("organization_unit.name", "backend.identity.organization_unit_name_required", "identity.organization_unit", map[string]string{"actual": organizationUnit.Name}))
 	}
-	departments, err := s.repository.ListIdentityDepartments(ctx, s.workspace)
+	if !validOrganizationUnitType(organizationUnit.NodeType) {
+		issues = append(issues, identityConfigurationIssue("organization_unit.node_type", "backend.identity.organization_unit_type_invalid", "identity.organization_unit", map[string]string{"actual": string(organizationUnit.NodeType)}))
+	}
+	if organizationUnit.Status != "" && organizationUnit.Status != identitymodel.IdentityStatusActive && organizationUnit.Status != identitymodel.IdentityStatusDisabled {
+		issues = append(issues, identityConfigurationIssue("organization_unit.status", "backend.identity.organization_unit_status_invalid", "identity.organization_unit", map[string]string{"actual": string(organizationUnit.Status), "allowed": "active,disabled"}))
+	}
+	organizationUnits, err := s.repository.ListIdentityOrganizationUnits(ctx, s.workspace)
 	if err != nil {
 		return nil, err
 	}
-	issues = append(issues, validateDepartmentParent(department, departments)...)
-	for _, existing := range departments {
-		if existing.ID != department.ID && identityConfigurationParentID(existing.ParentID) == identityConfigurationParentID(department.ParentID) && strings.EqualFold(strings.TrimSpace(existing.Name), department.Name) {
-			issues = append(issues, identityConfigurationIssue("department.name", "backend.identity.department_name_exists", "identity.department", map[string]string{"actual": department.Name}))
+	issues = append(issues, validateOrganizationUnitParent(organizationUnit, organizationUnits)...)
+	for _, existing := range organizationUnits {
+		if existing.ID != organizationUnit.ID && identityConfigurationParentID(existing.ParentID) == identityConfigurationParentID(organizationUnit.ParentID) && strings.EqualFold(strings.TrimSpace(existing.Name), organizationUnit.Name) {
+			issues = append(issues, identityConfigurationIssue("organization_unit.name", "backend.identity.organization_unit_name_exists", "identity.organization_unit", map[string]string{"actual": organizationUnit.Name}))
+		}
+		if existing.ID != organizationUnit.ID && strings.EqualFold(strings.TrimSpace(existing.Code), organizationUnit.Code) {
+			issues = append(issues, identityConfigurationIssue("organization_unit.code", "backend.identity.organization_unit_code_exists", "identity.organization_unit", map[string]string{"actual": organizationUnit.Code}))
 		}
 	}
 	return issues, nil
 }
 
-func validateDepartmentParent(department identitymodel.IdentityDepartment, departments []identitymodel.IdentityDepartment) []identitycontract.IdentityGovernanceValidationIssue {
-	parentID := identityConfigurationParentID(department.ParentID)
+func validateOrganizationUnitParent(organizationUnit identitymodel.IdentityOrganizationUnit, organizationUnits []identitymodel.IdentityOrganizationUnit) []identitycontract.IdentityGovernanceValidationIssue {
+	parentID := identityConfigurationParentID(organizationUnit.ParentID)
 	if parentID == "" {
 		return nil
 	}
-	if parentID == department.ID {
-		return []identitycontract.IdentityGovernanceValidationIssue{identityConfigurationIssue("department.parent_id", "backend.identity.department_parent_self", "identity.department", map[string]string{"actual": parentID})}
+	if parentID == organizationUnit.ID {
+		return []identitycontract.IdentityGovernanceValidationIssue{identityConfigurationIssue("organization_unit.parent_id", "backend.identity.organization_unit_parent_self", "identity.organization_unit", map[string]string{"actual": parentID})}
 	}
-	byID := make(map[string]identitymodel.IdentityDepartment, len(departments))
-	for _, existing := range departments {
+	byID := make(map[string]identitymodel.IdentityOrganizationUnit, len(organizationUnits))
+	for _, existing := range organizationUnits {
 		byID[existing.ID] = existing
 	}
 	parent, exists := byID[parentID]
 	if !exists {
-		return []identitycontract.IdentityGovernanceValidationIssue{identityConfigurationIssue("department.parent_id", "backend.identity.parent_department_not_found", "identity.department", map[string]string{"actual": parentID})}
+		return []identitycontract.IdentityGovernanceValidationIssue{identityConfigurationIssue("organization_unit.parent_id", "backend.identity.parent_organization_unit_not_found", "identity.organization_unit", map[string]string{"actual": parentID})}
 	}
-	seen := map[string]bool{department.ID: true}
+	seen := map[string]bool{organizationUnit.ID: true}
 	for {
 		if seen[parent.ID] {
-			return []identitycontract.IdentityGovernanceValidationIssue{identityConfigurationIssue("department.parent_id", "backend.identity.department_cycle", "identity.department", map[string]string{"actual": parentID})}
+			return []identitycontract.IdentityGovernanceValidationIssue{identityConfigurationIssue("organization_unit.parent_id", "backend.identity.organization_unit_cycle", "identity.organization_unit", map[string]string{"actual": parentID})}
 		}
 		seen[parent.ID] = true
 		nextID := identityConfigurationParentID(parent.ParentID)
@@ -127,9 +203,18 @@ func validateDepartmentParent(department identitymodel.IdentityDepartment, depar
 		}
 		next, exists := byID[nextID]
 		if !exists {
-			return nil
+			return []identitycontract.IdentityGovernanceValidationIssue{identityConfigurationIssue("organization_unit.parent_id", "backend.identity.parent_organization_unit_not_found", "identity.organization_unit", map[string]string{"actual": nextID})}
 		}
 		parent = next
+	}
+}
+
+func validOrganizationUnitType(value identitymodel.IdentityOrganizationUnitType) bool {
+	switch value {
+	case identitymodel.IdentityOrganizationUnitCompany, identitymodel.IdentityOrganizationUnitRegion, identitymodel.IdentityOrganizationUnitStore, identitymodel.IdentityOrganizationUnitDepartment, identitymodel.IdentityOrganizationUnitTeam, identitymodel.IdentityOrganizationUnitWarehouse:
+		return true
+	default:
+		return false
 	}
 }
 

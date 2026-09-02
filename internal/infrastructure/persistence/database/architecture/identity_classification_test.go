@@ -64,27 +64,6 @@ func TestIdentityBusinessPersistenceUsesStructuredBuilders(t *testing.T) {
 	}
 }
 
-func TestIdentityWorkforceLifecycleRootFilesRemainFacades(t *testing.T) {
-	identityRoot := identityPersistenceRoot(t)
-	files := []string{
-		"identity_workforce_lifecycle_store.go",
-		"identity_workforce_onboarding_store.go",
-		"identity_workforce_termination_store.go",
-	}
-	for _, name := range files {
-		source, err := os.ReadFile(filepath.Join(identityRoot, name))
-		if err != nil {
-			t.Fatal(err)
-		}
-		text := string(source)
-		for _, forbidden := range []string{"ormbuilder", ".BeginTx(", ".ExecContext(", ".QueryRowContext("} {
-			if strings.Contains(text, forbidden) {
-				t.Errorf("Identity workforce facade %s owns persistence implementation %q", name, forbidden)
-			}
-		}
-	}
-}
-
 func TestIdentityAccessReviewRootFileRemainsFacade(t *testing.T) {
 	source, err := os.ReadFile(filepath.Join(identityPersistenceRoot(t), "identity_access_review_store.go"))
 	if err != nil {
@@ -173,31 +152,15 @@ func TestIdentityUserRootFileOnlyCoordinatesClassifiedOwners(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(source)
-	for _, forbiddenTable := range []string{"_identity_users", "_identity_departments", "_identity_profile_bindings"} {
+	for _, forbiddenTable := range []string{"_identity_users", "_identity_organization_units", "_identity_profile_bindings"} {
 		if strings.Contains(text, forbiddenTable) {
 			t.Errorf("Identity user coordinator still owns classified table %q", forbiddenTable)
 		}
 	}
-	for _, owner := range []string{"departmentpersistence.New", "userpersistence.New", "NewIdentityProfileBindingStore"} {
+	for _, owner := range []string{"organizationunitpersistence.New", "userpersistence.New", "NewIdentityProfileBindingStore"} {
 		if !strings.Contains(text, owner) {
 			t.Errorf("Identity user coordinator lost classified owner delegation %q", owner)
 		}
-	}
-}
-
-func TestIdentityWorkforceRootFileRemainsFacade(t *testing.T) {
-	source, err := os.ReadFile(filepath.Join(identityPersistenceRoot(t), "identity_store_sql_workforce.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(source)
-	for _, forbidden := range []string{"ormbuilder", ".BeginTx(", ".ExecContext(", ".QueryContext("} {
-		if strings.Contains(text, forbidden) {
-			t.Errorf("Identity workforce facade owns persistence implementation %q", forbidden)
-		}
-	}
-	if !strings.Contains(text, "workforcepersistence.New") {
-		t.Error("Identity workforce facade lost classified owner delegation")
 	}
 }
 

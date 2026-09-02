@@ -13,26 +13,17 @@ type BusinessProfileReference struct {
 	Claims      map[string]BusinessClaimValue `json:"claims,omitempty"`
 }
 
-type IdentityOrganizationScopeFacts struct {
-	TeamIDs      []string `json:"team_ids"`
-	StoreIDs     []string `json:"store_ids"`
-	TerritoryIDs []string `json:"territory_ids"`
-	WarehouseIDs []string `json:"warehouse_ids"`
-}
-
 type Principal struct {
 	UserID                string
 	WorkspaceID           string
-	WorkforceProfileID    string
 	SystemScope           SystemScope
-	DepartmentID          string
-	DepartmentPath        string
-	ReportingPath         string
-	ReportingUserIDs      []string
-	TeamIDs               []string
-	StoreIDs              []string
-	TerritoryIDs          []string
-	WarehouseIDs          []string
+	OrgID                 string
+	OrgScopeIDs           []string
+	SupportOrgID          string
+	SupportOrgScopeIDs    []string
+	ReportingScopeUserIDs []string
+	OrganizationPath      string
+	EffectiveRecordScopes []string
 	RequestID             string
 	CorrelationID         string
 	CausationID           string

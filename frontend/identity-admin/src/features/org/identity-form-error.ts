@@ -1,11 +1,11 @@
 import type { RuntimeApiError } from '@/lib/runtime-api'
 
-export type UserFormControl = 'name' | 'email' | 'employeeNo' | 'managerId' | 'employmentStatus' | 'deptId' | 'roleId' | 'enabled'
+export type UserFormControl = 'name' | 'email' | 'workerNo' | 'workStatus' | 'organizationUnitId' | 'supportOrganizationUnitId' | 'managerUserId' | 'enabled'
 export type RoleFormControl = 'name' | 'code' | 'description'
-export type DepartmentFormControl = 'name' | 'parentId' | 'enabled'
+export type OrganizationUnitFormControl = 'code' | 'name' | 'nodeType' | 'parentId' | 'enabled'
 
 function identityPath(fieldPath: string) {
-  return fieldPath.replace(/^(user|role|department)\./, '')
+  return fieldPath.replace(/^(user|role|organization_unit)\./, '')
 }
 
 export function userFormControl(error: RuntimeApiError | undefined): UserFormControl | undefined {
@@ -13,11 +13,12 @@ export function userFormControl(error: RuntimeApiError | undefined): UserFormCon
   const path = identityPath(error.fieldPath)
   if (path === 'name') return 'name'
   if (path === 'email') return 'email'
-  if (path === 'employee_no') return 'employeeNo'
-  if (path === 'manager_id') return 'managerId'
-  if (path === 'department_id') return 'deptId'
-  if (path === 'role_id') return 'roleId'
-  if (path === 'status') return 'employmentStatus'
+  if (path === 'worker_no') return 'workerNo'
+  if (path === 'org_id') return 'organizationUnitId'
+  if (path === 'support_org_id') return 'supportOrganizationUnitId'
+  if (path === 'manager_user_id') return 'managerUserId'
+  if (path === 'work_status') return 'workStatus'
+  if (path === 'status') return 'enabled'
   return undefined
 }
 
@@ -30,11 +31,13 @@ export function roleFormControl(error: RuntimeApiError | undefined): RoleFormCon
   return undefined
 }
 
-export function departmentFormControl(error: RuntimeApiError | undefined): DepartmentFormControl | undefined {
+export function organizationUnitFormControl(error: RuntimeApiError | undefined): OrganizationUnitFormControl | undefined {
   if (!error) return undefined
   const path = identityPath(error.fieldPath)
+  if (path === 'code') return 'code'
   if (path === 'name') return 'name'
-  if (path === 'parent_id' || error.code === 'backend.identity.department_parent_self' || error.code === 'backend.identity.department_cycle') return 'parentId'
+  if (path === 'node_type') return 'nodeType'
+  if (path === 'parent_id' || error.code === 'backend.identity.organization_unit_parent_self' || error.code === 'backend.identity.organization_unit_cycle') return 'parentId'
   if (path === 'status') return 'enabled'
   return undefined
 }

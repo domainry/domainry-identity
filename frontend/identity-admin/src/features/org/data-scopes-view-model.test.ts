@@ -1,26 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { RuntimePermissionPoint } from '@/data/api'
-import type { Role } from '@/data/types'
 import {
   dataScopeValues,
   effectiveObjectPermission,
   effectiveObjectScope,
   isDataScopeOptionDisabled,
   objectCrudActions,
-  roleHasImplicitObjectAccess,
   shouldHydrateRoleAuthorizationDraft,
 } from './data-scopes-view-model'
-
-const role = (overrides: Partial<Role> = {}): Role => ({
-  id: 'manager',
-  name: 'Manager',
-  code: 'manager',
-  description: '',
-  members: 1,
-  builtIn: false,
-  status: 'active',
-  ...overrides,
-})
 
 const point = (resource: string, action: string): RuntimePermissionPoint => ({
   key: `${resource}.${action}`,
@@ -48,22 +35,20 @@ describe('data scope permission matrix', () => {
     expect(objectCrudActions(['employee_profile'], catalog)).toEqual(['create', 'read', 'update', 'delete'])
   })
 
-  it('renders workspace administrators as inherited full access', () => {
-    const admin = role({ id: 'admin', builtIn: true })
+  it('requires explicit permission and scope facts for every role id', () => {
     const read = point('employee_profile', 'read')
 
-    expect(roleHasImplicitObjectAccess(admin, [])).toBe(true)
-    expect(effectiveObjectPermission(admin, [], read)).toBe(true)
-    expect(effectiveObjectScope(admin, [], 'none')).toBe('all_records')
+    expect(effectiveObjectPermission([], read)).toBe(false)
+    expect(effectiveObjectPermission(['employee_profile.read'], read)).toBe(true)
+    expect(effectiveObjectScope('none')).toBe('none')
   })
 
   it('uses direct grants and scopes for ordinary roles', () => {
-    const manager = role()
     const read = point('employee_profile', 'read')
 
-    expect(effectiveObjectPermission(manager, ['employee_profile.read'], read)).toBe(true)
-    expect(effectiveObjectPermission(manager, [], read)).toBe(false)
-    expect(effectiveObjectScope(manager, [], 'department')).toBe('department')
+    expect(effectiveObjectPermission(['employee_profile.read'], read)).toBe(true)
+    expect(effectiveObjectPermission([], read)).toBe(false)
+    expect(effectiveObjectScope('department')).toBe('department')
   })
 
   it('keeps backend scopes already in use even when capability discovery omits them', () => {

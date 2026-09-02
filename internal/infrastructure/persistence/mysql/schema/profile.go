@@ -7,6 +7,7 @@ import (
 
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
+	ormschema "github.com/domainry/domainry-orm/schema"
 )
 
 type Profile struct{}
@@ -23,6 +24,9 @@ func (Profile) ColumnDefinition(definition string) string {
 	definition = strings.ReplaceAll(definition, "TEXT NOT NULL DEFAULT ''", "TEXT NOT NULL DEFAULT ('')")
 	return definition
 }
+
+// MySQL schema discovery must query information_schema. domainry-orm models
+// application relations, not server catalogs, so these reads stay here.
 func (Profile) ApplicationTablesQuery(ormdialect.Renderer, string) driver.SchemaQuery {
 	return driver.SchemaQuery{Statement: "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE()"}
 }
@@ -40,11 +44,15 @@ func (profile Profile) CreateIndexIfMissing(ctx context.Context, database driver
 	if err != nil || indexes[index] {
 		return err
 	}
-	prefix := "CREATE INDEX "
+	builder := ormschema.NewIndex(renderer, index, table).Columns(columns...)
 	if unique {
-		prefix = "CREATE UNIQUE INDEX "
+		builder.Unique()
 	}
-	if _, err := database.ExecContext(ctx, prefix+renderer.Identifier(index)+" ON "+renderer.Table(table)+" ("+mysqlSchemaColumnList(renderer, columns)+")"); err != nil {
+	statement, arguments, buildErr := builder.Build()
+	if buildErr != nil {
+		return fmt.Errorf("build MySQL index %s: %w", index, buildErr)
+	}
+	if _, err := database.ExecContext(ctx, statement, arguments...); err != nil {
 		return fmt.Errorf("create MySQL index %s: %w", index, err)
 	}
 	return nil
@@ -68,6 +76,8 @@ func (Profile) TableIndexes(ctx context.Context, database driver.SchemaDatabase,
 }
 
 func (Profile) DropIndex(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _, _, table, index string) error {
+	// domainry-orm has no DROP INDEX builder, and MySQL requires the owning
+	// table in this DDL form.
 	_, err := database.ExecContext(ctx, "DROP INDEX "+renderer.Identifier(index)+" ON "+renderer.Table(table))
 	return err
 }
@@ -120,6 +130,8 @@ func (Profile) NormalizeAuditCursorColumns(ctx context.Context, database driver.
 	if len(modifications) == 0 {
 		return nil
 	}
+	// domainry-orm has no ALTER COLUMN builder for MySQL charset/collation
+	// normalization, so this physical compatibility DDL remains dialect-local.
 	if _, err := database.ExecContext(ctx, "ALTER TABLE "+renderer.Table(table)+" "+strings.Join(modifications, ", ")); err != nil {
 		return fmt.Errorf("normalize MySQL audit cursor columns: %w", err)
 	}
@@ -142,12 +154,4 @@ func mysqlNames(rows interface {
 		values[name] = true
 	}
 	return values, rows.Err()
-}
-
-func mysqlSchemaColumnList(renderer ormdialect.Renderer, columns []string) string {
-	quoted := make([]string, len(columns))
-	for index, column := range columns {
-		quoted[index] = renderer.Identifier(column)
-	}
-	return strings.Join(quoted, ", ")
 }

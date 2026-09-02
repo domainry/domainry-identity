@@ -3,6 +3,8 @@ package schema
 import (
 	"context"
 	"fmt"
+
+	ormschema "github.com/domainry/domainry-orm/schema"
 )
 
 // migrateLegacyIdentityMenuAudience performs the one-way schema cleanup for
@@ -15,8 +17,11 @@ func migrateLegacyIdentityMenuAudience(ctx context.Context, store Store) error {
 	if !columns["audience"] {
 		return nil
 	}
-	query := "ALTER TABLE " + store.TableIdentifier("_identity_menus") + " DROP COLUMN " + store.Identifier("audience")
-	if _, err := store.SchemaDB().ExecContext(ctx, query); err != nil {
+	statement, arguments, buildErr := ormschema.NewDropColumn(store.SchemaRenderer(), "_identity_menus", "audience").Build()
+	if buildErr != nil {
+		return fmt.Errorf("build migrated _identity_menus.audience removal: %w", buildErr)
+	}
+	if _, err := store.SchemaDB().ExecContext(ctx, statement, arguments...); err != nil {
 		return fmt.Errorf("drop migrated _identity_menus.audience: %w", err)
 	}
 	return nil

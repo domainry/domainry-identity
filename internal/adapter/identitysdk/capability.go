@@ -154,20 +154,20 @@ func NewCapabilityBinding() (*modulecapability.StaticBinding, error) {
 		Description: "Authentication, principals, users, organizational identity, roles, permissions, and access-policy configuration.",
 		Scenarios: modulecapability.AdaptationScenarios{
 			UseWhen: []string{
-				"The product has authenticated users, service identities, roles, permissions, departments, or workforce assignments",
+				"The product has authenticated users, service identities, roles, permissions, or organization units",
 				"The product requires login, external identity providers, application profile binding, or governed access",
 			},
 			DoNotUseWhen: []string{
 				"The requirement only stores a business contact or organization without authentication or access control",
 				"The requirement only sends a user-facing message; notification delivery is owned by Notification",
 			},
-			RequirementSignals:   []string{"login and session", "user or service identity", "role and permission", "department or workforce assignment", "OIDC or SAML provider"},
+			RequirementSignals:   []string{"login and session", "user or service identity", "role and permission", "organization unit", "OIDC or SAML provider"},
 			ProvidedCapabilities: append([]string(nil), providedCapabilities...),
 			RequiredModules:      []string{}, OptionalModules: []string{}, ConflictingModules: []string{},
 			AssemblyChains:    []string{"identity_before_authorization_and_application_publication"},
 			ValidationScopes:  []string{"identity.role"},
-			SelectionExamples: []modulecapability.ScenarioExample{{Requirement: "Employees sign in and managers receive scoped permissions", Reason: "Identity owns authentication, workforce principals, roles, and access policy"}},
-			RejectionExamples: []modulecapability.ScenarioExample{{Requirement: "Store customer companies and contacts without login", Reason: "Party owns business parties; no Identity principal is required"}},
+			SelectionExamples: []modulecapability.ScenarioExample{{Requirement: "Employees sign in and receive organization-scoped permissions", Reason: "Identity owns authentication, users, organization units, roles, and access policy"}},
+			RejectionExamples: []modulecapability.ScenarioExample{{Requirement: "Store customer companies and contacts without login", Reason: "This does not require an Identity principal"}},
 		},
 	}
 	return modulecapability.NewStaticBinding(summary, documents, identityCandidateValidator(definitions))
@@ -175,10 +175,10 @@ func NewCapabilityBinding() (*modulecapability.StaticBinding, error) {
 
 func identityCapabilityCategory(capabilityKey string) string {
 	switch capabilityKey {
-	case "identity.user", "identity.department":
+	case "identity.user", "identity.organization_unit":
 		return "identity.directory"
-	case "identity.profile_binding", "identity.workforce_profile", "identity.workforce_assignment":
-		return "identity.workforce"
+	case "identity.profile_binding":
+		return "identity.directory"
 	case "identity.role", "identity.role_permission", "identity.user_role_assignment":
 		return "identity.roles"
 	default:
@@ -189,9 +189,7 @@ func identityCapabilityCategory(capabilityKey string) string {
 func identityCategoryText(key string) (string, string) {
 	switch key {
 	case "identity.directory":
-		return "Identity directory", "Configure authenticated users and organizational departments."
-	case "identity.workforce":
-		return "Identity workforce", "Configure workforce profiles, assignments, and application business-profile bindings."
+		return "Identity directory", "Configure authenticated users and organization units."
 	case "identity.roles":
 		return "Identity roles", "Configure roles, permission grants, and user-role assignments."
 	default:

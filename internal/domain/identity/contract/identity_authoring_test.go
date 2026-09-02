@@ -8,10 +8,10 @@ import (
 	authoringcontract "github.com/domainry/domainry-identity/internal/domain/authoring"
 )
 
-func TestIdentityUserAuthoringContractContainsOnlyAccountFields(t *testing.T) {
+func TestIdentityUserAuthoringContractContainsAccountOrganizationAndPersonnelFields(t *testing.T) {
 	definition := IdentityUserAuthoringCapability()
-	wantInput := []string{"account_type", "email", "family_name", "given_name", "id", "locale", "middle_name", "name", "name_locale", "name_prefix", "name_suffix", "native_name", "phone", "status", "timezone"}
-	wantOutput := append(append([]string(nil), wantInput...), "created_at", "updated_at", "version")
+	wantInput := []string{"account_type", "email", "end_date", "family_name", "given_name", "id", "locale", "manager_user_id", "middle_name", "name", "name_locale", "name_prefix", "name_suffix", "native_name", "org_id", "phone", "start_date", "status", "support_org_id", "timezone", "work_status", "worker_no", "worker_type"}
+	wantOutput := append(append([]string(nil), wantInput...), "created_at", "reporting_path", "updated_at", "version")
 	sort.Strings(wantOutput)
 	for label, expectation := range map[string]struct {
 		schema *authoringcontract.CapabilityAuthoringSchema
@@ -73,10 +73,8 @@ func TestIdentityRoleAuthoringContractsPublishExactHTTPShapes(t *testing.T) {
 		{key: "identity.menu", required: "id", value: IdentityMenuAuthoringCapability},
 		{key: "identity.role_menu_assignment", required: "menu_ids", value: IdentityRoleMenuAssignmentAuthoringCapability},
 		{key: "identity.user", required: "email", value: IdentityUserAuthoringCapability},
-		{key: "identity.department", required: "name", value: IdentityDepartmentAuthoringCapability},
+		{key: "identity.organization_unit", required: "name", value: IdentityOrganizationUnitAuthoringCapability},
 		{key: "identity.user_role_assignment", required: "role_id", value: IdentityUserRoleAssignmentAuthoringCapability},
-		{key: "identity.workforce_profile", required: "worker_no", value: IdentityWorkforceProfileAuthoringCapability},
-		{key: "identity.workforce_assignment", required: "assignment_type", value: IdentityWorkforceAssignmentAuthoringCapability},
 	} {
 		definition := capability.value()
 		if definition.Key != capability.key || definition.InputSchema == nil || definition.InputSchema.AdditionalProperties == nil || *definition.InputSchema.AdditionalProperties || len(definition.Examples) != 3 {

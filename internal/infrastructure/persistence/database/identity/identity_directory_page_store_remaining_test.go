@@ -16,14 +16,14 @@ func identityDirectoryCountStep(total int64) identitySQLQueryStep {
 func identityDirectoryUserColumns() []string {
 	return []string{
 		"id", "name", "given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale",
-		"email", "phone", "account_type", "locale", "timezone", "status", "version", "created_at", "updated_at",
+		"email", "phone", "account_type", "locale", "timezone", "org_id", "support_org_id", "manager_user_id", "reporting_path", "worker_no", "worker_type", "work_status", "start_date", "end_date", "status", "version", "created_at", "updated_at",
 	}
 }
 
 func identityDirectoryUserRow() []driver.Value {
 	return []driver.Value{
 		"user", "User", "", "", "", "", "", "", "",
-		"user@example.test", "", "human", "en-US", "UTC", "active", int64(1), "created", "updated",
+		"user@example.test", "", "human", "en-US", "UTC", "store", "sales", nil, "/user", "E001", "employee", "active", "2026-01-01", nil, "active", int64(1), "created", "updated",
 	}
 }
 
@@ -64,51 +64,6 @@ func TestSearchIdentityUsersRemainingSQLFailures(t *testing.T) {
 	page, err := store.SearchIdentityUsers(t.Context(), "workspace", query)
 	if err != nil || len(page.Items) != 1 || page.Items[0].ID != "user" || page.HasNext || page.Total != 3 {
 		t.Fatalf("user page=%#v error=%v", page, err)
-	}
-	closeDB()
-}
-
-func TestSearchIdentityWorkforceProfilesRemainingSQLFailures(t *testing.T) {
-	query := identitymodel.IdentityListQuery{PageSize: 2, Sort: []identitymodel.IdentitySortRule{{Field: "id", Direction: "asc"}}}
-	store, closeDB := scriptedSQLIdentity(&identitySQLState{})
-	if _, err := store.SearchIdentityWorkforceProfiles(t.Context(), "", query); err == nil {
-		t.Fatal("blank workspace accepted")
-	}
-	closeDB()
-
-	workforceColumns := []string{
-		"id", "organization_id", "identity_user_id", "worker_no", "worker_type",
-		"work_status", "start_date", "end_date", "primary_assignment_id", "version",
-	}
-	for _, state := range []*identitySQLState{
-		{queryFailAt: 1, failure: errProfileBindingSQL},
-		{
-			queryFailAt: 2, failure: errProfileBindingSQL,
-			querySteps: []identitySQLQueryStep{identityDirectoryCountStep(1)},
-		},
-		{querySteps: []identitySQLQueryStep{
-			identityDirectoryCountStep(1),
-			{columns: []string{"only"}, rows: [][]driver.Value{{"value"}}},
-		}},
-		{querySteps: []identitySQLQueryStep{
-			identityDirectoryCountStep(1),
-			{columns: workforceColumns, nextErr: errProfileBindingSQL},
-		}},
-	} {
-		store, closeDB = scriptedSQLIdentity(state)
-		if _, err := store.SearchIdentityWorkforceProfiles(t.Context(), "workspace", query); err == nil {
-			t.Fatal("workforce directory failure ignored")
-		}
-		closeDB()
-	}
-
-	store, closeDB = scriptedSQLIdentity(&identitySQLState{querySteps: []identitySQLQueryStep{
-		identityDirectoryCountStep(1),
-		{columns: workforceColumns, rows: [][]driver.Value{workforceProfileRow()}},
-	}})
-	page, err := store.SearchIdentityWorkforceProfiles(t.Context(), "workspace", query)
-	if err != nil || len(page.Items) != 1 || page.Items[0].ID != "profile" || page.HasNext {
-		t.Fatalf("workforce page=%#v error=%v", page, err)
 	}
 	closeDB()
 }

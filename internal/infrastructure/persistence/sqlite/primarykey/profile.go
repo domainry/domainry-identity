@@ -9,6 +9,7 @@ import (
 
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
+	"github.com/domainry/domainry-orm/query"
 )
 
 type columnDefinition struct {
@@ -25,6 +26,8 @@ type Profile struct{}
 func NewProfile() Profile { return Profile{} }
 
 func (Profile) EnsureCompositePrimaryKey(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _, relationPrefix, table string, columns ...string) error {
+	// SQLite exposes existing key order only through PRAGMA; domainry-orm has no
+	// database-catalog inspection API.
 	physicalTable := relationPrefix + table
 	rows, err := database.QueryContext(ctx, "PRAGMA table_info("+renderer.Identifier(physicalTable)+")")
 	if err != nil {
@@ -53,7 +56,7 @@ func (Profile) EnsureCompositePrimaryKey(ctx context.Context, database driver.Sc
 	}
 	temporary := table + "__composite_pk"
 	columnSQL := make([]string, 0, len(definitions)+1)
-	columnNames := make([]string, 0, len(definitions))
+	rawColumnNames := make([]string, 0, len(definitions))
 	for _, column := range definitions {
 		definition := renderer.Identifier(column.name)
 		if strings.TrimSpace(column.typeName) != "" {
@@ -66,7 +69,7 @@ func (Profile) EnsureCompositePrimaryKey(ctx context.Context, database driver.Sc
 			definition += " DEFAULT " + column.defaultValue.String
 		}
 		columnSQL = append(columnSQL, definition)
-		columnNames = append(columnNames, renderer.Identifier(column.name))
+		rawColumnNames = append(rawColumnNames, column.name)
 	}
 	primary := make([]string, len(columns))
 	for index, column := range columns {
@@ -78,14 +81,22 @@ func (Profile) EnsureCompositePrimaryKey(ctx context.Context, database driver.Sc
 		return err
 	}
 	defer tx.Rollback()
+	// SQLite cannot alter a primary key in place, and domainry-orm cannot
+	// reconstruct arbitrary PRAGMA-reported physical types/default clauses.
+	// The DDL rebuild stays in this dialect adapter; the row copy uses ORM.
 	if _, err := tx.ExecContext(ctx, "DROP TABLE IF EXISTS "+renderer.Table(temporary)); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, "CREATE TABLE "+renderer.Table(temporary)+" ("+strings.Join(columnSQL, ", ")+")"); err != nil {
 		return fmt.Errorf("create SQLite primary-key migration table %s: %w", table, err)
 	}
-	joined := strings.Join(columnNames, ", ")
-	if _, err := tx.ExecContext(ctx, "INSERT INTO "+renderer.Table(temporary)+" ("+joined+") SELECT "+joined+" FROM "+renderer.Table(table)); err != nil {
+	copyStatement, copyArguments, buildErr := query.NewInsertBuilder(renderer, temporary).
+		Columns(rawColumnNames...).
+		FromSelect(query.NewSelectBuilder(renderer, table).Columns(rawColumnNames...)).Build()
+	if buildErr != nil {
+		return fmt.Errorf("build SQLite primary-key migration copy for %s: %w", table, buildErr)
+	}
+	if _, err := tx.ExecContext(ctx, copyStatement, copyArguments...); err != nil {
 		return fmt.Errorf("copy SQLite primary-key migration table %s: %w", table, err)
 	}
 	if _, err := tx.ExecContext(ctx, "DROP TABLE "+renderer.Table(table)); err != nil {

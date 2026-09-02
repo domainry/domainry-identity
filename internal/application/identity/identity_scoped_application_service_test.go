@@ -68,17 +68,19 @@ func identityScopedCalls(service *IdentityApplicationService) []struct {
 		}},
 		{"resolve menus", func(ctx context.Context) error { _, err := service.ResolveEffectiveMenus(ctx, "user"); return err }},
 		{"find user", func(ctx context.Context) error { _, _, err := service.FindUser(ctx, "user"); return err }},
-		{"find department", func(ctx context.Context) error { _, _, err := service.FindDepartment(ctx, "department"); return err }},
+		{"find organizationUnit", func(ctx context.Context) error {
+			_, _, err := service.FindOrganizationUnit(ctx, "organizationUnit")
+			return err
+		}},
 		{"directory users", func(ctx context.Context) error { _, err := service.ListDirectoryUsers(ctx); return err }},
-		{"directory workforce", func(ctx context.Context) error { _, err := service.ListDirectoryWorkforce(ctx); return err }},
 		{"directory roles", func(ctx context.Context) error { _, err := service.ListDirectoryRoles(ctx); return err }},
 		{"directory assignments", func(ctx context.Context) error {
 			_, err := service.ListDirectoryUserRoleAssignments(ctx, "user")
 			return err
 		}},
-		{"list departments", func(ctx context.Context) error { _, err := service.ListDepartments(ctx); return err }},
-		{"upsert department", func(ctx context.Context) error {
-			return service.UpsertDepartment(ctx, identitymodel.IdentityDepartment{})
+		{"list organizationUnits", func(ctx context.Context) error { _, err := service.ListOrganizationUnits(ctx); return err }},
+		{"upsert organizationUnit", func(ctx context.Context) error {
+			return service.UpsertOrganizationUnit(ctx, identitymodel.IdentityOrganizationUnit{})
 		}},
 		{"list users", func(ctx context.Context) error { _, err := service.ListUsers(ctx); return err }},
 		{"search users", func(ctx context.Context) error {
@@ -116,10 +118,6 @@ func identityScopedCalls(service *IdentityApplicationService) []struct {
 		}},
 		{"assignable roles", func(ctx context.Context) error {
 			_, err := service.ListAssignableRoles(ctx, "user", identitymodel.Principal{Known: true, UserID: "actor", Role: identitymodel.RoleSchema{RecordScope: "all_records"}})
-			return err
-		}},
-		{"assignable workforce roles", func(ctx context.Context) error {
-			_, err := service.ListAssignableWorkforceRoles(ctx, "workforce", identitymodel.Principal{Known: true, UserID: "actor"})
 			return err
 		}},
 		{"requestable roles", func(ctx context.Context) error { _, err := service.ListRequestableRoles(ctx); return err }},

@@ -64,7 +64,7 @@ func (repository *permissionCatalogRepositoryStub) ReconcileIdentityPermissionDe
 
 func TestPermissionDefinitionAndSnapshotHashesAreCanonical(t *testing.T) {
 	definition := identitymodel.IdentityPermissionDefinitionRecord{
-		PermissionKey: "identity.roles.get", ResourceKey: "identity.roles", ActionKey: "get", Label: "Get role",
+		PermissionKey: "identity.roles.get", ResourceKey: "identity.roles", OperationKey: "get", Label: "Get role",
 		Description: "Get one role", Category: "Identity", SourceKind: "builtin_surface", SourceOwner: "identity:builtin",
 	}
 	first, err := IdentityPermissionDefinitionHash(definition)
@@ -130,7 +130,7 @@ func TestPermissionReconcileEmitsStableReceiptLogWithGeneratedRequestID(t *testi
 	zap.ReplaceGlobals(zap.New(core))
 	t.Cleanup(func() { zap.ReplaceGlobals(previous) })
 	receipt, err := service.ReconcileOwner(t.Context(), IdentityBuiltinAuthorizationOwner)
-	if err != nil || receipt.Inserted != 100 {
+	if err != nil || receipt.Inserted != 89 {
 		t.Fatalf("reconcile receipt=%+v error=%v", receipt, err)
 	}
 	entries := observed.FilterMessage("identity_permission_reconcile_applied").All()
@@ -138,7 +138,7 @@ func TestPermissionReconcileEmitsStableReceiptLogWithGeneratedRequestID(t *testi
 		t.Fatalf("reconcile log entries=%v", observed.All())
 	}
 	fields := entries[0].ContextMap()
-	if fields["workspace_id"] != "workspace-primary" || fields["source_owner"] != IdentityBuiltinAuthorizationOwner || fields["snapshot_hash"] != receipt.SnapshotHash || fields["inserted"] != int64(100) {
+	if fields["workspace_id"] != "workspace-primary" || fields["source_owner"] != IdentityBuiltinAuthorizationOwner || fields["snapshot_hash"] != receipt.SnapshotHash || fields["inserted"] != int64(89) {
 		t.Fatalf("reconcile log fields=%v", fields)
 	}
 	requestID, _ := fields["request_id"].(string)
@@ -158,7 +158,7 @@ func TestPermissionCatalogReconcilesExternalOwnerAndEnablementChangesSharedSnaps
 		t.Fatal(err)
 	}
 	definitions := []identitymodel.IdentityPermissionDefinitionRecord{{
-		PermissionKey: "customer.read", ResourceKey: "customer", ActionKey: "read", Label: "Read customers",
+		PermissionKey: "customer.read", ResourceKey: "customer", OperationKey: "read", Label: "Read customers",
 		Category: "Customer", SourceKind: "object_default", SourceOwner: "runtime:orders",
 	}}
 	snapshotHash, err := identityPermissionSnapshotHash("runtime:orders", definitions)
@@ -225,7 +225,7 @@ func TestPermissionCatalogQueriesExternalActionUsageWithoutPersistingIt(t *testi
 		t.Fatal(err)
 	}
 	definitions := []identitymodel.IdentityPermissionDefinitionRecord{{
-		PermissionKey: "customer.read", ResourceKey: "customer", ActionKey: "read", Label: "Read customers",
+		PermissionKey: "customer.read", ResourceKey: "customer", OperationKey: "read", Label: "Read customers",
 		Category: "Customer", SourceKind: "object_default", SourceOwner: "runtime:orders",
 	}}
 	snapshotHash, err := identityPermissionSnapshotHash("runtime:orders", definitions)
@@ -243,7 +243,7 @@ func TestPermissionCatalogQueriesExternalActionUsageWithoutPersistingIt(t *testi
 		Authorization: actioncontract.Authorization{Strategy: actioncontract.AuthorizationExactRolePermission},
 		HTTP:          &actioncontract.HTTPBinding{Method: "GET", RouteTemplate: "/objects/customer/records"},
 		Permission: &actioncontract.PermissionDefinition{
-			Key: "customer.read", Owner: "runtime:orders", ResourceKey: "customer", ActionKey: "read",
+			Key: "customer.read", Owner: "runtime:orders", ResourceKey: "customer", OperationKey: "read",
 			Label: "Read customers", Category: "Customers", LifecycleStatus: actioncontract.LifecycleActive,
 		},
 		EffectClass: actioncontract.EffectRead, RiskLevel: actioncontract.RiskLow,

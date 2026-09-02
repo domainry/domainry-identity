@@ -46,12 +46,12 @@ func (validator *IdentityGovernanceApplicationService) Validate(ctx context.Cont
 		}
 		issues = append(issues, userIssues...)
 	}
-	if request.Department != nil {
-		departmentIssues, err := configuration.ValidateDepartmentConfiguration(ctx, *request.Department)
+	if request.OrganizationUnit != nil {
+		organizationUnitIssues, err := configuration.ValidateOrganizationUnitConfiguration(ctx, *request.OrganizationUnit)
 		if err != nil {
 			return identitycontract.IdentityGovernanceValidationResult{}, err
 		}
-		issues = append(issues, departmentIssues...)
+		issues = append(issues, organizationUnitIssues...)
 	}
 	if request.RoleAssignment != nil {
 		assignmentIssues, err := configuration.ValidateRoleAssignmentConfiguration(ctx, *request.RoleAssignment)
@@ -121,8 +121,8 @@ func (validator *IdentityGovernanceApplicationService) ValidateUser(ctx context.
 	return validator.firstError(ctx, identitycontract.IdentityGovernanceValidationRequest{User: &user}, principal)
 }
 
-func (validator *IdentityGovernanceApplicationService) ValidateDepartment(ctx context.Context, department identitymodel.IdentityDepartment, principal identitymodel.Principal) error {
-	return validator.firstError(ctx, identitycontract.IdentityGovernanceValidationRequest{Department: &department}, principal)
+func (validator *IdentityGovernanceApplicationService) ValidateOrganizationUnit(ctx context.Context, organizationUnit identitymodel.IdentityOrganizationUnit, principal identitymodel.Principal) error {
+	return validator.firstError(ctx, identitycontract.IdentityGovernanceValidationRequest{OrganizationUnit: &organizationUnit}, principal)
 }
 
 func (validator *IdentityGovernanceApplicationService) ValidateUserRoleAssignment(ctx context.Context, assignment identitymodel.IdentityUserRoleAssignment, principal identitymodel.Principal) error {

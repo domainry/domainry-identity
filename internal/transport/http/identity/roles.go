@@ -20,6 +20,68 @@ func (h *IdentityHandler) listIdentityRoles(w http.ResponseWriter, r *http.Reque
 	h.writeJSON(w, http.StatusOK, roles)
 }
 
+func (h *IdentityHandler) createIdentityRole(w http.ResponseWriter, r *http.Request) {
+	if h.roleDefinitions == nil {
+		h.writeError(w, r, http.StatusServiceUnavailable, "backend.identity.role_definition_publication_unavailable")
+		return
+	}
+	var request identitymodel.IdentityRoleDefinitionMutationRequest
+	if !h.decodeJSON(w, r, &request) {
+		return
+	}
+	request.OperationID = strings.TrimSpace(r.Header.Get("Idempotency-Key"))
+	configuration, err := h.roleDefinitions.Create(r.Context(), request, h.principal(r))
+	if err != nil {
+		h.writeServiceError(w, r, err)
+		return
+	}
+	w.Header().Set(identityResourceHashHeader, configuration.SchemaHash)
+	w.Header().Set("X-Schema-Version", configuration.SchemaVersion)
+	w.Header().Set("Operation-ID", request.OperationID)
+	h.writeJSON(w, http.StatusCreated, configuration.Role)
+}
+
+func (h *IdentityHandler) updateIdentityRole(w http.ResponseWriter, r *http.Request) {
+	if h.roleDefinitions == nil {
+		h.writeError(w, r, http.StatusServiceUnavailable, "backend.identity.role_definition_publication_unavailable")
+		return
+	}
+	var request identitymodel.IdentityRoleDefinitionUpdateRequest
+	if !h.decodeJSON(w, r, &request) {
+		return
+	}
+	request.ExpectedSchemaHash = strings.TrimSpace(r.Header.Get("Expected-Schema-Hash"))
+	request.OperationID = strings.TrimSpace(r.Header.Get("Idempotency-Key"))
+	configuration, err := h.roleDefinitions.Update(r.Context(), strings.TrimSpace(r.PathValue("roleID")), request, h.principal(r))
+	if err != nil {
+		h.writeServiceError(w, r, err)
+		return
+	}
+	w.Header().Set(identityResourceHashHeader, configuration.SchemaHash)
+	w.Header().Set("X-Schema-Version", configuration.SchemaVersion)
+	w.Header().Set("Operation-ID", request.OperationID)
+	h.writeJSON(w, http.StatusOK, configuration.Role)
+}
+
+func (h *IdentityHandler) deleteIdentityRole(w http.ResponseWriter, r *http.Request) {
+	if h.roleDefinitions == nil {
+		h.writeError(w, r, http.StatusServiceUnavailable, "backend.identity.role_definition_publication_unavailable")
+		return
+	}
+	var request identitymodel.IdentityRoleDefinitionDeleteRequest
+	if !h.decodeJSON(w, r, &request) {
+		return
+	}
+	request.ExpectedSchemaHash = strings.TrimSpace(r.Header.Get("Expected-Schema-Hash"))
+	request.OperationID = strings.TrimSpace(r.Header.Get("Idempotency-Key"))
+	if err := h.roleDefinitions.Delete(r.Context(), strings.TrimSpace(r.PathValue("roleID")), request, h.principal(r)); err != nil {
+		h.writeServiceError(w, r, err)
+		return
+	}
+	w.Header().Set("Operation-ID", request.OperationID)
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *IdentityHandler) searchIdentityRoles(w http.ResponseWriter, r *http.Request) {
 	values := r.URL.Query()
 	searchFields := []string{}
@@ -82,15 +144,6 @@ func (h *IdentityHandler) listIdentityAssignableRoles(w http.ResponseWriter, r *
 	h.writeJSON(w, http.StatusOK, roles)
 }
 
-func (h *IdentityHandler) listIdentityAssignableWorkforceRoles(w http.ResponseWriter, r *http.Request) {
-	roles, err := h.roles.ListAssignableWorkforceRoles(r.Context(), strings.TrimSpace(r.PathValue("profileID")), h.principal(r))
-	if err != nil {
-		h.writeServiceError(w, r, err)
-		return
-	}
-	h.writeJSON(w, http.StatusOK, roles)
-}
-
 func (h *IdentityHandler) upsertIdentityUserWithRoles(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		User        identitymodel.IdentityUser                 `json:"user"`
@@ -117,24 +170,22 @@ func (h *IdentityHandler) upsertIdentityUserWithRoles(w http.ResponseWriter, r *
 
 func (h *IdentityHandler) assignIdentityUserRole(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		RoleID             string  `json:"role_id"`
-		WorkforceProfileID string  `json:"workforce_profile_id,omitempty"`
-		BindingKey         string  `json:"binding_key,omitempty"`
-		ProfileID          string  `json:"profile_id,omitempty"`
-		ValidFrom          string  `json:"valid_from,omitempty"`
-		ValidUntil         string  `json:"valid_until,omitempty"`
-		GrantReason        string  `json:"grant_reason,omitempty"`
-		ExpiresAt          *string `json:"expires_at,omitempty"`
+		RoleID      string  `json:"role_id"`
+		BindingKey  string  `json:"binding_key,omitempty"`
+		ProfileID   string  `json:"profile_id,omitempty"`
+		ValidFrom   string  `json:"valid_from,omitempty"`
+		ValidUntil  string  `json:"valid_until,omitempty"`
+		GrantReason string  `json:"grant_reason,omitempty"`
+		ExpiresAt   *string `json:"expires_at,omitempty"`
 	}
 	if !h.decodeJSON(w, r, &req) {
 		return
 	}
 	assignment := identitymodel.IdentityUserRoleAssignment{
-		UserID:             strings.TrimSpace(r.PathValue("userID")),
-		RoleID:             strings.TrimSpace(req.RoleID),
-		ExpiresAt:          req.ExpiresAt,
-		WorkforceProfileID: strings.TrimSpace(req.WorkforceProfileID),
-		BindingKey:         strings.TrimSpace(req.BindingKey), ProfileID: strings.TrimSpace(req.ProfileID),
+		UserID:     strings.TrimSpace(r.PathValue("userID")),
+		RoleID:     strings.TrimSpace(req.RoleID),
+		ExpiresAt:  req.ExpiresAt,
+		BindingKey: strings.TrimSpace(req.BindingKey), ProfileID: strings.TrimSpace(req.ProfileID),
 		ValidFrom: strings.TrimSpace(req.ValidFrom), ValidUntil: strings.TrimSpace(req.ValidUntil), GrantReason: strings.TrimSpace(req.GrantReason),
 	}
 	principal := h.principal(r)

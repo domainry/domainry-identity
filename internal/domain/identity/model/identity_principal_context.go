@@ -13,7 +13,6 @@ type IdentityPrincipalBusinessProfileContext struct {
 type IdentityPrincipalRequestContext struct {
 	Key                    string            `json:"key"`
 	SubjectKind            string            `json:"subject_kind"`
-	WorkforceProfileID     string            `json:"workforce_profile_id,omitempty"`
 	SurfaceKey             string            `json:"surface_key,omitempty"`
 	BusinessProfileKey     string            `json:"business_profile_key,omitempty"`
 	BusinessProfileID      string            `json:"business_profile_id,omitempty"`
@@ -31,12 +30,8 @@ type IdentityPrincipalContext struct {
 	UserID                string                                    `json:"user_id"`
 	RoleKey               string                                    `json:"role_key,omitempty"`
 	AuthorizationRevision string                                    `json:"authorization_revision,omitempty"`
-	WorkforceProfileID    string                                    `json:"workforce_profile_id,omitempty"`
-	DepartmentID          string                                    `json:"department_id,omitempty"`
-	DepartmentPath        string                                    `json:"department_path,omitempty"`
-	ReportingPath         string                                    `json:"reporting_path,omitempty"`
-	ReportingUserIDs      []string                                  `json:"reporting_user_ids"`
-	OrganizationScopes    IdentityOrganizationScopeFacts            `json:"organization_scopes"`
+	OrgID                 string                                    `json:"org_id,omitempty"`
+	OrganizationPath      string                                    `json:"organization_path,omitempty"`
 	SurfaceKey            string                                    `json:"surface_key,omitempty"`
 	BusinessProfiles      []IdentityPrincipalBusinessProfileContext `json:"business_profiles"`
 	RequestContexts       []IdentityPrincipalRequestContext         `json:"request_contexts"`

@@ -2,7 +2,6 @@ package contract
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	definitionmodel "github.com/domainry/domainry-identity/internal/domain/definition/model"
@@ -68,9 +67,6 @@ func identityFieldAccess(role identitymodel.RoleSchema, objectKey, fieldKey, act
 	if IdentityRoleGuardrailDeniesField(role, objectKey, fieldKey, action) {
 		return false
 	}
-	if IdentityRoleAllows(role, "workspace", "admin") {
-		return true
-	}
 	found := false
 	for _, permission := range role.FieldPermissions {
 		if permission.ObjectKey != objectKey || permission.FieldKey != fieldKey && permission.FieldKey != "*" {
@@ -87,9 +83,6 @@ func identityFieldAccess(role identitymodel.RoleSchema, objectKey, fieldKey, act
 func IdentityCanExportField(role identitymodel.RoleSchema, objectKey, fieldKey string) bool {
 	if IdentityRoleGuardrailDeniesField(role, objectKey, fieldKey, "export") {
 		return false
-	}
-	if IdentityRoleAllows(role, "workspace", "admin") {
-		return true
 	}
 	if len(role.ExportRules) > 0 {
 		allowedByRule := false
@@ -124,9 +117,6 @@ func IdentityFieldExportMasked(role identitymodel.RoleSchema, objectKey, fieldKe
 }
 
 func identityFieldMasked(role identitymodel.RoleSchema, objectKey, fieldKey string, export bool) bool {
-	if IdentityRoleAllows(role, "workspace", "admin") {
-		return false
-	}
 	foundAllowed := false
 	for _, permission := range role.FieldPermissions {
 		if permission.ObjectKey != objectKey || permission.FieldKey != fieldKey && permission.FieldKey != "*" {
@@ -159,97 +149,6 @@ func identityFieldRequiresExplicitAccess(object definitionmodel.ObjectSchema, fi
 		return true
 	default:
 		return false
-	}
-}
-
-func IdentityObjectOwnerFieldKey(object definitionmodel.ObjectSchema) string {
-	if explicit := identityConfiguredField(object, "scope_owner"); explicit != "" {
-		return explicit
-	}
-	if strings.TrimSpace(fmt.Sprint(object.UX["kind"])) == "identity_profile_extension" {
-		if config, ok := object.UX["config"].(map[string]any); ok {
-			key := strings.TrimSpace(fmt.Sprint(config["identity_relation_field"]))
-			for _, field := range object.Fields {
-				if field.Key == key && field.Type == "relation" {
-					return key
-				}
-			}
-		}
-	}
-	for _, preferred := range []string{"owner", "assignee", "requester", "created_by", "createdBy"} {
-		for _, field := range object.Fields {
-			if field.Key == preferred && field.Type == "user" {
-				return field.Key
-			}
-		}
-	}
-	for _, field := range object.Fields {
-		if field.Type == "user" {
-			return field.Key
-		}
-	}
-	return ""
-}
-
-func IdentityObjectDepartmentPathFieldKey(object definitionmodel.ObjectSchema) string {
-	if key := identityConfiguredField(object, "scope_organization_path"); key != "" {
-		return key
-	}
-	return identityFirstField(object, "owner_department_path", "ownerDepartmentPath")
-}
-
-func IdentityObjectDepartmentIDFieldKey(object definitionmodel.ObjectSchema) string {
-	if key := identityConfiguredField(object, "scope_organization_id"); key != "" {
-		return key
-	}
-	return identityFirstField(object, "owner_department_id", "ownerDepartmentId")
-}
-
-func IdentityObjectTeamFieldKey(object definitionmodel.ObjectSchema) string {
-	return identityFirstField(object, "team", "team_id", "owner_team", "owner_team_id", "assigned_team")
-}
-
-func IdentityObjectStoreFieldKey(object definitionmodel.ObjectSchema) string {
-	return identityFirstField(object, "store", "store_id", "store_profile", "store_profile_id", "owner_store", "owner_store_id")
-}
-
-func IdentityObjectTerritoryFieldKey(object definitionmodel.ObjectSchema) string {
-	return identityFirstField(object, "territory", "territory_id", "territory_owner", "owner_territory", "owner_territory_id")
-}
-
-func IdentityObjectWarehouseFieldKey(object definitionmodel.ObjectSchema) string {
-	return identityFirstField(object, "warehouse", "warehouse_id", "receiving_warehouse", "to_warehouse", "owner_warehouse", "owner_warehouse_id")
-}
-
-func identityConfiguredField(object definitionmodel.ObjectSchema, configKey string) string {
-	for _, field := range object.Fields {
-		if enabled, valid := identityBool(field.Config[configKey]); valid && enabled {
-			return field.Key
-		}
-	}
-	return ""
-}
-
-func identityFirstField(object definitionmodel.ObjectSchema, candidates ...string) string {
-	for _, candidate := range candidates {
-		for _, field := range object.Fields {
-			if field.Key == candidate {
-				return field.Key
-			}
-		}
-	}
-	return ""
-}
-
-func identityBool(value any) (bool, bool) {
-	switch typed := value.(type) {
-	case bool:
-		return typed, true
-	case string:
-		parsed, err := strconv.ParseBool(strings.TrimSpace(typed))
-		return parsed, err == nil
-	default:
-		return false, false
 	}
 }
 

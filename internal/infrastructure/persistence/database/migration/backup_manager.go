@@ -14,6 +14,7 @@ import (
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
+	"github.com/domainry/domainry-orm/query"
 	"go.uber.org/zap"
 )
 
@@ -167,8 +168,12 @@ func (manager *BackupManager) HasExistingApplicationData(ctx context.Context) (b
 	}
 	for _, table := range tables {
 		var count int
-		query := "SELECT COUNT(*) FROM " + manager.renderer.Table(table)
-		if err := manager.database.QueryRowContext(ctx, query).Scan(&count); err != nil {
+		statement, arguments, buildErr := query.NewSelectBuilder(manager.renderer, table).
+			Projections(query.Project(query.CountAll())).Build()
+		if buildErr != nil {
+			return false, fmt.Errorf("build count %s: %w", table, buildErr)
+		}
+		if err := manager.database.QueryRowContext(ctx, statement, arguments...).Scan(&count); err != nil {
 			return false, fmt.Errorf("count %s: %w", table, err)
 		}
 		if count > 0 {

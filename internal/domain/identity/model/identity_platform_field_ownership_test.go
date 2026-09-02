@@ -5,15 +5,15 @@ import (
 	"testing"
 )
 
-func TestIdentityPlatformOwnerForProfileFieldSeparatesAccountAndWorkforce(t *testing.T) {
+func TestIdentityPlatformOwnerForProfileFieldSeparatesAccountAndUser(t *testing.T) {
 	for _, field := range []string{"account_status", "password"} {
 		if owner, owned := IdentityPlatformOwnerForProfileField(field); !owned || owner != IdentityPlatformFieldOwnerAccount {
 			t.Errorf("account field %q owner=%q owned=%v", field, owner, owned)
 		}
 	}
-	for _, field := range []string{"employee_no", "hire_date", "job_title", "job_level", "employment_type", "employment_status", "department_id", "department_path", "manager_id", "manager_path", "manager_ancestor_ids", "manager_depth", "reporting_path"} {
-		if owner, owned := IdentityPlatformOwnerForProfileField(field); !owned || owner != IdentityPlatformFieldOwnerWorkforce {
-			t.Errorf("workforce field %q owner=%q owned=%v", field, owner, owned)
+	for _, field := range []string{"org_id", "support_org_id", "organization_path", "manager_user_id", "reporting_path", "worker_no", "worker_type", "work_status", "start_date", "end_date"} {
+		if owner, owned := IdentityPlatformOwnerForProfileField(field); !owned || owner != IdentityPlatformFieldOwnerUser {
+			t.Errorf("user field %q owner=%q owned=%v", field, owner, owned)
 		}
 	}
 	for _, field := range []string{"email", "phone", "gender", "member_status", "student_no"} {
@@ -48,6 +48,15 @@ func TestIdentityAccountModelsExposeOnlyAccountFacts(t *testing.T) {
 			"AccountType",
 			"Locale",
 			"Timezone",
+			"OrgID",
+			"SupportOrgID",
+			"ManagerUserID",
+			"ReportingPath",
+			"WorkerNo",
+			"WorkerType",
+			"WorkStatus",
+			"StartDate",
+			"EndDate",
 			"Status",
 			"Version",
 			"CreatedAt",

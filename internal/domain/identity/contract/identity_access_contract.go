@@ -7,13 +7,8 @@ import (
 )
 
 const (
-	PartyObjectKey                    = "party"
-	PersonObjectKey                   = "person"
-	OrganizationObjectKey             = "organization"
 	IdentityUserObjectKey             = "identity_user"
-	IdentityDepartmentObjectKey       = "identity_department"
 	IdentityOrganizationUnitObjectKey = "identity_organization_unit"
-	IdentityWorkforceProfileObjectKey = "identity_workforce_profile"
 )
 
 // IsFoundationObjectKey reports whether objectKey is owned by the Runtime
@@ -21,8 +16,7 @@ const (
 // metadata object.
 func IsFoundationObjectKey(objectKey string) bool {
 	switch objectKey {
-	case PartyObjectKey, PersonObjectKey, OrganizationObjectKey,
-		IdentityUserObjectKey, IdentityDepartmentObjectKey, IdentityOrganizationUnitObjectKey, IdentityWorkforceProfileObjectKey:
+	case IdentityUserObjectKey, IdentityOrganizationUnitObjectKey:
 		return true
 	default:
 		return false
@@ -38,12 +32,8 @@ type IdentityAuthorization interface {
 
 type IdentityDirectory interface {
 	FindUser(context.Context, string) (identitymodel.IdentityUser, bool, error)
-	FindDepartment(context.Context, string) (identitymodel.IdentityDepartment, bool, error)
+	FindOrganizationUnit(context.Context, string) (identitymodel.IdentityOrganizationUnit, bool, error)
 	ListDirectoryUsers(context.Context) ([]identitymodel.IdentityUser, error)
 	ListDirectoryRoles(context.Context) ([]identitymodel.IdentityRole, error)
 	ListDirectoryUserRoleAssignments(context.Context, string) ([]identitymodel.IdentityUserRoleAssignment, error)
-}
-
-type IdentityWorkforceDirectory interface {
-	ListDirectoryWorkforce(context.Context) ([]identitymodel.IdentityWorkforceDirectoryEntry, error)
 }

@@ -272,7 +272,7 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 		}
 		return result
 	})
-	rolePermissionPublication := identityapplication.NewIdentityRolePermissionPublicationService(core.Identity, core.PermissionCatalog, core.Metadata)
+	roleDefinitionPublication := identityapplication.NewIdentityRoleDefinitionPublicationService(core.Identity, core.PermissionCatalog, core.Metadata)
 	accessReviews := identityapplication.NewIdentityAccessReviewApplicationService(identityapplication.IdentityAccessReviewDependencies{
 		Identity: core.Identity,
 		Audit: func(ctx context.Context, event, recordID string, principal identitymodel.Principal, metadata map[string]any) {
@@ -287,7 +287,7 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 		WriteServiceError: httpSupport.writeServiceError, DecodeJSON: httpSupport.decodeJSON,
 		SecurityAudit: func(*http.Request, string, string, map[string]any) {}, SecurityPrincipal: func(*http.Request, identitymodel.Principal, string, string, map[string]any) {},
 		Authoring: identityauthoring.NewService(identitypersistence.NewIdentityAuthoringRepository(core.IdentityStore), nil, nil),
-		Actions:   standaloneActions, PermissionCatalog: core.PermissionCatalog, ActionAuthorization: actionAuthorization, RolePermissions: rolePermissionPublication,
+		Actions:   standaloneActions, PermissionCatalog: core.PermissionCatalog, ActionAuthorization: actionAuthorization, RoleDefinitions: roleDefinitionPublication,
 	})
 	identityRoutes := newRecordingRouteRegistrar(mux, standaloneActions)
 	identityHandler.RegisterRoutes(identityRoutes)

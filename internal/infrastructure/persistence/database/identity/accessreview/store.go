@@ -61,13 +61,13 @@ func (s *Store) CreateIdentityAccessReview(ctx context.Context, review identitym
 		return err
 	}
 	items := query.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_access_review_items", workspaceID).
-		Columns("id", "review_id", "user_id", "role_id", "role_key", "workforce_profile_id", "binding_key", "profile_id", "risk_level", "priority", "priority_reasons_json", "last_used_at", "status", "decision", "replacement_role_id", "expires_at", "reviewer_id", "reason", "decided_at", "version", "created_at", "updated_at")
+		Columns("id", "review_id", "user_id", "role_id", "role_key", "binding_key", "profile_id", "risk_level", "priority", "priority_reasons_json", "last_used_at", "status", "decision", "replacement_role_id", "expires_at", "reviewer_id", "reason", "decided_at", "version", "created_at", "updated_at")
 	for _, item := range review.Items {
 
 		priorityReasonsJSON, _ := json.Marshal(item.PriorityReasons)
 		items.Values(
 			item.ID, review.ID, item.UserID, item.RoleID, item.RoleKey,
-			nullIfBlank(item.WorkforceProfileID), nullIfBlank(item.BindingKey), nullIfBlank(item.ProfileID),
+			nullIfBlank(item.BindingKey), nullIfBlank(item.ProfileID),
 			item.RiskLevel, item.Priority, string(priorityReasonsJSON), nullIfBlank(item.LastUsedAt),
 			item.Status, nullIfBlank(string(item.Decision)), nullIfBlank(item.ReplacementRoleID),
 			nullIfBlank(item.ExpiresAt), nullIfBlank(item.ReviewerID), nullIfBlank(item.Reason), nullIfBlank(item.DecidedAt),
@@ -337,7 +337,7 @@ func (s *Store) ListItems(ctx context.Context, workspaceID, reviewID string) ([]
 
 func (s *Store) LoadItem(ctx context.Context, queryer Queryer, workspaceID, itemID string) (identitymodel.IdentityAccessReviewItem, bool, error) {
 	statement, arguments, buildErr := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_access_review_items", workspaceID).
-		Columns("id", "review_id", "user_id", "role_id", "role_key", "workforce_profile_id", "binding_key", "profile_id", "risk_level", "priority", "priority_reasons_json", "last_used_at", "status", "decision", "replacement_role_id", "expires_at", "reviewer_id", "reason", "decided_at", "version", "created_at", "updated_at").
+		Columns("id", "review_id", "user_id", "role_id", "role_key", "binding_key", "profile_id", "risk_level", "priority", "priority_reasons_json", "last_used_at", "status", "decision", "replacement_role_id", "expires_at", "reviewer_id", "reason", "decided_at", "version", "created_at", "updated_at").
 		Where(query.Equal("id", itemID)).Build()
 	if buildErr != nil {
 		return identitymodel.IdentityAccessReviewItem{}, false, buildErr
@@ -345,9 +345,9 @@ func (s *Store) LoadItem(ctx context.Context, queryer Queryer, workspaceID, item
 	var item identitymodel.IdentityAccessReviewItem
 	var riskLevel string
 	var priorityReasonsJSON string
-	var workforceProfileID, bindingKey, profileID, lastUsedAt, decision, replacementRoleID, expiresAt, reviewerID, reason, decidedAt sql.NullString
+	var bindingKey, profileID, lastUsedAt, decision, replacementRoleID, expiresAt, reviewerID, reason, decidedAt sql.NullString
 	err := queryer.QueryRowContext(ctx, statement, arguments...).Scan(
-		&item.ID, &item.ReviewID, &item.UserID, &item.RoleID, &item.RoleKey, &workforceProfileID, &bindingKey, &profileID,
+		&item.ID, &item.ReviewID, &item.UserID, &item.RoleID, &item.RoleKey, &bindingKey, &profileID,
 		&riskLevel, &item.Priority, &priorityReasonsJSON, &lastUsedAt, &item.Status, &decision, &replacementRoleID, &expiresAt, &reviewerID, &reason, &decidedAt,
 		&item.Version, &item.CreatedAt, &item.UpdatedAt,
 	)
@@ -357,7 +357,7 @@ func (s *Store) LoadItem(ctx context.Context, queryer Queryer, workspaceID, item
 	if err != nil {
 		return identitymodel.IdentityAccessReviewItem{}, false, err
 	}
-	item.WorkforceProfileID, item.BindingKey, item.ProfileID = workforceProfileID.String, bindingKey.String, profileID.String
+	item.BindingKey, item.ProfileID = bindingKey.String, profileID.String
 	if err := json.Unmarshal([]byte(priorityReasonsJSON), &item.PriorityReasons); err != nil {
 		return identitymodel.IdentityAccessReviewItem{}, false, err
 	}
@@ -391,15 +391,15 @@ func (s *Store) LoadReceipt(ctx context.Context, queryer Queryer, workspaceID, i
 
 func (s *Store) LoadAssignment(ctx context.Context, queryer Queryer, workspaceID, userID, roleID string) (identitymodel.IdentityUserRoleAssignment, bool, error) {
 	statement, arguments, buildErr := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_user_role_assignments", workspaceID).
-		Columns("workforce_profile_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason", "expires_at", "created_at", "updated_at").
+		Columns("binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason", "expires_at", "created_at", "updated_at").
 		Where(query.And(query.Equal("user_id", userID), query.Equal("role_id", roleID))).Build()
 	if buildErr != nil {
 		return identitymodel.IdentityUserRoleAssignment{}, false, buildErr
 	}
 	assignment := identitymodel.IdentityUserRoleAssignment{UserID: userID, RoleID: roleID}
-	var workforceProfileID, bindingKey, profileID, validFrom, validUntil, grantedBy, grantReason, revokedBy, revokedAt, revokeReason, expiresAt sql.NullString
+	var bindingKey, profileID, validFrom, validUntil, grantedBy, grantReason, revokedBy, revokedAt, revokeReason, expiresAt sql.NullString
 	err := queryer.QueryRowContext(ctx, statement, arguments...).Scan(
-		&workforceProfileID, &bindingKey, &profileID, &assignment.Source, &assignment.Status, &validFrom, &validUntil,
+		&bindingKey, &profileID, &assignment.Source, &assignment.Status, &validFrom, &validUntil,
 		&grantedBy, &grantReason, &revokedBy, &revokedAt, &revokeReason, &expiresAt, &assignment.CreatedAt, &assignment.UpdatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -408,7 +408,7 @@ func (s *Store) LoadAssignment(ctx context.Context, queryer Queryer, workspaceID
 	if err != nil {
 		return identitymodel.IdentityUserRoleAssignment{}, false, err
 	}
-	assignment.WorkforceProfileID, assignment.BindingKey, assignment.ProfileID = workforceProfileID.String, bindingKey.String, profileID.String
+	assignment.BindingKey, assignment.ProfileID = bindingKey.String, profileID.String
 	assignment.ValidFrom, assignment.ValidUntil, assignment.GrantedBy, assignment.GrantReason = validFrom.String, validUntil.String, grantedBy.String, grantReason.String
 	assignment.RevokedBy, assignment.RevokedAt, assignment.RevokeReason, assignment.ExpiresAt = revokedBy.String, revokedAt.String, revokeReason.String, pointerFromNull(expiresAt)
 	return assignment, true, nil

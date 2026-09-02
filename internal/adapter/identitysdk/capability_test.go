@@ -43,7 +43,7 @@ func TestIdentityCapabilityBindingTracksOwnerAuthoringDomain(t *testing.T) {
 			t.Fatalf("category %q exceeds the bounded 20-operation batch: %d", category.Key, category.OperationCount)
 		}
 	}
-	if len(summary.Categories) != 4 || totalOperations != len(operations) || totalScopes != 1 {
+	if len(summary.Categories) != 3 || totalOperations != len(operations) || totalScopes != 1 {
 		t.Fatalf("summary=%+v owner capabilities=%d routes=%d", summary.Categories, len(domain.Capabilities), len(operations))
 	}
 }

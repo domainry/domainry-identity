@@ -115,7 +115,7 @@ func TestStandaloneReconcilesPureNonHTTPModuleActionAndRejectsUnservedHTTP(t *te
 	action.HTTP = nil
 	action.NonHTTP = []actioncontract.NonHTTPBinding{{Kind: "job", InvocationKey: "inventory.items.rebuild"}}
 	action.Permission.Key = action.Key
-	action.Permission.ActionKey = action.OperationKey
+	action.Permission.OperationKey = action.OperationKey
 	action.Permission.Label = "Inventory items · Rebuild"
 	action.EffectClass = actioncontract.EffectWrite
 	action.IdempotencyDecision = "natural_key"
@@ -154,7 +154,7 @@ func inventoryModuleAction(actionOwner string) actioncontract.ActionDefinition {
 		Authorization: actioncontract.Authorization{Strategy: actioncontract.AuthorizationExactRolePermission},
 		HTTP:          &actioncontract.HTTPBinding{Method: http.MethodGet, RouteTemplate: "/tenant-admin/modules/inventory/items"},
 		Permission: &actioncontract.PermissionDefinition{
-			Key: "inventory.items.list", Owner: actionOwner, ResourceKey: "inventory.items", ActionKey: "list",
+			Key: "inventory.items.list", Owner: actionOwner, ResourceKey: "inventory.items", OperationKey: "list",
 			Label: "Inventory items · List", Category: "Inventory", LifecycleStatus: actioncontract.LifecycleActive,
 		},
 		EffectClass: actioncontract.EffectRead, RiskLevel: actioncontract.RiskLow,

@@ -6,8 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./identity-user-authoring-contract.json": "./src/generated/identity-user-authoring-contract.json",
-    "./identity-workforce-profile-authoring-contract.json": "./src/generated/identity-workforce-profile-authoring-contract.json",
-    "./identity-workforce-assignment-authoring-contract.json": "./src/generated/identity-workforce-assignment-authoring-contract.json",
+    "./identity-organization-unit-authoring-contract.json": "./src/generated/identity-organization-unit-authoring-contract.json",
     "./identity-admin-page-permissions.json": "./src/generated/identity-admin-page-permissions.json"
   }
 }

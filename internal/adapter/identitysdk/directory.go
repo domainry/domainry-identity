@@ -23,13 +23,13 @@ func (adapter sdkDirectory) FindUser(ctx context.Context, request identitysdk.Us
 	return sdkDirectoryUser(user), found, sdkBoundaryError(err)
 }
 
-func (adapter sdkDirectory) FindDepartment(ctx context.Context, request identitysdk.DepartmentLookup) (identitysdk.Department, bool, error) {
+func (adapter sdkDirectory) FindOrganizationUnit(ctx context.Context, request identitysdk.OrganizationUnitLookup) (identitysdk.OrganizationUnit, bool, error) {
 	identity, workspaceContext, err := adapter.scoped(ctx, request.Application)
 	if err != nil {
-		return identitysdk.Department{}, false, err
+		return identitysdk.OrganizationUnit{}, false, err
 	}
-	department, found, err := identity.FindDepartment(workspaceContext, strings.TrimSpace(request.DepartmentID))
-	return sdkDirectoryDepartment(department), found, sdkBoundaryError(err)
+	organizationUnit, found, err := identity.FindOrganizationUnit(workspaceContext, strings.TrimSpace(request.OrgID))
+	return sdkDirectoryOrganizationUnit(organizationUnit), found, sdkBoundaryError(err)
 }
 
 func (adapter sdkDirectory) ListUsers(ctx context.Context, request identitysdk.DirectoryQuery) ([]identitysdk.User, error) {
@@ -80,22 +80,6 @@ func (adapter sdkDirectory) ListUserRoleAssignments(ctx context.Context, request
 	return result, nil
 }
 
-func (adapter sdkDirectory) ListWorkforce(ctx context.Context, request identitysdk.DirectoryQuery) ([]identitysdk.WorkforceEntry, error) {
-	identity, workspaceContext, err := adapter.scoped(ctx, request.Application)
-	if err != nil {
-		return nil, err
-	}
-	values, err := identity.ListDirectoryWorkforce(workspaceContext)
-	if err != nil {
-		return nil, sdkBoundaryError(err)
-	}
-	result := make([]identitysdk.WorkforceEntry, 0, len(values))
-	for _, value := range values {
-		result = append(result, sdkDirectoryWorkforce(value))
-	}
-	return result, nil
-}
-
 func (adapter sdkDirectory) scoped(ctx context.Context, scope identitysdk.ApplicationScope) (*identityapplication.IdentityApplicationService, context.Context, error) {
 	if adapter.binding == nil || adapter.binding.identity == nil {
 		return nil, ctx, &identitysdk.Error{Code: "identity.directory_unavailable"}
@@ -118,13 +102,16 @@ func sdkDirectoryUser(value identitymodel.IdentityUser) identitysdk.User {
 		ID: value.ID, Name: value.Name, GivenName: value.GivenName, MiddleName: value.MiddleName, FamilyName: value.FamilyName,
 		NamePrefix: value.NamePrefix, NameSuffix: value.NameSuffix, NativeName: value.NativeName, NameLocale: value.NameLocale,
 		Email: value.Email, Phone: value.Phone, AccountType: string(value.AccountType), Locale: value.Locale, Timezone: value.Timezone,
+		OrgID: value.OrgID, ManagerUserID: value.ManagerUserID, ReportingPath: value.ReportingPath,
+		WorkerNo: value.WorkerNo, WorkerType: string(value.WorkerType),
+		WorkStatus: string(value.WorkStatus), StartDate: value.StartDate, EndDate: value.EndDate,
 		Status: string(value.Status), Version: value.Version, CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt,
 	}
 }
 
-func sdkDirectoryDepartment(value identitymodel.IdentityDepartment) identitysdk.Department {
-	return identitysdk.Department{
-		ID: value.ID, Name: value.Name, ParentID: value.ParentID, LeaderWorkforceProfileID: value.LeaderWorkforceProfileID,
+func sdkDirectoryOrganizationUnit(value identitymodel.IdentityOrganizationUnit) identitysdk.OrganizationUnit {
+	return identitysdk.OrganizationUnit{
+		ID: value.ID, Code: value.Code, Name: value.Name, NodeType: string(value.NodeType), ParentID: value.ParentID,
 		Path: value.Path, AncestorIDs: append([]string(nil), value.AncestorIDs...), Depth: value.Depth, SortOrder: value.SortOrder, Status: string(value.Status),
 	}
 }
@@ -135,16 +122,9 @@ func sdkDirectoryRole(value identitymodel.IdentityRole) identitysdk.Role {
 
 func sdkDirectoryRoleAssignment(value identitymodel.IdentityUserRoleAssignment) identitysdk.UserRoleAssignment {
 	return identitysdk.UserRoleAssignment{
-		UserID: value.UserID, RoleID: value.RoleID, WorkforceProfileID: value.WorkforceProfileID, BindingKey: value.BindingKey,
+		UserID: value.UserID, RoleID: value.RoleID, BindingKey: value.BindingKey,
 		ProfileID: value.ProfileID, Source: value.Source, Status: value.Status, ValidFrom: value.ValidFrom, ValidUntil: value.ValidUntil,
 		GrantedBy: value.GrantedBy, GrantReason: value.GrantReason, RevokedBy: value.RevokedBy, RevokedAt: value.RevokedAt,
 		RevokeReason: value.RevokeReason, CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt, ExpiresAt: value.ExpiresAt,
-	}
-}
-
-func sdkDirectoryWorkforce(value identitymodel.IdentityWorkforceDirectoryEntry) identitysdk.WorkforceEntry {
-	return identitysdk.WorkforceEntry{
-		WorkforceProfileID: value.WorkforceProfileID, IdentityUserID: value.IdentityUserID, OrganizationUnitID: value.OrganizationUnitID,
-		OrganizationPath: value.OrganizationPath, ManagerIdentityUserID: value.ManagerIdentityUserID, ReportingPath: value.ReportingPath,
 	}
 }

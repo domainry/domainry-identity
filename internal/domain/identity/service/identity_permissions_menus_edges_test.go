@@ -38,7 +38,7 @@ func TestPublishedRoleAuthorizationReadsUsePublishedRoleSchema(t *testing.T) {
 	service := identityPermissionMenuService(repository)
 	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{
 		Key: "role", Permissions: []string{"record.read"},
-		DataPermissions:  []identitymodel.DataPermission{{ObjectKey: "record", Scope: "owned", Read: true}},
+		DataPermissions:  []identitymodel.DataPermission{{ObjectKey: "record", Scope: "owned"}},
 		FieldPermissions: []identitymodel.FieldPermission{{ObjectKey: "record", FieldKey: "name", Read: true, Masked: true}},
 	}})
 	permissions, permissionErr := service.ListRolePermissionAssignments(t.Context(), "role")
@@ -49,7 +49,7 @@ func TestPublishedRoleAuthorizationReadsUsePublishedRoleSchema(t *testing.T) {
 	}
 	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{
 		Key: "role", Permissions: []string{" ", "record.read"},
-		DataPermissions:  []identitymodel.DataPermission{{ObjectKey: " "}, {ObjectKey: "record", Read: true}},
+		DataPermissions:  []identitymodel.DataPermission{{ObjectKey: " "}, {ObjectKey: "record"}},
 		FieldPermissions: []identitymodel.FieldPermission{{ObjectKey: " ", FieldKey: "name"}, {ObjectKey: "record", FieldKey: " "}, {ObjectKey: "record", FieldKey: "name", Read: true}},
 	}})
 	if values, err := service.ListRolePermissionAssignments(t.Context(), "role"); err != nil || len(values) != 1 {
@@ -152,13 +152,13 @@ func TestIdentityUpsertMenuValidationAndPersistenceEdges(t *testing.T) {
 		menu       identitymodel.IdentityMenu
 	}{
 		{name: "empty", repository: &identityPermissionMenuRepository{}, menu: identitymodel.IdentityMenu{}},
-		{name: "list", repository: &identityPermissionMenuRepository{menuErr: errIdentityDepartmentUserEdge}, menu: root},
+		{name: "list", repository: &identityPermissionMenuRepository{menuErr: errIdentityOrganizationUnitUserEdge}, menu: root},
 		{name: "duplicate-key", repository: &identityPermissionMenuRepository{menus: []identitymodel.IdentityMenu{{ID: "other", Key: "ROOT"}}}, menu: root},
 		{name: "self-parent", repository: &identityPermissionMenuRepository{}, menu: identitymodel.IdentityMenu{ID: "root", Key: "root", ParentID: "root"}},
 		{name: "missing-parent", repository: &identityPermissionMenuRepository{}, menu: child},
 		{name: "cycle", repository: &identityPermissionMenuRepository{menus: []identitymodel.IdentityMenu{root, {ID: "parent", Key: "parent", ParentID: "child"}}}, menu: identitymodel.IdentityMenu{ID: "child", Key: "child", ParentID: "parent"}},
 		{name: "broken-ancestor", repository: &identityPermissionMenuRepository{menus: []identitymodel.IdentityMenu{{ID: "parent", Key: "parent", ParentID: "missing"}}}, menu: identitymodel.IdentityMenu{ID: "child", Key: "child", ParentID: "parent"}},
-		{name: "write", repository: &identityPermissionMenuRepository{upsertMenuErr: errIdentityDepartmentUserEdge}, menu: root},
+		{name: "write", repository: &identityPermissionMenuRepository{upsertMenuErr: errIdentityOrganizationUnitUserEdge}, menu: root},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if err := identityPermissionMenuService(test.repository).UpsertMenu(t.Context(), test.menu); err == nil {
@@ -210,7 +210,7 @@ func TestIdentityRemoveAndAssignMenusEdges(t *testing.T) {
 		repository identityrepository.IdentityRepository
 		menuID     string
 	}{
-		{name: "list", repository: &identityPermissionMenuRepository{menuErr: errIdentityDepartmentUserEdge}, menuID: "root"},
+		{name: "list", repository: &identityPermissionMenuRepository{menuErr: errIdentityOrganizationUnitUserEdge}, menuID: "root"},
 		{name: "missing", repository: &identityPermissionMenuRepository{}, menuID: "root"},
 		{name: "non-atomic", repository: &identityPermissionMenuRepository{menus: []identitymodel.IdentityMenu{root}}, menuID: "root"},
 	} {
@@ -228,8 +228,8 @@ func TestIdentityRemoveAndAssignMenusEdges(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(deleted, []string{"grandchild", "child", "root"}) {
 		t.Fatalf("deleted=%v err=%v", deleted, err)
 	}
-	atomic.removeErr = errIdentityDepartmentUserEdge
-	if _, err := service.RemoveMenu(t.Context(), "root"); !errors.Is(err, errIdentityDepartmentUserEdge) {
+	atomic.removeErr = errIdentityOrganizationUnitUserEdge
+	if _, err := service.RemoveMenu(t.Context(), "root"); !errors.Is(err, errIdentityOrganizationUnitUserEdge) {
 		t.Fatalf("remove error=%v", err)
 	}
 	atomic.removeErr = nil
@@ -242,11 +242,11 @@ func TestIdentityRemoveAndAssignMenusEdges(t *testing.T) {
 		repository *identityPermissionMenuRepository
 		menuIDs    []string
 	}{
-		{name: "role-read", repository: &identityPermissionMenuRepository{roleErr: errIdentityDepartmentUserEdge}},
+		{name: "role-read", repository: &identityPermissionMenuRepository{roleErr: errIdentityOrganizationUnitUserEdge}},
 		{name: "role-missing", repository: &identityPermissionMenuRepository{}},
-		{name: "menu-list", repository: &identityPermissionMenuRepository{roles: []identitymodel.IdentityRole{role}, menuErr: errIdentityDepartmentUserEdge}},
+		{name: "menu-list", repository: &identityPermissionMenuRepository{roles: []identitymodel.IdentityRole{role}, menuErr: errIdentityOrganizationUnitUserEdge}},
 		{name: "unknown", repository: &identityPermissionMenuRepository{roles: []identitymodel.IdentityRole{role}, menus: []identitymodel.IdentityMenu{root}}, menuIDs: []string{"missing"}},
-		{name: "write", repository: &identityPermissionMenuRepository{roles: []identitymodel.IdentityRole{role}, menus: []identitymodel.IdentityMenu{root}, setRoleMenusErr: errIdentityDepartmentUserEdge}, menuIDs: []string{"", "root"}},
+		{name: "write", repository: &identityPermissionMenuRepository{roles: []identitymodel.IdentityRole{role}, menus: []identitymodel.IdentityMenu{root}, setRoleMenusErr: errIdentityOrganizationUnitUserEdge}, menuIDs: []string{"", "root"}},
 	} {
 		t.Run("assign-"+test.name, func(t *testing.T) {
 			if err := identityPermissionMenuService(test.repository).SetRoleMenus(t.Context(), "role", test.menuIDs); err == nil {

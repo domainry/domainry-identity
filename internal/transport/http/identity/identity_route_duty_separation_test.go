@@ -18,18 +18,18 @@ func TestIdentityManagementRoutesRegisterExactActionsWithoutLegacyPermissionWrap
 		}
 	}
 	for _, required := range []string{
-		`"identity.workforce.list"`,
-		`"identity.workforce.lifecycle"`,
+		`"identity.organization_units.list"`,
+		`"identity.organization_units.update"`,
 		`"identity.roles.list"`,
-		`"identity.role_permissions.publish"`,
-		`"identity.users.force_logout"`,
-		`"identity.profile_bindings.command"`,
+		`identitycontract.IdentityActionRolePermissionsPublish`,
+		`identitycontract.IdentityActionUsersForceLogout`,
+		`identitycontract.IdentityActionProfileBindingsCommand`,
 	} {
 		if !strings.Contains(source, required) {
 			t.Fatalf("identity management routes do not register exact Action %s", required)
 		}
 	}
-	if strings.Count(source, "registerIdentityAction(") < 80 {
+	if strings.Count(source, "registerIdentityAction(") < 70 {
 		t.Fatalf("identity route matrix is unexpectedly incomplete: registrations=%d", strings.Count(source, "registerIdentityAction("))
 	}
 }

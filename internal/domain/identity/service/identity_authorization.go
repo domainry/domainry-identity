@@ -24,11 +24,11 @@ func (s *IdentityDomainService) ResolvePrincipal(ctx context.Context, userID str
 
 // ResolveEffectiveRoles returns the active published directory roles that
 // currently contribute to the user's authorization. It deliberately excludes
-// expired, revoked, future, binding-ineligible, inactive-Workforce, disabled,
+// expired, revoked, future, binding-ineligible, disabled,
 // and unpublished role facts so application projections cannot infer access
 // from stale assignment rows or the role directory.
 func (s *IdentityDomainService) ResolveEffectiveRoles(ctx context.Context, userID string) ([]identitymodel.IdentityRole, error) {
-	assignments, _, err := s.ResolveEffectiveRoleAssignments(ctx, userID)
+	assignments, err := s.ResolveEffectiveRoleAssignments(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -67,32 +67,28 @@ func (s *IdentityDomainService) ResolvePrincipalForRole(ctx context.Context, use
 }
 
 // ResolveEffectiveRoleAssignments returns only assignments that contribute to
-// the principal built for this request. Expired, revoked, ineligible binding,
-// and inactive Workforce assignments are excluded.
-func (s *IdentityDomainService) ResolveEffectiveRoleAssignments(ctx context.Context, userID string) ([]identitymodel.IdentityUserRoleAssignment, string, error) {
+// the principal built for this request. Expired, revoked, and ineligible
+// binding assignments are excluded.
+func (s *IdentityDomainService) ResolveEffectiveRoleAssignments(ctx context.Context, userID string) ([]identitymodel.IdentityUserRoleAssignment, error) {
 	now := time.Now()
-	workforce, activeWorkforceProfileIDs, err := s.resolveWorkforceFacts(ctx, userID, now)
-	if err != nil {
-		return nil, "", err
-	}
 	assignments, err := s.repo.ListIdentityUserRoleAssignments(ctx, s.workspace, userID)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	out := make([]identitymodel.IdentityUserRoleAssignment, 0, len(assignments))
 	for _, assignment := range assignments {
 		if strings.TrimSpace(assignment.UserID) != strings.TrimSpace(userID) {
 			continue
 		}
-		active, activeErr := s.identityRoleAssignmentActive(ctx, assignment, activeWorkforceProfileIDs, now)
+		active, activeErr := s.identityRoleAssignmentActive(ctx, assignment, now)
 		if activeErr != nil {
-			return nil, "", activeErr
+			return nil, activeErr
 		}
 		if active {
 			out = append(out, assignment)
 		}
 	}
-	return out, workforce.ProfileID, nil
+	return out, nil
 }
 
 func (s *IdentityDomainService) ResolveEffectivePermissions(ctx context.Context, userID string) ([]string, error) {
@@ -116,21 +112,21 @@ func (s *IdentityDomainService) FindUser(ctx context.Context, userID string) (id
 	return s.repo.GetIdentityUser(ctx, s.workspace, userID)
 }
 
-func (s *IdentityDomainService) FindDepartment(ctx context.Context, departmentID string) (identitymodel.IdentityDepartment, bool, error) {
+func (s *IdentityDomainService) FindOrganizationUnit(ctx context.Context, organizationUnitID string) (identitymodel.IdentityOrganizationUnit, bool, error) {
 	if err := ctx.Err(); err != nil {
-		return identitymodel.IdentityDepartment{}, false, err
+		return identitymodel.IdentityOrganizationUnit{}, false, err
 	}
-	departments, err := s.repo.ListIdentityDepartments(ctx, s.workspace)
+	organizationUnits, err := s.repo.ListIdentityOrganizationUnits(ctx, s.workspace)
 	if err != nil {
-		return identitymodel.IdentityDepartment{}, false, err
+		return identitymodel.IdentityOrganizationUnit{}, false, err
 	}
-	departmentID = strings.TrimSpace(departmentID)
-	for _, department := range departments {
-		if strings.TrimSpace(department.ID) == departmentID {
-			return department, true, nil
+	organizationUnitID = strings.TrimSpace(organizationUnitID)
+	for _, organizationUnit := range organizationUnits {
+		if strings.TrimSpace(organizationUnit.ID) == organizationUnitID {
+			return organizationUnit, true, nil
 		}
 	}
-	return identitymodel.IdentityDepartment{}, false, nil
+	return identitymodel.IdentityOrganizationUnit{}, false, nil
 }
 
 func (s *IdentityDomainService) ListDirectoryUsers(ctx context.Context) ([]identitymodel.IdentityUser, error) {

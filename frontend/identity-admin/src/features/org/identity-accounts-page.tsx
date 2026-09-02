@@ -28,7 +28,9 @@ import { displayText } from '@/data/text'
 import {
   useCreateIdentityAccount,
   useDeleteIdentityAccount,
+  useIdentityAccounts,
   useIdentityAccountsPage,
+  useOrganizationUnits,
   useUpdateIdentityAccount,
 } from '@/data/hooks'
 import type { IdentityAccount } from '@/data/types'
@@ -36,7 +38,7 @@ import { useI18n } from '@/lib/i18n'
 import { usePermissions } from '@/lib/permissions'
 import { AccountDisableDialog } from './account-disable-dialog'
 
-type AccountDraft = Pick<IdentityAccount, 'name' | 'givenName' | 'middleName' | 'familyName' | 'namePrefix' | 'nameSuffix' | 'nativeName' | 'nameLocale' | 'email' | 'phone' | 'accountType' | 'locale' | 'timezone' | 'status'>
+type AccountDraft = Pick<IdentityAccount, 'name' | 'givenName' | 'middleName' | 'familyName' | 'namePrefix' | 'nameSuffix' | 'nativeName' | 'nameLocale' | 'email' | 'phone' | 'accountType' | 'locale' | 'timezone' | 'organizationUnitId' | 'supportOrganizationUnitId' | 'managerUserId' | 'workerNo' | 'workerType' | 'workStatus' | 'startDate' | 'endDate' | 'status'>
 
 const EMPTY_ACCOUNT: AccountDraft = {
   name: '',
@@ -52,6 +54,14 @@ const EMPTY_ACCOUNT: AccountDraft = {
   accountType: 'human',
   locale: '',
   timezone: '',
+  organizationUnitId: '',
+  supportOrganizationUnitId: '',
+  managerUserId: '',
+  workerNo: '',
+  workerType: 'employee',
+  workStatus: 'active',
+  startDate: '',
+  endDate: '',
   status: 'active',
 }
 
@@ -61,6 +71,8 @@ export function IdentityAccountsPage() {
   const create = useCreateIdentityAccount()
   const update = useUpdateIdentityAccount()
   const remove = useDeleteIdentityAccount()
+  const { data: organizationUnits = [] } = useOrganizationUnits()
+  const { data: accountOptions = [] } = useIdentityAccounts()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [page, setPage] = useState(1)
@@ -147,6 +159,14 @@ export function IdentityAccountsPage() {
       accountType: account.accountType,
       locale: account.locale,
       timezone: account.timezone,
+      organizationUnitId: account.organizationUnitId,
+      supportOrganizationUnitId: account.supportOrganizationUnitId,
+      managerUserId: account.managerUserId,
+      workerNo: account.workerNo,
+      workerType: account.workerType,
+      workStatus: account.workStatus,
+      startDate: account.startDate,
+      endDate: account.endDate,
       status: account.status,
     })
   }
@@ -166,6 +186,12 @@ export function IdentityAccountsPage() {
       phone: draft.phone.trim(),
       locale: draft.locale.trim(),
       timezone: draft.timezone.trim(),
+      organizationUnitId: draft.organizationUnitId.trim(),
+      supportOrganizationUnitId: draft.supportOrganizationUnitId.trim(),
+      managerUserId: draft.managerUserId.trim(),
+      workerNo: draft.workerNo.trim(),
+      startDate: draft.startDate.trim(),
+      endDate: draft.endDate.trim(),
     }
     if (!normalized.name || !normalized.email) return
     if (editing) {
@@ -259,6 +285,14 @@ export function IdentityAccountsPage() {
             <Field><FieldLabel htmlFor='account-type'>{t('accounts.form.accountType')}</FieldLabel><Select value={draft.accountType} onValueChange={(accountType) => setDraft((value) => ({ ...value, accountType: accountType as IdentityAccount['accountType'] }))}><SelectTrigger id='account-type'><SelectValue /></SelectTrigger><SelectContent><SelectItem value='human'>{t('accounts.accountType.human')}</SelectItem><SelectItem value='service'>{t('accounts.accountType.service')}</SelectItem><SelectItem value='automation'>{t('accounts.accountType.automation')}</SelectItem></SelectContent></Select></Field>
             <Field><FieldLabel htmlFor='account-locale'>{t('accounts.form.locale')}</FieldLabel><Input id='account-locale' value={draft.locale} placeholder='en-US' onChange={(event) => setDraft((value) => ({ ...value, locale: event.target.value }))} /></Field>
             <Field><FieldLabel htmlFor='account-timezone'>{t('accounts.form.timezone')}</FieldLabel><Input id='account-timezone' value={draft.timezone} placeholder='America/New_York' onChange={(event) => setDraft((value) => ({ ...value, timezone: event.target.value }))} /></Field>
+            <Field><FieldLabel htmlFor='account-organization-unit'>{t('accounts.form.organizationUnit')}</FieldLabel><Select value={draft.organizationUnitId || '__none__'} onValueChange={(value) => setDraft((draftValue) => ({ ...draftValue, organizationUnitId: value === '__none__' ? '' : value }))}><SelectTrigger id='account-organization-unit'><SelectValue /></SelectTrigger><SelectContent><SelectItem value='__none__'>{t('common.none')}</SelectItem>{organizationUnits.map((unit) => <SelectItem key={unit.id} value={unit.id}>{displayText(t, unit.name)} · {t(`organizationUnit.nodeType.${unit.nodeType}`)}</SelectItem>)}</SelectContent></Select></Field>
+            <Field><FieldLabel htmlFor='account-support-organization-unit'>{t('accounts.form.supportOrganizationUnit')}</FieldLabel><Select value={draft.supportOrganizationUnitId || '__none__'} onValueChange={(value) => setDraft((draftValue) => ({ ...draftValue, supportOrganizationUnitId: value === '__none__' ? '' : value }))}><SelectTrigger id='account-support-organization-unit'><SelectValue /></SelectTrigger><SelectContent><SelectItem value='__none__'>{t('common.none')}</SelectItem>{organizationUnits.filter((unit) => unit.status === 'active').map((unit) => <SelectItem key={unit.id} value={unit.id}>{displayText(t, unit.name)} · {t(`organizationUnit.nodeType.${unit.nodeType}`)}</SelectItem>)}</SelectContent></Select></Field>
+            <Field><FieldLabel htmlFor='account-manager'>{t('accounts.form.manager')}</FieldLabel><Select value={draft.managerUserId || '__none__'} onValueChange={(value) => setDraft((draftValue) => ({ ...draftValue, managerUserId: value === '__none__' ? '' : value }))}><SelectTrigger id='account-manager'><SelectValue /></SelectTrigger><SelectContent><SelectItem value='__none__'>{t('common.none')}</SelectItem>{accountOptions.map((account) => account.id === editing?.id ? null : <SelectItem key={account.id} value={account.id}>{displayText(t, account.name)} · {account.email}</SelectItem>)}</SelectContent></Select></Field>
+            <Field><FieldLabel htmlFor='account-worker-no'>{t('accounts.form.workerNo')}</FieldLabel><Input id='account-worker-no' value={draft.workerNo} onChange={(event) => setDraft((value) => ({ ...value, workerNo: event.target.value }))} /></Field>
+            <Field><FieldLabel htmlFor='account-worker-type'>{t('accounts.form.workerType')}</FieldLabel><Select value={draft.workerType || '__none__'} onValueChange={(value) => setDraft((draftValue) => ({ ...draftValue, workerType: value === '__none__' ? '' : value as IdentityAccount['workerType'] }))}><SelectTrigger id='account-worker-type'><SelectValue /></SelectTrigger><SelectContent><SelectItem value='__none__'>{t('common.none')}</SelectItem>{(['employee', 'contractor', 'partner_staff', 'temporary'] as const).map((type) => <SelectItem key={type} value={type}>{t(`accounts.workerType.${type}`)}</SelectItem>)}</SelectContent></Select></Field>
+            <Field><FieldLabel htmlFor='account-work-status'>{t('accounts.form.workStatus')}</FieldLabel><Select value={draft.workStatus || '__none__'} onValueChange={(value) => setDraft((draftValue) => ({ ...draftValue, workStatus: value === '__none__' ? '' : value as IdentityAccount['workStatus'] }))}><SelectTrigger id='account-work-status'><SelectValue /></SelectTrigger><SelectContent><SelectItem value='__none__'>{t('common.none')}</SelectItem>{(['pending', 'active', 'suspended', 'terminated'] as const).map((status) => <SelectItem key={status} value={status}>{t(`accounts.workStatus.${status}`)}</SelectItem>)}</SelectContent></Select></Field>
+            <Field><FieldLabel htmlFor='account-start-date'>{t('accounts.form.startDate')}</FieldLabel><Input id='account-start-date' type='date' value={draft.startDate} onChange={(event) => setDraft((value) => ({ ...value, startDate: event.target.value }))} /></Field>
+            <Field><FieldLabel htmlFor='account-end-date'>{t('accounts.form.endDate')}</FieldLabel><Input id='account-end-date' type='date' value={draft.endDate} onChange={(event) => setDraft((value) => ({ ...value, endDate: event.target.value }))} /></Field>
           </div>
           <DialogFooter><Button variant='outline' onClick={() => setEditing(undefined)}>{t('common.cancel')}</Button><Button disabled={busy || !String(draft.name).trim() || !draft.email.trim()} onClick={() => void save()}>{t('common.save')}</Button></DialogFooter>
         </DialogContent>
@@ -303,7 +337,6 @@ export function IdentityAccountsPage() {
           {impact ? <div className='space-y-3 rounded-lg border p-4 text-sm'>
             <p>{t('accounts.impactProfiles', { count: impact.profile_bindings.length })}</p>
             {impact.profile_bindings.map((binding) => <code key={`${binding.object_key}:${binding.profile_id}`} className='block rounded bg-muted px-2 py-1'>{binding.object_key}:{binding.profile_id}</code>)}
-            <p>{t('accounts.impactWorkforce', { count: impact.workforce_profile_ids.length })}</p>
             <p>{t('accounts.impactRoles', { count: impact.active_role_ids.length })}</p>
             <p>{t('accounts.impactBusinessRecords', { count: impact.business_profile_references.reduce((total, reference) => total + reference.count, 0) })}</p>
             <p>{t('accounts.impactOwnedRecords', { count: impact.owned_record_references.reduce((total, reference) => total + reference.count, 0) })}</p>

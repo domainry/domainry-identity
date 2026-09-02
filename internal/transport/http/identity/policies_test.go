@@ -17,7 +17,7 @@ func TestIdentityPolicyReadHandlers(t *testing.T) {
 	handler, response := newIdentityHTTPHandler(repo)
 	handler.policies.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{
 		Key: "sales", Permissions: []string{"customer.read"},
-		DataPermissions:  []identitymodel.DataPermission{{ObjectKey: "customer", Scope: "all_records", Read: true}},
+		DataPermissions:  []identitymodel.DataPermission{{ObjectKey: "customer", Scope: "all_records"}},
 		FieldPermissions: []identitymodel.FieldPermission{{ObjectKey: "customer", FieldKey: "name", Read: true}},
 	}})
 	for _, test := range []struct {

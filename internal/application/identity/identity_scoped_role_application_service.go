@@ -129,14 +129,6 @@ func (s *IdentityApplicationService) ListAssignableRoles(ctx context.Context, ta
 	return scoped.ListAssignableRoles(ctx, targetUserID, actor)
 }
 
-func (s *IdentityApplicationService) ListAssignableWorkforceRoles(ctx context.Context, workforceProfileID string, actor identitymodel.Principal) ([]identitymodel.IdentityRole, error) {
-	scoped, err := s.domainForContext(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return scoped.ListAssignableWorkforceRoles(ctx, workforceProfileID, actor)
-}
-
 func (s *IdentityApplicationService) ListRequestableRoles(ctx context.Context) ([]identitymodel.IdentityRole, error) {
 	scoped, err := s.domainForContext(ctx)
 	if err != nil {

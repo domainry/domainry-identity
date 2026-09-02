@@ -34,9 +34,11 @@ export function identityListParams(query: IdentityListQuery): string {
   return params.toString()
 }
 
-export interface IdentityDepartment {
+export interface IdentityOrganizationUnit {
   id: string
+  code: string
   name: string
+  node_type: 'company' | 'region' | 'store' | 'department' | 'team' | 'warehouse'
   parent_id?: string
   path: string
   ancestor_ids: string[]
@@ -58,6 +60,15 @@ export interface IdentityUser {
   account_type: 'human' | 'service' | 'automation'
   locale?: string
   timezone?: string
+  org_id?: string
+  support_org_id?: string
+  manager_user_id?: string
+  reporting_path: string
+  worker_no?: string
+  worker_type?: 'employee' | 'contractor' | 'partner_staff' | 'temporary'
+  work_status?: 'pending' | 'active' | 'suspended' | 'terminated'
+  start_date?: string
+  end_date?: string
   email: string
   phone?: string
   status: 'active' | 'disabled'
@@ -72,7 +83,7 @@ export interface IdentityUserDirectoryEntry {
   user: IdentityUser
   roles: Array<{ id: string; key: string; label: string; source?: string; status?: string }>
   security: { mfa_enabled: boolean; locked: boolean; active_sessions: number; last_login_at?: string }
-  identity_badges: Array<{ kind: 'workforce' | 'business_profile'; key: string; id: string; status: string }>
+  identity_badges: Array<{ kind: 'business_profile'; key: string; id: string; status: string }>
 }
 
 export interface IdentityRole {
@@ -91,7 +102,6 @@ export type IdentityRolePage = IdentityPage<IdentityRole>
 export interface IdentityRoleAssignment {
   user_id: string
   role_id: string
-  workforce_profile_id?: string
   binding_key?: string
   profile_id?: string
   source?: string
@@ -106,7 +116,6 @@ export interface IdentityRoleAssignment {
 export interface IdentityUserDeletionImpact {
   user_id: string
   profile_bindings: Array<{ object_key: string; profile_id: string; binding_key: string; status: string }>
-  workforce_profile_ids: string[]
   active_role_ids: string[]
   business_profile_references: Array<{ object_key: string; field_key: string; count: number }>
   owned_record_references: Array<{ object_key: string; field_key: string; count: number }>
@@ -121,7 +130,6 @@ export interface IdentityUserDeletionImpact {
 export interface IdentityUserDisableImpact {
   user_id: string
   profile_bindings: Array<{ object_key: string; profile_id: string; binding_key: string; status: string }>
-  workforce_profile_ids: string[]
   active_entitlement_role_ids: string[]
   sessions_will_be_revoked: boolean
   business_facts_preserved: boolean
@@ -167,117 +175,6 @@ export interface IdentityAccountSecurity {
   locked: boolean
 }
 
-export type IdentityWorkerType = 'employee' | 'contractor' | 'partner_staff' | 'temporary'
-export type IdentityWorkStatus = 'pending' | 'active' | 'suspended' | 'terminated'
-export type IdentityAssignmentType = 'primary' | 'secondary' | 'temporary' | 'acting'
-
-export interface IdentityWorkforceProfile {
-  id: string
-  organization_id: string
-  identity_user_id: string
-  worker_no: string
-  worker_type: IdentityWorkerType
-  work_status: IdentityWorkStatus
-  start_date?: string
-  end_date?: string
-  primary_assignment_id?: string
-  version: number
-}
-
-export type IdentityWorkforceProfilePage = IdentityPage<IdentityWorkforceProfile>
-
-export interface IdentityWorkforceAssignment {
-  id: string
-  workforce_profile_id: string
-  organization_unit_id: string
-  position_id?: string
-  manager_workforce_profile_id?: string
-  assignment_type: IdentityAssignmentType
-  effective_from?: string
-  effective_to?: string
-  status: 'active' | 'disabled'
-  version: number
-}
-
-export interface IdentityWorkforceDetail {
-  profile: IdentityWorkforceProfile
-  assignments: IdentityWorkforceAssignment[]
-  account: IdentityUser
-  business_profiles: Array<{
-    binding_key: string
-    object_key: string
-    profile_id: string
-    status: 'unbound' | 'invited' | 'claimed' | 'active' | 'suspended' | 'unlinked'
-  }>
-}
-
-export type WorkforceLifecycleOperation = 'invite' | 'onboard' | 'assign' | 'transfer' | 'add_secondary' | 'suspend' | 'revoke_access'
-
-export interface WorkforceLifecycleInput {
-  operation: WorkforceLifecycleOperation
-  profile: {
-    id: string
-    organization_id?: string
-    identity_user_id?: string
-    worker_no?: string
-    worker_type?: IdentityWorkerType
-    work_status?: IdentityWorkStatus
-    start_date?: string
-    end_date?: string
-    primary_assignment_id?: string
-    version?: number
-  }
-  assignment?: {
-    id: string
-    organization_unit_id: string
-    position_id?: string
-    manager_workforce_profile_id?: string
-    assignment_type?: IdentityAssignmentType
-    effective_from?: string
-  }
-  previous_assignment_id?: string
-  effective_at?: string
-  reason?: string
-}
-
-export interface WorkforceOnboardingInput {
-  user: { id: string; name: string; email: string; phone?: string; status: 'active' }
-  profile: {
-    id: string
-    organization_id: string
-    identity_user_id: string
-    worker_no: string
-    worker_type: IdentityWorkerType
-    work_status: 'active'
-    start_date?: string
-  }
-  assignment: { id: string; organization_unit_id: string; effective_from?: string }
-  role_ids?: string[]
-  reason?: string
-}
-
-export interface WorkforceOnboardingResult {
-  user: IdentityUser
-  profile: IdentityWorkforceProfile
-  assignment: IdentityWorkforceAssignment
-  role_assignments: IdentityRoleAssignment[]
-}
-
-export interface WorkforceLifecycleResult {
-  profile?: IdentityWorkforceProfile
-  assignments?: IdentityWorkforceAssignment[]
-  ended_assignment_count: number
-  revoked_entitlement_count: number
-}
-
-export interface WorkforceTransferBatchItem {
-  profile_id: string
-  previous_assignment_id: string
-  assignment: NonNullable<WorkforceLifecycleInput['assignment']>
-  effective_at: string
-  reason?: string
-}
-
 export interface IdentityBatchReceipt<T> {
   id: string
   workspace_id: string
@@ -292,7 +189,6 @@ export interface EntitlementBatchItem {
   operation: 'grant' | 'revoke'
   user_id: string
   role_id: string
-  workforce_profile_id?: string
   binding_key?: string
   profile_id?: string
   valid_from?: string
@@ -432,8 +328,6 @@ export interface IdentityRolePermissionAssignment {
 export interface IdentityRoleDataPermission {
   object_key: string
   scope: string
-  read: boolean
-  write: boolean
   audit_denial?: boolean
   predicate?: unknown
 }
@@ -451,13 +345,14 @@ export interface IdentityRoleFieldPermission {
 export interface IdentityRoleDefinition {
   key: string
   name: string
+  description?: string
   permissions: string[]
   record_scope: string
   data_permissions?: IdentityRoleDataPermission[]
   field_permissions?: IdentityRoleFieldPermission[]
   reference_permissions?: unknown[]
   export_rules?: Array<{ object_key: string; mode: string; fields: string[] }>
-  audience?: 'any' | 'workforce' | 'business_profile' | 'service'
+  audience?: 'any' | 'user' | 'business_profile' | 'service'
   required_binding_key?: string
   assignment_mode?: 'manual' | 'request_only' | 'system_managed'
   risk_level?: 'normal' | 'elevated' | 'privileged'
@@ -479,7 +374,6 @@ export interface IdentityGrantSource {
   assignment_source?: string
   binding_key?: string
   profile_id?: string
-  workforce_profile_id?: string
   valid_from?: string
   valid_until?: string
   expires_at?: string
@@ -489,6 +383,10 @@ export interface IdentityEffectiveAccessSnapshot {
   user_id: string
   known: boolean
   authorization_revision?: string
+  org_id?: string
+  support_org_id?: string
+  support_org_scope_ids?: string[]
+  organization_path?: string
   role_keys: string[]
   permission_set_keys: string[]
   guardrail_keys: string[]
@@ -500,10 +398,11 @@ export interface IdentityEffectiveAccessSnapshot {
   }>
   data_access: Array<{
     object_key: string
-    action: string
     allowed: boolean
     scope: string
     scopes: string[]
+    predicate?: IdentityPolicyExpression
+    audit_denial?: boolean
     sources: IdentityGrantSource[]
   }>
   field_access: Array<{

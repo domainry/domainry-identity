@@ -1,0 +1,43 @@
+package schema
+
+import (
+	"strings"
+	"testing"
+)
+
+type dialectScriptedSchemaStore struct{ scriptedSchemaStore }
+
+func (s dialectScriptedSchemaStore) Identifier(value string) string {
+	return s.SchemaRenderer().Identifier(value)
+}
+
+func (s dialectScriptedSchemaStore) TableIdentifier(value string) string {
+	return s.SchemaRenderer().Table(value)
+}
+
+func (s dialectScriptedSchemaStore) Placeholder(position int) string {
+	return s.SchemaRenderer().Placeholder(position)
+}
+
+func TestLegacyPhysicalSchemaDDLHasThreeDialectCoverage(t *testing.T) {
+	for _, driver := range []string{"sqlite", "mysql", "postgres"} {
+		t.Run(driver, func(t *testing.T) {
+			state := &schemaSQLState{}
+			database := openSchemaScriptedDB(state)
+			t.Cleanup(func() { _ = database.Close() })
+			store := dialectScriptedSchemaStore{scriptedSchemaStore{db: database, driver: driver}}
+			if err := EnsureMetadataSchema(t.Context(), store); err != nil {
+				t.Fatalf("metadata schema: %v", err)
+			}
+			if err := EnsureIdentitySchema(t.Context(), store); err != nil {
+				t.Fatalf("identity schema: %v", err)
+			}
+			rendered := strings.Join(state.execQueries, "\n")
+			if !strings.Contains(rendered, "CREATE TABLE IF NOT EXISTS") ||
+				!strings.Contains(rendered, store.TableIdentifier("_identity_users")) ||
+				!strings.Contains(rendered, store.TableIdentifier("_identity_metadata_refresh_intents")) {
+				t.Fatalf("legacy physical DDL was not rendered through %s identifiers", driver)
+			}
+		})
+	}
+}

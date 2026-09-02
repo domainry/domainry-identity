@@ -26,33 +26,21 @@ func IdentityRoleHasPermissionKey(role identitymodel.RoleSchema, key string) boo
 	return false
 }
 
-// IdentityRoleHasExactPermissionKey is retained for call sites that emphasize
-// ops isolation; functional permission matching itself is always exact.
-func IdentityRoleHasExactPermissionKey(role identitymodel.RoleSchema, key string) bool {
-	return IdentityRoleHasPermissionKey(role, key)
-}
-
 // IdentityRoleAllows reports whether a role grants an action on an object.
 func IdentityRoleAllows(role identitymodel.RoleSchema, objectKey, action string) bool {
 	action = identityNormalizePermissionAction(action)
 	return IdentityRoleHasPermissionKey(role, strings.TrimSpace(objectKey)+"."+action)
 }
 
-// IdentityRoleAllowsData reports whether data permissions grant the requested
-// read/export or write action for an object.
+// IdentityRoleAllowsData reports whether the requested Action has a data
+// policy for the object. DataPermission never grants the Action itself;
+// IdentityRoleAllows remains the sole functional authorization authority.
 func IdentityRoleAllowsData(role identitymodel.RoleSchema, objectKey, action string) bool {
 	if IdentityRoleGuardrailDeniesData(role, objectKey, action) {
 		return false
 	}
-	needsWrite := action != "read" && action != "export"
 	for _, permission := range role.DataPermissions {
-		if permission.ObjectKey != objectKey {
-			continue
-		}
-		if needsWrite && permission.Write {
-			return true
-		}
-		if !needsWrite && permission.Read {
+		if permission.ObjectKey == objectKey {
 			return true
 		}
 	}
@@ -112,17 +100,18 @@ func identityGuardrailActionMatches(actions []string, action string) bool {
 
 // IdentityDataScopeForAction resolves the role's record scope for an action.
 func IdentityDataScopeForAction(role identitymodel.RoleSchema, objectKey, action string) string {
-	return IdentityDataScope(role, objectKey, action != "read" && action != "export")
+	if IdentityRoleGuardrailDeniesData(role, objectKey, action) {
+		return "none"
+	}
+	return IdentityDataScope(role, objectKey)
 }
 
-// IdentityDataScope resolves a role's read or write scope for an object.
-func IdentityDataScope(role identitymodel.RoleSchema, objectKey string, write bool) string {
+// IdentityDataScope resolves a role's record scope for an object. Operation
+// authority is intentionally absent here and comes only from exact Actions.
+func IdentityDataScope(role identitymodel.RoleSchema, objectKey string) string {
 	scopes := map[string]bool{}
 	for _, permission := range role.DataPermissions {
 		if permission.ObjectKey != objectKey {
-			continue
-		}
-		if write && !permission.Write || !write && !permission.Read {
 			continue
 		}
 		scope := strings.TrimSpace(permission.Scope)

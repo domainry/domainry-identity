@@ -116,10 +116,10 @@ func TestIdentityGovernanceValidationAcceptsCanonicalConfiguration(t *testing.T)
 
 func TestIdentityOwnerAuthoringExamplesUseRealGovernanceValidator(t *testing.T) {
 	repository := &identityScopedRepository{
-		roles:       []identitymodel.IdentityRole{{ID: "role", Key: "role"}, {ID: "sales_role", Key: "sales_role"}},
-		users:       []identitymodel.IdentityUser{{ID: "sales_manager", Name: "Sales Manager", Email: "sales.manager@example.com", Status: identitymodel.IdentityStatusActive}},
-		departments: []identitymodel.IdentityDepartment{{ID: "company", Name: "Company", Status: identitymodel.IdentityStatusActive}, {ID: "sales", Name: "Sales", Status: identitymodel.IdentityStatusActive}},
-		menus:       []identitymodel.IdentityMenu{{ID: "root", Key: "root"}, {ID: "orders", Key: "orders"}, {ID: "reports", Key: "reports"}},
+		roles:             []identitymodel.IdentityRole{{ID: "role", Key: "role"}, {ID: "sales_role", Key: "sales_role"}},
+		users:             []identitymodel.IdentityUser{{ID: "sales_manager", Name: "Sales Manager", Email: "sales.manager@example.com", Status: identitymodel.IdentityStatusActive}},
+		organizationUnits: []identitymodel.IdentityOrganizationUnit{{ID: "company", Name: "Company", Status: identitymodel.IdentityStatusActive}, {ID: "sales", Name: "Sales", Status: identitymodel.IdentityStatusActive}},
+		menus:             []identitymodel.IdentityMenu{{ID: "root", Key: "root"}, {ID: "orders", Key: "orders"}, {ID: "reports", Key: "reports"}},
 	}
 	service := identityGovernanceTestService(repository)
 	principal := identityGovernanceTestPrincipal()
@@ -206,18 +206,18 @@ func TestIdentityOwnerAuthoringExamplesUseRealGovernanceValidator(t *testing.T) 
 		t.Fatalf("invalid user error=%v", err)
 	}
 
-	department := identitycontract.IdentityDepartmentAuthoringCapability()
-	for _, example := range department.Examples[:2] {
-		var value identitymodel.IdentityDepartment
+	organizationUnit := identitycontract.IdentityOrganizationUnitAuthoringCapability()
+	for _, example := range organizationUnit.Examples[:2] {
+		var value identitymodel.IdentityOrganizationUnit
 		decodeIdentityAuthoringExample(t, example.Value, &value)
-		if err := service.ValidateDepartment(t.Context(), value, principal); err != nil {
-			t.Fatalf("department example %s: %v", example.Name, err)
+		if err := service.ValidateOrganizationUnit(t.Context(), value, principal); err != nil {
+			t.Fatalf("organizationUnit example %s: %v", example.Name, err)
 		}
 	}
-	var invalidDepartment identitymodel.IdentityDepartment
-	decodeIdentityAuthoringExample(t, department.Examples[2].Value, &invalidDepartment)
-	if err := service.ValidateDepartment(t.Context(), invalidDepartment, principal); apperror.CodeOf(err) != department.Examples[2].ExpectedErrorCodes[0] {
-		t.Fatalf("invalid department error=%v", err)
+	var invalidOrganizationUnit identitymodel.IdentityOrganizationUnit
+	decodeIdentityAuthoringExample(t, organizationUnit.Examples[2].Value, &invalidOrganizationUnit)
+	if err := service.ValidateOrganizationUnit(t.Context(), invalidOrganizationUnit, principal); apperror.CodeOf(err) != organizationUnit.Examples[2].ExpectedErrorCodes[0] {
+		t.Fatalf("invalid organizationUnit error=%v", err)
 	}
 
 	assignment := identitycontract.IdentityUserRoleAssignmentAuthoringCapability()
@@ -256,21 +256,21 @@ func decodeIdentityAuthoringExample(t *testing.T, value map[string]any, target a
 
 func TestIdentityGovernanceValidationIncludesConfigurationSections(t *testing.T) {
 	repository := &identityScopedRepository{
-		departments: []identitymodel.IdentityDepartment{{ID: "department", Name: "Department"}},
-		users:       []identitymodel.IdentityUser{{ID: "user", Name: "User", Email: "user@example.com"}},
-		roles:       []identitymodel.IdentityRole{{ID: "role", Key: "role"}, {ID: "other", Key: "other"}},
-		menus:       []identitymodel.IdentityMenu{{ID: "menu", Key: "menu"}},
+		organizationUnits: []identitymodel.IdentityOrganizationUnit{{ID: "organizationUnit", Name: "OrganizationUnit"}},
+		users:             []identitymodel.IdentityUser{{ID: "user", Name: "User", Email: "user@example.com"}},
+		roles:             []identitymodel.IdentityRole{{ID: "role", Key: "role"}, {ID: "other", Key: "other"}},
+		menus:             []identitymodel.IdentityMenu{{ID: "menu", Key: "menu"}},
 	}
 	service := identityGovernanceTestService(repository)
 	user := identitymodel.IdentityUser{ID: "user", Name: "User", Email: "user@example.com"}
-	department := identitymodel.IdentityDepartment{ID: "department", Name: "Department"}
+	organizationUnit := identitymodel.IdentityOrganizationUnit{ID: "organizationUnit", Name: "OrganizationUnit"}
 	assignment := identitymodel.IdentityUserRoleAssignment{UserID: "user", RoleID: "role"}
 	role := identitymodel.IdentityRole{
 		ID: "role", Key: "role",
 	}
 	menu := identitymodel.IdentityMenu{ID: "menu", Key: "menu"}
 	result, err := service.Validate(t.Context(), identitycontract.IdentityGovernanceValidationRequest{
-		User: &user, Department: &department, RoleAssignment: &assignment, Role: &role, Menu: &menu,
+		User: &user, OrganizationUnit: &organizationUnit, RoleAssignment: &assignment, Role: &role, Menu: &menu,
 		FieldPermissions: []identitymodel.IdentityFieldPermission{{Resource: "", Field: ""}, {Resource: "order", Field: "", Editable: true}, {Resource: "order", Field: "amount", Visible: true, Editable: true}},
 	}, identityGovernanceTestPrincipal())
 	if err != nil || result.Valid {
@@ -290,11 +290,11 @@ func (r identityGovernanceStageFaultRepository) ListIdentityUsers(ctx context.Co
 	return r.identityScopedRepository.ListIdentityUsers(ctx, workspaceID)
 }
 
-func (r identityGovernanceStageFaultRepository) ListIdentityDepartments(ctx context.Context, workspaceID string) ([]identitymodel.IdentityDepartment, error) {
-	if r.stage == "departments" {
+func (r identityGovernanceStageFaultRepository) ListIdentityOrganizationUnits(ctx context.Context, workspaceID string) ([]identitymodel.IdentityOrganizationUnit, error) {
+	if r.stage == "organizationUnits" {
 		return nil, errIdentitySeedTest
 	}
-	return r.identityScopedRepository.ListIdentityDepartments(ctx, workspaceID)
+	return r.identityScopedRepository.ListIdentityOrganizationUnits(ctx, workspaceID)
 }
 
 func (r identityGovernanceStageFaultRepository) GetIdentityUser(ctx context.Context, workspaceID, userID string) (identitymodel.IdentityUser, bool, error) {
@@ -321,7 +321,7 @@ func (r identityGovernanceStageFaultRepository) ListIdentityMenus(ctx context.Co
 func TestIdentityGovernanceValidationPropagatesEveryConfigurationReadFailure(t *testing.T) {
 	base := &identityScopedRepository{users: []identitymodel.IdentityUser{{ID: "user"}}, roles: []identitymodel.IdentityRole{{ID: "role"}}}
 	user := identitymodel.IdentityUser{ID: "user", Name: "User", Email: "user@example.com"}
-	department := identitymodel.IdentityDepartment{ID: "department", Name: "Department"}
+	organizationUnit := identitymodel.IdentityOrganizationUnit{ID: "organizationUnit", Name: "OrganizationUnit"}
 	assignment := identitymodel.IdentityUserRoleAssignment{UserID: "user", RoleID: "role"}
 	menu := identitymodel.IdentityMenu{ID: "menu", Key: "menu"}
 	tests := []struct {
@@ -329,7 +329,7 @@ func TestIdentityGovernanceValidationPropagatesEveryConfigurationReadFailure(t *
 		request identitycontract.IdentityGovernanceValidationRequest
 	}{
 		{stage: "users", request: identitycontract.IdentityGovernanceValidationRequest{User: &user}},
-		{stage: "departments", request: identitycontract.IdentityGovernanceValidationRequest{Department: &department}},
+		{stage: "organizationUnits", request: identitycontract.IdentityGovernanceValidationRequest{OrganizationUnit: &organizationUnit}},
 		{stage: "assignment_user", request: identitycontract.IdentityGovernanceValidationRequest{RoleAssignment: &assignment}},
 		{stage: "assignment_role", request: identitycontract.IdentityGovernanceValidationRequest{RoleAssignment: &assignment}},
 		{stage: "role_reference", request: identitycontract.IdentityGovernanceValidationRequest{RoleID: "role"}},

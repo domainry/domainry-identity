@@ -46,30 +46,22 @@ type IdentityFeaturePermissionDecision struct {
 }
 
 type IdentityDataScopePermission struct {
-	ObjectKey           string                    `json:"object_key"`
-	OwnerField          string                    `json:"owner_field,omitempty"`
-	DepartmentIDField   string                    `json:"department_id_field,omitempty"`
-	DepartmentPathField string                    `json:"department_path_field,omitempty"`
-	TeamField           string                    `json:"team_field,omitempty"`
-	StoreField          string                    `json:"store_field,omitempty"`
-	TerritoryField      string                    `json:"territory_field,omitempty"`
-	WarehouseField      string                    `json:"warehouse_field,omitempty"`
-	Context             IdentityDataScopeContext  `json:"context,omitempty"`
-	Read                IdentityDataScopeDecision `json:"read"`
-	Write               IdentityDataScopeDecision `json:"write"`
+	ObjectKey  string                    `json:"object_key"`
+	OwnerField string                    `json:"owner_field,omitempty"`
+	OrgIDField string                    `json:"org_id_field,omitempty"`
+	Context    IdentityDataScopeContext  `json:"context,omitempty"`
+	Policy     IdentityDataScopeDecision `json:"policy"`
 }
 
 type IdentityDataScopeContext struct {
-	TeamIDs        []string `json:"team_ids,omitempty"`
-	StoreIDs       []string `json:"store_ids,omitempty"`
-	TerritoryIDs   []string `json:"territory_ids,omitempty"`
-	WarehouseIDs   []string `json:"warehouse_ids,omitempty"`
-	DepartmentPath string   `json:"department_path,omitempty"`
-	ReportingPath  string   `json:"reporting_path,omitempty"`
+	OrgID                 string   `json:"org_id,omitempty"`
+	OrgScopeIDs           []string `json:"org_scope_ids,omitempty"`
+	SupportOrgID          string   `json:"support_org_id,omitempty"`
+	SupportOrgScopeIDs    []string `json:"support_org_scope_ids,omitempty"`
+	ReportingScopeUserIDs []string `json:"reporting_scope_user_ids,omitempty"`
 }
 
 type IdentityDataScopeDecision struct {
-	Action    string                                  `json:"action"`
 	Scope     string                                  `json:"scope"`
 	Predicate *identitymodel.IdentityPolicyExpression `json:"predicate,omitempty"`
 	Allowed   bool                                    `json:"allowed"`

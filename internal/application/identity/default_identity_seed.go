@@ -74,7 +74,7 @@ func generatedManifestIdentitySeed() Seed {
 	platformMenus := generatedIdentityMenus()
 	roleMenus := generatedIdentityRoleMenus("admin", platformMenus)
 	roleMenus = append(roleMenus, generatedIdentityRoleMenusForIDs("organization_administrator", platformMenus,
-		"org_users", "org_workforce", "org_departments", "org_roles", "org_menus",
+		"org_users", "org_organization_units", "org_roles", "org_menus",
 		"org_data_scopes", "org_field_permissions", "system", "system_metadata", "system_audit",
 	)...)
 	roleMenus = append(roleMenus, generatedIdentityRoleMenusForIDs("system_administrator", platformMenus,
@@ -119,8 +119,7 @@ func generatedIdentityMenus() []identitymodel.IdentityMenu {
 		})
 	}
 	add("org_users", "Accounts", "/admin/security/accounts", "users-round", "org_access", 210)
-	add("org_workforce", "Workforce", "/admin/org/workforce", "briefcase-business", "org_access", 220)
-	add("org_departments", "Departments", "/admin/org/departments", "building-2", "org_access", 230)
+	add("org_organization_units", "Organization units", "/admin/org/organization-units", "building-2", "org_access", 220)
 	add("org_roles", "Roles", "/admin/org/roles", "user-cog", "org_access", 240)
 	add("org_menus", "Menus", "/admin/org/menus", "square-menu", "org_access", 250)
 	add("org_data_scopes", "Data scopes", "/admin/org/data-scopes", "shield-check", "org_access", 260)

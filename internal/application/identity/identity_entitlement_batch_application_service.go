@@ -63,7 +63,6 @@ func identityEntitlementBatchFingerprint(actorID string, items []identitymodel.I
 		canonical[index].Operation = strings.TrimSpace(canonical[index].Operation)
 		canonical[index].UserID = strings.TrimSpace(canonical[index].UserID)
 		canonical[index].RoleID = strings.TrimSpace(canonical[index].RoleID)
-		canonical[index].WorkforceProfileID = strings.TrimSpace(canonical[index].WorkforceProfileID)
 		canonical[index].BindingKey = strings.TrimSpace(canonical[index].BindingKey)
 		canonical[index].ProfileID = strings.TrimSpace(canonical[index].ProfileID)
 		canonical[index].ValidFrom = strings.TrimSpace(canonical[index].ValidFrom)

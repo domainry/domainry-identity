@@ -24,15 +24,8 @@ func TestIdentityDirectoriesPageAndSearchInSQLAtOneHundredThousandRows(t *testin
 	}
 	if _, err := identityStore.DB().ExecContext(t.Context(), `WITH RECURSIVE n(i) AS (
 		SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 100000
-	) INSERT INTO _identity_users (id, workspace_id, name, email, phone, status, created_at, updated_at)
-	SELECT printf('user-%06d', i), 'workspace-primary', printf('User %06d', i), printf('user-%06d@example.test', i), '', 'active', 'now', 'now' FROM n`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := identityStore.DB().ExecContext(t.Context(), `WITH RECURSIVE n(i) AS (
-		SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 100000
-	) INSERT INTO _identity_workforce_profiles
-	(id, workspace_id, organization_id, identity_user_id, worker_no, worker_type, work_status, start_date, end_date, primary_assignment_id, version, created_at, updated_at)
-	SELECT printf('workforce-%06d', i), 'workspace-primary', 'org-1', printf('user-%06d', i), printf('E-%06d', i), 'employee', 'active', NULL, NULL, NULL, 1, 'now', 'now' FROM n`); err != nil {
+	) INSERT INTO _identity_users (id, workspace_id, name, email, phone, worker_no, worker_type, work_status, status, created_at, updated_at)
+	SELECT printf('user-%06d', i), 'workspace-primary', printf('User %06d', i), printf('user-%06d@example.test', i), '', printf('E-%06d', i), 'employee', 'active', 'active', 'now', 'now' FROM n`); err != nil {
 		t.Fatal(err)
 	}
 	repository, err := identitypersistence.NewSQLIdentityStore(t.Context(), identityStore.DB(), identityStore.PersistenceEngine())
@@ -51,14 +44,14 @@ func TestIdentityDirectoriesPageAndSearchInSQLAtOneHundredThousandRows(t *testin
 	if err != nil || users.Total != 1 || len(users.Items) != 1 || users.Items[0].ID != "user-100000" {
 		t.Fatalf("users search=%+v err=%v", users, err)
 	}
-	workforce, err := service.SearchWorkforceProfiles(ctx, identitymodel.IdentityListQuery{
+	workers, err := service.SearchUsers(ctx, identitymodel.IdentityListQuery{
 		Search: "E-100000", SearchFields: []string{"worker_no"}, PageSize: 20,
 	})
-	if err != nil || workforce.Total != 1 || len(workforce.Items) != 1 || workforce.Items[0].ID != "workforce-100000" {
-		t.Fatalf("workforce search=%+v err=%v", workforce, err)
+	if err != nil || workers.Total != 1 || len(workers.Items) != 1 || workers.Items[0].ID != "user-100000" {
+		t.Fatalf("worker search=%+v err=%v", workers, err)
 	}
 	facts, err := repository.ListIdentityUserDirectoryFacts(ctx, "workspace-primary", []string{"user-000001", "user-100000"})
-	if err != nil || len(facts.WorkforceProfiles) != 2 {
+	if err != nil || facts.RoleAssignments == nil || facts.ProfileBindings == nil {
 		t.Fatalf("bounded directory facts=%+v err=%v", facts, err)
 	}
 	securityFacts, err := authpersistence.NewAuthStore(repository).ListUserDirectorySecurityFacts(ctx, "workspace-primary", []string{"user-000001", "user-100000"})

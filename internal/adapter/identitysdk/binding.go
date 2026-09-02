@@ -451,9 +451,9 @@ func sdkAuthSession(session authmodel.AuthSession) identitysdk.AuthSession {
 }
 
 func sdkAccessBundle(snapshot identitymodel.IdentityEffectiveAccessSnapshot, principal identitymodel.Principal, now time.Time) identitysdk.AccessBundle {
-	bundle := identitysdk.AccessBundle{ContractVersion: identitysdk.CurrentPolicyBundleVersion, AuthorizationRevision: identitysdk.AuthorizationRevision(snapshot.AuthorizationRevision), ExpiresAt: now.UTC().Add(5 * time.Minute), Subject: identitysdk.Subject{WorkspaceID: identitysdk.WorkspaceID(principal.WorkspaceID), SubjectID: identitysdk.SubjectID(principal.UserID), WorkforceProfileID: principal.WorkforceProfileID, DepartmentID: principal.DepartmentID, DepartmentPath: principal.DepartmentPath, ReportingPath: principal.ReportingPath, OrganizationScopes: map[string][]string{"team_ids": append([]string(nil), principal.TeamIDs...), "store_ids": append([]string(nil), principal.StoreIDs...), "territory_ids": append([]string(nil), principal.TerritoryIDs...), "warehouse_ids": append([]string(nil), principal.WarehouseIDs...)}}}
-	for _, id := range principal.ReportingUserIDs {
-		bundle.Subject.ReportingSubjectIDs = append(bundle.Subject.ReportingSubjectIDs, identitysdk.SubjectID(id))
+	bundle := identitysdk.AccessBundle{ContractVersion: identitysdk.CurrentPolicyBundleVersion, AuthorizationRevision: identitysdk.AuthorizationRevision(snapshot.AuthorizationRevision), ExpiresAt: now.UTC().Add(5 * time.Minute), Subject: identitysdk.Subject{WorkspaceID: identitysdk.WorkspaceID(principal.WorkspaceID), SubjectID: identitysdk.SubjectID(principal.UserID), OrgID: principal.OrgID, OrgScopeIDs: append([]string(nil), principal.OrgScopeIDs...)}}
+	for _, id := range principal.ReportingScopeUserIDs {
+		bundle.Subject.ReportingScopeUserIDs = append(bundle.Subject.ReportingScopeUserIDs, identitysdk.SubjectID(id))
 	}
 	for _, permission := range snapshot.Permissions {
 		if permission.ObjectKey != "" && permission.Action != "" {
@@ -462,23 +462,25 @@ func sdkAccessBundle(snapshot identitymodel.IdentityEffectiveAccessSnapshot, pri
 	}
 	dataPolicyIndex := 0
 	for _, policy := range snapshot.DataAccess {
-		if policy.ObjectKey == "" || policy.Action == "" {
+		if policy.ObjectKey == "" {
 			continue
 		}
-		predicate := sdkScopePredicate(policy.Scope)
-		if policy.Predicate != nil {
-			predicate = sdkPolicyPredicate(*policy.Predicate)
-		}
+		predicate := sdkEffectiveDataPredicate(policy, principal)
 		effect := identitysdk.EffectAllow
 		if !policy.Allowed {
 			effect = identitysdk.EffectDeny
 		}
-		dataAction := identitysdk.DataAction(strings.TrimSpace(policy.Action))
-		bundle.DataPolicies = append(bundle.DataPolicies, identitysdk.DataPolicy{Key: "data-" + policy.ObjectKey + "-" + string(dataAction) + "-" + strconv.Itoa(dataPolicyIndex), Resource: identitysdk.ResourceType(policy.ObjectKey), Action: dataAction, Effect: effect, Predicate: predicate, AuditDenial: policy.AuditDenial})
-		dataPolicyIndex++
+		// Identity stores one operation-independent record set per object. The
+		// SDK evaluator exposes separate query/mutation filtering channels, so
+		// compile the same predicate into both here. Exact FunctionGrants remain
+		// the sole authority for executing an Action.
+		for _, dataAction := range []identitysdk.DataAction{identitysdk.DataActionRead, identitysdk.DataActionWrite} {
+			bundle.DataPolicies = append(bundle.DataPolicies, identitysdk.DataPolicy{Key: "data-" + policy.ObjectKey + "-" + string(dataAction) + "-" + strconv.Itoa(dataPolicyIndex), Resource: identitysdk.ResourceType(policy.ObjectKey), Action: dataAction, Effect: effect, Predicate: predicate, AuditDenial: policy.AuditDenial})
+			dataPolicyIndex++
+		}
 	}
 	for _, field := range snapshot.FieldAccess {
-		bundle.FieldPolicies = append(bundle.FieldPolicies, identitysdk.FieldPolicy{Resource: identitysdk.ResourceType(field.ObjectKey), Field: field.FieldKey, Read: field.Read, Write: field.Write, Export: field.Export, Masked: field.Masked, Reason: field.Reason, Rules: sdkFieldRules(field.Policies)})
+		bundle.FieldPolicies = append(bundle.FieldPolicies, identitysdk.FieldPolicy{Resource: identitysdk.ResourceType(field.ObjectKey), Field: field.FieldKey, Read: field.Read, Write: field.Write, Export: field.Export, Masked: field.Masked, Reason: field.Reason, Rules: sdkFieldRules(field.Policies, principal)})
 	}
 	for _, reference := range snapshot.ReferencePermissions {
 		bundle.ReferencePolicies = append(bundle.ReferencePolicies, identitysdk.ReferencePolicy{SourceResource: identitysdk.ResourceType(reference.SourceObjectKey), Reference: reference.RelationFieldKey, TargetResource: identitysdk.ResourceType(reference.TargetObjectKey), DisplayFields: append([]string(nil), reference.DisplayFields...), Allowed: reference.Mode != "deny", Reason: reference.Reason})
@@ -494,6 +496,37 @@ func sdkAccessBundle(snapshot identitymodel.IdentityEffectiveAccessSnapshot, pri
 		bundle.Guardrails = append(bundle.Guardrails, guardrail)
 	}
 	return bundle
+}
+
+func sdkEffectiveDataPredicate(policy identitymodel.IdentityEffectiveDataAccess, principal identitymodel.Principal) identitysdk.Predicate {
+	if len(policy.Scopes) == 0 {
+		if policy.Predicate != nil {
+			return sdkPolicyPredicate(*policy.Predicate, principal)
+		}
+		return sdkScopePredicate(policy.Scope)
+	}
+	predicates := make([]identitysdk.Predicate, 0, len(policy.Scopes))
+	for _, scope := range policy.Scopes {
+		switch strings.ToLower(strings.TrimSpace(scope)) {
+		case "all_records":
+			return sdkScopePredicate(scope)
+		case "custom":
+			if policy.Predicate != nil {
+				predicates = append(predicates, sdkPolicyPredicate(*policy.Predicate, principal))
+			}
+		case "none", "":
+			continue
+		default:
+			predicates = append(predicates, sdkScopePredicate(scope))
+		}
+	}
+	if len(predicates) == 1 {
+		return predicates[0]
+	}
+	if len(predicates) > 1 {
+		return identitysdk.Predicate{Any: predicates}
+	}
+	return identitysdk.Predicate{Fact: "__identity_scope_unsupported__", Operator: identitysdk.OperatorEqual, Value: true}
 }
 
 func adapterGuardrails(principal identitymodel.Principal, enabled map[string]bool) []identitysdk.Guardrail {
@@ -530,23 +563,23 @@ func sdkPermissionSubject(permission string) (string, string) {
 	return strings.Join(parts[:len(parts)-1], "."), parts[len(parts)-1]
 }
 
-func sdkPolicyPredicate(value identitymodel.IdentityPolicyExpression) identitysdk.Predicate {
+func sdkPolicyPredicate(value identitymodel.IdentityPolicyExpression, principal identitymodel.Principal) identitysdk.Predicate {
 	switch strings.ToLower(strings.TrimSpace(value.Operator)) {
 	case "and":
 		result := identitysdk.Predicate{All: make([]identitysdk.Predicate, 0, len(value.Children))}
 		for _, child := range value.Children {
-			result.All = append(result.All, sdkPolicyPredicate(child))
+			result.All = append(result.All, sdkPolicyPredicate(child, principal))
 		}
 		return result
 	case "or":
 		result := identitysdk.Predicate{Any: make([]identitysdk.Predicate, 0, len(value.Children))}
 		for _, child := range value.Children {
-			result.Any = append(result.Any, sdkPolicyPredicate(child))
+			result.Any = append(result.Any, sdkPolicyPredicate(child, principal))
 		}
 		return result
 	case "not":
 		if len(value.Children) == 1 {
-			child := sdkPolicyPredicate(value.Children[0])
+			child := sdkPolicyPredicate(value.Children[0], principal)
 			return identitysdk.Predicate{Not: &child}
 		}
 	}
@@ -563,7 +596,7 @@ func sdkPolicyPredicate(value identitymodel.IdentityPolicyExpression) identitysd
 		policyValue = value.Values[0]
 	}
 	if strings.EqualFold(value.ValueSource, "actor_claim") {
-		policyValue = sdkActorClaim(value.ClaimKey)
+		policyValue = sdkActorClaim(value.ClaimKey, principal)
 	}
 	path := make([]identitysdk.RelationSegment, 0, len(value.Path))
 	for _, segment := range value.Path {
@@ -572,18 +605,21 @@ func sdkPolicyPredicate(value identitymodel.IdentityPolicyExpression) identitysd
 	return identitysdk.Predicate{Fact: fact, Path: path, Operator: operator, Value: policyValue}
 }
 
-func sdkActorClaim(key string) string {
+func sdkActorClaim(key string, principal identitymodel.Principal) any {
 	switch strings.ToLower(strings.TrimSpace(key)) {
 	case "user_id", "subject_id", "id":
 		return "$subject.id"
-	case "department_id":
-		return "$subject.department_id"
-	case "workforce_profile_id":
-		return "$subject.workforce_profile_id"
-	case "reporting_user_ids", "reporting_subject_ids":
-		return "$subject.reporting_subject_ids"
-	case "team_ids", "store_ids", "territory_ids", "warehouse_ids":
-		return "$subject.organization_scopes." + strings.ToLower(strings.TrimSpace(key))
+	case "org_id":
+		return "$subject.org_id"
+	case "org_scope_ids":
+		return "$subject.org_scope_ids"
+	case "reporting_scope_user_ids":
+		return "$subject.reporting_scope_user_ids"
+	case "support_org_scope_ids":
+		// support_org_scope_ids is an Identity-owned authorization fact, not a
+		// caller-supplied business claim. Freeze it into the subject-specific
+		// bundle so an empty or invalid assignment remains fail-closed.
+		return append([]string(nil), principal.SupportOrgScopeIDs...)
 	case "business_profile_id":
 		return "$context.business_profile_id"
 	default:
@@ -591,7 +627,7 @@ func sdkActorClaim(key string) string {
 	}
 }
 
-func sdkFieldRules(values []identitymodel.ContextualFieldPolicyRule) []identitysdk.FieldRule {
+func sdkFieldRules(values []identitymodel.ContextualFieldPolicyRule, principal identitymodel.Principal) []identitysdk.FieldRule {
 	result := make([]identitysdk.FieldRule, 0, len(values))
 	for _, value := range values {
 		actions := make([]identitysdk.Action, 0, len(value.Actions))
@@ -600,7 +636,7 @@ func sdkFieldRules(values []identitymodel.ContextualFieldPolicyRule) []identitys
 		}
 		var predicate *identitysdk.Predicate
 		if value.Predicate != nil {
-			converted := sdkPolicyPredicate(*value.Predicate)
+			converted := sdkPolicyPredicate(*value.Predicate, principal)
 			predicate = &converted
 		}
 		var strategy *identitysdk.MaskStrategy
@@ -617,15 +653,13 @@ func sdkScopePredicate(scope string) identitysdk.Predicate {
 	case "all_records":
 		return identitysdk.Predicate{Fact: "id", Operator: identitysdk.OperatorExists, Value: true}
 	case "owned_records":
-		return identitysdk.Predicate{Fact: "owner_id", Operator: identitysdk.OperatorEqual, Value: "$subject.id"}
-	case "department":
-		return identitysdk.Predicate{Fact: "department_id", Operator: identitysdk.OperatorEqual, Value: "$subject.department_id"}
-	case "department_and_children":
-		return identitysdk.Predicate{Fact: "department_path", Operator: identitysdk.OperatorPrefix, Value: "$subject.department_path"}
-	case "subordinates":
-		return identitysdk.Predicate{Fact: "owner_id", Operator: identitysdk.OperatorIn, Value: "$subject.reporting_subject_ids"}
-	case "team":
-		return identitysdk.Predicate{Fact: "team_id", Operator: identitysdk.OperatorIn, Value: "$subject.organization_scopes.team_ids"}
+		return identitysdk.Predicate{Fact: "owner_user_id", Operator: identitysdk.OperatorEqual, Value: "$subject.id"}
+	case "organization":
+		return identitysdk.Predicate{Fact: "owner_org_id", Operator: identitysdk.OperatorEqual, Value: "$subject.org_id"}
+	case "organization_and_children":
+		return identitysdk.Predicate{Fact: "owner_org_id", Operator: identitysdk.OperatorIn, Value: "$subject.org_scope_ids"}
+	case "self_and_subordinates":
+		return identitysdk.Predicate{Fact: "owner_user_id", Operator: identitysdk.OperatorIn, Value: "$subject.reporting_scope_user_ids"}
 	default:
 		return identitysdk.Predicate{Fact: "__identity_scope_unsupported__", Operator: identitysdk.OperatorEqual, Value: true}
 	}
@@ -637,7 +671,7 @@ func sdkAccessReason(value identitymodel.IdentityAccessReason) identitysdk.Acces
 		result.Children = append(result.Children, sdkAccessReason(child))
 	}
 	for _, source := range value.Sources {
-		result.Sources = append(result.Sources, identitysdk.GrantSource{Type: source.Type, Key: source.Key, RoleID: source.RoleID, RoleKey: source.RoleKey, PermissionSetKey: source.PermissionSetKey, PermissionSetGroup: source.PermissionSetGroup, AssignmentSource: source.AssignmentSource, BindingKey: source.BindingKey, ProfileID: source.ProfileID, WorkforceProfileID: source.WorkforceProfileID, ValidFrom: source.ValidFrom, ValidUntil: source.ValidUntil, ExpiresAt: source.ExpiresAt})
+		result.Sources = append(result.Sources, identitysdk.GrantSource{Type: source.Type, Key: source.Key, RoleID: source.RoleID, RoleKey: source.RoleKey, PermissionSetKey: source.PermissionSetKey, PermissionSetGroup: source.PermissionSetGroup, AssignmentSource: source.AssignmentSource, BindingKey: source.BindingKey, ProfileID: source.ProfileID, ValidFrom: source.ValidFrom, ValidUntil: source.ValidUntil, ExpiresAt: source.ExpiresAt})
 	}
 	return result
 }

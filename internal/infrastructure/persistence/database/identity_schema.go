@@ -18,6 +18,7 @@ import (
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/workspace"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 	"github.com/domainry/domainry-orm/query"
+	ormschema "github.com/domainry/domainry-orm/schema"
 )
 
 const (
@@ -155,8 +156,14 @@ func (s *IdentityStore) recordIdentitySchemaMigrationIfPending(ctx context.Conte
 func (s *IdentityStore) verifyIdentitySchema(ctx context.Context) error {
 	var checksum string
 	var dirty bool
-	queryValue := "SELECT " + s.identifier("checksum") + ", " + s.identifier("dirty") + " FROM " + s.tableIdentifier("_schema_migrations") + " WHERE " + s.identifier("path") + " = " + s.placeholder(1)
-	if err := s.db.QueryRowContext(ctx, queryValue, identitySchemaMigrationPath(CurrentIdentitySchemaVersion)).Scan(&checksum, &dirty); err != nil {
+	queryValue, arguments, err := query.NewSelectBuilder(s.BuilderRenderer(), "_schema_migrations").
+		Columns("checksum", "dirty").
+		Where(query.Equal("path", identitySchemaMigrationPath(CurrentIdentitySchemaVersion))).
+		Limit(1).Build()
+	if err != nil {
+		return fmt.Errorf("build Identity schema compatibility query: %w", err)
+	}
+	if err := s.db.QueryRowContext(ctx, queryValue, arguments...).Scan(&checksum, &dirty); err != nil {
 		return fmt.Errorf("verify Identity schema compatibility: %w", err)
 	}
 	if dirty {
@@ -257,7 +264,12 @@ func (s *IdentityStore) identitySchemaMigrationPending(ctx context.Context, vers
 	}
 	path := identitySchemaMigrationPath(version)
 	var count int
-	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+s.tableIdentifier("_schema_migrations")+" WHERE "+s.identifier("path")+" = "+s.placeholder(1), path).Scan(&count); err != nil {
+	countStatement, countArguments, err := query.NewSelectBuilder(s.BuilderRenderer(), "_schema_migrations").
+		Projections(query.Project(query.CountAll())).Where(query.Equal("path", path)).Build()
+	if err != nil {
+		return false, fmt.Errorf("build Identity schema migration count: %w", err)
+	}
+	if err := db.QueryRowContext(ctx, countStatement, countArguments...).Scan(&count); err != nil {
 		return false, fmt.Errorf("check Identity schema migration: %w", err)
 	}
 	if count == 0 {
@@ -265,15 +277,25 @@ func (s *IdentityStore) identitySchemaMigrationPending(ctx context.Context, vers
 	}
 	var checksum string
 	var dirty bool
-	if err := db.QueryRowContext(ctx, "SELECT "+s.identifier("checksum")+", "+s.identifier("dirty")+" FROM "+s.tableIdentifier("_schema_migrations")+" WHERE "+s.identifier("path")+" = "+s.placeholder(1), path).Scan(&checksum, &dirty); err != nil {
+	lookupStatement, lookupArguments, err := query.NewSelectBuilder(s.BuilderRenderer(), "_schema_migrations").
+		Columns("checksum", "dirty").Where(query.Equal("path", path)).Limit(1).Build()
+	if err != nil {
+		return false, fmt.Errorf("build Identity schema migration lookup: %w", err)
+	}
+	if err := db.QueryRowContext(ctx, lookupStatement, lookupArguments...).Scan(&checksum, &dirty); err != nil {
 		return false, err
 	}
 	if dirty {
 		return false, fmt.Errorf("migration.dirty: Identity schema %s", version)
 	}
 	if strings.TrimSpace(checksum) == "" {
-		_, err := db.ExecContext(ctx, "UPDATE "+s.tableIdentifier("_schema_migrations")+" SET "+s.identifier("checksum")+" = "+s.placeholder(1)+" WHERE "+s.identifier("path")+" = "+s.placeholder(2), currentIdentitySchemaChecksum(), path)
-		return false, err
+		statement, arguments, buildErr := query.NewUpdateBuilder(s.BuilderRenderer(), "_schema_migrations").
+			Set("checksum", currentIdentitySchemaChecksum()).Where(query.Equal("path", path)).Build()
+		if buildErr != nil {
+			return false, fmt.Errorf("build Identity schema checksum backfill: %w", buildErr)
+		}
+		_, execErr := db.ExecContext(ctx, statement, arguments...)
+		return false, execErr
 	}
 	if checksum != currentIdentitySchemaChecksum() {
 		return false, fmt.Errorf("migration.checksum_drift: Identity schema %s", version)
@@ -282,14 +304,26 @@ func (s *IdentityStore) identitySchemaMigrationPending(ctx context.Context, vers
 }
 
 func (s *IdentityStore) startIdentitySchemaMigration(ctx context.Context, version string) error {
-	columns := []string{"path", "version", "name", "kind", "checksum", "dirty", "applied_at", "service_version", "duration_ms", "operator", "instance_id", "backup_id"}
-	queryValue := "INSERT INTO " + s.tableIdentifier("_schema_migrations") + " (" + strings.Join(quotedColumns(s, columns), ", ") + ") VALUES (" + strings.Join(placeholders(s, len(columns)), ", ") + ")"
-	_, err := s.schemaDatabase().ExecContext(ctx, queryValue, identitySchemaMigrationPath(version), version, identitySchemaMigrationName, identitySchemaMigrationKind, currentIdentitySchemaChecksum(), true, time.Now().UTC().Format(time.RFC3339), s.config.ServiceVersion, 0, migrationcontract.Operator(s.config), migrationcontract.InstanceID(s.config), s.BackupManager.BackupID())
+	queryValue, arguments, err := query.NewInsertBuilder(s.BuilderRenderer(), "_schema_migrations").
+		Columns("path", "version", "name", "kind", "checksum", "dirty", "applied_at", "service_version", "duration_ms", "operator", "instance_id", "backup_id").
+		Values(identitySchemaMigrationPath(version), version, identitySchemaMigrationName, identitySchemaMigrationKind, currentIdentitySchemaChecksum(), true, time.Now().UTC().Format(time.RFC3339), s.config.ServiceVersion, 0, migrationcontract.Operator(s.config), migrationcontract.InstanceID(s.config), s.BackupManager.BackupID()).Build()
+	if err != nil {
+		return fmt.Errorf("build Identity schema migration start: %w", err)
+	}
+	_, err = s.schemaDatabase().ExecContext(ctx, queryValue, arguments...)
 	return err
 }
 
 func (s *IdentityStore) recordIdentitySchemaMigration(ctx context.Context, version string, duration time.Duration) error {
-	_, err := s.schemaDatabase().ExecContext(ctx, "UPDATE "+s.tableIdentifier("_schema_migrations")+" SET "+s.identifier("dirty")+" = FALSE, "+s.identifier("duration_ms")+" = "+s.placeholder(1)+", "+s.identifier("applied_at")+" = "+s.placeholder(2)+" WHERE "+s.identifier("path")+" = "+s.placeholder(3), duration.Milliseconds(), time.Now().UTC().Format(time.RFC3339), identitySchemaMigrationPath(version))
+	statement, arguments, buildErr := query.NewUpdateBuilder(s.BuilderRenderer(), "_schema_migrations").
+		Set("dirty", false).
+		Set("duration_ms", duration.Milliseconds()).
+		Set("applied_at", time.Now().UTC().Format(time.RFC3339)).
+		Where(query.Equal("path", identitySchemaMigrationPath(version))).Build()
+	if buildErr != nil {
+		return fmt.Errorf("build Identity schema migration completion: %w", buildErr)
+	}
+	_, err := s.schemaDatabase().ExecContext(ctx, statement, arguments...)
 	if err != nil {
 		return fmt.Errorf("record Identity schema migration: %w", err)
 	}
@@ -301,7 +335,8 @@ func identitySchemaMigrationPath(version string) string {
 }
 
 func (s *IdentityStore) removeObsoleteIdentityMigrationLedger(ctx context.Context) error {
-
+	// domainry-orm intentionally has no DROP TABLE builder. This one-time
+	// migration removes the retired pre-host-ledger table using quoted names.
 	if _, err := s.schemaDatabase().ExecContext(ctx, "DROP TABLE IF EXISTS "+s.tableIdentifier("_schema_materializations")); err != nil {
 		return fmt.Errorf("remove obsolete Identity migration ledger: %w", err)
 	}
@@ -334,9 +369,18 @@ func (s *IdentityStore) ensureManagedIdentityDatabaseMarker(ctx context.Context)
 		return nil
 	}
 	database := s.schemaDatabase()
-	table := s.tableIdentifier(managedIdentityDatabaseTable)
-	statement := "CREATE TABLE IF NOT EXISTS " + table + " (" + s.identifier("marker_id") + " SMALLINT NOT NULL PRIMARY KEY, " + s.identifier("contract_version") + " VARCHAR(128) NOT NULL, " + s.identifier("database_identity_sha256") + " CHAR(64) NOT NULL)"
-	if _, err := database.ExecContext(ctx, statement); err != nil {
+	statement, arguments, err := ormschema.NewTable(s.BuilderRenderer(), managedIdentityDatabaseTable).
+		IfNotExists().
+		Columns(
+			ormschema.Column("marker_id", ormschema.SmallInt()).NotNull(),
+			ormschema.Column("contract_version", ormschema.Varchar(128)).NotNull(),
+			ormschema.Column("database_identity_sha256", ormschema.Varchar(64)).NotNull(),
+		).
+		PrimaryKey("marker_id").Build()
+	if err != nil {
+		return fmt.Errorf("build managed database cohort marker schema: %w", err)
+	}
+	if _, err := database.ExecContext(ctx, statement, arguments...); err != nil {
 		return fmt.Errorf("prepare managed database cohort marker: %w", err)
 	}
 	seed := make([]byte, 32)
@@ -367,8 +411,12 @@ func (s *IdentityStore) verifyManagedIdentityDatabaseMarker(ctx context.Context)
 
 func (s *IdentityStore) verifyManagedIdentityDatabaseMarkerWith(ctx context.Context, database schemaDatabase) error {
 	var contractVersion, identity string
-	queryValue := "SELECT " + s.identifier("contract_version") + ", " + s.identifier("database_identity_sha256") + " FROM " + s.tableIdentifier(managedIdentityDatabaseTable) + " WHERE " + s.identifier("marker_id") + " = " + s.placeholder(1)
-	if err := database.QueryRowContext(ctx, queryValue, 1).Scan(&contractVersion, &identity); err != nil {
+	queryValue, arguments, err := query.NewSelectBuilder(s.BuilderRenderer(), managedIdentityDatabaseTable).
+		Columns("contract_version", "database_identity_sha256").Where(query.Equal("marker_id", 1)).Limit(1).Build()
+	if err != nil {
+		return fmt.Errorf("build managed database cohort marker verification: %w", err)
+	}
+	if err := database.QueryRowContext(ctx, queryValue, arguments...).Scan(&contractVersion, &identity); err != nil {
 		return fmt.Errorf("verify managed database cohort marker: %w", err)
 	}
 	if contractVersion != managedIdentityDatabaseContractVersion || len(identity) != 64 {
@@ -382,6 +430,9 @@ func (s *IdentityStore) verifyManagedIdentityDatabaseMarkerWith(ctx context.Cont
 
 func (s *IdentityStore) ensureColumn(ctx context.Context, table, column, definition string) error {
 	db := s.schemaDatabase()
+	// Legacy ledgers carry engine-provided physical column definitions. The ORM
+	// cannot represent an arbitrary dialect type string, so this compatibility
+	// probe and ALTER are kept in the schema adapter with quoted identifiers.
 	rows, err := db.QueryContext(ctx, "SELECT "+column+" FROM "+s.tableIdentifier(table)+" WHERE 1 = 0")
 	if err == nil {
 		return rows.Close()

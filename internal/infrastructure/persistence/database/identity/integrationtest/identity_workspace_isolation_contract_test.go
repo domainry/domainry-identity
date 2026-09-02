@@ -35,39 +35,26 @@ func TestIdentityStoreWorkspaceIsolationContract(t *testing.T) {
 
 type identityWorkspaceRepository interface {
 	identityrepository.IdentityRepository
-	identityrepository.IdentityWorkforceRepository
 }
 
 func assertIdentityRepositoryWorkspaceIsolation(t *testing.T, repository identityWorkspaceRepository) {
 	t.Helper()
 	ctx := t.Context()
 	const workspaceA, workspaceB = "workspace-a", "workspace-b"
-	departmentA := identitymodel.IdentityDepartment{ID: "department-a", Name: "Department A", Path: "/department-a"}
-	departmentB := identitymodel.IdentityDepartment{ID: "department-b", Name: "Department B", Path: "/department-b"}
-	userA := identitymodel.IdentityUser{ID: "user-a", Name: "User A", Email: "a@example.com"}
-	userB := identitymodel.IdentityUser{ID: "user-b", Name: "User B", Email: "b@example.com"}
-	workforceA := identitymodel.IdentityWorkforceProfile{ID: "workforce-a", OrganizationID: "organization-a", IdentityUserID: userA.ID, WorkerNo: "A-001", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive}
-	workforceB := identitymodel.IdentityWorkforceProfile{ID: "workforce-b", OrganizationID: "organization-b", IdentityUserID: userB.ID, WorkerNo: "B-001", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive}
-	workforceAssignmentA := identitymodel.IdentityWorkforceAssignment{ID: "workforce-assignment-a", WorkforceProfileID: workforceA.ID, OrganizationUnitID: departmentA.ID, AssignmentType: identitymodel.IdentityWorkforceAssignmentPrimary, Status: identitymodel.IdentityStatusActive}
-	workforceAssignmentB := identitymodel.IdentityWorkforceAssignment{ID: "workforce-assignment-b", WorkforceProfileID: workforceB.ID, OrganizationUnitID: departmentB.ID, AssignmentType: identitymodel.IdentityWorkforceAssignmentPrimary, Status: identitymodel.IdentityStatusActive}
+	organizationUnitA := identitymodel.IdentityOrganizationUnit{ID: "organization-unit-a", Code: "A", Name: "Organization Unit A", NodeType: identitymodel.IdentityOrganizationUnitTeam, Path: "/organization-unit-a"}
+	organizationUnitB := identitymodel.IdentityOrganizationUnit{ID: "organization-unit-b", Code: "B", Name: "Organization Unit B", NodeType: identitymodel.IdentityOrganizationUnitStore, Path: "/organization-unit-b"}
+	userA := identitymodel.IdentityUser{ID: "user-a", Name: "User A", Email: "a@example.com", OrgID: organizationUnitA.ID, WorkerNo: "A-001", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive}
+	userB := identitymodel.IdentityUser{ID: "user-b", Name: "User B", Email: "b@example.com", OrgID: organizationUnitB.ID, WorkerNo: "B-001", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive}
 	roleA := identitymodel.IdentityRole{ID: "role-a", Key: "role-a", Label: "Role A"}
 	roleB := identitymodel.IdentityRole{ID: "role-b", Key: "role-b", Label: "Role B"}
 	menuA := identitymodel.IdentityMenu{ID: "menu-a", Key: "menu-a", Label: "Menu A"}
 	menuB := identitymodel.IdentityMenu{ID: "menu-b", Key: "menu-b", Label: "Menu B"}
 
 	for _, seed := range []func() error{
-		func() error { return repository.UpsertIdentityDepartment(ctx, workspaceA, departmentA) },
-		func() error { return repository.UpsertIdentityDepartment(ctx, workspaceB, departmentB) },
+		func() error { return repository.UpsertIdentityOrganizationUnit(ctx, workspaceA, organizationUnitA) },
+		func() error { return repository.UpsertIdentityOrganizationUnit(ctx, workspaceB, organizationUnitB) },
 		func() error { return repository.UpsertIdentityUser(ctx, workspaceA, userA) },
 		func() error { return repository.UpsertIdentityUser(ctx, workspaceB, userB) },
-		func() error { return repository.UpsertIdentityWorkforceProfile(ctx, workspaceA, workforceA) },
-		func() error { return repository.UpsertIdentityWorkforceProfile(ctx, workspaceB, workforceB) },
-		func() error {
-			return repository.UpsertIdentityWorkforceAssignment(ctx, workspaceA, workforceAssignmentA)
-		},
-		func() error {
-			return repository.UpsertIdentityWorkforceAssignment(ctx, workspaceB, workforceAssignmentB)
-		},
 		func() error { return repository.UpsertIdentityRole(ctx, workspaceA, roleA) },
 		func() error { return repository.UpsertIdentityRole(ctx, workspaceB, roleB) },
 		func() error {
@@ -92,34 +79,24 @@ func assertIdentityRepositoryWorkspaceIsolation(t *testing.T, repository identit
 		t.Fatal(err)
 	}
 
-	departments, _ := repository.ListIdentityDepartments(ctx, workspaceA)
+	organizationUnits, _ := repository.ListIdentityOrganizationUnits(ctx, workspaceA)
 	users, _ := repository.ListIdentityUsers(ctx, workspaceA)
-	workforceProfiles, _ := repository.ListIdentityWorkforceProfiles(ctx, workspaceA)
-	workforceAssignments, _ := repository.ListIdentityWorkforceAssignments(ctx, workspaceA, workforceA.ID)
 	roles, _ := repository.ListIdentityRoles(ctx, workspaceA)
 	assignments, _ := repository.ListIdentityUserRoleAssignments(ctx, workspaceA, "")
 	menus, _ := repository.ListIdentityMenus(ctx, workspaceA)
 	roleMenus, _ := repository.ListIdentityRoleMenuAssignments(ctx, workspaceA, "")
 	requests, _ := repository.ListIdentityRoleRequests(ctx, workspaceA, "", "")
-	if len(departments) != 1 || departments[0].ID != departmentA.ID ||
+	if len(organizationUnits) != 1 || organizationUnits[0].ID != organizationUnitA.ID ||
 		len(users) != 1 || users[0].ID != userA.ID ||
-		len(workforceProfiles) != 1 || workforceProfiles[0].ID != workforceA.ID ||
-		len(workforceAssignments) != 1 || workforceAssignments[0].ID != workforceAssignmentA.ID ||
 		len(roles) != 1 || roles[0].ID != roleA.ID ||
 		len(assignments) != 1 || assignments[0].UserID != userA.ID ||
 		len(menus) != 1 || menus[0].ID != menuA.ID ||
 		len(roleMenus) != 1 || roleMenus[0].MenuID != menuA.ID ||
 		len(requests) != 1 || requests[0].ID != "request-a" {
-		t.Fatalf("workspace A leaked or lost data: departments=%#v users=%#v workforceProfiles=%#v workforceAssignments=%#v roles=%#v assignments=%#v menus=%#v roleMenus=%#v requests=%#v", departments, users, workforceProfiles, workforceAssignments, roles, assignments, menus, roleMenus, requests)
+		t.Fatalf("workspace A leaked or lost data: organizationUnits=%#v users=%#v roles=%#v assignments=%#v menus=%#v roleMenus=%#v requests=%#v", organizationUnits, users, roles, assignments, menus, roleMenus, requests)
 	}
 	if _, found, err := repository.GetIdentityUser(ctx, workspaceB, userA.ID); err != nil || found {
 		t.Fatalf("workspace B read workspace A user: found=%v err=%v", found, err)
-	}
-	if _, found, err := repository.GetIdentityWorkforceProfile(ctx, workspaceB, workforceA.ID); err != nil || found {
-		t.Fatalf("workspace B read workspace A Workforce Profile: found=%v err=%v", found, err)
-	}
-	if _, found, err := repository.GetIdentityWorkforceAssignment(ctx, workspaceB, workforceAssignmentA.ID); err != nil || found {
-		t.Fatalf("workspace B read workspace A Workforce Assignment: found=%v err=%v", found, err)
 	}
 	_ = repository.SetIdentityUserStatus(ctx, workspaceB, userA.ID, identitymodel.IdentityStatusDisabled)
 	storedA, found, err := repository.GetIdentityUser(ctx, workspaceA, userA.ID)
@@ -137,9 +114,9 @@ func assertIdentityRepositoryRejectsMissingWorkspace(t *testing.T, repository id
 	menu := identitymodel.IdentityMenu{ID: "missing-menu"}
 	atomic := repository.(identityrepository.IdentityAtomicMutationRepository)
 	operations := []func() error{
-		func() error { _, err := repository.ListIdentityDepartments(ctx, ""); return err },
+		func() error { _, err := repository.ListIdentityOrganizationUnits(ctx, ""); return err },
 		func() error {
-			return repository.UpsertIdentityDepartment(ctx, "", identitymodel.IdentityDepartment{ID: "missing"})
+			return repository.UpsertIdentityOrganizationUnit(ctx, "", identitymodel.IdentityOrganizationUnit{ID: "missing"})
 		},
 		func() error { _, err := repository.ListIdentityUsers(ctx, ""); return err },
 		func() error { _, _, err := repository.GetIdentityUser(ctx, "", "user"); return err },
@@ -148,19 +125,6 @@ func assertIdentityRepositoryRejectsMissingWorkspace(t *testing.T, repository id
 		func() error { return repository.RemoveIdentityUser(ctx, "", "user") },
 		func() error {
 			return repository.SetIdentityUserStatus(ctx, "", "user", identitymodel.IdentityStatusDisabled)
-		},
-		func() error { _, err := repository.ListIdentityWorkforceProfiles(ctx, ""); return err },
-		func() error { _, _, err := repository.GetIdentityWorkforceProfile(ctx, "", "workforce"); return err },
-		func() error {
-			return repository.UpsertIdentityWorkforceProfile(ctx, "", identitymodel.IdentityWorkforceProfile{ID: "workforce"})
-		},
-		func() error { _, err := repository.ListIdentityWorkforceAssignments(ctx, "", "workforce"); return err },
-		func() error {
-			_, _, err := repository.GetIdentityWorkforceAssignment(ctx, "", "assignment")
-			return err
-		},
-		func() error {
-			return repository.UpsertIdentityWorkforceAssignment(ctx, "", identitymodel.IdentityWorkforceAssignment{ID: "assignment"})
 		},
 		func() error { _, err := repository.ListIdentityRoles(ctx, ""); return err },
 		func() error { return repository.UpsertIdentityRole(ctx, "", role) },

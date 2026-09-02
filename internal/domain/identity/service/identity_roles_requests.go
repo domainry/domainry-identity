@@ -163,14 +163,6 @@ func (s *IdentityDomainService) validateRoleEligibilityWithoutConflicts(ctx cont
 		audience = identitymodel.IdentityRoleAudienceAny
 	}
 	switch audience {
-	case identitymodel.IdentityRoleAudienceWorkforce:
-		_, activeProfiles, err := s.resolveWorkforceFacts(ctx, assignment.UserID, time.Now())
-		if err != nil {
-			return err
-		}
-		if profileID := strings.TrimSpace(assignment.WorkforceProfileID); profileID == "" || !activeProfiles[profileID] {
-			return forbidden("backend.identity.workforce_role_eligibility_required")
-		}
 	case identitymodel.IdentityRoleAudienceBusiness:
 		if strings.TrimSpace(assignment.BindingKey) != strings.TrimSpace(role.RequiredBindingKey) || strings.TrimSpace(assignment.ProfileID) == "" || s.bindingEligibility == nil {
 			return forbidden("backend.identity.business_role_eligibility_required")
@@ -318,11 +310,7 @@ func (s *IdentityDomainService) ListAssignableRoles(ctx context.Context, targetU
 	if target.Status != identitymodel.IdentityStatusActive {
 		return []identitymodel.IdentityRole{}, nil
 	}
-	workforce, _, err := s.resolveWorkforceFacts(ctx, targetUserID, time.Now())
-	if err != nil {
-		return nil, err
-	}
-	if !identityActorCanManageRoleTarget(actor, targetUserID, workforce) {
+	if !identityActorCanManageRoleTarget(actor, target) {
 		return []identitymodel.IdentityRole{}, nil
 	}
 	bindings, err := s.repo.ListIdentityProfileBindingsByUser(ctx, s.workspace, targetUserID)
@@ -360,10 +348,7 @@ func (s *IdentityDomainService) ListAssignableRoles(ctx context.Context, targetU
 			continue
 		}
 		switch definition.Audience {
-		case identitymodel.IdentityRoleAudienceWorkforce:
-			if workforce.ProfileID == "" {
-				continue
-			}
+		case identitymodel.IdentityRoleAudienceUser:
 		case identitymodel.IdentityRoleAudienceBusiness:
 			if !activeBindings[strings.TrimSpace(definition.RequiredBindingKey)] {
 				continue

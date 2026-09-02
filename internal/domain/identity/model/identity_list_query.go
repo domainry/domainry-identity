@@ -7,17 +7,15 @@ type IdentitySortRule struct {
 }
 
 // IdentityListQuery is the query contract shared by Identity directory,
-// workforce, role, and assignment searches. It is intentionally independent
+// user and role searches. It is intentionally independent
 // from host business-record filtering and transaction semantics.
 type IdentityListQuery struct {
-	AfterID                   string             `json:"after_id,omitempty"`
-	PageSize                  int                `json:"page_size"`
-	Search                    string             `json:"search,omitempty"`
-	SearchFields              []string           `json:"search_fields,omitempty"`
-	Filters                   map[string]any     `json:"filters,omitempty"`
-	Sort                      []IdentitySortRule `json:"sort,omitempty"`
-	Scope                     string             `json:"-"`
-	PrincipalUserID           string             `json:"-"`
-	PrincipalDepartmentPath   string             `json:"-"`
-	PrincipalReportingUserIDs []string           `json:"-"`
+	AfterID         string             `json:"after_id,omitempty"`
+	PageSize        int                `json:"page_size"`
+	Search          string             `json:"search,omitempty"`
+	SearchFields    []string           `json:"search_fields,omitempty"`
+	Filters         map[string]any     `json:"filters,omitempty"`
+	Sort            []IdentitySortRule `json:"sort,omitempty"`
+	Scope           string             `json:"-"`
+	PrincipalUserID string             `json:"-"`
 }

@@ -12,31 +12,28 @@ func TestIdentityPlatformFieldOwnershipMatchesCapabilityDoc(t *testing.T) {
 		"account_status": {},
 		"password":       {},
 	}
-	documentedWorkforceFields := map[string]struct{}{
-		"department_id":        {},
-		"department_path":      {},
-		"employee_no":          {},
-		"employment_status":    {},
-		"employment_type":      {},
-		"hire_date":            {},
-		"job_level":            {},
-		"job_title":            {},
-		"manager_ancestor_ids": {},
-		"manager_depth":        {},
-		"manager_id":           {},
-		"manager_path":         {},
-		"reporting_path":       {},
+	documentedUserFields := map[string]struct{}{
+		"org_id":            {},
+		"support_org_id":    {},
+		"organization_path": {},
+		"manager_user_id":   {},
+		"reporting_path":    {},
+		"worker_no":         {},
+		"worker_type":       {},
+		"work_status":       {},
+		"start_date":        {},
+		"end_date":          {},
 	}
 	assertFieldSetEqual(t, "identity_account", identityAccountOwnedProfileFields, documentedAccountFields)
-	assertFieldSetEqual(t, "workforce", identityWorkforceOwnedProfileFields, documentedWorkforceFields)
+	assertFieldSetEqual(t, "identity_user", identityUserOwnedProfileFields, documentedUserFields)
 	for field := range documentedAccountFields {
 		if owner, owned := IdentityPlatformOwnerForProfileField(field); !owned || owner != IdentityPlatformFieldOwnerAccount {
 			t.Fatalf("field %q must resolve to identity_account owner, got %q owned=%v", field, owner, owned)
 		}
 	}
-	for field := range documentedWorkforceFields {
-		if owner, owned := IdentityPlatformOwnerForProfileField(field); !owned || owner != IdentityPlatformFieldOwnerWorkforce {
-			t.Fatalf("field %q must resolve to workforce owner, got %q owned=%v", field, owner, owned)
+	for field := range documentedUserFields {
+		if owner, owned := IdentityPlatformOwnerForProfileField(field); !owned || owner != IdentityPlatformFieldOwnerUser {
+			t.Fatalf("field %q must resolve to identity_user owner, got %q owned=%v", field, owner, owned)
 		}
 	}
 	// The doc explicitly keeps contact and person facts business-ownable.

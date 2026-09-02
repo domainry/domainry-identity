@@ -64,14 +64,14 @@ func TestSQLIdentityUserAndRoleWriteStages(t *testing.T) {
 			t.Fatalf("exec failure %d ignored", failAt)
 		}
 	}
-	department := identitymodel.IdentityDepartment{ID: "department"}
+	organizationUnit := identitymodel.IdentityOrganizationUnit{ID: "organizationUnit"}
 	user := identitymodel.IdentityUser{ID: "user"}
 	role := identitymodel.IdentityRole{ID: "role"}
 	assignment := identitymodel.IdentityUserRoleAssignment{UserID: "user", RoleID: "role"}
 	store, closeDB := scriptedSQLIdentity(&identitySQLState{})
 	defer closeDB()
-	if err := store.UpsertIdentityDepartment(t.Context(), "workspace-primary", identitymodel.IdentityDepartment{}); err == nil {
-		t.Fatal("empty department accepted")
+	if err := store.UpsertIdentityOrganizationUnit(t.Context(), "workspace-primary", identitymodel.IdentityOrganizationUnit{}); err == nil {
+		t.Fatal("empty organizationUnit accepted")
 	}
 	if err := store.UpsertIdentityUser(t.Context(), "workspace-primary", identitymodel.IdentityUser{}); err == nil {
 		t.Fatal("empty user accepted")
@@ -91,7 +91,7 @@ func TestSQLIdentityUserAndRoleWriteStages(t *testing.T) {
 		t.Fatalf("assign role with expiration: %v", err)
 	}
 	callWithFailure(t, 1, func(s *SQLIdentityStore) error {
-		return s.UpsertIdentityDepartment(t.Context(), "workspace-primary", department)
+		return s.UpsertIdentityOrganizationUnit(t.Context(), "workspace-primary", organizationUnit)
 	})
 	callWithFailure(t, 1, func(s *SQLIdentityStore) error { return s.UpsertIdentityUser(t.Context(), "workspace-primary", user) })
 	callWithFailure(t, 1, func(s *SQLIdentityStore) error {
@@ -289,8 +289,8 @@ func TestSQLIdentityLoaderFailureStages(t *testing.T) {
 			_, err := s.loadRoleMenuAssignments(t.Context(), "workspace-primary", "role")
 			return err
 		}},
-		{"departments", 8, func(s *SQLIdentityStore) error {
-			_, err := s.loadDepartments(t.Context(), "workspace-primary")
+		{"organizationUnits", 8, func(s *SQLIdentityStore) error {
+			_, err := s.loadOrganizationUnits(t.Context(), "workspace-primary")
 			return err
 		}},
 		{"users", 18, func(s *SQLIdentityStore) error { _, err := s.loadUsers(t.Context(), "workspace-primary"); return err }},
@@ -325,18 +325,18 @@ func TestSQLIdentityLoaderFailureStages(t *testing.T) {
 
 func TestSQLIdentityBootstrapAndMenuAtomicStages(t *testing.T) {
 	wantErr := errors.New("atomic stage")
-	department := identitymodel.IdentityDepartment{ID: "department"}
+	organizationUnit := identitymodel.IdentityOrganizationUnit{ID: "organizationUnit"}
 	user := identitymodel.IdentityUser{ID: "user"}
 	assignment := identitymodel.IdentityUserRoleAssignment{UserID: "user", RoleID: "role"}
 	for _, state := range []*identitySQLState{{beginErr: wantErr}, {execFailAt: 1, failure: wantErr}, {execFailAt: 2, failure: wantErr}, {execFailAt: 3, failure: wantErr}, {commitErr: wantErr}} {
 		store, closeDB := scriptedSQLIdentity(state)
-		if err := store.ApplyIdentityBootstrapAtomically(t.Context(), "workspace-primary", []identitymodel.IdentityDepartment{department}, []identitymodel.IdentityUser{user}, nil, nil, []identitymodel.IdentityUserRoleAssignment{assignment}); err == nil {
+		if err := store.ApplyIdentityBootstrapAtomically(t.Context(), "workspace-primary", []identitymodel.IdentityOrganizationUnit{organizationUnit}, []identitymodel.IdentityUser{user}, []identitymodel.IdentityUserRoleAssignment{assignment}); err == nil {
 			t.Fatal("bootstrap failure ignored")
 		}
 		closeDB()
 	}
 	store, closeDB := scriptedSQLIdentity(&identitySQLState{})
-	if err := store.ApplyIdentityBootstrapAtomically(t.Context(), "workspace-primary", []identitymodel.IdentityDepartment{department}, []identitymodel.IdentityUser{user}, nil, nil, []identitymodel.IdentityUserRoleAssignment{assignment}); err != nil {
+	if err := store.ApplyIdentityBootstrapAtomically(t.Context(), "workspace-primary", []identitymodel.IdentityOrganizationUnit{organizationUnit}, []identitymodel.IdentityUser{user}, []identitymodel.IdentityUserRoleAssignment{assignment}); err != nil {
 		t.Fatal(err)
 	}
 	closeDB()
@@ -393,10 +393,10 @@ func TestSQLIdentityRoleReadStages(t *testing.T) {
 func TestSQLIdentityRemainingWriteAndMenuStages(t *testing.T) {
 	wantErr := errors.New("remaining SQL stage")
 	store, closeDB := scriptedSQLIdentity(&identitySQLState{})
-	if err := store.ApplyIdentityBootstrapAtomically(t.Context(), "", nil, nil, nil, nil, nil); err == nil {
+	if err := store.ApplyIdentityBootstrapAtomically(t.Context(), "", nil, nil, nil); err == nil {
 		t.Fatal("invalid bootstrap workspace accepted")
 	}
-	if err := store.writeIdentityDepartment(t.Context(), store.db, "workspace-primary", identitymodel.IdentityDepartment{ID: "department"}); err != nil {
+	if err := store.writeIdentityOrganizationUnit(t.Context(), store.db, "workspace-primary", identitymodel.IdentityOrganizationUnit{ID: "organizationUnit"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.writeIdentityUser(t.Context(), store.db, "workspace-primary", identitymodel.IdentityUser{ID: "user"}); err != nil {

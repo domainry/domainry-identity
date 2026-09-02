@@ -12,22 +12,25 @@ var errIdentitySeedTest = errors.New("identity test failure")
 // identityScopedRepository is deliberately behavior-light: scoped wrapper tests
 // assert context routing while the domain service's rule tests own semantics.
 type identityScopedRepository struct {
-	departments    []identitymodel.IdentityDepartment
-	users          []identitymodel.IdentityUser
-	roles          []identitymodel.IdentityRole
-	assignments    []identitymodel.IdentityUserRoleAssignment
-	receipts       map[string]identitymodel.IdentityEntitlementBatchReceipt
-	reviews        []identitymodel.IdentityAccessReview
-	reviewReceipts map[string]identitymodel.IdentityAccessReviewDecisionReceipt
-	requests       []identitymodel.IdentityRoleRequest
-	menus          []identitymodel.IdentityMenu
-	roleMenus      []identitymodel.IdentityRoleMenuAssignment
+	organizationUnits []identitymodel.IdentityOrganizationUnit
+	users             []identitymodel.IdentityUser
+	roles             []identitymodel.IdentityRole
+	assignments       []identitymodel.IdentityUserRoleAssignment
+	receipts          map[string]identitymodel.IdentityEntitlementBatchReceipt
+	reviews           []identitymodel.IdentityAccessReview
+	reviewReceipts    map[string]identitymodel.IdentityAccessReviewDecisionReceipt
+	requests          []identitymodel.IdentityRoleRequest
+	menus             []identitymodel.IdentityMenu
+	roleMenus         []identitymodel.IdentityRoleMenuAssignment
 }
 
-func (r *identityScopedRepository) ListIdentityDepartments(context.Context, string) ([]identitymodel.IdentityDepartment, error) {
-	return r.departments, nil
+func (r *identityScopedRepository) ListIdentityOrganizationUnits(context.Context, string) ([]identitymodel.IdentityOrganizationUnit, error) {
+	return r.organizationUnits, nil
 }
-func (r *identityScopedRepository) UpsertIdentityDepartment(context.Context, string, identitymodel.IdentityDepartment) error {
+func (r *identityScopedRepository) UpsertIdentityOrganizationUnit(context.Context, string, identitymodel.IdentityOrganizationUnit) error {
+	return nil
+}
+func (r *identityScopedRepository) UpsertIdentityOrganizationUnitsAtomically(context.Context, string, []identitymodel.IdentityOrganizationUnit) error {
 	return nil
 }
 func (r *identityScopedRepository) ListIdentityUsers(context.Context, string) ([]identitymodel.IdentityUser, error) {

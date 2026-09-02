@@ -46,7 +46,7 @@ func (r MetadataStore) applyIdentityRoleDirectoryMutation(ctx context.Context, t
 			label = roleKey
 		}
 		statement, arguments, err := query.NewWorkspaceUpdateBuilder(r.store.SQLRenderer, "_identity_roles", workspaceID.String()).
-			Set("label", label).Set("status", string(identitymodel.IdentityStatusActive)).Set("updated_at", now).
+			Set("label", label).Set("description", strings.TrimSpace(role.Description)).Set("status", string(identitymodel.IdentityStatusActive)).Set("updated_at", now).
 			Where(query.Equal("role_key", roleKey)).Build()
 		if err != nil {
 			return fmt.Errorf("build role directory projection %s update: %w", roleKey, err)
@@ -67,7 +67,7 @@ func (r MetadataStore) applyIdentityRoleDirectoryMutation(ctx context.Context, t
 		}
 		statement, arguments, err = query.NewWorkspaceInsertBuilder(r.store.SQLRenderer, "_identity_roles", workspaceID.String()).
 			Columns("id", "role_key", "label", "description", "status", "created_at", "updated_at").
-			Values(roleKey, roleKey, label, "", string(identitymodel.IdentityStatusActive), now, now).Build()
+			Values(roleKey, roleKey, label, strings.TrimSpace(role.Description), string(identitymodel.IdentityStatusActive), now, now).Build()
 		if err != nil {
 			return fmt.Errorf("build role directory projection %s insert: %w", roleKey, err)
 		}

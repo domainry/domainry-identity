@@ -8,7 +8,7 @@ import (
 
 func identityDirectoryRoleColumns() []string {
 	return []string{
-		"user_id", "role_id", "workforce_profile_id", "binding_key", "profile_id", "source", "status",
+		"user_id", "role_id", "binding_key", "profile_id", "source", "status",
 		"valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at",
 		"revoke_reason", "expires_at", "created_at", "updated_at",
 	}
@@ -16,7 +16,7 @@ func identityDirectoryRoleColumns() []string {
 
 func identityDirectoryRoleRow() []driver.Value {
 	return []driver.Value{
-		"user", "role", "workforce", "binding", "profile", "manual", "active",
+		"user", "role", "binding", "profile", "manual", "active",
 		"from", "until", "admin", "reason", nil, nil, nil, nil, "created", "updated",
 	}
 }
@@ -43,7 +43,7 @@ func TestListIdentityUserDirectoryFactsInputAndQueryFailures(t *testing.T) {
 	closeDB()
 	store, closeDB = scriptedSQLIdentity(&identitySQLState{})
 	if facts, err := store.ListIdentityUserDirectoryFacts(t.Context(), "workspace", nil); err != nil ||
-		facts.RoleAssignments == nil || facts.WorkforceProfiles == nil || facts.ProfileBindings == nil {
+		facts.RoleAssignments == nil || facts.ProfileBindings == nil {
 		t.Fatalf("empty IDs facts=%#v error=%v", facts, err)
 	}
 	closeDB()
@@ -53,10 +53,6 @@ func TestListIdentityUserDirectoryFactsInputAndQueryFailures(t *testing.T) {
 		{
 			queryFailAt: 2, failure: errProfileBindingSQL,
 			querySteps: []identitySQLQueryStep{{}},
-		},
-		{
-			queryFailAt: 3, failure: errProfileBindingSQL,
-			querySteps: []identitySQLQueryStep{{}, {}},
 		},
 	} {
 		store, closeDB = scriptedSQLIdentity(state)
@@ -80,28 +76,8 @@ func TestListIdentityUserDirectoryFactsRoleFailures(t *testing.T) {
 	}
 }
 
-func TestListIdentityUserDirectoryFactsProfileFailures(t *testing.T) {
-	for _, profileStep := range []identitySQLQueryStep{
-		{columns: []string{"only"}, rows: [][]driver.Value{{"value"}}},
-		{
-			columns: []string{"id", "organization_id", "identity_user_id", "worker_no", "worker_type", "work_status", "start_date", "end_date", "primary_assignment_id", "version"},
-			nextErr: errProfileBindingSQL,
-		},
-	} {
-		store, closeDB := scriptedSQLIdentity(&identitySQLState{querySteps: []identitySQLQueryStep{
-			{},
-			profileStep,
-		}})
-		if _, err := store.ListIdentityUserDirectoryFacts(t.Context(), "workspace", []string{"user"}); err == nil {
-			t.Fatal("profile row failure ignored")
-		}
-		closeDB()
-	}
-}
-
 func TestListIdentityUserDirectoryFactsBindingFailuresAndSuccess(t *testing.T) {
 	store, closeDB := scriptedSQLIdentity(&identitySQLState{querySteps: []identitySQLQueryStep{
-		{},
 		{},
 		{columns: []string{"only"}, rows: [][]driver.Value{{"value"}}},
 	}})
@@ -112,18 +88,13 @@ func TestListIdentityUserDirectoryFactsBindingFailuresAndSuccess(t *testing.T) {
 
 	store, closeDB = scriptedSQLIdentity(&identitySQLState{querySteps: []identitySQLQueryStep{
 		{columns: identityDirectoryRoleColumns(), rows: [][]driver.Value{identityDirectoryRoleRow()}},
-		{
-			columns: []string{"id", "organization_id", "identity_user_id", "worker_no", "worker_type", "work_status", "start_date", "end_date", "primary_assignment_id", "version"},
-			rows:    [][]driver.Value{workforceProfileRow()},
-		},
 		{columns: identityDirectoryBindingColumns(), rows: [][]driver.Value{identityDirectoryBindingRow()}},
 	}})
 	facts, err := store.ListIdentityUserDirectoryFacts(t.Context(), "workspace", []string{"user", "other"})
-	if err != nil || len(facts.RoleAssignments) != 1 || len(facts.WorkforceProfiles) != 1 || len(facts.ProfileBindings) != 1 {
+	if err != nil || len(facts.RoleAssignments) != 1 || len(facts.ProfileBindings) != 1 {
 		t.Fatalf("facts=%#v error=%v", facts, err)
 	}
-	if facts.RoleAssignments[0].WorkforceProfileID != "workforce" ||
-		facts.RoleAssignments[0].ExpiresAt != nil || facts.ProfileBindings[0].IdentityUserID != "user" {
+	if facts.RoleAssignments[0].BindingKey != "binding" || facts.RoleAssignments[0].ExpiresAt != nil || facts.ProfileBindings[0].IdentityUserID != "user" {
 		t.Fatalf("facts=%#v", facts)
 	}
 	closeDB()
@@ -140,7 +111,7 @@ func TestIdentityUserDirectoryFactsBatchesByParameterBudget(t *testing.T) {
 	if _, err := store.ListIdentityUserDirectoryFacts(t.Context(), "workspace", userIDs); err != nil {
 		t.Fatal(err)
 	}
-	if state.queryCount != 6 {
-		t.Fatalf("query count=%d, want 6 for two batches across three fact owners", state.queryCount)
+	if state.queryCount != 4 {
+		t.Fatalf("query count=%d, want 4 for two batches across two fact owners", state.queryCount)
 	}
 }

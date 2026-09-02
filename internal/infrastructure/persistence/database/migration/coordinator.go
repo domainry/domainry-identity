@@ -12,6 +12,7 @@ import (
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
+	"github.com/domainry/domainry-orm/query"
 )
 
 type Database interface {
@@ -129,8 +130,12 @@ func (coordinator *Coordinator) VerifyFile(ctx context.Context, path string) err
 	}
 	var applied string
 	var dirty bool
-	query := "SELECT " + coordinator.renderer.Identifier("checksum") + ", " + coordinator.renderer.Identifier("dirty") + " FROM " + coordinator.renderer.Table("_schema_migrations") + " WHERE " + coordinator.renderer.Identifier("path") + " = " + coordinator.renderer.Placeholder(1)
-	err = coordinator.queryDatabase.QueryRowContext(ctx, query, name).Scan(&applied, &dirty)
+	statement, arguments, buildErr := query.NewSelectBuilder(coordinator.renderer, "_schema_migrations").
+		Columns("checksum", "dirty").Where(query.Equal("path", name)).Limit(1).Build()
+	if buildErr != nil {
+		return fmt.Errorf("build migration verification: %w", buildErr)
+	}
+	err = coordinator.queryDatabase.QueryRowContext(ctx, statement, arguments...).Scan(&applied, &dirty)
 	if err == sql.ErrNoRows {
 		return fmt.Errorf("migration.pending: %s", name)
 	}
@@ -157,8 +162,12 @@ func (coordinator *Coordinator) Pending(ctx context.Context, path string) (bool,
 	}
 	var applied string
 	var dirty bool
-	query := "SELECT " + coordinator.renderer.Identifier("checksum") + ", " + coordinator.renderer.Identifier("dirty") + " FROM " + coordinator.renderer.Table("_schema_migrations") + " WHERE " + coordinator.renderer.Identifier("path") + " = " + coordinator.renderer.Placeholder(1)
-	err = coordinator.managementDatabase.QueryRowContext(ctx, query, name).Scan(&applied, &dirty)
+	statement, arguments, buildErr := query.NewSelectBuilder(coordinator.renderer, "_schema_migrations").
+		Columns("checksum", "dirty").Where(query.Equal("path", name)).Limit(1).Build()
+	if buildErr != nil {
+		return false, fmt.Errorf("build pending migration lookup: %w", buildErr)
+	}
+	err = coordinator.managementDatabase.QueryRowContext(ctx, statement, arguments...).Scan(&applied, &dirty)
 	if err == sql.ErrNoRows {
 		return true, nil
 	}
@@ -169,8 +178,12 @@ func (coordinator *Coordinator) Pending(ctx context.Context, path string) (bool,
 		return false, fmt.Errorf("migration.dirty: %s", name)
 	}
 	if strings.TrimSpace(applied) == "" {
-		update := "UPDATE " + coordinator.renderer.Table("_schema_migrations") + " SET " + coordinator.renderer.Identifier("checksum") + " = " + coordinator.renderer.Placeholder(1) + " WHERE " + coordinator.renderer.Identifier("path") + " = " + coordinator.renderer.Placeholder(2)
-		if _, err := coordinator.managementDatabase.ExecContext(ctx, update, expected, name); err != nil {
+		update, updateArguments, buildErr := query.NewUpdateBuilder(coordinator.renderer, "_schema_migrations").
+			Set("checksum", expected).Where(query.Equal("path", name)).Build()
+		if buildErr != nil {
+			return false, fmt.Errorf("build migration checksum backfill: %w", buildErr)
+		}
+		if _, err := coordinator.managementDatabase.ExecContext(ctx, update, updateArguments...); err != nil {
 			return false, fmt.Errorf("backfill migration checksum: %w", err)
 		}
 		return false, nil
@@ -197,8 +210,13 @@ func (coordinator *Coordinator) ApplyFile(ctx context.Context, path string) erro
 	}
 	checksum := ChecksumBytes(raw)
 	version, migrationName := Identity(name)
-	insertDirty := "INSERT INTO " + coordinator.renderer.Table("_schema_migrations") + " (" + coordinator.Ledger.Columns() + ") VALUES (" + strings.Join(coordinator.placeholders(12), ", ") + ")"
-	if _, err := coordinator.managementDatabase.ExecContext(ctx, insertDirty, name, version, migrationName, Kind(migrationName), checksum, true, time.Now().UTC().Format(time.RFC3339), strings.TrimSpace(coordinator.config.ServiceVersion), 0, Operator(coordinator.config), InstanceID(coordinator.config), strings.TrimSpace(coordinator.BackupManager.BackupID())); err != nil {
+	insertDirty, insertArguments, buildErr := query.NewInsertBuilder(coordinator.renderer, "_schema_migrations").
+		Columns("path", "version", "name", "kind", "checksum", "dirty", "applied_at", "service_version", "duration_ms", "operator", "instance_id", "backup_id").
+		Values(name, version, migrationName, Kind(migrationName), checksum, true, time.Now().UTC().Format(time.RFC3339), strings.TrimSpace(coordinator.config.ServiceVersion), 0, Operator(coordinator.config), InstanceID(coordinator.config), strings.TrimSpace(coordinator.BackupManager.BackupID())).Build()
+	if buildErr != nil {
+		return fmt.Errorf("build dirty migration record: %w", buildErr)
+	}
+	if _, err := coordinator.managementDatabase.ExecContext(ctx, insertDirty, insertArguments...); err != nil {
 		return fmt.Errorf("record dirty migration: %w", err)
 	}
 	tx, err := coordinator.managementDatabase.BeginTx(ctx, nil)
@@ -215,22 +233,21 @@ func (coordinator *Coordinator) ApplyFile(ctx context.Context, path string) erro
 		}
 	}
 	duration := time.Since(startedAt)
-	completeMigration := "UPDATE " + coordinator.renderer.Table("_schema_migrations") + " SET " + coordinator.renderer.Identifier("dirty") + " = FALSE, " + coordinator.renderer.Identifier("duration_ms") + " = " + coordinator.renderer.Placeholder(1) + ", " + coordinator.renderer.Identifier("applied_at") + " = " + coordinator.renderer.Placeholder(2) + " WHERE " + coordinator.renderer.Identifier("path") + " = " + coordinator.renderer.Placeholder(3) + " AND " + coordinator.renderer.Identifier("checksum") + " = " + coordinator.renderer.Placeholder(4)
-	if _, err := tx.ExecContext(ctx, completeMigration, duration.Milliseconds(), time.Now().UTC().Format(time.RFC3339), name, checksum); err != nil {
+	completeMigration, completeArguments, buildErr := query.NewUpdateBuilder(coordinator.renderer, "_schema_migrations").
+		Set("dirty", false).
+		Set("duration_ms", duration.Milliseconds()).
+		Set("applied_at", time.Now().UTC().Format(time.RFC3339)).
+		Where(query.And(query.Equal("path", name), query.Equal("checksum", checksum))).Build()
+	if buildErr != nil {
+		return fmt.Errorf("build migration completion record: %w", buildErr)
+	}
+	if _, err := tx.ExecContext(ctx, completeMigration, completeArguments...); err != nil {
 		return fmt.Errorf("record migration: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit transaction: %w", err)
 	}
 	return nil
-}
-
-func (coordinator *Coordinator) placeholders(count int) []string {
-	values := make([]string, count)
-	for index := range values {
-		values[index] = coordinator.renderer.Placeholder(index + 1)
-	}
-	return values
 }
 
 func (coordinator *Coordinator) SetExpected(paths []string) error {

@@ -6,7 +6,7 @@ import {
   type UseQueryResult,
 } from '@tanstack/react-query'
 import {
-  departmentsApi,
+  organizationUnitsApi,
   auditApi,
   effectiveMenusApi,
   identityAccountsApi,
@@ -14,7 +14,6 @@ import {
   permissionsApi,
   rolesApi,
   usersApi,
-  workforceApi,
   type EffectivePermissions,
   type IdentityListQuery,
   type IdentityPage,
@@ -23,17 +22,14 @@ import {
   type RoleCreateInput,
   type RuntimeRoleAssignment,
   type RuntimeMenu,
-  type WorkforceLifecycleInput,
-  type WorkforceOnboardingInput,
 } from './api'
 import type {
-  Department,
+  OrganizationUnit,
   AuditLog,
   IdentityAccount,
   MenuNode,
   OrgUser,
   Role,
-  WorkforceProfile,
 } from './types'
 
 export function useAuditLogs(query: { resource?: string; recordId?: string; actor?: string; event?: string; requestId?: string; createdFrom?: string; createdTo?: string } = {}): UseQueryResult<AuditLog[]> {
@@ -41,9 +37,8 @@ export function useAuditLogs(query: { resource?: string; recordId?: string; acto
 }
 
 export const queryKeys = {
-  departments: ['runtime', 'identity', 'departments'] as const,
+  organizationUnits: ['runtime', 'identity', 'organization-units'] as const,
   users: ['runtime', 'identity', 'users'] as const,
-  workforce: ['runtime', 'identity', 'workforce'] as const,
   roles: ['runtime', 'identity', 'roles'] as const,
   menus: ['runtime', 'identity', 'menus'] as const,
   effectiveMenus: ['runtime', 'identity', 'effective-menus'] as const,
@@ -105,11 +100,11 @@ function makeHooks<T extends { id: string }, CreateInput = Omit<T, 'id'>, Update
   return { useList, useCreate, useUpdate, useRemove }
 }
 
-const departments = makeHooks<Department>(queryKeys.departments, departmentsApi)
-export const useDepartments = departments.useList
-export const useCreateDepartment = departments.useCreate
-export const useUpdateDepartment = departments.useUpdate
-export const useDeleteDepartment = departments.useRemove
+const organizationUnits = makeHooks<OrganizationUnit>(queryKeys.organizationUnits, organizationUnitsApi)
+export const useOrganizationUnits = organizationUnits.useList
+export const useCreateOrganizationUnit = organizationUnits.useCreate
+export const useUpdateOrganizationUnit = organizationUnits.useUpdate
+export const useDeleteOrganizationUnit = organizationUnits.useRemove
 
 const users = makeHooks<OrgUser>(queryKeys.users, usersApi)
 export const useUsers = users.useList
@@ -117,7 +112,7 @@ export const useCreateUser = users.useCreate
 export const useUpdateUser = users.useUpdate
 export const useDeleteUser = users.useRemove
 
-type IdentityAccountWrite = Omit<IdentityAccount, 'id' | 'version' | 'resourceHash' | 'createdAt' | 'updatedAt'>
+type IdentityAccountWrite = Omit<IdentityAccount, 'id' | 'reportingPath' | 'version' | 'resourceHash' | 'createdAt' | 'updatedAt'>
 type IdentityAccountUpdate = Partial<IdentityAccountWrite> & { expectedResourceHash?: string }
 const identityAccounts = makeHooks<IdentityAccount, IdentityAccountWrite, IdentityAccountUpdate>(queryKeys.users, identityAccountsApi)
 export const useIdentityAccounts = identityAccounts.useList
@@ -144,88 +139,12 @@ export function useIdentityAccountsPage(query: IdentityListQuery): UseQueryResul
   })
 }
 
-export function useWorkforceProfiles(enabled = true): UseQueryResult<WorkforceProfile[]> {
-  return useQuery({ queryKey: queryKeys.workforce, queryFn: () => workforceApi.list(), enabled })
-}
-
-export function useWorkforceProfilesPage(query: IdentityListQuery, enabled = true): UseQueryResult<IdentityPage<WorkforceProfile>> {
-  return useQuery({
-    queryKey: [...queryKeys.workforce, 'page', query],
-    queryFn: () => workforceApi.search(query),
-    enabled,
-    placeholderData: (previous) => previous,
-  })
-}
-
 export function useIdentityRoleAssignmentsPage(userID: string, query: IdentityListQuery): UseQueryResult<IdentityPage<RuntimeRoleAssignment>> {
   return useQuery({
     queryKey: [...queryKeys.users, userID, 'role-assignments', query],
     queryFn: () => identityAccountsApi.roleAssignments(userID, query),
     enabled: Boolean(userID),
     placeholderData: (previous) => previous,
-  })
-}
-
-export function useWorkforceDetail(profileID: string) {
-  return useQuery({
-    queryKey: [...queryKeys.workforce, profileID, 'detail'],
-    queryFn: () => workforceApi.detail(profileID),
-    enabled: Boolean(profileID),
-  })
-}
-
-export function useWorkforceAssignableRoles(workforceProfileID: string, enabled = true) {
-  return useQuery({
-    queryKey: [...queryKeys.workforce, workforceProfileID, 'assignable-roles'],
-    queryFn: () => workforceApi.assignableRoles(workforceProfileID),
-    enabled: enabled && Boolean(workforceProfileID),
-  })
-}
-
-export function useGrantWorkforceRole() {
-  const client = useQueryClient()
-  return useMutation({
-    mutationFn: ({ identityUserID, workforceProfileID, roleID, reason }: { identityUserID: string; workforceProfileID: string; roleID: string; reason: string }) =>
-      workforceApi.grantRole(identityUserID, workforceProfileID, roleID, reason),
-    onSuccess: () => Promise.all([
-      client.invalidateQueries({ queryKey: queryKeys.workforce }),
-      client.invalidateQueries({ queryKey: queryKeys.audit }),
-    ]),
-  })
-}
-
-export function useWorkforceLifecycle() {
-  const client = useQueryClient()
-  return useMutation({
-    mutationFn: (input: WorkforceLifecycleInput) => workforceApi.lifecycle(input),
-    onSuccess: () => Promise.all([
-      client.invalidateQueries({ queryKey: queryKeys.workforce }),
-      client.invalidateQueries({ queryKey: queryKeys.audit }),
-    ]),
-  })
-}
-
-export function useOnboardWorkforce() {
-  const client = useQueryClient()
-  return useMutation({
-    mutationFn: (input: WorkforceOnboardingInput) => workforceApi.onboard(input),
-    onSuccess: () => Promise.all([
-      client.invalidateQueries({ queryKey: queryKeys.users }),
-      client.invalidateQueries({ queryKey: queryKeys.workforce }),
-      client.invalidateQueries({ queryKey: queryKeys.audit }),
-    ]),
-  })
-}
-
-export function useTerminateWorkforce() {
-  const client = useQueryClient()
-  return useMutation({
-    mutationFn: ({ profileID, effectiveAt, reason }: { profileID: string; effectiveAt: string; reason: string }) =>
-	  workforceApi.terminate(profileID, { effective_at: effectiveAt, reason }),
-    onSuccess: () => Promise.all([
-      client.invalidateQueries({ queryKey: queryKeys.workforce }),
-      client.invalidateQueries({ queryKey: queryKeys.audit }),
-    ]),
   })
 }
 

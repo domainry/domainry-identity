@@ -35,23 +35,23 @@ func registerRuntimeProjectionRoutes(registrar RouteRegistrar, binding identitys
 			Found bool             `json:"found"`
 		}{User: user, Found: found})
 	})
-	registrar.HandleFunc("POST /identity/runtime/directory/department", func(w http.ResponseWriter, r *http.Request) {
-		var request identitysdk.DepartmentLookup
+	registrar.HandleFunc("POST /identity/runtime/directory/organization-unit", func(w http.ResponseWriter, r *http.Request) {
+		var request identitysdk.OrganizationUnitLookup
 		if !support.decodeJSON(w, r, &request) {
 			return
 		}
 		if !authorizeApplicationCredential(w, r, support, credentials, request.Application) {
 			return
 		}
-		department, found, err := binding.Directory().FindDepartment(r.Context(), request)
+		organizationUnit, found, err := binding.Directory().FindOrganizationUnit(r.Context(), request)
 		if err != nil {
 			support.writeServiceError(w, r, err)
 			return
 		}
 		support.writeJSON(w, http.StatusOK, struct {
-			Department identitysdk.Department `json:"department"`
-			Found      bool                   `json:"found"`
-		}{Department: department, Found: found})
+			OrganizationUnit identitysdk.OrganizationUnit `json:"organization_unit"`
+			Found            bool                         `json:"found"`
+		}{OrganizationUnit: organizationUnit, Found: found})
 	})
 	registrar.HandleFunc("POST /identity/runtime/directory/users", func(w http.ResponseWriter, r *http.Request) {
 		request, ok := decodeDirectoryQuery(w, r)
@@ -84,17 +84,6 @@ func registerRuntimeProjectionRoutes(registrar RouteRegistrar, binding identitys
 			return
 		}
 		values, err := binding.Directory().ListUserRoleAssignments(r.Context(), request)
-		writeRuntimeProjection(w, r, values, err, support)
-	})
-	registrar.HandleFunc("POST /identity/runtime/directory/workforce", func(w http.ResponseWriter, r *http.Request) {
-		request, ok := decodeDirectoryQuery(w, r)
-		if !ok {
-			return
-		}
-		if !authorizeApplicationCredential(w, r, support, credentials, request.Application) {
-			return
-		}
-		values, err := binding.Directory().ListWorkforce(r.Context(), request)
 		writeRuntimeProjection(w, r, values, err, support)
 	})
 	registrar.HandleFunc("POST /identity/runtime/principal/resolve", func(w http.ResponseWriter, r *http.Request) {

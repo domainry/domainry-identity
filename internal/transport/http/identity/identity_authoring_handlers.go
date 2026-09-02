@@ -20,17 +20,17 @@ func (h *IdentityHandler) validateIdentityUserAuthoring(w http.ResponseWriter, r
 	h.writeJSON(w, http.StatusOK, map[string]any{"valid": true, "normalized": user})
 }
 
-func (h *IdentityHandler) validateIdentityDepartmentAuthoring(w http.ResponseWriter, r *http.Request) {
-	var department identitymodel.IdentityDepartment
-	if !h.decodeJSON(w, r, &department) {
+func (h *IdentityHandler) validateIdentityOrganizationUnitAuthoring(w http.ResponseWriter, r *http.Request) {
+	var organizationUnit identitymodel.IdentityOrganizationUnit
+	if !h.decodeJSON(w, r, &organizationUnit) {
 		return
 	}
-	department.ID = valueOrDefault(strings.TrimSpace(r.PathValue("departmentID")), department.ID)
-	if err := h.governance.ValidateDepartment(r.Context(), department, h.principal(r)); err != nil {
+	organizationUnit.ID = valueOrDefault(strings.TrimSpace(r.PathValue("organizationUnitID")), organizationUnit.ID)
+	if err := h.governance.ValidateOrganizationUnit(r.Context(), organizationUnit, h.principal(r)); err != nil {
 		h.writeServiceError(w, r, err)
 		return
 	}
-	h.writeJSON(w, http.StatusOK, map[string]any{"valid": true, "normalized": department})
+	h.writeJSON(w, http.StatusOK, map[string]any{"valid": true, "normalized": organizationUnit})
 }
 
 func (h *IdentityHandler) validateIdentityUserRoleAssignmentAuthoring(w http.ResponseWriter, r *http.Request) {

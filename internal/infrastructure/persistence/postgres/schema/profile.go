@@ -7,6 +7,7 @@ import (
 
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
+	ormschema "github.com/domainry/domainry-orm/schema"
 )
 
 type Profile struct{}
@@ -16,6 +17,9 @@ func NewProfile() Profile { return Profile{} }
 func (Profile) ManagedDatabaseMarkerEnabled() bool        { return true }
 func (Profile) ColumnDefinition(definition string) string { return strings.TrimSpace(definition) }
 func (Profile) RendererSchema(schema string) string       { return strings.TrimSpace(schema) }
+
+// PostgreSQL schema discovery must query information_schema/pg_indexes.
+// domainry-orm does not model server catalogs, so these reads stay here.
 func (Profile) ApplicationTablesQuery(renderer ormdialect.Renderer, databaseSchema string) driver.SchemaQuery {
 	return driver.SchemaQuery{
 		Statement: "SELECT table_name FROM information_schema.tables WHERE table_schema = " + renderer.Placeholder(1),
@@ -39,11 +43,15 @@ func (profile Profile) CreateIndexIfMissing(ctx context.Context, database driver
 	if err != nil || indexes[index] {
 		return err
 	}
-	prefix := "CREATE INDEX IF NOT EXISTS "
+	builder := ormschema.NewIndex(renderer, index, table).Columns(columns...).IfNotExists()
 	if unique {
-		prefix = "CREATE UNIQUE INDEX IF NOT EXISTS "
+		builder.Unique()
 	}
-	if _, err := database.ExecContext(ctx, prefix+renderer.Identifier(index)+" ON "+renderer.Table(table)+" ("+postgresSchemaColumnList(renderer, columns)+")"); err != nil {
+	statement, arguments, buildErr := builder.Build()
+	if buildErr != nil {
+		return fmt.Errorf("build PostgreSQL index %s: %w", index, buildErr)
+	}
+	if _, err := database.ExecContext(ctx, statement, arguments...); err != nil {
 		return fmt.Errorf("create PostgreSQL index %s: %w", index, err)
 	}
 	return nil
@@ -68,6 +76,8 @@ func (Profile) TableIndexes(ctx context.Context, database driver.SchemaDatabase,
 }
 
 func (Profile) DropIndex(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, _, _, _, index string) error {
+	// domainry-orm has no DROP INDEX builder; keep this quoted dialect DDL in
+	// the PostgreSQL schema adapter.
 	_, err := database.ExecContext(ctx, "DROP INDEX IF EXISTS "+renderer.Identifier(index))
 	return err
 }
@@ -92,12 +102,4 @@ func postgresNames(rows interface {
 		values[name] = true
 	}
 	return values, rows.Err()
-}
-
-func postgresSchemaColumnList(renderer ormdialect.Renderer, columns []string) string {
-	quoted := make([]string, len(columns))
-	for index, column := range columns {
-		quoted[index] = renderer.Identifier(column)
-	}
-	return strings.Join(quoted, ", ")
 }

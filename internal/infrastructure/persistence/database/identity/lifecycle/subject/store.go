@@ -68,7 +68,7 @@ func (s *Store) PreviewSubject(ctx context.Context, workspaceID, userID string) 
 }
 
 func (s *Store) ExportSubject(ctx context.Context, workspaceID, userID string) (json.RawMessage, error) {
-	stringColumns := []string{"id", "name", "given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale", "email", "phone", "account_type", "locale", "timezone", "status"}
+	stringColumns := []string{"id", "name", "given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale", "email", "phone", "account_type", "locale", "timezone", "org_id", "support_org_id", "manager_user_id", "reporting_path", "worker_no", "worker_type", "work_status", "start_date", "end_date", "status"}
 	projections := coalescedIdentityProjections(stringColumns...)
 	projections = append(projections, query.Project(query.Column("version")))
 	projections = append(projections, coalescedIdentityProjections("created_at", "updated_at")...)
@@ -77,11 +77,11 @@ func (s *Store) ExportSubject(ctx context.Context, workspaceID, userID string) (
 	if err != nil {
 		return nil, fmt.Errorf("build identity subject export query: %w", err)
 	}
-	var values [17]string
+	var values [26]string
 	var version int64
 	if err := s.store.DB().QueryRowContext(ctx, statement, arguments...).Scan(
 		&values[0], &values[1], &values[2], &values[3], &values[4], &values[5], &values[6], &values[7], &values[8],
-		&values[9], &values[10], &values[11], &values[12], &values[13], &values[14], &version, &values[15], &values[16],
+		&values[9], &values[10], &values[11], &values[12], &values[13], &values[14], &values[15], &values[16], &values[17], &values[18], &values[19], &values[20], &values[21], &values[22], &values[23], &version, &values[24], &values[25],
 	); err != nil {
 		return nil, err
 	}
@@ -89,7 +89,9 @@ func (s *Store) ExportSubject(ctx context.Context, workspaceID, userID string) (
 		"id": values[0], "name": values[1], "given_name": values[2], "middle_name": values[3], "family_name": values[4],
 		"name_prefix": values[5], "name_suffix": values[6], "native_name": values[7], "name_locale": values[8],
 		"email": values[9], "phone": values[10], "account_type": values[11], "locale": values[12], "timezone": values[13],
-		"status": values[14], "version": version, "created_at": values[15], "updated_at": values[16],
+		"org_id": values[14], "support_org_id": values[15], "manager_user_id": values[16], "reporting_path": values[17],
+		"worker_no": values[18], "worker_type": values[19], "work_status": values[20],
+		"start_date": values[21], "end_date": values[22], "status": values[23], "version": version, "created_at": values[24], "updated_at": values[25],
 	}
 	preview, err := s.PreviewSubject(ctx, workspaceID, userID)
 	if err != nil {
@@ -108,19 +110,13 @@ func (s *Store) ExportSubject(ctx context.Context, workspaceID, userID string) (
 }
 
 func (s *Store) exportSubjectRelationships(ctx context.Context, workspaceID, userID string) (map[string]any, error) {
-	profileIDs := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_workforce_profiles", workspaceID).
-		Columns("id").Where(query.Equal("identity_user_id", userID))
 	definitions := []struct {
 		key     string
 		columns []string
 		builder *query.SelectBuilder
 	}{
-		{"workforce_profiles", []string{"id", "organization_id", "worker_no", "worker_type", "work_status", "start_date", "end_date", "primary_assignment_id"},
-			identityRelationshipSelect(s.store.SQLRenderer(), "_identity_workforce_profiles", workspaceID, []string{"id", "organization_id", "worker_no", "worker_type", "work_status", "start_date", "end_date", "primary_assignment_id"}).Where(query.Equal("identity_user_id", userID))},
-		{"workforce_assignments", []string{"id", "workforce_profile_id", "organization_unit_id", "position_id", "manager_workforce_profile_id", "assignment_type", "effective_from", "effective_to", "status"},
-			identityRelationshipSelect(s.store.SQLRenderer(), "_identity_workforce_assignments", workspaceID, []string{"id", "workforce_profile_id", "organization_unit_id", "position_id", "manager_workforce_profile_id", "assignment_type", "effective_from", "effective_to", "status"}).Where(query.InSubquery("workforce_profile_id", profileIDs))},
-		{"role_assignments", []string{"id", "role_id", "workforce_profile_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason"},
-			identityRelationshipSelect(s.store.SQLRenderer(), "_identity_user_role_assignments", workspaceID, []string{"id", "role_id", "workforce_profile_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason"}).Where(query.Equal("user_id", userID))},
+		{"role_assignments", []string{"id", "role_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason"},
+			identityRelationshipSelect(s.store.SQLRenderer(), "_identity_user_role_assignments", workspaceID, []string{"id", "role_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason"}).Where(query.Equal("user_id", userID))},
 		{"profile_relations", []string{"id", "binding_key", "object_key", "profile_id", "status", "invitation_channel", "claim_proof_type"},
 			identityRelationshipSelect(s.store.SQLRenderer(), "_identity_profile_bindings", workspaceID, []string{"id", "binding_key", "object_key", "profile_id", "status", "invitation_channel", "claim_proof_type"}).Where(query.Equal("identity_user_id", userID))},
 	}
@@ -197,7 +193,7 @@ func (s *Store) EraseSubject(ctx context.Context, workspaceID, userID string, _ 
 	statement, arguments, err := query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_users", workspaceID).
 		Set("name", anonymized.Name).Set("given_name", "").Set("middle_name", "").Set("family_name", "").
 		Set("name_prefix", "").Set("name_suffix", "").Set("native_name", "").Set("name_locale", "").
-		Set("email", anonymized.Email).Set("phone", "").Set("locale", "").Set("timezone", "").Set("status", "erased").
+		Set("email", anonymized.Email).Set("phone", "").Set("locale", "").Set("timezone", "").Set("support_org_id", nil).Set("status", "erased").
 		SetExpression("version", query.Add(query.Column("version"), query.Value(1))).Set("updated_at", now).
 		Where(query.Equal("id", userID)).Build()
 	if err != nil {

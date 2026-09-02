@@ -109,13 +109,13 @@ func TestEffectiveMenusRejectsUnknownPrincipalAndPropagatesServiceError(t *testi
 
 }
 
-func TestIdentityDepartmentHandlers(t *testing.T) {
-	repository := &identityHTTPRepository{departments: []identitymodel.IdentityDepartment{{ID: "department-1", Name: "Sales"}}}
+func TestIdentityOrganizationUnitHandlers(t *testing.T) {
+	repository := &identityHTTPRepository{organizationUnits: []identitymodel.IdentityOrganizationUnit{{ID: "organizationUnit-1", Name: "Sales"}}}
 	handler, response := newIdentityHTTPHandler(repository)
-	w, request := identityRoleRequest(http.MethodGet, "/identity/departments", "", nil)
-	handler.listIdentityDepartments(w, request)
-	departments, ok := response.value.([]identitymodel.IdentityDepartment)
-	if response.status != http.StatusOK || !ok || len(departments) != 1 {
+	w, request := identityRoleRequest(http.MethodGet, "/identity/organization-units", "", nil)
+	handler.listIdentityOrganizationUnits(w, request)
+	organizationUnits, ok := response.value.([]identitymodel.IdentityOrganizationUnit)
+	if response.status != http.StatusOK || !ok || len(organizationUnits) != 1 {
 		t.Fatalf("list status=%d value=%#v err=%v", response.status, response.value, response.err)
 	}
 
@@ -127,34 +127,34 @@ func TestIdentityDepartmentHandlers(t *testing.T) {
 		wantStatus int
 		wantID     string
 	}{
-		{name: "create", call: handler.createIdentityDepartment, body: `{"id":"department-2","name":"Finance"}`, wantStatus: http.StatusCreated, wantID: "department-2"},
-		{name: "update path id", call: handler.updateIdentityDepartment, body: `{"id":"body-id","name":"Operations"}`, pathValues: map[string]string{"departmentID": " department-3 "}, wantStatus: http.StatusOK, wantID: "department-3"},
-		{name: "update body id", call: handler.updateIdentityDepartment, body: `{"id":"body-id","name":"Operations"}`, pathValues: map[string]string{"departmentID": " "}, wantStatus: http.StatusOK, wantID: "body-id"},
+		{name: "create", call: handler.createIdentityOrganizationUnit, body: `{"id":"organizationUnit-2","code":"FINANCE","name":"Finance","node_type":"department"}`, wantStatus: http.StatusCreated, wantID: "organizationUnit-2"},
+		{name: "update path id", call: handler.updateIdentityOrganizationUnit, body: `{"id":"body-id","code":"OPS","name":"Operations","node_type":"department"}`, pathValues: map[string]string{"organizationUnitID": " organizationUnit-3 "}, wantStatus: http.StatusOK, wantID: "organizationUnit-3"},
+		{name: "update body id", call: handler.updateIdentityOrganizationUnit, body: `{"id":"body-id","code":"OPS","name":"Operations","node_type":"department"}`, pathValues: map[string]string{"organizationUnitID": " "}, wantStatus: http.StatusOK, wantID: "body-id"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			response.status, response.value, response.err = 0, nil, nil
-			w, request := identityRoleRequest(http.MethodPost, "/identity/departments/test", test.body, test.pathValues)
+			w, request := identityRoleRequest(http.MethodPost, "/identity/organization-units/test", test.body, test.pathValues)
 			test.call(w, request)
-			if response.status != test.wantStatus || repository.lastDepartment.ID != test.wantID {
-				t.Fatalf("status=%d department=%+v err=%v", response.status, repository.lastDepartment, response.err)
+			if response.status != test.wantStatus || repository.lastOrganizationUnit.ID != test.wantID {
+				t.Fatalf("status=%d organizationUnit=%+v err=%v", response.status, repository.lastOrganizationUnit, response.err)
 			}
 		})
 	}
 }
 
-func TestIdentityDepartmentHandlersRejectDecodeAndRepositoryFailures(t *testing.T) {
+func TestIdentityOrganizationUnitHandlersRejectDecodeAndRepositoryFailures(t *testing.T) {
 	for _, call := range []func(*IdentityHandler, http.ResponseWriter, *http.Request){
 		func(handler *IdentityHandler, w http.ResponseWriter, r *http.Request) {
-			handler.createIdentityDepartment(w, r)
+			handler.createIdentityOrganizationUnit(w, r)
 		},
 		func(handler *IdentityHandler, w http.ResponseWriter, r *http.Request) {
-			handler.updateIdentityDepartment(w, r)
+			handler.updateIdentityOrganizationUnit(w, r)
 		},
 	} {
 		repository := &identityHTTPRepository{}
 		handler, response := newIdentityHTTPHandler(repository)
-		w, request := identityRoleRequest(http.MethodPost, "/identity/departments", `{`, nil)
+		w, request := identityRoleRequest(http.MethodPost, "/identity/organization-units", `{`, nil)
 		call(handler, w, request)
 		if response.status != http.StatusBadRequest {
 			t.Fatalf("invalid JSON status=%d", response.status)
@@ -166,13 +166,19 @@ func TestIdentityDepartmentHandlersRejectDecodeAndRepositoryFailures(t *testing.
 		call func(*IdentityHandler, http.ResponseWriter, *http.Request)
 		body string
 	}{
-		{name: "list", repo: &identityHTTPRepository{listDepartmentsErr: errIdentityHTTPTest}, call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.listIdentityDepartments(w, r) }},
-		{name: "create", repo: &identityHTTPRepository{upsertDepartmentErr: errIdentityHTTPTest}, call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.createIdentityDepartment(w, r) }, body: `{"id":"department-1","name":"Sales"}`},
-		{name: "update", repo: &identityHTTPRepository{upsertDepartmentErr: errIdentityHTTPTest}, call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.updateIdentityDepartment(w, r) }, body: `{"id":"department-1","name":"Sales"}`},
+		{name: "list", repo: &identityHTTPRepository{listOrganizationUnitsErr: errIdentityHTTPTest}, call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) {
+			h.listIdentityOrganizationUnits(w, r)
+		}},
+		{name: "create", repo: &identityHTTPRepository{upsertOrganizationUnitErr: errIdentityHTTPTest}, call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) {
+			h.createIdentityOrganizationUnit(w, r)
+		}, body: `{"id":"organizationUnit-1","code":"SALES","name":"Sales","node_type":"department"}`},
+		{name: "update", repo: &identityHTTPRepository{upsertOrganizationUnitErr: errIdentityHTTPTest}, call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) {
+			h.updateIdentityOrganizationUnit(w, r)
+		}, body: `{"id":"organizationUnit-1","code":"SALES","name":"Sales","node_type":"department"}`},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			handler, response := newIdentityHTTPHandler(test.repo)
-			w, request := identityRoleRequest(http.MethodPost, "/identity/departments", test.body, nil)
+			w, request := identityRoleRequest(http.MethodPost, "/identity/organization-units", test.body, nil)
 			test.call(handler, w, request)
 			if response.status != http.StatusInternalServerError || response.err != errIdentityHTTPTest {
 				t.Fatalf("status=%d err=%v", response.status, response.err)
@@ -181,7 +187,7 @@ func TestIdentityDepartmentHandlersRejectDecodeAndRepositoryFailures(t *testing.
 	}
 }
 
-func TestIdentityDepartmentOwnerControlledAuthoringCurrentResource(t *testing.T) {
+func TestIdentityOrganizationUnitOwnerControlledAuthoringCurrentResource(t *testing.T) {
 	tests := []struct {
 		name        string
 		update      bool
@@ -192,20 +198,20 @@ func TestIdentityDepartmentOwnerControlledAuthoringCurrentResource(t *testing.T)
 	}{
 		{
 			name:       "create current load failure",
-			repository: &identityHTTPRepository{listDepartmentsErr: errIdentityHTTPTest},
+			repository: &identityHTTPRepository{listOrganizationUnitsErr: errIdentityHTTPTest},
 			expected:   "empty",
 			wantStatus: http.StatusInternalServerError,
 		},
 		{
 			name:       "create current match",
-			repository: &identityHTTPRepository{departments: []identitymodel.IdentityDepartment{{ID: "department-1", Name: "Existing"}}},
+			repository: &identityHTTPRepository{organizationUnits: []identitymodel.IdentityOrganizationUnit{{ID: "organizationUnit-1", Name: "Existing"}}},
 			wantStatus: http.StatusCreated, wantUpserts: 1,
 		},
 		{
 			name: "create current miss",
 			repository: &identityHTTPRepository{
-				departments:             []identitymodel.IdentityDepartment{{ID: "department-other", Name: "Other"}},
-				storeDepartmentOnUpsert: true,
+				organizationUnits:             []identitymodel.IdentityOrganizationUnit{{ID: "organizationUnit-other", Name: "Other"}},
+				storeOrganizationUnitOnUpsert: true,
 			},
 			expected:   "empty",
 			wantStatus: http.StatusCreated, wantUpserts: 1,
@@ -213,22 +219,22 @@ func TestIdentityDepartmentOwnerControlledAuthoringCurrentResource(t *testing.T)
 		{
 			name:       "update current load failure",
 			update:     true,
-			repository: &identityHTTPRepository{listDepartmentsErr: errIdentityHTTPTest},
+			repository: &identityHTTPRepository{listOrganizationUnitsErr: errIdentityHTTPTest},
 			expected:   "empty",
 			wantStatus: http.StatusInternalServerError,
 		},
 		{
 			name:       "update current match",
 			update:     true,
-			repository: &identityHTTPRepository{departments: []identitymodel.IdentityDepartment{{ID: "department-1", Name: "Existing"}}},
+			repository: &identityHTTPRepository{organizationUnits: []identitymodel.IdentityOrganizationUnit{{ID: "organizationUnit-1", Name: "Existing"}}},
 			wantStatus: http.StatusOK, wantUpserts: 1,
 		},
 		{
 			name:   "update current miss",
 			update: true,
 			repository: &identityHTTPRepository{
-				departments:             []identitymodel.IdentityDepartment{{ID: "department-other", Name: "Other"}},
-				storeDepartmentOnUpsert: true,
+				organizationUnits:             []identitymodel.IdentityOrganizationUnit{{ID: "organizationUnit-other", Name: "Other"}},
+				storeOrganizationUnitOnUpsert: true,
 			},
 			expected:   "empty",
 			wantStatus: http.StatusOK, wantUpserts: 1,
@@ -237,9 +243,9 @@ func TestIdentityDepartmentOwnerControlledAuthoringCurrentResource(t *testing.T)
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			handler, response := newIdentityHTTPHandler(test.repository)
-			actionKey := "identity.departments.create"
+			actionKey := "identity.organization_units.create"
 			if test.update {
-				actionKey = "identity.departments.update"
+				actionKey = "identity.organization_units.update"
 			}
 			handler.principal = func(*http.Request) identitymodel.Principal {
 				return identitymodel.Principal{
@@ -250,9 +256,9 @@ func TestIdentityDepartmentOwnerControlledAuthoringCurrentResource(t *testing.T)
 			if test.expected == "" {
 				var err error
 				test.expected, err = identityAuthoringResourceHash(
-					"identity.department",
-					"department-1",
-					test.repository.departments[0],
+					"identity.organization_unit",
+					"organizationUnit-1",
+					test.repository.organizationUnits[0],
 					true,
 				)
 				if err != nil {
@@ -261,20 +267,20 @@ func TestIdentityDepartmentOwnerControlledAuthoringCurrentResource(t *testing.T)
 			}
 			w, request := identityRoleRequest(
 				http.MethodPost,
-				"/identity/departments/department-1",
-				`{"id":"department-1","name":"Changed"}`,
-				map[string]string{"departmentID": "department-1"},
+				"/identity/organization-units/organizationUnit-1",
+				`{"id":"organizationUnit-1","code":"CHANGED","name":"Changed","node_type":"department"}`,
+				map[string]string{"organizationUnitID": "organizationUnit-1"},
 			)
 			request.Header.Set("Builder-Task-ID", "task-1")
-			request.Header.Set("Idempotency-Key", "department-"+test.name)
+			request.Header.Set("Idempotency-Key", "organizationUnit-"+test.name)
 			request.Header.Set("Expected-Schema-Hash", test.expected)
 			if test.update {
-				handler.updateIdentityDepartment(w, request)
+				handler.updateIdentityOrganizationUnit(w, request)
 			} else {
-				handler.createIdentityDepartment(w, request)
+				handler.createIdentityOrganizationUnit(w, request)
 			}
-			if response.status != test.wantStatus || test.repository.upsertDepartmentCalls != test.wantUpserts {
-				t.Fatalf("status=%d err=%v upserts=%d", response.status, response.err, test.repository.upsertDepartmentCalls)
+			if response.status != test.wantStatus || test.repository.upsertOrganizationUnitCalls != test.wantUpserts {
+				t.Fatalf("status=%d err=%v upserts=%d", response.status, response.err, test.repository.upsertOrganizationUnitCalls)
 			}
 		})
 	}

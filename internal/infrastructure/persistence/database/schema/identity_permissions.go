@@ -47,7 +47,7 @@ func identityPermissionsTableDefinition(renderer ormdialect.Renderer) *ormschema
 			ormschema.Column("workspace_id", ormschema.TextKey(128)).NotNull(),
 			ormschema.Column("permission_key", ormschema.TextKey(255)).NotNull(),
 			ormschema.Column("resource_key", ormschema.TextKey(255)).NotNull(),
-			ormschema.Column("action_key", ormschema.TextKey(128)).NotNull(),
+			ormschema.Column("operation_key", ormschema.TextKey(128)).NotNull(),
 			ormschema.Column("label", ormschema.Text()).NotNull(),
 			ormschema.Column("description", ormschema.Text()).NotNull().DefaultValue(""),
 			ormschema.Column("category", ormschema.Text()).NotNull(),

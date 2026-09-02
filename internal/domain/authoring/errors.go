@@ -23,8 +23,8 @@ func fallbackAuthoringErrorCapability(code string) string {
 	switch {
 	case strings.HasPrefix(code, "backend.action."):
 		return "action.definition"
-	case strings.HasPrefix(code, "backend.identity.department") || strings.HasPrefix(code, "backend.identity.parent_department"):
-		return "identity.department"
+	case strings.HasPrefix(code, "backend.identity.organization_unit") || strings.HasPrefix(code, "backend.identity.parent_organization_unit"):
+		return "identity.organization_unit"
 	case strings.HasPrefix(code, "backend.identity.user"):
 		return "identity.user"
 	case strings.HasPrefix(code, "backend.identity.menu"):

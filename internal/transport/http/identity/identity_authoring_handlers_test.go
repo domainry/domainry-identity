@@ -23,7 +23,7 @@ func TestIdentityAuthoringValidationHandlersUseExactCapabilityPayloads(t *testin
 		{name: "role permission", body: `{"permission_keys":["identity.users.list"]}`, call: handler.validateIdentityRolePermissionAuthoring},
 		{name: "role menu assignment", body: `{"menu_ids":["orders"]}`, call: handler.validateIdentityRoleMenuAssignmentAuthoring},
 		{name: "user", body: `{"id":"sales_manager","name":"Sales Manager","email":"sales.manager@example.com","status":"active"}`, call: handler.validateIdentityUserAuthoring},
-		{name: "department", body: `{"id":"sales","name":"Sales","status":"active"}`, call: handler.validateIdentityDepartmentAuthoring},
+		{name: "organizationUnit", body: `{"id":"sales","code":"SALES","name":"Sales","node_type":"department","status":"active"}`, call: handler.validateIdentityOrganizationUnitAuthoring},
 		{name: "user role assignment", body: `{"role_id":"sales_manager"}`, call: handler.validateIdentityUserRoleAssignmentAuthoring},
 		{name: "role data scopes", body: `{"data_scopes":[]}`, call: handler.validateIdentityRoleDataScopeAuthoring},
 		{name: "role field permissions", body: `{"field_permissions":[]}`, call: handler.validateIdentityRoleFieldPermissionAuthoring},
@@ -32,7 +32,7 @@ func TestIdentityAuthoringValidationHandlersUseExactCapabilityPayloads(t *testin
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			response.status, response.value, response.err = 0, nil, nil
-			writer, request := identityRoleRequest(http.MethodPost, "/identity/roles/sales_manager/validate", test.body, map[string]string{"roleID": "sales_manager", "userID": "sales_manager", "departmentID": "sales"})
+			writer, request := identityRoleRequest(http.MethodPost, "/identity/roles/sales_manager/validate", test.body, map[string]string{"roleID": "sales_manager", "userID": "sales_manager", "organizationUnitID": "sales"})
 			test.call(writer, request)
 			if response.status != http.StatusOK || response.value == nil || response.err != nil {
 				t.Fatalf("status=%d value=%#v err=%v", response.status, response.value, response.err)
@@ -49,7 +49,7 @@ func TestIdentityAuthoringValidationHandlersCoverDecodeAndGovernanceErrors(t *te
 		call func(http.ResponseWriter, *http.Request)
 	}{
 		{name: "user", body: `{}`, call: handler.validateIdentityUserAuthoring},
-		{name: "department", body: `{}`, call: handler.validateIdentityDepartmentAuthoring},
+		{name: "organizationUnit", body: `{}`, call: handler.validateIdentityOrganizationUnitAuthoring},
 		{name: "user role", body: `{"role_id":"missing"}`, call: handler.validateIdentityUserRoleAssignmentAuthoring},
 		{name: "role", body: `{}`, call: handler.validateIdentityRoleAuthoring},
 		{name: "role permissions", body: `{"permission_keys":["missing"]}`, call: handler.validateIdentityRolePermissionAuthoring},
@@ -62,7 +62,7 @@ func TestIdentityAuthoringValidationHandlersCoverDecodeAndGovernanceErrors(t *te
 		t.Run(testCase.name, func(t *testing.T) {
 			for _, body := range []string{`{`, testCase.body} {
 				response.status, response.value, response.err = 0, nil, nil
-				writer, request := identityRoleRequest(http.MethodPost, "/validate", body, map[string]string{"roleID": "missing", "userID": "missing", "departmentID": "missing", "menuID": "missing"})
+				writer, request := identityRoleRequest(http.MethodPost, "/validate", body, map[string]string{"roleID": "missing", "userID": "missing", "organizationUnitID": "missing", "menuID": "missing"})
 				testCase.call(writer, request)
 				if response.status == http.StatusOK {
 					t.Fatalf("body %q unexpectedly succeeded: %#v", body, response.value)

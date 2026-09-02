@@ -10,7 +10,7 @@ import (
 
 func accessReviewItemColumns() []string {
 	return []string{
-		"id", "review_id", "user_id", "role_id", "role_key", "workforce_profile_id", "binding_key", "profile_id",
+		"id", "review_id", "user_id", "role_id", "role_key", "binding_key", "profile_id",
 		"risk_level", "priority", "priority_reasons_json", "last_used_at", "status", "decision", "replacement_role_id",
 		"expires_at", "reviewer_id", "reason", "decided_at", "version", "created_at", "updated_at",
 	}
@@ -18,7 +18,7 @@ func accessReviewItemColumns() []string {
 
 func accessReviewItemRow(status string, version int64) []driver.Value {
 	return []driver.Value{
-		"item", "review", "user", "role", "role-key", nil, nil, nil,
+		"item", "review", "user", "role", "role-key", nil, nil,
 		"normal", int64(1), `["reason"]`, nil, status, nil, nil,
 		nil, nil, nil, nil, version, "created", "updated",
 	}
@@ -26,13 +26,13 @@ func accessReviewItemRow(status string, version int64) []driver.Value {
 
 func accessReviewAssignmentColumns() []string {
 	return []string{
-		"workforce_profile_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until",
+		"binding_key", "profile_id", "source", "status", "valid_from", "valid_until",
 		"granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason", "expires_at", "created_at", "updated_at",
 	}
 }
 
 func accessReviewAssignmentRow() []driver.Value {
-	return []driver.Value{nil, nil, nil, "manual", "active", nil, nil, nil, nil, nil, nil, nil, nil, "created", "updated"}
+	return []driver.Value{nil, nil, "manual", "active", nil, nil, nil, nil, nil, nil, nil, nil, "created", "updated"}
 }
 
 func validAccessReviewMutation(decision identitymodel.IdentityAccessReviewDecision) identitymodel.IdentityAccessReviewDecisionMutation {

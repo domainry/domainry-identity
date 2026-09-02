@@ -3,7 +3,7 @@ package identitymodel
 import "testing"
 
 func FuzzCanonicalIdentityDataScopeRoundTrip(f *testing.F) {
-	for _, seed := range append(AuthoringDataScopeValues(), "all", "owned", "department_and_children", "invalid") {
+	for _, seed := range append(AuthoringDataScopeValues(), "all", "owned", "organization_tree", "invalid") {
 		f.Add(seed)
 	}
 	f.Fuzz(func(t *testing.T, value string) {

@@ -37,7 +37,7 @@ func (adapter sdkPermissions) Reconcile(ctx context.Context, request identitysdk
 		definitions[index] = identitymodel.IdentityPermissionDefinitionRecord{
 			PermissionKey: strings.TrimSpace(definition.PermissionKey),
 			ResourceKey:   strings.TrimSpace(definition.ResourceKey),
-			ActionKey:     strings.TrimSpace(definition.ActionKey),
+			OperationKey:  strings.TrimSpace(definition.OperationKey),
 			Label:         strings.TrimSpace(definition.Label),
 			Description:   strings.TrimSpace(definition.Description),
 			Category:      strings.TrimSpace(definition.Category),
@@ -88,7 +88,7 @@ func (adapter sdkPermissions) CurrentSourceSnapshot(ctx context.Context, request
 	definitions := make([]identitysdk.PermissionDefinition, len(current))
 	for index, definition := range current {
 		definitions[index] = identitysdk.PermissionDefinition{
-			PermissionKey: definition.PermissionKey, ResourceKey: definition.ResourceKey, ActionKey: definition.ActionKey,
+			PermissionKey: definition.PermissionKey, ResourceKey: definition.ResourceKey, OperationKey: definition.OperationKey,
 			Label: definition.Label, Description: definition.Description, Category: definition.Category, SourceKind: definition.SourceKind,
 		}
 	}

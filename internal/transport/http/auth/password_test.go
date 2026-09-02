@@ -217,8 +217,8 @@ func (r *authExternalIdentityRepository) UpsertIdentityUsersAtomically(ctx conte
 	return nil
 }
 
-func (*authExternalIdentityRepository) ListIdentityDepartments(context.Context, string) ([]identitymodel.IdentityDepartment, error) {
-	return []identitymodel.IdentityDepartment{{ID: "company", Name: "Company", Status: identitymodel.IdentityStatusActive}}, nil
+func (*authExternalIdentityRepository) ListIdentityOrganizationUnits(context.Context, string) ([]identitymodel.IdentityOrganizationUnit, error) {
+	return []identitymodel.IdentityOrganizationUnit{{ID: "company", Name: "Company", Status: identitymodel.IdentityStatusActive}}, nil
 }
 
 func (r *authExternalIdentityRepository) AssignIdentityUserRole(_ context.Context, _ string, assignment identitymodel.IdentityUserRoleAssignment) error {

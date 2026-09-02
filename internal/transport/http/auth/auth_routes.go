@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
+	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
@@ -20,10 +21,10 @@ func (h *AuthHandler) RegisterRoutes(mux routeRegistrar) {
 	h.registerAuthAction(mux, "auth.logout", h.authLogout)
 	h.registerAuthAction(mux, "auth.sessions.revoke_others", h.authRevokeOtherSessions)
 	h.registerAuthAction(mux, "auth.change_password", h.authChangePassword)
-	h.registerAuthAction(mux, "auth.reset_password", h.authResetPassword)
+	h.registerAuthAction(mux, identitycontract.IdentityActionAuthResetPassword, h.authResetPassword)
 	h.registerAuthAction(mux, "auth.providers.list", h.authProviders)
 	h.registerAuthAction(mux, "auth.providers.setup_check", h.authProviderSetupCheck)
-	h.registerAuthAction(mux, "auth.providers.setup", h.authProviderSetupSave)
+	h.registerAuthAction(mux, identitycontract.IdentityActionAuthProvidersSetup, h.authProviderSetupSave)
 	h.registerAuthAction(mux, "auth.providers.start_get", h.authProviderStart)
 	h.registerAuthAction(mux, "auth.providers.start_post", h.authProviderStart)
 	h.registerAuthAction(mux, "auth.providers.callback_get", h.authProviderCallback)

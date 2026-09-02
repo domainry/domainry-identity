@@ -72,89 +72,89 @@ func (s *identityHTTPUserSecurity) RevokeMFAFactor(_ context.Context, _, _, fact
 
 type identityHTTPRepository struct {
 	identityrepository.IdentityRepository
-	err                               error
-	upsertUserErr                     error
-	listUsersErrAfterUpsert           error
-	dropUpsertUser                    bool
-	upsertUserCalls                   int
-	listDepartmentsErr                error
-	upsertDepartmentErr               error
-	upsertDepartmentCalls             int
-	storeDepartmentOnUpsert           bool
-	removeUserErr                     error
-	removeUserCalls                   int
-	upsertRoleErr                     error
-	removeRoleErr                     error
-	statusErr                         error
-	assignErr                         error
-	removeAssignmentErr               error
-	updateRequestErr                  error
-	upsertMenuErr                     error
-	listMenusErr                      error
-	removeMenusErr                    error
-	setRoleMenusErr                   error
-	listMenuLinksErr                  error
-	commitAuthorizationErr            error
-	listPermissionsErr                error
-	listDataScopesErr                 error
-	listFieldPermissionsErr           error
-	listWorkforceAssignmentsErr       error
-	failListWorkforceAssignmentsAfter int
-	listWorkforceAssignmentsCalls     int
-	failListRolesAfter                int
-	listRolesCalls                    int
-	failListMenusAfterUpsert          bool
-	failListLinksAfterSet             bool
-	failListPermissionsAfterSet       bool
-	failListDataScopesAfterSet        bool
-	failListFieldPermissionsAfterSet  bool
-	users                             []identitymodel.IdentityUser
-	departments                       []identitymodel.IdentityDepartment
-	roles                             []identitymodel.IdentityRole
-	menus                             []identitymodel.IdentityMenu
-	assignments                       []identitymodel.IdentityUserRoleAssignment
-	entitlementReceipts               map[string]identitymodel.IdentityEntitlementBatchReceipt
-	workforceTransferReceipts         map[string]identitymodel.IdentityWorkforceTransferBatchReceipt
-	menuLinks                         []identitymodel.IdentityRoleMenuAssignment
-	permissionAssignments             []identitymodel.IdentityRolePermissionAssignment
-	dataScopes                        []identitymodel.IdentityDataScopePolicy
-	fieldPermissions                  []identitymodel.IdentityFieldPermission
-	requests                          []identitymodel.IdentityRoleRequest
-	workforceProfiles                 []identitymodel.IdentityWorkforceProfile
-	workforceAssignments              []identitymodel.IdentityWorkforceAssignment
-	profileBindings                   []identitymodel.IdentityProfileBinding
-	lastRole                          identitymodel.IdentityRole
-	lastUser                          identitymodel.IdentityUser
-	lastDepartment                    identitymodel.IdentityDepartment
-	lastMenu                          identitymodel.IdentityMenu
-	lastStatus                        identitymodel.IdentityStatus
-	lastUserID                        string
-	lastRoleID                        string
-	lastMenuIDs                       []string
-	lastWorkforceProfile              identitymodel.IdentityWorkforceProfile
-	lastWorkforceAssignment           identitymodel.IdentityWorkforceAssignment
-	lastWorkforceTermination          identitymodel.IdentityWorkforceTerminationMutation
-	lastWorkforceLifecycle            identitymodel.IdentityWorkforceLifecycleMutation
-	lastWorkforceOnboarding           identitymodel.IdentityWorkforceOnboardingMutation
+	err                              error
+	upsertUserErr                    error
+	listUsersErrAfterUpsert          error
+	dropUpsertUser                   bool
+	upsertUserCalls                  int
+	listOrganizationUnitsErr         error
+	upsertOrganizationUnitErr        error
+	upsertOrganizationUnitCalls      int
+	storeOrganizationUnitOnUpsert    bool
+	removeUserErr                    error
+	removeUserCalls                  int
+	upsertRoleErr                    error
+	removeRoleErr                    error
+	statusErr                        error
+	assignErr                        error
+	removeAssignmentErr              error
+	updateRequestErr                 error
+	upsertMenuErr                    error
+	listMenusErr                     error
+	removeMenusErr                   error
+	setRoleMenusErr                  error
+	listMenuLinksErr                 error
+	commitAuthorizationErr           error
+	listPermissionsErr               error
+	listDataScopesErr                error
+	listFieldPermissionsErr          error
+	failListRolesAfter               int
+	listRolesCalls                   int
+	failListMenusAfterUpsert         bool
+	failListLinksAfterSet            bool
+	failListPermissionsAfterSet      bool
+	failListDataScopesAfterSet       bool
+	failListFieldPermissionsAfterSet bool
+	users                            []identitymodel.IdentityUser
+	organizationUnits                []identitymodel.IdentityOrganizationUnit
+	roles                            []identitymodel.IdentityRole
+	menus                            []identitymodel.IdentityMenu
+	assignments                      []identitymodel.IdentityUserRoleAssignment
+	entitlementReceipts              map[string]identitymodel.IdentityEntitlementBatchReceipt
+	menuLinks                        []identitymodel.IdentityRoleMenuAssignment
+	permissionAssignments            []identitymodel.IdentityRolePermissionAssignment
+	dataScopes                       []identitymodel.IdentityDataScopePolicy
+	fieldPermissions                 []identitymodel.IdentityFieldPermission
+	requests                         []identitymodel.IdentityRoleRequest
+	profileBindings                  []identitymodel.IdentityProfileBinding
+	lastRole                         identitymodel.IdentityRole
+	lastUser                         identitymodel.IdentityUser
+	lastOrganizationUnit             identitymodel.IdentityOrganizationUnit
+	lastMenu                         identitymodel.IdentityMenu
+	lastStatus                       identitymodel.IdentityStatus
+	lastUserID                       string
+	lastRoleID                       string
+	lastMenuIDs                      []string
 }
 
-func (r *identityHTTPRepository) ListIdentityDepartments(context.Context, string) ([]identitymodel.IdentityDepartment, error) {
-	return append([]identitymodel.IdentityDepartment(nil), r.departments...), firstIdentityHTTPError(r.listDepartmentsErr, r.err)
+func (r *identityHTTPRepository) ListIdentityOrganizationUnits(context.Context, string) ([]identitymodel.IdentityOrganizationUnit, error) {
+	return append([]identitymodel.IdentityOrganizationUnit(nil), r.organizationUnits...), firstIdentityHTTPError(r.listOrganizationUnitsErr, r.err)
 }
 
-func (r *identityHTTPRepository) UpsertIdentityDepartment(_ context.Context, _ string, department identitymodel.IdentityDepartment) error {
-	r.upsertDepartmentCalls++
-	r.lastDepartment = department
-	for index := range r.departments {
-		if r.departments[index].ID == department.ID {
-			r.departments[index] = department
-			return firstIdentityHTTPError(r.upsertDepartmentErr, r.err)
+func (r *identityHTTPRepository) UpsertIdentityOrganizationUnit(_ context.Context, _ string, organizationUnit identitymodel.IdentityOrganizationUnit) error {
+	r.upsertOrganizationUnitCalls++
+	r.lastOrganizationUnit = organizationUnit
+	for index := range r.organizationUnits {
+		if r.organizationUnits[index].ID == organizationUnit.ID {
+			r.organizationUnits[index] = organizationUnit
+			return firstIdentityHTTPError(r.upsertOrganizationUnitErr, r.err)
 		}
 	}
-	if r.storeDepartmentOnUpsert {
-		r.departments = append(r.departments, department)
+	if r.storeOrganizationUnitOnUpsert {
+		r.organizationUnits = append(r.organizationUnits, organizationUnit)
 	}
-	return firstIdentityHTTPError(r.upsertDepartmentErr, r.err)
+	return firstIdentityHTTPError(r.upsertOrganizationUnitErr, r.err)
+}
+
+func (r *identityHTTPRepository) UpsertIdentityOrganizationUnitsAtomically(ctx context.Context, workspace string, organizationUnits []identitymodel.IdentityOrganizationUnit) error {
+	before := append([]identitymodel.IdentityOrganizationUnit(nil), r.organizationUnits...)
+	for _, organizationUnit := range organizationUnits {
+		if err := r.UpsertIdentityOrganizationUnit(ctx, workspace, organizationUnit); err != nil {
+			r.organizationUnits = before
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *identityHTTPRepository) ListIdentityUsers(context.Context, string) ([]identitymodel.IdentityUser, error) {
@@ -199,10 +199,31 @@ func (r *identityHTTPRepository) UpsertIdentityUser(_ context.Context, _ string,
 	return nil
 }
 func (r *identityHTTPRepository) UpsertIdentityUsersAtomically(_ context.Context, _ string, users []identitymodel.IdentityUser) error {
-	if len(users) > 0 {
-		r.lastUser = users[len(users)-1]
+	if len(users) == 0 {
+		return firstIdentityHTTPError(r.upsertUserErr, r.err)
 	}
-	return firstIdentityHTTPError(r.upsertUserErr, r.err)
+	r.lastUser = users[0]
+	if err := firstIdentityHTTPError(r.upsertUserErr, r.err); err != nil {
+		return err
+	}
+	r.upsertUserCalls++
+	if r.dropUpsertUser {
+		return nil
+	}
+	for _, user := range users {
+		updated := false
+		for index := range r.users {
+			if r.users[index].ID == user.ID {
+				r.users[index] = user
+				updated = true
+				break
+			}
+		}
+		if !updated {
+			r.users = append(r.users, user)
+		}
+	}
+	return nil
 }
 func (r *identityHTTPRepository) UpsertIdentityUserWithRoleAssignmentsAtomically(_ context.Context, _ string, user identitymodel.IdentityUser, assignments []identitymodel.IdentityUserRoleAssignment) error {
 	r.lastUser = user
@@ -218,132 +239,6 @@ func (r *identityHTTPRepository) RemoveIdentityUser(_ context.Context, _, userID
 func (r *identityHTTPRepository) SetIdentityUserStatus(_ context.Context, _ string, userID string, status identitymodel.IdentityStatus) error {
 	r.lastUserID, r.lastStatus = userID, status
 	return firstIdentityHTTPError(r.statusErr, r.err)
-}
-
-func (r *identityHTTPRepository) TerminateIdentityWorkforce(_ context.Context, mutation identitymodel.IdentityWorkforceTerminationMutation) (identitymodel.IdentityWorkforceTerminationResult, error) {
-	if r.err != nil {
-		return identitymodel.IdentityWorkforceTerminationResult{}, r.err
-	}
-	r.lastWorkforceTermination = mutation
-	r.lastWorkforceProfile = mutation.Profile
-	for index := range r.workforceProfiles {
-		if r.workforceProfiles[index].ID == mutation.Profile.ID {
-			r.workforceProfiles[index] = mutation.Profile
-		}
-	}
-	var ended, revoked int64
-	for index := range r.workforceAssignments {
-		if r.workforceAssignments[index].WorkforceProfileID == mutation.Profile.ID && r.workforceAssignments[index].Status == identitymodel.IdentityStatusActive {
-			r.workforceAssignments[index].Status = identitymodel.IdentityStatusDisabled
-			r.workforceAssignments[index].EffectiveTo = mutation.EffectiveAt
-			ended++
-		}
-	}
-	for index := range r.assignments {
-		if r.assignments[index].WorkforceProfileID == mutation.Profile.ID && r.assignments[index].Status == "active" {
-			r.assignments[index].Status = "revoked"
-			revoked++
-		}
-	}
-	var preserved int64
-	for _, binding := range r.profileBindings {
-		if binding.IdentityUserID == mutation.Profile.IdentityUserID {
-			preserved++
-		}
-	}
-	return identitymodel.IdentityWorkforceTerminationResult{
-		Profile: mutation.Profile, EndedAssignmentCount: ended, RevokedEntitlementCount: revoked,
-		PreservedProfileBindings: preserved,
-	}, nil
-}
-
-func (r *identityHTTPRepository) ApplyIdentityWorkforceLifecycle(_ context.Context, mutation identitymodel.IdentityWorkforceLifecycleMutation) (identitymodel.IdentityWorkforceLifecycleResult, error) {
-	if r.err != nil {
-		return identitymodel.IdentityWorkforceLifecycleResult{}, r.err
-	}
-	r.lastWorkforceLifecycle = mutation
-	if mutation.Profile != nil {
-		r.lastWorkforceProfile = *mutation.Profile
-	}
-	if len(mutation.UpsertAssignments) > 0 {
-		r.lastWorkforceAssignment = mutation.UpsertAssignments[len(mutation.UpsertAssignments)-1]
-	}
-	return identitymodel.IdentityWorkforceLifecycleResult{
-		Profile: mutation.Profile, Assignments: mutation.UpsertAssignments,
-		EndedAssignmentCount: int64(len(mutation.EndAssignments)),
-	}, nil
-}
-
-func (r *identityHTTPRepository) ApplyIdentityWorkforceOnboarding(_ context.Context, mutation identitymodel.IdentityWorkforceOnboardingMutation) (identitymodel.IdentityWorkforceOnboardingResult, error) {
-	if r.err != nil {
-		return identitymodel.IdentityWorkforceOnboardingResult{}, r.err
-	}
-	r.lastWorkforceOnboarding = mutation
-	return identitymodel.IdentityWorkforceOnboardingResult{
-		User: mutation.User, Profile: mutation.Profile, Assignment: mutation.Assignment,
-		RoleAssignments: mutation.RoleAssignments,
-	}, nil
-}
-
-func (r *identityHTTPRepository) ListIdentityWorkforceProfiles(context.Context, string) ([]identitymodel.IdentityWorkforceProfile, error) {
-	return append([]identitymodel.IdentityWorkforceProfile(nil), r.workforceProfiles...), r.err
-}
-func (r *identityHTTPRepository) GetIdentityWorkforceProfile(_ context.Context, _, profileID string) (identitymodel.IdentityWorkforceProfile, bool, error) {
-	for _, profile := range r.workforceProfiles {
-		if profile.ID == profileID {
-			return profile, true, r.err
-		}
-	}
-	return identitymodel.IdentityWorkforceProfile{}, false, r.err
-}
-func (r *identityHTTPRepository) UpsertIdentityWorkforceProfile(_ context.Context, _ string, profile identitymodel.IdentityWorkforceProfile) error {
-	r.lastWorkforceProfile = profile
-	if r.err != nil {
-		return r.err
-	}
-	for index := range r.workforceProfiles {
-		if r.workforceProfiles[index].ID == profile.ID {
-			r.workforceProfiles[index] = profile
-			return nil
-		}
-	}
-	r.workforceProfiles = append(r.workforceProfiles, profile)
-	return nil
-}
-func (r *identityHTTPRepository) ListIdentityWorkforceAssignments(_ context.Context, _, profileID string) ([]identitymodel.IdentityWorkforceAssignment, error) {
-	r.listWorkforceAssignmentsCalls++
-	if r.failListWorkforceAssignmentsAfter > 0 && r.listWorkforceAssignmentsCalls > r.failListWorkforceAssignmentsAfter {
-		return nil, errIdentityHTTPTest
-	}
-	out := []identitymodel.IdentityWorkforceAssignment{}
-	for _, assignment := range r.workforceAssignments {
-		if profileID == "" || assignment.WorkforceProfileID == profileID {
-			out = append(out, assignment)
-		}
-	}
-	return out, firstIdentityHTTPError(r.listWorkforceAssignmentsErr, r.err)
-}
-func (r *identityHTTPRepository) GetIdentityWorkforceAssignment(_ context.Context, _, assignmentID string) (identitymodel.IdentityWorkforceAssignment, bool, error) {
-	for _, assignment := range r.workforceAssignments {
-		if assignment.ID == assignmentID {
-			return assignment, true, r.err
-		}
-	}
-	return identitymodel.IdentityWorkforceAssignment{}, false, r.err
-}
-func (r *identityHTTPRepository) UpsertIdentityWorkforceAssignment(_ context.Context, _ string, assignment identitymodel.IdentityWorkforceAssignment) error {
-	r.lastWorkforceAssignment = assignment
-	if r.err != nil {
-		return r.err
-	}
-	for index := range r.workforceAssignments {
-		if r.workforceAssignments[index].ID == assignment.ID {
-			r.workforceAssignments[index] = assignment
-			return nil
-		}
-	}
-	r.workforceAssignments = append(r.workforceAssignments, assignment)
-	return nil
 }
 
 func (r *identityHTTPRepository) ListIdentityRoles(context.Context, string) ([]identitymodel.IdentityRole, error) {
@@ -398,24 +293,6 @@ func (r *identityHTTPRepository) ApplyIdentityEntitlementBatch(_ context.Context
 		IdempotencyKey: mutation.IdempotencyKey, RequestFingerprint: mutation.RequestFingerprint, Items: mutation.Items, CreatedAt: "now",
 	}
 	r.entitlementReceipts[mutation.IdempotencyKey] = receipt
-	return receipt, nil
-}
-func (r *identityHTTPRepository) GetIdentityWorkforceTransferBatchReceipt(_ context.Context, _, idempotencyKey string) (identitymodel.IdentityWorkforceTransferBatchReceipt, bool, error) {
-	receipt, found := r.workforceTransferReceipts[idempotencyKey]
-	return receipt, found, r.err
-}
-func (r *identityHTTPRepository) ApplyIdentityWorkforceTransferBatch(_ context.Context, mutation identitymodel.IdentityWorkforceTransferBatchMutation) (identitymodel.IdentityWorkforceTransferBatchReceipt, error) {
-	if r.err != nil {
-		return identitymodel.IdentityWorkforceTransferBatchReceipt{}, r.err
-	}
-	if r.workforceTransferReceipts == nil {
-		r.workforceTransferReceipts = map[string]identitymodel.IdentityWorkforceTransferBatchReceipt{}
-	}
-	receipt := identitymodel.IdentityWorkforceTransferBatchReceipt{
-		ID: "receipt-" + mutation.IdempotencyKey, WorkspaceID: mutation.WorkspaceID, ActorID: mutation.ActorID,
-		IdempotencyKey: mutation.IdempotencyKey, RequestFingerprint: mutation.RequestFingerprint, Items: mutation.Items, CreatedAt: "now",
-	}
-	r.workforceTransferReceipts[mutation.IdempotencyKey] = receipt
 	return receipt, nil
 }
 func (r *identityHTTPRepository) ListIdentityRoleRequests(_ context.Context, _, status, userID string) ([]identitymodel.IdentityRoleRequest, error) {

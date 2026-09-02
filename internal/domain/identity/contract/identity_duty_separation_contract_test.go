@@ -24,10 +24,10 @@ func TestIdentityManagementDutiesDoNotGrantEachOther(t *testing.T) {
 		granted string
 		denied  []string
 	}{
-		{"workforce administrator", "identity.workforce.update", []string{"identity.profile_bindings.command", "identity.role_permissions.publish", "identity.users.force_logout"}},
-		{"member operations", "identity.profile_bindings.command", []string{"identity.users.get", "identity.users.update", "identity.workforce.update", "identity.role_permissions.publish", "identity.users.force_logout"}},
-		{"authorization administrator", "identity.role_permissions.publish", []string{"identity.workforce.update", "identity.profile_bindings.command", "identity.users.force_logout"}},
-		{"security administrator", "identity.users.force_logout", []string{"identity.workforce.update", "identity.profile_bindings.command", "identity.role_permissions.publish"}},
+		{"organization administrator", "identity.organization_units.update", []string{"identity.profile_bindings.command", "identity.role_permissions.publish", "identity.users.force_logout"}},
+		{"member operations", "identity.profile_bindings.command", []string{"identity.users.get", "identity.users.update", "identity.organization_units.update", "identity.role_permissions.publish", "identity.users.force_logout"}},
+		{"authorization administrator", "identity.role_permissions.publish", []string{"identity.organization_units.update", "identity.profile_bindings.command", "identity.users.force_logout"}},
+		{"security administrator", "identity.users.force_logout", []string{"identity.organization_units.update", "identity.profile_bindings.command", "identity.role_permissions.publish"}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

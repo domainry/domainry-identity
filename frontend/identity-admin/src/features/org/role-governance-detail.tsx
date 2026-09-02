@@ -152,7 +152,7 @@ export function RoleGovernanceDetail({ roleID }: RoleGovernanceDetailProps) {
       </GovernanceSection>
 
       <GovernanceSection title={t('roles.detail.membersSources')}>
-        {members.length ? members.map((member) => <div key={`${member.user_id}:${member.workforce_profile_id ?? ''}:${member.profile_id ?? ''}`}><code>{member.user_id}</code> · {member.assignment_source || member.source || 'direct'}{member.binding_key ? ` · ${member.binding_key}:${member.profile_id}` : ''}{member.workforce_profile_id ? ` · workforce:${member.workforce_profile_id}` : ''}</div>) : <span className='text-muted-foreground'>{t('common.none')}</span>}
+        {members.length ? members.map((member) => <div key={`${member.user_id}:${member.profile_id ?? ''}`}><code>{member.user_id}</code> · {member.assignment_source || member.source || 'direct'}{member.binding_key ? ` · ${member.binding_key}:${member.profile_id}` : ''}</div>) : <span className='text-muted-foreground'>{t('common.none')}</span>}
       </GovernanceSection>
 
       <GovernanceSection title={t('roles.detail.conflictsImpact')}>

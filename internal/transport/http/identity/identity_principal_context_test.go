@@ -13,7 +13,7 @@ func TestIdentityPrincipalContextRouteRequiresAuthenticationAndReturnsCurrentPri
 	known := true
 	handler := NewIdentityHandler(IdentityDependencies{
 		Principal: func(*http.Request) identitymodel.Principal {
-			return identitymodel.Principal{Known: known, WorkspaceID: "workspace-1", UserID: "user-1", WorkforceProfileID: "worker-1"}
+			return identitymodel.Principal{Known: known, WorkspaceID: "workspace-1", UserID: "user-1", OrgID: "sales"}
 		},
 		WriteJSON: func(w http.ResponseWriter, status int, value any) {
 			w.WriteHeader(status)
@@ -34,7 +34,7 @@ func TestIdentityPrincipalContextRouteRequiresAuthenticationAndReturnsCurrentPri
 	if err := json.NewDecoder(response.Body).Decode(&context); err != nil {
 		t.Fatal(err)
 	}
-	if context.ContractVersion != identitymodel.IdentityPrincipalContextContractV1 || context.UserID != "user-1" || len(context.RequestContexts) != 2 {
+	if context.ContractVersion != identitymodel.IdentityPrincipalContextContractV1 || context.UserID != "user-1" || context.OrgID != "sales" || len(context.RequestContexts) != 1 {
 		t.Fatalf("principal context=%+v", context)
 	}
 

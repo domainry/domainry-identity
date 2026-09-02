@@ -163,7 +163,7 @@ func (s *Store) ListUserAssignments(ctx context.Context, workspaceID, userID str
 	if err != nil {
 		return nil, err
 	}
-	builder := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_user_role_assignments", workspaceID).Columns("user_id", "role_id", "workforce_profile_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason", "expires_at", "created_at", "updated_at").OrderBy(query.Ascending("user_id"), query.Ascending("role_id"))
+	builder := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_user_role_assignments", workspaceID).Columns("user_id", "role_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason", "expires_at", "created_at", "updated_at").OrderBy(query.Ascending("user_id"), query.Ascending("role_id"))
 	if strings.TrimSpace(userID) != "" {
 		builder.Where(query.Equal("user_id", userID))
 	}
@@ -179,11 +179,11 @@ func (s *Store) ListUserAssignments(ctx context.Context, workspaceID, userID str
 	out := []identitymodel.IdentityUserRoleAssignment{}
 	for rows.Next() {
 		var item identitymodel.IdentityUserRoleAssignment
-		var workforceProfileID, bindingKey, profileID, validFrom, validUntil, grantedBy, grantReason, revokedBy, revokedAt, revokeReason, expiresAt sql.NullString
-		if err := rows.Scan(&item.UserID, &item.RoleID, &workforceProfileID, &bindingKey, &profileID, &item.Source, &item.Status, &validFrom, &validUntil, &grantedBy, &grantReason, &revokedBy, &revokedAt, &revokeReason, &expiresAt, &item.CreatedAt, &item.UpdatedAt); err != nil {
+		var bindingKey, profileID, validFrom, validUntil, grantedBy, grantReason, revokedBy, revokedAt, revokeReason, expiresAt sql.NullString
+		if err := rows.Scan(&item.UserID, &item.RoleID, &bindingKey, &profileID, &item.Source, &item.Status, &validFrom, &validUntil, &grantedBy, &grantReason, &revokedBy, &revokedAt, &revokeReason, &expiresAt, &item.CreatedAt, &item.UpdatedAt); err != nil {
 			return nil, err
 		}
-		item.WorkforceProfileID, item.BindingKey, item.ProfileID = workforceProfileID.String, bindingKey.String, profileID.String
+		item.BindingKey, item.ProfileID = bindingKey.String, profileID.String
 		item.ValidFrom, item.ValidUntil, item.GrantedBy, item.GrantReason = validFrom.String, validUntil.String, grantedBy.String, grantReason.String
 		item.RevokedBy, item.RevokedAt, item.RevokeReason = revokedBy.String, revokedAt.String, revokeReason.String
 		if expiresAt.Valid {

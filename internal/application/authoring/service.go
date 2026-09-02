@@ -57,7 +57,7 @@ func (s *Service) ExecuteUpsert(
 	if err := authorize(); err != nil {
 		return ExecutionResult{}, err
 	}
-	// Idempotency-Key is also used by Workforce command routes. A direct
+	// Idempotency-Key is also used by lifecycle command routes. A direct
 	// authoring envelope is selected only by its builder/precondition headers;
 	// this keeps older owner routes that merely forward an idempotency key from
 	// being misclassified as builder authoring requests.

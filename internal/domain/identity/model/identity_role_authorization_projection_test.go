@@ -9,7 +9,7 @@ func TestIdentityExpandRoleAuthorizationBlankAndMissingKeys(t *testing.T) {
 		PermissionSetGroups: []string{"group", "missing"},
 		GuardrailKeys:       []string{"guard", "missing"},
 	}}
-	sets := []IdentityPermissionSet{{Key: " "}, {Key: "direct", DataPermissions: []DataPermission{{ObjectKey: "direct", Scope: "all_records", Read: true}}}, {Key: "grouped", FieldPermissions: []FieldPermission{{ObjectKey: "grouped", FieldKey: "name", Read: true}}}}
+	sets := []IdentityPermissionSet{{Key: " "}, {Key: "direct", DataPermissions: []DataPermission{{ObjectKey: "direct", Scope: "all_records"}}}, {Key: "grouped", FieldPermissions: []FieldPermission{{ObjectKey: "grouped", FieldKey: "name", Read: true}}}}
 	groups := []IdentityPermissionSetGroup{{Key: " "}, {Key: "group", PermissionSetKeys: []string{" ", "grouped"}}}
 	guardrails := []IdentityGuardrailPolicy{{Key: " "}, {Key: "guard"}, {Key: "second"}}
 	roles[0].GuardrailKeys = []string{"second", "guard", "missing"}

@@ -68,9 +68,9 @@ func TestRoleGovernanceDetailComposesPublishedAuthorities(t *testing.T) {
 	service := NewIdentityApplicationService(repository, nil)
 	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{
 		Key: "sales", Permissions: []string{"order.read"}, RecordScope: "all_records",
-		Audience: identitymodel.IdentityRoleAudienceWorkforce, AssignmentMode: identitymodel.IdentityRoleAssignmentManual,
+		Audience: identitymodel.IdentityRoleAudienceUser, AssignmentMode: identitymodel.IdentityRoleAssignmentManual,
 		PermissionSetKeys: []string{"direct"}, PermissionSetGroups: []string{"sales-group"}, GuardrailKeys: []string{"deny-export"},
-		DataPermissions:  []identitymodel.DataPermission{{ObjectKey: "order", Scope: "department", Read: true}},
+		DataPermissions:  []identitymodel.DataPermission{{ObjectKey: "order", Scope: "organization"}},
 		FieldPermissions: []identitymodel.FieldPermission{{ObjectKey: "order", FieldKey: "amount", Read: true, Export: false}},
 		ExportRules:      []identitymodel.ExportRule{{ObjectKey: "order", Mode: "allowlist", Fields: []string{"id"}}},
 	}})
@@ -95,7 +95,7 @@ func TestRoleGovernanceDetailComposesPublishedAuthorities(t *testing.T) {
 	if err != nil {
 		t.Fatalf("detail error = %v", err)
 	}
-	if detail.Role.Key != "sales" || detail.Definition.Audience != identitymodel.IdentityRoleAudienceWorkforce {
+	if detail.Role.Key != "sales" || detail.Definition.Audience != identitymodel.IdentityRoleAudienceUser {
 		t.Fatalf("role projection = %#v / %#v", detail.Role, detail.Definition)
 	}
 	if len(detail.PermissionSets) != 2 || detail.PermissionSets[0].Key != "direct" || detail.PermissionSets[1].Key != "grouped" {

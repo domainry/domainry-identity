@@ -10,6 +10,7 @@ import (
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
+	"github.com/domainry/domainry-orm/query"
 )
 
 type StatusReader struct {
@@ -65,7 +66,14 @@ func (reader *StatusReader) MigrationStatus(ctx context.Context) (MigrationStatu
 	status.Expected = len(status.ExpectedPaths)
 	applied := map[string]struct{}{}
 	currentSchemaVersion := ""
-	rows, err := reader.database.QueryContext(ctx, "SELECT "+reader.renderer.Identifier("path")+", "+reader.renderer.Identifier("checksum")+", "+reader.renderer.Identifier("dirty")+", "+reader.renderer.Identifier("applied_at")+" FROM "+reader.renderer.Table("_schema_migrations")+" ORDER BY "+reader.renderer.Identifier("path")+" ASC")
+	statement, arguments, err := query.NewSelectBuilder(reader.renderer, "_schema_migrations").
+		Columns("path", "checksum", "dirty", "applied_at").
+		OrderBy(query.Ascending("path")).Build()
+	if err != nil {
+		status.Current = false
+		return status, fmt.Errorf("build migration status query: %w", err)
+	}
+	rows, err := reader.database.QueryContext(ctx, statement, arguments...)
 	if err != nil {
 		status.Current = false
 		return status, fmt.Errorf("read migration status: %w", err)

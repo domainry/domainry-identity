@@ -40,7 +40,7 @@ type IdentityHandler struct {
 	actions             *identityapplication.IdentityActionRegistry
 	permissionCatalog   *identityapplication.IdentityPermissionCatalogApplicationService
 	actionAuthorization *identityapplication.IdentityActionAuthorizationService
-	rolePermissions     *identityapplication.IdentityRolePermissionPublicationService
+	roleDefinitions     *identityapplication.IdentityRoleDefinitionPublicationService
 }
 
 type IdentityUserSecurity interface {
@@ -80,7 +80,7 @@ type IdentityDependencies struct {
 	Actions             *identityapplication.IdentityActionRegistry
 	PermissionCatalog   *identityapplication.IdentityPermissionCatalogApplicationService
 	ActionAuthorization *identityapplication.IdentityActionAuthorizationService
-	RolePermissions     *identityapplication.IdentityRolePermissionPublicationService
+	RoleDefinitions     *identityapplication.IdentityRoleDefinitionPublicationService
 }
 
 func NewIdentityHandler(deps IdentityDependencies) *IdentityHandler {
@@ -103,7 +103,7 @@ func NewIdentityHandler(deps IdentityDependencies) *IdentityHandler {
 		writeJSON: deps.WriteJSON, writeError: deps.WriteError, writeServiceError: deps.WriteServiceError,
 		decodeJSON: deps.DecodeJSON, securityAudit: deps.SecurityAudit, securityPrincipal: deps.SecurityPrincipal,
 		authoring: deps.Authoring,
-		actions:   actions, permissionCatalog: deps.PermissionCatalog, actionAuthorization: actionAuthorization, rolePermissions: deps.RolePermissions,
+		actions:   actions, permissionCatalog: deps.PermissionCatalog, actionAuthorization: actionAuthorization, roleDefinitions: deps.RoleDefinitions,
 	}
 }
 
@@ -179,70 +179,70 @@ func (h *IdentityHandler) EffectiveMenus(w http.ResponseWriter, r *http.Request)
 	h.writeJSON(w, http.StatusOK, h.LocalizedMenus(r, menus))
 }
 
-func (h *IdentityHandler) listIdentityDepartments(w http.ResponseWriter, r *http.Request) {
-	departments, err := h.users.ListDepartments(r.Context())
+func (h *IdentityHandler) listIdentityOrganizationUnits(w http.ResponseWriter, r *http.Request) {
+	organizationUnits, err := h.users.ListOrganizationUnits(r.Context())
 	if err != nil {
 		h.writeServiceError(w, r, err)
 		return
 	}
-	h.writeJSON(w, http.StatusOK, departments)
+	h.writeJSON(w, http.StatusOK, organizationUnits)
 }
 
-func (h *IdentityHandler) createIdentityDepartment(w http.ResponseWriter, r *http.Request) {
-	var department identitymodel.IdentityDepartment
-	if !h.decodeJSON(w, r, &department) {
+func (h *IdentityHandler) createIdentityOrganizationUnit(w http.ResponseWriter, r *http.Request) {
+	var organizationUnit identitymodel.IdentityOrganizationUnit
+	if !h.decodeJSON(w, r, &organizationUnit) {
 		return
 	}
 	principal := h.principal(r)
-	result, err := h.executeIdentityAuthoringUpsert(r.Context(), "identity.department", department.ID, r.Header.Get("Builder-Task-ID"), r.Header.Get("Idempotency-Key"), r.Header.Get("Expected-Schema-Hash"), department, principal,
+	result, err := h.executeIdentityAuthoringUpsert(r.Context(), "identity.organization_unit", organizationUnit.ID, r.Header.Get("Builder-Task-ID"), r.Header.Get("Idempotency-Key"), r.Header.Get("Expected-Schema-Hash"), organizationUnit, principal,
 		func(ctx context.Context) (any, bool, error) {
-			items, loadErr := h.users.ListDepartments(ctx)
+			items, loadErr := h.users.ListOrganizationUnits(ctx)
 			if loadErr != nil {
 				return nil, false, loadErr
 			}
 			for _, item := range items {
-				if item.ID == department.ID {
+				if item.ID == organizationUnit.ID {
 					return item, true, nil
 				}
 			}
 			return nil, false, nil
 		},
 		func(ctx context.Context) (any, error) {
-			if executeErr := h.users.UpsertDepartment(ctx, department); executeErr != nil {
+			if executeErr := h.users.UpsertOrganizationUnit(ctx, organizationUnit); executeErr != nil {
 				return nil, executeErr
 			}
-			h.appendIdentityMutationAudit(r, "identity_department_created", "identity_department", department.ID, "Created identity department", map[string]any{"name": department.Name})
-			return department, nil
+			h.appendIdentityMutationAudit(r, "identity_organization_unit_created", "identity_organization_unit", organizationUnit.ID, "Created identity organization unit", map[string]any{"name": organizationUnit.Name})
+			return organizationUnit, nil
 		})
 	h.writeIdentityAuthoringResult(w, r, http.StatusCreated, result, err)
 }
 
-func (h *IdentityHandler) updateIdentityDepartment(w http.ResponseWriter, r *http.Request) {
-	var department identitymodel.IdentityDepartment
-	if !h.decodeJSON(w, r, &department) {
+func (h *IdentityHandler) updateIdentityOrganizationUnit(w http.ResponseWriter, r *http.Request) {
+	var organizationUnit identitymodel.IdentityOrganizationUnit
+	if !h.decodeJSON(w, r, &organizationUnit) {
 		return
 	}
-	department.ID = valueOrDefault(strings.TrimSpace(r.PathValue("departmentID")), department.ID)
+	organizationUnit.ID = valueOrDefault(strings.TrimSpace(r.PathValue("organizationUnitID")), organizationUnit.ID)
 	principal := h.principal(r)
-	result, err := h.executeIdentityAuthoringUpsert(r.Context(), "identity.department", department.ID, r.Header.Get("Builder-Task-ID"), r.Header.Get("Idempotency-Key"), r.Header.Get("Expected-Schema-Hash"), department, principal,
+	result, err := h.executeIdentityAuthoringUpsert(r.Context(), "identity.organization_unit", organizationUnit.ID, r.Header.Get("Builder-Task-ID"), r.Header.Get("Idempotency-Key"), r.Header.Get("Expected-Schema-Hash"), organizationUnit, principal,
 		func(ctx context.Context) (any, bool, error) {
-			items, loadErr := h.users.ListDepartments(ctx)
+			items, loadErr := h.users.ListOrganizationUnits(ctx)
 			if loadErr != nil {
 				return nil, false, loadErr
 			}
 			for _, item := range items {
-				if item.ID == department.ID {
+				if item.ID == organizationUnit.ID {
 					return item, true, nil
 				}
 			}
 			return nil, false, nil
 		},
 		func(ctx context.Context) (any, error) {
-			if executeErr := h.users.UpsertDepartment(ctx, department); executeErr != nil {
+			if executeErr := h.users.UpsertOrganizationUnit(ctx, organizationUnit); executeErr != nil {
 				return nil, executeErr
 			}
-			h.appendIdentityMutationAudit(r, "identity_department_updated", "identity_department", department.ID, "Updated identity department", map[string]any{"name": department.Name, "status": department.Status})
-			return department, nil
+			h.appendIdentityMutationAudit(r, "identity_organization_unit_updated", "identity_organization_unit", organizationUnit.ID, "Updated identity organization unit", map[string]any{"name": organizationUnit.Name, "status": organizationUnit.Status})
+			return organizationUnit, nil
 		})
 	h.writeIdentityAuthoringResult(w, r, http.StatusOK, result, err)
 }

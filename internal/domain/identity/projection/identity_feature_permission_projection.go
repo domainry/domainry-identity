@@ -144,33 +144,25 @@ func objectFeatureDecision(principal identitymodel.Principal, objectKey string, 
 
 func dataScopePermission(principal identitymodel.Principal, object definitionmodel.ObjectSchema) identitycontract.IdentityDataScopePermission {
 	return identitycontract.IdentityDataScopePermission{
-		ObjectKey:           object.Key,
-		OwnerField:          identitycontract.IdentityObjectOwnerFieldKey(object),
-		DepartmentIDField:   identitycontract.IdentityObjectDepartmentIDFieldKey(object),
-		DepartmentPathField: identitycontract.IdentityObjectDepartmentPathFieldKey(object),
-		TeamField:           identitycontract.IdentityObjectTeamFieldKey(object),
-		StoreField:          identitycontract.IdentityObjectStoreFieldKey(object),
-		TerritoryField:      identitycontract.IdentityObjectTerritoryFieldKey(object),
-		WarehouseField:      identitycontract.IdentityObjectWarehouseFieldKey(object),
+		ObjectKey:  object.Key,
+		OwnerField: "owner_user_id",
+		OrgIDField: "owner_org_id",
 		Context: identitycontract.IdentityDataScopeContext{
-			TeamIDs:        append([]string(nil), principal.TeamIDs...),
-			StoreIDs:       append([]string(nil), principal.StoreIDs...),
-			TerritoryIDs:   append([]string(nil), principal.TerritoryIDs...),
-			WarehouseIDs:   append([]string(nil), principal.WarehouseIDs...),
-			DepartmentPath: principal.DepartmentPath,
-			ReportingPath:  principal.ReportingPath,
+			OrgID:                 principal.OrgID,
+			OrgScopeIDs:           append([]string(nil), principal.OrgScopeIDs...),
+			SupportOrgID:          principal.SupportOrgID,
+			SupportOrgScopeIDs:    append([]string(nil), principal.SupportOrgScopeIDs...),
+			ReportingScopeUserIDs: append([]string(nil), principal.ReportingScopeUserIDs...),
 		},
-		Read:  dataScopeDecision(principal, object, "read", false),
-		Write: dataScopeDecision(principal, object, "write", true),
+		Policy: dataScopeDecision(principal, object.Key),
 	}
 }
 
-func dataScopeDecision(principal identitymodel.Principal, object definitionmodel.ObjectSchema, action string, write bool) identitycontract.IdentityDataScopeDecision {
-	scope := identitycontract.IdentityDataScope(principal.Role, object.Key, write)
+func dataScopeDecision(principal identitymodel.Principal, objectKey string) identitycontract.IdentityDataScopeDecision {
+	scope := identitycontract.IdentityDataScope(principal.Role, objectKey)
 	decision := identitycontract.IdentityDataScopeDecision{
-		Action:    action,
 		Scope:     scope,
-		Predicate: dataPredicateForRole(principal.Role, object.Key, write),
+		Predicate: dataPredicateForRole(principal.Role, objectKey),
 		Allowed:   false,
 		Reason:    "missing_data_permission",
 	}
@@ -178,7 +170,7 @@ func dataScopeDecision(principal identitymodel.Principal, object definitionmodel
 		decision.Reason = "role_unknown"
 		return decision
 	}
-	if !identitycontract.IdentityRoleAllowsData(principal.Role, object.Key, action) {
+	if scope == "none" {
 		return decision
 	}
 	if isAllScopeName(scope) {
@@ -187,10 +179,6 @@ func dataScopeDecision(principal identitymodel.Principal, object definitionmodel
 		return decision
 	}
 	if isOwnedScopeName(scope) {
-		if identitycontract.IdentityObjectOwnerFieldKey(object) == "" {
-			decision.Reason = "missing_owner_field"
-			return decision
-		}
 		if strings.TrimSpace(principal.UserID) == "" {
 			decision.Reason = "missing_user"
 			return decision
@@ -199,38 +187,40 @@ func dataScopeDecision(principal identitymodel.Principal, object definitionmodel
 		decision.Reason = "allowed"
 		return decision
 	}
-	if isSubordinatesScopeName(scope) {
-		if identitycontract.IdentityObjectOwnerFieldKey(object) == "" {
-			decision.Reason = "missing_owner_field"
-			return decision
-		}
-		if strings.TrimSpace(principal.ReportingPath) == "" {
-			decision.Reason = "missing_reporting_path"
+	if isOrganizationScopeName(scope) {
+		if strings.TrimSpace(principal.OrgID) == "" {
+			decision.Reason = "missing_org"
 			return decision
 		}
 		decision.Allowed = true
 		decision.Reason = "allowed"
 		return decision
 	}
-	if isDepartmentScopeName(scope) || isDepartmentAndChildrenScopeName(scope) {
-		if identitycontract.IdentityObjectDepartmentPathFieldKey(object) == "" {
-			decision.Reason = "missing_department_path_field"
-			return decision
-		}
-		if strings.TrimSpace(principal.DepartmentPath) == "" {
-			decision.Reason = "missing_department_path"
+	if isOrganizationAndChildrenScopeName(scope) {
+		if len(principal.OrgScopeIDs) == 0 {
+			decision.Reason = "missing_org_scope_ids"
 			return decision
 		}
 		decision.Allowed = true
 		decision.Reason = "allowed"
 		return decision
 	}
-	if isTeamScopeName(scope) {
-		return scopedSetDecision(decision, identitycontract.IdentityObjectTeamFieldKey(object), principal.TeamIDs, "missing_team_field", "missing_team_context")
+	if isSelfAndSubordinatesScopeName(scope) {
+		if len(principal.ReportingScopeUserIDs) == 0 {
+			decision.Reason = "missing_reporting_scope_user_ids"
+			return decision
+		}
+		decision.Allowed = true
+		decision.Reason = "allowed"
+		return decision
 	}
 	if scope == "custom" {
 		if decision.Predicate == nil {
 			decision.Reason = "missing_predicate"
+			return decision
+		}
+		if identityPredicateUsesActorClaim(*decision.Predicate, "support_org_scope_ids") && len(principal.SupportOrgScopeIDs) == 0 {
+			decision.Reason = "missing_support_org_scope_ids"
 			return decision
 		}
 		decision.Allowed = true
@@ -244,34 +234,26 @@ func dataScopeDecision(principal identitymodel.Principal, object definitionmodel
 	return decision
 }
 
-func scopedSetDecision(decision identitycontract.IdentityDataScopeDecision, fieldKey string, values []string, missingFieldReason string, missingContextReason string) identitycontract.IdentityDataScopeDecision {
-	if strings.TrimSpace(fieldKey) == "" {
-		decision.Reason = missingFieldReason
-		return decision
-	}
-	if len(values) == 0 {
-		decision.Reason = missingContextReason
-		return decision
-	}
-	decision.Allowed = true
-	decision.Reason = "allowed"
-	return decision
-}
-
-func dataPredicateForRole(role identitymodel.RoleSchema, objectKey string, write bool) *identitymodel.IdentityPolicyExpression {
+func dataPredicateForRole(role identitymodel.RoleSchema, objectKey string) *identitymodel.IdentityPolicyExpression {
 	for _, permission := range role.DataPermissions {
 		if permission.ObjectKey != objectKey {
 			continue
 		}
-		if write && !permission.Write {
-			return nil
-		}
-		if !write && !permission.Read {
-			return nil
-		}
 		return permission.Predicate
 	}
 	return nil
+}
+
+func identityPredicateUsesActorClaim(expression identitymodel.IdentityPolicyExpression, claimKey string) bool {
+	if strings.EqualFold(strings.TrimSpace(expression.ValueSource), "actor_claim") && strings.EqualFold(strings.TrimSpace(expression.ClaimKey), claimKey) {
+		return true
+	}
+	for _, child := range expression.Children {
+		if identityPredicateUsesActorClaim(child, claimKey) {
+			return true
+		}
+	}
+	return false
 }
 
 func isAllScopeName(scope string) bool {
@@ -284,23 +266,17 @@ func isOwnedScopeName(scope string) bool {
 	return scope == "owned_records"
 }
 
-func isSubordinatesScopeName(scope string) bool {
-	scope = strings.TrimSpace(scope)
-	return scope == "subordinates"
+func isOrganizationScopeName(scope string) bool {
+	return strings.TrimSpace(scope) == "organization"
 }
 
-func isDepartmentScopeName(scope string) bool {
-	return strings.TrimSpace(scope) == "department"
+func isOrganizationAndChildrenScopeName(scope string) bool {
+	scope = strings.TrimSpace(scope)
+	return scope == "organization_and_children"
 }
 
-func isDepartmentAndChildrenScopeName(scope string) bool {
-	scope = strings.TrimSpace(scope)
-	return scope == "department_and_children"
-}
-
-func isTeamScopeName(scope string) bool {
-	scope = strings.TrimSpace(scope)
-	return scope == "team"
+func isSelfAndSubordinatesScopeName(scope string) bool {
+	return strings.TrimSpace(scope) == "self_and_subordinates"
 }
 
 func fieldPermissionSnapshots(principal identitymodel.Principal, object definitionmodel.ObjectSchema) []identitycontract.IdentityFieldPermissionSnapshot {
@@ -316,9 +292,6 @@ func fieldPermissionSnapshots(principal identitymodel.Principal, object definiti
 
 func fieldPermissionSnapshot(role identitymodel.RoleSchema, object definitionmodel.ObjectSchema, field definitionmodel.FieldSchema) identitycontract.IdentityFieldPermissionSnapshot {
 	source := "default"
-	if identitycontract.IdentityRoleAllows(role, "workspace", "admin") {
-		source = "workspace_admin"
-	}
 	permission, explicit := explicitFieldPermission(role, object.Key, field.Key)
 	if explicit {
 		source = "explicit"

@@ -12,12 +12,9 @@ import (
 
 type directoryProjectionRepository struct {
 	*identityScopedRepository
-	workforce            []identitymodel.IdentityWorkforceProfile
-	workforceAssignments []identitymodel.IdentityWorkforceAssignment
-	bindings             map[string][]identitymodel.IdentityProfileBinding
-	fail                 string
-	err                  error
-	onboarded            identitymodel.IdentityWorkforceOnboardingMutation
+	bindings map[string][]identitymodel.IdentityProfileBinding
+	fail     string
+	err      error
 }
 
 type directoryProjectionFactsRepository struct {
@@ -30,17 +27,6 @@ func (r *directoryProjectionFactsRepository) ListIdentityUserDirectoryFacts(cont
 	return r.facts, r.err
 }
 
-func (r *directoryProjectionRepository) ApplyIdentityWorkforceOnboarding(_ context.Context, mutation identitymodel.IdentityWorkforceOnboardingMutation) (identitymodel.IdentityWorkforceOnboardingResult, error) {
-	if r.fail == "onboarding" {
-		return identitymodel.IdentityWorkforceOnboardingResult{}, r.err
-	}
-	r.onboarded = mutation
-	return identitymodel.IdentityWorkforceOnboardingResult{
-		User: mutation.User, Profile: mutation.Profile, Assignment: mutation.Assignment,
-		RoleAssignments: mutation.RoleAssignments,
-	}, nil
-}
-
 func (r *directoryProjectionRepository) ListIdentityUsers(ctx context.Context, workspaceID string) ([]identitymodel.IdentityUser, error) {
 	if r.fail == "users" {
 		return nil, r.err
@@ -48,11 +34,11 @@ func (r *directoryProjectionRepository) ListIdentityUsers(ctx context.Context, w
 	return r.identityScopedRepository.ListIdentityUsers(ctx, workspaceID)
 }
 
-func (r *directoryProjectionRepository) ListIdentityDepartments(ctx context.Context, workspaceID string) ([]identitymodel.IdentityDepartment, error) {
-	if r.fail == "departments" {
+func (r *directoryProjectionRepository) ListIdentityOrganizationUnits(ctx context.Context, workspaceID string) ([]identitymodel.IdentityOrganizationUnit, error) {
+	if r.fail == "organizationUnits" {
 		return nil, r.err
 	}
-	return r.identityScopedRepository.ListIdentityDepartments(ctx, workspaceID)
+	return r.identityScopedRepository.ListIdentityOrganizationUnits(ctx, workspaceID)
 }
 
 func (r *directoryProjectionRepository) ListIdentityUserRoleAssignments(ctx context.Context, workspaceID, userID string) ([]identitymodel.IdentityUserRoleAssignment, error) {
@@ -67,44 +53,6 @@ func (r *directoryProjectionRepository) ListIdentityRoles(ctx context.Context, w
 		return nil, r.err
 	}
 	return r.identityScopedRepository.ListIdentityRoles(ctx, workspaceID)
-}
-
-func (r *directoryProjectionRepository) ListIdentityWorkforceProfiles(context.Context, string) ([]identitymodel.IdentityWorkforceProfile, error) {
-	if r.fail == "workforce" {
-		return nil, r.err
-	}
-	return r.workforce, nil
-}
-
-func (r *directoryProjectionRepository) GetIdentityWorkforceProfile(_ context.Context, _, id string) (identitymodel.IdentityWorkforceProfile, bool, error) {
-	if r.fail == "get_workforce" {
-		return identitymodel.IdentityWorkforceProfile{}, false, r.err
-	}
-	for _, profile := range r.workforce {
-		if profile.ID == id {
-			return profile, true, nil
-		}
-	}
-	return identitymodel.IdentityWorkforceProfile{}, false, nil
-}
-
-func (r *directoryProjectionRepository) UpsertIdentityWorkforceProfile(context.Context, string, identitymodel.IdentityWorkforceProfile) error {
-	return nil
-}
-
-func (r *directoryProjectionRepository) ListIdentityWorkforceAssignments(context.Context, string, string) ([]identitymodel.IdentityWorkforceAssignment, error) {
-	if r.fail == "workforce_assignments" {
-		return nil, r.err
-	}
-	return r.workforceAssignments, nil
-}
-
-func (r *directoryProjectionRepository) GetIdentityWorkforceAssignment(context.Context, string, string) (identitymodel.IdentityWorkforceAssignment, bool, error) {
-	return identitymodel.IdentityWorkforceAssignment{}, false, nil
-}
-
-func (r *directoryProjectionRepository) UpsertIdentityWorkforceAssignment(context.Context, string, identitymodel.IdentityWorkforceAssignment) error {
-	return nil
 }
 
 func (r *directoryProjectionRepository) ListIdentityProfileBindingsByUser(_ context.Context, _, userID string) ([]identitymodel.IdentityProfileBinding, error) {
@@ -131,9 +79,6 @@ func directoryProjectionFixture() (*IdentityApplicationService, *directoryProjec
 	}
 	repository := &directoryProjectionRepository{
 		identityScopedRepository: base,
-		workforce: []identitymodel.IdentityWorkforceProfile{
-			{ID: "workforce-1", IdentityUserID: "user-1", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive},
-		},
 		bindings: map[string][]identitymodel.IdentityProfileBinding{
 			"user-1": {
 				{BindingKey: "member", ProfileID: "member-1", Status: identitymodel.IdentityProfileBindingActive},
@@ -161,7 +106,7 @@ func TestSearchUserDirectoryProjectsRolesSecurityAndIdentityBadges(t *testing.T)
 	}
 	entry := page.Items[0]
 	if entry.User.ID != "user-1" || len(entry.Roles) != 2 || entry.Roles[0].Key != "admin" ||
-		len(entry.IdentityBadges) != 2 || entry.IdentityBadges[0].Kind != "business_profile" ||
+		len(entry.IdentityBadges) != 1 || entry.IdentityBadges[0].Kind != "business_profile" ||
 		!entry.Security.MFAEnabled || entry.Security.ActiveSessions != 2 {
 		t.Fatalf("unexpected directory entry: %#v", entry)
 	}
@@ -179,7 +124,7 @@ func TestSearchUserDirectoryFailureBoundaries(t *testing.T) {
 	if _, err := service.SearchUserDirectory(validContext, identitymodel.IdentityListQuery{}, nil); apperror.CodeOf(err) != "backend.identity.user_directory_security_unavailable" {
 		t.Fatalf("expected security capability error, got %v", err)
 	}
-	for _, failure := range []string{"users", "assignments", "roles", "workforce", "bindings"} {
+	for _, failure := range []string{"users", "assignments", "roles", "bindings"} {
 		repository.fail, repository.err = failure, errors.New(failure)
 		_, err := service.SearchUserDirectory(validContext, identitymodel.IdentityListQuery{}, func(context.Context, string, string) (IdentityUserDirectorySecuritySummary, error) {
 			return IdentityUserDirectorySecuritySummary{}, nil
@@ -197,14 +142,14 @@ func TestSearchUserDirectoryFailureBoundaries(t *testing.T) {
 	}
 }
 
-func TestSearchUserDirectoryWithoutWorkforceCapability(t *testing.T) {
+func TestSearchUserDirectoryWithoutBusinessProfiles(t *testing.T) {
 	repository := &identityScopedRepository{users: []identitymodel.IdentityUser{{ID: "user", Name: "User"}}}
 	service := NewIdentityApplicationService(repository, nil)
 	page, err := service.SearchUserDirectory(requestcontext.WithWorkspaceID(t.Context(), "workspace-primary"), identitymodel.IdentityListQuery{}, func(context.Context, string, string) (IdentityUserDirectorySecuritySummary, error) {
 		return IdentityUserDirectorySecuritySummary{}, nil
 	})
 	if err != nil || len(page.Items) != 1 || len(page.Items[0].IdentityBadges) != 0 {
-		t.Fatalf("unexpected no-workforce projection: %#v, %v", page, err)
+		t.Fatalf("unexpected directory projection: %#v, %v", page, err)
 	}
 }
 
@@ -217,8 +162,7 @@ func TestSearchUserDirectoryBatchUsesFactsCapabilityAndValidatesReader(t *testin
 	factsRepository := &directoryProjectionFactsRepository{
 		directoryProjectionRepository: base,
 		facts: identitymodel.IdentityUserDirectoryFacts{
-			RoleAssignments:   base.assignments,
-			WorkforceProfiles: base.workforce,
+			RoleAssignments: base.assignments,
 			ProfileBindings: []identitymodel.IdentityProfileBinding{{
 				IdentityUserID: "user-1", BindingKey: "member", ProfileID: "member-1", Status: identitymodel.IdentityProfileBindingActive,
 			}},

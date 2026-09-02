@@ -161,7 +161,7 @@ func activeExternalIdentityUser(id string, email string) identitymodel.IdentityU
 
 func newFaultAuthDomainService() (*AuthDomainService, *faultExternalIdentityRepository, *faultExternalAuthRepository) {
 	identityRepository := &faultExternalIdentityRepository{
-		departments: []identitymodel.IdentityDepartment{
+		organizationUnits: []identitymodel.IdentityOrganizationUnit{
 			{ID: "company", Name: "Company", Path: "/company", Status: identitymodel.IdentityStatusActive},
 			{ID: "dept_sales", Name: "Sales", Path: "/sales", Status: identitymodel.IdentityStatusActive},
 		},
@@ -180,7 +180,7 @@ func newFaultAuthDomainService() (*AuthDomainService, *faultExternalIdentityRepo
 
 type faultExternalIdentityRepository struct {
 	users              []identitymodel.IdentityUser
-	departments        []identitymodel.IdentityDepartment
+	organizationUnits  []identitymodel.IdentityOrganizationUnit
 	roles              []identitymodel.IdentityRole
 	roleDefinitions    map[string]identitymodel.RoleSchema
 	roleAssignments    []identitymodel.IdentityUserRoleAssignment
@@ -301,8 +301,8 @@ func (r *faultExternalIdentityRepository) GetIdentityUser(_ context.Context, use
 	return identitymodel.IdentityUser{}, false, nil
 }
 
-func (r *faultExternalIdentityRepository) ListIdentityDepartments(context.Context) ([]identitymodel.IdentityDepartment, error) {
-	return append([]identitymodel.IdentityDepartment(nil), r.departments...), nil
+func (r *faultExternalIdentityRepository) ListIdentityOrganizationUnits(context.Context) ([]identitymodel.IdentityOrganizationUnit, error) {
+	return append([]identitymodel.IdentityOrganizationUnit(nil), r.organizationUnits...), nil
 }
 
 func (r *faultExternalIdentityRepository) UpsertIdentityUser(_ context.Context, user identitymodel.IdentityUser) error {

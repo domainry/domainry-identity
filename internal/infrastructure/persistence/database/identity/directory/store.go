@@ -27,12 +27,9 @@ func New(backend Backend) Store { return Store{backend: backend} }
 var identityUserDirectoryColumns = map[string]string{
 	"id": "id", "name": "name", "given_name": "given_name", "middle_name": "middle_name", "family_name": "family_name",
 	"name_prefix": "name_prefix", "name_suffix": "name_suffix", "native_name": "native_name", "name_locale": "name_locale",
-	"email": "email", "phone": "phone", "account_type": "account_type", "locale": "locale", "timezone": "timezone", "status": "status",
-}
-
-var identityWorkforceDirectoryColumns = map[string]string{
-	"id": "id", "organization_id": "organization_id", "identity_user_id": "identity_user_id", "worker_no": "worker_no",
-	"worker_type": "worker_type", "work_status": "work_status", "start_date": "start_date", "end_date": "end_date",
+	"email": "email", "phone": "phone", "account_type": "account_type", "locale": "locale", "timezone": "timezone",
+	"org_id": "org_id", "support_org_id": "support_org_id", "manager_user_id": "manager_user_id", "reporting_path": "reporting_path", "worker_no": "worker_no", "worker_type": "worker_type", "work_status": "work_status",
+	"start_date": "start_date", "end_date": "end_date", "status": "status",
 }
 
 func (s Store) SearchIdentityUsers(ctx context.Context, workspaceID string, queryValue identitymodel.IdentityListQuery) (identitymodel.IdentityUserPage, error) {
@@ -47,7 +44,7 @@ func (s Store) SearchIdentityUsers(ctx context.Context, workspaceID string, quer
 	}
 	columns := []string{
 		"id", "name", "given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale",
-		"email", "phone", "account_type", "locale", "timezone", "status", "version", "created_at", "updated_at",
+		"email", "phone", "account_type", "locale", "timezone", "org_id", "support_org_id", "manager_user_id", "reporting_path", "worker_no", "worker_type", "work_status", "start_date", "end_date", "status", "version", "created_at", "updated_at",
 	}
 	statement, args, err := s.PageSQL(ctx, workspaceID, "_identity_users", columns, queryValue, conditions)
 	if err != nil {
@@ -62,14 +59,20 @@ func (s Store) SearchIdentityUsers(ctx context.Context, workspaceID string, quer
 	items := make([]identitymodel.IdentityUser, 0, cursor.FetchLimit())
 	for rows.Next() {
 		var user identitymodel.IdentityUser
-		var accountType, status string
+		var accountType, workerType, workStatus, status string
+		var organizationUnitID, supportOrganizationUnitID, managerUserID, startDate, endDate sql.NullString
 		if err := rows.Scan(
 			&user.ID, &user.Name, &user.GivenName, &user.MiddleName, &user.FamilyName, &user.NamePrefix, &user.NameSuffix, &user.NativeName, &user.NameLocale,
-			&user.Email, &user.Phone, &accountType, &user.Locale, &user.Timezone, &status, &user.Version, &user.CreatedAt, &user.UpdatedAt,
+			&user.Email, &user.Phone, &accountType, &user.Locale, &user.Timezone, &organizationUnitID, &supportOrganizationUnitID, &managerUserID, &user.ReportingPath, &user.WorkerNo, &workerType, &workStatus, &startDate, &endDate, &status, &user.Version, &user.CreatedAt, &user.UpdatedAt,
 		); err != nil {
 			return identitymodel.IdentityUserPage{}, err
 		}
 		user.AccountType = identitymodel.IdentityAccountType(accountType)
+		user.OrgID = organizationUnitID.String
+		user.SupportOrgID = supportOrganizationUnitID.String
+		user.ManagerUserID = managerUserID.String
+		user.WorkerType, user.WorkStatus = identitymodel.IdentityWorkerType(workerType), identitymodel.IdentityWorkStatus(workStatus)
+		user.StartDate, user.EndDate = startDate.String, endDate.String
 		user.Status = identitymodel.IdentityStatus(status)
 		items = append(items, user)
 	}
@@ -78,42 +81,6 @@ func (s Store) SearchIdentityUsers(ctx context.Context, workspaceID string, quer
 	}
 	page := pagination.Boundary(cursor, items, func(user identitymodel.IdentityUser) string { return user.ID })
 	return identitymodel.IdentityUserPage{Items: page.Items, PageSize: cursor.PageSize(), Total: total, HasNext: page.HasNext, NextID: page.NextID}, nil
-}
-
-func (s Store) SearchIdentityWorkforceProfiles(ctx context.Context, workspaceID string, queryValue identitymodel.IdentityListQuery) (identitymodel.IdentityWorkforceProfilePage, error) {
-	workspaceID, err := identityWorkspaceID(workspaceID)
-	if err != nil {
-		return identitymodel.IdentityWorkforceProfilePage{}, err
-	}
-	conditions := identityDirectoryPredicates(queryValue, identityWorkforceDirectoryColumns)
-	total, err := s.identityDirectoryCount(ctx, workspaceID, "_identity_workforce_profiles", conditions)
-	if err != nil {
-		return identitymodel.IdentityWorkforceProfilePage{}, err
-	}
-	columns := []string{"id", "organization_id", "identity_user_id", "worker_no", "worker_type", "work_status", "start_date", "end_date", "primary_assignment_id", "version"}
-	statement, args, err := s.PageSQL(ctx, workspaceID, "_identity_workforce_profiles", columns, queryValue, conditions)
-	if err != nil {
-		return identitymodel.IdentityWorkforceProfilePage{}, err
-	}
-	rows, err := s.backend.DB().QueryContext(ctx, statement, args...)
-	if err != nil {
-		return identitymodel.IdentityWorkforceProfilePage{}, err
-	}
-	defer rows.Close()
-	cursor := identitySQLDirectoryCursor(queryValue)
-	items := make([]identitymodel.IdentityWorkforceProfile, 0, cursor.FetchLimit())
-	for rows.Next() {
-		profile, scanErr := scanIdentityWorkforceProfile(rows)
-		if scanErr != nil {
-			return identitymodel.IdentityWorkforceProfilePage{}, scanErr
-		}
-		items = append(items, profile)
-	}
-	if err := rows.Err(); err != nil {
-		return identitymodel.IdentityWorkforceProfilePage{}, err
-	}
-	page := pagination.Boundary(cursor, items, func(profile identitymodel.IdentityWorkforceProfile) string { return profile.ID })
-	return identitymodel.IdentityWorkforceProfilePage{Items: page.Items, PageSize: cursor.PageSize(), Total: total, HasNext: page.HasNext, NextID: page.NextID}, nil
 }
 
 func identityDirectoryPredicates(queryValue identitymodel.IdentityListQuery, columns map[string]string) []query.Predicate {
@@ -243,17 +210,4 @@ func identityWorkspaceID(value string) (string, error) {
 		return "", err
 	}
 	return workspace.String(), nil
-}
-
-type workforceProfileScanner interface{ Scan(...any) error }
-
-func scanIdentityWorkforceProfile(scanner workforceProfileScanner) (identitymodel.IdentityWorkforceProfile, error) {
-	var profile identitymodel.IdentityWorkforceProfile
-	var workerType, workStatus string
-	var startDate, endDate, primaryAssignmentID sql.NullString
-	err := scanner.Scan(&profile.ID, &profile.OrganizationID, &profile.IdentityUserID, &profile.WorkerNo, &workerType, &workStatus, &startDate, &endDate, &primaryAssignmentID, &profile.Version)
-	profile.WorkerType = identitymodel.IdentityWorkerType(workerType)
-	profile.WorkStatus = identitymodel.IdentityWorkStatus(workStatus)
-	profile.StartDate, profile.EndDate, profile.PrimaryAssignmentID = startDate.String, endDate.String, primaryAssignmentID.String
-	return profile, err
 }

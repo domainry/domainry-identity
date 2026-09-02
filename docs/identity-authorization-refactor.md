@@ -34,8 +34,8 @@ The following Identity capabilities remain in scope and retain their current bus
 | OIDC discovery, JWKS and access/refresh token issuance | Identity authentication | Keep |
 | External providers, provider challenges, callbacks, OTP and external-account binding | Identity authentication | Keep |
 | MFA, account lock/unlock, force logout and session revocation | Identity authentication/security | Keep |
-| Users, departments, workforce profiles and assignments | Identity directory | Keep |
-| Business-profile bindings and workforce-to-business identity projection | Identity directory | Keep |
+| Users, personnel facts, direct-manager/reporting paths, and organization units | Identity directory | Keep |
+| Business-profile bindings and user-to-business identity projection | Identity directory | Keep |
 | Operational roles, role requests and user-role assignments | Identity authorization | Keep |
 | Versioned RoleSchema definitions | Identity authorization metadata | Keep; RoleSchema.Permissions remains the role configuration source |
 | Permission sets and permission-set groups | Identity data/governance policy | Keep only for non-functional policy composition; they do not grant Action Permissions |
@@ -68,7 +68,7 @@ An ActionDefinition is the executable authorization boundary. It has a stable ke
 - owner and source kind;
 - method/path or non-HTTP invocation identity;
 - exposure and authentication mode;
-- an explicit authorization strategy: anonymous protocol, authenticated principal, self action, service identity, exact role permission, or operations identity;
+- an explicit authorization strategy: anonymous protocol, authenticated principal, self action, delegated credential, service identity, exact role permission, or operations identity;
 - exactly one same-key owned PermissionDefinition when the Action is role-authorized; exceptional non-role strategies own no role Permission;
 - risk, assurance, approval, idempotency and audit metadata;
 - lifecycle status.
@@ -80,7 +80,7 @@ ActionDefinition lives with executable code or project metadata. Identity does n
 A PermissionDefinition is a role-selectable capability key. It owns:
 
 - stable permission key;
-- resource/action labels used by configuration UI;
+- resource/operation labels used by configuration UI;
 - one canonical definition owner;
 - code-definition lifecycle (`active` or `retired`);
 - administrative enablement;
@@ -93,6 +93,36 @@ A Permission does not own URLs, risk, approval, assurance, or a list of Action u
 RoleSchema remains the assignable responsibility definition. `RoleSchema.Permissions` is the only functional Action-grant authority. Data, field, reference, export, permission-set and guardrail configuration remains separate policy metadata and cannot add functional Action grants.
 
 Operational `_identity_roles` and `_identity_user_role_assignments` remain the user assignment layer. They must not become a second functional-permission definition source.
+
+### 4.4 Data scope and support organization
+
+`DataPermission` describes only an object's allowed record set: `object_key`, canonical `scope`, optional predicate, and denial-audit intent. It has no `read` or `write` grant. Read, create, update, delete, export, and business commands remain exact Actions in `RoleSchema.Permissions`; the effective access projection keeps one operation-independent record policy per effective object. A data predicate without an exact Action produces no executable authority.
+
+The Identity SDK evaluator currently exposes separate query and mutation filter channels. That is an execution-protocol detail, not role configuration: the Identity SDK adapter compiles the same object predicate into both channels, while the evaluator still requires the exact Action FunctionGrant before either channel can be used. For example, `customer.read` plus the support predicate can query matching customers, but it cannot execute `customer.update` even though the record predicate itself would match.
+
+`IdentityUser.OrgID` remains the user's real primary organization. A support worker who needs an additional customer-service view uses the separate optional `support_org_id`; assigning it never changes the worker's primary organization. Identity validates that the support root is active, derives its active organization subtree into the subject-specific authorization revision, and freezes that set into the AccessBundle when a policy references the trusted `support_org_scope_ids` actor claim. Missing, disabled, or empty support scope resolves to an empty set and fails closed.
+
+This case reuses the existing `custom` scope and predicate language rather than adding a support-specific scope type. The application-owned customer role declares only its query Actions and a policy such as:
+
+```json
+{
+  "permissions": ["customer.read"],
+  "data_permissions": [
+    {
+      "object_key": "customer",
+      "scope": "custom",
+      "predicate": {
+        "operator": "in",
+        "field_key": "owner_org_id",
+        "value_source": "actor_claim",
+        "claim_key": "support_org_scope_ids"
+      }
+    }
+  ]
+}
+```
+
+The customer application still owns `customer`, `owner_org_id`, and the exact Action definitions. Identity owns only the user assignment, organization graph, trusted derived claim, and policy bundle compilation.
 
 ## 5. Action sources
 
@@ -139,7 +169,7 @@ The table contains current configuration, not publication versions:
 | `workspace_id` | workspace scope |
 | `permission_key` | workspace-global permission identity |
 | `resource_key` | display/grouping resource |
-| `action_key` | display/grouping action |
+| `operation_key` | display/grouping operation fragment |
 | `label` / `description` / `category` | configuration presentation |
 | `source_kind` | `platform`, `object_default`, `business_action`, `builtin_surface`, `module_surface` |
 | `source_owner` | canonical owner key |
@@ -195,6 +225,17 @@ New or changed metadata is not activated until permission reconciliation succeed
 `GET /identity/permissions` reads current database PermissionDefinitions. Normal role authoring selects keys from active/enabled definitions and saves them in RoleSchema. Assigned retired/disabled keys remain visible with a warning so administrators can repair roles.
 
 Saving a role rejects unknown keys. Retired or disabled keys cannot be newly selected. Unknown role references never create PermissionDefinitions. Principal construction filters unknown, retired and disabled `RoleSchema.Permissions` before guardrails. Permission-set/group data cannot add a functional Action grant. The filtered RoleSchema is part of the deterministic authorization-revision fingerprint, so disabling a Permission removes it from newly issued AccessBundles without rewriting every RoleSchema.
+
+Role and policy authoring is a direct, versioned RoleSchema boundary rather than a System Change Plan workflow:
+
+- `POST /identity/roles`, `PATCH /identity/roles/{roleID}` and `DELETE /identity/roles/{roleID}` own the exact `identity.roles.create`, `identity.roles.update` and `identity.roles.delete` Actions;
+- `PUT /identity/roles/{roleID}/permissions`, `/data-scopes` and `/field-permissions` own separate same-key publish Actions and only replace their corresponding RoleSchema field;
+- each command loads the aggregate under its own Action authorization. A publish Action must not acquire the matching list Action as a hidden prerequisite;
+- updates require the original schema hash, an idempotency key and a business reason. The repository performs compare-and-swap publication, idempotent replay, audit, role-directory projection and metadata reload as one existing RoleSchema publication flow;
+- role creation accepts functional Permission selections only. It initializes record scope to `none` and strips caller-supplied data, field, reference, export, delegation and guardrail authority; those policies require their dedicated authoring boundary;
+- general role update changes display metadata only and preserves all authorization-policy fields. Delete is rejected while user-role or role-menu assignments still reference the role.
+
+There is no role-permission join table, role-authorization draft, approval state machine, or generated aggregate administrator grant. Functional, data and field policy editors may have separate transport DTOs, but all of them publish a new version of the same RoleSchema aggregate.
 
 ### 7.3 Request authorization
 
@@ -283,9 +324,9 @@ S0 is historical evidence only. The accepted implementation now proceeds through
 
 ### Batch F — administration and governance completion
 
-1. Add current Permission enable/disable API with audit and last-admin safety.
+1. Add current Permission enable/disable API with audit; protect the control Action itself without inventing last-admin, reserved-role or wildcard semantics.
 2. Update permission UI to show active, disabled and retired states and live Action usage projection.
-3. Keep role authorization changes on the normal RoleSchema version path; do not create a second workflow or a versioned Permission publication page.
+3. Keep role creation and functional/data/field authorization changes on the direct RoleSchema version path; do not route them through System Change Plan or create a second workflow or versioned Permission publication page.
 4. Add governance reports for disabled/retired permissions still referenced by roles.
 
 ## 10. Acceptance contract
@@ -293,7 +334,7 @@ S0 is historical evidence only. The accepted implementation now proceeds through
 The refactor is complete only when all of the following hold:
 
 1. Every Identity, Runtime and module surface, including public/protocol surfaces, resolves a registered ActionDefinition with an explicit authorization strategy.
-2. Every role-authorized Action's same-key Permission exists as an active PermissionDefinition before the surface is ready; anonymous, authenticated, self, service and operations Actions use their explicit non-role strategy.
+2. Every role-authorized Action's same-key Permission exists as an active PermissionDefinition before the surface is ready; anonymous, authenticated, self, delegated-credential, service and operations Actions use their explicit non-role strategy.
 3. Every exposed ObjectSchema receives exactly the supported default Action permissions.
 4. Built-in Identity role-management Actions and permissions are present in the database and selectable by roles.
 5. Disabling a Permission changes newly resolved access without a code deployment and survives restart/reconciliation.
@@ -305,10 +346,11 @@ The refactor is complete only when all of the following hold:
 11. SQLite, MySQL and PostgreSQL schema and repository tests pass through `domainry-orm` rendering.
 12. The database has one host-owned `_schema_migrations` ledger; the module contributes owned migration work through the host registrar.
 13. Catalog tables and APIs no longer exist after the final cutover.
+14. Role create/update/delete and functional/data/field policy publication use exact same-key Actions and direct RoleSchema CAS publication; no command silently depends on a list Action and no role authorization change uses System Change Plan.
 
 ## 11. Explicit non-goals
 
-- Replacing authentication, directory, workforce, role-request, access-review or audit business flows.
+- Replacing authentication, directory, role-request, access-review or audit business flows.
 - Converting Permission keys into literal URLs.
 - Persisting Runtime ObjectSchema or Action usage lists in Identity.
 - Creating a second role-permission assignment source.

@@ -215,16 +215,15 @@ type CapabilityAuthoringSource struct {
 }
 
 type CapabilityAuthoringInstance struct {
-	ObjectKeys          []string                          `json:"object_keys"`
-	FieldKeys           []CapabilityAuthoringScopedValues `json:"field_keys"`
-	ActionKeys          []string                          `json:"action_keys"`
-	RoleKeys            []string                          `json:"role_keys"`
-	PermissionKeys      []string                          `json:"permission_keys"`
-	UserIDs             []string                          `json:"user_ids"`
-	WorkforceProfileIDs []string                          `json:"workforce_profile_ids"`
-	DepartmentIDs       []string                          `json:"department_ids"`
-	RoleIDs             []string                          `json:"role_ids"`
-	MenuIDs             []string                          `json:"menu_ids"`
+	ObjectKeys     []string                          `json:"object_keys"`
+	FieldKeys      []CapabilityAuthoringScopedValues `json:"field_keys"`
+	ActionKeys     []string                          `json:"action_keys"`
+	RoleKeys       []string                          `json:"role_keys"`
+	PermissionKeys []string                          `json:"permission_keys"`
+	UserIDs        []string                          `json:"user_ids"`
+	OrgIDs         []string                          `json:"org_ids"`
+	RoleIDs        []string                          `json:"role_ids"`
+	MenuIDs        []string                          `json:"menu_ids"`
 }
 
 type CapabilityAuthoringScopedValues struct {

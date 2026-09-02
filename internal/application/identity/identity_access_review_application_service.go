@@ -62,10 +62,6 @@ func (s *IdentityAccessReviewApplicationService) CreateReview(ctx context.Contex
 	if err != nil {
 		return identitymodel.IdentityAccessReview{}, err
 	}
-	workforceAssignments, err := identityAccessReviewWorkforceAssignments(workspaceContext, scoped)
-	if err != nil {
-		return identitymodel.IdentityAccessReview{}, err
-	}
 	now := s.dependencies.Now().UTC()
 	roleByID := make(map[string]identitymodel.IdentityRole, len(roles))
 	definitionByID := make(map[string]identitymodel.RoleSchema, len(roles))
@@ -97,11 +93,11 @@ func (s *IdentityAccessReviewApplicationService) CreateReview(ctx context.Contex
 				return identitymodel.IdentityAccessReview{}, err
 			}
 		}
-		priority, priorityReasons := identityAccessReviewPriority(assignment, risk, workforceAssignments, lastUsedAt, lastUsedFound, now)
+		priority, priorityReasons := identityAccessReviewPriority(assignment, risk, lastUsedAt, lastUsedFound, now)
 		item := identitymodel.IdentityAccessReviewItem{
 			ID:       identityAccessReviewStableID("access-review-item", request.ID, assignment.UserID, assignment.RoleID),
 			ReviewID: request.ID, UserID: assignment.UserID, RoleID: assignment.RoleID, RoleKey: role.Key,
-			WorkforceProfileID: assignment.WorkforceProfileID, BindingKey: assignment.BindingKey, ProfileID: assignment.ProfileID,
+			BindingKey: assignment.BindingKey, ProfileID: assignment.ProfileID,
 			RiskLevel: risk, Priority: priority, PriorityReasons: priorityReasons, LastUsedAt: lastUsedAt,
 			PermissionStates: identityAccessReviewPermissionStates(definition, scoped.PermissionDefinitions()),
 			Status:           "pending", Version: 1, CreatedAt: now.Format(time.RFC3339), UpdatedAt: now.Format(time.RFC3339),
@@ -294,7 +290,7 @@ func (s *IdentityAccessReviewApplicationService) validateReducedRole(ctx context
 	}
 	_, _, err = scoped.PrepareIdentityEntitlementBatch(ctx, []identitymodel.IdentityEntitlementBatchItem{
 		{Operation: identitymodel.IdentityEntitlementOperationRevoke, UserID: item.UserID, RoleID: item.RoleID, Reason: request.Reason},
-		{Operation: identitymodel.IdentityEntitlementOperationGrant, UserID: item.UserID, RoleID: request.ReplacementRoleID, WorkforceProfileID: item.WorkforceProfileID, BindingKey: item.BindingKey, ProfileID: item.ProfileID, Reason: request.Reason},
+		{Operation: identitymodel.IdentityEntitlementOperationGrant, UserID: item.UserID, RoleID: request.ReplacementRoleID, BindingKey: item.BindingKey, ProfileID: item.ProfileID, Reason: request.Reason},
 	}, actor)
 	return err
 }
@@ -326,41 +322,13 @@ func (s *IdentityAccessReviewApplicationService) audit(ctx context.Context, even
 	}
 }
 
-func identityAccessReviewWorkforceAssignments(ctx context.Context, scoped *IdentityApplicationService) (map[string]int, error) {
-	profiles, err := scoped.ListWorkforceProfiles(ctx)
-	if err != nil {
-		if apperror.CodeOf(err) == "backend.identity.workforce_unavailable" {
-			return map[string]int{}, nil
-		}
-		return nil, err
-	}
-	out := map[string]int{}
-	for _, profile := range profiles {
-		assignments, err := scoped.ListWorkforceAssignments(ctx, profile.ID)
-		if err != nil {
-			return nil, err
-		}
-		organizations := map[string]bool{}
-		for _, assignment := range assignments {
-			if assignment.Status == identitymodel.IdentityStatusActive && strings.TrimSpace(assignment.OrganizationUnitID) != "" {
-				organizations[assignment.OrganizationUnitID] = true
-			}
-		}
-		out[profile.ID] = len(organizations)
-	}
-	return out, nil
-}
-
-func identityAccessReviewPriority(assignment identitymodel.IdentityUserRoleAssignment, risk identitymodel.IdentityRoleRiskLevel, organizationCounts map[string]int, lastUsedAt string, lastUsedFound bool, now time.Time) (string, []string) {
+func identityAccessReviewPriority(assignment identitymodel.IdentityUserRoleAssignment, risk identitymodel.IdentityRoleRiskLevel, lastUsedAt string, lastUsedFound bool, now time.Time) (string, []string) {
 	reasons := []string{}
 	if risk == identitymodel.IdentityRoleRiskPrivileged {
 		reasons = append(reasons, "privileged")
 	}
 	if risk == identitymodel.IdentityRoleRiskElevated {
 		reasons = append(reasons, "elevated")
-	}
-	if organizationCounts[assignment.WorkforceProfileID] > 1 {
-		reasons = append(reasons, "cross_organization")
 	}
 	staleBefore := now.Add(-90 * 24 * time.Hour)
 	if lastUsedFound {

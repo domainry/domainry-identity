@@ -33,12 +33,11 @@ func TestCatalogContainsOnlyIdentityAdminCapabilities(t *testing.T) {
 		t.Fatalf("domains = %#v", contract.Domains)
 	}
 	want := map[string]bool{
-		"identity.department": true, "identity.menu": true, "identity.role": true,
+		"identity.organization_unit": true, "identity.menu": true, "identity.role": true,
 		"identity.role_data_scope": true, "identity.role_field_permission": true,
 		"identity.role_permission": true, "identity.user": true,
 		"identity.user_role_assignment": true, "identity.role_menu_assignment": true,
-		"identity.profile_binding": true, "identity.workforce_profile": true,
-		"identity.workforce_assignment": true,
+		"identity.profile_binding": true,
 	}
 	for _, definition := range catalog.Definitions() {
 		if !want[definition.Key] {

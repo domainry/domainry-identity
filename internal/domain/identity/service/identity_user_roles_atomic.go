@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"strings"
-	"time"
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	identityrepository "github.com/domainry/domainry-identity/internal/domain/identity/repository"
@@ -22,11 +21,7 @@ func (s *IdentityDomainService) UpsertUserWithRoles(
 	if !actor.Known || strings.TrimSpace(actor.UserID) == "" {
 		return forbidden("backend.identity.entitlement_actor_required")
 	}
-	workforce, _, err := s.resolveWorkforceFacts(ctx, user.ID, time.Now())
-	if err != nil {
-		return err
-	}
-	if !identityActorCanManageRoleTarget(actor, user.ID, workforce) {
+	if !identityActorCanManageRoleTarget(actor, user) {
 		return forbidden("backend.identity.role_target_scope_denied")
 	}
 	prepared := make([]identitymodel.IdentityUserRoleAssignment, 0, len(assignments))

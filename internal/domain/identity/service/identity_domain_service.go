@@ -25,7 +25,6 @@ type IdentityDomainService struct {
 	workspace           string
 	bindingEligibility  IdentityRoleBindingEligibilityResolver
 	businessProfiles    IdentityBusinessProfileResolver
-	organizationScopes  IdentityOrganizationScopeResolver
 }
 
 // IdentityPermissionDefinitionSource is the domain-facing view of the current
@@ -81,10 +80,6 @@ type IdentityBusinessProfileResolver interface {
 	ResolveIdentityBusinessProfiles(context.Context, string, string) ([]IdentityBusinessProfile, error)
 }
 
-type IdentityOrganizationScopeResolver interface {
-	ResolveIdentityOrganizationScopes(context.Context, string, []string) (identitymodel.IdentityOrganizationScopeFacts, error)
-}
-
 // ForWorkspace returns an immutable workspace-scoped service view. Repository
 // calls from an unscoped service are rejected by the repository contract.
 func (s *IdentityDomainService) ForWorkspace(workspaceID string) (*IdentityDomainService, error) {
@@ -126,12 +121,6 @@ func (r businessProfileBindingEligibility) IdentityRoleBindingActive(ctx context
 		}
 	}
 	return false, nil
-}
-
-func (s *IdentityDomainService) UseOrganizationScopeResolver(resolver IdentityOrganizationScopeResolver) {
-	if s != nil {
-		s.organizationScopes = resolver
-	}
 }
 
 func NewIdentityDomainService(repo identityrepository.IdentityRepository, permissions []identitymodel.IdentityPermissionDefinition) *IdentityDomainService {

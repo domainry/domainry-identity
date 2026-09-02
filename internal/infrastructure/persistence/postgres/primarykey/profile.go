@@ -14,6 +14,8 @@ type Profile struct{}
 func NewProfile() Profile { return Profile{} }
 
 func (Profile) EnsureCompositePrimaryKey(ctx context.Context, database driver.SchemaDatabase, renderer ormdialect.Renderer, schema, relationPrefix, table string, columns ...string) error {
+	// PostgreSQL key inspection and DROP/ADD PRIMARY KEY are server-catalog and
+	// constraint-alter operations that domainry-orm does not expose.
 	if strings.TrimSpace(schema) == "" {
 		schema = "public"
 	}

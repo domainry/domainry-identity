@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/domainry/domainry-orm/batch"
+	"github.com/domainry/domainry-orm/query"
 )
 
 type idempotencyReceiptMigrationSpec struct {
@@ -58,7 +61,11 @@ func ensureIdempotencyMigrationColumns(ctx context.Context, store Store, spec id
 
 func backfillIdempotencyReceiptRows(ctx context.Context, store Store, spec idempotencyReceiptMigrationSpec) error {
 	columns := append([]string{"id", "workspace_id", "idempotency_key", "request_fingerprint", "status"}, spec.scopeColumns...)
-	rows, err := store.SchemaDB().QueryContext(ctx, "SELECT "+idempotencyMigrationIdentifiers(store, columns)+" FROM "+store.TableIdentifier(spec.table))
+	statement, arguments, err := query.NewSelectBuilder(store.SchemaRenderer(), spec.table).Columns(columns...).Build()
+	if err != nil {
+		return fmt.Errorf("build idempotency migration row query for %s: %w", spec.table, err)
+	}
+	rows, err := store.SchemaDB().QueryContext(ctx, statement, arguments...)
 	if err != nil {
 		return fmt.Errorf("read idempotency migration rows for %s: %w", spec.table, err)
 	}
@@ -88,6 +95,11 @@ func backfillIdempotencyReceiptRows(ctx context.Context, store Store, spec idemp
 		return err
 	}
 	_ = rows.Close()
+	type backfillRow struct {
+		id     string
+		values []string
+	}
+	backfills := make([]backfillRow, 0, len(values))
 	for _, row := range values {
 		if strings.TrimSpace(row.id) == "" {
 			return fmt.Errorf("idempotency migration blocked: table=%s row has empty primary id", spec.table)
@@ -113,16 +125,37 @@ func backfillIdempotencyReceiptRows(ctx context.Context, store Store, spec idemp
 		if idempotencyMigrationStringsEqual(row.values, backfilled) {
 			continue
 		}
-		assignments := make([]string, 0, len(backfilled))
-		args := make([]any, 0, len(backfilled)+1)
-		for index, value := range backfilled {
-			assignments = append(assignments, store.Identifier(columns[index+1])+" = "+store.Placeholder(index+1))
-			args = append(args, value)
+		backfills = append(backfills, backfillRow{id: row.id, values: backfilled})
+	}
+	if len(backfills) == 0 {
+		return nil
+	}
+	// Each row contributes one id/value pair to every CASE branch plus one id
+	// to the batch WHERE clause.
+	ranges, err := (batch.Parameters{Max: store.MaxParameters(), PerItem: 2*len(columns[1:]) + 1}).Ranges(len(backfills))
+	if err != nil {
+		return fmt.Errorf("plan idempotency migration backfill for %s: %w", spec.table, err)
+	}
+	for _, batchRange := range ranges {
+		rows := backfills[batchRange.Start:batchRange.End]
+		update := query.NewUpdateBuilder(store.SchemaRenderer(), spec.table)
+		ids := make([]any, 0, len(rows))
+		for columnIndex, column := range columns[1:] {
+			caseExpression := query.CaseWhen(query.Equal("id", rows[0].id), rows[0].values[columnIndex])
+			for _, row := range rows[1:] {
+				caseExpression.When(query.Equal("id", row.id), row.values[columnIndex])
+			}
+			update.SetExpression(column, caseExpression.Else(query.Column(column)))
 		}
-		args = append(args, row.id)
-		query := "UPDATE " + store.TableIdentifier(spec.table) + " SET " + strings.Join(assignments, ", ") + " WHERE " + store.Identifier("id") + " = " + store.Placeholder(len(args))
-		if _, err := store.SchemaDB().ExecContext(ctx, query, args...); err != nil {
-			return fmt.Errorf("backfill idempotency migration row %s.%s: %w", spec.table, row.id, err)
+		for _, row := range rows {
+			ids = append(ids, row.id)
+		}
+		statement, arguments, buildErr := update.Where(query.In("id", ids...)).Build()
+		if buildErr != nil {
+			return fmt.Errorf("build idempotency migration backfill for %s: %w", spec.table, buildErr)
+		}
+		if _, execErr := store.SchemaDB().ExecContext(ctx, statement, arguments...); execErr != nil {
+			return fmt.Errorf("backfill idempotency migration rows %s: %w", spec.table, execErr)
 		}
 	}
 	return nil
@@ -136,9 +169,21 @@ type idempotencyMigrationDuplicate struct {
 func findIdempotencyMigrationDuplicates(ctx context.Context, store Store, spec idempotencyReceiptMigrationSpec) ([]idempotencyMigrationDuplicate, error) {
 	columns := append([]string{"workspace_id"}, spec.scopeColumns...)
 	columns = append(columns, "idempotency_key")
-	groupColumns := idempotencyMigrationIdentifiers(store, columns)
-	query := "SELECT " + groupColumns + ", COUNT(*) FROM " + store.TableIdentifier(spec.table) + " GROUP BY " + groupColumns + " HAVING COUNT(*) > 1"
-	rows, err := store.SchemaDB().QueryContext(ctx, query)
+	projections := make([]query.Projection, 0, len(columns)+1)
+	groups := make([]query.Expression, 0, len(columns))
+	for _, column := range columns {
+		expression := query.Column(column)
+		projections = append(projections, query.Project(expression))
+		groups = append(groups, expression)
+	}
+	projections = append(projections, query.Project(query.CountAll()))
+	statement, arguments, err := query.NewSelectBuilder(store.SchemaRenderer(), spec.table).
+		Projections(projections...).GroupBy(groups...).
+		Having(query.GreaterThanExpression(query.CountAll(), 1)).Build()
+	if err != nil {
+		return nil, fmt.Errorf("build idempotency duplicate query for %s: %w", spec.table, err)
+	}
+	rows, err := store.SchemaDB().QueryContext(ctx, statement, arguments...)
 	if err != nil {
 		return nil, fmt.Errorf("scan idempotency duplicate scopes for %s: %w", spec.table, err)
 	}
@@ -167,13 +212,16 @@ func findIdempotencyMigrationDuplicates(ctx context.Context, store Store, spec i
 	_ = rows.Close()
 	duplicates := make([]idempotencyMigrationDuplicate, 0, len(scopes))
 	for _, scope := range scopes {
-		where := make([]string, len(columns))
-		args := make([]any, len(columns))
+		predicates := make([]query.Predicate, len(columns))
 		for index, column := range columns {
-			where[index] = store.Identifier(column) + " = " + store.Placeholder(index+1)
-			args[index] = scope.values[index]
+			predicates[index] = query.Equal(column, scope.values[index])
 		}
-		idRows, err := store.SchemaDB().QueryContext(ctx, "SELECT "+store.Identifier("id")+" FROM "+store.TableIdentifier(spec.table)+" WHERE "+strings.Join(where, " AND ")+" ORDER BY "+store.Identifier("id"), args...)
+		statement, arguments, buildErr := query.NewSelectBuilder(store.SchemaRenderer(), spec.table).
+			Columns("id").Where(query.And(predicates...)).OrderBy(query.Ascending("id")).Build()
+		if buildErr != nil {
+			return nil, buildErr
+		}
+		idRows, err := store.SchemaDB().QueryContext(ctx, statement, arguments...)
 		if err != nil {
 			return nil, err
 		}
@@ -195,14 +243,6 @@ func findIdempotencyMigrationDuplicates(ctx context.Context, store Store, spec i
 		duplicates = append(duplicates, idempotencyMigrationDuplicate{scopeKey: string(scopeJSON), receiptIDs: ids})
 	}
 	return duplicates, nil
-}
-
-func idempotencyMigrationIdentifiers(store Store, columns []string) string {
-	quoted := make([]string, len(columns))
-	for index, column := range columns {
-		quoted[index] = store.Identifier(column)
-	}
-	return strings.Join(quoted, ", ")
 }
 
 func idempotencyMigrationString(value any) string {

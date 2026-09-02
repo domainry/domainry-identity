@@ -10,9 +10,8 @@ import (
 
 func TestIdentityBuildPrincipalContextPublishesCanonicalNonSecretSelectors(t *testing.T) {
 	principal := identitymodel.Principal{
-		Known: true, WorkspaceID: " workspace ", UserID: "user-1", WorkforceProfileID: "worker-1",
-		DepartmentID: "sales", DepartmentPath: "/company/sales", ReportingPath: "/chief/worker-1",
-		ReportingUserIDs: []string{"report-b", "report-a", "report-a"}, TeamIDs: []string{"team-b", "team-a"},
+		Known: true, WorkspaceID: " workspace ", UserID: "user-1",
+		OrgID: "sales", OrganizationPath: "/company/sales",
 		Role: identitymodel.RoleSchema{Key: "seller"}, AuthorizationRevision: "revision-1",
 		BusinessProfiles: []identitymodel.BusinessProfileReference{{
 			BindingKey: "member", ObjectKey: "member_profile", RecordID: "member-1", SurfaceKeys: []string{"portal", "portal"},
@@ -23,16 +22,13 @@ func TestIdentityBuildPrincipalContextPublishesCanonicalNonSecretSelectors(t *te
 	principal.SurfaceKey = "portal"
 
 	context := IdentityBuildPrincipalContext(principal)
-	if context.ContractVersion != identitymodel.IdentityPrincipalContextContractV1 || context.WorkspaceID != "workspace" || context.WorkforceProfileID != "worker-1" {
+	if context.ContractVersion != identitymodel.IdentityPrincipalContextContractV1 || context.WorkspaceID != "workspace" || context.OrgID != "sales" || context.OrganizationPath != "/company/sales" {
 		t.Fatalf("principal context identity=%+v", context)
 	}
-	if len(context.ReportingUserIDs) != 2 || context.ReportingUserIDs[0] != "report-a" || len(context.OrganizationScopes.TeamIDs) != 2 || context.OrganizationScopes.TeamIDs[0] != "team-a" {
-		t.Fatalf("principal organization facts=%+v", context)
-	}
-	if len(context.BusinessProfiles) != 1 || !context.BusinessProfiles[0].Active || len(context.RequestContexts) != 4 {
+	if len(context.BusinessProfiles) != 1 || !context.BusinessProfiles[0].Active || len(context.RequestContexts) != 3 {
 		t.Fatalf("principal contexts=%+v", context)
 	}
-	profile := context.RequestContexts[3]
+	profile := context.RequestContexts[2]
 	if profile.SubjectKind != "business_profile" || profile.CanonicalRequestHeader["X-Workspace-ID"] != "workspace" ||
 		profile.CanonicalRequestHeader["X-Surface-Key"] != "portal" || profile.CanonicalRequestHeader["X-Business-Profile-Key"] != "member" ||
 		profile.CanonicalRequestHeader["X-Business-Profile-ID"] != "member-1" {

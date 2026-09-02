@@ -1,84 +1,39 @@
 package identity
 
 import (
-	"os"
 	"testing"
 
-	manifestmodel "github.com/domainry/domainry-identity/internal/domain/manifest/model"
-
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	manifestmodel "github.com/domainry/domainry-identity/internal/domain/manifest/model"
 )
 
-func TestHRManifestDeclaresEmployeeReportingLine(t *testing.T) {
-	manifest, err := loadIdentitySeedTestManifest("../../domain/manifest/testdata/manifests/identity-workforce.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	seed := FromManifest(manifest)
-	found := 0
-	for _, assignment := range seed.WorkforceAssignments {
-		if assignment.WorkforceProfileID != "employee_user_workforce" {
-			continue
-		}
-		found++
-		if assignment.ManagerWorkforceProfileID != "line_manager_user_workforce" {
-			t.Fatalf("employee workforce manager = %q, want line_manager_user_workforce", assignment.ManagerWorkforceProfileID)
-		}
-	}
-	if found != 1 {
-		t.Fatalf("employee_user seed count = %d, want 1", found)
-	}
-}
-
-func loadIdentitySeedTestManifest(path string) (manifestmodel.ManifestSchema, error) {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return manifestmodel.ManifestSchema{}, err
-	}
-	manifest, _, err := manifestmodel.DecodeManifest(raw)
-	return manifest, err
-}
-
-func TestManifestIdentitySeedBuildsDepartmentHierarchyAndBootstrapUsers(t *testing.T) {
+func TestManifestIdentitySeedBuildsOrganizationHierarchyAndBootstrapUsers(t *testing.T) {
 	manifest := manifestmodel.ManifestSchema{
 		Roles: []identitymodel.RoleSchema{{Key: "employee", Name: "Employee"}},
 		IdentityBootstrap: &identitymodel.ManifestIdentityBootstrapSchema{
 			Version: "1",
-			Departments: []identitymodel.ManifestIdentityDepartmentSchema{
+			OrganizationUnits: []identitymodel.ManifestIdentityOrganizationUnitSchema{
 				{ID: "company", Name: "Company"},
 				{ID: "people", Name: "People", ParentID: stringPointerForManifestIdentitySeedTest("company")},
 			},
 			Users: []identitymodel.ManifestIdentityUserSchema{
-				{ID: "manager", Name: "Manager", Email: "manager@example.com", RoleKeys: []string{"employee"}},
-				{ID: "employee", Name: "Employee", Email: "employee@example.com", RoleKeys: []string{"employee"}},
-			},
-			WorkforceProfiles: []identitymodel.ManifestIdentityWorkforceProfileSchema{
-				{ID: "manager_workforce", OrganizationID: "workspace-primary", IdentityUserID: "manager", WorkerNo: "manager", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive, PrimaryAssignmentID: "manager_primary"},
-				{ID: "employee_workforce", OrganizationID: "workspace-primary", IdentityUserID: "employee", WorkerNo: "employee", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive, PrimaryAssignmentID: "employee_primary"},
-			},
-			WorkforceAssignments: []identitymodel.ManifestIdentityWorkforceAssignmentSchema{
-				{ID: "manager_primary", WorkforceProfileID: "manager_workforce", OrganizationUnitID: "people", AssignmentType: identitymodel.IdentityWorkforceAssignmentPrimary, Status: identitymodel.IdentityStatusActive},
-				{ID: "employee_primary", WorkforceProfileID: "employee_workforce", OrganizationUnitID: "people", ManagerWorkforceProfileID: "manager_workforce", AssignmentType: identitymodel.IdentityWorkforceAssignmentPrimary, Status: identitymodel.IdentityStatusActive},
+				{ID: "manager", Name: "Manager", Email: "manager@example.com", OrgID: "people", WorkerNo: "E001", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive, RoleKeys: []string{"employee"}},
+				{ID: "employee", Name: "Employee", Email: "employee@example.com", OrgID: "people", SupportOrgID: "company", WorkerNo: "E002", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive, RoleKeys: []string{"employee"}},
 			},
 		},
 	}
 	seed := FromManifest(manifest)
-	if len(seed.Departments) != 2 || seed.Departments[1].Path != "/company/people" || seed.Departments[1].Depth != 1 {
-		t.Fatalf("unexpected department hierarchy: %#v", seed.Departments)
+	if len(seed.OrganizationUnits) != 2 || seed.OrganizationUnits[1].Path != "/company/people" || seed.OrganizationUnits[1].Depth != 1 {
+		t.Fatalf("unexpected organizationUnit hierarchy: %#v", seed.OrganizationUnits)
 	}
-	var employeeAccountFound, employeeWorkforceFound bool
+	var employeeFound bool
 	for _, user := range seed.Users {
 		if user.ID == "employee" {
-			employeeAccountFound = user.Name == "Employee" && user.Email == "employee@example.com"
+			employeeFound = user.Name == "Employee" && user.Email == "employee@example.com" && user.OrgID == "people" && user.SupportOrgID == "company" && user.WorkerNo == "E002" && user.WorkStatus == identitymodel.IdentityWorkActive
 		}
 	}
-	for _, assignment := range seed.WorkforceAssignments {
-		if assignment.WorkforceProfileID == "employee_workforce" {
-			employeeWorkforceFound = assignment.OrganizationUnitID == "people" && assignment.ManagerWorkforceProfileID == "manager_workforce"
-		}
-	}
-	if !employeeAccountFound || !employeeWorkforceFound {
-		t.Fatalf("bootstrap account/workforce split is wrong: users=%#v workforce=%#v", seed.Users, seed.WorkforceAssignments)
+	if !employeeFound {
+		t.Fatalf("bootstrap user personnel fields are wrong: users=%#v", seed.Users)
 	}
 }
 

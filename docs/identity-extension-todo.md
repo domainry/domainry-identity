@@ -4,6 +4,8 @@
 
 更新日期：2026-09-02
 
+上位规划：本文件是 Identity 专项明细；跨模块统一扩展入口、各模块切入点和实施顺序见 `module-extension-architecture-todo.md`。
+
 ## 1. 目标
 
 Identity 核心模型保持稳定，客户无需修改或 fork `domainry-identity/module`，即可在宿主项目中扩展业务 Profile 字段、业务事实、绑定规则和展示投影。

@@ -215,7 +215,7 @@ func (h *IdentityHandler) enableIdentityUser(w http.ResponseWriter, r *http.Requ
 		h.writeServiceError(w, r, err)
 		return
 	}
-	h.appendIdentityMutationAudit(r, "identity_user_enabled", "identity_user", userID, "Re-enabled account login without restoring Workforce or Profile entitlements", nil)
+	h.appendIdentityMutationAudit(r, "identity_user_enabled", "identity_user", userID, "Re-enabled account login without restoring Profile entitlements", nil)
 	w.WriteHeader(http.StatusNoContent)
 }
 

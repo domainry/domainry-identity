@@ -14,7 +14,6 @@ func TestIdentityDomainConstructionAndPermissionCatalogEdges(t *testing.T) {
 		t.Fatal("nil service exposed a repository")
 	}
 	nilService.UseRoleBindingEligibility(nil)
-	nilService.UseOrganizationScopeResolver(nil)
 	if nilService.WorkspaceID() != "" {
 		t.Fatal("nil service exposed a workspace")
 	}
@@ -84,21 +83,21 @@ func TestIdentityListAndEffectiveMenuFailureWindows(t *testing.T) {
 		name       string
 		repository *identityPermissionMenuRepository
 	}{
-		{name: "role assignments", repository: &identityPermissionMenuRepository{roleAssignmentErr: errIdentityDepartmentUserEdge}},
-		{name: "roles", repository: &identityPermissionMenuRepository{roleAssignments: []identitymodel.IdentityUserRoleAssignment{{RoleID: role.ID}}, roleErr: errIdentityDepartmentUserEdge}},
-		{name: "menus", repository: &identityPermissionMenuRepository{roleAssignments: []identitymodel.IdentityUserRoleAssignment{{RoleID: role.ID}}, roles: []identitymodel.IdentityRole{role}, menuErr: errIdentityDepartmentUserEdge}},
-		{name: "menu assignments", repository: &identityPermissionMenuRepository{roleAssignments: []identitymodel.IdentityUserRoleAssignment{{RoleID: role.ID}}, roles: []identitymodel.IdentityRole{role}, menuAssignmentErr: errIdentityDepartmentUserEdge}},
+		{name: "role assignments", repository: &identityPermissionMenuRepository{roleAssignmentErr: errIdentityOrganizationUnitUserEdge}},
+		{name: "roles", repository: &identityPermissionMenuRepository{roleAssignments: []identitymodel.IdentityUserRoleAssignment{{RoleID: role.ID}}, roleErr: errIdentityOrganizationUnitUserEdge}},
+		{name: "menus", repository: &identityPermissionMenuRepository{roleAssignments: []identitymodel.IdentityUserRoleAssignment{{RoleID: role.ID}}, roles: []identitymodel.IdentityRole{role}, menuErr: errIdentityOrganizationUnitUserEdge}},
+		{name: "menu assignments", repository: &identityPermissionMenuRepository{roleAssignments: []identitymodel.IdentityUserRoleAssignment{{RoleID: role.ID}}, roles: []identitymodel.IdentityRole{role}, menuAssignmentErr: errIdentityOrganizationUnitUserEdge}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			if _, err := identityPermissionMenuService(test.repository).EffectiveMenus(t.Context(), "user"); !errors.Is(err, errIdentityDepartmentUserEdge) {
+			if _, err := identityPermissionMenuService(test.repository).EffectiveMenus(t.Context(), "user"); !errors.Is(err, errIdentityOrganizationUnitUserEdge) {
 				t.Fatalf("error=%v", err)
 			}
 		})
 	}
 
-	repository := &identityPermissionMenuRepository{menuErr: errIdentityDepartmentUserEdge}
+	repository := &identityPermissionMenuRepository{menuErr: errIdentityOrganizationUnitUserEdge}
 	service := identityPermissionMenuService(repository)
-	if _, err := service.ListMenus(t.Context()); !errors.Is(err, errIdentityDepartmentUserEdge) {
+	if _, err := service.ListMenus(t.Context()); !errors.Is(err, errIdentityOrganizationUnitUserEdge) {
 		t.Fatalf("list menus error=%v", err)
 	}
 	repository.menuErr = nil

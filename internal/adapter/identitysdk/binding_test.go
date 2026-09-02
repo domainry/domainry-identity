@@ -3,6 +3,7 @@ package identitysdkadapter
 import (
 	"errors"
 	"net/http"
+	"reflect"
 	"testing"
 	"time"
 
@@ -38,12 +39,11 @@ func TestNewBindingRejectsIncompleteNamedDependencies(t *testing.T) {
 
 func TestSDKScopePredicateCoversPublishedIdentityScopes(t *testing.T) {
 	tests := map[string]identitysdk.Predicate{
-		"all_records":             {Fact: "id", Operator: identitysdk.OperatorExists, Value: true},
-		"owned_records":           {Fact: "owner_id", Operator: identitysdk.OperatorEqual, Value: "$subject.id"},
-		"department":              {Fact: "department_id", Operator: identitysdk.OperatorEqual, Value: "$subject.department_id"},
-		"department_and_children": {Fact: "department_path", Operator: identitysdk.OperatorPrefix, Value: "$subject.department_path"},
-		"subordinates":            {Fact: "owner_id", Operator: identitysdk.OperatorIn, Value: "$subject.reporting_subject_ids"},
-		"team":                    {Fact: "team_id", Operator: identitysdk.OperatorIn, Value: "$subject.organization_scopes.team_ids"},
+		"all_records":               {Fact: "id", Operator: identitysdk.OperatorExists, Value: true},
+		"owned_records":             {Fact: "owner_user_id", Operator: identitysdk.OperatorEqual, Value: "$subject.id"},
+		"organization":              {Fact: "owner_org_id", Operator: identitysdk.OperatorEqual, Value: "$subject.org_id"},
+		"organization_and_children": {Fact: "owner_org_id", Operator: identitysdk.OperatorIn, Value: "$subject.org_scope_ids"},
+		"self_and_subordinates":     {Fact: "owner_user_id", Operator: identitysdk.OperatorIn, Value: "$subject.reporting_scope_user_ids"},
 	}
 	for scope, want := range tests {
 		if got := sdkScopePredicate(scope); got.Fact != want.Fact || got.Operator != want.Operator || got.Value != want.Value {
@@ -56,15 +56,21 @@ func TestSDKAccessBundleDoesNotInventDataAccessFromFunctionGrant(t *testing.T) {
 	bundle := sdkAccessBundle(identitymodel.IdentityEffectiveAccessSnapshot{
 		AuthorizationRevision: "revision-1",
 		Permissions:           []identitymodel.IdentityEffectivePermissionGrant{{ObjectKey: "order", Action: "read"}},
-	}, identitymodel.Principal{WorkspaceID: "workspace-primary", UserID: "user-1"}, time.Now())
+	}, identitymodel.Principal{
+		WorkspaceID: "workspace-primary", UserID: "user-1", OrgID: "region",
+		OrgScopeIDs: []string{"region", "store"}, ReportingScopeUserIDs: []string{"manager", "seller"},
+	}, time.Now())
 	if len(bundle.FunctionGrants) != 1 || len(bundle.DataPolicies) != 0 {
 		t.Fatalf("bundle=%#v", bundle)
 	}
+	if bundle.Subject.OrgID != "region" || len(bundle.Subject.OrgScopeIDs) != 2 || len(bundle.Subject.ReportingScopeUserIDs) != 2 {
+		t.Fatalf("bundle subject lost current hierarchy IDs: %#v", bundle.Subject)
+	}
 	bundle = sdkAccessBundle(identitymodel.IdentityEffectiveAccessSnapshot{
 		AuthorizationRevision: "revision-1",
-		DataAccess:            []identitymodel.IdentityEffectiveDataAccess{{ObjectKey: "order", Action: "read", Allowed: true, Scope: "all_records"}},
+		DataAccess:            []identitymodel.IdentityEffectiveDataAccess{{ObjectKey: "order", Allowed: true, Scope: "all_records"}},
 	}, identitymodel.Principal{WorkspaceID: "workspace-primary", UserID: "user-1"}, time.Now())
-	if len(bundle.DataPolicies) != 1 || bundle.DataPolicies[0].Predicate.Operator != identitysdk.OperatorExists {
+	if len(bundle.DataPolicies) != 2 || bundle.DataPolicies[0].Predicate.Operator != identitysdk.OperatorExists || bundle.DataPolicies[1].Predicate.Operator != identitysdk.OperatorExists {
 		t.Fatalf("all-records policy=%#v", bundle.DataPolicies)
 	}
 }
@@ -76,7 +82,7 @@ func TestSDKAccessBundlePreservesCompleteV4PolicySemantics(t *testing.T) {
 	}
 	bundle := sdkAccessBundle(identitymodel.IdentityEffectiveAccessSnapshot{
 		AuthorizationRevision: "revision-2",
-		DataAccess:            []identitymodel.IdentityEffectiveDataAccess{{ObjectKey: "invoice", Action: "read", Allowed: true, Scope: "custom", Predicate: relation, AuditDenial: true}},
+		DataAccess:            []identitymodel.IdentityEffectiveDataAccess{{ObjectKey: "invoice", Allowed: true, Scope: "custom", Predicate: relation, AuditDenial: true}},
 		FieldAccess: []identitymodel.IdentityEffectiveFieldAccess{{
 			ObjectKey: "invoice", FieldKey: "phone", Read: true, Masked: true, Reason: "personal data",
 			Policies: []identitymodel.ContextualFieldPolicyRule{{Key: "owner-clear", Priority: 100, Actions: []string{"read"}, Effect: "allow", Predicate: relation}},
@@ -87,7 +93,7 @@ func TestSDKAccessBundlePreservesCompleteV4PolicySemantics(t *testing.T) {
 		WorkspaceID: "workspace-primary", UserID: "user-1",
 		Role: identitymodel.RoleSchema{Guardrails: []identitymodel.IdentityGuardrailPolicy{{Key: "regulated", FieldRestrictions: []identitymodel.IdentityFieldRestriction{{ObjectKey: "invoice", FieldKey: "phone", Actions: []string{"export"}, Reason: "legal hold"}}}}},
 	}, time.Now())
-	if bundle.ContractVersion != identitysdk.CurrentPolicyBundleVersion || len(bundle.DataPolicies) != 1 || !bundle.DataPolicies[0].AuditDenial || len(bundle.DataPolicies[0].Predicate.Path) != 1 || bundle.DataPolicies[0].Predicate.Value != "$context.business_profile_id" {
+	if bundle.ContractVersion != identitysdk.CurrentPolicyBundleVersion || len(bundle.DataPolicies) != 2 || !bundle.DataPolicies[0].AuditDenial || len(bundle.DataPolicies[0].Predicate.Path) != 1 || bundle.DataPolicies[0].Predicate.Value != "$context.business_profile_id" {
 		t.Fatalf("data policy lost V3 semantics: %#v", bundle.DataPolicies)
 	}
 	if len(bundle.FieldPolicies) != 1 || bundle.FieldPolicies[0].Reason != "personal data" || len(bundle.FieldPolicies[0].Rules) != 1 || len(bundle.FieldPolicies[0].Rules[0].Predicate.Path) != 1 {
@@ -101,13 +107,67 @@ func TestSDKAccessBundlePreservesCompleteV4PolicySemantics(t *testing.T) {
 	}
 }
 
+func TestSDKAccessBundleFreezesSupportOrganizationScopeAndFailsClosed(t *testing.T) {
+	now := time.Now().UTC()
+	predicate := identitymodel.IdentityPolicyExpression{Operator: "in", FieldKey: "owner_org_id", ValueSource: "actor_claim", ClaimKey: "support_org_scope_ids"}
+	snapshot := identitymodel.IdentityEffectiveAccessSnapshot{
+		AuthorizationRevision: "support-scope-revision",
+		Permissions:           []identitymodel.IdentityEffectivePermissionGrant{{Key: "customer.read", ObjectKey: "customer", Action: "read"}},
+		DataAccess:            []identitymodel.IdentityEffectiveDataAccess{{ObjectKey: "customer", Allowed: true, Scope: "custom", Scopes: []string{"custom"}, Predicate: &predicate}},
+	}
+	principal := identitymodel.Principal{Known: true, WorkspaceID: "workspace-primary", UserID: "support-agent", SupportOrgID: "sales", SupportOrgScopeIDs: []string{"sales", "sales-east"}}
+	bundle := sdkAccessBundle(snapshot, principal, now)
+	if len(bundle.DataPolicies) != 2 || !reflect.DeepEqual(bundle.DataPolicies[0].Predicate.Value, []string{"sales", "sales-east"}) || !reflect.DeepEqual(bundle.DataPolicies[1].Predicate.Value, []string{"sales", "sales-east"}) {
+		t.Fatalf("support scope was not frozen into access bundle: %#v", bundle.DataPolicies)
+	}
+	allowed, err := identityevaluator.Evaluate(bundle, identitysdk.AccessRequest{ObjectKey: "customer", Action: "read", DataAction: identitysdk.DataActionRead}, identitysdk.ResourceFacts{"owner_org_id": "sales-east"}, now)
+	if err != nil || !allowed.Allowed {
+		t.Fatalf("supported sales customer decision=%+v err=%v", allowed, err)
+	}
+	denied, err := identityevaluator.Evaluate(bundle, identitysdk.AccessRequest{ObjectKey: "customer", Action: "read", DataAction: identitysdk.DataActionRead}, identitysdk.ResourceFacts{"owner_org_id": "other-sales"}, now)
+	if err != nil || denied.Allowed {
+		t.Fatalf("customer outside support scope decision=%+v err=%v", denied, err)
+	}
+	writeDenied, err := identityevaluator.Evaluate(bundle, identitysdk.AccessRequest{ObjectKey: "customer", Action: "update", DataAction: identitysdk.DataActionWrite}, identitysdk.ResourceFacts{"owner_org_id": "sales-east"}, now)
+	if err != nil || writeDenied.Allowed {
+		t.Fatalf("support scope granted an undeclared customer update Action: decision=%+v err=%v", writeDenied, err)
+	}
+
+	emptyBundle := sdkAccessBundle(snapshot, identitymodel.Principal{Known: true, WorkspaceID: "workspace-primary", UserID: "support-agent"}, now)
+	denied, err = identityevaluator.Evaluate(emptyBundle, identitysdk.AccessRequest{ObjectKey: "customer", Action: "read", DataAction: identitysdk.DataActionRead}, identitysdk.ResourceFacts{"owner_org_id": "sales"}, now)
+	if err != nil || denied.Allowed {
+		t.Fatalf("empty support scope did not fail closed: decision=%+v err=%v", denied, err)
+	}
+}
+
+func TestSDKAccessBundleUnionsPrimaryAndSupportOrganizationScopes(t *testing.T) {
+	now := time.Now().UTC()
+	predicate := identitymodel.IdentityPolicyExpression{Operator: "in", FieldKey: "owner_org_id", ValueSource: "actor_claim", ClaimKey: "support_org_scope_ids"}
+	bundle := sdkAccessBundle(identitymodel.IdentityEffectiveAccessSnapshot{
+		AuthorizationRevision: "combined-org-scope",
+		Permissions:           []identitymodel.IdentityEffectivePermissionGrant{{Key: "customer.read", ObjectKey: "customer", Action: "read"}},
+		DataAccess:            []identitymodel.IdentityEffectiveDataAccess{{ObjectKey: "customer", Allowed: true, Scope: "union", Scopes: []string{"organization", "custom"}, Predicate: &predicate}},
+	}, identitymodel.Principal{Known: true, WorkspaceID: "workspace-primary", UserID: "support-agent", OrgID: "support-team", SupportOrgID: "sales", SupportOrgScopeIDs: []string{"sales", "sales-east"}}, now)
+
+	for _, organizationID := range []string{"support-team", "sales", "sales-east"} {
+		decision, err := identityevaluator.Evaluate(bundle, identitysdk.AccessRequest{ObjectKey: "customer", Action: "read", DataAction: identitysdk.DataActionRead}, identitysdk.ResourceFacts{"owner_org_id": organizationID}, now)
+		if err != nil || !decision.Allowed {
+			t.Fatalf("combined scope denied organization %q: decision=%+v err=%v", organizationID, decision, err)
+		}
+	}
+	decision, err := identityevaluator.Evaluate(bundle, identitysdk.AccessRequest{ObjectKey: "customer", Action: "read", DataAction: identitysdk.DataActionRead}, identitysdk.ResourceFacts{"owner_org_id": "other"}, now)
+	if err != nil || decision.Allowed {
+		t.Fatalf("combined scope allowed unrelated organization: decision=%+v err=%v", decision, err)
+	}
+}
+
 func TestSDKAccessBundleAuthorizesOnlyExactPermissionGrant(t *testing.T) {
 	now := time.Now().UTC()
 	predicate := identitymodel.IdentityPolicyExpression{Operator: "eq", FieldKey: "identity_user_id", ValueSource: "actor_claim", ClaimKey: "user_id"}
 	bundle := sdkAccessBundle(identitymodel.IdentityEffectiveAccessSnapshot{
 		AuthorizationRevision: "authz",
 		Permissions:           []identitymodel.IdentityEffectivePermissionGrant{{Key: "course_favorite.create", ObjectKey: "course_favorite", Action: "create"}},
-		DataAccess:            []identitymodel.IdentityEffectiveDataAccess{{ObjectKey: "course_favorite", Action: "write", Allowed: true, Scope: "custom", Predicate: &predicate}},
+		DataAccess:            []identitymodel.IdentityEffectiveDataAccess{{ObjectKey: "course_favorite", Allowed: true, Scope: "custom", Predicate: &predicate}},
 	}, identitymodel.Principal{Known: true, WorkspaceID: "workspace-primary", UserID: "wechat-user"}, now)
 	allowed, err := identityevaluator.Evaluate(bundle, identitysdk.AccessRequest{ObjectKey: "course_favorite", Action: "create", DataAction: identitysdk.DataActionWrite}, identitysdk.ResourceFacts{"identity_user_id": "wechat-user"}, now)
 	if err != nil || !allowed.Allowed {

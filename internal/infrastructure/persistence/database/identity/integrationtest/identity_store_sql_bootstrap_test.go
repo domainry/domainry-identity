@@ -2,6 +2,7 @@ package identity_test
 
 import (
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	identityservice "github.com/domainry/domainry-identity/internal/domain/identity/service"
 
 	. "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
 
@@ -11,6 +12,54 @@ import (
 	identitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 )
+
+func TestSQLIdentityUserReportingTreeReparentPersistsDescendantPaths(t *testing.T) {
+	store, err := OpenContext(t.Context(), config.Config{DatabaseDriver: "sqlite", DBPath: filepath.Join(t.TempDir(), "identity-reporting-tree.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.EnsureIdentitySchema(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	identityStore, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceEngine())
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := identityservice.NewIdentityDomainService(identityStore, nil).ForWorkspace("workspace-primary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, user := range []identitymodel.IdentityUser{
+		{ID: "manager-a", Name: "Manager A", Email: "manager-a@example.com", Status: identitymodel.IdentityStatusActive},
+		{ID: "manager-b", Name: "Manager B", Email: "manager-b@example.com", Status: identitymodel.IdentityStatusActive},
+		{ID: "employee", Name: "Employee", Email: "employee@example.com", ManagerUserID: "manager-a", Status: identitymodel.IdentityStatusActive},
+		{ID: "report", Name: "Report", Email: "report@example.com", ManagerUserID: "employee", Status: identitymodel.IdentityStatusActive},
+	} {
+		if err := service.UpsertUser(t.Context(), user); err != nil {
+			t.Fatalf("upsert %s: %v", user.ID, err)
+		}
+	}
+	if err := service.UpsertUser(t.Context(), identitymodel.IdentityUser{
+		ID: "employee", Name: "Employee", Email: "employee@example.com", ManagerUserID: "manager-b", Status: identitymodel.IdentityStatusActive,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	users, err := identityStore.ListIdentityUsers(t.Context(), "workspace-primary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]identitymodel.IdentityUser{}
+	for _, user := range users {
+		byID[user.ID] = user
+	}
+	if employee := byID["employee"]; employee.ManagerUserID != "manager-b" || employee.ReportingPath != "/manager-b/employee" {
+		t.Fatalf("employee reporting facts not persisted: %#v", employee)
+	}
+	if report := byID["report"]; report.ManagerUserID != "employee" || report.ReportingPath != "/manager-b/employee/report" {
+		t.Fatalf("descendant reporting path not rewritten: %#v", report)
+	}
+}
 
 func TestApplyIdentityBootstrapAtomicallyRollsBackPartialGraph(t *testing.T) {
 	store, err := OpenContext(t.Context(), config.Config{DatabaseDriver: "sqlite", DBPath: filepath.Join(t.TempDir(), "identity-bootstrap.db")})
@@ -28,16 +77,14 @@ func TestApplyIdentityBootstrapAtomicallyRollsBackPartialGraph(t *testing.T) {
 	err = identityStore.ApplyIdentityBootstrapAtomically(
 		t.Context(),
 		"workspace-primary",
-		[]identitymodel.IdentityDepartment{{ID: "people", Name: "People", Path: "/people", Status: identitymodel.IdentityStatusActive}},
-		[]identitymodel.IdentityUser{{ID: "employee", Name: "Employee", Email: "employee@example.com", Status: identitymodel.IdentityStatusActive}},
-		[]identitymodel.IdentityWorkforceProfile{{ID: "employee-workforce", OrganizationID: "organization", IdentityUserID: "employee", WorkerNo: "E-1", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive}},
-		[]identitymodel.IdentityWorkforceAssignment{{ID: "employee-primary", WorkforceProfileID: "employee-workforce", OrganizationUnitID: "people", AssignmentType: identitymodel.IdentityWorkforceAssignmentPrimary, Status: identitymodel.IdentityStatusActive}},
-		[]identitymodel.IdentityUserRoleAssignment{{UserID: "employee", RoleID: "", WorkforceProfileID: "employee-workforce"}},
+		[]identitymodel.IdentityOrganizationUnit{{ID: "people", Name: "People", Path: "/people", Status: identitymodel.IdentityStatusActive}},
+		[]identitymodel.IdentityUser{{ID: "employee", Name: "Employee", Email: "employee@example.com", OrgID: "people", WorkerNo: "E-1", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive, Status: identitymodel.IdentityStatusActive}},
+		[]identitymodel.IdentityUserRoleAssignment{{UserID: "employee", RoleID: ""}},
 	)
 	if err == nil {
 		t.Fatal("expected invalid assignment to roll back Identity Bootstrap")
 	}
-	departments, listErr := identityStore.ListIdentityDepartments(t.Context(), "workspace-primary")
+	organizationUnits, listErr := identityStore.ListIdentityOrganizationUnits(t.Context(), "workspace-primary")
 	if listErr != nil {
 		t.Fatal(listErr)
 	}
@@ -45,20 +92,12 @@ func TestApplyIdentityBootstrapAtomicallyRollsBackPartialGraph(t *testing.T) {
 	if listErr != nil {
 		t.Fatal(listErr)
 	}
-	profiles, listErr := identityStore.ListIdentityWorkforceProfiles(t.Context(), "workspace-primary")
-	if listErr != nil {
-		t.Fatal(listErr)
-	}
-	assignments, listErr := identityStore.ListIdentityWorkforceAssignments(t.Context(), "workspace-primary", "")
-	if listErr != nil {
-		t.Fatal(listErr)
-	}
-	if len(departments) != 0 || len(users) != 0 || len(profiles) != 0 || len(assignments) != 0 {
-		t.Fatalf("partial Identity graph survived rollback: departments=%#v users=%#v profiles=%#v assignments=%#v", departments, users, profiles, assignments)
+	if len(organizationUnits) != 0 || len(users) != 0 {
+		t.Fatalf("partial Identity graph survived rollback: organizationUnits=%#v users=%#v", organizationUnits, users)
 	}
 }
 
-func TestApplyIdentityBootstrapAtomicallyPersistsWorkforceBoundRole(t *testing.T) {
+func TestApplyIdentityBootstrapAtomicallyPersistsUserRole(t *testing.T) {
 	store, err := OpenContext(t.Context(), config.Config{DatabaseDriver: "sqlite", DBPath: filepath.Join(t.TempDir(), "identity-bootstrap-success.db")})
 	if err != nil {
 		t.Fatal(err)
@@ -76,11 +115,9 @@ func TestApplyIdentityBootstrapAtomicallyPersistsWorkforceBoundRole(t *testing.T
 	}
 	err = identityStore.ApplyIdentityBootstrapAtomically(
 		t.Context(), "workspace-primary",
-		[]identitymodel.IdentityDepartment{{ID: "people", Name: "People", Path: "/people", Status: identitymodel.IdentityStatusActive}},
-		[]identitymodel.IdentityUser{{ID: "employee", Name: "Employee", Email: "employee@example.com", Status: identitymodel.IdentityStatusActive}},
-		[]identitymodel.IdentityWorkforceProfile{{ID: "employee-workforce", OrganizationID: "organization", IdentityUserID: "employee", WorkerNo: "E-1", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive}},
-		[]identitymodel.IdentityWorkforceAssignment{{ID: "employee-primary", WorkforceProfileID: "employee-workforce", OrganizationUnitID: "people", AssignmentType: identitymodel.IdentityWorkforceAssignmentPrimary, Status: identitymodel.IdentityStatusActive}},
-		[]identitymodel.IdentityUserRoleAssignment{{UserID: "employee", RoleID: "operator", WorkforceProfileID: "employee-workforce"}},
+		[]identitymodel.IdentityOrganizationUnit{{ID: "people", Name: "People", Path: "/people", Status: identitymodel.IdentityStatusActive}},
+		[]identitymodel.IdentityUser{{ID: "employee", Name: "Employee", Email: "employee@example.com", OrgID: "people", WorkerNo: "E-1", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive, Status: identitymodel.IdentityStatusActive}},
+		[]identitymodel.IdentityUserRoleAssignment{{UserID: "employee", RoleID: "operator"}},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -89,7 +126,7 @@ func TestApplyIdentityBootstrapAtomicallyPersistsWorkforceBoundRole(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(roleAssignments) != 1 || roleAssignments[0].WorkforceProfileID != "employee-workforce" {
-		t.Fatalf("workforce-bound role not persisted: %#v", roleAssignments)
+	if len(roleAssignments) != 1 || roleAssignments[0].UserID != "employee" || roleAssignments[0].RoleID != "operator" {
+		t.Fatalf("user role not persisted: %#v", roleAssignments)
 	}
 }

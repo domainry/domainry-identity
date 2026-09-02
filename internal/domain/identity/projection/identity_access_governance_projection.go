@@ -53,7 +53,7 @@ func IdentityBuildAccessReverseIndex(roles []identitymodel.IdentityRole, definit
 	return index
 }
 
-func IdentityBuildGovernanceReports(now time.Time, permissions []identitymodel.IdentityPermissionDefinition, roles []identitymodel.IdentityRole, definitions []identitymodel.RoleSchema, assignments []identitymodel.IdentityUserRoleAssignment, activeWorkforceProfiles map[string]bool) identitymodel.IdentityGovernanceReports {
+func IdentityBuildGovernanceReports(now time.Time, permissions []identitymodel.IdentityPermissionDefinition, roles []identitymodel.IdentityRole, definitions []identitymodel.RoleSchema, assignments []identitymodel.IdentityUserRoleAssignment) identitymodel.IdentityGovernanceReports {
 	report := identitymodel.IdentityGovernanceReports{
 		OrphanPermissions: []string{}, RolesWithoutMembers: []string{}, ExpiredEntitlements: []identitymodel.IdentityUserRoleAssignment{},
 		UnboundAssignments: []identitymodel.IdentityUserRoleAssignment{}, AuthorizationDrift: []string{},
@@ -108,9 +108,6 @@ func IdentityBuildGovernanceReports(now time.Time, permissions []identitymodel.I
 		if (strings.TrimSpace(assignment.BindingKey) == "") != (strings.TrimSpace(assignment.ProfileID) == "") {
 			report.UnboundAssignments = append(report.UnboundAssignments, assignment)
 		}
-		if profileID := strings.TrimSpace(assignment.WorkforceProfileID); profileID != "" && !activeWorkforceProfiles[profileID] {
-			report.UnboundAssignments = append(report.UnboundAssignments, assignment)
-		}
 	}
 	for _, permission := range permissions {
 		if key := strings.TrimSpace(permission.Key); key != "" && !grantedPermissions[key] {
@@ -147,13 +144,10 @@ func IdentityPreviewRoleChange(request identitymodel.IdentityRoleChangeImpactReq
 			continue
 		}
 		affectedUsers[assignment.UserID] = true
-		if assignment.WorkforceProfileID != "" {
-			profileTypes = append(profileTypes, "workforce")
-		}
 		if assignment.BindingKey != "" {
 			profileTypes = append(profileTypes, "business_profile:"+assignment.BindingKey)
 		}
-		if assignment.WorkforceProfileID == "" && assignment.BindingKey == "" {
+		if assignment.BindingKey == "" {
 			profileTypes = append(profileTypes, "account")
 		}
 	}

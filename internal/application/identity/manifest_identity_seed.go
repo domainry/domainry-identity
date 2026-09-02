@@ -17,20 +17,18 @@ import (
 )
 
 type Seed struct {
-	Roles                []identitymodel.IdentityRole
-	Departments          []identitymodel.IdentityDepartment
-	Users                []identitymodel.IdentityUser
-	WorkforceProfiles    []identitymodel.IdentityWorkforceProfile
-	WorkforceAssignments []identitymodel.IdentityWorkforceAssignment
-	UserRoles            []identitymodel.IdentityUserRoleAssignment
-	Menus                []identitymodel.IdentityMenu
-	RoleMenus            []identitymodel.IdentityRoleMenuAssignment
+	Roles             []identitymodel.IdentityRole
+	OrganizationUnits []identitymodel.IdentityOrganizationUnit
+	Users             []identitymodel.IdentityUser
+	UserRoles         []identitymodel.IdentityUserRoleAssignment
+	Menus             []identitymodel.IdentityMenu
+	RoleMenus         []identitymodel.IdentityRoleMenuAssignment
 }
 
 func FromManifest(manifest manifestmodel.ManifestSchema) Seed {
 	seed := generatedManifestIdentitySeed()
 	if manifest.IdentityBootstrap != nil {
-		seed.Departments = manifestIdentityDepartments(manifest.IdentityBootstrap.Departments)
+		seed.OrganizationUnits = manifestIdentityOrganizationUnits(manifest.IdentityBootstrap.OrganizationUnits)
 		seed.Menus = append(seed.Menus, manifest.IdentityBootstrap.Menus...)
 		seed.RoleMenus = append(seed.RoleMenus, manifest.IdentityBootstrap.RoleMenus...)
 		for _, roleMenuSet := range manifest.IdentityBootstrap.RoleMenuSets {
@@ -76,8 +74,6 @@ func FromManifest(manifest manifestmodel.ManifestSchema) Seed {
 	if manifest.IdentityBootstrap != nil {
 		configuredUsers = append(configuredUsers, manifest.IdentityBootstrap.Users...)
 	}
-	seed.WorkforceProfiles = manifestIdentityWorkforceProfiles(manifest.IdentityBootstrap)
-	seed.WorkforceAssignments = manifestIdentityWorkforceAssignments(manifest.IdentityBootstrap)
 	for _, configured := range configuredUsers {
 		userID := strings.TrimSpace(configured.ID)
 		if userID == "" {
@@ -88,13 +84,21 @@ func FromManifest(manifest manifestmodel.ManifestSchema) Seed {
 			GivenName: strings.TrimSpace(configured.GivenName), MiddleName: strings.TrimSpace(configured.MiddleName),
 			FamilyName: strings.TrimSpace(configured.FamilyName), NamePrefix: strings.TrimSpace(configured.NamePrefix),
 			NameSuffix: strings.TrimSpace(configured.NameSuffix), NativeName: strings.TrimSpace(configured.NativeName),
-			NameLocale:  strings.TrimSpace(configured.NameLocale),
-			AccountType: configured.AccountType,
-			Locale:      strings.TrimSpace(configured.Locale),
-			Timezone:    strings.TrimSpace(configured.Timezone),
-			Email:       identityValueOrDefault(configured.Email, userID+"@example.com"),
-			Phone:       strings.TrimSpace(configured.Phone),
-			Status:      identitymodel.IdentityStatus(identityValueOrDefault(configured.Status, string(identitymodel.IdentityStatusActive))),
+			NameLocale:    strings.TrimSpace(configured.NameLocale),
+			AccountType:   configured.AccountType,
+			Locale:        strings.TrimSpace(configured.Locale),
+			Timezone:      strings.TrimSpace(configured.Timezone),
+			OrgID:         strings.TrimSpace(configured.OrgID),
+			SupportOrgID:  strings.TrimSpace(configured.SupportOrgID),
+			ManagerUserID: strings.TrimSpace(configured.ManagerUserID),
+			WorkerNo:      strings.TrimSpace(configured.WorkerNo),
+			WorkerType:    configured.WorkerType,
+			WorkStatus:    configured.WorkStatus,
+			StartDate:     strings.TrimSpace(configured.StartDate),
+			EndDate:       strings.TrimSpace(configured.EndDate),
+			Email:         identityValueOrDefault(configured.Email, userID+"@example.com"),
+			Phone:         strings.TrimSpace(configured.Phone),
+			Status:        identitymodel.IdentityStatus(identityValueOrDefault(configured.Status, string(identitymodel.IdentityStatusActive))),
 		}
 		if index, exists := userIndexByID[userID]; exists {
 			seed.Users[index] = user
@@ -111,91 +115,93 @@ func FromManifest(manifest manifestmodel.ManifestSchema) Seed {
 	if manifest.IdentityBootstrap != nil {
 		for _, assignment := range manifest.IdentityBootstrap.UserRoleAssignments {
 			seed.UserRoles = append(seed.UserRoles, identitymodel.IdentityUserRoleAssignment{
-				UserID:             strings.TrimSpace(assignment.UserID),
-				RoleID:             strings.TrimSpace(assignment.RoleID),
-				WorkforceProfileID: strings.TrimSpace(assignment.WorkforceProfileID),
+				UserID: strings.TrimSpace(assignment.UserID),
+				RoleID: strings.TrimSpace(assignment.RoleID),
 			})
 		}
 	}
+	seed.Users = manifestIdentityUserReportingPaths(seed.Users)
 	return seed
 }
 
-func manifestIdentityWorkforceProfiles(bootstrap *identitymodel.ManifestIdentityBootstrapSchema) []identitymodel.IdentityWorkforceProfile {
-	configured := []identitymodel.ManifestIdentityWorkforceProfileSchema{}
-	if bootstrap != nil {
-		configured = append(configured, bootstrap.WorkforceProfiles...)
+func manifestIdentityUserReportingPaths(users []identitymodel.IdentityUser) []identitymodel.IdentityUser {
+	byID := make(map[string]identitymodel.IdentityUser, len(users))
+	for _, user := range users {
+		byID[user.ID] = user
 	}
-	out := make([]identitymodel.IdentityWorkforceProfile, 0, len(configured))
-	for _, profile := range configured {
-		out = append(out, identitymodel.IdentityWorkforceProfile{
-			ID: strings.TrimSpace(profile.ID), OrganizationID: strings.TrimSpace(profile.OrganizationID),
-			IdentityUserID: strings.TrimSpace(profile.IdentityUserID), WorkerNo: strings.TrimSpace(profile.WorkerNo),
-			WorkerType: profile.WorkerType, WorkStatus: profile.WorkStatus, StartDate: strings.TrimSpace(profile.StartDate),
-			EndDate: strings.TrimSpace(profile.EndDate), PrimaryAssignmentID: strings.TrimSpace(profile.PrimaryAssignmentID), Version: 1,
-		})
-	}
-	return out
-}
-
-func manifestIdentityWorkforceAssignments(bootstrap *identitymodel.ManifestIdentityBootstrapSchema) []identitymodel.IdentityWorkforceAssignment {
-	configured := []identitymodel.ManifestIdentityWorkforceAssignmentSchema{}
-	if bootstrap != nil {
-		configured = append(configured, bootstrap.WorkforceAssignments...)
-	}
-	out := make([]identitymodel.IdentityWorkforceAssignment, 0, len(configured))
-	for _, assignment := range configured {
-		out = append(out, identitymodel.IdentityWorkforceAssignment{
-			ID: strings.TrimSpace(assignment.ID), WorkforceProfileID: strings.TrimSpace(assignment.WorkforceProfileID),
-			OrganizationUnitID: strings.TrimSpace(assignment.OrganizationUnitID), PositionID: strings.TrimSpace(assignment.PositionID),
-			ManagerWorkforceProfileID: strings.TrimSpace(assignment.ManagerWorkforceProfileID), AssignmentType: assignment.AssignmentType,
-			EffectiveFrom: strings.TrimSpace(assignment.EffectiveFrom), EffectiveTo: strings.TrimSpace(assignment.EffectiveTo),
-			Status: assignment.Status, Version: 1,
-		})
-	}
-	return out
-}
-
-func manifestIdentityDepartments(configured []identitymodel.ManifestIdentityDepartmentSchema) []identitymodel.IdentityDepartment {
-	byID := map[string]identitymodel.ManifestIdentityDepartmentSchema{}
-	for _, department := range configured {
-		if id := strings.TrimSpace(department.ID); id != "" {
-			byID[id] = department
+	resolved := make(map[string]string, len(users))
+	visiting := map[string]bool{}
+	var resolve func(string) string
+	resolve = func(userID string) string {
+		if path := resolved[userID]; path != "" {
+			return path
 		}
-	}
-	resolved := map[string]identitymodel.IdentityDepartment{}
-	var resolve func(string) identitymodel.IdentityDepartment
-	resolve = func(id string) identitymodel.IdentityDepartment {
-		if department, exists := resolved[id]; exists {
-			return department
+		user, found := byID[userID]
+		if !found || visiting[userID] {
+			return ""
 		}
-		configuredDepartment := byID[id]
-		department := identitymodel.IdentityDepartment{
-			ID:                       id,
-			Name:                     strings.TrimSpace(configuredDepartment.Name),
-			ParentID:                 configuredDepartment.ParentID,
-			LeaderWorkforceProfileID: strings.TrimSpace(configuredDepartment.LeaderWorkforceProfileID),
-			Path:                     "/" + id,
-			SortOrder:                configuredDepartment.SortOrder,
-			Status:                   identitymodel.IdentityStatus(identityValueOrDefault(configuredDepartment.Status, string(identitymodel.IdentityStatusActive))),
-		}
-		if configuredDepartment.ParentID != nil {
-			parentID := strings.TrimSpace(*configuredDepartment.ParentID)
-			if _, exists := byID[parentID]; exists {
-				parent := resolve(parentID)
-				department.Path = strings.TrimRight(parent.Path, "/") + "/" + id
-				department.AncestorIDs = append(append([]string(nil), parent.AncestorIDs...), parent.ID)
-				department.Depth = parent.Depth + 1
+		visiting[userID] = true
+		path := "/" + userID
+		if managerID := strings.TrimSpace(user.ManagerUserID); managerID != "" {
+			if managerPath := resolve(managerID); managerPath != "" {
+				path = strings.TrimRight(managerPath, "/") + "/" + userID
 			}
 		}
-		resolved[id] = department
-		return department
+		delete(visiting, userID)
+		resolved[userID] = path
+		return path
+	}
+	for index := range users {
+		users[index].ReportingPath = resolve(users[index].ID)
+	}
+	return users
+}
+
+func manifestIdentityOrganizationUnits(configured []identitymodel.ManifestIdentityOrganizationUnitSchema) []identitymodel.IdentityOrganizationUnit {
+	byID := map[string]identitymodel.ManifestIdentityOrganizationUnitSchema{}
+	for _, organizationUnit := range configured {
+		if id := strings.TrimSpace(organizationUnit.ID); id != "" {
+			byID[id] = organizationUnit
+		}
+	}
+	resolved := map[string]identitymodel.IdentityOrganizationUnit{}
+	var resolve func(string) identitymodel.IdentityOrganizationUnit
+	resolve = func(id string) identitymodel.IdentityOrganizationUnit {
+		if organizationUnit, exists := resolved[id]; exists {
+			return organizationUnit
+		}
+		configuredUnit := byID[id]
+		organizationUnit := identitymodel.IdentityOrganizationUnit{
+			ID:        id,
+			Code:      identityValueOrDefault(strings.TrimSpace(configuredUnit.Code), id),
+			Name:      strings.TrimSpace(configuredUnit.Name),
+			NodeType:  configuredUnit.NodeType,
+			ParentID:  configuredUnit.ParentID,
+			Path:      "/" + id,
+			SortOrder: configuredUnit.SortOrder,
+			Status:    identitymodel.IdentityStatus(identityValueOrDefault(configuredUnit.Status, string(identitymodel.IdentityStatusActive))),
+		}
+		if organizationUnit.NodeType == "" {
+			organizationUnit.NodeType = identitymodel.IdentityOrganizationUnitDepartment
+		}
+		if configuredUnit.ParentID != nil {
+			parentID := strings.TrimSpace(*configuredUnit.ParentID)
+			if _, exists := byID[parentID]; exists {
+				parent := resolve(parentID)
+				organizationUnit.Path = strings.TrimRight(parent.Path, "/") + "/" + id
+				organizationUnit.AncestorIDs = append(append([]string(nil), parent.AncestorIDs...), parent.ID)
+				organizationUnit.Depth = parent.Depth + 1
+			}
+		}
+		resolved[id] = organizationUnit
+		return organizationUnit
 	}
 	ids := make([]string, 0, len(byID))
 	for id := range byID {
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
-	out := make([]identitymodel.IdentityDepartment, 0, len(ids))
+	out := make([]identitymodel.IdentityOrganizationUnit, 0, len(ids))
 	for _, id := range ids {
 		out = append(out, resolve(id))
 	}
@@ -243,7 +249,7 @@ func SyncIdentitySeeds(ctx context.Context, checkpoint manifestrepository.Identi
 	if err := syncManifestIdentityRoles(ctx, identityStore, seed.Roles); err != nil {
 		return err
 	}
-	if err := identityStore.ApplyIdentityBootstrapAtomically(ctx, manifestIdentityWorkspaceID(ctx), seed.Departments, seed.Users, seed.WorkforceProfiles, seed.WorkforceAssignments, seed.UserRoles); err != nil {
+	if err := identityStore.ApplyIdentityBootstrapAtomically(ctx, manifestIdentityWorkspaceID(ctx), seed.OrganizationUnits, seed.Users, seed.UserRoles); err != nil {
 		return fmt.Errorf("sync manifest Identity Bootstrap atomically: %w", err)
 	}
 	declaredUserIDs := map[string]bool{}
@@ -342,27 +348,23 @@ func retireRemovedPlatformIdentityMenus(ctx context.Context, identityStore ident
 
 func seedSyncSignature(manifest manifestmodel.ManifestSchema, seed Seed) string {
 	raw, _ := json.Marshal(struct {
-		SyncSchema           string                                      `json:"sync_schema"`
-		Version              string                                      `json:"version"`
-		Roles                []identitymodel.IdentityRole                `json:"roles"`
-		Departments          []identitymodel.IdentityDepartment          `json:"departments"`
-		Users                []identitymodel.IdentityUser                `json:"users"`
-		WorkforceProfiles    []identitymodel.IdentityWorkforceProfile    `json:"workforce_profiles"`
-		WorkforceAssignments []identitymodel.IdentityWorkforceAssignment `json:"workforce_assignments"`
-		UserRoles            []identitymodel.IdentityUserRoleAssignment  `json:"user_roles"`
-		Menus                []identitymodel.IdentityMenu                `json:"menus"`
-		RoleMenus            []identitymodel.IdentityRoleMenuAssignment  `json:"role_menus"`
+		SyncSchema        string                                     `json:"sync_schema"`
+		Version           string                                     `json:"version"`
+		Roles             []identitymodel.IdentityRole               `json:"roles"`
+		OrganizationUnits []identitymodel.IdentityOrganizationUnit   `json:"organization_units"`
+		Users             []identitymodel.IdentityUser               `json:"users"`
+		UserRoles         []identitymodel.IdentityUserRoleAssignment `json:"user_roles"`
+		Menus             []identitymodel.IdentityMenu               `json:"menus"`
+		RoleMenus         []identitymodel.IdentityRoleMenuAssignment `json:"role_menus"`
 	}{
-		SyncSchema:           "identity_seed_sync.v1",
-		Version:              strings.TrimSpace(manifest.Version),
-		Roles:                seed.Roles,
-		Departments:          seed.Departments,
-		Users:                seed.Users,
-		WorkforceProfiles:    seed.WorkforceProfiles,
-		WorkforceAssignments: seed.WorkforceAssignments,
-		UserRoles:            seed.UserRoles,
-		Menus:                seed.Menus,
-		RoleMenus:            seed.RoleMenus,
+		SyncSchema:        "identity_seed_sync.v1",
+		Version:           strings.TrimSpace(manifest.Version),
+		Roles:             seed.Roles,
+		OrganizationUnits: seed.OrganizationUnits,
+		Users:             seed.Users,
+		UserRoles:         seed.UserRoles,
+		Menus:             seed.Menus,
+		RoleMenus:         seed.RoleMenus,
 	})
 	sum := sha256.Sum256(raw)
 	return strings.TrimSpace(manifest.Version) + ":" + hex.EncodeToString(sum[:])

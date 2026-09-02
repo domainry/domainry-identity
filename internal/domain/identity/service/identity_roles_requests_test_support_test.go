@@ -10,40 +10,36 @@ import (
 
 type identityRolesRepositoryStub struct {
 	identityrepository.IdentityRepository
-	roles                   []identitymodel.IdentityRole
-	users                   []identitymodel.IdentityUser
-	assignments             []identitymodel.IdentityUserRoleAssignment
-	requests                []identitymodel.IdentityRoleRequest
-	err                     error
-	listRolesErr            error
-	listRolesCalls          int
-	listRolesFunc           func(int) ([]identitymodel.IdentityRole, error)
-	listUsersErr            error
-	getUserErr              error
-	listAssignmentsErr      error
-	listRequestsErr         error
-	updateRequestErr        error
-	assignErr               error
-	removeErr               error
-	profileBindingsErr      error
-	workforceErr            error
-	workforceAssignmentsErr error
-	assigned                []identitymodel.IdentityUserRoleAssignment
-	removedRole             string
-	removedUser             string
-	removedUserRole         string
-	statusRole              string
-	status                  identitymodel.IdentityStatus
-	upsertedRole            identitymodel.IdentityRole
-	updatedRequest          identitymodel.IdentityRoleRequest
-	reconciledUser          identitymodel.IdentityUser
-	reconciledRoles         []identitymodel.IdentityUserRoleAssignment
-	reconcileErr            error
-	workforceProfiles       []identitymodel.IdentityWorkforceProfile
-	workforceAssignments    []identitymodel.IdentityWorkforceAssignment
-	profileBindings         []identitymodel.IdentityProfileBinding
-	departments             []identitymodel.IdentityDepartment
-	departmentsErr          error
+	roles                []identitymodel.IdentityRole
+	users                []identitymodel.IdentityUser
+	assignments          []identitymodel.IdentityUserRoleAssignment
+	requests             []identitymodel.IdentityRoleRequest
+	err                  error
+	listRolesErr         error
+	listRolesCalls       int
+	listRolesFunc        func(int) ([]identitymodel.IdentityRole, error)
+	listUsersErr         error
+	getUserErr           error
+	listAssignmentsErr   error
+	listRequestsErr      error
+	updateRequestErr     error
+	assignErr            error
+	removeErr            error
+	profileBindingsErr   error
+	assigned             []identitymodel.IdentityUserRoleAssignment
+	removedRole          string
+	removedUser          string
+	removedUserRole      string
+	statusRole           string
+	status               identitymodel.IdentityStatus
+	upsertedRole         identitymodel.IdentityRole
+	updatedRequest       identitymodel.IdentityRoleRequest
+	reconciledUser       identitymodel.IdentityUser
+	reconciledRoles      []identitymodel.IdentityUserRoleAssignment
+	reconcileErr         error
+	profileBindings      []identitymodel.IdentityProfileBinding
+	organizationUnits    []identitymodel.IdentityOrganizationUnit
+	organizationUnitsErr error
 }
 
 func (r *identityRolesRepositoryStub) UpsertIdentityUserWithRoleAssignmentsAtomically(_ context.Context, _ string, user identitymodel.IdentityUser, assignments []identitymodel.IdentityUserRoleAssignment) error {
@@ -68,53 +64,14 @@ func (r *identityRolesRepositoryStub) ListIdentityProfileBindingsByUser(_ contex
 	return out, r.err
 }
 
-func (r *identityRolesRepositoryStub) ListIdentityDepartments(context.Context, string) ([]identitymodel.IdentityDepartment, error) {
-	if r.departmentsErr != nil {
-		return nil, r.departmentsErr
+func (r *identityRolesRepositoryStub) ListIdentityOrganizationUnits(context.Context, string) ([]identitymodel.IdentityOrganizationUnit, error) {
+	if r.organizationUnitsErr != nil {
+		return nil, r.organizationUnitsErr
 	}
-	if r.departments != nil {
-		return append([]identitymodel.IdentityDepartment(nil), r.departments...), nil
+	if r.organizationUnits != nil {
+		return append([]identitymodel.IdentityOrganizationUnit(nil), r.organizationUnits...), nil
 	}
-	return []identitymodel.IdentityDepartment{{ID: "department", Name: "Department", Status: identitymodel.IdentityStatusActive}}, nil
-}
-
-func (r *identityRolesRepositoryStub) ListIdentityWorkforceProfiles(context.Context, string) ([]identitymodel.IdentityWorkforceProfile, error) {
-	if r.workforceErr != nil {
-		return nil, r.workforceErr
-	}
-	return append([]identitymodel.IdentityWorkforceProfile(nil), r.workforceProfiles...), r.err
-}
-func (r *identityRolesRepositoryStub) GetIdentityWorkforceProfile(_ context.Context, _, id string) (identitymodel.IdentityWorkforceProfile, bool, error) {
-	for _, profile := range r.workforceProfiles {
-		if profile.ID == id {
-			return profile, true, r.err
-		}
-	}
-	return identitymodel.IdentityWorkforceProfile{}, false, r.err
-}
-func (*identityRolesRepositoryStub) UpsertIdentityWorkforceProfile(context.Context, string, identitymodel.IdentityWorkforceProfile) error {
-	return nil
-}
-func (r *identityRolesRepositoryStub) ListIdentityWorkforceAssignments(_ context.Context, _, profileID string) ([]identitymodel.IdentityWorkforceAssignment, error) {
-	if r.workforceAssignmentsErr != nil {
-		return nil, r.workforceAssignmentsErr
-	}
-	if r.workforceErr != nil {
-		return nil, r.workforceErr
-	}
-	out := []identitymodel.IdentityWorkforceAssignment{}
-	for _, assignment := range r.workforceAssignments {
-		if profileID == "" || assignment.WorkforceProfileID == profileID {
-			out = append(out, assignment)
-		}
-	}
-	return out, r.err
-}
-func (*identityRolesRepositoryStub) GetIdentityWorkforceAssignment(context.Context, string, string) (identitymodel.IdentityWorkforceAssignment, bool, error) {
-	return identitymodel.IdentityWorkforceAssignment{}, false, nil
-}
-func (*identityRolesRepositoryStub) UpsertIdentityWorkforceAssignment(context.Context, string, identitymodel.IdentityWorkforceAssignment) error {
-	return nil
+	return []identitymodel.IdentityOrganizationUnit{{ID: "organizationUnit", Name: "OrganizationUnit", Status: identitymodel.IdentityStatusActive}}, nil
 }
 
 func (r *identityRolesRepositoryStub) ListIdentityRoles(context.Context, string) ([]identitymodel.IdentityRole, error) {

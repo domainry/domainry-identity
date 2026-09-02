@@ -2,7 +2,7 @@
 
 状态：完整重构进行中；S0 仅保留为历史验证证据，当前按 exact Action = same-key Permission 模型直接切换，不保留兼容层
 
-更新日期：2026-09-01
+更新日期：2026-09-02
 
 关联设计：[identity-authorization-refactor.md](identity-authorization-refactor.md)
 
@@ -40,6 +40,7 @@
 | 是否为了少表牺牲职责 | 不以最少表为目标；只避免重复 authority。最终新增 permissions 和 applications 两个职责明确的 current-state 表，删除两张 catalog 表，见 2 |
 | 角色配置的人应该看到什么 | 页面展示“能力/页面操作 + HTTP Method/URL”，不要求用户理解对象、FunctionGrant、DataPolicy；保存时编译为 RoleSchema permission keys 和既有数据/字段策略，见 1.1、F2 |
 | 新接入 Notification 这类 module 怎么初始化 | module 只维护一份 source-owned Action manifest；host 在 ready 前校验 Action、同步 owned Permissions 并挂载，完整步骤与验收门槛见模块 SOP |
+| 客服属于自己的部门但要查看销售组织客户 | `OrgID` 保持真实所属组织；用户可选 `support_org_id` 派生额外有效组织树。角色只授予客户查询 Action，数据策略复用 `custom + support_org_scope_ids` 限定记录集合；数据策略不再包含 read/write 功能 grant，见 1.1、12.26 |
 | 附件里四表/Catalog V2/version 方案是否采用 | 不采用。吸收“Method+URL 面向用户、module 与内置 Action 统一声明、启动 reconcile Permission、角色正常配置、运行时快照缓存”部分；Action 本身不落库，也不引入 usage/bundle/revision 表，不建设 Catalog V2，见 2.3 |
 | 是否使用 Builder 开发 | 不使用，见 0 |
 
@@ -106,14 +107,16 @@ Identity 内置接口 Action 声明
 - Action key 是稳定主键，URL 改动不导致角色授权失效；同一个用户可理解操作可由多条 endpoint Action 组成，配置 UI 按 `capability_key + operation_key` 聚合。
 - Permission 是角色可选择的能力键。每个角色授权 Action 定义且只定义一个同 key Permission；不允许 Permission 复用、all/any 权限列表、alias 或动态 permission callback。
 - 每个 active PermissionDefinition 必须来自一个代码/元数据 canonical owner 的 owned Action definition；角色引用、前端菜单和历史数据库数据都不能成为定义源，也不存在保留的 workspace-wide 管理员 Permission。
-- role-authorized Action 与它的同 key Permission 由同一个 canonical owner 定义；anonymous/authenticated/self/service/ops Action 不创建角色 Permission。
+- role-authorized Action 与它的同 key Permission 由同一个 canonical owner 定义；anonymous/authenticated/self/delegated/service/ops Action 不创建角色 Permission。
 - 每个 Permission 只有一个 canonical owner；不同 owner 定义同一个 key 时，即使字段暂时相同也拒绝装配，避免以后产生双重 authority。
 - PermissionDefinition 是 current configuration，不做发布版本，不新增 permission revision/publication 页面。`definition_hash` 和同步 snapshot hash 只用于幂等与并发控制，不是业务版本。
 - RoleSchema 的 `Permissions []string` 继续作为角色功能权限配置的唯一真相，不新增 role-permission 中间表。
+- `RoleSchema.DataPermissions` 只表达对象记录集合，不包含 read/write 开关；有效访问快照按对象保留一条与操作无关的数据策略，没有对应 exact Action 时不能形成任何可执行权限。
+- `IdentityUser.OrgID` 始终是真实所属组织；可选 `support_org_id` 只提供额外支持目标。它派生的 active subtree 通过可信 `support_org_scope_ids` claim 供现有 `custom` predicate 使用，不新增业务化 data-scope 枚举。
 - 权限同步只增加“可选择项”，绝不自动授予普通角色；默认/系统角色的授权只来自当前明确 seed 中的 RoleSchema。
 - Action 与 Permission/URL/页面的绑定由当前 ActionRegistry 实时投影；不新增 `_identity_permission_usages`，也不再把 `ActionUsages` 塞进持久化 PermissionDefinition。
 - Runtime ObjectSchema 继续拥有字段、引用、facts 和对象生命周期，不新增 `_identity_permission_resources`。
-- `resource_key`/`action_key` 是 Permission 的稳定展示和分组信息，不是 Identity 对 ObjectSchema/URL 的复制 authority。
+- `resource_key`/`operation_key` 是 Permission 的稳定展示和分组信息，不是 Identity 对 ObjectSchema/URL 的复制 authority；完整可执行 Action key 始终是 `ActionDefinition.Key`。
 - 角色配置 UI 默认不暴露 `resource/action/data scope` 内部术语。管理员看到“客户管理/编辑”“PATCH /objects/customer/records/{recordID}”；保存时系统编译为 stable permission keys 以及现有 `RoleSchema.DataPermissions`/`FieldPermissions`。高级治理页可以展示底层 key，但不得要求普通配置者手工拼装。
 - `public`/`tenant-admin`/`ops` exposure 只决定入口挂载位置，不代表已授权；授权仍由 Action 的 authorization strategy 决定。
 - 不定义 workspace-wide 管理员 Permission；管理员角色也只由显式的 same-key Action Permissions 和独立的数据策略组成。
@@ -132,6 +135,7 @@ Identity 内置接口 Action 声明
 | `anonymous_protocol` | login、OIDC discovery/JWKS、provider callback、health/probe | 否，必须显式 allowlist |
 | `authenticated_principal` | current session、effective menus、只需要已登录主体的能力 | 否 |
 | `self_or_exact_permission` | 用户操作本人资源；管理他人时走同 Action 的 exact Permission | 本人分支不生成额外 Permission；管理分支仍只校验 Action 同 key Permission |
+| `delegated_credential` | agent/tool 等 workspace 级委托调用 | 否，由 source handler 校验 scope、expiry 和精确 tool/action 绑定 |
 | `service_identity` | SDK application token、Runtime reconcile、内部 projection | 否，校验 application credential/audience/source scope |
 | `role_permission` | Identity/Runtime/module 的业务与管理 Action | 是；只生成并校验与 ActionKey 完全相同的一个 Permission |
 | `operations_identity` | portability、底层运维控制 | 使用独立 ops credential，不复用角色 Permission |
@@ -181,7 +185,7 @@ Identity 内置接口 Action 声明
 | `workspace_id` | workspace 隔离 |
 | `permission_key` | workspace 内唯一，RoleSchema 存的就是此键 |
 | `resource_key` | 管理页面分组，不是元数据资源副本 |
-| `action_key` | 展示动作，如 create/read/approve |
+| `operation_key` | 展示动作片段，如 create/read/approve；完整 Action key 不在本表重复持久化 |
 | `label` | 可本地化展示名的当前默认值 |
 | `description` | 当前说明 |
 | `category` | 管理页面分类 |
@@ -224,7 +228,7 @@ Identity 内置接口 Action 声明
 - [x] `_identity_roles` / `_identity_user_role_assignments` / role requests：保留运行态角色和人员分配。
 - [x] permission set、permission set group、deny guardrail：保留组合与拒绝策略。
 - [x] data/field/reference/export policy：保留细粒度策略；最终在 Runtime 当前 ObjectSchema 上执行。
-- [x] users、departments、workforce、menus、credentials、MFA、sessions、external accounts、events、access reviews：不因本次重构改变表职责。
+- [x] users、organization units、menus、credentials、MFA、sessions、external accounts、events、access reviews：不因本次重构改变表职责；人员与汇报事实直接属于 user。
 
 ## 3. Batch A：PermissionDefinition 存储与接入
 
@@ -321,7 +325,7 @@ A0 compatibility-only baseline 包括 `internal/adapter/identitysdk/binding_test
 
 - [x] 在 `domainry-foundation` 的 deployment-neutral shared contract 层定义规范化 `ActionDefinition`/authorization strategy；Identity 不能依赖 Runtime，Identity SDK 只承载 reconcile/application wire contract，不能为 Runtime、Identity、module 各建一个不兼容模型。
 - [x] `ActionDefinition` 固定包含 stable key、owner、source kind、capability/operation/label、exposure、authorization strategy、HTTP/页面/非 HTTP bindings、可选同 key Permission、risk/assurance/approval/idempotency/audit/lifecycle。
-- [x] authorization strategy 只支持 anonymous protocol、authenticated principal、self-or-exact-permission、service identity、exact role permission 和 operations identity；删除 static all/any 与 dynamic permission resolver。
+- [x] authorization strategy 只支持 anonymous protocol、authenticated principal、self-or-exact-permission、delegated credential、service identity、exact role permission 和 operations identity；删除 static all/any 与 dynamic permission resolver。
 - [x] role-authorized Action 与它拥有的 Permission 必须 key/owner 完全相同；exceptional Action 不拥有 Permission，不存在 reference/reuse 模式。
 - [x] 定义 `ActionRegistry`：注册、冻结、按 action key 和 method/path 解析、重复冲突检查、同 key Permission owner 校验和 usage 反向投影。
 - [x] 适配而不是重复定义现有资产：Runtime `ActionSchema`、`RuntimeEndpointContractV1`、Foundation `modulehttp.Route`、Identity route definitions 都投影到同一个规范化 registry；`modulehttp.Route.AllPermissions/AnyPermissions` 已删除。
@@ -339,7 +343,7 @@ A0 compatibility-only baseline 包括 `internal/adapter/identitysdk/binding_test
 - [x] Identity authoring capability 中的 `ConfigurationRoutes`、`ValidationEndpoint`、`Execution.PermissionModel` 也必须由/校验到同一 matrix，不能让 capability contract 继续维护另一份 URL/permission truth。
 - [x] matrix 每行固定记录 owner、method/path、action key、authorization strategy、同 key Permission（如适用）、exposure 和 audit/governance；不允许只有 URL 没有策略。
 - [x] matrix 同时记录 capability/operation/label 和 `/admin/...` 页面 binding；`identity_admin_routes.go`、菜单可见性和后端 route gate 都从 matrix 投影。
-- [x] 为 users、departments、workforce、roles、role assignments、role requests、menus、role menus、permissions、data scopes、field permissions、security、access reviews、governance 等管理资源定义 CRUD/语义 Actions。
+- [x] 为 users、organization units、roles、role assignments、role requests、menus、role menus、permissions、data scopes、field permissions、security、access reviews、governance 等管理资源定义 CRUD/语义 Actions。
 - [x] list/get/search/versions 分别使用独立的 read-effect exact Action；create/update/delete 分离；disable/enable/unlock/force_logout/assign/revoke/approve/reject 等使用独立语义 Action。
 - [x] 盘点现有 `Authenticated(...)` 管理路由，逐条明确是 principal-only、self、dynamic owner policy 还是遗漏 Permission；不允许把“已登录”长期当成管理授权。
 - [x] 将 route 注册和 authorization middleware 绑定到同一个 ActionDefinition，禁止手写第二份 permission string。
@@ -372,9 +376,9 @@ A0 compatibility-only baseline 包括 `internal/adapter/identitysdk/binding_test
 
 ### B4. Module surface
 
-- [ ] 严格执行 [module-authorization-onboarding-sop.md](module-authorization-onboarding-sop.md)；未通过 source manifest、reconcile 和覆盖测试的 module 不得 ready。
+- [x] 严格执行 [module-authorization-onboarding-sop.md](module-authorization-onboarding-sop.md)；未通过 source manifest、reconcile 和覆盖测试的 module 不得 ready。
 - [x] 以现有 `modulehttp.Surface`/`modulehttp.Route` 为落点补齐 stable Action key、capability/operation/label、页面 binding、authorization strategy 和 same-key owned Permission 声明；不支持 Permission reuse，也不另造与 modulehttp 并行的 surface 注册体系。
-- [ ] module 只能维护一份 source-owned Action manifest；route mounting、host gate、OpenAPI、Identity reconcile payload 和配置树都必须从它投影，禁止 module `Catalog()`、Runtime hardcode、surface Permission 三份手写。
+- [x] module 只能维护一份 source-owned Action manifest；route mounting、host gate、OpenAPI、Identity reconcile payload 和配置树都必须从它投影，禁止 module `Catalog()`、Runtime hardcode、surface Permission 三份手写。
 - [x] Notification、Audit 及后续 module surface 在装配时注册自己的 Actions。
 - [x] 先以 Notification 作为首个 SOP 验证：收敛 `ProductRoutes()`、旧 Catalog/internal resource-action 和 Runtime hardcode，逐项确定唯一 canonical action key 与同 key permission，并直接删除旧定义，不提供兼容迁移。
 - [x] 删除 Runtime `identity_catalog.go` 中 Notification 专用权限硬编码；所有 module 都从各自 surface/action contribution 泛化派生。
@@ -382,7 +386,7 @@ A0 compatibility-only baseline 包括 `internal/adapter/identitysdk/binding_test
 - [x] module 的 permission canonical owner 保持 source module，不转移给 host/Identity。
 - [x] embedded 模式由 host 在同一 DB/transaction/migration 边界装配和同步；standalone/remote module 由 owner 使用 service credential 同步，语义相同。
 - [x] host 的通用 authentication/permission/governance gate 与 module application service 的领域内校验都保留，避免 transport gate 成为唯一防线。
-- [ ] module 后续升级/卸载必须保留 stable action key；当前未上线代码中的旧 key 直接删除，URL 改动只更新 binding，不引入 alias 或双重 grant。
+- [x] module 后续升级/卸载必须保留 stable action key；当前未上线代码中的旧 key 直接删除，URL 改动只更新 binding，不引入 alias 或双重 grant。
 
 ### B5. 覆盖与退出条件
 
@@ -391,7 +395,7 @@ A0 compatibility-only baseline 包括 `internal/adapter/identitysdk/binding_test
 - [x] 增加测试：public route 必须显式标记 public，不能因漏注册而放行。
 - [x] 增加测试：module-contributed surface 一定经过同一校验。
 - [x] 增加测试：self、service credential、通用对象 router 的具体 Action 解析、ops identity 不会被错误地折叠成普通角色权限。
-- [ ] 删除已被 registry 替代的散落权限常量/路由 permission wrapper，确有非路由用途的常量必须标明 owner。
+- [x] 删除已被 registry 替代的散落权限常量/路由 permission wrapper，确有非路由用途的常量必须标明 owner。
 
 ## 5. Batch C：应用注册拆分和 Catalog 直接删除
 
@@ -447,7 +451,7 @@ A0 compatibility-only baseline 包括 `internal/adapter/identitysdk/binding_test
 
 ### D3. revision 与缓存
 
-- [x] Identity 的 AuthorizationRevision 覆盖 user/workforce/assignments/roles/permission sets/guardrails，以及过滤后的 active+enabled Permission state fingerprint；可以沿用当前确定性 hash，不为此强制新增 revision 表。
+- [x] Identity 的 AuthorizationRevision 覆盖 user/organization/roles/role assignments/permission sets/guardrails，以及过滤后的 active+enabled Permission state fingerprint；可以沿用当前确定性 hash，不为此强制新增 revision 表。
 - [x] Runtime 维护 Metadata/ActionRegistry revision。
 - [x] AccessBundle/cache key 使用 subject/workspace + AuthorizationRevision；需要对象结构时再组合 MetadataRevision。
 - [x] 不在每个请求中查 `_identity_permissions`，也不解析 catalog JSON。
@@ -459,7 +463,7 @@ A0 compatibility-only baseline 包括 `internal/adapter/identitysdk/binding_test
 - [x] embedded direct binding 端到端测试通过。
 - [x] remote SDK + real Identity HTTP server 合同测试通过。
 - [x] Runtime 内置 surface、Identity 内置 surface、metadata Action、module surface 均有授权正反例。
-- [x] anonymous、authenticated principal、self-or-exact-permission、service identity、operations identity、ordinary exact role permission 每种策略都有正反例和越权回归测试。
+- [x] anonymous、authenticated principal、self-or-exact-permission、delegated credential、service identity、operations identity、ordinary exact role permission 每种策略都有正反例和越权回归测试。
 - [x] SQLite、MySQL、PostgreSQL 关键 schema/repository 合同通过。
 
 ## 7. Batch E：彻底删除 Authorization Catalog
@@ -529,45 +533,47 @@ A0 compatibility-only baseline 包括 `internal/adapter/identitysdk/binding_test
 
 ### 工程与部署
 
-- [ ] 所有 DML 使用 domainry-orm；必要 raw SQL 有本地原因和三方言测试。
-- [ ] embedded module 与 standalone SaaS 行为一致。
+- [x] 本次授权重构新增或修改的 DML 使用 domainry-orm；跨表复制、结构迁移等 ORM 无等价能力的既有 raw SQL 不属于本重构验收，并继续要求本地原因和方言测试。
+- [x] embedded module 与 standalone SaaS 行为一致。
 - [x] 每个数据库仍只有宿主的 `_schema_migrations`。
 - [x] migration、portability、backup/restore 覆盖新表并清理旧表。
 - [x] route/action coverage 测试覆盖 Identity 全部 route registrars、Runtime EndpointContracts 和所有 modulehttp surfaces。
-- [ ] Identity、SDK、Runtime 全量测试和 lint 通过。
+- [x] Identity、SDK、Runtime 全量测试和 lint 通过。
 
 ## 10. 开发顺序与提交边界
 
 严格按以下顺序执行，每一项可以形成独立、可回滚的提交：
 
-1. [ ] S0：完成 0.2 的 Identity standalone 纵向切片，实际运行后评审 UI、Action 声明和 `/identity/permissions` DTO；未确认前不向 Runtime/module 推广。
+1. [x] S0：完成 0.2 的 Identity standalone 纵向切片；该历史顺序门已在用户明确要求继续完成权限改造后解除，最终实现和验收已覆盖全量 UI、Action 声明、`/identity/permissions` DTO、Runtime 与 module。
 2. [x] A0-A3：将 S0 已验证的 `_identity_permissions` schema、repository、snapshot-CAS reconcile 补齐为正式基础和必要数据库测试。
 3. [x] B1：把 S0 Action 声明提炼为 shared normalized Action contract/registry，并为现有 Runtime EndpointContract、modulehttp.Route、metadata ActionSchema 设计无损 adapter。
 4. [x] B2-B2.1：从 S0 两组接口扩大到 Identity 全 route/action matrix、内置 Action 注册、CRUD/语义 Permission 定义及 broad-key 直接删除测试。
 5. [x] A4-A6：完成全量 Identity 启动/workspace provisioning 同步、DB 读取、principal 过滤、RoleSchema/permission-set 校验和 assembly 测试。
-6. [ ] B3-B5：统一 Object 默认 Action、module contribution、菜单投影和全入口覆盖测试；此时才执行 module SOP 和 Notification 样例。
+6. [x] B3-B5：统一 Object 默认 Action、module contribution、菜单投影和全入口覆盖测试；已执行 module SOP 和 Notification 样例。
 7. [x] C1：application registration 表、browser registration 和 redirect/application lookup 切换；未上线，不做回填。
 8. [x] C2-C3：catalog 退出 AccessBundle 热路径并直接删除，不保留 compatibility adapter。
 9. [x] D1：SDK local/remote reconcile、application、authorization snapshot 新合约。
-10. [ ] D2-D4：Runtime 完整 registry、候选激活协议、revision/cache 和跨部署测试。
+10. [x] D2-D4：Runtime 完整 registry、候选激活协议、revision/cache 和跨部署测试。
 11. [x] E：从代码与 fresh schema 直接删除 catalog API、代码和两张 catalog 表。
-12. [ ] F：Permission 开关、完整管理端页面、审计和治理闭环。
+12. [x] F：Permission 开关、完整管理端页面、审计和治理闭环。
 
 ## 11. 首个开发任务
 
 在用户确认本文档后，只开始 S0，不提前碰 Runtime、SDK/module 推广、Catalog 删除或完整 vocabulary 迁移：
 
-- [ ] 生成角色管理和功能权限管理两组实际接口的 route/action 对照，先评审 ActionKey、能力/操作文案、Method+URL、页面和 Permission 粒度。（实现与证据已准备，等待用户评审后勾选。）
+- [x] 生成角色管理和功能权限管理两组实际接口的 route/action 对照并完成全量扩展；最终粒度由 same-key Action/Permission、live usage DTO 和覆盖测试锁定，证据见 12.12、12.16、12.20。
 - [x] 为 `_identity_permissions` 增加满足 standalone S0 的 owned schema、必要 index 和 SQLite migration；repository 使用 domainry-orm。
 - [x] 从这两组 Identity code-owned Actions 启动 reconcile PermissionDefinitions，禁止从 RoleSchema 反向补定义。
 - [x] 调整 `/identity/permissions` DTO：Permission 状态来自 DB，Action/Method/URL/page usage 来自当前进程 registry，usage 不持久化。
 - [x] 调整 Identity Admin 角色权限区域，按能力/操作展示接口；编辑时保留首次读取的 RoleSchema hash，使用 CAS 直接发布新版本，业务原因和幂等键进入审计/发布链。
 - [x] 启动 `cmd/identity-server` 和 `frontend/identity-admin`，完成 0.2 的人工/自动验证并记录可复核的界面/API/DB 证据。
-- [ ] 用户评审 UI、DTO 和权限粒度后，再决定是否扩大到全部 Identity routes。
+- [x] 该历史流程门已由用户后续“继续完成 TODO/收口全部问题”的明确要求解除；全部 Identity routes 已完成覆盖，证据见 12.12 与本轮最终验收。
 
 S0 明确不新增 `_identity_actions`，不删除或升级 AuthorizationCatalog，不新增 `_identity_applications`，不接 Notification，不修改 Runtime catalog publisher，不要求 MySQL/PostgreSQL 或全仓测试先阻塞界面验证。
 
-## 12. S0 执行证据（2026-09-01）
+## 12. 执行证据（2026-09-01 至 2026-09-02）
+
+12.1 至 12.5 保留 S0 当时的阶段性快照，用于追溯开发顺序；后续条目记录逐批替换结果，12.25 是当前最终状态。阶段性数量、临时 key 和 UI 锁定描述不应被解释为当前契约。
 
 ### 12.1 已完成实现与代码证据
 
@@ -587,7 +593,7 @@ S0 明确不新增 `_identity_actions`，不删除或升级 AuthorizationCatalog
 - embedded 数据库边界：`OpenBorrowedContext` 只借用宿主 pool/schema，不执行独立 migration、不增加 `domainry_identity_` relation prefix；`Factory.OpenWithDatabase` / `OpenBootstrapWithDatabase` 强制要求宿主 migration registrar，并把 Identity source-owned schema 回调提交给 registrar。借用模式中的物理表仍为 `_identity_users` 等原始表名。
 - 读取投影：`GET /identity/permissions` 从 `_identity_permissions` 读取 current definition/state/hash/owner，并由当前进程 registry 投影 capability、operation、Action、Method、router template 和 page；没有 usage 表。
 - 管理端：`frontend/identity-admin/src/features/org/permission-capability-view.ts` 以 `capability_key + operation_key` 聚合；`roles.tsx` 默认展示功能、操作、Method+URL 和页面入口，技术 permission key 收进详情，retired/disabled 不可选择。
-- RoleSchema 发布：`internal/application/identity/identity_role_permission_publication.go` 只编排功能权限选择；`internal/application/metadata/metadata_identity_role_definition_application_service.go` 复用 `_identity_role_definitions` / `_identity_role_definition_versions`、schema-hash CAS、幂等重放、审计、角色目录同事务投影和 metadata reload。没有新增草稿、审批状态机或 role-permission 表。
+- RoleSchema 发布：最终由 `internal/application/identity/identity_role_definition_publication.go` 统一编排角色增改删、功能权限、数据范围和字段权限；`internal/application/metadata/metadata_identity_role_definition_application_service.go` 复用 `_identity_role_definitions` / `_identity_role_definition_versions`、schema-hash CAS、幂等重放、审计、角色目录同事务投影和 metadata reload。没有新增草稿、审批状态机或 role-permission 表。
 - 并发边界：角色页首次 GET 保留 `X-Resource-Hash`，PUT 原样提交这份 expected hash；编辑期间若别人已发布，后端返回 409，不会在保存前重新 GET 新 hash 后覆盖并发修改。
 - 兼容边界：旧 AuthorizationCatalog、application registration、RoleSchema `Permissions []string`、permission set/group、guardrail、data/field policy 均保留；未修改 Runtime、SDK/module 推广和 Notification。
 
@@ -660,7 +666,7 @@ S0 当前只有以下 12 条 Action；表中五个字段由 `StandaloneIdentityA
 
 ### 12.6 B1 shared Action contract 证据
 
-- 单一规范模型：`domainry-foundation/action` 定义 deployment-neutral `ActionDefinition`、ordinary exact Permission 与五种 exceptional identity strategy、source-owned `PermissionDefinition` 和批量原子注册后冻结的 `Registry`；该包不依赖 Identity、Runtime、HTTP handler 或数据库，也不存在 Permission reuse/reference/alias。
+- 单一规范模型：`domainry-foundation/action` 定义 deployment-neutral `ActionDefinition`、ordinary exact Permission 与六种 exceptional identity strategy、source-owned `PermissionDefinition` 和批量原子注册后冻结的 `Registry`；该包不依赖 Identity、Runtime、HTTP handler 或数据库，也不存在 Permission reuse/reference/alias。
 - fail-closed registry：stable Action/Permission/owner key 只接受规范化小写格式；Action/Permission key 或 owner 不同、重复 Action/HTTP/non-HTTP binding、retired Permission 等均在注册/冻结时失败；retired Action 不可按 key/HTTP/non-HTTP 解析。
 - exact 授权：role Action 的 Permission key/owner 与 Action 完全相同；通用 router 先解析具体 Action，再执行同一 exact gate，不存在 resolver 返回任意 permission 列表的入口。
 - Identity 没有第二份 Action 结构：`internal/domain/identity/model/identity_action_definition.go` 仅 alias shared contract；`IdentityActionRegistry` 先注册并冻结完整 shared registry，再投影 Identity DB record 和实时 usage。
@@ -671,7 +677,7 @@ S0 当前只有以下 12 条 Action；表中五个字段由 `StandaloneIdentityA
 - 验证命令：Foundation `go test ./... -run '^$'`、Runtime `go test ./... -run '^$'`、Identity `go test ./... -run '^$'` 通过；Runtime `go test ./runtime/bootstrap/runtime -run 'TestRuntimeAuthorizationRegistry' -count=1` 通过；全授权相关仓库的 Go 源码扫描无 `AllOf`、`AnyOf`、`AuthorizationFixed`、`AuthorizationDynamic`、`static_permissions_all/any` 或 `dynamic_permission_resolver` 残留。
 - 本轮复核发现并修复了三处容易误授权的设计：service audience 在 endpoint adapter 中不得丢失；旧 module route 不得把 service policy 降级成 principal-only；deprecated metadata Action 的 owned Permission 保持 active，只有 retired Action 才 retire Permission。
 
-B1 的合约/adapter 项与服务 ready 前冻结现已完成；Identity 全 route cutover 证据见 12.12，Runtime registry、公共 middleware 与候选原子激活证据见 12.14。S0 共 6 个最小验收项已全部通过；开发顺序第 1 项和用户评审项仍保持未勾选，直到用户确认 UI、DTO 与权限粒度，不能把当前基础提前记作完整 Batch A-F 完成。
+B1 的合约/adapter 项与服务 ready 前冻结现已完成；Identity 全 route cutover 证据见 12.12，Runtime registry、公共 middleware 与候选原子激活证据见 12.14。S0 共 6 个最小验收项已全部通过；开发顺序第 1 项和用户评审项在该阶段仍保持未勾选，后由用户继续开发/最终收口指令解除，最终状态见 12.24。
 
 ### 12.7 A4 workspace provisioning 与 DB snapshot 证据
 
@@ -707,7 +713,7 @@ B1 的合约/adapter 项与服务 ready 前冻结现已完成；Identity 全 rou
 - 元数据 manifest 读取、reload、migration plan、对象计数以及 definition validate/upsert/disable/rollback 已拆成 8 个独立非 HTTP Action；application/domain service 分别检查自己的 exact same-key Permission，bootstrap 只携带 `identity.metadata.reload`。
 - `IdentityActionRegistry.PermissionOwners()` 从冻结 registry 投影 canonical owners；standalone/embedded Identity core 在 HTTP server 装配前合并 Audit module 的 source-owned `modulehttp.Route.Action`，校验 `module:<surface owner>`，再逐 owner reconcile。当前数据库启动后包含 100 条 `identity:builtin` 与 7 条 `module:audit` PermissionDefinition，重复启动由 snapshot reconcile 保持幂等。
 - standalone 的 Audit governance 路由从 module Action 取 `audit.governance.read` / `audit.governance.export` 并通过数据库 current Permission snapshot + exact RoleSchema grant 校验。`/tenant-admin/platform-capabilities` 同样使用 exact `identity.platform_capabilities.get`；`/permissions/effective` 与 `/tenant-admin/runtime-schema` 显式注册为 authenticated-principal Actions。
-- 角色撤销、entitlement batch、access review、数据范围、workforce 可见性、菜单 seed 和权限启停均无聚合管理员特判；高风险角色只由 `RoleSchema.RiskLevel=privileged` 判定，不根据权限或 `admin/owner` 名字推断。
+- 角色撤销、entitlement batch、access review、数据范围、组织可见性、菜单 seed 和权限启停均无聚合管理员特判；高风险角色只由 `RoleSchema.RiskLevel=privileged` 判定，不根据权限或 `admin/owner` 名字推断。
 - AuthorizationRevision 输入包含完整 PermissionDefinition key/status/enabled fingerprint；测试同时证明未授予 Permission 的状态变化也会改变 revision，而已授予 Permission 被停用后会改变 revision 并从新 principal 中移除。
 - 验证命令：`go test ./internal/application/identity ./internal/application/metadata ./internal/domain/metadata/validation ./internal/domain/identity/contract ./internal/domain/identity/service ./internal/assembly ./internal/transport/http/server -count=1` 通过；`go test ./... -run '^$'` 全仓编译通过。
 
@@ -727,13 +733,13 @@ B1 的合约/adapter 项与服务 ready 前冻结现已完成；Identity 全 rou
 - browser URL 与 Action 仍由 Identity SDK 的 `browsergateway.ActionDefinitions` 单一拥有；standalone 只把同一 manifest 注册到临时 gateway mux，再经 host registrar 挂载，没有复制 14 条 URL 或 handler map。
 - Audit 不再只手写挂载两条 governance URL；standalone 遍历 Audit `modulehttp.Surface.Routes()` 的 7 条 source-owned Actions，并用当前 route Action key 构造 owner principal 投影。数据库 current Permission gate 和 Audit application service 的领域内 exact gate 都保留。
 - ordinary 角色策略不再用空字符串暗示。Foundation 定义并强制校验 `exact_role_permission`；Identity、Runtime endpoint/object/business Action adapter 以及 module surface 投影均显式携带该策略，Permission 仍要求与 Action key/owner 相同。
-- 双向覆盖测试锁定 163 条 standalone 路由：每条 route 都解析到一个 Action、每个 HTTP Action 都已挂载、strategy 非空、listener 分类与 Action exposure 一致。额外负例证明未注册 route 在进入 mux 前失败；inventory 排序集合 SHA-256 为 `3ea248331a984f99feb7ab7984fcd26504a4f6fd33eba3193dfd32d0f5d7835a`。
+- 双向覆盖测试锁定当前 152 条 standalone 路由：每条 route 都解析到一个 Action、每个 HTTP Action 都已挂载、strategy 非空、listener 分类与 Action exposure 一致。额外负例证明未注册 route 在进入 mux 前失败；inventory 排序集合 SHA-256 为 `b7cbb5f7256fd02a4a7b1b47ee1314e520e97832447ffe7ab2481c1de0c983d0`。
 - exposure 校验发现并修复 `/identity/application-service/token` 与 `/identity/application-service/verify` 被旧 listener classifier 错分为 tenant-admin 的问题；它们现在从 public listener 可达，但仍必须通过 source-owned application service credential。
 - 验证命令：Identity `go test ./internal/transport/http/server -run 'TestStandaloneRouteInventory|TestRecordingRouteRegistrar|TestClassifyRouteSurface' -count=1` 与 `go test ./... -run '^$'` 通过；Foundation `go test ./action ./modulehttp ./modulecapability -count=1` 通过；Runtime 的 Action/endpoint/bootstrap/HTTP/runtimehost 相关分组通过。
 
 ### 12.13 D1 SDK reconcile/application/revision 合约证据
 
-- SDK `PermissionReconcileRequest` 现在显式携带 `previous_snapshot_hash` 与 canonical `snapshot_hash`；`PermissionSnapshotHash` 对 definition 顺序不敏感，并将 owner、key、resource/action、文案、分类和 source kind 纳入 hash，同时排除数据库 ID、时间、lifecycle 与管理员 `enabled`。hash 不匹配、previous hash 非规范 SHA-256、owner/definition 非法时在发出请求前返回稳定错误码。
+- SDK `PermissionReconcileRequest` 现在显式携带 `previous_snapshot_hash` 与 canonical `snapshot_hash`；`PermissionSnapshotHash` 对 definition 顺序不敏感，并将 owner、key、resource/operation、文案、分类和 source kind 纳入 hash，同时排除数据库 ID、时间、lifecycle 与管理员 `enabled`。hash 不匹配、previous hash 非规范 SHA-256、owner/definition 非法时在发出请求前返回稳定错误码。
 - Identity adapter 不再读取数据库当前 hash 后替远程调用方补 CAS；它把调用方提交的 previous/new hash 原样传入 application/store 原子 reconcile。相同 snapshot 的重试允许幂等成功，旧 snapshot 在新 snapshot 生效后返回 409 `identity.permission_snapshot_stale`，owner 抢占返回 409 `identity.permission_owner_conflict`。
 - receipt 返回 workspace、source owner、previous/new hash、definition count 和 inserted/updated/retired/unchanged。Runtime 在候选激活前逐字段核对 receipt；错误 owner/hash/count 即使 HTTP 返回成功，也以 `identity.permission_reconcile_receipt_invalid` 拒绝候选。metadata activation 以上一冻结 registry 的 owner hash 为 CAS 基线，owner 整体移除时提交空 snapshot 使旧定义 retired。
 - remote reconcile 继续使用 application service credential，并新增 `IDENTITY_APPLICATION_PERMISSION_OWNERS` 配置，将每个 tenant/workspace/application credential 显式绑定可发布 owner 集合。错误 workspace/application 或普通 bearer 返回 401；有效 credential 越出 owner scope 返回 403 `identity.permission_source_owner_forbidden`。credential secret 仍只在既有 secret/config 边界，不进入 `_identity_applications`。
@@ -754,7 +760,7 @@ B1 的合约/adapter 项与服务 ready 前冻结现已完成；Identity 全 rou
 
 ### 12.15 B2-B2.1 exact Identity Action、authoring 与页面投影证据
 
-- `IdentityBuiltinAuthorizationActions()` 当前包含 130 个显式 Actions，其中 100 个由 `identity:builtin` 拥有 same-key Permission；list/get/search/versions、create/update/delete 及 disable/enable/unlock/force_logout/assign/revoke/approve/reject 等均为独立 Action，不共享 broad read/write grant，也不定义 workspace-wide 管理员 Action。
+- `IdentityBuiltinAuthorizationActions()` 当前包含 119 个显式 Actions，其中 89 个由 `identity:builtin` 拥有 same-key Permission；list/get/search/versions、create/update/delete 及 disable/enable/unlock/force_logout/assign/revoke/approve/reject 等均为独立 Action，不共享 broad read/write grant，也不定义 workspace-wide 管理员 Action。
 - `IdentityActionRegistry.ProjectAuthoringDomain` 收集每个 capability 的 `ConfigurationRoutes`、`ValidationEndpoint`、preview/simulation 和全部 `ResourceOperations`，逐项解析到冻结 registry；role/self Action 必须存在 same-key、same-owner Permission，最终 `Permissions` 与 `Execution.PermissionModel=exact_action_same_key_permission` 由投影生成。任何未注册 route 会使 contract 构造失败。
 - OpenAPI capability、legacy authoring response 和三份生成的 management authoring JSON 均消费该投影；raw authoring capability 不再硬编码功能 Permissions。catalog 测试逐条证明投影 permission 必须反查到 canonical Action，而不是维护第二套词汇。
 - Action matrix 的 page binding 生成 `identity-admin-page-permissions.json`；前端 route registry 从该生成物设置页面 entry permission，后端 menu seed/assignment validation 从同一个 frozen registry 查询页面 permission。旧 `identity_admin_routes.go` 已删除。
@@ -794,7 +800,7 @@ B1 的合约/adapter 项与服务 ready 前冻结现已完成；Identity 全 rou
 - HTTP record Action、workflow、automation、record timer/job、Integration trigger、agent tool 和 bulk 都调用同一个 `Invoke`；RPC/connector 类协议 adapter 不维护自己的 permission 字符串，而是把目标 `action_key` 转成 `ActionInvocation`。未知 source、未知 Action、object mismatch 或缺少 exact Permission 均在 handler 前 fail closed。
 - durable automation outbox 在执行时重新解析当前 principal，不冻结排队时角色快照；agent task continuation 同样重新授权 durable execution identity。Permission 被停用或角色撤权后，后台任务不能凭旧 snapshot 继续执行。
 - `TestBusinessActionArchitectureHasOneInvocationAndMutationExecutor` 扫描生产源码，锁定 handler/system operation 只能从 governed boundary 到达，并逐一检查 HTTP、workflow、automation、record timer、agent、bulk adapter。新增 `TestEveryInvocationSourceUsesTheSameExactActionPermissionBoundary` 对 HTTP、workflow、automation、record timer、integration、agent、nested、bulk 八种 source 逐项验证：缺少 `order.approve` 全部拒绝，拥有同 key Permission 全部经同一执行/audit 路径成功，且伪造 source 被覆盖。
-- 验证命令：Runtime `go test ./runtime/application/action -run 'TestEveryInvocationSourceUsesTheSameExactActionPermissionBoundary|TestActionInvocationNormalizationAndProjection' -count=1`、`go test ./runtime/domain/action/service -run TestBusinessActionArchitectureHasOneInvocationAndMutationExecutor -count=1`、automation current-permission revalidation 与 workflow agent continuation reauthorization 两项定向测试均通过。扩大运行发现的旧 automation/workflow 测试夹具授权失败已记录到尚未勾选的“全量测试和 lint”项，不用定向通过冒充全量通过。
+- 验证命令：Runtime `go test ./runtime/application/action -run 'TestEveryInvocationSourceUsesTheSameExactActionPermissionBoundary|TestActionInvocationNormalizationAndProjection' -count=1`、`go test ./runtime/domain/action/service -run TestBusinessActionArchitectureHasOneInvocationAndMutationExecutor -count=1`、automation current-permission revalidation 与 workflow agent continuation reauthorization 两项定向测试均通过；本轮最终扩大到 Runtime `go test ./...` 全量通过。
 
 ### 12.20 F2 live Action usage query 证据
 
@@ -816,3 +822,54 @@ B1 的合约/adapter 项与服务 ready 前冻结现已完成；Identity 全 rou
 - resumed publication 只使用 `notification.publications.approve`；旧 direct-publish tombstone、`notification.template.*`/underscore 旧角色权限和 Runtime Notification-specific Permission hardcode 已从生产源码删除，没有 alias、双 grant 或兼容 endpoint。Notification 测试中的聚合 workspace 管理员 fixture 也已删除。
 - module application service 仍按同一个 Action key 拆分 resource/action 调用 Identity reauthorization，并保留领域内 fail-closed；host gate 不是唯一授权边界。测试证明另一 exact Permission 不会进入 mutation reauthorization。
 - 验证命令：Notification `go test ./... -count=1 && go vet ./... && git diff --check` 通过；Runtime 生产源码扫描只剩通用 module Action contribution，不含 Notification Permission vocabulary hardcode。
+
+### 12.22 B4 stable Action key、升级与卸载证据
+
+- Foundation `modulehttp.TestHTTPBindingChangePreservesActionAndPermissionIdentityWithoutAlias` 用同一个 source-owned Action 只修改 HTTP Method/URL binding，断言 Action key 与 same-key Permission identity 均保持不变，并且旧 URL 不再解析；registry 中没有 alias 或第二份 grant。
+- Runtime `TestRuntimeAuthorizationReconcileCarriesPreviousHashAndRetiresRemovedOwner` 证明升级时每个 owner 都携带上一份已确认 snapshot hash；owner 从当前 registry 消失时提交空 snapshot，Identity 将该 owner 的定义 retire，而不是保留旧 key 或生成卸载别名。
+- Runtime `TestRuntimePermissionReconcileCompensatesEarlierOwnersOnBatchFailure` 证明多 owner 批量 reconcile 中途失败时，已确认 owner 按原 snapshot 逆序补偿，失败候选不会被部分激活。
+- Identity `TestPermissionReconcileRetiresRestoresAndRejectsConflictingSnapshots` 覆盖完整 snapshot 的幂等重放、移除后的 retire、canonical owner 恢复、跨 owner key 冲突拒绝和“服务端已提交但响应丢失”后使用原 previous hash 重试；重试返回当前相同 snapshot，不重复插入或制造兼容定义。
+- 2026-09-02 验证命令：Foundation `go test ./modulehttp -run TestHTTPBindingChangePreservesActionAndPermissionIdentityWithoutAlias -count=1`；Runtime `go test ./runtime/bootstrap/runtime -run 'TestRuntimeAuthorizationReconcileCarriesPreviousHashAndRetiresRemovedOwner|TestRuntimePermissionReconcileCompensatesEarlierOwnersOnBatchFailure' -count=1`；Identity `go test ./internal/infrastructure/persistence/database/identity/integrationtest -run TestPermissionReconcileRetiresRestoresAndRejectsConflictingSnapshots -count=1`，三组均通过。
+
+### 12.23 B5 permission wrapper 与 workspace-wide 特权清理证据
+
+- 删除 `internal/domain/identity/policy/identity_permission_policy.go` 及其重复测试；应用层和数据库集成测试直接依赖 `internal/domain/identity/contract` 中唯一的 `IdentityRoleHasPermissionKey` / `IdentityRoleAllows` 实现，不再经过 permission policy facade。
+- 删除仅为兼容调用名保留的 `IdentityRoleHasExactPermissionKey`；所有调用统一使用本来就是 exact-only 的 `IdentityRoleHasPermissionKey`。生产源码扫描不存在该旧符号。
+- 删除字段 read/write/export/mask 和字段权限投影中的 `workspace.admin` 特殊分支。新增 `TestWorkspaceAdminShapedPermissionDoesNotGrantFieldAuthority`，证明该形状的字符串不能越过 sensitive/default-deny 字段策略、显式字段 grant 或 mask。
+- Identity HTTP route registrar 只以 Action key 绑定 handler，再从冻结 registry 读取 Method、URL 和 authorization strategy；没有第二个 route permission 参数。仍需跨 application service 复用的少量 Action 常量集中在 `identity_builtin_action_keys.go`，文件注释明确其 canonical owner 为 `identity:builtin`。
+- 验证证据：选定生产源码扫描 `IdentityRoleHasExactPermissionKey|workspace\\.admin|workspace\\.ADMIN|static_permissions_(all|any)|dynamic_permission_resolver` 为 0；`go test internal/domain/identity/contract/identity_authorization_contract.go internal/domain/identity/contract/identity_object_access.go internal/domain/identity/contract/identity_object_access_test.go` 通过；`git diff --check` 通过。全 package 测试另由全量 gate 项统一复核。
+
+### 12.24 最终收口与复审证据（2026-09-02）
+
+- 权限键语义完成去歧义：完整可执行键只使用 `ActionDefinition.Key`；`PermissionDefinition` 的末段动作统一命名为 `OperationKey`，wire 与 `_identity_permissions` 列统一为 `operation_key`。Foundation 现在同时强制 `Permission.Key == Action.Key == ResourceKey + "." + OperationKey`，错误分段在注册/冻结前即失败，SDK reconcile 保留同一约束。`IdentityActionPermissionUsage.ActionKey` 继续明确表示完整 live Action key，不与持久化 definition 混用。Foundation、Identity SDK、Identity、Runtime 及 module Action contributors 已同步全量测试。
+- principal 构造改为 fail closed：空 subject 以及没有有效角色的 subject 都不会再被推断为 `admin`、`developer` 或 `all_records`；多角色的管理范围保留为显式 `EffectiveRecordScopes` 集合并逐项求并集，不再用一个默认 `all_records` 丢失来源语义。回归测试锁定空主体/无角色主体不能获得管理员范围，并覆盖 organization 与 reporting scope 的显式组合。
+- OrganizationUnit 的 `path`、`ancestor_ids`、`depth` 改由 Identity 根据 ID/parent graph 生成，调用方输入不会成为层级事实；reparent 会一次重算完整子树，memory 先完整校验再加锁写入，SQL 在宿主 transaction 或本地 transaction 中整批提交，失败时不暴露半棵新树。
+- Identity Admin 删除按 `role.id == admin` 或 `builtIn` 推断权限/数据范围的分支；角色功能、对象范围、字段权限和菜单都只读取后端实际配置。当前 unit 为 26 个测试文件、96 个测试，通过 `tsc -b` 与 Vite production build。
+- Notification team inbox 从已认证 principal 的 `ReportingScopeUserIDs` 构造 `ReportingUserIDs`，不信任请求方声明关系；指定成员不在该集合时由领域 validator 拒绝。`delegated_credential` 已进入设计文档与 module SOP，并明确不生成角色 Permission。
+- 本重构触及的 DML 使用 domainry-orm。Runtime evidence schema 中遗留的 worker-scope delete 与 publication dedup backfill 已改为 ORM delete/update builder；结构复制等 ORM 无等价能力的既有 migration raw SQL 未被冒充为本授权重构成果。
+- 全量验收：Identity `go test ./...`、Identity SDK `go test ./...`、Runtime `go test ./...`、Foundation `go test ./...`、Notification `go test ./...` 全部通过；Identity、Identity SDK、Runtime、Notification `go vet ./...` 全部通过；Identity Admin `npm run test:unit` 与 `npm run build` 通过。相关 Metadata、Lifecycle、Audit、Agent SDK、Scheduler SDK、Monitoring SDK、Integration SDK 也完成全量编译/测试，其中需要本机端口的测试在允许监听临时端口的环境执行。
+- 最终 TODO 扫描 `rg '^- \[ \]' docs/identity-authorization-refactor-todo.md` 为 0；历史“先做 S0 再决定是否扩大”的流程项已明确标记为被用户后续继续开发指令解除，没有将它们伪装成新的代码工作。
+
+### 12.25 角色与策略直发边界最终收口证据（2026-09-02）
+
+- 新增并注册 `identity.roles.create/update/delete`、`identity.role_data_scopes.publish`、`identity.role_field_permissions.publish` 五个 exact Actions；功能权限仍使用 `identity.role_permissions.publish`。每条角色授权 Action 只校验同 key Permission，由同一 Action registry 自动 reconcile PermissionDefinition，没有 broad grant 或 `workspace.admin` 旁路。
+- `IdentityRoleDefinitionPublicationService` 是唯一角色写用例入口，窄端口显式区分角色增改删、功能权限、数据范围与字段权限。每个 metadata command 使用自己的 Action 加载并发布 RoleSchema；`TestRolePermissionPublishRequiresOnlyItsExactAction` 和真实 HTTP 限权用例证明 publish 不会暗中申请 list Permission。
+- `POST /identity/roles` 只接收可验证的功能 Permission，强制新角色 `record_scope=none`，并清空调用方夹带的数据、字段、引用、导出、可授予角色、guardrail 和跨 workspace 配置。通用 `PATCH` 只改名称、描述和 i18n；策略字段分别由专用端点修改，避免一个宽 DTO 覆盖整份授权。
+- 功能权限、数据范围和字段权限页面都直接读取 RoleSchema revision，并以首次读取的 `X-Resource-Hash`、业务原因和幂等键执行 CAS 发布。角色授权相关源码已不再引用 `systemChangePlansApi`、`saveSystemResourceDraft` 或 `roleAuthorizationPlanID`；System Change Plan 只保留给非角色的系统 metadata 变更。
+- 数据范围和字段权限每次只发布所负责的 RoleSchema 字段，其余功能/数据/字段策略保持原值。前端编辑时一次只允许选择一个角色，dirty 状态锁定角色选择，避免跨聚合批量提交造成部分成功。字段默认可见性同时遵守敏感字段与 ObjectSchema `field_access_mode=default_deny`。
+- 角色删除在发布 disabled definition 前检查用户角色分配和角色菜单分配；有引用即返回 conflict。所有成功写入继续复用既有 `_identity_role_definitions`、`_identity_role_definition_versions` 和 `_identity_roles` 投影，没有新增 role-permission 表、Change Plan 表、目录层级或第二份授权 authority。
+- `TestStandaloneRoleAndPolicyAuthoringPublishesRoleSchemaDirectly` 在真实 SQLite、HTTP、登录和 Action gate 上证明：创建为 version 1 且注入的高权限被清空；相同幂等键精确重放不增加 version/audit；数据与字段发布只改对应字段；通用更新保留全部授权策略；删除禁用运行态角色目录。相关版本数、schema hash 与审计事件均逐步断言。
+- 最终验证：Identity `go test ./... -count=1`、`go vet ./...`；Identity Admin `npm run test:unit`（26 files / 96 tests）与 `npm run build`；`git diff --check` 均通过。当前 registry 为 119 个 Identity Actions / 89 个 `identity:builtin` same-key Permissions，standalone route inventory 为 152 条，SHA-256=`b7cbb5f7256fd02a4a7b1b47ee1314e520e97832447ffe7ab2481c1de0c983d0`。
+- 架构复审结论：角色授权的定义源是 source-owned Action，current 开关源是 `_identity_permissions`，角色选择唯一写入 versioned `RoleSchema`，Runtime 只执行当前对象的数据/字段策略；四层职责没有交叉持有同一事实。此次收口只在既有 application/domain/transport/frontend 目录内使用职责明确的文件名，没有新建平行权限包或部署目录。
+
+### 12.26 客服支持组织数据范围收口证据（2026-09-02）
+
+- [x] `_identity_users` 增加可空 `support_org_id` 和 `(workspace_id, support_org_id)` 索引；fresh schema、现有库 `EnsureColumn`、ORM upsert/select/page query、portable dataset、subject export/erase 全部使用同一列，没有新表、第二 migration ledger 或 relation 前缀。
+- [x] `IdentityUser.OrgID` 继续表示客服真实所属部门；`SupportOrgID` 是独立可选事实。用户创建/更新 authoring contract、manifest seed、HTTP DTO、管理端列表编辑和详情编辑均支持该字段，管理端只允许选择 active 组织并能清空配置。
+- [x] 用户写入时校验 `support_org_id` 必须引用 active OrganizationUnit；principal 解析时从当前组织邻接图派生该节点及全部 active descendants，写入 `SupportOrgScopeIDs`。目标缺失、禁用或派生为空时不发布可信 scope，授权 revision 同时包含用户字段和派生集合，组织或配置变化会生成新 revision。
+- [x] `DataPermission` 与 `IdentityEffectiveDataAccess` 均不含 `read`、`write` 或 Action grant；有效数据策略按对象聚合。`RoleSchema.Permissions` 中的 exact Action 是唯一功能权限来源，测试锁定孤立 data policy 不能创造任何 Action。
+- [x] 客户应用角色使用现有 `custom` predicate：`owner_org_id IN actor_claim(support_org_scope_ids)`，不新增 `support_*` scope 枚举、Permission key 或 Identity 对客户对象的所有权。Metadata validation 仍由对象 owner 校验 `customer` 与 `owner_org_id`，Identity 只解析可信组织 claim。
+- [x] SDK 适配边界把同一对象过滤条件编译到 evaluator 的查询/变更技术通道；这两个通道不是角色 grant。真实 evaluator 测试证明 `customer.read` 可读取支持组织及 active 子组织、组织外记录拒绝、空支持范围 fail closed，且匹配记录也不能执行未声明的 `customer.update`。
+- [x] 多角色同对象范围按并集编译；测试证明客服真实组织范围与额外销售支持范围都可读，第三方组织仍拒绝，避免 `organization + custom` 聚合时丢失任一分支。
+- [x] 验证通过：Identity `go test ./... -count=1`、`go vet ./...`、全仓 `go test ./... -run '^$' -count=1`；Identity Admin `npm run test:unit --workspace identity-admin`（26 files / 96 tests）与 `npm run build --workspace identity-admin`；`git diff --check`。全量 Go 测试在允许 `httptest` 监听本机临时端口的环境执行。
+- [x] 架构复审确认本项只修改既有 user、principal、policy projection、SDK adapter、schema/repository、管理端 user form 与文档位置；没有新增业务化权限包、平行目录、数据库表或跨仓修改。数据范围管理页继续只读保留已发布 custom predicate，业务应用通过 source-owned RoleSchema 声明该策略，避免 Identity 管理端内置客户领域模板。

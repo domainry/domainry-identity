@@ -30,7 +30,7 @@ func TestApplyRoleDefinitionsRemainListableAfterRestart(t *testing.T) {
 	store, repository := open()
 	mutations := make([]metadatamodel.MetadataDefinitionMutation, 0, 4)
 	for _, key := range []string{"member", "coach", "store_manager", "finance"} {
-		payload, err := json.Marshal(identitymodel.RoleSchema{Key: key, Name: key, RecordScope: "all_records", DataPermissions: []identitymodel.DataPermission{{ObjectKey: "booking", Scope: "all_records", Read: true}}})
+		payload, err := json.Marshal(identitymodel.RoleSchema{Key: key, Name: key, RecordScope: "all_records", DataPermissions: []identitymodel.DataPermission{{ObjectKey: "booking", Scope: "all_records"}}})
 		if err != nil {
 			t.Fatal(err)
 		}

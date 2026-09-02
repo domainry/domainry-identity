@@ -33,8 +33,6 @@ export function AccountDisableDialog({ account, onClose }: { account: IdentityAc
         {impact.isPending ? <p className='text-sm text-muted-foreground'>{t('accounts.impactLoading')}</p> : null}
         {impact.isError ? <p className='text-sm text-destructive'>{t('dataTable.errorDescription')}</p> : null}
         {impact.data ? <div className='space-y-3 rounded-lg border p-4 text-sm'>
-          <p>{t('accounts.disableImpactWorkforce', { count: impact.data.workforce_profile_ids.length })}</p>
-          {impact.data.workforce_profile_ids.map((id) => <code key={id} className='block rounded bg-muted px-2 py-1'>{id}</code>)}
           <p>{t('accounts.disableImpactProfiles', { count: impact.data.profile_bindings.length })}</p>
           {impact.data.profile_bindings.map((binding) => <code key={`${binding.binding_key}:${binding.profile_id}`} className='block rounded bg-muted px-2 py-1'>{binding.binding_key} · {binding.object_key}:{binding.profile_id} · {binding.status}</code>)}
           <p>{t('accounts.disableImpactEntitlements', { count: impact.data.active_entitlement_role_ids.length })}</p>

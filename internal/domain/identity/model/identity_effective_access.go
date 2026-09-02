@@ -13,7 +13,6 @@ type IdentityGrantSource struct {
 	AssignmentSource   string `json:"assignment_source,omitempty"`
 	BindingKey         string `json:"binding_key,omitempty"`
 	ProfileID          string `json:"profile_id,omitempty"`
-	WorkforceProfileID string `json:"workforce_profile_id,omitempty"`
 	ValidFrom          string `json:"valid_from,omitempty"`
 	ValidUntil         string `json:"valid_until,omitempty"`
 	ExpiresAt          string `json:"expires_at,omitempty"`
@@ -28,7 +27,6 @@ type IdentityEffectivePermissionGrant struct {
 
 type IdentityEffectiveDataAccess struct {
 	ObjectKey   string                    `json:"object_key"`
-	Action      string                    `json:"action"`
 	Allowed     bool                      `json:"allowed"`
 	Scope       string                    `json:"scope"`
 	Scopes      []string                  `json:"scopes"`
@@ -54,10 +52,10 @@ type IdentityEffectiveAccessSnapshot struct {
 	UserID                string                             `json:"user_id"`
 	Known                 bool                               `json:"known"`
 	AuthorizationRevision string                             `json:"authorization_revision,omitempty"`
-	WorkforceProfileID    string                             `json:"workforce_profile_id,omitempty"`
-	DepartmentID          string                             `json:"department_id,omitempty"`
-	DepartmentPath        string                             `json:"department_path,omitempty"`
-	ReportingPath         string                             `json:"reporting_path,omitempty"`
+	OrgID                 string                             `json:"org_id,omitempty"`
+	SupportOrgID          string                             `json:"support_org_id,omitempty"`
+	SupportOrgScopeIDs    []string                           `json:"support_org_scope_ids,omitempty"`
+	OrganizationPath      string                             `json:"organization_path,omitempty"`
 	BusinessProfiles      []BusinessProfileReference         `json:"business_profiles"`
 	RoleAssignments       []IdentityUserRoleAssignment       `json:"role_assignments"`
 	RoleKeys              []string                           `json:"role_keys"`

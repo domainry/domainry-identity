@@ -12,10 +12,6 @@ func (s *SQLIdentityStore) SearchIdentityUsers(ctx context.Context, workspaceID 
 	return directorypersistence.New(s).SearchIdentityUsers(ctx, workspaceID, queryValue)
 }
 
-func (s *SQLIdentityStore) SearchIdentityWorkforceProfiles(ctx context.Context, workspaceID string, queryValue identitymodel.IdentityListQuery) (identitymodel.IdentityWorkforceProfilePage, error) {
-	return directorypersistence.New(s).SearchIdentityWorkforceProfiles(ctx, workspaceID, queryValue)
-}
-
 func identityDirectoryPredicates(queryValue identitymodel.IdentityListQuery, columns map[string]string) []query.Predicate {
 	return directorypersistence.Predicates(queryValue, columns)
 }

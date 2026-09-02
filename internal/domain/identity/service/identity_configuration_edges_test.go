@@ -24,7 +24,7 @@ func requireIdentityIssue(t *testing.T, issues []identitycontract.IdentityGovern
 }
 
 func TestValidateUserConfigurationContractMatrix(t *testing.T) {
-	repository := &identityDepartmentUserRepository{}
+	repository := &identityOrganizationUnitUserRepository{}
 	service := NewIdentityConfigurationDomainService(repository).ForWorkspace("workspace")
 
 	invalid, err := service.ValidateUserConfiguration(t.Context(), identitymodel.IdentityUser{
@@ -102,7 +102,7 @@ func TestValidateUserConfigurationContractMatrix(t *testing.T) {
 
 func TestValidateUserConfigurationReferencesAndFailures(t *testing.T) {
 	user := identitymodel.IdentityUser{ID: "user", Name: "User", Email: "user@example.com"}
-	repository := &identityDepartmentUserRepository{users: []identitymodel.IdentityUser{
+	repository := &identityOrganizationUnitUserRepository{users: []identitymodel.IdentityUser{
 		{ID: "user", Email: "user@example.com"},
 		{ID: "other", Email: "USER@example.com"},
 	}}
@@ -114,9 +114,34 @@ func TestValidateUserConfigurationReferencesAndFailures(t *testing.T) {
 	}
 	requireIdentityIssue(t, issues, "backend.identity.user_email_exists")
 
-	repository.listUserErr = errIdentityDepartmentUserEdge
-	if _, err := service.ValidateUserConfiguration(t.Context(), user); !errors.Is(err, errIdentityDepartmentUserEdge) {
+	repository.listUserErr = errIdentityOrganizationUnitUserEdge
+	if _, err := service.ValidateUserConfiguration(t.Context(), user); !errors.Is(err, errIdentityOrganizationUnitUserEdge) {
 		t.Fatalf("list users error=%v", err)
+	}
+}
+
+func TestValidateUserConfigurationRequiresActiveSupportOrganization(t *testing.T) {
+	repository := &identityOrganizationUnitUserRepository{
+		organizationUnits: []identitymodel.IdentityOrganizationUnit{
+			{ID: "sales", Status: identitymodel.IdentityStatusActive},
+			{ID: "retired-sales", Status: identitymodel.IdentityStatusDisabled},
+		},
+	}
+	service := NewIdentityConfigurationDomainService(repository)
+	base := identitymodel.IdentityUser{ID: "agent", Name: "Agent", Email: "agent@example.com"}
+	for _, supportOrgID := range []string{"missing", "retired-sales"} {
+		user := base
+		user.SupportOrgID = supportOrgID
+		issues, err := service.ValidateUserConfiguration(t.Context(), user)
+		if err != nil {
+			t.Fatal(err)
+		}
+		requireIdentityIssue(t, issues, "backend.identity.support_organization_unit_not_found")
+	}
+	base.SupportOrgID = "sales"
+	issues, err := service.ValidateUserConfiguration(t.Context(), base)
+	if err != nil || len(issues) != 0 {
+		t.Fatalf("active support organization issues=%+v err=%v", issues, err)
 	}
 }
 
@@ -182,47 +207,60 @@ func TestIdentityConfigurationAssignmentExpiryAndErrorHelpers(t *testing.T) {
 	}
 }
 
-func TestValidateDepartmentConfigurationContractAndHierarchyMatrix(t *testing.T) {
-	repository := &identityDepartmentUserRepository{}
+func TestValidateOrganizationUnitConfigurationContractAndHierarchyMatrix(t *testing.T) {
+	repository := &identityOrganizationUnitUserRepository{}
 	service := NewIdentityConfigurationDomainService(repository)
 
-	issues, err := service.ValidateDepartmentConfiguration(t.Context(), identitymodel.IdentityDepartment{Status: "invalid"})
+	issues, err := service.ValidateOrganizationUnitConfiguration(t.Context(), identitymodel.IdentityOrganizationUnit{Status: "invalid"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, code := range []string{"backend.identity.department_id_required", "backend.identity.department_name_required", "backend.identity.department_status_invalid"} {
+	for _, code := range []string{"backend.identity.org_id_required", "backend.identity.organization_unit_code_required", "backend.identity.organization_unit_name_required", "backend.identity.organization_unit_type_invalid", "backend.identity.organization_unit_status_invalid"} {
 		requireIdentityIssue(t, issues, code)
 	}
 	for _, status := range []identitymodel.IdentityStatus{"", identitymodel.IdentityStatusActive, identitymodel.IdentityStatusDisabled} {
-		got, validateErr := service.ValidateDepartmentConfiguration(t.Context(), identitymodel.IdentityDepartment{ID: "department", Name: "Department", Status: status})
+		got, validateErr := service.ValidateOrganizationUnitConfiguration(t.Context(), identitymodel.IdentityOrganizationUnit{ID: "organizationUnit", Code: "ORG", Name: "OrganizationUnit", NodeType: identitymodel.IdentityOrganizationUnitDepartment, Status: status})
 		if validateErr != nil || len(got) != 0 {
 			t.Fatalf("status=%q issues=%+v err=%v", status, got, validateErr)
+		}
+	}
+	for _, nodeType := range []identitymodel.IdentityOrganizationUnitType{
+		identitymodel.IdentityOrganizationUnitCompany,
+		identitymodel.IdentityOrganizationUnitRegion,
+		identitymodel.IdentityOrganizationUnitStore,
+		identitymodel.IdentityOrganizationUnitDepartment,
+		identitymodel.IdentityOrganizationUnitTeam,
+		identitymodel.IdentityOrganizationUnitWarehouse,
+	} {
+		got, validateErr := service.ValidateOrganizationUnitConfiguration(t.Context(), identitymodel.IdentityOrganizationUnit{ID: "organizationUnit", Code: "ORG", Name: "OrganizationUnit", NodeType: nodeType})
+		if validateErr != nil || len(got) != 0 {
+			t.Fatalf("node type=%q issues=%+v err=%v", nodeType, got, validateErr)
 		}
 	}
 
 	blank := " "
 	parent := "parent"
 	missing := "missing"
-	self := "department"
-	cycle := "department"
+	self := "organizationUnit"
+	cycle := "organizationUnit"
 	broken := "broken"
 	for _, test := range []struct {
-		name        string
-		parentID    *string
-		departments []identitymodel.IdentityDepartment
-		wantCode    string
+		name              string
+		parentID          *string
+		organizationUnits []identitymodel.IdentityOrganizationUnit
+		wantCode          string
 	}{
 		{name: "nil"},
 		{name: "blank", parentID: &blank},
-		{name: "self", parentID: &self, wantCode: "backend.identity.department_parent_self"},
-		{name: "missing", parentID: &missing, wantCode: "backend.identity.parent_department_not_found"},
-		{name: "valid", parentID: &parent, departments: []identitymodel.IdentityDepartment{{ID: "parent"}}},
-		{name: "cycle", parentID: &parent, departments: []identitymodel.IdentityDepartment{{ID: "parent", ParentID: &cycle}, {ID: "department"}}, wantCode: "backend.identity.department_cycle"},
-		{name: "broken", parentID: &parent, departments: []identitymodel.IdentityDepartment{{ID: "parent", ParentID: &broken}}},
+		{name: "self", parentID: &self, wantCode: "backend.identity.organization_unit_parent_self"},
+		{name: "missing", parentID: &missing, wantCode: "backend.identity.parent_organization_unit_not_found"},
+		{name: "valid", parentID: &parent, organizationUnits: []identitymodel.IdentityOrganizationUnit{{ID: "parent"}}},
+		{name: "cycle", parentID: &parent, organizationUnits: []identitymodel.IdentityOrganizationUnit{{ID: "parent", ParentID: &cycle}, {ID: "organizationUnit"}}, wantCode: "backend.identity.organization_unit_cycle"},
+		{name: "broken", parentID: &parent, organizationUnits: []identitymodel.IdentityOrganizationUnit{{ID: "parent", ParentID: &broken}}, wantCode: "backend.identity.parent_organization_unit_not_found"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			repository.departments = test.departments
-			got, validateErr := service.ValidateDepartmentConfiguration(t.Context(), identitymodel.IdentityDepartment{ID: "department", Name: "Department", ParentID: test.parentID})
+			repository.organizationUnits = test.organizationUnits
+			got, validateErr := service.ValidateOrganizationUnitConfiguration(t.Context(), identitymodel.IdentityOrganizationUnit{ID: "organizationUnit", Code: "ORG", Name: "OrganizationUnit", NodeType: identitymodel.IdentityOrganizationUnitDepartment, ParentID: test.parentID})
 			if validateErr != nil {
 				t.Fatal(validateErr)
 			}
@@ -237,20 +275,20 @@ func TestValidateDepartmentConfigurationContractAndHierarchyMatrix(t *testing.T)
 	}
 
 	root := "root"
-	repository.departments = []identitymodel.IdentityDepartment{
-		{ID: "same", Name: "Department", ParentID: &root},
-		{ID: "other", Name: " department ", ParentID: &root},
-		{ID: "different-parent", Name: "Department"},
+	repository.organizationUnits = []identitymodel.IdentityOrganizationUnit{
+		{ID: "same", Name: "OrganizationUnit", ParentID: &root},
+		{ID: "other", Name: " organizationUnit ", ParentID: &root},
+		{ID: "different-parent", Name: "OrganizationUnit"},
 		{ID: "different-name", Name: "Other", ParentID: &root},
 	}
-	issues, err = service.ValidateDepartmentConfiguration(t.Context(), identitymodel.IdentityDepartment{ID: "same", Name: "Department", ParentID: &root})
+	issues, err = service.ValidateOrganizationUnitConfiguration(t.Context(), identitymodel.IdentityOrganizationUnit{ID: "same", Code: "SAME", Name: "OrganizationUnit", NodeType: identitymodel.IdentityOrganizationUnitDepartment, ParentID: &root})
 	if err != nil {
 		t.Fatal(err)
 	}
-	requireIdentityIssue(t, issues, "backend.identity.department_name_exists")
+	requireIdentityIssue(t, issues, "backend.identity.organization_unit_name_exists")
 
-	repository.listDepartmentErr = errIdentityDepartmentUserEdge
-	if _, err := service.ValidateDepartmentConfiguration(t.Context(), identitymodel.IdentityDepartment{ID: "id", Name: "Name"}); !errors.Is(err, errIdentityDepartmentUserEdge) {
-		t.Fatalf("list departments error=%v", err)
+	repository.listOrganizationUnitErr = errIdentityOrganizationUnitUserEdge
+	if _, err := service.ValidateOrganizationUnitConfiguration(t.Context(), identitymodel.IdentityOrganizationUnit{ID: "id", Code: "ID", Name: "Name", NodeType: identitymodel.IdentityOrganizationUnitDepartment}); !errors.Is(err, errIdentityOrganizationUnitUserEdge) {
+		t.Fatalf("list organizationUnits error=%v", err)
 	}
 }

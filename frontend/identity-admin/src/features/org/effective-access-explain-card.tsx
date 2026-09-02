@@ -11,7 +11,6 @@ function grantSourceLabel(source: IdentityGrantSource): string {
     source.permission_set_key || source.permission_set_group_key,
     source.assignment_source,
     source.binding_key && source.profile_id ? `${source.binding_key}:${source.profile_id}` : '',
-    source.workforce_profile_id ? `workforce:${source.workforce_profile_id}` : '',
   ].filter(Boolean).join(' · ')
 }
 

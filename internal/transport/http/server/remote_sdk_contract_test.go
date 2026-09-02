@@ -110,7 +110,7 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("register orders application: %v", err)
 	}
-	permissionRequest, err := identity.NewPermissionReconcileRequest(ordersApplication, "application:orders-runtime", "", []identity.PermissionDefinition{{PermissionKey: "customer.read", ResourceKey: "customer", ActionKey: "read", Label: "Read customers", Category: "Orders", SourceKind: "object_action"}})
+	permissionRequest, err := identity.NewPermissionReconcileRequest(ordersApplication, "application:orders-runtime", "", []identity.PermissionDefinition{{PermissionKey: "customer.read", ResourceKey: "customer", OperationKey: "read", Label: "Read customers", Category: "Orders", SourceKind: "object_action"}})
 	if err != nil {
 		t.Fatal(err)
 	}

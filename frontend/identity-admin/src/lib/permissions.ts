@@ -4,8 +4,7 @@ import type { NavKey } from '@/features/shell/admin-shell'
 
 const ROUTE_TO_NAV: Record<string, NavKey> = {
   '/admin/security/accounts': 'users',
-  '/admin/org/workforce': 'workforce',
-  '/admin/org/departments': 'departments',
+  '/admin/org/organization-units': 'organizationUnits',
   '/admin/org/roles': 'roles',
   '/admin/org/menus': 'menus',
   '/admin/org/data-scopes': 'dataScopes',
@@ -15,8 +14,7 @@ const ROUTE_TO_NAV: Record<string, NavKey> = {
 
 const ALL_NAV_KEYS: NavKey[] = [
   'users',
-  'workforce',
-  'departments',
+  'organizationUnits',
   'roles',
   'menus',
   'dataScopes',

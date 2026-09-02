@@ -16,7 +16,7 @@ type IdentityGovernanceValidationIssue struct {
 
 type IdentityGovernanceValidationRequest struct {
 	User             *identitymodel.IdentityUser               `json:"user,omitempty"`
-	Department       *identitymodel.IdentityDepartment         `json:"department,omitempty"`
+	OrganizationUnit *identitymodel.IdentityOrganizationUnit   `json:"organization_unit,omitempty"`
 	RoleAssignment   *identitymodel.IdentityUserRoleAssignment `json:"role_assignment,omitempty"`
 	Role             *identitymodel.IdentityRole               `json:"role,omitempty"`
 	RoleID           string                                    `json:"role_id,omitempty"`

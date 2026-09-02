@@ -10,6 +10,9 @@ import (
 // workflow and integration tables deliberately do not belong to this service.
 func EnsureMetadataSchema(ctx context.Context, s Store) error {
 	documentText := s.SchemaTypes().DocumentText
+	// These legacy tables must preserve engine-provided physical key/document
+	// types. domainry-orm has no custom ColumnType for those exact definitions;
+	// new owned tables use its schema builders directly.
 	if _, err := s.SchemaDB().ExecContext(ctx, "CREATE TABLE IF NOT EXISTS "+s.TableIdentifier("_identity_manifest_catalog")+" ("+
 		s.Identifier("key")+" "+s.MetadataIDColumnType()+" PRIMARY KEY, "+
 		s.Identifier("value")+" "+documentText+" NOT NULL, "+

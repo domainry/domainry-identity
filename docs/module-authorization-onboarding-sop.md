@@ -48,6 +48,7 @@ Module 接入必须把每个可执行入口声明成 source-owned `ActionDefinit
 | `anonymous_protocol` | 明确公开的协议入口 | 不得有 |
 | `authenticated_principal` | 任意已登录主体的本人范围能力 | 不得有 |
 | `self_or_permission` | 本人可操作，管理他人需授权 | 必须有；管理分支只校验该 key |
+| `delegated_credential` | agent/tool 等由 source handler 校验的 workspace 级委托凭证 | 不得有；handler 必须校验凭证 scope、expiry 和精确 tool/action 绑定 |
 | `service_identity` | 明确 audience 的服务身份入口 | 不得有普通角色 Permission |
 | `operations_identity` | 运维身份策略 | 不得有普通角色 Permission |
 
@@ -67,7 +68,7 @@ action.ActionDefinition{
         Key:         "notification.templates.list",
         Owner:       "module:notification",
         ResourceKey: "notification.templates",
-        ActionKey:   "list",
+        OperationKey: "list",
         Label:       "List notification templates",
         Category:    "Notification management",
     },

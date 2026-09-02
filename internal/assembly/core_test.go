@@ -66,7 +66,7 @@ func TestAssemblySeparatesApplicationRegistrationFromPermissionReconcile(t *test
 	if _, err := core.Binding.Applications().Register(t.Context(), identitysdk.ApplicationRegistration{Application: application, RedirectURLs: []string{"https://gym.example.test/callback"}}); err != nil {
 		t.Fatalf("register application: %v", err)
 	}
-	permissionRequest, err := identitysdk.NewPermissionReconcileRequest(application, "application:gym", "", []identitysdk.PermissionDefinition{{PermissionKey: "access_session.read", ResourceKey: "access_session", ActionKey: "read", Label: "Read access sessions", Category: "Gym", SourceKind: "object_action"}})
+	permissionRequest, err := identitysdk.NewPermissionReconcileRequest(application, "application:gym", "", []identitysdk.PermissionDefinition{{PermissionKey: "access_session.read", ResourceKey: "access_session", OperationKey: "read", Label: "Read access sessions", Category: "Gym", SourceKind: "object_action"}})
 	if err != nil {
 		t.Fatal(err)
 	}

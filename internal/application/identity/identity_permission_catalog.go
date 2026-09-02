@@ -106,7 +106,7 @@ func (service *IdentityPermissionCatalogApplicationService) ReconcileDefinitions
 		definition := &definitions[index]
 		definition.PermissionKey = strings.TrimSpace(definition.PermissionKey)
 		definition.ResourceKey = strings.TrimSpace(definition.ResourceKey)
-		definition.ActionKey = strings.TrimSpace(definition.ActionKey)
+		definition.OperationKey = strings.TrimSpace(definition.OperationKey)
 		definition.SourceOwner = strings.TrimSpace(definition.SourceOwner)
 		if definition.SourceOwner != sourceOwner {
 			return identitymodel.IdentityPermissionReconcileReceipt{}, &apperror.AppError{Kind: apperror.KindBadRequest, Code: "identity.permission_owner_scope_mismatch", Params: map[string]string{"permission_key": definition.PermissionKey, "source_owner": sourceOwner}}
@@ -114,7 +114,7 @@ func (service *IdentityPermissionCatalogApplicationService) ReconcileDefinitions
 		if _, duplicate := seen[definition.PermissionKey]; definition.PermissionKey == "" || duplicate {
 			return identitymodel.IdentityPermissionReconcileReceipt{}, &apperror.AppError{Kind: apperror.KindBadRequest, Code: "identity.permission_definition_duplicate", Params: map[string]string{"permission_key": definition.PermissionKey}}
 		}
-		if definition.PermissionKey != definition.ResourceKey+"."+definition.ActionKey {
+		if definition.PermissionKey != definition.ResourceKey+"."+definition.OperationKey {
 			return identitymodel.IdentityPermissionReconcileReceipt{}, &apperror.AppError{Kind: apperror.KindBadRequest, Code: "identity.permission_definition_invalid", Params: map[string]string{"permission_key": definition.PermissionKey}}
 		}
 		seen[definition.PermissionKey] = struct{}{}
@@ -381,7 +381,7 @@ func (service *IdentityPermissionCatalogApplicationService) projectDefinitionWit
 	usages := cloneIdentityActionPermissionUsages(resolution.usages)
 	point := identitymodel.IdentityPermissionDefinition{
 		Key: record.PermissionKey, Label: record.Label, System: system,
-		Resource: record.ResourceKey, ResourceLabel: record.ResourceKey, Action: record.ActionKey,
+		Resource: record.ResourceKey, ResourceLabel: record.ResourceKey, Action: record.OperationKey,
 		Category: record.Category, Description: record.Description, SourceType: record.SourceKind,
 		DefinitionStatus: record.DefinitionStatus, Enabled: record.Enabled, SourceKind: record.SourceKind,
 		SourceOwner: record.SourceOwner, DefinitionHash: record.DefinitionHash, SourceSnapshotHash: record.SourceSnapshotHash,
@@ -477,7 +477,7 @@ func IdentityPermissionDefinitionHash(definition identitymodel.IdentityPermissio
 	canonical := struct {
 		PermissionKey string `json:"permission_key"`
 		ResourceKey   string `json:"resource_key"`
-		ActionKey     string `json:"action_key"`
+		OperationKey  string `json:"operation_key"`
 		Label         string `json:"label"`
 		Description   string `json:"description"`
 		Category      string `json:"category"`
@@ -485,11 +485,11 @@ func IdentityPermissionDefinitionHash(definition identitymodel.IdentityPermissio
 		SourceOwner   string `json:"source_owner"`
 	}{
 		PermissionKey: strings.TrimSpace(definition.PermissionKey), ResourceKey: strings.TrimSpace(definition.ResourceKey),
-		ActionKey: strings.TrimSpace(definition.ActionKey), Label: strings.TrimSpace(definition.Label),
+		OperationKey: strings.TrimSpace(definition.OperationKey), Label: strings.TrimSpace(definition.Label),
 		Description: strings.TrimSpace(definition.Description), Category: strings.TrimSpace(definition.Category),
 		SourceKind: strings.TrimSpace(definition.SourceKind), SourceOwner: strings.TrimSpace(definition.SourceOwner),
 	}
-	if canonical.PermissionKey == "" || canonical.ResourceKey == "" || canonical.ActionKey == "" || canonical.Label == "" || canonical.Category == "" || canonical.SourceKind == "" || canonical.SourceOwner == "" {
+	if canonical.PermissionKey == "" || canonical.ResourceKey == "" || canonical.OperationKey == "" || canonical.Label == "" || canonical.Category == "" || canonical.SourceKind == "" || canonical.SourceOwner == "" {
 		return "", fmt.Errorf("Identity permission definition is incomplete")
 	}
 	raw, err := json.Marshal(canonical)

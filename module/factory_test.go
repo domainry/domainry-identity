@@ -184,7 +184,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("register project application: %v", err)
 	}
-	permissionDefinitions := []identitysdk.PermissionDefinition{{PermissionKey: "customer.read", ResourceKey: "customer", ActionKey: "read", Label: "Read customers", Category: "Orders", SourceKind: "object_action"}}
+	permissionDefinitions := []identitysdk.PermissionDefinition{{PermissionKey: "customer.read", ResourceKey: "customer", OperationKey: "read", Label: "Read customers", Category: "Orders", SourceKind: "object_action"}}
 	receipt, err := binding.Permissions().Reconcile(t.Context(), permissionReconcileRequest(t, application, "application:orders-runtime", "", permissionDefinitions))
 	if err != nil || receipt.SourceOwner != "application:orders-runtime" {
 		t.Fatalf("permission receipt=%#v err=%v", receipt, err)
@@ -198,7 +198,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		Roles: []identitysdk.ProjectRoleDefinition{{
 			Key: "project_viewer", Name: "Project Viewer", Permissions: []string{"customer.read"}, RecordScope: "all_records",
 			Audience: "any", AssignmentMode: "manual", RiskLevel: "normal", SchemaHash: strings.Repeat("a", 64),
-			DataPermissions: json.RawMessage(`[{"object_key":"customer","scope":"all_records","read":true,"write":false}]`),
+			DataPermissions: json.RawMessage(`[{"object_key":"customer","scope":"all_records"}]`),
 		}},
 	})
 	if err != nil || roleReceipt.Published != 1 || len(roleReceipt.SHA256) != 64 {
@@ -209,7 +209,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		Roles: []identitysdk.ProjectRoleDefinition{{
 			Key: "project_viewer", Name: "Project Viewer", Permissions: []string{"customer.read"}, RecordScope: "all_records",
 			Audience: "any", AssignmentMode: "manual", RiskLevel: "normal", SchemaHash: strings.Repeat("a", 64),
-			DataPermissions: json.RawMessage(`[{"object_key":"customer","scope":"all_records","read":true,"write":false}]`),
+			DataPermissions: json.RawMessage(`[{"object_key":"customer","scope":"all_records"}]`),
 		}},
 	})
 	if err != nil || repeatedRoleReceipt != roleReceipt {
@@ -252,7 +252,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		Authorization: actioncontract.Authorization{Strategy: actioncontract.AuthorizationExactRolePermission},
 		NonHTTP:       []actioncontract.NonHTTPBinding{{Kind: "rpc", InvocationKey: "customer.read"}},
 		Permission: &actioncontract.PermissionDefinition{
-			Key: "customer.read", Owner: "application:orders-runtime", ResourceKey: "customer", ActionKey: "read",
+			Key: "customer.read", Owner: "application:orders-runtime", ResourceKey: "customer", OperationKey: "read",
 			Label: "Read customers", Category: "Orders", LifecycleStatus: actioncontract.LifecycleActive,
 		},
 		EffectClass: actioncontract.EffectRead, RiskLevel: actioncontract.RiskLow, IdempotencyDecision: "not_applicable", AuditClass: "customer_read", LifecycleStatus: actioncontract.LifecycleActive,

@@ -209,7 +209,7 @@ func seedPortableWorkspace(t *testing.T, store *database.IdentityStore, now time
 		{id: "permission-export", key: "customer.export", action: "export", status: "active", enabled: false},
 	} {
 		if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO _identity_permissions
-			(id, workspace_id, permission_key, resource_key, action_key, label, description, category, source_kind, source_owner, definition_status, enabled, definition_hash, source_snapshot_hash, created_at, updated_at)
+			(id, workspace_id, permission_key, resource_key, operation_key, label, description, category, source_kind, source_owner, definition_status, enabled, definition_hash, source_snapshot_hash, created_at, updated_at)
 			VALUES (?, 'workspace-a', ?, 'customer', ?, ?, '', 'CRM', 'object_default', 'application:orders-runtime', ?, ?, ?, ?, ?, ?)`,
 			permission.id, permission.key, permission.action, permission.key, permission.status, permission.enabled, strings.Repeat("a", 64), strings.Repeat("b", 64), timestamp, timestamp); err != nil {
 			t.Fatal(err)
@@ -227,8 +227,8 @@ func seedPortableWorkspace(t *testing.T, store *database.IdentityStore, now time
 		t.Fatal(err)
 	}
 	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO _identity_user_role_assignments
-        (id, workspace_id, user_id, role_id, workforce_profile_id, binding_key, profile_id, source, status, valid_from, valid_until, granted_by, grant_reason, revoked_by, revoked_at, revoke_reason, expires_at, created_at, updated_at)
-        VALUES (?, ?, ?, ?, NULL, NULL, NULL, 'manual', 'active', NULL, NULL, 'admin', '', NULL, NULL, NULL, NULL, ?, ?)`,
+		(id, workspace_id, user_id, role_id, binding_key, profile_id, source, status, valid_from, valid_until, granted_by, grant_reason, revoked_by, revoked_at, revoke_reason, expires_at, created_at, updated_at)
+		VALUES (?, ?, ?, ?, NULL, NULL, 'manual', 'active', NULL, NULL, 'admin', '', NULL, NULL, NULL, NULL, ?, ?)`,
 		"assignment-1", "workspace-a", "user-1", "role-1", timestamp, timestamp); err != nil {
 		t.Fatal(err)
 	}

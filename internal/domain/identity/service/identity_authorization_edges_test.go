@@ -10,15 +10,71 @@ import (
 )
 
 type identityAuthorizationRepository struct {
-	*identityPrincipalRoleRepository
-	departments     []identitymodel.IdentityDepartment
-	menus           []identitymodel.IdentityMenu
-	menuAssignments []identitymodel.IdentityRoleMenuAssignment
-	departmentsErr  error
+	*identityRolesRepositoryStub
+	organizationUnits     []identitymodel.IdentityOrganizationUnit
+	menus                 []identitymodel.IdentityMenu
+	menuAssignments       []identitymodel.IdentityRoleMenuAssignment
+	permissionAssignments []identitymodel.IdentityRolePermissionAssignment
+	organizationUnitsErr  error
 }
 
-func (r *identityAuthorizationRepository) ListIdentityDepartments(context.Context, string) ([]identitymodel.IdentityDepartment, error) {
-	return append([]identitymodel.IdentityDepartment(nil), r.departments...), r.departmentsErr
+type identityRoleBindingEligibilityStub struct{ err error }
+
+func (s identityRoleBindingEligibilityStub) IdentityRoleBindingActive(context.Context, string, string, string, string) (bool, error) {
+	return s.err == nil, s.err
+}
+
+func activateIdentityTestPermissions(service *IdentityDomainService, keys ...string) {
+	definitions := make([]identitymodel.IdentityPermissionDefinition, 0, len(keys))
+	for _, key := range keys {
+		definitions = append(definitions, identitymodel.IdentityPermissionDefinition{Key: key, DefinitionStatus: identitymodel.IdentityPermissionDefinitionActive, Enabled: true})
+	}
+	service.ReplacePermissionDefinitions(definitions)
+}
+
+func TestIdentityPrincipalWithoutRolesHasNoImplicitManagementScope(t *testing.T) {
+	repository := &identityAuthorizationRepository{identityRolesRepositoryStub: &identityRolesRepositoryStub{
+		users: []identitymodel.IdentityUser{{ID: "user", Status: identitymodel.IdentityStatusActive}},
+	}}
+	principal, err := NewIdentityDomainService(repository, nil).mustForWorkspace(t, "workspace").ResolvePrincipal(t.Context(), "user")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !principal.Known || principal.Role.RecordScope != "none" || len(principal.EffectiveRecordScopes) != 0 {
+		t.Fatalf("principal gained implicit management scope: %+v", principal)
+	}
+}
+
+func TestIdentityActorEvaluatesExplicitEffectiveManagementScopes(t *testing.T) {
+	actor := identitymodel.Principal{
+		Known: true, UserID: "manager", OrgID: "sales",
+		OrgScopeIDs: []string{"sales", "sales-east"}, ReportingScopeUserIDs: []string{"manager", "report"},
+		EffectiveRecordScopes: []string{"organization", "self_and_subordinates"},
+	}
+	for _, target := range []identitymodel.IdentityUser{{ID: "peer", OrgID: "sales"}, {ID: "report", OrgID: "other"}} {
+		if !identityActorCanManageRoleTarget(actor, target) {
+			t.Fatalf("explicit management scope rejected target %+v", target)
+		}
+	}
+	if identityActorCanManageRoleTarget(actor, identitymodel.IdentityUser{ID: "outsider", OrgID: "other"}) {
+		t.Fatal("explicit management scopes expanded to an unrelated target")
+	}
+}
+
+func (r *identityAuthorizationRepository) ListIdentityRolePermissionAssignments(context.Context, string, string) ([]identitymodel.IdentityRolePermissionAssignment, error) {
+	return append([]identitymodel.IdentityRolePermissionAssignment(nil), r.permissionAssignments...), nil
+}
+
+func (r *identityAuthorizationRepository) ListIdentityRoleDataScopes(context.Context, string, string) ([]identitymodel.IdentityDataScopePolicy, error) {
+	return nil, nil
+}
+
+func (r *identityAuthorizationRepository) ListIdentityRoleFieldPermissions(context.Context, string, string) ([]identitymodel.IdentityFieldPermission, error) {
+	return nil, nil
+}
+
+func (r *identityAuthorizationRepository) ListIdentityOrganizationUnits(context.Context, string) ([]identitymodel.IdentityOrganizationUnit, error) {
+	return append([]identitymodel.IdentityOrganizationUnit(nil), r.organizationUnits...), r.organizationUnitsErr
 }
 
 func (r *identityAuthorizationRepository) ListIdentityMenus(context.Context, string) ([]identitymodel.IdentityMenu, error) {
@@ -32,43 +88,36 @@ func (r *identityAuthorizationRepository) ListIdentityRoleMenuAssignments(contex
 func TestIdentityAuthorizationContextBoundaryAndDelegation(t *testing.T) {
 	role := identitymodel.IdentityRole{ID: "role", Key: "role", Status: identitymodel.IdentityStatusActive}
 	repository := &identityAuthorizationRepository{
-		identityPrincipalRoleRepository: &identityPrincipalRoleRepository{
-			identityRolesRepositoryStub: &identityRolesRepositoryStub{
-				users:       []identitymodel.IdentityUser{{ID: "user", Status: identitymodel.IdentityStatusActive}},
-				roles:       []identitymodel.IdentityRole{role},
-				assignments: []identitymodel.IdentityUserRoleAssignment{{UserID: "user", RoleID: "role"}},
-			},
-			permissionAssignments: []identitymodel.IdentityRolePermissionAssignment{{RoleID: "role", PermissionKey: "record.read"}},
+		identityRolesRepositoryStub: &identityRolesRepositoryStub{
+			users:       []identitymodel.IdentityUser{{ID: "user", OrgID: "sales", Status: identitymodel.IdentityStatusActive}},
+			roles:       []identitymodel.IdentityRole{role},
+			assignments: []identitymodel.IdentityUserRoleAssignment{{UserID: "user", RoleID: "role"}},
 		},
-		departments:     []identitymodel.IdentityDepartment{{ID: "department", Name: "Department", Status: identitymodel.IdentityStatusActive}},
-		menus:           []identitymodel.IdentityMenu{{ID: "menu", Key: "menu", Status: identitymodel.IdentityStatusActive}},
-		menuAssignments: []identitymodel.IdentityRoleMenuAssignment{{RoleID: "role", MenuID: "menu"}},
+		permissionAssignments: []identitymodel.IdentityRolePermissionAssignment{{RoleID: "role", PermissionKey: "record.read"}},
+		organizationUnits:     []identitymodel.IdentityOrganizationUnit{{ID: "sales", Name: "Sales", Path: "/company/sales", Status: identitymodel.IdentityStatusActive}},
+		menus:                 []identitymodel.IdentityMenu{{ID: "menu", Key: "menu", Status: identitymodel.IdentityStatusActive}},
+		menuAssignments:       []identitymodel.IdentityRoleMenuAssignment{{RoleID: "role", MenuID: "menu"}},
 	}
 	service := NewIdentityDomainService(repository, nil).mustForWorkspace(t, "workspace")
 	activateIdentityTestPermissions(service, "record.read")
 	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{Key: "role", Permissions: []string{"record.read"}, RecordScope: "all_records"}})
-	if assignments, workforceProfileID, err := service.ResolveEffectiveRoleAssignments(t.Context(), "user"); err != nil || len(assignments) != 1 || workforceProfileID != "" {
-		t.Fatalf("effective assignments=%+v workforce=%q err=%v", assignments, workforceProfileID, err)
+	if assignments, err := service.ResolveEffectiveRoleAssignments(t.Context(), "user"); err != nil || len(assignments) != 1 {
+		t.Fatalf("effective assignments=%+v err=%v", assignments, err)
 	}
 	repository.assignments[0].Status = "revoked"
-	if assignments, _, err := service.ResolveEffectiveRoleAssignments(t.Context(), "user"); err != nil || len(assignments) != 0 {
+	if assignments, err := service.ResolveEffectiveRoleAssignments(t.Context(), "user"); err != nil || len(assignments) != 0 {
 		t.Fatalf("inactive assignments=%+v err=%v", assignments, err)
 	}
 	repository.assignments[0].Status = ""
-	repository.workforceProfilesErr = errors.New("workforce")
-	if _, _, err := service.ResolveEffectiveRoleAssignments(t.Context(), "user"); !errors.Is(err, repository.workforceProfilesErr) {
-		t.Fatalf("workforce error=%v", err)
-	}
-	repository.workforceProfilesErr = nil
 	repository.listAssignmentsErr = errors.New("assignments")
-	if _, _, err := service.ResolveEffectiveRoleAssignments(t.Context(), "user"); !errors.Is(err, repository.listAssignmentsErr) {
+	if _, err := service.ResolveEffectiveRoleAssignments(t.Context(), "user"); !errors.Is(err, repository.listAssignmentsErr) {
 		t.Fatalf("assignments error=%v", err)
 	}
 	repository.listAssignmentsErr = nil
 	repository.assignments[0].BindingKey, repository.assignments[0].ProfileID = "member", "profile"
 	bindingErr := errors.New("binding")
 	service.UseRoleBindingEligibility(identityRoleBindingEligibilityStub{err: bindingErr})
-	if _, _, err := service.ResolveEffectiveRoleAssignments(t.Context(), "user"); !errors.Is(err, bindingErr) {
+	if _, err := service.ResolveEffectiveRoleAssignments(t.Context(), "user"); !errors.Is(err, bindingErr) {
 		t.Fatalf("binding error=%v", err)
 	}
 	service.UseRoleBindingEligibility(nil)
@@ -89,17 +138,17 @@ func TestIdentityAuthorizationContextBoundaryAndDelegation(t *testing.T) {
 	if user, found, err := service.FindUser(t.Context(), "user"); err != nil || !found || user.ID != "user" {
 		t.Fatalf("user=%+v found=%v err=%v", user, found, err)
 	}
-	if department, found, err := service.FindDepartment(t.Context(), "department"); err != nil || !found || department.ID != "department" {
-		t.Fatalf("department=%+v found=%v err=%v", department, found, err)
+	if organizationUnit, found, err := service.FindOrganizationUnit(t.Context(), "sales"); err != nil || !found || organizationUnit.ID != "sales" {
+		t.Fatalf("organizationUnit=%+v found=%v err=%v", organizationUnit, found, err)
 	}
-	if _, found, err := service.FindDepartment(t.Context(), "missing"); err != nil || found {
-		t.Fatalf("missing department found=%v err=%v", found, err)
+	if _, found, err := service.FindOrganizationUnit(t.Context(), "missing"); err != nil || found {
+		t.Fatalf("missing organizationUnit found=%v err=%v", found, err)
 	}
-	repository.departmentsErr = errors.New("departments")
-	if _, _, err := service.FindDepartment(t.Context(), "department"); !errors.Is(err, repository.departmentsErr) {
-		t.Fatalf("department error=%v", err)
+	repository.organizationUnitsErr = errors.New("organizationUnits")
+	if _, _, err := service.FindOrganizationUnit(t.Context(), "sales"); !errors.Is(err, repository.organizationUnitsErr) {
+		t.Fatalf("organizationUnit error=%v", err)
 	}
-	repository.departmentsErr = nil
+	repository.organizationUnitsErr = nil
 	if users, err := service.ListDirectoryUsers(t.Context()); err != nil || len(users) != 1 {
 		t.Fatalf("users=%+v err=%v", users, err)
 	}
@@ -117,7 +166,7 @@ func TestIdentityAuthorizationContextBoundaryAndDelegation(t *testing.T) {
 		func() error { _, err := service.ResolveEffectivePermissions(cancelled, "user"); return err },
 		func() error { _, err := service.ResolveEffectiveMenus(cancelled, "user"); return err },
 		func() error { _, _, err := service.FindUser(cancelled, "user"); return err },
-		func() error { _, _, err := service.FindDepartment(cancelled, "department"); return err },
+		func() error { _, _, err := service.FindOrganizationUnit(cancelled, "sales"); return err },
 		func() error { _, err := service.ListDirectoryUsers(cancelled); return err },
 		func() error { _, err := service.ListDirectoryRoles(cancelled); return err },
 		func() error { _, err := service.ListDirectoryUserRoleAssignments(cancelled, "user"); return err },
@@ -125,6 +174,24 @@ func TestIdentityAuthorizationContextBoundaryAndDelegation(t *testing.T) {
 	for index, check := range checks {
 		if err := check(); !errors.Is(err, context.Canceled) {
 			t.Fatalf("check %d error=%v", index, err)
+		}
+	}
+}
+
+func TestIdentityPrincipalResolutionNeverDefaultsAnEmptySubjectToAdmin(t *testing.T) {
+	repository := &identityAuthorizationRepository{identityRolesRepositoryStub: &identityRolesRepositoryStub{
+		users: []identitymodel.IdentityUser{{ID: "admin", Status: identitymodel.IdentityStatusActive}},
+	}}
+	service := NewIdentityDomainService(repository, nil).mustForWorkspace(t, "workspace")
+	for _, resolve := range []func() (identitymodel.Principal, error){
+		func() (identitymodel.Principal, error) { return service.ResolvePrincipal(t.Context(), "") },
+		func() (identitymodel.Principal, error) {
+			return service.ResolvePrincipalForRole(t.Context(), "", "admin")
+		},
+	} {
+		principal, err := resolve()
+		if err != nil || principal.Known || principal.UserID != "" {
+			t.Fatalf("empty subject principal=%+v err=%v", principal, err)
 		}
 	}
 }

@@ -3,8 +3,8 @@ package identitymodel
 type IdentityPlatformFieldOwner string
 
 const (
-	IdentityPlatformFieldOwnerAccount   IdentityPlatformFieldOwner = "identity_account"
-	IdentityPlatformFieldOwnerWorkforce IdentityPlatformFieldOwner = "workforce"
+	IdentityPlatformFieldOwnerAccount IdentityPlatformFieldOwner = "identity_account"
+	IdentityPlatformFieldOwnerUser    IdentityPlatformFieldOwner = "identity_user"
 )
 
 var identityAccountOwnedProfileFields = map[string]struct{}{
@@ -12,20 +12,17 @@ var identityAccountOwnedProfileFields = map[string]struct{}{
 	"password":       {},
 }
 
-var identityWorkforceOwnedProfileFields = map[string]struct{}{
-	"department_id":        {},
-	"department_path":      {},
-	"employee_no":          {},
-	"employment_status":    {},
-	"employment_type":      {},
-	"hire_date":            {},
-	"job_level":            {},
-	"job_title":            {},
-	"manager_ancestor_ids": {},
-	"manager_depth":        {},
-	"manager_id":           {},
-	"manager_path":         {},
-	"reporting_path":       {},
+var identityUserOwnedProfileFields = map[string]struct{}{
+	"org_id":            {},
+	"support_org_id":    {},
+	"organization_path": {},
+	"manager_user_id":   {},
+	"reporting_path":    {},
+	"worker_no":         {},
+	"worker_type":       {},
+	"work_status":       {},
+	"start_date":        {},
+	"end_date":          {},
 }
 
 // IdentityPlatformOwnerForProfileField reports the platform entity that owns a
@@ -37,8 +34,8 @@ func IdentityPlatformOwnerForProfileField(fieldKey string) (IdentityPlatformFiel
 	if _, owned := identityAccountOwnedProfileFields[fieldKey]; owned {
 		return IdentityPlatformFieldOwnerAccount, true
 	}
-	if _, owned := identityWorkforceOwnedProfileFields[fieldKey]; owned {
-		return IdentityPlatformFieldOwnerWorkforce, true
+	if _, owned := identityUserOwnedProfileFields[fieldKey]; owned {
+		return IdentityPlatformFieldOwnerUser, true
 	}
 	return "", false
 }

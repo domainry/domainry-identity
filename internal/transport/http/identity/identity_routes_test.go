@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
+	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
@@ -25,7 +26,7 @@ func TestIdentityActionGateUsesRegisteredPermissionForAllowAndDeny(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	action, ok := registry.Definition(identityapplication.IdentityActionPermissionsList)
+	action, ok := registry.Definition(identitycontract.IdentityActionPermissionsList)
 	if !ok {
 		t.Fatal("permission list action is not registered")
 	}
@@ -48,29 +49,10 @@ func TestIdentityActionGateUsesRegisteredPermissionForAllowAndDeny(t *testing.T)
 	if denied.Code != http.StatusForbidden || executed {
 		t.Fatalf("denied status=%d executed=%v", denied.Code, executed)
 	}
-	principal.Role.Permissions = []string{identityapplication.IdentityActionPermissionsList}
+	principal.Role.Permissions = []string{identitycontract.IdentityActionPermissionsList}
 	allowed := httptest.NewRecorder()
 	protected(allowed, httptest.NewRequest(http.MethodGet, "/identity/permissions", nil))
 	if allowed.Code != http.StatusNoContent || !executed {
 		t.Fatalf("allowed status=%d executed=%v", allowed.Code, executed)
-	}
-}
-
-func TestWorkforceApplicationProjectionRequiresWorkforceReadPermission(t *testing.T) {
-	handler := NewIdentityHandler(IdentityDependencies{
-		Principal: func(*http.Request) identitymodel.Principal {
-			return identitymodel.Principal{Known: true, WorkspaceID: "workspace-1"}
-		},
-		WriteError: func(w http.ResponseWriter, _ *http.Request, status int, _ string, _ ...string) {
-			w.WriteHeader(status)
-		},
-		SecurityAudit: func(*http.Request, string, string, map[string]any) {},
-	})
-	mux := http.NewServeMux()
-	handler.RegisterRoutes(mux)
-	response := httptest.NewRecorder()
-	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/identity/workforce?projection=application", nil))
-	if response.Code != http.StatusForbidden {
-		t.Fatalf("workforce projection without identity.workforce.list status=%d", response.Code)
 	}
 }

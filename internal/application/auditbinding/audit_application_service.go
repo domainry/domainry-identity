@@ -19,6 +19,10 @@ type AuditRepository = auditapplication.Store[identitymodel.SystemScope]
 type AuditEventWriterRepository = auditapplication.EventWriterStore
 type AuditEventRepository = auditapplication.EventStore
 
+// auditGovernanceReadAction is owned by module:audit. Identity references the
+// source-owned Action key when embedding Audit's governance query service.
+const auditGovernanceReadAction = "audit.governance.read"
+
 func NewAuditApplicationService(store AuditRepository) *AuditApplicationService {
 	return auditapplication.NewService(store, identityPolicy())
 }
@@ -47,7 +51,7 @@ func identityPolicy() auditapplication.Policy[identitymodel.Principal, identitym
 		},
 		Known: func(principal identitymodel.Principal) bool { return principal.Known },
 		CanView: func(principal identitymodel.Principal) bool {
-			return identitycontract.IdentityRoleHasPermissionKey(principal.Role, "audit.governance.read")
+			return identitycontract.IdentityRoleHasPermissionKey(principal.Role, auditGovernanceReadAction)
 		},
 	}
 }

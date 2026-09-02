@@ -28,9 +28,8 @@ func TestFrontendManagementAuthoringContractsMatchIdentityOwner(t *testing.T) {
 		byKey[definition.Key] = definition
 	}
 	contracts := map[string]authoringcontract.CapabilityAuthoringDefinition{
-		"identity-user-authoring-contract.json":                 byKey["identity.user"],
-		"identity-workforce-profile-authoring-contract.json":    byKey["identity.workforce_profile"],
-		"identity-workforce-assignment-authoring-contract.json": byKey["identity.workforce_assignment"],
+		"identity-user-authoring-contract.json":              byKey["identity.user"],
+		"identity-organization-unit-authoring-contract.json": byKey["identity.organization_unit"],
 	}
 	for name, definition := range contracts {
 		name, definition := name, definition

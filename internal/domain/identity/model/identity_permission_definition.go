@@ -13,7 +13,7 @@ type IdentityPermissionDefinitionRecord struct {
 	WorkspaceID        string `json:"workspace_id"`
 	PermissionKey      string `json:"permission_key"`
 	ResourceKey        string `json:"resource_key"`
-	ActionKey          string `json:"action_key"`
+	OperationKey       string `json:"operation_key"`
 	Label              string `json:"label"`
 	Description        string `json:"description,omitempty"`
 	Category           string `json:"category"`

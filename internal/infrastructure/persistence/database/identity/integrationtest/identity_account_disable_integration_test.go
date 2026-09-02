@@ -25,13 +25,7 @@ func TestDisableIdentityAccountRevokesSessionsAtomicallyAndPreservesBusinessFact
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpsertIdentityUser(t.Context(), "workspace-primary", identitymodel.IdentityUser{ID: "user-1", Name: "Dual Identity", Status: identitymodel.IdentityStatusActive}); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.UpsertIdentityWorkforceProfile(t.Context(), "workspace-primary", identitymodel.IdentityWorkforceProfile{
-		ID: "workforce-1", OrganizationID: "org-1", IdentityUserID: "user-1", WorkerNo: "E-1",
-		WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive,
-	}); err != nil {
+	if err := store.UpsertIdentityUser(t.Context(), "workspace-primary", identitymodel.IdentityUser{ID: "user-1", Name: "Dual Identity", WorkerNo: "E-1", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive, Status: identitymodel.IdentityStatusActive}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := identityStore.DB().ExecContext(t.Context(), `INSERT INTO _identity_profile_bindings
@@ -54,7 +48,7 @@ func TestDisableIdentityAccountRevokesSessionsAtomicallyAndPreservesBusinessFact
 	if _, err := store.DisableIdentityAccount(t.Context(), "workspace-primary", "user-1"); err == nil {
 		t.Fatal("injected session revoke failure was ignored")
 	}
-	assertIdentityAccountDisableState(t, identityStore, "active", false, "active", "active")
+	assertIdentityAccountDisableState(t, identityStore, "active", false, "active")
 	if _, err := identityStore.DB().ExecContext(t.Context(), `DROP TRIGGER fail_account_session_revoke`); err != nil {
 		t.Fatal(err)
 	}
@@ -62,17 +56,17 @@ func TestDisableIdentityAccountRevokesSessionsAtomicallyAndPreservesBusinessFact
 	if err != nil || revoked != 2 {
 		t.Fatalf("revoked=%d err=%v", revoked, err)
 	}
-	assertIdentityAccountDisableState(t, identityStore, "disabled", true, "active", "active")
+	assertIdentityAccountDisableState(t, identityStore, "disabled", true, "active")
 	application := identityapplication.NewIdentityApplicationService(store, nil)
 	if err := application.EnableUser(requestcontext.WithWorkspaceID(t.Context(), "workspace-primary"), "user-1"); err != nil {
 		t.Fatal(err)
 	}
-	assertIdentityAccountDisableState(t, identityStore, "active", true, "active", "active")
+	assertIdentityAccountDisableState(t, identityStore, "active", true, "active")
 }
 
-func assertIdentityAccountDisableState(t *testing.T, store *persistence.IdentityStore, userStatus string, sessionRevoked bool, workforceStatus, bindingStatus string) {
+func assertIdentityAccountDisableState(t *testing.T, store *persistence.IdentityStore, userStatus string, sessionRevoked bool, bindingStatus string) {
 	t.Helper()
-	var gotUser, gotWorkforce, gotBinding string
+	var gotUser, gotBinding string
 	var activeTargetSessions, revokedTargetSessions, revokedOtherSessions int
 	if err := store.DB().QueryRow(`SELECT status FROM _identity_users WHERE id='user-1'`).Scan(&gotUser); err != nil {
 		t.Fatal(err)
@@ -87,9 +81,6 @@ func assertIdentityAccountDisableState(t *testing.T, store *persistence.Identity
 		WHERE id='token-other' AND revoked_at IS NOT NULL AND revoked_at <> ''`).Scan(&revokedOtherSessions); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.DB().QueryRow(`SELECT work_status FROM _identity_workforce_profiles WHERE id='workforce-1'`).Scan(&gotWorkforce); err != nil {
-		t.Fatal(err)
-	}
 	if err := store.DB().QueryRow(`SELECT status FROM _identity_profile_bindings WHERE id='binding-1'`).Scan(&gotBinding); err != nil {
 		t.Fatal(err)
 	}
@@ -98,8 +89,8 @@ func assertIdentityAccountDisableState(t *testing.T, store *persistence.Identity
 		wantActive, wantRevoked = 0, 2
 	}
 	if gotUser != userStatus || activeTargetSessions != wantActive || revokedTargetSessions != wantRevoked ||
-		revokedOtherSessions != 0 || gotWorkforce != workforceStatus || gotBinding != bindingStatus {
-		t.Fatalf("user=%s target_active=%d target_revoked=%d other_revoked=%d workforce=%s binding=%s",
-			gotUser, activeTargetSessions, revokedTargetSessions, revokedOtherSessions, gotWorkforce, gotBinding)
+		revokedOtherSessions != 0 || gotBinding != bindingStatus {
+		t.Fatalf("user=%s target_active=%d target_revoked=%d other_revoked=%d binding=%s",
+			gotUser, activeTargetSessions, revokedTargetSessions, revokedOtherSessions, gotBinding)
 	}
 }

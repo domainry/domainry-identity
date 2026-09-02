@@ -15,11 +15,11 @@ test("organization management keeps account and department pages separate", asyn
 
   await page.goto("/admin/security/accounts");
   await expect(page.locator("main")).toContainText(/账号目录|Account directory/i);
-  await expect(page.locator("main")).toContainText(/员工与业务档案分别在独立目录|Workforce and business profiles are managed in their own directories/i);
+  await expect(page.locator("main")).toContainText(/主组织节点|Primary organization unit/i);
   await expect(page.getByRole("table")).toBeVisible();
 
-  await page.goto("/admin/org/departments");
-  await expect(page.locator("main")).toContainText(/部门|Departments/i);
+  await page.goto("/admin/org/organization-units");
+  await expect(page.locator("main")).toContainText(/部门|OrganizationUnits/i);
   await expect(page.getByPlaceholder(/搜索组织树|Search organization tree/i)).toBeVisible();
   await expect(page.getByRole("button", { name: /新建部门|New department/i }).first()).toBeVisible();
 });

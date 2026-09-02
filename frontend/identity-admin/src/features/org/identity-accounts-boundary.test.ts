@@ -27,40 +27,35 @@ describe('identity account directory boundary', () => {
     ).toBe(true)
   })
 
-  it('keeps workforce, business profile, and entitlement fields out of the account page', () => {
+  it('keeps obsolete assignment fields out of the user page', () => {
     const page = [
       readFileSync(new URL('./identity-accounts-page.tsx', import.meta.url), 'utf8'),
       readFileSync(new URL('./identity-user-detail-page.tsx', import.meta.url), 'utf8'),
     ].join('\n')
-    for (const forbidden of ['employeeNo', 'employmentStatus', 'deptId', 'managerId', 'roleIds', 'BusinessProfiles']) {
+    for (const forbidden of ['employeeNo', 'employmentStatus', 'deptId', 'managerId', 'managerPath', 'roleIds', 'BusinessProfiles']) {
       expect(page).not.toContain(forbidden)
+    }
+    for (const current of ['workerNo', 'workerType', 'workStatus', 'organizationUnitId', 'supportOrganizationUnitId', 'managerUserId', 'reportingPath', 'startDate', 'endDate']) {
+      expect(page).toContain(current)
     }
   })
 
-  it('keeps Workforce facts out of the Runtime account contract and write projection', () => {
+  it('keeps personnel facts on the Runtime user contract and write projection', () => {
     const api = readFileSync(new URL('../../data/api.ts', import.meta.url), 'utf8')
     const identityContract = readFileSync(new URL('../../../../packages/management-contract/src/index.ts', import.meta.url), 'utf8')
     const runtimeUser = identityContract.slice(identityContract.indexOf('export interface IdentityUser {'), identityContract.indexOf('export interface IdentityUserDirectoryEntry'))
-    const writeProjection = api.slice(api.indexOf('const identityUserWritableFields'), api.indexOf('function mapIdentityAccount'))
+    const writeProjection = api.slice(api.indexOf('export const identityAccountsApi'), api.indexOf('async function runtimeRoles'))
 
-    for (const forbidden of [
-      'employee_number',
-      'department_id',
-      'manager_id',
-      'employment_status',
-      'employeeNo',
-      'deptId',
-      'managerId',
-      'employmentStatus',
-    ]) {
-      expect(runtimeUser).not.toContain(forbidden)
-      expect(writeProjection).not.toContain(forbidden)
+    for (const current of ['org_id', 'support_org_id', 'manager_user_id', 'worker_no', 'worker_type', 'work_status', 'start_date', 'end_date']) {
+      expect(runtimeUser).toContain(current)
+      expect(writeProjection).toContain(`${current}:`)
     }
+    expect(runtimeUser).toContain('reporting_path')
     for (const accountField of ['id:', 'name:', 'email:', 'phone?:', 'status:']) {
       expect(runtimeUser).toContain(accountField)
     }
-    expect(writeProjection).toContain('identityUserAuthoringContract.parameters')
-    expect(writeProjection).toContain('identityUserWritableFields.has(key)')
+    expect(api).toContain('identityUserAuthoringContract.parameters')
+    expect(api).toContain('identityUserWritableFields.has(key)')
     expect(api).toContain('from "@domainry/identity-management-contract"')
   })
 
@@ -91,7 +86,7 @@ describe('identity account directory boundary', () => {
     for (const field of ['givenName', 'middleName', 'familyName', 'namePrefix', 'nameSuffix', 'nativeName', 'nameLocale']) {
       expect(accountPages).toContain(field)
     }
-    const accountApi = api.slice(api.indexOf('export const identityAccountsApi'), api.indexOf('function mapWorkforceProfile'))
+    const accountApi = api.slice(api.indexOf('export const identityAccountsApi'), api.indexOf('async function runtimeRoles'))
     expect(accountApi).toContain('name: input.name')
     expect(accountApi).toContain('name: patch.name ?? current.name')
     expect(accountApi).not.toMatch(/\[(?:input|patch)\.(?:givenName|middleName|familyName|namePrefix|nameSuffix)/)
@@ -101,7 +96,7 @@ describe('identity account directory boundary', () => {
 
   it('lists accounts without per-user role or security requests', () => {
     const api = readFileSync(new URL('../../data/api.ts', import.meta.url), 'utf8')
-    const accountApi = api.slice(api.indexOf('export const identityAccountsApi'), api.indexOf('function mapWorkforceProfile'))
+    const accountApi = api.slice(api.indexOf('export const identityAccountsApi'), api.indexOf('async function runtimeRoles'))
     expect(accountApi).toContain('return (await runtimeUsers()).map((user) => mapIdentityAccount(user))')
     expect(accountApi).not.toContain('userRoleAssignments')
     const listPage = readFileSync(new URL('./identity-accounts-page.tsx', import.meta.url), 'utf8')
@@ -141,14 +136,14 @@ describe('identity account directory boundary', () => {
     }
   })
 
-  it('requires a complete dual-identity impact preview before global disable', () => {
+  it('requires a complete linked-profile impact preview before global disable', () => {
     const list = readFileSync(new URL('./identity-accounts-page.tsx', import.meta.url), 'utf8')
     const detail = readFileSync(new URL('./identity-user-detail-page.tsx', import.meta.url), 'utf8')
     const dialog = readFileSync(new URL('./account-disable-dialog.tsx', import.meta.url), 'utf8')
     expect(list).toContain('AccountDisableDialog')
     expect(detail).toContain('AccountDisableDialog')
     expect(dialog).toContain('identityAccountsApi.disableImpact')
-    for (const field of ['workforce_profile_ids', 'profile_bindings', 'active_entitlement_role_ids', 'sessions_will_be_revoked', 'business_facts_preserved']) {
+    for (const field of ['profile_bindings', 'active_entitlement_role_ids', 'sessions_will_be_revoked', 'business_facts_preserved']) {
       expect(dialog).toContain(field)
     }
     expect(dialog.indexOf('identityAccountsApi.disableImpact')).toBeLessThan(dialog.indexOf("patch: { status: 'disabled' }"))

@@ -148,8 +148,8 @@ func (bundle Bundle) Validate() error {
 }
 
 // AuthorizationStateDigest is the deterministic source/target reconciliation
-// hash. It covers every portable workspace record because users, workforce and
-// departments are authorization facts as much as roles and Catalog grants are.
+// hash. It covers every portable workspace record because users and organization
+// units are authorization facts as much as roles and Catalog grants are.
 func AuthorizationStateDigest(datasets []Dataset) (string, error) {
 	copy := append([]Dataset(nil), datasets...)
 	for index := range copy {

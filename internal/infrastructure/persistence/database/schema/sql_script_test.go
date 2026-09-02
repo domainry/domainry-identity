@@ -37,6 +37,15 @@ func openSchemaScriptedDB(state *schemaSQLState) *sql.DB {
 	return sql.OpenDB(schemaSQLConnector{state})
 }
 
+func schemaStoreForState(state *schemaSQLState, dialect ...string) (scriptedSchemaStore, func()) {
+	database := openSchemaScriptedDB(state)
+	store := scriptedSchemaStore{db: database}
+	if len(dialect) > 0 {
+		store.driver = dialect[0]
+	}
+	return store, func() { _ = database.Close() }
+}
+
 type schemaSQLConnector struct{ state *schemaSQLState }
 
 func (c schemaSQLConnector) Connect(context.Context) (driver.Conn, error) {
@@ -121,6 +130,7 @@ type scriptedSchemaStore struct {
 
 func (s scriptedSchemaStore) SchemaDB() SQLDatabase               { return s.db }
 func (s scriptedSchemaStore) SchemaRenderer() ormdialect.Renderer { return s.renderer() }
+func (s scriptedSchemaStore) MaxParameters() int                  { return 999 }
 func (s scriptedSchemaStore) Driver() string {
 	if s.driver != "" {
 		return s.driver

@@ -70,6 +70,52 @@
       "type": "string"
     },
     {
+      "key": "org_id",
+      "type": "string"
+    },
+    {
+      "key": "support_org_id",
+      "type": "string"
+    },
+    {
+      "key": "manager_user_id",
+      "type": "string"
+    },
+    {
+      "key": "worker_no",
+      "type": "string"
+    },
+    {
+      "key": "worker_type",
+      "type": "string",
+      "enum": [
+        "employee",
+        "contractor",
+        "partner_staff",
+        "temporary"
+      ]
+    },
+    {
+      "key": "work_status",
+      "type": "string",
+      "enum": [
+        "pending",
+        "active",
+        "suspended",
+        "terminated"
+      ]
+    },
+    {
+      "key": "start_date",
+      "type": "string",
+      "format": "date"
+    },
+    {
+      "key": "end_date",
+      "type": "string",
+      "format": "date"
+    },
+    {
       "key": "status",
       "type": "string",
       "required": true,
@@ -245,6 +291,38 @@
         "expected"
       ],
       "message_key": "backend.identity.user_timezone_invalid"
+    },
+    {
+      "code": "backend.identity.support_organization_unit_not_found",
+      "field_path": "support_org_id",
+      "parameter_keys": [
+        "actual"
+      ],
+      "message_key": "backend.identity.support_organization_unit_not_found"
+    },
+    {
+      "code": "backend.identity.user_manager_invalid",
+      "field_path": "manager_user_id",
+      "parameter_keys": [
+        "actual"
+      ],
+      "message_key": "backend.identity.user_manager_invalid"
+    },
+    {
+      "code": "backend.identity.user_manager_self_reference",
+      "field_path": "manager_user_id",
+      "parameter_keys": [
+        "actual"
+      ],
+      "message_key": "backend.identity.user_manager_self_reference"
+    },
+    {
+      "code": "backend.identity.user_reporting_cycle",
+      "field_path": "manager_user_id",
+      "parameter_keys": [
+        "actual"
+      ],
+      "message_key": "backend.identity.user_reporting_cycle"
     }
   ],
   "examples": [
@@ -308,6 +386,10 @@
         "format": "email",
         "minLength": 1
       },
+      "end_date": {
+        "type": "string",
+        "format": "date"
+      },
       "family_name": {
         "type": "string"
       },
@@ -319,6 +401,9 @@
         "minLength": 1
       },
       "locale": {
+        "type": "string"
+      },
+      "manager_user_id": {
         "type": "string"
       },
       "middle_name": {
@@ -340,8 +425,15 @@
       "native_name": {
         "type": "string"
       },
+      "org_id": {
+        "type": "string"
+      },
       "phone": {
         "type": "string"
+      },
+      "start_date": {
+        "type": "string",
+        "format": "date"
       },
       "status": {
         "type": "string",
@@ -350,8 +442,32 @@
           "disabled"
         ]
       },
+      "support_org_id": {
+        "type": "string"
+      },
       "timezone": {
         "type": "string"
+      },
+      "work_status": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "active",
+          "suspended",
+          "terminated"
+        ]
+      },
+      "worker_no": {
+        "type": "string"
+      },
+      "worker_type": {
+        "type": "string",
+        "enum": [
+          "employee",
+          "contractor",
+          "partner_staff",
+          "temporary"
+        ]
       }
     },
     "required": [
@@ -382,6 +498,10 @@
         "type": "string",
         "format": "email"
       },
+      "end_date": {
+        "type": "string",
+        "format": "date"
+      },
       "family_name": {
         "type": "string"
       },
@@ -392,6 +512,9 @@
         "type": "string"
       },
       "locale": {
+        "type": "string"
+      },
+      "manager_user_id": {
         "type": "string"
       },
       "middle_name": {
@@ -412,8 +535,18 @@
       "native_name": {
         "type": "string"
       },
+      "org_id": {
+        "type": "string"
+      },
       "phone": {
         "type": "string"
+      },
+      "reporting_path": {
+        "type": "string"
+      },
+      "start_date": {
+        "type": "string",
+        "format": "date"
       },
       "status": {
         "type": "string",
@@ -421,6 +554,9 @@
           "active",
           "disabled"
         ]
+      },
+      "support_org_id": {
+        "type": "string"
       },
       "timezone": {
         "type": "string"
@@ -431,6 +567,15 @@
       },
       "version": {
         "type": "integer"
+      },
+      "work_status": {
+        "type": "string"
+      },
+      "worker_no": {
+        "type": "string"
+      },
+      "worker_type": {
+        "type": "string"
       }
     },
     "required": [
@@ -438,6 +583,7 @@
       "name",
       "email",
       "account_type",
+      "reporting_path",
       "status",
       "version",
       "created_at",
@@ -451,6 +597,23 @@
       "json_pointer": "/id",
       "type": "user_id",
       "visible_to": "subsequent_capability_calls"
+    }
+  ],
+  "reference_contracts": [
+    {
+      "kind": "org_id",
+      "input_json_pointer": "/org_id",
+      "resolver_endpoint": "GET /tenant-admin/platform-capabilities/references/org_id"
+    },
+    {
+      "kind": "org_id",
+      "input_json_pointer": "/support_org_id",
+      "resolver_endpoint": "GET /tenant-admin/platform-capabilities/references/org_id"
+    },
+    {
+      "kind": "user_id",
+      "input_json_pointer": "/manager_user_id",
+      "resolver_endpoint": "GET /tenant-admin/platform-capabilities/references/user_id"
     }
   ],
   "execution": {

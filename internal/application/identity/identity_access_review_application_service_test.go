@@ -16,9 +16,6 @@ type accessReviewFaultRepository struct {
 	listRolesErr, listAssignmentsErr, createErr, listReviewsErr error
 	getItemErr, getReceiptErr, applyErr                         error
 	applyReceipt                                                *identitymodel.IdentityAccessReviewDecisionReceipt
-	workforceProfiles                                           []identitymodel.IdentityWorkforceProfile
-	workforceAssignments                                        map[string][]identitymodel.IdentityWorkforceAssignment
-	listWorkforceProfilesErr, listWorkforceAssignmentsErr       error
 }
 
 type accessReviewUnavailableRepository struct {
@@ -83,36 +80,6 @@ func (r *accessReviewFaultRepository) ApplyIdentityAccessReviewDecision(ctx cont
 		return *r.applyReceipt, nil
 	}
 	return r.identityScopedRepository.ApplyIdentityAccessReviewDecision(ctx, mutation)
-}
-
-func (r *accessReviewFaultRepository) ListIdentityWorkforceProfiles(context.Context, string) ([]identitymodel.IdentityWorkforceProfile, error) {
-	if r.listWorkforceProfilesErr != nil {
-		return nil, r.listWorkforceProfilesErr
-	}
-	return r.workforceProfiles, nil
-}
-
-func (r *accessReviewFaultRepository) GetIdentityWorkforceProfile(context.Context, string, string) (identitymodel.IdentityWorkforceProfile, bool, error) {
-	return identitymodel.IdentityWorkforceProfile{}, false, nil
-}
-
-func (r *accessReviewFaultRepository) UpsertIdentityWorkforceProfile(context.Context, string, identitymodel.IdentityWorkforceProfile) error {
-	return nil
-}
-
-func (r *accessReviewFaultRepository) ListIdentityWorkforceAssignments(_ context.Context, _, profileID string) ([]identitymodel.IdentityWorkforceAssignment, error) {
-	if r.listWorkforceAssignmentsErr != nil {
-		return nil, r.listWorkforceAssignmentsErr
-	}
-	return r.workforceAssignments[profileID], nil
-}
-
-func (r *accessReviewFaultRepository) GetIdentityWorkforceAssignment(context.Context, string, string) (identitymodel.IdentityWorkforceAssignment, bool, error) {
-	return identitymodel.IdentityWorkforceAssignment{}, false, nil
-}
-
-func (r *accessReviewFaultRepository) UpsertIdentityWorkforceAssignment(context.Context, string, identitymodel.IdentityWorkforceAssignment) error {
-	return nil
 }
 
 func TestAccessReviewCreatesPrioritizedPeriodicQueueAndAuditsDecisionsOnce(t *testing.T) {
@@ -244,12 +211,12 @@ func TestAccessReviewRoleReductionMustBeARealPermissionAndRiskReduction(t *testi
 	}
 }
 
-func TestAccessReviewPriorityIncludesCrossOrganizationAndNeverUsedEvidence(t *testing.T) {
+func TestAccessReviewPriorityIncludesRiskAndNeverUsedEvidence(t *testing.T) {
 	now := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
 	priority, reasons := identityAccessReviewPriority(identitymodel.IdentityUserRoleAssignment{
-		WorkforceProfileID: "workforce-1", CreatedAt: "2025-01-01T00:00:00Z",
-	}, identitymodel.IdentityRoleRiskElevated, map[string]int{"workforce-1": 2}, "", false, now)
-	if priority != "high" || len(reasons) != 3 || reasons[0] != "cross_organization" || reasons[1] != "elevated" || reasons[2] != "never_used" {
+		CreatedAt: "2025-01-01T00:00:00Z",
+	}, identitymodel.IdentityRoleRiskElevated, "", false, now)
+	if priority != "high" || len(reasons) != 2 || reasons[0] != "elevated" || reasons[1] != "never_used" {
 		t.Fatalf("priority=%q reasons=%#v", priority, reasons)
 	}
 }
@@ -277,7 +244,7 @@ func TestAccessReviewPriorityAssignmentAndReductionEdgeOutcomes(t *testing.T) {
 	}
 	for _, test := range priorityTests {
 		t.Run(test.name, func(t *testing.T) {
-			priority, reasons := identityAccessReviewPriority(test.assignment, test.risk, nil, test.lastUsedAt, test.lastUsedFound, now)
+			priority, reasons := identityAccessReviewPriority(test.assignment, test.risk, test.lastUsedAt, test.lastUsedFound, now)
 			if priority != test.wantPriority {
 				t.Fatalf("priority=%q reasons=%v", priority, reasons)
 			}
@@ -399,11 +366,6 @@ func TestAccessReviewCreateValidationAndDependencyFailures(t *testing.T) {
 	}{
 		{name: "roles", set: func(err error) { fault.listRolesErr = err }},
 		{name: "assignments", set: func(err error) { fault.listAssignmentsErr = err }},
-		{name: "workforce profiles", set: func(err error) { fault.listWorkforceProfilesErr = err }},
-		{name: "workforce assignments", set: func(err error) {
-			fault.workforceProfiles = []identitymodel.IdentityWorkforceProfile{{ID: "profile"}}
-			fault.listWorkforceAssignmentsErr = err
-		}},
 		{name: "create", set: func(err error) { fault.createErr = err }},
 	}
 	for _, test := range failures {
@@ -615,7 +577,7 @@ func TestAccessReviewListScopeAndDecisionEdgeOutcomes(t *testing.T) {
 	(*IdentityAccessReviewApplicationService)(nil).audit(t.Context(), "event", "record", actor, nil)
 }
 
-func TestAccessReviewScopeDefaultsAndWorkforceAggregation(t *testing.T) {
+func TestAccessReviewScopeDefaults(t *testing.T) {
 	actor := identitymodel.Principal{
 		Known: true, UserID: "reviewer", WorkspaceID: "workspace",
 		Role: identitymodel.RoleSchema{Permissions: identityAccessReviewTestPermissions()},
@@ -639,37 +601,6 @@ func TestAccessReviewScopeDefaultsAndWorkforceAggregation(t *testing.T) {
 	})
 	if _, err := failingScope.ListReviews(t.Context(), "", actor); !errors.Is(err, scopeErr) {
 		t.Fatalf("workspace scope error=%v", err)
-	}
-
-	repository := &accessReviewFaultRepository{
-		identityScopedRepository: &identityScopedRepository{},
-		workforceProfiles:        []identitymodel.IdentityWorkforceProfile{{ID: "profile"}},
-		workforceAssignments: map[string][]identitymodel.IdentityWorkforceAssignment{
-			"profile": {
-				{Status: identitymodel.IdentityStatusActive, OrganizationUnitID: "org-a"},
-				{Status: identitymodel.IdentityStatusActive, OrganizationUnitID: "org-a"},
-				{Status: identitymodel.IdentityStatusActive, OrganizationUnitID: "org-b"},
-				{Status: "inactive", OrganizationUnitID: "org-c"},
-				{Status: identitymodel.IdentityStatusActive, OrganizationUnitID: " "},
-			},
-		},
-	}
-	scoped, err := NewIdentityApplicationService(repository, nil).ForWorkspace("workspace")
-	if err != nil {
-		t.Fatal(err)
-	}
-	counts, err := identityAccessReviewWorkforceAssignments(t.Context(), scoped)
-	if err != nil || counts["profile"] != 2 {
-		t.Fatalf("counts=%v err=%v", counts, err)
-	}
-	repository.listWorkforceAssignmentsErr = errors.New("assignments")
-	if _, err := identityAccessReviewWorkforceAssignments(t.Context(), scoped); !errors.Is(err, repository.listWorkforceAssignmentsErr) {
-		t.Fatalf("assignment error=%v", err)
-	}
-	repository.listWorkforceAssignmentsErr = nil
-	repository.listWorkforceProfilesErr = errors.New("profiles")
-	if _, err := identityAccessReviewWorkforceAssignments(t.Context(), scoped); !errors.Is(err, repository.listWorkforceProfilesErr) {
-		t.Fatalf("profile error=%v", err)
 	}
 
 	defaultNow := NewIdentityAccessReviewApplicationService(IdentityAccessReviewDependencies{})

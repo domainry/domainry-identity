@@ -13,8 +13,8 @@ func TestStandaloneAuthorizationSliceRegistryOwnsCompleteRouteAndPermissionMatri
 		t.Fatal(err)
 	}
 	definitions := registry.Definitions()
-	if len(definitions) != 130 {
-		t.Fatalf("Identity Action count=%d want=130", len(definitions))
+	if len(definitions) != 119 {
+		t.Fatalf("Identity Action count=%d want=119", len(definitions))
 	}
 	seenHTTP := map[string]string{}
 	pageBindings := 0
@@ -48,22 +48,27 @@ func TestStandaloneAuthorizationSliceRegistryOwnsCompleteRouteAndPermissionMatri
 			t.Fatalf("Identity action %q strategy=%q", definition.Key, definition.Authorization.Strategy)
 		}
 	}
-	if pageBindings != 10 {
-		t.Fatalf("page-bound Identity Actions=%d want=10", pageBindings)
+	if pageBindings != 8 {
+		t.Fatalf("page-bound Identity Actions=%d want=8", pageBindings)
 	}
 	if nonHTTPBindings != 10 {
 		t.Fatalf("non-HTTP Identity Actions=%d want=10", nonHTTPBindings)
 	}
 	for key, binding := range map[string]string{
-		"auth.session.get":                      "GET /auth/session",
-		"auth.code.exchange":                    "POST /auth/code/exchange",
-		"identity.users.create":                 "POST /identity/users",
-		"identity.users.force_logout":           "POST /identity/users/{userID}/force-logout",
-		"identity.workforce.terminate":          "POST /identity/workforce/{profileID}/terminate",
-		"identity.role_permissions.publish":     "PUT /identity/roles/{roleID}/permissions",
-		"identity.access_review_items.decide":   "POST /identity/access-review-items/{itemID}/decision",
-		"identity.profile_bindings.command":     "POST /identity/profile-bindings/{objectKey}/{profileID}/commands",
-		"identity.user_role_assignments.revoke": "DELETE /identity/users/{userID}/role-assignments/{roleID}",
+		"auth.session.get":                        "GET /auth/session",
+		"auth.code.exchange":                      "POST /auth/code/exchange",
+		"identity.users.create":                   "POST /identity/users",
+		"identity.users.force_logout":             "POST /identity/users/{userID}/force-logout",
+		"identity.organization_units.update":      "PATCH /identity/organization-units/{organizationUnitID}",
+		"identity.role_permissions.publish":       "PUT /identity/roles/{roleID}/permissions",
+		"identity.roles.create":                   "POST /identity/roles",
+		"identity.roles.update":                   "PATCH /identity/roles/{roleID}",
+		"identity.roles.delete":                   "DELETE /identity/roles/{roleID}",
+		"identity.role_data_scopes.publish":       "PUT /identity/roles/{roleID}/data-scopes",
+		"identity.role_field_permissions.publish": "PUT /identity/roles/{roleID}/field-permissions",
+		"identity.access_review_items.decide":     "POST /identity/access-review-items/{itemID}/decision",
+		"identity.profile_bindings.command":       "POST /identity/profile-bindings/{objectKey}/{profileID}/commands",
+		"identity.user_role_assignments.revoke":   "DELETE /identity/users/{userID}/role-assignments/{roleID}",
 	} {
 		definition, found := registry.Definition(key)
 		if !found || definition.HTTP.Method+" "+definition.HTTP.RouteTemplate != binding {
@@ -71,8 +76,8 @@ func TestStandaloneAuthorizationSliceRegistryOwnsCompleteRouteAndPermissionMatri
 		}
 	}
 	permissions := registry.OwnedPermissionDefinitions(IdentityBuiltinAuthorizationOwner)
-	if len(permissions) != 100 {
-		t.Fatalf("owned permission count=%d want=100", len(permissions))
+	if len(permissions) != 89 {
+		t.Fatalf("owned permission count=%d want=89", len(permissions))
 	}
 	for _, permission := range permissions {
 		if len(registry.PermissionUsages(permission.PermissionKey)) == 0 {
@@ -82,9 +87,7 @@ func TestStandaloneAuthorizationSliceRegistryOwnsCompleteRouteAndPermissionMatri
 	for route, permission := range map[string]string{
 		"/admin/security/accounts":         "identity.users.list",
 		"/admin/security/accounts/$userId": "identity.users.get",
-		"/admin/org/workforce":             "identity.workforce.list",
-		"/admin/org/workforce/$profileID":  "identity.workforce.detail",
-		"/admin/org/departments":           "identity.departments.list",
+		"/admin/org/organization-units":    "identity.organization_units.list",
 		"/admin/org/roles":                 "identity.roles.list",
 		"/admin/org/menus":                 "identity.menus.list",
 		"/admin/org/data-scopes":           "identity.role_data_scopes.list",
@@ -101,7 +104,7 @@ func TestStandaloneAuthorizationSliceRegistryOwnsCompleteRouteAndPermissionMatri
 func TestIdentityActionRegistryRejectsDuplicateActionsAndMismatchedPermission(t *testing.T) {
 	var action identitymodel.IdentityActionDefinition
 	for _, candidate := range StandaloneIdentityAuthorizationSliceActions() {
-		if candidate.Key == "identity.departments.list" {
+		if candidate.Key == "identity.organization_units.list" {
 			action = candidate
 			break
 		}
@@ -121,11 +124,11 @@ func TestIdentityActionRegistryRejectsDuplicateActionsAndMismatchedPermission(t 
 		t.Fatal("mismatched action permission accepted")
 	}
 	pageCollision := actioncontract.CloneDefinition(action)
-	pageCollision.Key = "identity.departments.other_list"
+	pageCollision.Key = "identity.organization_units.other_list"
 	pageCollision.OperationKey = "other_list"
-	pageCollision.HTTP.RouteTemplate = "/identity/departments-other"
+	pageCollision.HTTP.RouteTemplate = "/identity/organization-units-other"
 	pageCollision.Permission.Key = pageCollision.Key
-	pageCollision.Permission.ActionKey = pageCollision.OperationKey
+	pageCollision.Permission.OperationKey = pageCollision.OperationKey
 	if _, err := NewIdentityActionRegistry([]identitymodel.IdentityActionDefinition{action, pageCollision}); err == nil {
 		t.Fatal("duplicate page entry Action accepted")
 	}

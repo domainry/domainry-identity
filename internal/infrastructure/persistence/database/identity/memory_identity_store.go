@@ -25,36 +25,32 @@ func identityWorkspaceKey(workspaceID string, values ...string) (string, error) 
 }
 
 type MemoryIdentityStore struct {
-	mu                   sync.RWMutex
-	departments          map[string]identitymodel.IdentityDepartment
-	users                map[string]identitymodel.IdentityUser
-	workforceProfiles    map[string]identitymodel.IdentityWorkforceProfile
-	workforceAssignments map[string]identitymodel.IdentityWorkforceAssignment
-	roles                map[string]identitymodel.IdentityRole
-	userRoles            map[string]identitymodel.IdentityUserRoleAssignment
-	entitlementReceipts  map[string]identitymodel.IdentityEntitlementBatchReceipt
-	roleRequests         map[string]identitymodel.IdentityRoleRequest
-	menus                map[string]identitymodel.IdentityMenu
-	roleMenus            map[string][]string
-	credentials          map[string]identitymodel.IdentityCredential
-	refreshTokens        map[string]identitymodel.AuthRefreshToken
-	externalAccounts     map[string]identitymodel.IdentityExternalAccount
+	mu                  sync.RWMutex
+	organizationUnits   map[string]identitymodel.IdentityOrganizationUnit
+	users               map[string]identitymodel.IdentityUser
+	roles               map[string]identitymodel.IdentityRole
+	userRoles           map[string]identitymodel.IdentityUserRoleAssignment
+	entitlementReceipts map[string]identitymodel.IdentityEntitlementBatchReceipt
+	roleRequests        map[string]identitymodel.IdentityRoleRequest
+	menus               map[string]identitymodel.IdentityMenu
+	roleMenus           map[string][]string
+	credentials         map[string]identitymodel.IdentityCredential
+	refreshTokens       map[string]identitymodel.AuthRefreshToken
+	externalAccounts    map[string]identitymodel.IdentityExternalAccount
 }
 
 func NewMemoryIdentityStore() *MemoryIdentityStore {
 	return &MemoryIdentityStore{
-		departments:          map[string]identitymodel.IdentityDepartment{},
-		users:                map[string]identitymodel.IdentityUser{},
-		workforceProfiles:    map[string]identitymodel.IdentityWorkforceProfile{},
-		workforceAssignments: map[string]identitymodel.IdentityWorkforceAssignment{},
-		roles:                map[string]identitymodel.IdentityRole{},
-		userRoles:            map[string]identitymodel.IdentityUserRoleAssignment{},
-		entitlementReceipts:  map[string]identitymodel.IdentityEntitlementBatchReceipt{},
-		roleRequests:         map[string]identitymodel.IdentityRoleRequest{},
-		menus:                map[string]identitymodel.IdentityMenu{},
-		roleMenus:            map[string][]string{},
-		credentials:          map[string]identitymodel.IdentityCredential{},
-		refreshTokens:        map[string]identitymodel.AuthRefreshToken{},
-		externalAccounts:     map[string]identitymodel.IdentityExternalAccount{},
+		organizationUnits:   map[string]identitymodel.IdentityOrganizationUnit{},
+		users:               map[string]identitymodel.IdentityUser{},
+		roles:               map[string]identitymodel.IdentityRole{},
+		userRoles:           map[string]identitymodel.IdentityUserRoleAssignment{},
+		entitlementReceipts: map[string]identitymodel.IdentityEntitlementBatchReceipt{},
+		roleRequests:        map[string]identitymodel.IdentityRoleRequest{},
+		menus:               map[string]identitymodel.IdentityMenu{},
+		roleMenus:           map[string][]string{},
+		credentials:         map[string]identitymodel.IdentityCredential{},
+		refreshTokens:       map[string]identitymodel.AuthRefreshToken{},
+		externalAccounts:    map[string]identitymodel.IdentityExternalAccount{},
 	}
 }

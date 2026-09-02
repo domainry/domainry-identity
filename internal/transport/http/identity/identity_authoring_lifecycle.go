@@ -7,20 +7,20 @@ import (
 	auditmodel "github.com/domainry/domainry-audit-sdk/contract"
 )
 
-func (h *IdentityHandler) getIdentityDepartment(w http.ResponseWriter, r *http.Request) {
-	id := strings.TrimSpace(r.PathValue("departmentID"))
-	items, err := h.users.ListDepartments(r.Context())
+func (h *IdentityHandler) getIdentityOrganizationUnit(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(r.PathValue("organizationUnitID"))
+	items, err := h.users.ListOrganizationUnits(r.Context())
 	if err != nil {
 		h.writeServiceError(w, r, err)
 		return
 	}
 	for _, item := range items {
 		if item.ID == id {
-			h.writeIdentityAuthoringResource(w, r, "identity.department", id, item)
+			h.writeIdentityAuthoringResource(w, r, "identity.organization_unit", id, item)
 			return
 		}
 	}
-	h.writeError(w, r, http.StatusNotFound, "backend.identity.department_not_found", "department", id)
+	h.writeError(w, r, http.StatusNotFound, "backend.identity.organization_unit_not_found", "organization_unit", id)
 }
 
 func (h *IdentityHandler) getIdentityRole(w http.ResponseWriter, r *http.Request) {

@@ -6,29 +6,55 @@ import (
 	"fmt"
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
-	departmentpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/directory/department"
+	organizationunitpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/directory/organizationunit"
 	userpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/directory/user"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/transaction"
 	"github.com/domainry/domainry-orm/query"
 )
 
-func (s *SQLIdentityStore) departmentStore() *departmentpersistence.Store {
-	return departmentpersistence.New(s, nowString)
+func (s *SQLIdentityStore) organizationUnitStore() *organizationunitpersistence.Store {
+	return organizationunitpersistence.New(s, nowString)
 }
 
 func (s *SQLIdentityStore) userStore() *userpersistence.Store {
 	return userpersistence.New(s, nowString)
 }
 
-func (s *SQLIdentityStore) ListIdentityDepartments(ctx context.Context, workspaceID string) ([]identitymodel.IdentityDepartment, error) {
-	return s.loadDepartments(ctx, workspaceID)
+func (s *SQLIdentityStore) ListIdentityOrganizationUnits(ctx context.Context, workspaceID string) ([]identitymodel.IdentityOrganizationUnit, error) {
+	return s.loadOrganizationUnits(ctx, workspaceID)
 }
 
-func (s *SQLIdentityStore) UpsertIdentityDepartment(ctx context.Context, workspaceID string, department identitymodel.IdentityDepartment) error {
-	return s.writeIdentityDepartment(ctx, s.db, workspaceID, department)
+func (s *SQLIdentityStore) UpsertIdentityOrganizationUnit(ctx context.Context, workspaceID string, organizationUnit identitymodel.IdentityOrganizationUnit) error {
+	return s.writeIdentityOrganizationUnit(ctx, s.db, workspaceID, organizationUnit)
 }
 
-func (s *SQLIdentityStore) writeIdentityDepartment(ctx context.Context, execer identityUserExecer, workspaceID string, department identitymodel.IdentityDepartment) error {
-	return s.departmentStore().Upsert(ctx, execer, workspaceID, department)
+func (s *SQLIdentityStore) UpsertIdentityOrganizationUnitsAtomically(ctx context.Context, workspaceID string, organizationUnits []identitymodel.IdentityOrganizationUnit) error {
+	if _, err := identityWorkspaceID(workspaceID); err != nil {
+		return err
+	}
+	if executor := transaction.ExecutorFromContext(ctx); executor != nil {
+		for _, organizationUnit := range organizationUnits {
+			if err := s.writeIdentityOrganizationUnit(ctx, executor, workspaceID, organizationUnit); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, organizationUnit := range organizationUnits {
+		if err := s.writeIdentityOrganizationUnit(ctx, tx, workspaceID, organizationUnit); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (s *SQLIdentityStore) writeIdentityOrganizationUnit(ctx context.Context, execer identityUserExecer, workspaceID string, organizationUnit identitymodel.IdentityOrganizationUnit) error {
+	return s.organizationUnitStore().Upsert(ctx, execer, workspaceID, organizationUnit)
 }
 
 func (s *SQLIdentityStore) ListIdentityUsers(ctx context.Context, workspaceID string) ([]identitymodel.IdentityUser, error) {
@@ -109,8 +135,8 @@ func (s *SQLIdentityStore) SetIdentityUserStatus(ctx context.Context, workspaceI
 	return s.userStore().SetStatus(ctx, workspaceID, userID, status)
 }
 
-func (s *SQLIdentityStore) loadDepartments(ctx context.Context, workspaceID string) ([]identitymodel.IdentityDepartment, error) {
-	return s.departmentStore().List(ctx, workspaceID)
+func (s *SQLIdentityStore) loadOrganizationUnits(ctx context.Context, workspaceID string) ([]identitymodel.IdentityOrganizationUnit, error) {
+	return s.organizationUnitStore().List(ctx, workspaceID)
 }
 
 func (s *SQLIdentityStore) loadUsers(ctx context.Context, workspaceID string) ([]identitymodel.IdentityUser, error) {

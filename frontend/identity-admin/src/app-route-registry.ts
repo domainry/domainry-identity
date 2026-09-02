@@ -7,8 +7,7 @@ import pagePermissionContract from "@domainry/identity-management-contract/ident
 
 export type NavKey =
   | "users"
-  | "workforce"
-  | "departments"
+  | "organizationUnits"
   | "roles"
   | "menus"
   | "dataScopes"
@@ -78,41 +77,16 @@ export const APP_ROUTE_DEFINITIONS = [
     acceptanceTests: ["tests/e2e/organization-management.spec.ts"],
   },
   {
-    routeKey: "identity.workforce",
-    navKey: "workforce",
-    path: "/admin/org/workforce",
+    routeKey: "identity.organization_units",
+    navKey: "organizationUnits",
+    path: "/admin/org/organization-units",
     kind: "page",
     navigation: "platform_admin",
     surface: "admin_console",
     shell: "admin_console",
     actorAudiences: ["platform_admin"],
-    routePurpose: "Manage tenant workforce profiles and assignments.",
-    featureModule: "src/features/org/workforce-page.tsx",
-    acceptanceTests: ["src/features/org/workforce-page.test.ts"],
-  },
-  {
-    routeKey: "identity.workforce_detail",
-    path: "/admin/org/workforce/$profileID",
-    kind: "detail",
-    navigation: "platform_admin",
-    surface: "admin_console",
-    shell: "admin_console",
-    actorAudiences: ["platform_admin"],
-    routePurpose: "Review one Workforce profile and its effective assignments.",
-    featureModule: "src/features/org/workforce-detail-page.tsx",
-    acceptanceTests: ["src/features/org/workforce-detail-page.test.ts"],
-  },
-  {
-    routeKey: "identity.departments",
-    navKey: "departments",
-    path: "/admin/org/departments",
-    kind: "page",
-    navigation: "platform_admin",
-    surface: "admin_console",
-    shell: "admin_console",
-    actorAudiences: ["platform_admin"],
-    routePurpose: "Manage tenant organization departments.",
-    featureModule: "src/features/departments/department-management.tsx",
+    routePurpose: "Manage the tenant organization tree and its typed operating nodes.",
+    featureModule: "src/features/organization-units/organization-unit-management.tsx",
     acceptanceTests: ["tests/e2e/organization-management.spec.ts"],
   },
   {

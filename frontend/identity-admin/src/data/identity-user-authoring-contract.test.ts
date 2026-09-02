@@ -6,6 +6,8 @@ const user = {
   id: "user-1",
   name: "Original User",
   account_type: "human",
+  org_id: "support-team",
+  support_org_id: "sales",
   email: "user@example.com",
   status: "active",
   version: 1,
@@ -39,6 +41,9 @@ describe("identity user direct authoring contract", () => {
     expect(headers.get("Expected-Schema-Hash")).toBe("detail-resource-v1");
     expect(headers.get("Builder-Task-ID")).toMatch(/^tenant-admin\.identity-user\.web_/);
     expect(headers.get("Idempotency-Key")).toMatch(/^web_/);
+    const body = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body)) as Record<string, unknown>;
+    expect(body.org_id).toBe("support-team");
+    expect(body.support_org_id).toBe("sales");
   });
 
   it("preserves the typed backend conflict for the detail page", async () => {

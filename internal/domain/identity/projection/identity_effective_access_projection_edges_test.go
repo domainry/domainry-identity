@@ -13,10 +13,10 @@ func TestIdentityBuildEffectiveAccessSnapshotEdges(t *testing.T) {
 		Principal: identitymodel.Principal{
 			UserID: "user", Known: true,
 			Role: identitymodel.RoleSchema{
-				Permissions: []string{"order.read", "domain.order.update", "invalid"},
+				Permissions: []string{"order.read", "order.update", "domain.order.update"},
 				DataPermissions: []identitymodel.DataPermission{
-					{ObjectKey: "order", Scope: "department", Read: true, AuditDenial: true},
-					{ObjectKey: "order", Scope: "all_records", Read: true, Write: true, Predicate: &identitymodel.IdentityPolicyExpression{Operator: "eq"}},
+					{ObjectKey: "order", Scope: "organization", AuditDenial: true},
+					{ObjectKey: "order", Scope: "all_records", Predicate: &identitymodel.IdentityPolicyExpression{Operator: "eq"}},
 				},
 				FieldPermissions: []identitymodel.FieldPermission{{ObjectKey: "order", FieldKey: "plain", Read: true, Reason: "sensitive", Policies: []identitymodel.ContextualFieldPolicyRule{{Key: "owner", Priority: 10, Actions: []string{"read"}, Effect: "allow", Predicate: &identitymodel.IdentityPolicyExpression{Operator: "eq", FieldKey: "owner_id", ValueSource: "actor_claim", ClaimKey: "user_id"}}}}},
 			},
@@ -34,7 +34,7 @@ func TestIdentityBuildEffectiveAccessSnapshotEdges(t *testing.T) {
 			{Key: "role-2", Permissions: []string{"domain.order.update"}},
 		},
 		PermissionSets: []identitymodel.IdentityPermissionSet{
-			{Key: "direct", DataPermissions: []identitymodel.DataPermission{{ObjectKey: "order", Scope: "department", Read: true}}},
+			{Key: "direct", DataPermissions: []identitymodel.DataPermission{{ObjectKey: "order", Scope: "organization"}}},
 			{Key: "grouped", FieldPermissions: []identitymodel.FieldPermission{{ObjectKey: "order", FieldKey: "plain", Read: true}}},
 		},
 		PermissionSetGroups: []identitymodel.IdentityPermissionSetGroup{{Key: "group", PermissionSetKeys: []string{"grouped"}}},
@@ -69,7 +69,7 @@ func TestIdentityBuildEffectiveAccessSnapshotEdges(t *testing.T) {
 	if len(snapshot.Menus) != 2 || snapshot.Menus[0].Key != "a" || len(snapshot.FieldAccess) != 2 {
 		t.Fatalf("menus/fields = %#v %#v", snapshot.Menus, snapshot.FieldAccess)
 	}
-	if len(snapshot.DataAccess) != 2 || len(snapshot.Permissions) != 3 {
+	if len(snapshot.DataAccess) != 1 || len(snapshot.Permissions) != 3 {
 		t.Fatalf("data/permissions = %#v %#v", snapshot.DataAccess, snapshot.Permissions)
 	}
 	for _, permission := range snapshot.Permissions {
@@ -99,7 +99,7 @@ func TestIdentityExplainEffectiveAccessEdges(t *testing.T) {
 			Key: "order.read", ObjectKey: "order", Action: "read",
 		}},
 		DataAccess: []identitymodel.IdentityEffectiveDataAccess{{
-			ObjectKey: "order", Action: "read", Allowed: true, Scope: "all_records",
+			ObjectKey: "order", Allowed: true, Scope: "all_records",
 		}},
 		FieldAccess: []identitymodel.IdentityEffectiveFieldAccess{{
 			ObjectKey: "order", FieldKey: "secret", Read: true, Write: false, Export: true,
@@ -140,11 +140,11 @@ func TestIdentityExplainEffectiveAccessEdges(t *testing.T) {
 
 func TestIdentityEffectiveAccessProjectionHelpers(t *testing.T) {
 	predicate := identitymodel.IdentityPolicyExpression{Operator: "eq"}
-	role := identitymodel.RoleSchema{DataPermissions: []identitymodel.DataPermission{
-		{ObjectKey: "one", Scope: "department", Read: true, Predicate: &predicate},
-		{ObjectKey: "one", Scope: "team", Read: true, Predicate: &predicate},
-		{ObjectKey: "two", Scope: "all_records", Write: true, Predicate: &predicate},
-		{ObjectKey: "three", Scope: "self", Read: true},
+	role := identitymodel.RoleSchema{Permissions: []string{"one.read", "one.update", "two.update", "three.read"}, DataPermissions: []identitymodel.DataPermission{
+		{ObjectKey: "one", Scope: "organization", Predicate: &predicate},
+		{ObjectKey: "one", Scope: "team", Predicate: &predicate},
+		{ObjectKey: "two", Scope: "all_records", Predicate: &predicate},
+		{ObjectKey: "three", Scope: "self"},
 	}}
 	data := identityProjectionDataAccess(role, map[string][]identitymodel.IdentityGrantSource{
 		"role": {{Type: "role", Key: "role"}},
@@ -168,9 +168,8 @@ func TestIdentityEffectiveAccessProjectionHelpers(t *testing.T) {
 	}
 
 	dataValues := []identitymodel.IdentityEffectiveDataAccess{
-		{ObjectKey: "order", Action: "read", Allowed: false},
-		{ObjectKey: "order", Action: "read", Allowed: true},
-		{ObjectKey: "order", Action: "write", Allowed: true},
+		{ObjectKey: "order", Allowed: false},
+		{ObjectKey: "order", Allowed: true},
 	}
 	for _, action := range []string{"read", "export", "update"} {
 		if _, ok := identityProjectionData(dataValues, "order", action); !ok {
@@ -226,5 +225,36 @@ func TestIdentityEffectiveAccessProjectionHelpers(t *testing.T) {
 		{},
 	} {
 		_ = identityProjectionSensitiveField(definitionmodel.ObjectSchema{}, field)
+	}
+}
+
+func TestIdentityProjectionDataPolicyCannotInventFunctionalActions(t *testing.T) {
+	predicate := identitymodel.IdentityPolicyExpression{Operator: "in", FieldKey: "owner_org_id", ValueSource: "actor_claim", ClaimKey: "support_org_scope_ids"}
+	role := identitymodel.RoleSchema{
+		Permissions:     []string{"customer.read"},
+		DataPermissions: []identitymodel.DataPermission{{ObjectKey: "customer", Scope: "custom", Predicate: &predicate}},
+	}
+	data := identityProjectionDataAccess(role, nil)
+	if len(data) != 1 || data[0].ObjectKey != "customer" {
+		t.Fatalf("data policy did not project as one operation-independent object scope: %#v", data)
+	}
+	role.Permissions = nil
+	if data = identityProjectionDataAccess(role, nil); len(data) != 0 {
+		t.Fatalf("data policy invented functional authority: %#v", data)
+	}
+}
+
+func TestSupportOrganizationCustomScopeRequiresTrustedDerivedClaim(t *testing.T) {
+	predicate := identitymodel.IdentityPolicyExpression{Operator: "in", FieldKey: "owner_org_id", ValueSource: "actor_claim", ClaimKey: "support_org_scope_ids"}
+	role := identitymodel.RoleSchema{DataPermissions: []identitymodel.DataPermission{{ObjectKey: "customer", Scope: "custom", Predicate: &predicate}}}
+
+	missing := dataScopeDecision(identitymodel.Principal{Known: true, Role: role}, "customer")
+	if missing.Allowed || missing.Reason != "missing_support_org_scope_ids" {
+		t.Fatalf("missing support scope decision=%#v", missing)
+	}
+
+	available := dataScopeDecision(identitymodel.Principal{Known: true, Role: role, SupportOrgID: "sales", SupportOrgScopeIDs: []string{"sales", "sales-east"}}, "customer")
+	if !available.Allowed || available.Reason != "allowed" || available.Predicate == nil {
+		t.Fatalf("available support scope decision=%#v", available)
 	}
 }

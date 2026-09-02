@@ -12,43 +12,82 @@ type IdentityDataScope string
 
 type IdentityAccountType string
 
+type IdentityWorkerType string
+
+const (
+	IdentityWorkerEmployee     IdentityWorkerType = "employee"
+	IdentityWorkerContractor   IdentityWorkerType = "contractor"
+	IdentityWorkerPartnerStaff IdentityWorkerType = "partner_staff"
+	IdentityWorkerTemporary    IdentityWorkerType = "temporary"
+)
+
+type IdentityWorkStatus string
+
+const (
+	IdentityWorkPending    IdentityWorkStatus = "pending"
+	IdentityWorkActive     IdentityWorkStatus = "active"
+	IdentityWorkSuspended  IdentityWorkStatus = "suspended"
+	IdentityWorkTerminated IdentityWorkStatus = "terminated"
+)
+
+type IdentityOrganizationUnitType string
+
+const (
+	IdentityOrganizationUnitCompany    IdentityOrganizationUnitType = "company"
+	IdentityOrganizationUnitRegion     IdentityOrganizationUnitType = "region"
+	IdentityOrganizationUnitStore      IdentityOrganizationUnitType = "store"
+	IdentityOrganizationUnitDepartment IdentityOrganizationUnitType = "department"
+	IdentityOrganizationUnitTeam       IdentityOrganizationUnitType = "team"
+	IdentityOrganizationUnitWarehouse  IdentityOrganizationUnitType = "warehouse"
+)
+
 const (
 	IdentityAccountHuman      IdentityAccountType = "human"
 	IdentityAccountService    IdentityAccountType = "service"
 	IdentityAccountAutomation IdentityAccountType = "automation"
 )
 
-type IdentityDepartment struct {
-	ID                       string         `json:"id"`
-	Name                     string         `json:"name"`
-	ParentID                 *string        `json:"parent_id,omitempty"`
-	LeaderWorkforceProfileID string         `json:"leader_workforce_profile_id,omitempty"`
-	Path                     string         `json:"path"`
-	AncestorIDs              []string       `json:"ancestor_ids"`
-	Depth                    int            `json:"depth"`
-	SortOrder                int            `json:"sort_order"`
-	Status                   IdentityStatus `json:"status,omitempty"`
+type IdentityOrganizationUnit struct {
+	ID          string                       `json:"id"`
+	Code        string                       `json:"code"`
+	Name        string                       `json:"name"`
+	NodeType    IdentityOrganizationUnitType `json:"node_type"`
+	ParentID    *string                      `json:"parent_id,omitempty"`
+	Path        string                       `json:"path"`
+	AncestorIDs []string                     `json:"ancestor_ids"`
+	Depth       int                          `json:"depth"`
+	SortOrder   int                          `json:"sort_order"`
+	Status      IdentityStatus               `json:"status,omitempty"`
 }
 
 type IdentityUser struct {
-	ID          string              `json:"id"`
-	Name        string              `json:"name"`
-	GivenName   string              `json:"given_name,omitempty"`
-	MiddleName  string              `json:"middle_name,omitempty"`
-	FamilyName  string              `json:"family_name,omitempty"`
-	NamePrefix  string              `json:"name_prefix,omitempty"`
-	NameSuffix  string              `json:"name_suffix,omitempty"`
-	NativeName  string              `json:"native_name,omitempty"`
-	NameLocale  string              `json:"name_locale,omitempty"`
-	Email       string              `json:"email"`
-	Phone       string              `json:"phone,omitempty"`
-	AccountType IdentityAccountType `json:"account_type"`
-	Locale      string              `json:"locale,omitempty"`
-	Timezone    string              `json:"timezone,omitempty"`
-	Status      IdentityStatus      `json:"status"`
-	Version     int64               `json:"version"`
-	CreatedAt   string              `json:"created_at"`
-	UpdatedAt   string              `json:"updated_at"`
+	ID            string              `json:"id"`
+	Name          string              `json:"name"`
+	GivenName     string              `json:"given_name,omitempty"`
+	MiddleName    string              `json:"middle_name,omitempty"`
+	FamilyName    string              `json:"family_name,omitempty"`
+	NamePrefix    string              `json:"name_prefix,omitempty"`
+	NameSuffix    string              `json:"name_suffix,omitempty"`
+	NativeName    string              `json:"native_name,omitempty"`
+	NameLocale    string              `json:"name_locale,omitempty"`
+	Email         string              `json:"email"`
+	Phone         string              `json:"phone,omitempty"`
+	AccountType   IdentityAccountType `json:"account_type"`
+	Locale        string              `json:"locale,omitempty"`
+	Timezone      string              `json:"timezone,omitempty"`
+	OrgID         string              `json:"org_id,omitempty"`
+	SupportOrgID  string              `json:"support_org_id,omitempty"`
+	ManagerUserID string              `json:"manager_user_id,omitempty"`
+	ReportingPath string              `json:"reporting_path"`
+	WorkerNo      string              `json:"worker_no,omitempty"`
+	WorkerType    IdentityWorkerType  `json:"worker_type,omitempty"`
+	WorkStatus    IdentityWorkStatus  `json:"work_status,omitempty"`
+	StartDate     string              `json:"start_date,omitempty"`
+	EndDate       string              `json:"end_date,omitempty"`
+	Status        IdentityStatus      `json:"status"`
+	Version       int64               `json:"version"`
+	CreatedAt     string              `json:"created_at"`
+	UpdatedAt     string              `json:"updated_at"`
 }
 
 type IdentityUserPage struct {
@@ -62,7 +101,6 @@ type IdentityUserPage struct {
 type IdentityUserDeletionImpact struct {
 	UserID                        string                        `json:"user_id"`
 	ProfileBindings               []IdentityProfileBinding      `json:"profile_bindings"`
-	WorkforceProfileIDs           []string                      `json:"workforce_profile_ids"`
 	ActiveRoleIDs                 []string                      `json:"active_role_ids"`
 	BusinessProfileReferences     []IdentityUserRecordReference `json:"business_profile_references"`
 	OwnedRecordReferences         []IdentityUserRecordReference `json:"owned_record_references"`
@@ -77,7 +115,6 @@ type IdentityUserDeletionImpact struct {
 type IdentityUserDisableImpact struct {
 	UserID                   string                   `json:"user_id"`
 	ProfileBindings          []IdentityProfileBinding `json:"profile_bindings"`
-	WorkforceProfileIDs      []string                 `json:"workforce_profile_ids"`
 	ActiveEntitlementRoleIDs []string                 `json:"active_entitlement_role_ids"`
 	SessionsWillBeRevoked    bool                     `json:"sessions_will_be_revoked"`
 	BusinessFactsPreserved   bool                     `json:"business_facts_preserved"`
@@ -190,23 +227,22 @@ type IdentityFieldPermission struct {
 }
 
 type IdentityUserRoleAssignment struct {
-	UserID             string  `json:"user_id"`
-	RoleID             string  `json:"role_id"`
-	WorkforceProfileID string  `json:"workforce_profile_id,omitempty"`
-	BindingKey         string  `json:"binding_key,omitempty"`
-	ProfileID          string  `json:"profile_id,omitempty"`
-	Source             string  `json:"source,omitempty"`
-	Status             string  `json:"status,omitempty"`
-	ValidFrom          string  `json:"valid_from,omitempty"`
-	ValidUntil         string  `json:"valid_until,omitempty"`
-	GrantedBy          string  `json:"granted_by,omitempty"`
-	GrantReason        string  `json:"grant_reason,omitempty"`
-	RevokedBy          string  `json:"revoked_by,omitempty"`
-	RevokedAt          string  `json:"revoked_at,omitempty"`
-	RevokeReason       string  `json:"revoke_reason,omitempty"`
-	CreatedAt          string  `json:"created_at,omitempty"`
-	UpdatedAt          string  `json:"updated_at,omitempty"`
-	ExpiresAt          *string `json:"expires_at,omitempty"`
+	UserID       string  `json:"user_id"`
+	RoleID       string  `json:"role_id"`
+	BindingKey   string  `json:"binding_key,omitempty"`
+	ProfileID    string  `json:"profile_id,omitempty"`
+	Source       string  `json:"source,omitempty"`
+	Status       string  `json:"status,omitempty"`
+	ValidFrom    string  `json:"valid_from,omitempty"`
+	ValidUntil   string  `json:"valid_until,omitempty"`
+	GrantedBy    string  `json:"granted_by,omitempty"`
+	GrantReason  string  `json:"grant_reason,omitempty"`
+	RevokedBy    string  `json:"revoked_by,omitempty"`
+	RevokedAt    string  `json:"revoked_at,omitempty"`
+	RevokeReason string  `json:"revoke_reason,omitempty"`
+	CreatedAt    string  `json:"created_at,omitempty"`
+	UpdatedAt    string  `json:"updated_at,omitempty"`
+	ExpiresAt    *string `json:"expires_at,omitempty"`
 }
 
 type IdentityUserRoleAssignmentPage struct {

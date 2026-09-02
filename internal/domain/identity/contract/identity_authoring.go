@@ -16,7 +16,7 @@ func IdentityRoleAuthoringCapability() authoringcontract.CapabilityAuthoringDefi
 			"key": {Type: "string", MinLength: identityIntPointer(1)}, "name": {Type: "string", MinLength: identityIntPointer(1)},
 			"i18n": {Type: "object", AdditionalProperties: open}, "permissions": stringList, "record_scope": {Type: "string", MinLength: identityIntPointer(1)},
 			"data_permissions": openList, "field_permissions": openList, "reference_permissions": openList, "export_rules": openList,
-			"audience":             {Type: "string", Enum: []any{"any", "workforce", "business_profile", "service"}, Default: "any"},
+			"audience":             {Type: "string", Enum: []any{"any", "user", "business_profile", "service"}, Default: "any"},
 			"required_binding_key": {Type: "string"}, "assignment_mode": {Type: "string", Enum: []any{"manual", "request_only", "system_managed"}, Default: "manual"},
 			"risk_level":         {Type: "string", Enum: []any{"normal", "elevated", "privileged"}, Default: "normal"},
 			"conflict_role_keys": stringList, "grantable_role_keys": stringList,
@@ -31,7 +31,7 @@ func IdentityRoleAuthoringCapability() authoringcontract.CapabilityAuthoringDefi
 		Parameters: []authoringcontract.CapabilityAuthoringParameter{
 			{Key: "key", Type: "string", Required: true}, {Key: "name", Type: "string", Required: true}, {Key: "permissions", Type: "array", Required: true, ItemSchema: "permission_key"},
 			{Key: "record_scope", Type: "string", Required: true}, {Key: "expected_schema_hash", Type: "schema_hash", Required: true},
-			{Key: "audience", Type: "string", Default: "any", Enum: []string{"any", "workforce", "business_profile", "service"}},
+			{Key: "audience", Type: "string", Default: "any", Enum: []string{"any", "user", "business_profile", "service"}},
 			{Key: "required_binding_key", Type: "string"}, {Key: "assignment_mode", Type: "string", Default: "manual", Enum: []string{"manual", "request_only", "system_managed"}},
 			{Key: "risk_level", Type: "string", Default: "normal", Enum: []string{"normal", "elevated", "privileged"}},
 			{Key: "permission_set_keys", Type: "array", ItemSchema: "permission_set_key"},

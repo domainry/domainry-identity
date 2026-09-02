@@ -8,8 +8,8 @@ import (
 	"github.com/domainry/domainry-foundation/apperror"
 	authmodel "github.com/domainry/domainry-identity/internal/domain/auth/model"
 	authdomain "github.com/domainry/domainry-identity/internal/domain/auth/service"
+	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
-	identitypolicy "github.com/domainry/domainry-identity/internal/domain/identity/policy"
 )
 
 var customAuthProviderKeyPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{1,63}$`)
@@ -38,7 +38,7 @@ func (s *AuthProviderApplicationService) SaveSetup(ctx context.Context, provider
 	if _, err := identitymodel.NewWorkspaceCommandScope(principal.WorkspaceID); err != nil {
 		return authmodel.AuthProviderConfig{}, &apperror.AppError{Kind: apperror.KindForbidden, Code: "backend.workspace_scope_required", Err: err}
 	}
-	if !identitypolicy.IdentityRoleHasPermissionKey(principal.Role, "auth.providers.setup") {
+	if !identitycontract.IdentityRoleHasPermissionKey(principal.Role, identitycontract.IdentityActionAuthProvidersSetup) {
 		return authmodel.AuthProviderConfig{}, authProviderApplicationError(apperror.KindForbidden, "auth.permission_denied")
 	}
 	config, ok := s.Find(ctx, provider)

@@ -43,13 +43,8 @@ func (adapter sdkPrincipalResolver) Resolve(ctx context.Context, request identit
 	result := identitysdk.Principal{
 		ContractVersion: identitysdk.PrincipalContextContractVersion, Known: principal.Known,
 		WorkspaceID: principal.WorkspaceID, UserID: principal.UserID, RoleKey: principal.Role.Key,
-		AuthorizationRevision: principal.AuthorizationRevision, WorkforceProfileID: principal.WorkforceProfileID,
-		DepartmentID: principal.DepartmentID, DepartmentPath: principal.DepartmentPath, ReportingPath: principal.ReportingPath,
-		ReportingUserIDs: append([]string(nil), principal.ReportingUserIDs...),
-		OrganizationScopes: identitysdk.OrganizationScopes{
-			TeamIDs: append([]string(nil), principal.TeamIDs...), StoreIDs: append([]string(nil), principal.StoreIDs...),
-			TerritoryIDs: append([]string(nil), principal.TerritoryIDs...), WarehouseIDs: append([]string(nil), principal.WarehouseIDs...),
-		},
+		AuthorizationRevision: principal.AuthorizationRevision,
+		OrgID:                 principal.OrgID, OrgScopeIDs: append([]string(nil), principal.OrgScopeIDs...), ReportingScopeUserIDs: append([]string(nil), principal.ReportingScopeUserIDs...),
 		User: sdkDirectoryUser(user), Permissions: append([]string(nil), principal.Role.Permissions...), AccessBundle: &bundle,
 	}
 	for _, role := range roles {

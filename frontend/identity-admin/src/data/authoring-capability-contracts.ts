@@ -138,7 +138,7 @@ export interface RuntimeAuthoringInstanceCapabilities {
   role_keys?: string[]
   permission_keys?: string[]
   user_ids?: string[]
-  department_ids?: string[]
+  org_ids?: string[]
   role_ids?: string[]
   menu_ids?: string[]
 }

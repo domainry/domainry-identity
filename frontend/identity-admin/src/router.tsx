@@ -21,7 +21,6 @@ import {
 } from '@/features/shell/admin-shell'
 import { pageForManagementNav } from '@/app-page-registry'
 import { IdentityUserDetailPage } from '@/features/org/identity-user-detail-page'
-import { WorkforceDetailPage } from '@/features/org/workforce-detail-page'
 import { ManagementSurfaceHomePage } from '@/features/shell/management-surface-home'
 import {
   isRegisteredMenuPath,
@@ -219,17 +218,6 @@ const identityUserDetailRoute = createRoute({
   component: IdentityUserDetailScreen,
 })
 
-const workforceDetailRoute = createRoute({
-  getParentRoute: () => shellRoute,
-  path: '/admin/org/workforce/$profileID',
-  component: WorkforceDetailScreen,
-})
-
-function WorkforceDetailScreen() {
-  const { profileID } = workforceDetailRoute.useParams()
-  return <WorkforceDetailPage profileID={profileID} />
-}
-
 function IdentityUserDetailScreen() {
   const { userId } = identityUserDetailRoute.useParams()
   return <IdentityUserDetailPage userID={userId} />
@@ -250,7 +238,6 @@ const routeTree = rootRoute.addChildren([
     indexRoute,
     adminHomeRoute,
     identityUserDetailRoute,
-    workforceDetailRoute,
     ...pageRoutes,
   ]),
 ])

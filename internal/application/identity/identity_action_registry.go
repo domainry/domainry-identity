@@ -56,7 +56,7 @@ func NewIdentityActionRegistry(definitions []identitymodel.IdentityActionDefinit
 		registry.permissionOwnerByKey[permission.Key] = permission.Owner
 		registry.permissionOwners[permission.Owner] = struct{}{}
 		registry.permissionRecordByKey[permission.Key] = identitymodel.IdentityPermissionDefinitionRecord{
-			PermissionKey: permission.Key, ResourceKey: permission.ResourceKey, ActionKey: permission.ActionKey,
+			PermissionKey: permission.Key, ResourceKey: permission.ResourceKey, OperationKey: permission.OperationKey,
 			Label: permission.Label, Description: permission.Description, Category: permission.Category,
 			SourceKind: definition.SourceKind, SourceOwner: permission.Owner,
 			DefinitionStatus: identityPermissionLifecycle(permission.LifecycleStatus), Enabled: true,

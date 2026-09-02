@@ -68,8 +68,8 @@ func TestIdentityAuthoringProjectionKeepsCRUDAndMetadataOperationsIndependent(t 
 			metadatacontract.MetadataActionDefinitionRollback, metadatacontract.MetadataActionDefinitionUpsert,
 			metadatacontract.MetadataActionDefinitionValidate, metadatacontract.MetadataActionDefinitionVersions,
 		},
-		"identity.workforce_profile": {
-			"identity.workforce.create", "identity.workforce.get", "identity.workforce.update", "identity.workforce.validate",
+		"identity.organization_unit": {
+			"identity.organization_units.create", "identity.organization_units.get", "identity.organization_units.update", "identity.organization_units.validate", "identity.organization_units.versions",
 		},
 	} {
 		actual := byKey[capabilityKey].Permissions

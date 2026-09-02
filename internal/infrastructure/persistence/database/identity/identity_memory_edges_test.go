@@ -300,7 +300,7 @@ func TestMemoryIdentityRequestsMenusAndPolicyEdges(t *testing.T) {
 	}
 }
 
-func TestIdentityValueAndDepartmentEdges(t *testing.T) {
+func TestIdentityValueAndOrganizationUnitEdges(t *testing.T) {
 	if identityID("a.b", "c:d", "e/f") != "a_b_c_d_e_f" || len(uniqueSortedStrings([]string{"", "a"})) != 1 {
 		t.Fatal("identity value helpers")
 	}
@@ -314,20 +314,20 @@ func TestIdentityValueAndDepartmentEdges(t *testing.T) {
 	}
 	store := NewMemoryIdentityStore()
 	ctx := t.Context()
-	if err := store.UpsertIdentityDepartment(ctx, "workspace-primary", identitymodel.IdentityDepartment{}); err == nil {
-		t.Fatal("empty department accepted")
+	if err := store.UpsertIdentityOrganizationUnit(ctx, "workspace-primary", identitymodel.IdentityOrganizationUnit{}); err == nil {
+		t.Fatal("empty organizationUnit accepted")
 	}
 	parentA, parentB := "a", "b"
-	for _, department := range []identitymodel.IdentityDepartment{{ID: "root"}, {ID: "a2", ParentID: &parentA, Depth: 1, SortOrder: 2}, {ID: "a1", ParentID: &parentA, Depth: 1, SortOrder: 1}, {ID: "b1", ParentID: &parentB, Depth: 1}} {
-		if err := store.UpsertIdentityDepartment(ctx, "workspace-primary", department); err != nil {
+	for _, organizationUnit := range []identitymodel.IdentityOrganizationUnit{{ID: "root"}, {ID: "a2", ParentID: &parentA, Depth: 1, SortOrder: 2}, {ID: "a1", ParentID: &parentA, Depth: 1, SortOrder: 1}, {ID: "b1", ParentID: &parentB, Depth: 1}} {
+		if err := store.UpsertIdentityOrganizationUnit(ctx, "workspace-primary", organizationUnit); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := store.UpsertIdentityDepartment(ctx, "other", identitymodel.IdentityDepartment{ID: "other"}); err != nil {
+	if err := store.UpsertIdentityOrganizationUnit(ctx, "other", identitymodel.IdentityOrganizationUnit{ID: "other"}); err != nil {
 		t.Fatal(err)
 	}
-	departments, err := store.ListIdentityDepartments(ctx, "workspace-primary")
-	if err != nil || len(departments) != 4 || identityDepartmentParentID(nil) != "" || identityDepartmentParentID(&parentA) != "a" {
-		t.Fatalf("departments=%#v err=%v", departments, err)
+	organizationUnits, err := store.ListIdentityOrganizationUnits(ctx, "workspace-primary")
+	if err != nil || len(organizationUnits) != 4 || identityOrganizationUnitParentID(nil) != "" || identityOrganizationUnitParentID(&parentA) != "a" {
+		t.Fatalf("organizationUnits=%#v err=%v", organizationUnits, err)
 	}
 }

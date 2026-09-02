@@ -53,26 +53,16 @@ func (s *IdentityEffectiveAccessApplicationService) GovernanceReports(ctx contex
 	if err != nil {
 		return identitymodel.IdentityGovernanceReports{}, err
 	}
-	profiles, err := scoped.ListWorkforceProfiles(workspaceContext)
-	if err != nil && apperror.CodeOf(err) != "backend.identity.workforce_unavailable" {
-		return identitymodel.IdentityGovernanceReports{}, err
-	}
-	activeWorkforce := map[string]bool{}
-	for _, profile := range profiles {
-		if profile.WorkStatus == identitymodel.IdentityWorkActive {
-			activeWorkforce[profile.ID] = true
-		}
-	}
 	permissions := scoped.PermissionDefinitions()
 	permissionList := make([]identitymodel.IdentityPermissionDefinition, 0, len(permissions))
 	for _, permission := range permissions {
 		permissionList = append(permissionList, permission)
 	}
-	return identityprojection.IdentityBuildGovernanceReports(time.Now(), permissionList, roles, scoped.PublishedRoleDefinitions(workspaceContext), assignments, activeWorkforce), nil
+	return identityprojection.IdentityBuildGovernanceReports(time.Now(), permissionList, roles, scoped.PublishedRoleDefinitions(workspaceContext), assignments), nil
 }
 
 func (s *IdentityEffectiveAccessApplicationService) PreviewRoleChange(ctx context.Context, request identitymodel.IdentityRoleChangeImpactRequest, actor identitymodel.Principal) (identitymodel.IdentityRoleChangeImpact, error) {
-	scoped, workspaceContext, err := s.governanceScope(ctx, actor, IdentityActionRolesImpactPreview)
+	scoped, workspaceContext, err := s.governanceScope(ctx, actor, identitycontract.IdentityActionRolesImpactPreview)
 	if err != nil {
 		return identitymodel.IdentityRoleChangeImpact{}, err
 	}
@@ -151,7 +141,7 @@ func (s *IdentityEffectiveAccessApplicationService) snapshot(ctx context.Context
 	if err != nil {
 		return identitymodel.IdentityEffectiveAccessSnapshot{}, err
 	}
-	assignments, workforceProfileID, err := scoped.ResolveEffectiveRoleAssignments(workspaceContext, principal.UserID)
+	assignments, err := scoped.ResolveEffectiveRoleAssignments(workspaceContext, principal.UserID)
 	if err != nil {
 		return identitymodel.IdentityEffectiveAccessSnapshot{}, err
 	}
@@ -168,7 +158,7 @@ func (s *IdentityEffectiveAccessApplicationService) snapshot(ctx context.Context
 		return identitymodel.IdentityEffectiveAccessSnapshot{}, err
 	}
 	return identityprojection.IdentityBuildEffectiveAccessSnapshot(identityprojection.IdentityEffectiveAccessProjectionInput{
-		Principal: principal, WorkforceProfileID: workforceProfileID, Assignments: assignments, DirectoryRoles: roles,
+		Principal: principal, Assignments: assignments, DirectoryRoles: roles,
 		RoleDefinitions: scoped.PublishedRoleDefinitions(workspaceContext), PermissionSets: scoped.PublishedPermissionSets(workspaceContext),
 		PermissionSetGroups: scoped.PublishedPermissionSetGroups(workspaceContext), Menus: menus, RoleMenus: roleMenus,
 		Objects: scopedEffectiveAccessObjects(s.dependencies.Objects),

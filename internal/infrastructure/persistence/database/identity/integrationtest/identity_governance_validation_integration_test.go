@@ -82,11 +82,11 @@ func currentPermission(key, resource, action string) identitymodel.IdentityPermi
 	}
 }
 
-func TestIdentityGovernanceValidationAggregatesUserDepartmentAndRoleAssignmentIssues(t *testing.T) {
+func TestIdentityGovernanceValidationAggregatesUserOrganizationUnitAndRoleAssignmentIssues(t *testing.T) {
 	objects := map[string]definitionmodel.ObjectSchema{"identity_probe": {Key: "identity_probe", Name: "Identity Probe", Fields: []definitionmodel.FieldSchema{{Key: "name", Name: "Name", Type: "text"}}}}
 	store := identitypersistence.NewMemoryIdentityStore()
 	identity, _ := identitybusiness.NewIdentityDomainService(store, nil).ForWorkspace("workspace-a")
-	if err := identity.UpsertDepartment(t.Context(), identitymodel.IdentityDepartment{ID: "sales", Name: "Sales"}); err != nil {
+	if err := identity.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{ID: "sales", Code: "sales", NodeType: identitymodel.IdentityOrganizationUnitDepartment, Name: "Sales"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := identity.UpsertUser(t.Context(), identitymodel.IdentityUser{ID: "manager", Name: "Manager", Email: "manager@example.com"}); err != nil {
@@ -95,15 +95,15 @@ func TestIdentityGovernanceValidationAggregatesUserDepartmentAndRoleAssignmentIs
 	seedIdentityDirectoryRole(t, store, "workspace-a", identitymodel.IdentityRole{ID: "sales-role", Key: "sales-role", Label: "Sales"})
 	missingParent, invalidExpiry := "missing", "tomorrow"
 	result, err := identityapplication.NewIdentityGovernanceApplicationService(identity.Repository(), identity.PermissionDefinitions(), func() map[string]definitionmodel.ObjectSchema { return objects }).Validate(t.Context(), identitycontract.IdentityGovernanceValidationRequest{
-		User:           &identitymodel.IdentityUser{ID: "candidate", Email: "not-an-email", Status: "invented"},
-		Department:     &identitymodel.IdentityDepartment{ID: "child", ParentID: &missingParent, Status: "invented"},
-		RoleAssignment: &identitymodel.IdentityUserRoleAssignment{UserID: "missing", RoleID: "missing", ExpiresAt: &invalidExpiry},
+		User:             &identitymodel.IdentityUser{ID: "candidate", Email: "not-an-email", Status: "invented"},
+		OrganizationUnit: &identitymodel.IdentityOrganizationUnit{ID: "child", ParentID: &missingParent, Status: "invented"},
+		RoleAssignment:   &identitymodel.IdentityUserRoleAssignment{UserID: "missing", RoleID: "missing", ExpiresAt: &invalidExpiry},
 	}, identityGovernancePrincipal())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Valid || len(result.Errors) != 9 {
-		t.Fatalf("expected nine aggregated identity configuration issues, got %#v", result)
+	if result.Valid || len(result.Errors) != 11 {
+		t.Fatalf("expected eleven aggregated identity configuration issues, got %#v", result)
 	}
 	expectedUserPaths := map[string]bool{
 		"user.name": true, "user.email": true, "user.status": true,
