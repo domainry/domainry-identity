@@ -11,6 +11,7 @@ import (
 	"github.com/domainry/domainry-foundation/idempotency"
 	"github.com/domainry/domainry-foundation/secrets"
 	"github.com/domainry/domainry-foundation/telemetry"
+	identitymodulehost "github.com/domainry/domainry-identity-sdk/modulehost"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/base"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/connection"
 	migrationowner "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/migration"
@@ -47,6 +48,7 @@ type IdentityStore struct {
 	borrowedDatabase     bool
 	relationPrefix       string
 	metadataBinding      metadatasdk.Binding
+	hostModuleMigrations identitymodulehost.MigrationRegistrar
 }
 
 func (s *IdentityStore) Metadata() metadatasdk.Binding {

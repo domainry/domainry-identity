@@ -183,8 +183,18 @@ func (s *AuthApplicationService) ForceLogoutUserIdempotent(ctx context.Context, 
 		return authdomain.RevokeOtherSessionsResult{}, false, authMutationError(apperror.KindForbidden, "auth.permission_denied")
 	}
 	userID = strings.TrimSpace(userID)
+	if strings.TrimSpace(key) == "" {
+		return authdomain.RevokeOtherSessionsResult{}, false, authMutationError(apperror.KindBadRequest, idempotency.ErrorCodeMissingKey)
+	}
+	if _, err := identitymodel.NewWorkspaceCommandScope(principal.WorkspaceID); err != nil {
+		return authdomain.RevokeOtherSessionsResult{}, false, authMutationErrorWithCause(apperror.KindForbidden, "backend.workspace_scope_required", err)
+	}
+	if err := s.requireIdentityUserWithinDataScope(ctx, principal, userID, identitycontract.IdentityActionUsersForceLogout, apperror.KindBadRequest, "backend.identity.user_not_found"); err != nil {
+		return authdomain.RevokeOtherSessionsResult{}, false, err
+	}
+	scope := identitycontract.IdentityPermissionDataScopeFilter(principal, identitycontract.IdentityActionUsersForceLogout)
 	return s.executeSessionMutation(ctx, principal, key, "auth.force_logout", userID, "", func() (authdomain.RevokeOtherSessionsResult, error) {
-		count, err := s.ForceLogoutUser(ctx, principal.WorkspaceID, userID)
+		count, err := s.AuthDomainService.ForceLogoutUserWithinDataScope(ctx, principal.WorkspaceID, userID, scope)
 		return authdomain.RevokeOtherSessionsResult{RevokedSessions: count}, err
 	})
 }

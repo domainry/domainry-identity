@@ -8,7 +8,7 @@ import (
 )
 
 func TestWorkspaceAdminShapedPermissionDoesNotGrantFieldAuthority(t *testing.T) {
-	role := identitymodel.RoleSchema{Permissions: []string{"workspace.admin"}}
+	role := identitymodel.RoleSchema{Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "workspace.admin")}
 	object := definitionmodel.ObjectSchema{
 		Key:    "payment",
 		Config: map[string]any{"field_access_mode": "default_deny"},

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/domainry/domainry-foundation/apperror"
+	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
@@ -78,6 +79,9 @@ func TestIdentityApproveHighRiskRoleRequestRequiresIndependentAuthorizedReviewer
 		{name: "approved", reviewerID: "checker", principal: []identitymodel.Principal{{Known: true, UserID: "checker", Role: identitymodel.RoleSchema{GrantableRoleKeys: []string{"admin"}}}}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
+			for index := range test.principal {
+				test.principal[index].Role.Permissions = identityTestRolePermissions(identitycontract.IdentityRoleRequestsApprovePermission)
+			}
 			repository, service := identityRolesFixture()
 			service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{
 				Key: "admin", AssignmentMode: identitymodel.IdentityRoleAssignmentRequestOnly, RiskLevel: identitymodel.IdentityRoleRiskPrivileged,
@@ -94,6 +98,9 @@ func TestIdentityApproveHighRiskRoleRequestRequiresIndependentAuthorizedReviewer
 			}
 			if err != nil || approved.Status != "approved" || len(repository.assigned) != 1 {
 				t.Fatalf("approved=%#v assigned=%#v err=%v", approved, repository.assigned, err)
+			}
+			if repository.listAssignmentsCalls != 0 || repository.listScopedAssignmentsCalls != 1 || repository.lastScopedAssignmentUserID != "user-1" {
+				t.Fatalf("approval conflict validation escaped scoped target read: unscoped=%d scoped=%d target=%q", repository.listAssignmentsCalls, repository.listScopedAssignmentsCalls, repository.lastScopedAssignmentUserID)
 			}
 		})
 	}

@@ -5,41 +5,10 @@ import (
 	"strings"
 	"time"
 
+	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	identityrepository "github.com/domainry/domainry-identity/internal/domain/identity/repository"
 )
-
-func identityActorCanManageRoleTarget(actor identitymodel.Principal, target identitymodel.IdentityUser) bool {
-	if !actor.Known || strings.TrimSpace(actor.UserID) == "" {
-		return false
-	}
-	if actor.UserID == target.ID {
-		return true
-	}
-	scopes := actor.EffectiveRecordScopes
-	if len(scopes) == 0 {
-		scopes = identityEffectiveRecordScopes(actor.Role.RecordScope)
-	}
-	for _, scope := range scopes {
-		switch scope {
-		case "all_records":
-			return true
-		case "organization":
-			if actor.OrgID != "" && actor.OrgID == target.OrgID {
-				return true
-			}
-		case "organization_and_children":
-			if identityStringSliceContains(actor.OrgScopeIDs, strings.TrimSpace(target.OrgID)) {
-				return true
-			}
-		case "self_and_subordinates":
-			if identityStringSliceContains(actor.ReportingScopeUserIDs, strings.TrimSpace(target.ID)) {
-				return true
-			}
-		}
-	}
-	return false
-}
 
 func (s *IdentityDomainService) listRequestableRoles(ctx context.Context) ([]identitymodel.IdentityRole, error) {
 	roles, err := s.repo.ListIdentityRoles(ctx, s.workspace)
@@ -113,8 +82,23 @@ func (s *IdentityDomainService) ListRoleRequests(ctx context.Context, status str
 	return s.repo.ListIdentityRoleRequests(ctx, s.workspace, strings.TrimSpace(status), strings.TrimSpace(userID))
 }
 
+func (s *IdentityDomainService) ListRoleRequestsWithinDataScope(ctx context.Context, status string, userID string, actor identitymodel.Principal, permissionKey string) ([]identitymodel.IdentityRoleRequest, error) {
+	repository, ok := s.repo.(identityrepository.IdentityRoleRequestDataScopeRepository)
+	if !ok {
+		return nil, internalError("identity role request data-scope repository unavailable", nil)
+	}
+	return repository.ListIdentityRoleRequestsWithinDataScope(ctx, s.workspace, strings.TrimSpace(status), strings.TrimSpace(userID), identitycontract.IdentityPermissionDataScopeFilter(actor, permissionKey))
+}
+
 func (s *IdentityDomainService) ApproveRoleRequest(ctx context.Context, requestID string, reviewerID string, note string, reviewer ...identitymodel.Principal) (identitymodel.IdentityRoleRequest, error) {
-	request, ok, err := s.roleRequestByID(ctx, requestID)
+	var request identitymodel.IdentityRoleRequest
+	var ok bool
+	var err error
+	if len(reviewer) > 0 {
+		request, ok, err = s.roleRequestByIDWithinDataScope(ctx, requestID, reviewer[0], identitycontract.IdentityRoleRequestsApprovePermission)
+	} else {
+		request, ok, err = s.roleRequestByID(ctx, requestID)
+	}
 	if err != nil {
 		return identitymodel.IdentityRoleRequest{}, err
 	}
@@ -172,7 +156,21 @@ func (s *IdentityDomainService) ApproveRoleRequest(ctx context.Context, requestI
 		assignments = append(assignments, assignment)
 		definitionsByRoleID[roleID] = definition
 	}
-	currentAssignments, err := s.repo.ListIdentityUserRoleAssignments(ctx, s.workspace, "")
+	var currentAssignments []identitymodel.IdentityUserRoleAssignment
+	if len(reviewer) > 0 {
+		assignmentRepository, available := s.repo.(identityrepository.IdentityUserRoleAssignmentDataScopeReader)
+		if !available {
+			return identitymodel.IdentityRoleRequest{}, internalError("identity user-role assignment data-scope repository unavailable", nil)
+		}
+		currentAssignments, err = assignmentRepository.ListIdentityUserRoleAssignmentsWithinDataScope(
+			ctx,
+			s.workspace,
+			request.UserID,
+			identitycontract.IdentityPermissionDataScopeFilter(reviewer[0], identitycontract.IdentityRoleRequestsApprovePermission),
+		)
+	} else {
+		currentAssignments, err = s.repo.ListIdentityUserRoleAssignments(ctx, s.workspace, request.UserID)
+	}
 	if err != nil {
 		return identitymodel.IdentityRoleRequest{}, err
 	}
@@ -204,18 +202,47 @@ func (s *IdentityDomainService) ApproveRoleRequest(ctx context.Context, requestI
 	request.ReviewedAt = now
 	request.ReviewNote = strings.TrimSpace(note)
 	request.UpdatedAt = now
-	decisionRepository, ok := s.repo.(identityrepository.IdentityRoleRequestDecisionRepository)
-	if !ok {
-		return identitymodel.IdentityRoleRequest{}, internalError("role request atomic decision repository unavailable", nil)
-	}
-	if err := decisionRepository.ApplyIdentityRoleRequestDecision(ctx, s.workspace, request, assignments, "pending"); err != nil {
-		return identitymodel.IdentityRoleRequest{}, err
+	if len(reviewer) > 0 {
+		decisionRepository, available := s.repo.(identityrepository.IdentityRoleRequestDataScopeRepository)
+		if !available {
+			return identitymodel.IdentityRoleRequest{}, internalError("scoped role request atomic decision repository unavailable", nil)
+		}
+		updated, decisionErr := decisionRepository.ApplyIdentityRoleRequestDecisionWithinDataScope(ctx, s.workspace, request, assignments, "pending", identitycontract.IdentityPermissionDataScopeFilter(reviewer[0], identitycontract.IdentityRoleRequestsApprovePermission))
+		if decisionErr != nil {
+			return identitymodel.IdentityRoleRequest{}, decisionErr
+		}
+		if !updated {
+			return identitymodel.IdentityRoleRequest{}, forbidden("backend.identity.data_scope_denied")
+		}
+	} else {
+		decisionRepository, available := s.repo.(identityrepository.IdentityRoleRequestDecisionRepository)
+		if !available {
+			return identitymodel.IdentityRoleRequest{}, internalError("role request atomic decision repository unavailable", nil)
+		}
+		if err := decisionRepository.ApplyIdentityRoleRequestDecision(ctx, s.workspace, request, assignments, "pending"); err != nil {
+			return identitymodel.IdentityRoleRequest{}, err
+		}
 	}
 	return request, nil
 }
 
 func (s *IdentityDomainService) RejectRoleRequest(ctx context.Context, requestID string, reviewerID string, note string) (identitymodel.IdentityRoleRequest, error) {
-	request, ok, err := s.roleRequestByID(ctx, requestID)
+	return s.rejectRoleRequest(ctx, requestID, reviewerID, note, nil)
+}
+
+func (s *IdentityDomainService) RejectRoleRequestGoverned(ctx context.Context, requestID string, reviewerID string, note string, reviewer identitymodel.Principal) (identitymodel.IdentityRoleRequest, error) {
+	return s.rejectRoleRequest(ctx, requestID, reviewerID, note, &reviewer)
+}
+
+func (s *IdentityDomainService) rejectRoleRequest(ctx context.Context, requestID string, reviewerID string, note string, reviewer *identitymodel.Principal) (identitymodel.IdentityRoleRequest, error) {
+	var request identitymodel.IdentityRoleRequest
+	var ok bool
+	var err error
+	if reviewer != nil {
+		request, ok, err = s.roleRequestByIDWithinDataScope(ctx, requestID, *reviewer, identitycontract.IdentityRoleRequestsRejectPermission)
+	} else {
+		request, ok, err = s.roleRequestByID(ctx, requestID)
+	}
 	if err != nil {
 		return identitymodel.IdentityRoleRequest{}, err
 	}
@@ -231,12 +258,26 @@ func (s *IdentityDomainService) RejectRoleRequest(ctx context.Context, requestID
 	request.ReviewedAt = now
 	request.ReviewNote = strings.TrimSpace(note)
 	request.UpdatedAt = now
-	decisionRepository, ok := s.repo.(identityrepository.IdentityRoleRequestDecisionRepository)
-	if !ok {
-		return identitymodel.IdentityRoleRequest{}, internalError("role request atomic decision repository unavailable", nil)
-	}
-	if err := decisionRepository.ApplyIdentityRoleRequestDecision(ctx, s.workspace, request, nil, "pending"); err != nil {
-		return identitymodel.IdentityRoleRequest{}, err
+	if reviewer != nil {
+		decisionRepository, available := s.repo.(identityrepository.IdentityRoleRequestDataScopeRepository)
+		if !available {
+			return identitymodel.IdentityRoleRequest{}, internalError("scoped role request atomic decision repository unavailable", nil)
+		}
+		updated, decisionErr := decisionRepository.ApplyIdentityRoleRequestDecisionWithinDataScope(ctx, s.workspace, request, nil, "pending", identitycontract.IdentityPermissionDataScopeFilter(*reviewer, identitycontract.IdentityRoleRequestsRejectPermission))
+		if decisionErr != nil {
+			return identitymodel.IdentityRoleRequest{}, decisionErr
+		}
+		if !updated {
+			return identitymodel.IdentityRoleRequest{}, forbidden("backend.identity.data_scope_denied")
+		}
+	} else {
+		decisionRepository, available := s.repo.(identityrepository.IdentityRoleRequestDecisionRepository)
+		if !available {
+			return identitymodel.IdentityRoleRequest{}, internalError("role request atomic decision repository unavailable", nil)
+		}
+		if err := decisionRepository.ApplyIdentityRoleRequestDecision(ctx, s.workspace, request, nil, "pending"); err != nil {
+			return identitymodel.IdentityRoleRequest{}, err
+		}
 	}
 	return request, nil
 }
@@ -247,6 +288,23 @@ func (s *IdentityDomainService) roleRequestByID(ctx context.Context, requestID s
 		return identitymodel.IdentityRoleRequest{}, false, nil
 	}
 	requests, err := s.repo.ListIdentityRoleRequests(ctx, s.workspace, "", "")
+	if err != nil {
+		return identitymodel.IdentityRoleRequest{}, false, err
+	}
+	for _, request := range requests {
+		if request.ID == requestID {
+			return request, true, nil
+		}
+	}
+	return identitymodel.IdentityRoleRequest{}, false, nil
+}
+
+func (s *IdentityDomainService) roleRequestByIDWithinDataScope(ctx context.Context, requestID string, actor identitymodel.Principal, permissionKey string) (identitymodel.IdentityRoleRequest, bool, error) {
+	requestID = strings.TrimSpace(requestID)
+	if requestID == "" {
+		return identitymodel.IdentityRoleRequest{}, false, nil
+	}
+	requests, err := s.ListRoleRequestsWithinDataScope(ctx, "", "", actor, permissionKey)
 	if err != nil {
 		return identitymodel.IdentityRoleRequest{}, false, err
 	}

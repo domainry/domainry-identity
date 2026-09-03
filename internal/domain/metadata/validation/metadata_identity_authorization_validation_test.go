@@ -19,14 +19,8 @@ func TestMetadataIdentityAuthorizationValidatesStructureWithoutMirroringRuntimeO
 				},
 			}},
 			Roles: []identitymodel.RoleSchema{{
-				Key: "operator", RecordScope: "custom",
-				DataPermissions: []identitymodel.DataPermission{{
-					ObjectKey: "runtime_booking", Scope: "custom",
-					Predicate: &identitymodel.IdentityPolicyExpression{
-						Operator: "eq", Path: []identitymodel.IdentityPolicyRelationSegment{{Direction: "forward", RelationFieldKey: "member_id", TargetObjectKey: "runtime_member"}},
-						FieldKey: "name", ValueSource: "actor_claim", ClaimKey: "member_name",
-					},
-				}},
+				Key:              "operator",
+				Permissions:      identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeTargetOrg, "runtime_booking.read"),
 				FieldPermissions: []identitymodel.FieldPermission{{ObjectKey: "runtime_booking", FieldKey: "amount", Read: true}},
 				ReferencePermissions: []identitymodel.ReferencePermission{{
 					SourceObjectKey: "runtime_booking", RelationFieldKey: "member_id", TargetObjectKey: "runtime_member", DisplayFields: []string{"name"},
@@ -44,15 +38,8 @@ func TestMetadataIdentityAuthorizationValidatesStructureWithoutMirroringRuntimeO
 		edit func(*manifestmodel.ManifestSchema)
 		want string
 	}{
-		{name: "data object", edit: func(value *manifestmodel.ManifestSchema) { value.Roles[0].DataPermissions[0].ObjectKey = "" }, want: "data_permissions[0].object_key: is required"},
-		{name: "data scope", edit: func(value *manifestmodel.ManifestSchema) { value.Roles[0].DataPermissions[0].Scope = "unbounded" }, want: `unsupported scope "unbounded"`},
-		{name: "custom predicate", edit: func(value *manifestmodel.ManifestSchema) { value.Roles[0].DataPermissions[0].Predicate = nil }, want: "predicate: is required for custom scope"},
-		{name: "predicate direction", edit: func(value *manifestmodel.ManifestSchema) {
-			value.Roles[0].DataPermissions[0].Predicate.Path[0].Direction = "sideways"
-		}, want: "direction: must be forward or reverse"},
-		{name: "predicate value source", edit: func(value *manifestmodel.ManifestSchema) {
-			value.Roles[0].DataPermissions[0].Predicate.ValueSource = "request"
-		}, want: "value_source: must be literal or actor_claim"},
+		{name: "permission key", edit: func(value *manifestmodel.ManifestSchema) { value.Roles[0].Permissions[0].PermissionKey = "" }, want: "permissions[0].permission_key: is required"},
+		{name: "data scope", edit: func(value *manifestmodel.ManifestSchema) { value.Roles[0].Permissions[0].DataScope = "unbounded" }, want: `unsupported scope "unbounded"`},
 		{name: "field key", edit: func(value *manifestmodel.ManifestSchema) { value.Roles[0].FieldPermissions[0].FieldKey = "" }, want: "field_permissions[0].field_key: is required"},
 		{name: "reference target", edit: func(value *manifestmodel.ManifestSchema) { value.Roles[0].ReferencePermissions[0].TargetObjectKey = "" }, want: "reference_permissions[0].target_object_key: is required"},
 		{name: "reference display", edit: func(value *manifestmodel.ManifestSchema) {

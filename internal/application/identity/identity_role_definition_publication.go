@@ -16,19 +16,17 @@ import (
 // the aggregate it changes.
 type IdentityRoleDefinitionPublisher interface {
 	IdentityRolePermissionDefinition(context.Context, string, identitymodel.Principal) (identitymodel.RoleSchema, identitymodel.IdentityRoleDefinitionRevision, bool, error)
-	IdentityRoleDataScopeDefinition(context.Context, string, identitymodel.Principal) (identitymodel.RoleSchema, identitymodel.IdentityRoleDefinitionRevision, bool, error)
 	IdentityRoleFieldPermissionDefinition(context.Context, string, identitymodel.Principal) (identitymodel.RoleSchema, identitymodel.IdentityRoleDefinitionRevision, bool, error)
 	CreateIdentityRoleDefinition(context.Context, identitymodel.RoleSchema, string, string, identitymodel.Principal) (identitymodel.IdentityRoleDefinitionRevision, error)
 	UpdateIdentityRoleDefinition(context.Context, string, identitymodel.IdentityRoleDefinitionUpdateRequest, identitymodel.Principal) (identitymodel.RoleSchema, identitymodel.IdentityRoleDefinitionRevision, error)
 	DisableIdentityRoleDefinition(context.Context, string, string, string, string, identitymodel.Principal) error
-	PublishIdentityRolePermissions(context.Context, string, []string, string, string, string, identitymodel.Principal) (identitymodel.IdentityRoleDefinitionRevision, error)
-	PublishIdentityRoleDataScopes(context.Context, string, []identitymodel.DataPermission, string, string, string, identitymodel.Principal) (identitymodel.IdentityRoleDefinitionRevision, error)
+	PublishIdentityRolePermissions(context.Context, string, []identitymodel.RolePermission, string, string, string, identitymodel.Principal) (identitymodel.IdentityRoleDefinitionRevision, error)
 	PublishIdentityRoleFieldPermissions(context.Context, string, []identitymodel.FieldPermission, string, string, string, identitymodel.Principal) (identitymodel.IdentityRoleDefinitionRevision, error)
 }
 
 // IdentityRoleDefinitionPublicationService is the single application boundary
 // for direct RoleSchema authoring. RoleSchema remains the only authority for
-// functional, record-scope, and field grants.
+// functional, data, and field grants.
 type IdentityRoleDefinitionPublicationService struct {
 	identity    *IdentityApplicationService
 	permissions *IdentityPermissionCatalogApplicationService
@@ -65,8 +63,11 @@ func (service *IdentityRoleDefinitionPublicationService) PublishPermissions(ctx 
 	if service.permissions == nil {
 		return identitymodel.IdentityRolePermissionConfiguration{}, rolePublicationUnavailable()
 	}
-	requested := normalizedPermissionKeys(request.PermissionKeys)
-	if err := service.permissions.ValidatePermissionSelections(requested); err != nil {
+	requested, valid := identitymodel.NormalizeRolePermissions(request.Permissions)
+	if !valid {
+		return identitymodel.IdentityRolePermissionConfiguration{}, &apperror.AppError{Kind: apperror.KindBadRequest, Code: "backend.identity.role_permission_invalid"}
+	}
+	if err := service.permissions.ValidatePermissionSelections(identitymodel.RolePermissionKeys(requested)); err != nil {
 		return identitymodel.IdentityRolePermissionConfiguration{}, err
 	}
 	revision, err := service.definitions.PublishIdentityRolePermissions(ctx, role.Key, requested, strings.TrimSpace(request.ExpectedSchemaHash), strings.TrimSpace(request.BusinessReason), strings.TrimSpace(request.OperationID), principal)
@@ -74,40 +75,6 @@ func (service *IdentityRoleDefinitionPublicationService) PublishPermissions(ctx 
 		return identitymodel.IdentityRolePermissionConfiguration{}, err
 	}
 	return rolePermissionConfiguration(role, requested, revision), nil
-}
-
-func (service *IdentityRoleDefinitionPublicationService) DataScopeConfiguration(ctx context.Context, roleID string, principal identitymodel.Principal) (identitymodel.IdentityRoleDataScopeConfiguration, error) {
-	role, err := service.operationalRole(ctx, roleID)
-	if err != nil {
-		return identitymodel.IdentityRoleDataScopeConfiguration{}, err
-	}
-	definition, revision, found, err := service.definitions.IdentityRoleDataScopeDefinition(ctx, role.Key, principal)
-	if err != nil {
-		return identitymodel.IdentityRoleDataScopeConfiguration{}, err
-	}
-	if !found {
-		return identitymodel.IdentityRoleDataScopeConfiguration{}, roleDefinitionNotFound(role.Key)
-	}
-	return roleDataScopeConfiguration(role, definition.DataPermissions, revision), nil
-}
-
-func (service *IdentityRoleDefinitionPublicationService) PublishDataScopes(ctx context.Context, roleID string, request identitymodel.IdentityRoleDataScopePublicationRequest, principal identitymodel.Principal) (identitymodel.IdentityRoleDataScopeConfiguration, error) {
-	if err := validateRolePublicationCommand(request.ExpectedSchemaHash, request.BusinessReason, request.OperationID); err != nil {
-		return identitymodel.IdentityRoleDataScopeConfiguration{}, err
-	}
-	role, err := service.operationalRole(ctx, roleID)
-	if err != nil {
-		return identitymodel.IdentityRoleDataScopeConfiguration{}, err
-	}
-	dataPermissions, err := normalizedDataPermissions(request.DataScopes)
-	if err != nil {
-		return identitymodel.IdentityRoleDataScopeConfiguration{}, err
-	}
-	revision, err := service.definitions.PublishIdentityRoleDataScopes(ctx, role.Key, dataPermissions, strings.TrimSpace(request.ExpectedSchemaHash), strings.TrimSpace(request.BusinessReason), strings.TrimSpace(request.OperationID), principal)
-	if err != nil {
-		return identitymodel.IdentityRoleDataScopeConfiguration{}, err
-	}
-	return roleDataScopeConfiguration(role, dataPermissions, revision), nil
 }
 
 func (service *IdentityRoleDefinitionPublicationService) FieldPermissionConfiguration(ctx context.Context, roleID string, principal identitymodel.Principal) (identitymodel.IdentityRoleFieldPermissionConfiguration, error) {
@@ -148,7 +115,10 @@ func (service *IdentityRoleDefinitionPublicationService) Create(ctx context.Cont
 	if err := validateRoleCreateCommand(request.BusinessReason, request.OperationID); err != nil {
 		return identitymodel.IdentityRoleDefinitionConfiguration{}, err
 	}
-	definition := normalizeNewRoleDefinition(request.Role)
+	definition, err := normalizeNewRoleDefinition(request.Role)
+	if err != nil {
+		return identitymodel.IdentityRoleDefinitionConfiguration{}, err
+	}
 	if definition.Key == "" {
 		return identitymodel.IdentityRoleDefinitionConfiguration{}, &apperror.AppError{Kind: apperror.KindBadRequest, Code: "backend.identity.role_key_required"}
 	}
@@ -158,7 +128,7 @@ func (service *IdentityRoleDefinitionPublicationService) Create(ctx context.Cont
 	if service == nil || service.permissions == nil || service.definitions == nil {
 		return identitymodel.IdentityRoleDefinitionConfiguration{}, rolePublicationUnavailable()
 	}
-	if err := service.permissions.ValidatePermissionSelections(definition.Permissions); err != nil {
+	if err := service.permissions.ValidatePermissionSelections(identitymodel.RolePermissionKeys(definition.Permissions)); err != nil {
 		return identitymodel.IdentityRoleDefinitionConfiguration{}, err
 	}
 	revision, err := service.definitions.CreateIdentityRoleDefinition(ctx, definition, strings.TrimSpace(request.BusinessReason), strings.TrimSpace(request.OperationID), principal)
@@ -247,13 +217,15 @@ func validateRolePublicationCommand(expectedSchemaHash, businessReason, operatio
 	return validateRoleCreateCommand(businessReason, operationID)
 }
 
-func normalizeNewRoleDefinition(role identitymodel.RoleSchema) identitymodel.RoleSchema {
+func normalizeNewRoleDefinition(role identitymodel.RoleSchema) (identitymodel.RoleSchema, error) {
 	role.Key = strings.ToLower(strings.TrimSpace(role.Key))
 	role.Name = strings.TrimSpace(role.Name)
 	role.Description = strings.TrimSpace(role.Description)
-	role.Permissions = normalizedPermissionKeys(role.Permissions)
-	role.RecordScope = "none"
-	role.DataPermissions = nil
+	permissions, valid := identitymodel.NormalizeRolePermissions(role.Permissions)
+	if !valid {
+		return identitymodel.RoleSchema{}, &apperror.AppError{Kind: apperror.KindBadRequest, Code: "backend.identity.role_permission_invalid"}
+	}
+	role.Permissions = permissions
 	role.FieldPermissions = nil
 	role.ReferencePermissions = nil
 	role.ExportRules = nil
@@ -273,50 +245,7 @@ func normalizeNewRoleDefinition(role identitymodel.RoleSchema) identitymodel.Rol
 	if role.RiskLevel == "" {
 		role.RiskLevel = identitymodel.IdentityRoleRiskNormal
 	}
-	return role
-}
-
-func normalizedPermissionKeys(values []string) []string {
-	seen := make(map[string]struct{}, len(values))
-	out := make([]string, 0, len(values))
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			continue
-		}
-		if _, duplicate := seen[value]; duplicate {
-			continue
-		}
-		seen[value] = struct{}{}
-		out = append(out, value)
-	}
-	sort.Strings(out)
-	return out
-}
-
-func normalizedDataPermissions(scopes []identitymodel.IdentityDataScopePolicy) ([]identitymodel.DataPermission, error) {
-	byResource := make(map[string]identitymodel.DataPermission, len(scopes))
-	for _, scope := range scopes {
-		resource := strings.TrimSpace(scope.Resource)
-		value := strings.TrimSpace(string(scope.Scope))
-		if resource == "" || value == "" {
-			return nil, &apperror.AppError{Kind: apperror.KindBadRequest, Code: "backend.identity.role_data_scope_invalid"}
-		}
-		if _, duplicate := byResource[resource]; duplicate {
-			return nil, &apperror.AppError{Kind: apperror.KindBadRequest, Code: "backend.identity.role_data_scope_duplicate", Params: map[string]string{"resource": resource}}
-		}
-		byResource[resource] = identitymodel.DataPermission{ObjectKey: resource, Scope: value, AuditDenial: scope.AuditDenial, Predicate: scope.Predicate}
-	}
-	resources := make([]string, 0, len(byResource))
-	for resource := range byResource {
-		resources = append(resources, resource)
-	}
-	sort.Strings(resources)
-	out := make([]identitymodel.DataPermission, 0, len(resources))
-	for _, resource := range resources {
-		out = append(out, byResource[resource])
-	}
-	return out, nil
+	return role, nil
 }
 
 func normalizedFieldPermissions(values []identitymodel.IdentityFieldPermission) ([]identitymodel.FieldPermission, error) {
@@ -348,22 +277,13 @@ func normalizedFieldPermissions(values []identitymodel.IdentityFieldPermission) 
 	return out, nil
 }
 
-func rolePermissionConfiguration(role identitymodel.IdentityRole, keys []string, revision identitymodel.IdentityRoleDefinitionRevision) identitymodel.IdentityRolePermissionConfiguration {
-	assignments := make([]identitymodel.IdentityRolePermissionAssignment, 0, len(keys))
-	for _, key := range normalizedPermissionKeys(keys) {
-		assignments = append(assignments, identitymodel.IdentityRolePermissionAssignment{RoleID: role.ID, PermissionKey: key})
+func rolePermissionConfiguration(role identitymodel.IdentityRole, permissions []identitymodel.RolePermission, revision identitymodel.IdentityRoleDefinitionRevision) identitymodel.IdentityRolePermissionConfiguration {
+	assignments := make([]identitymodel.IdentityRolePermissionAssignment, 0, len(permissions))
+	normalized, _ := identitymodel.NormalizeRolePermissions(permissions)
+	for _, permission := range normalized {
+		assignments = append(assignments, identitymodel.IdentityRolePermissionAssignment{RoleID: role.ID, PermissionKey: permission.PermissionKey, DataScope: permission.DataScope, AuditDenial: permission.AuditDenial})
 	}
 	return identitymodel.IdentityRolePermissionConfiguration{RoleID: role.ID, RoleKey: role.Key, Permissions: assignments, SchemaVersion: revision.SchemaVersion, SchemaHash: revision.SchemaHash}
-}
-
-func roleDataScopeConfiguration(role identitymodel.IdentityRole, values []identitymodel.DataPermission, revision identitymodel.IdentityRoleDefinitionRevision) identitymodel.IdentityRoleDataScopeConfiguration {
-	scopes := make([]identitymodel.IdentityDataScopePolicy, 0, len(values))
-	for _, value := range values {
-		if resource := strings.TrimSpace(value.ObjectKey); resource != "" {
-			scopes = append(scopes, identitymodel.IdentityDataScopePolicy{Resource: resource, Scope: identitymodel.IdentityDataScope(value.Scope), AuditDenial: value.AuditDenial, Predicate: value.Predicate})
-		}
-	}
-	return identitymodel.IdentityRoleDataScopeConfiguration{RoleID: role.ID, RoleKey: role.Key, DataScopes: scopes, SchemaVersion: revision.SchemaVersion, SchemaHash: revision.SchemaHash}
 }
 
 func roleFieldPermissionConfiguration(role identitymodel.IdentityRole, values []identitymodel.FieldPermission, revision identitymodel.IdentityRoleDefinitionRevision) identitymodel.IdentityRoleFieldPermissionConfiguration {

@@ -2,42 +2,7 @@ package contract
 
 import (
 	authoringcontract "github.com/domainry/domainry-identity/internal/domain/authoring"
-	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
-
-func IdentityRoleDataScopeAuthoringCapability() authoringcontract.CapabilityAuthoringDefinition {
-	closed := identityBoolPointer(false)
-	definitions := identityPolicySchemaDefinitions()
-	scope := authoringcontract.CapabilityAuthoringSchema{Type: "object", AdditionalProperties: closed, Required: []string{"resource", "scope"}, Properties: map[string]authoringcontract.CapabilityAuthoringSchema{
-		"resource": {Type: "string", MinLength: identityIntPointer(1)}, "scope": {Type: "string", Enum: identityStringsToAny(identitymodel.AuthoringDataScopeValues())},
-		"audit_denial": {Type: "boolean", Default: false}, "predicate": {Ref: "#/$defs/identity_policy_expression"},
-	}}
-	input := &authoringcontract.CapabilityAuthoringSchema{Schema: "https://json-schema.org/draft/2020-12/schema", Type: "object", AdditionalProperties: closed, Required: []string{"data_scopes"}, Definitions: definitions, Properties: map[string]authoringcontract.CapabilityAuthoringSchema{
-		"data_scopes": {Type: "array", Items: &scope},
-	}}
-	output := &authoringcontract.CapabilityAuthoringSchema{Schema: input.Schema, Type: "array", Items: &scope, Definitions: definitions}
-	return authoringcontract.CapabilityAuthoringDefinition{
-		Key: "identity.role_data_scope", Status: "supported", Lifecycle: "versioned_metadata", Requires: []string{"identity.role", "schema.object"},
-		Parameters:  []authoringcontract.CapabilityAuthoringParameter{{Key: "data_scopes", Type: "array", Required: true, ItemSchema: "identity_data_scope_policy"}},
-		AuditEvents: []string{"metadata_definition.saved"}, ValidationEndpoint: "POST /identity/roles/{roleID}/data-scopes/validate",
-		ConfigurationRoutes: identityRoleMetadataRoutes("POST /identity/roles/{roleID}/data-scopes/validate", "GET /identity/roles/{roleID}/data-scopes"), ResourceKeyPathParameter: "roleID",
-		InputSchema: input, OutputSchema: output,
-		OutputVariables:    []authoringcontract.CapabilityAuthoringOutput{{Name: "data_scopes", JSONPointer: "/", Type: "identity_data_scope_list", VisibleTo: "subsequent_capability_calls"}},
-		ReferenceContracts: []authoringcontract.CapabilityAuthoringReference{{Kind: "role_id", InputJSONPointer: "/@path/roleID", ResolverEndpoint: "GET /tenant-admin/platform-capabilities/references/role_id"}, {Kind: "object_key", InputJSONPointer: "/data_scopes/*/resource", ResolverEndpoint: "GET /tenant-admin/platform-capabilities/references/object_key"}},
-		Execution:          identityPolicyExecution("identity.role_data_scope", "replace_data_scope_set", "identity_role_data_scopes_updated"),
-		Errors: []authoringcontract.CapabilityAuthoringError{
-			{Code: "backend.identity.data_scope_invalid", FieldPath: "data_scopes[].scope", ParameterKeys: []string{"allowed", "actual"}, MessageKey: "backend.identity.data_scope_invalid"},
-			{Code: "backend.identity.data_scope_resource_required", FieldPath: "data_scopes[].resource", MessageKey: "backend.identity.data_scope_resource_required"},
-			{Code: "backend.identity.data_scope_resource_duplicate", FieldPath: "data_scopes[].resource", ParameterKeys: []string{"actual"}, MessageKey: "backend.identity.data_scope_resource_duplicate"},
-			{Code: "backend.identity.data_scope_resource_not_found", FieldPath: "data_scopes[].resource", ParameterKeys: []string{"actual"}, MessageKey: "backend.identity.data_scope_resource_not_found"},
-		},
-		Examples: []authoringcontract.CapabilityAuthoringExample{
-			{Name: "minimal_valid", Value: map[string]any{"data_scopes": []any{map[string]any{"resource": "order", "scope": "all_records"}}}},
-			{Name: "representative", Value: map[string]any{"data_scopes": []any{map[string]any{"resource": "order", "scope": "custom", "audit_denial": true, "predicate": map[string]any{"operator": "eq", "field_key": "owner", "value_source": "actor_claim", "claim_key": "user_id"}}}}},
-			{Name: "invalid_with_repair", Value: map[string]any{"data_scopes": []any{map[string]any{"resource": "order", "scope": "all"}}}, ExpectedErrorCodes: []string{"backend.identity.data_scope_invalid"}},
-		}, Sources: identityPolicyAuthoringSources("IdentityDataScopePolicy", "ValidateRoleDataScopes"),
-	}
-}
 
 func IdentityRoleFieldPermissionAuthoringCapability() authoringcontract.CapabilityAuthoringDefinition {
 	closed := identityBoolPointer(false)

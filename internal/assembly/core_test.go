@@ -114,7 +114,7 @@ func TestColdStartLoadsPublishedRoleDefinitions(t *testing.T) {
 		return core
 	}
 	first := open()
-	payload, _ := json.Marshal(identitymodel.RoleSchema{Key: "member", Name: "Member", Permissions: []string{"membership.read", "booking.create"}, RecordScope: "all_records"})
+	payload, _ := json.Marshal(identitymodel.RoleSchema{Key: "member", Name: "Member", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "membership.read", "booking.create")})
 	empty := ""
 	_, err := first.MetadataStore.ApplyDefinitionMutations(t.Context(), identitymodel.NewSystemScope(identitymodel.SystemScopeInstallation, "test published role"), []metadatamodel.MetadataDefinitionMutation{{
 		Operation: "create", ResourceType: "role", ResourceKey: "member",
@@ -130,7 +130,7 @@ func TestColdStartLoadsPublishedRoleDefinitions(t *testing.T) {
 	second := open()
 	defer second.CloseContext(t.Context())
 	definition, found := second.Identity.PublishedRoleDefinition(t.Context(), "member")
-	if !found || len(definition.Permissions) != 2 || definition.Permissions[0] != "membership.read" {
+	if !found || len(definition.Permissions) != 2 || definition.Permissions[0].PermissionKey != "membership.read" {
 		t.Fatalf("cold-start role definition=%#v found=%v", definition, found)
 	}
 	found = false

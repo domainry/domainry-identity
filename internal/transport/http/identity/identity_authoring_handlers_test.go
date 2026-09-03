@@ -20,12 +20,11 @@ func TestIdentityAuthoringValidationHandlersUseExactCapabilityPayloads(t *testin
 		call func(http.ResponseWriter, *http.Request)
 	}{
 		{name: "role", body: `{"id":"sales_manager","key":"sales_manager","label":"Sales Manager","status":"active"}`, call: handler.validateIdentityRoleAuthoring},
-		{name: "role permission", body: `{"permission_keys":["identity.users.list"]}`, call: handler.validateIdentityRolePermissionAuthoring},
+		{name: "role permission", body: `{"permissions":[{"permission_key":"identity.users.list","data_scope":"all"}]}`, call: handler.validateIdentityRolePermissionAuthoring},
 		{name: "role menu assignment", body: `{"menu_ids":["orders"]}`, call: handler.validateIdentityRoleMenuAssignmentAuthoring},
 		{name: "user", body: `{"id":"sales_manager","name":"Sales Manager","email":"sales.manager@example.com","status":"active"}`, call: handler.validateIdentityUserAuthoring},
 		{name: "organizationUnit", body: `{"id":"sales","code":"SALES","name":"Sales","node_type":"department","status":"active"}`, call: handler.validateIdentityOrganizationUnitAuthoring},
 		{name: "user role assignment", body: `{"role_id":"sales_manager"}`, call: handler.validateIdentityUserRoleAssignmentAuthoring},
-		{name: "role data scopes", body: `{"data_scopes":[]}`, call: handler.validateIdentityRoleDataScopeAuthoring},
 		{name: "role field permissions", body: `{"field_permissions":[]}`, call: handler.validateIdentityRoleFieldPermissionAuthoring},
 		{name: "menu", body: `{"id":"orders","key":"orders","label":"Orders","status":"active"}`, call: handler.validateIdentityMenuAuthoring},
 	}
@@ -52,9 +51,8 @@ func TestIdentityAuthoringValidationHandlersCoverDecodeAndGovernanceErrors(t *te
 		{name: "organizationUnit", body: `{}`, call: handler.validateIdentityOrganizationUnitAuthoring},
 		{name: "user role", body: `{"role_id":"missing"}`, call: handler.validateIdentityUserRoleAssignmentAuthoring},
 		{name: "role", body: `{}`, call: handler.validateIdentityRoleAuthoring},
-		{name: "role permissions", body: `{"permission_keys":["missing"]}`, call: handler.validateIdentityRolePermissionAuthoring},
+		{name: "role permissions", body: `{"permissions":[{"permission_key":"missing","data_scope":"invalid"}]}`, call: handler.validateIdentityRolePermissionAuthoring},
 		{name: "role menus", body: `{"menu_ids":["missing"]}`, call: handler.validateIdentityRoleMenuAssignmentAuthoring},
-		{name: "role scopes", body: `{"data_scopes":[{}]}`, call: handler.validateIdentityRoleDataScopeAuthoring},
 		{name: "role fields", body: `{"field_permissions":[{}]}`, call: handler.validateIdentityRoleFieldPermissionAuthoring},
 		{name: "menu", body: `{"key":"menu","label":"Menu","parent_id":"absent","status":"active"}`, call: handler.validateIdentityMenuAuthoring},
 	}

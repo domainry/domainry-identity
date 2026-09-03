@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/domainry/domainry-foundation/apperror"
+	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	identityrepository "github.com/domainry/domainry-identity/internal/domain/identity/repository"
 )
@@ -44,11 +45,25 @@ func (r *accessReviewFaultRepository) ListIdentityUserRoleAssignments(ctx contex
 	return r.identityScopedRepository.ListIdentityUserRoleAssignments(ctx, workspaceID, userID)
 }
 
+func (r *accessReviewFaultRepository) ListIdentityUserRoleAssignmentsWithinDataScope(ctx context.Context, workspaceID, userID string, scope identitymodel.IdentityDataScopeFilter) ([]identitymodel.IdentityUserRoleAssignment, error) {
+	if r.listAssignmentsErr != nil {
+		return nil, r.listAssignmentsErr
+	}
+	return r.identityScopedRepository.ListIdentityUserRoleAssignmentsWithinDataScope(ctx, workspaceID, userID, scope)
+}
+
 func (r *accessReviewFaultRepository) CreateIdentityAccessReview(ctx context.Context, review identitymodel.IdentityAccessReview) error {
 	if r.createErr != nil {
 		return r.createErr
 	}
 	return r.identityScopedRepository.CreateIdentityAccessReview(ctx, review)
+}
+
+func (r *accessReviewFaultRepository) CreateIdentityAccessReviewWithinDataScope(ctx context.Context, review identitymodel.IdentityAccessReview, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
+	if r.createErr != nil {
+		return false, r.createErr
+	}
+	return r.identityScopedRepository.CreateIdentityAccessReviewWithinDataScope(ctx, review, scope)
 }
 
 func (r *accessReviewFaultRepository) ListIdentityAccessReviews(ctx context.Context, workspaceID, status string) ([]identitymodel.IdentityAccessReview, error) {
@@ -58,6 +73,13 @@ func (r *accessReviewFaultRepository) ListIdentityAccessReviews(ctx context.Cont
 	return r.identityScopedRepository.ListIdentityAccessReviews(ctx, workspaceID, status)
 }
 
+func (r *accessReviewFaultRepository) ListIdentityAccessReviewsWithinDataScope(ctx context.Context, workspaceID, status string, scope identitymodel.IdentityDataScopeFilter) ([]identitymodel.IdentityAccessReview, error) {
+	if r.listReviewsErr != nil {
+		return nil, r.listReviewsErr
+	}
+	return r.identityScopedRepository.ListIdentityAccessReviewsWithinDataScope(ctx, workspaceID, status, scope)
+}
+
 func (r *accessReviewFaultRepository) GetIdentityAccessReviewItem(ctx context.Context, workspaceID, itemID string) (identitymodel.IdentityAccessReviewItem, bool, error) {
 	if r.getItemErr != nil {
 		return identitymodel.IdentityAccessReviewItem{}, false, r.getItemErr
@@ -65,11 +87,25 @@ func (r *accessReviewFaultRepository) GetIdentityAccessReviewItem(ctx context.Co
 	return r.identityScopedRepository.GetIdentityAccessReviewItem(ctx, workspaceID, itemID)
 }
 
+func (r *accessReviewFaultRepository) GetIdentityAccessReviewItemWithinDataScope(ctx context.Context, workspaceID, itemID string, scope identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityAccessReviewItem, bool, error) {
+	if r.getItemErr != nil {
+		return identitymodel.IdentityAccessReviewItem{}, false, r.getItemErr
+	}
+	return r.identityScopedRepository.GetIdentityAccessReviewItemWithinDataScope(ctx, workspaceID, itemID, scope)
+}
+
 func (r *accessReviewFaultRepository) GetIdentityAccessReviewDecisionReceipt(ctx context.Context, workspaceID, itemID, idempotencyKey string) (identitymodel.IdentityAccessReviewDecisionReceipt, bool, error) {
 	if r.getReceiptErr != nil {
 		return identitymodel.IdentityAccessReviewDecisionReceipt{}, false, r.getReceiptErr
 	}
 	return r.identityScopedRepository.GetIdentityAccessReviewDecisionReceipt(ctx, workspaceID, itemID, idempotencyKey)
+}
+
+func (r *accessReviewFaultRepository) GetIdentityAccessReviewDecisionReceiptWithinDataScope(ctx context.Context, workspaceID, itemID, idempotencyKey string, scope identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityAccessReviewDecisionReceipt, bool, error) {
+	if r.getReceiptErr != nil {
+		return identitymodel.IdentityAccessReviewDecisionReceipt{}, false, r.getReceiptErr
+	}
+	return r.identityScopedRepository.GetIdentityAccessReviewDecisionReceiptWithinDataScope(ctx, workspaceID, itemID, idempotencyKey, scope)
 }
 
 func (r *accessReviewFaultRepository) ApplyIdentityAccessReviewDecision(ctx context.Context, mutation identitymodel.IdentityAccessReviewDecisionMutation) (identitymodel.IdentityAccessReviewDecisionReceipt, error) {
@@ -82,9 +118,19 @@ func (r *accessReviewFaultRepository) ApplyIdentityAccessReviewDecision(ctx cont
 	return r.identityScopedRepository.ApplyIdentityAccessReviewDecision(ctx, mutation)
 }
 
+func (r *accessReviewFaultRepository) ApplyIdentityAccessReviewDecisionWithinDataScope(ctx context.Context, mutation identitymodel.IdentityAccessReviewDecisionMutation, scope identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityAccessReviewDecisionReceipt, bool, error) {
+	if r.applyErr != nil {
+		return identitymodel.IdentityAccessReviewDecisionReceipt{}, false, r.applyErr
+	}
+	if r.applyReceipt != nil {
+		return *r.applyReceipt, true, nil
+	}
+	return r.identityScopedRepository.ApplyIdentityAccessReviewDecisionWithinDataScope(ctx, mutation, scope)
+}
+
 func TestAccessReviewCreatesPrioritizedPeriodicQueueAndAuditsDecisionsOnce(t *testing.T) {
 	repository := &identityScopedRepository{
-		users: []identitymodel.IdentityUser{{ID: "user-1", Status: identitymodel.IdentityStatusActive}},
+		users: []identitymodel.IdentityUser{{ID: "user-1", Status: identitymodel.IdentityStatusActive}, {ID: "admin-1", Status: identitymodel.IdentityStatusActive}},
 		roles: []identitymodel.IdentityRole{
 			{ID: "role-admin", Key: "admin", Status: identitymodel.IdentityStatusActive},
 			{ID: "role-reader", Key: "reader", Status: identitymodel.IdentityStatusActive},
@@ -96,8 +142,8 @@ func TestAccessReviewCreatesPrioritizedPeriodicQueueAndAuditsDecisionsOnce(t *te
 	}
 	identity := NewIdentityApplicationService(repository, nil)
 	identity.ReplaceRoleDefinitions([]identitymodel.RoleSchema{
-		{Key: "admin", Permissions: []string{"identity.roles.list"}, RiskLevel: identitymodel.IdentityRoleRiskPrivileged, AssignmentMode: identitymodel.IdentityRoleAssignmentManual},
-		{Key: "reader", Permissions: []string{"crm.member.read"}, RiskLevel: identitymodel.IdentityRoleRiskNormal, AssignmentMode: identitymodel.IdentityRoleAssignmentManual},
+		{Key: "admin", Permissions: identityTestRolePermissions("identity.roles.list"), RiskLevel: identitymodel.IdentityRoleRiskPrivileged, AssignmentMode: identitymodel.IdentityRoleAssignmentManual},
+		{Key: "reader", Permissions: identityTestRolePermissions("crm.member.read"), RiskLevel: identitymodel.IdentityRoleRiskNormal, AssignmentMode: identitymodel.IdentityRoleAssignmentManual},
 	})
 	now := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
 	audits := []string{}
@@ -113,10 +159,10 @@ func TestAccessReviewCreatesPrioritizedPeriodicQueueAndAuditsDecisionsOnce(t *te
 			return "2026-07-24T00:00:00Z", true, nil
 		},
 	})
-	actor := identitymodel.Principal{
+	actor := identityAllowAllRoleAssignments(identitymodel.Principal{
 		Known: true, UserID: "admin-1", WorkspaceID: "workspace",
 		Role: identitymodel.RoleSchema{Permissions: identityAccessReviewTestPermissions(), GrantableRoleKeys: []string{"*"}},
-	}
+	})
 	review, err := service.CreateReview(t.Context(), identitymodel.IdentityAccessReviewCreateRequest{
 		ID: "quarter-2", PeriodStart: "2026-04-01T00:00:00Z", PeriodEnd: "2026-06-30T00:00:00Z", DueAt: "2026-07-31T00:00:00Z",
 	}, actor)
@@ -165,6 +211,7 @@ func TestAccessReviewCreatesPrioritizedPeriodicQueueAndAuditsDecisionsOnce(t *te
 
 func TestAccessReviewDecisionTreatsWorkspaceCapabilityAsOrdinaryExactGrantAndValidatesShape(t *testing.T) {
 	repository := &identityScopedRepository{
+		users:       []identitymodel.IdentityUser{{ID: "admin-1", Status: identitymodel.IdentityStatusActive}},
 		roles:       []identitymodel.IdentityRole{{ID: "role-admin", Key: "admin", Status: identitymodel.IdentityStatusActive}},
 		assignments: []identitymodel.IdentityUserRoleAssignment{{UserID: "admin-1", RoleID: "role-admin", Status: "active"}},
 		reviews: []identitymodel.IdentityAccessReview{{
@@ -174,12 +221,14 @@ func TestAccessReviewDecisionTreatsWorkspaceCapabilityAsOrdinaryExactGrantAndVal
 	}
 	identity := NewIdentityApplicationService(repository, nil)
 	identity.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{
-		Key: "admin", Permissions: []string{"identity.roles.list"}, RiskLevel: identitymodel.IdentityRoleRiskPrivileged, AssignmentMode: identitymodel.IdentityRoleAssignmentManual,
+		Key: "admin", Permissions: identityTestRolePermissions("identity.roles.list"), RiskLevel: identitymodel.IdentityRoleRiskPrivileged, AssignmentMode: identitymodel.IdentityRoleAssignmentManual,
 	}})
 	service := NewIdentityAccessReviewApplicationService(IdentityAccessReviewDependencies{Identity: identity, Now: func() time.Time {
 		return time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
 	}})
-	actor := identitymodel.Principal{Known: true, UserID: "reviewer", WorkspaceID: "workspace", Role: identitymodel.RoleSchema{Permissions: identityAccessReviewTestPermissions(), GrantableRoleKeys: []string{"*"}}}
+	actor := identitymodel.Principal{Known: true, UserID: "reviewer", WorkspaceID: "workspace", Role: identitymodel.RoleSchema{
+		Permissions: identityTestRolePermissions(identitycontract.IdentityAccessReviewItemsDecidePermission), GrantableRoleKeys: []string{"*"},
+	}}
 	if _, err := service.Decide(t.Context(), "item", identitymodel.IdentityAccessReviewDecisionRequest{
 		Decision: identitymodel.IdentityAccessReviewSetExpiry, ExpiresAt: "2026-07-25T11:00:00Z", Reason: "temporary", ExpectedVersion: 1, IdempotencyKey: "expiry",
 	}, actor); apperror.CodeOf(err) != "backend.identity.access_review_expiry_invalid" {
@@ -198,12 +247,12 @@ func TestAccessReviewDecisionTreatsWorkspaceCapabilityAsOrdinaryExactGrantAndVal
 }
 
 func TestAccessReviewRoleReductionMustBeARealPermissionAndRiskReduction(t *testing.T) {
-	current := identitymodel.RoleSchema{Key: "current", Permissions: []string{"read", "write"}, RiskLevel: identitymodel.IdentityRoleRiskElevated}
-	reduced := identitymodel.RoleSchema{Key: "reduced", Permissions: []string{"read"}, RiskLevel: identitymodel.IdentityRoleRiskNormal}
+	current := identitymodel.RoleSchema{Key: "current", Permissions: identityTestRolePermissions("read", "write"), RiskLevel: identitymodel.IdentityRoleRiskElevated}
+	reduced := identitymodel.RoleSchema{Key: "reduced", Permissions: identityTestRolePermissions("read"), RiskLevel: identitymodel.IdentityRoleRiskNormal}
 	if !identityAccessReviewRoleIsReduction(current, reduced) {
 		t.Fatal("strict permission and risk reduction was rejected")
 	}
-	if identityAccessReviewRoleIsReduction(current, identitymodel.RoleSchema{Key: "expanded", Permissions: []string{"read", "delete"}, RiskLevel: identitymodel.IdentityRoleRiskNormal}) {
+	if identityAccessReviewRoleIsReduction(current, identitymodel.RoleSchema{Key: "expanded", Permissions: identityTestRolePermissions("read", "delete"), RiskLevel: identitymodel.IdentityRoleRiskNormal}) {
 		t.Fatal("expanded permissions were treated as a reduction")
 	}
 	if identityAccessReviewRoleIsReduction(current, current) {
@@ -284,7 +333,7 @@ func TestAccessReviewPriorityAssignmentAndReductionEdgeOutcomes(t *testing.T) {
 		})
 	}
 
-	current := identitymodel.RoleSchema{Key: "current", Permissions: []string{"read", "write"}, RiskLevel: identitymodel.IdentityRoleRiskElevated}
+	current := identitymodel.RoleSchema{Key: "current", Permissions: identityTestRolePermissions("read", "write"), RiskLevel: identitymodel.IdentityRoleRiskElevated}
 	reductionTests := []struct {
 		name        string
 		current     identitymodel.RoleSchema
@@ -293,10 +342,10 @@ func TestAccessReviewPriorityAssignmentAndReductionEdgeOutcomes(t *testing.T) {
 	}{
 		{name: "missing current", replacement: identitymodel.RoleSchema{Key: "replacement"}},
 		{name: "missing replacement", current: current},
-		{name: "permission removed", current: current, replacement: identitymodel.RoleSchema{Key: "replacement", Permissions: []string{" read "}, RiskLevel: identitymodel.IdentityRoleRiskElevated}, reduction: true},
-		{name: "risk reduced", current: current, replacement: identitymodel.RoleSchema{Key: "replacement", Permissions: []string{"read", "write"}, RiskLevel: identitymodel.IdentityRoleRiskNormal}, reduction: true},
-		{name: "risk expanded", current: current, replacement: identitymodel.RoleSchema{Key: "replacement", Permissions: []string{"read"}, RiskLevel: identitymodel.IdentityRoleRiskPrivileged}},
-		{name: "permission expanded", current: current, replacement: identitymodel.RoleSchema{Key: "replacement", Permissions: []string{"read", "delete"}, RiskLevel: identitymodel.IdentityRoleRiskNormal}},
+		{name: "permission removed", current: current, replacement: identitymodel.RoleSchema{Key: "replacement", Permissions: identityTestRolePermissions(" read "), RiskLevel: identitymodel.IdentityRoleRiskElevated}, reduction: true},
+		{name: "risk reduced", current: current, replacement: identitymodel.RoleSchema{Key: "replacement", Permissions: identityTestRolePermissions("read", "write"), RiskLevel: identitymodel.IdentityRoleRiskNormal}, reduction: true},
+		{name: "risk expanded", current: current, replacement: identitymodel.RoleSchema{Key: "replacement", Permissions: identityTestRolePermissions("read"), RiskLevel: identitymodel.IdentityRoleRiskPrivileged}},
+		{name: "permission expanded", current: current, replacement: identitymodel.RoleSchema{Key: "replacement", Permissions: identityTestRolePermissions("read", "delete"), RiskLevel: identitymodel.IdentityRoleRiskNormal}},
 	}
 	for _, test := range reductionTests {
 		t.Run(test.name, func(t *testing.T) {
@@ -321,11 +370,12 @@ func TestAccessReviewCreateValidationAndDependencyFailures(t *testing.T) {
 	valid := identitymodel.IdentityAccessReviewCreateRequest{
 		ID: "review", PeriodStart: "2026-04-01T00:00:00Z", PeriodEnd: "2026-06-30T00:00:00Z", DueAt: "2026-07-31T00:00:00Z",
 	}
-	actor := identitymodel.Principal{
+	actor := identityAllowAllRoleAssignments(identitymodel.Principal{
 		Known: true, UserID: "reviewer", WorkspaceID: "workspace",
 		Role: identitymodel.RoleSchema{Permissions: identityAccessReviewTestPermissions(), GrantableRoleKeys: []string{"*"}},
-	}
+	})
 	base := &identityScopedRepository{
+		users: []identitymodel.IdentityUser{{ID: "user", Status: identitymodel.IdentityStatusActive}},
 		roles: []identitymodel.IdentityRole{{ID: "role", Key: "reader", Status: identitymodel.IdentityStatusActive}},
 		assignments: []identitymodel.IdentityUserRoleAssignment{{
 			UserID: "user", RoleID: "role", Status: "active", CreatedAt: now.Format(time.RFC3339),
@@ -333,7 +383,7 @@ func TestAccessReviewCreateValidationAndDependencyFailures(t *testing.T) {
 	}
 	newService := func(repository identityrepository.IdentityRepository, lastUsed IdentityAccessReviewLastUsed) *IdentityAccessReviewApplicationService {
 		identity := NewIdentityApplicationService(repository, nil)
-		identity.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{Key: "reader", Permissions: []string{"read"}}})
+		identity.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{Key: "reader", Permissions: identityTestRolePermissions("read")}})
 		return NewIdentityAccessReviewApplicationService(IdentityAccessReviewDependencies{
 			Identity: identity, LastUsed: lastUsed, Now: func() time.Time { return now },
 		})
@@ -386,6 +436,7 @@ func TestAccessReviewCreateValidationAndDependencyFailures(t *testing.T) {
 	}
 
 	inactive := &identityScopedRepository{
+		users: []identitymodel.IdentityUser{{ID: "one"}, {ID: "two"}, {ID: "three"}},
 		roles: []identitymodel.IdentityRole{
 			{ID: "inactive-role", Key: "inactive", Status: "inactive"},
 			{ID: "active-role", Key: "active", Status: identitymodel.IdentityStatusActive},
@@ -400,6 +451,7 @@ func TestAccessReviewCreateValidationAndDependencyFailures(t *testing.T) {
 		t.Fatalf("empty review error=%v", err)
 	}
 	samePriority := &identityScopedRepository{
+		users: []identitymodel.IdentityUser{{ID: "user-a"}, {ID: "user-b"}},
 		roles: []identitymodel.IdentityRole{{ID: "role", Key: "reader", Status: identitymodel.IdentityStatusActive}},
 		assignments: []identitymodel.IdentityUserRoleAssignment{
 			{UserID: "user-b", RoleID: "role", Status: "active", CreatedAt: now.Format(time.RFC3339)},
@@ -418,10 +470,10 @@ func TestAccessReviewCreateValidationAndDependencyFailures(t *testing.T) {
 
 func TestAccessReviewListScopeAndDecisionEdgeOutcomes(t *testing.T) {
 	now := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
-	actor := identitymodel.Principal{
+	actor := identityAllowAllRoleAssignments(identitymodel.Principal{
 		Known: true, UserID: "reviewer", WorkspaceID: "workspace",
 		Role: identitymodel.RoleSchema{Permissions: identityAccessReviewTestPermissions(), GrantableRoleKeys: []string{"*"}},
-	}
+	})
 	base := &identityScopedRepository{
 		users: []identitymodel.IdentityUser{{ID: "user", Status: identitymodel.IdentityStatusActive}},
 		roles: []identitymodel.IdentityRole{
@@ -436,8 +488,8 @@ func TestAccessReviewListScopeAndDecisionEdgeOutcomes(t *testing.T) {
 	fault := &accessReviewFaultRepository{identityScopedRepository: base}
 	identity := NewIdentityApplicationService(fault, nil)
 	identity.ReplaceRoleDefinitions([]identitymodel.RoleSchema{
-		{Key: "current", Permissions: []string{"read", "write"}, RiskLevel: identitymodel.IdentityRoleRiskElevated},
-		{Key: "reduced", Permissions: []string{"read"}, RiskLevel: identitymodel.IdentityRoleRiskNormal},
+		{Key: "current", Permissions: identityTestRolePermissions("read", "write"), RiskLevel: identitymodel.IdentityRoleRiskElevated},
+		{Key: "reduced", Permissions: identityTestRolePermissions("read"), RiskLevel: identitymodel.IdentityRoleRiskNormal},
 	})
 	service := NewIdentityAccessReviewApplicationService(IdentityAccessReviewDependencies{Identity: identity, Now: func() time.Time { return now }})
 
@@ -560,9 +612,9 @@ func TestAccessReviewListScopeAndDecisionEdgeOutcomes(t *testing.T) {
 	}
 	base.roles = append(base.roles, identitymodel.IdentityRole{ID: "expanded", Key: "expanded", Status: identitymodel.IdentityStatusActive})
 	identity.ReplaceRoleDefinitions([]identitymodel.RoleSchema{
-		{Key: "current", Permissions: []string{"read", "write"}, RiskLevel: identitymodel.IdentityRoleRiskElevated},
-		{Key: "reduced", Permissions: []string{"read"}, RiskLevel: identitymodel.IdentityRoleRiskNormal},
-		{Key: "expanded", Permissions: []string{"read", "write", "delete"}, RiskLevel: identitymodel.IdentityRoleRiskNormal},
+		{Key: "current", Permissions: identityTestRolePermissions("read", "write"), RiskLevel: identitymodel.IdentityRoleRiskElevated},
+		{Key: "reduced", Permissions: identityTestRolePermissions("read"), RiskLevel: identitymodel.IdentityRoleRiskNormal},
+		{Key: "expanded", Permissions: identityTestRolePermissions("read", "write", "delete"), RiskLevel: identitymodel.IdentityRoleRiskNormal},
 	})
 	reduction.ReplacementRoleID, reduction.IdempotencyKey = "expanded", "reduce-expanded"
 	if _, err := service.Decide(t.Context(), "item", reduction, actor); apperror.CodeOf(err) != "backend.identity.access_review_not_a_reduction" {
@@ -609,10 +661,10 @@ func TestAccessReviewScopeDefaults(t *testing.T) {
 	}
 }
 
-func identityAccessReviewTestPermissions() []string {
-	return []string{
+func identityAccessReviewTestPermissions() []identitymodel.RolePermission {
+	return identityTestRolePermissions(
 		"identity.access_reviews.create",
 		"identity.access_reviews.list",
 		"identity.access_review_items.decide",
-	}
+	)
 }

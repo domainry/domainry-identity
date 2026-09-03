@@ -9,7 +9,7 @@ import (
 func TestIdentityModulePrincipalProjectsOnlyCurrentActionPermission(t *testing.T) {
 	source := identitymodel.Principal{
 		Known: true, WorkspaceID: "workspace", UserID: "auditor", AuthorizationRevision: "revision-1",
-		Role: identitymodel.RoleSchema{Key: "auditor", Permissions: []string{"audit.governance.read", "audit.governance.export", "malformed"}},
+		Role: identitymodel.RoleSchema{Key: "auditor", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "audit.governance.read", "audit.governance.export", "malformed")},
 	}
 	principal := identityModuleSDKPrincipal(source, "audit.governance.read")
 	if !principal.HasPermission("audit.governance.read") {
@@ -28,7 +28,7 @@ func TestIdentityModulePrincipalProjectsOnlyCurrentActionPermission(t *testing.T
 
 func TestIdentityModulePrincipalDoesNotExpandAnotherExactPermission(t *testing.T) {
 	principal := identityModuleSDKPrincipal(identitymodel.Principal{
-		Known: true, WorkspaceID: "workspace", UserID: "admin", Role: identitymodel.RoleSchema{Key: "admin", Permissions: []string{"identity.roles.list"}},
+		Known: true, WorkspaceID: "workspace", UserID: "admin", Role: identitymodel.RoleSchema{Key: "admin", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "identity.roles.list")},
 	}, "audit.governance.read")
 	if principal.HasPermission("audit.governance.read") || principal.HasPermission("audit.governance.export") || principal.HasPermission("audit.business.read") {
 		t.Fatalf("another exact Permission expanded into module Action authority=%#v", principal.AccessBundle)

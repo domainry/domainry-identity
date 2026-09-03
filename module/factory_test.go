@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +20,7 @@ import (
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	identitycontracttest "github.com/domainry/domainry-identity-sdk/contracttest"
 	identityhttpapi "github.com/domainry/domainry-identity-sdk/httpapi"
+	identitymodulehost "github.com/domainry/domainry-identity-sdk/modulehost"
 	identitymodule "github.com/domainry/domainry-identity/module"
 )
 
@@ -42,12 +44,85 @@ type testEmbeddedMigrationCall struct {
 }
 
 type testEmbeddedMigrationRegistrar struct {
-	calls []testEmbeddedMigrationCall
+	calls     []testEmbeddedMigrationCall
+	skipApply bool
 }
 
 func (registrar *testEmbeddedMigrationRegistrar) ApplyOwnedMigration(ctx context.Context, owner string, version uint, name, _ string, apply func(context.Context) error) error {
 	registrar.calls = append(registrar.calls, testEmbeddedMigrationCall{owner: owner, version: version, name: name})
+	if registrar.skipApply {
+		return nil
+	}
 	return apply(ctx)
+}
+
+type testModuleMigrationRegistrar struct {
+	database *sql.DB
+	applied  map[string]bool
+	owners   []string
+}
+
+func (r *testModuleMigrationRegistrar) Driver() string { return "sqlite" }
+func (r *testModuleMigrationRegistrar) Schema() string { return "" }
+func (r *testModuleMigrationRegistrar) ApplyOwnedMigrations(ctx context.Context, owner string, migrations []identitymodulehost.SchemaMigration) error {
+	r.owners = append(r.owners, owner)
+	if r.applied == nil {
+		r.applied = map[string]bool{}
+	}
+	for _, migration := range migrations {
+		key := fmt.Sprintf("%s:%d:%s", owner, migration.Version, migration.Name)
+		if r.applied[key] {
+			continue
+		}
+		tx, err := r.database.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		for _, statement := range migration.Statements {
+			if _, err := tx.ExecContext(ctx, statement); err != nil {
+				_ = tx.Rollback()
+				return err
+			}
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		r.applied[key] = true
+	}
+	return nil
+}
+
+func TestFactoryInitializesNestedBindingsWhenHostSkipsAppliedIdentityMigration(t *testing.T) {
+	databasePath := filepath.Join(t.TempDir(), "project.db")
+	db, err := sql.Open("sqlite", databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	application := identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "crm"}
+	modules := &testModuleMigrationRegistrar{database: db}
+	firstMigration := &testEmbeddedMigrationRegistrar{}
+	handle := identitysdk.DatabaseHandle{Pool: db, Driver: "sqlite", FilePath: databasePath, Migrations: firstMigration, ModuleMigrations: modules}
+	first, err := identitymodule.NewFactory(identitymodule.Options{DatabaseDriver: "sqlite", DatabasePath: databasePath}).OpenWithDatabase(t.Context(), application, handle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := first.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+
+	secondMigration := &testEmbeddedMigrationRegistrar{skipApply: true}
+	handle.Migrations = secondMigration
+	second, err := identitymodule.NewFactory(identitymodule.Options{DatabaseDriver: "sqlite", DatabasePath: databasePath}).OpenWithDatabase(t.Context(), application, handle)
+	if err != nil {
+		t.Fatalf("reopen after applied host migration: %v", err)
+	}
+	if err := second.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if len(secondMigration.calls) != 1 || !slices.Contains(modules.owners, "metadata") || !slices.Contains(modules.owners, "audit") {
+		t.Fatalf("outer calls=%#v nested owners=%#v", secondMigration.calls, modules.owners)
+	}
 }
 
 func TestFactoryOpensDirectSDKBinding(t *testing.T) {
@@ -196,9 +271,8 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	roleReceipt, err := rolePublisher.PublishProjectRoles(t.Context(), identitysdk.ProjectRoleCatalog{
 		Application: application,
 		Roles: []identitysdk.ProjectRoleDefinition{{
-			Key: "project_viewer", Name: "Project Viewer", Permissions: []string{"customer.read"}, RecordScope: "all_records",
+			Key: "project_viewer", Name: "Project Viewer", Permissions: []identitysdk.ProjectRolePermission{{PermissionKey: "customer.read", DataScope: identitysdk.DataScopeAll}},
 			Audience: "any", AssignmentMode: "manual", RiskLevel: "normal", SchemaHash: strings.Repeat("a", 64),
-			DataPermissions: json.RawMessage(`[{"object_key":"customer","scope":"all_records"}]`),
 		}},
 	})
 	if err != nil || roleReceipt.Published != 1 || len(roleReceipt.SHA256) != 64 {
@@ -207,9 +281,8 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	repeatedRoleReceipt, err := rolePublisher.PublishProjectRoles(t.Context(), identitysdk.ProjectRoleCatalog{
 		Application: application,
 		Roles: []identitysdk.ProjectRoleDefinition{{
-			Key: "project_viewer", Name: "Project Viewer", Permissions: []string{"customer.read"}, RecordScope: "all_records",
+			Key: "project_viewer", Name: "Project Viewer", Permissions: []identitysdk.ProjectRolePermission{{PermissionKey: "customer.read", DataScope: identitysdk.DataScopeAll}},
 			Audience: "any", AssignmentMode: "manual", RiskLevel: "normal", SchemaHash: strings.Repeat("a", 64),
-			DataPermissions: json.RawMessage(`[{"object_key":"customer","scope":"all_records"}]`),
 		}},
 	})
 	if err != nil || repeatedRoleReceipt != roleReceipt {
@@ -249,7 +322,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		Key: "customer.read", Owner: "application:orders-runtime", SourceKind: "object_action",
 		CapabilityKey: "customer", CapabilityLabel: "Customer", OperationKey: "read", OperationLabel: "Read customers", Label: "Read customers",
 		Exposures:     []actioncontract.Exposure{actioncontract.ExposureTenantAdmin},
-		Authorization: actioncontract.Authorization{Strategy: actioncontract.AuthorizationExactRolePermission},
+		Authorization: actioncontract.Authorization{Strategy: actioncontract.AuthorizationAuthenticated},
 		NonHTTP:       []actioncontract.NonHTTPBinding{{Kind: "rpc", InvocationKey: "customer.read"}},
 		Permission: &actioncontract.PermissionDefinition{
 			Key: "customer.read", Owner: "application:orders-runtime", ResourceKey: "customer", OperationKey: "read",
@@ -428,7 +501,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	}
 	identitycontracttest.Run(t, identitycontracttest.Fixture{
 		Binding: binding, WorkspaceID: "workspace-primary", ApplicationKey: "orders-runtime", Login: "admin@example.com", Password: "Domainry@2026",
-		Resource: "identity.users", Action: "list", DataAction: identitysdk.DataActionRead,
+		Resource: "identity.users", Action: "list", DataAllowed: true,
 	})
 	if err := binding.Close(t.Context()); err != nil {
 		t.Fatal(err)

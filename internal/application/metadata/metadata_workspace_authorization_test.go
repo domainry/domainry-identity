@@ -24,10 +24,10 @@ func (p metadataWorkspaceAuthorizationProbe) LoadManifest(context.Context, ident
 func TestMetadataApplicationAuthorizesWorkspaceBeforeRepositoryAccess(t *testing.T) {
 	calls := 0
 	service := NewMetadataApplicationService(MetadataApplicationDependencies{Repository: metadataWorkspaceAuthorizationProbe{calls: &calls}})
-	principal := identitymodel.Principal{Known: true, Role: identitymodel.RoleSchema{Permissions: []string{
+	principal := identitymodel.Principal{Known: true, Role: identitymodel.RoleSchema{Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll,
 		metadatacontract.MetadataActionMigrationPlanGet,
 		metadatacontract.MetadataActionReload,
-	}}}
+	)}}
 	checks := []func() error{
 		func() error { _, err := service.MetadataMigrationPlan(t.Context(), principal); return err },
 		func() error { _, err := service.ReloadMetadata(t.Context(), principal); return err },

@@ -14,29 +14,14 @@ func (s *IdentityDomainService) ListRolePermissionAssignments(ctx context.Contex
 		return nil, err
 	} else if published {
 		assignments := make([]identitymodel.IdentityRolePermissionAssignment, 0, len(role.Permissions))
-		for _, key := range role.Permissions {
-			if key = strings.TrimSpace(key); key != "" {
-				assignments = append(assignments, identitymodel.IdentityRolePermissionAssignment{RoleID: roleID, PermissionKey: key})
+		for _, permission := range role.Permissions {
+			if key := strings.TrimSpace(permission.PermissionKey); key != "" && permission.DataScope.Valid() {
+				assignments = append(assignments, identitymodel.IdentityRolePermissionAssignment{RoleID: roleID, PermissionKey: key, DataScope: permission.DataScope, AuditDenial: permission.AuditDenial})
 			}
 		}
 		return assignments, nil
 	}
 	return []identitymodel.IdentityRolePermissionAssignment{}, nil
-}
-
-func (s *IdentityDomainService) ListRoleDataScopes(ctx context.Context, roleID string) ([]identitymodel.IdentityDataScopePolicy, error) {
-	if role, published, err := s.publishedRoleForIdentifier(ctx, roleID); err != nil {
-		return nil, err
-	} else if published {
-		values := make([]identitymodel.IdentityDataScopePolicy, 0, len(role.DataPermissions))
-		for _, permission := range role.DataPermissions {
-			if objectKey := strings.TrimSpace(permission.ObjectKey); objectKey != "" {
-				values = append(values, identitymodel.IdentityDataScopePolicy{Resource: objectKey, Scope: identitymodel.IdentityDataScope(permission.Scope), AuditDenial: permission.AuditDenial, Predicate: cloneIdentityPolicyExpression(permission.Predicate)})
-			}
-		}
-		return values, nil
-	}
-	return []identitymodel.IdentityDataScopePolicy{}, nil
 }
 
 func (s *IdentityDomainService) ListRoleFieldPermissions(ctx context.Context, roleID string) ([]identitymodel.IdentityFieldPermission, error) {

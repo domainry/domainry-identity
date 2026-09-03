@@ -234,6 +234,36 @@ func (s *AuthDomainService) ResetPassword(ctx context.Context, workspaceID, user
 	return s.setPassword(ctx, workspaceID, userID, newPassword, mustChangePassword)
 }
 
+func (s *AuthDomainService) ResetPasswordWithinDataScope(ctx context.Context, workspaceID, userID string, newPassword string, mustChangePassword bool, scope identitymodel.IdentityDataScopeFilter) error {
+	userID = strings.TrimSpace(userID)
+	newPassword = strings.TrimSpace(newPassword)
+	if userID == "" {
+		return badRequest("auth.user_required")
+	}
+	if newPassword == "" {
+		return badRequest("auth.password_required")
+	}
+	if err := s.validatePassword(newPassword); err != nil {
+		return err
+	}
+	repository, ok := s.identityStore.(authrepository.AuthPasswordResetDataScopeRepository)
+	if !ok {
+		return internalError("scoped password reset repository unavailable", nil)
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	updated, err := repository.ResetIdentityCredentialWithinDataScope(ctx, workspaceID, userID, string(hash), time.Now().UTC().Format(time.RFC3339), mustChangePassword, scope)
+	if err != nil {
+		return err
+	}
+	if !updated {
+		return forbidden("auth.user_disabled")
+	}
+	return nil
+}
+
 func (s *AuthDomainService) setPassword(ctx context.Context, workspaceID, userID string, password string, mustChangePassword bool) error {
 	if err := s.validatePassword(password); err != nil {
 		return err

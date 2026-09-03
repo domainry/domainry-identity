@@ -28,10 +28,6 @@ func (s *IdentityApplicationService) RoleGovernanceDetail(ctx context.Context, r
 	if err != nil {
 		return identitymodel.IdentityRoleGovernanceDetail{}, err
 	}
-	dataScopes, err := scoped.ListRoleDataScopes(ctx, role.ID)
-	if err != nil {
-		return identitymodel.IdentityRoleGovernanceDetail{}, err
-	}
 	fieldPermissions, err := scoped.ListRoleFieldPermissions(ctx, role.ID)
 	if err != nil {
 		return identitymodel.IdentityRoleGovernanceDetail{}, err
@@ -83,7 +79,7 @@ func (s *IdentityApplicationService) RoleGovernanceDetail(ctx context.Context, r
 	return identitymodel.IdentityRoleGovernanceDetail{
 		Role: role, Definition: definition,
 		PermissionSets: permissionSets, PermissionSetGroups: groups, Guardrails: guardrails,
-		Permissions: permissions, DataScopes: dataScopes, FieldPermissions: fieldPermissions,
+		Permissions: permissions, FieldPermissions: fieldPermissions,
 		ExportRules: definition.ExportRules, Menus: menus, Members: members,
 	}, nil
 }

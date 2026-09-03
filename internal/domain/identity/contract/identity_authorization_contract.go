@@ -18,8 +18,7 @@ func IdentityRoleHasPermissionKey(role identitymodel.RoleSchema, key string) boo
 		return false
 	}
 	for _, permission := range role.Permissions {
-		permission = strings.TrimSpace(permission)
-		if permission == key {
+		if strings.TrimSpace(permission.PermissionKey) == key && permission.DataScope.Valid() {
 			return true
 		}
 	}
@@ -32,19 +31,13 @@ func IdentityRoleAllows(role identitymodel.RoleSchema, objectKey, action string)
 	return IdentityRoleHasPermissionKey(role, strings.TrimSpace(objectKey)+"."+action)
 }
 
-// IdentityRoleAllowsData reports whether the requested Action has a data
-// policy for the object. DataPermission never grants the Action itself;
-// IdentityRoleAllows remains the sole functional authorization authority.
-func IdentityRoleAllowsData(role identitymodel.RoleSchema, objectKey, action string) bool {
-	if IdentityRoleGuardrailDeniesData(role, objectKey, action) {
+// IdentityRoleAllowsData reports whether the exact requested Permission grant
+// carries a valid data scope.
+func IdentityRoleAllowsData(role identitymodel.RoleSchema, resource, action string) bool {
+	if IdentityRoleGuardrailDeniesData(role, resource, action) {
 		return false
 	}
-	for _, permission := range role.DataPermissions {
-		if permission.ObjectKey == objectKey {
-			return true
-		}
-	}
-	return false
+	return len(identitymodel.RolePermissionsForKey(role.Permissions, strings.TrimSpace(resource)+"."+identityNormalizePermissionAction(action))) != 0
 }
 
 // IdentityRoleGuardrailDeniesPermission reports whether any effective
@@ -98,40 +91,25 @@ func identityGuardrailActionMatches(actions []string, action string) bool {
 	return false
 }
 
-// IdentityDataScopeForAction resolves the role's record scope for an action.
-func IdentityDataScopeForAction(role identitymodel.RoleSchema, objectKey, action string) string {
-	if IdentityRoleGuardrailDeniesData(role, objectKey, action) {
-		return "none"
+// IdentityDataScopesForAction returns the scope carried by the exact Permission
+// grant. An empty result means deny.
+func IdentityDataScopesForAction(role identitymodel.RoleSchema, resource, action string) []identitymodel.IdentityDataScope {
+	if IdentityRoleGuardrailDeniesData(role, resource, action) {
+		return nil
 	}
-	return IdentityDataScope(role, objectKey)
-}
-
-// IdentityDataScope resolves a role's record scope for an object. Operation
-// authority is intentionally absent here and comes only from exact Actions.
-func IdentityDataScope(role identitymodel.RoleSchema, objectKey string) string {
-	scopes := map[string]bool{}
-	for _, permission := range role.DataPermissions {
-		if permission.ObjectKey != objectKey {
-			continue
-		}
-		scope := strings.TrimSpace(permission.Scope)
-		if scope == "" {
-			scope = "none"
-		}
-		if scope == "all_records" {
-			return scope
-		}
-		scopes[scope] = true
+	permissions := identitymodel.RolePermissionsForKey(role.Permissions, strings.TrimSpace(resource)+"."+identityNormalizePermissionAction(action))
+	if len(permissions) == 0 {
+		return nil
 	}
-	if len(scopes) == 1 {
-		for scope := range scopes {
-			return scope
+	seen := map[identitymodel.IdentityDataScope]bool{}
+	result := make([]identitymodel.IdentityDataScope, 0, len(permissions))
+	for _, permission := range permissions {
+		if !seen[permission.DataScope] {
+			seen[permission.DataScope] = true
+			result = append(result, permission.DataScope)
 		}
 	}
-	if len(scopes) > 1 {
-		return "custom"
-	}
-	return "none"
+	return result
 }
 
 func identityNormalizePermissionAction(action string) string {

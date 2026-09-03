@@ -11,7 +11,7 @@ import (
 )
 
 func TestValidateDefinitionRequestOwnsEnvelopeAndNormalization(t *testing.T) {
-	admin := identitymodel.Principal{Known: true, Role: identitymodel.RoleSchema{Permissions: []string{metadatacontract.MetadataActionDefinitionValidate}}}
+	admin := identitymodel.Principal{Known: true, Role: identitymodel.RoleSchema{Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, metadatacontract.MetadataActionDefinitionValidate)}}
 	result, err := MetadataValidateDefinitionRequest(t.Context(), " action ", " create_order ", json.RawMessage(`{"key":"create_order"}`), admin,
 		func(_ context.Context, resourceType, resourceKey string, payload json.RawMessage) (json.RawMessage, []metadatamodel.MetadataDefinitionValidationIssue, error) {
 			if resourceType != "action" || resourceKey != "create_order" {
@@ -28,7 +28,7 @@ func TestValidateDefinitionRequestOwnsEnvelopeAndNormalization(t *testing.T) {
 }
 
 func TestValidateDefinitionRequestMapsOwnerErrorsToFieldIssues(t *testing.T) {
-	admin := identitymodel.Principal{Known: true, Role: identitymodel.RoleSchema{Permissions: []string{metadatacontract.MetadataActionDefinitionValidate}}}
+	admin := identitymodel.Principal{Known: true, Role: identitymodel.RoleSchema{Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, metadatacontract.MetadataActionDefinitionValidate)}}
 	result, err := MetadataValidateDefinitionRequest(t.Context(), "field", "order.customer", json.RawMessage(`{}`), admin,
 		func(context.Context, string, string, json.RawMessage) (json.RawMessage, []metadatamodel.MetadataDefinitionValidationIssue, error) {
 			return nil, nil, badRequest("backend.metadata.relation_target_required")

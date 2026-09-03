@@ -290,54 +290,6 @@
       "permission_gates": []
     },
     {
-      "route_key": "identity.data_scopes",
-      "path": "/admin/org/data-scopes",
-      "kind": "page",
-      "navigation": "platform_admin",
-      "surface": "admin_console",
-      "feature_module": "src/features/org/data-scopes.tsx",
-      "required_permissions": [
-        "identity.role_data_scopes.list"
-      ],
-      "required_roles": [],
-      "entrypoint_keys": [],
-      "business_objects": [],
-      "implemented_actions": [],
-      "permission_gated_actions": [],
-      "state_transitions": [],
-      "created_objects": [],
-      "written_fields": [],
-      "acceptance_tests": [
-        "tests/e2e/data-scopes-layout.spec.ts"
-      ],
-      "acceptance_claims": [],
-      "route_purpose": "Manage tenant record data-scope policies.",
-      "shell": "admin_console",
-      "exposure_class": "platform_admin",
-      "high_risk_action_policy": "none",
-      "shell_ownership": "platform_admin",
-      "actor_audiences": [
-        "platform_admin"
-      ],
-      "surface_contract": {
-        "contract_version": "runtime-surface-contract-v2",
-        "subject_kind": "route",
-        "identity": "identity.data_scopes",
-        "surface": "admin_console",
-        "shell": "admin_console",
-        "actor_audiences": [
-          "platform_admin"
-        ],
-        "required_permissions": [
-          "identity.role_data_scopes.list"
-        ],
-        "exposure_class": "platform_admin",
-        "high_risk_action_policy": "none"
-      },
-      "business_loop_step": "",
-      "permission_gates": []
-    },
-    {
       "route_key": "identity.field_permissions",
       "path": "/admin/org/field-permissions",
       "kind": "page",

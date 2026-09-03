@@ -16,7 +16,6 @@ type identityPermissionMenuRepository struct {
 	roleAssignments   []identitymodel.IdentityUserRoleAssignment
 	menus             []identitymodel.IdentityMenu
 	permissionValues  []identitymodel.IdentityRolePermissionAssignment
-	dataScopeValues   []identitymodel.IdentityDataScopePolicy
 	fieldValues       []identitymodel.IdentityFieldPermission
 	menuAssignments   []identitymodel.IdentityRoleMenuAssignment
 	roleErr           error
@@ -25,7 +24,6 @@ type identityPermissionMenuRepository struct {
 	upsertMenuErr     error
 	setRoleMenusErr   error
 	permissionListErr error
-	dataScopeListErr  error
 	fieldListErr      error
 	menuAssignmentErr error
 	upsertedMenu      identitymodel.IdentityMenu
@@ -37,26 +35,24 @@ func TestPublishedRoleAuthorizationReadsUsePublishedRoleSchema(t *testing.T) {
 	repository := &identityPermissionMenuRepository{roles: []identitymodel.IdentityRole{role}}
 	service := identityPermissionMenuService(repository)
 	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{
-		Key: "role", Permissions: []string{"record.read"},
-		DataPermissions:  []identitymodel.DataPermission{{ObjectKey: "record", Scope: "owned"}},
+		Key:              "role",
+		Permissions:      identityTestScopedRolePermissions(identitymodel.IdentityDataScopeOwner, "record.read"),
 		FieldPermissions: []identitymodel.FieldPermission{{ObjectKey: "record", FieldKey: "name", Read: true, Masked: true}},
 	}})
 	permissions, permissionErr := service.ListRolePermissionAssignments(t.Context(), "role")
-	scopes, scopeErr := service.ListRoleDataScopes(t.Context(), "role")
 	fields, fieldErr := service.ListRoleFieldPermissions(t.Context(), "role")
-	if permissionErr != nil || scopeErr != nil || fieldErr != nil || len(permissions) != 1 || permissions[0].PermissionKey != "record.read" || len(scopes) != 1 || scopes[0].Scope != identitymodel.IdentityDataScope("owned") || len(fields) != 1 || !fields[0].Visible || !fields[0].Masked {
-		t.Fatalf("published role reads permissions=%#v scopes=%#v fields=%#v errors=%v/%v/%v", permissions, scopes, fields, permissionErr, scopeErr, fieldErr)
+	if permissionErr != nil || fieldErr != nil || len(permissions) != 1 || permissions[0].PermissionKey != "record.read" || permissions[0].DataScope != identitymodel.IdentityDataScopeOwner || len(fields) != 1 || !fields[0].Visible || !fields[0].Masked {
+		t.Fatalf("published role reads permissions=%#v fields=%#v errors=%v/%v", permissions, fields, permissionErr, fieldErr)
 	}
 	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{
-		Key: "role", Permissions: []string{" ", "record.read"},
-		DataPermissions:  []identitymodel.DataPermission{{ObjectKey: " "}, {ObjectKey: "record"}},
+		Key: "role", Permissions: []identitymodel.RolePermission{
+			{PermissionKey: " ", DataScope: identitymodel.IdentityDataScopeAll},
+			{PermissionKey: "record.read", DataScope: identitymodel.IdentityDataScopeOrg},
+		},
 		FieldPermissions: []identitymodel.FieldPermission{{ObjectKey: " ", FieldKey: "name"}, {ObjectKey: "record", FieldKey: " "}, {ObjectKey: "record", FieldKey: "name", Read: true}},
 	}})
-	if values, err := service.ListRolePermissionAssignments(t.Context(), "role"); err != nil || len(values) != 1 {
+	if values, err := service.ListRolePermissionAssignments(t.Context(), "role"); err != nil || len(values) != 1 || values[0].DataScope != identitymodel.IdentityDataScopeOrg {
 		t.Fatalf("filtered permissions=%+v err=%v", values, err)
-	}
-	if values, err := service.ListRoleDataScopes(t.Context(), "role"); err != nil || len(values) != 1 {
-		t.Fatalf("filtered scopes=%+v err=%v", values, err)
 	}
 	if values, err := service.ListRoleFieldPermissions(t.Context(), "role"); err != nil || len(values) != 1 {
 		t.Fatalf("filtered fields=%+v err=%v", values, err)
@@ -64,7 +60,6 @@ func TestPublishedRoleAuthorizationReadsUsePublishedRoleSchema(t *testing.T) {
 	repository.roleErr = errors.New("roles")
 	for _, read := range []func() error{
 		func() error { _, err := service.ListRolePermissionAssignments(t.Context(), "role"); return err },
-		func() error { _, err := service.ListRoleDataScopes(t.Context(), "role"); return err },
 		func() error { _, err := service.ListRoleFieldPermissions(t.Context(), "role"); return err },
 	} {
 		if err := read(); !errors.Is(err, repository.roleErr) {
@@ -93,9 +88,6 @@ func (r *identityPermissionMenuRepository) SetIdentityRoleMenus(_ context.Contex
 func (r *identityPermissionMenuRepository) ListIdentityRolePermissionAssignments(context.Context, string, string) ([]identitymodel.IdentityRolePermissionAssignment, error) {
 	return r.permissionValues, r.permissionListErr
 }
-func (r *identityPermissionMenuRepository) ListIdentityRoleDataScopes(context.Context, string, string) ([]identitymodel.IdentityDataScopePolicy, error) {
-	return r.dataScopeValues, r.dataScopeListErr
-}
 func (r *identityPermissionMenuRepository) ListIdentityRoleFieldPermissions(context.Context, string, string) ([]identitymodel.IdentityFieldPermission, error) {
 	return r.fieldValues, r.fieldListErr
 }
@@ -116,14 +108,13 @@ func (r *identityPermissionMenuAtomicRepository) RemoveIdentityMenusAtomically(_
 
 func identityPermissionMenuService(repository identityrepository.IdentityRepository) *IdentityDomainService {
 	service := NewIdentityDomainService(repository, []identitymodel.IdentityPermissionDefinition{{Key: "record.read"}, {Key: "record.write"}})
-	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{Key: "role", Name: "Role", RecordScope: "all_records"}})
+	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{Key: "role", Name: "Role"}})
 	return service
 }
 
 func TestIdentityRoleAuthorizationListDelegates(t *testing.T) {
 	repository := &identityPermissionMenuRepository{
 		permissionValues:  []identitymodel.IdentityRolePermissionAssignment{{RoleID: "role", PermissionKey: "record.read"}},
-		dataScopeValues:   []identitymodel.IdentityDataScopePolicy{{Resource: "record"}},
 		fieldValues:       []identitymodel.IdentityFieldPermission{{Resource: "record", Field: "name"}},
 		menuAssignments:   []identitymodel.IdentityRoleMenuAssignment{{RoleID: "role", MenuID: "root"}},
 		permissionListErr: nil,
@@ -131,9 +122,6 @@ func TestIdentityRoleAuthorizationListDelegates(t *testing.T) {
 	service := identityPermissionMenuService(repository)
 	if values, err := service.ListRolePermissionAssignments(t.Context(), "role"); err != nil || len(values) != 0 {
 		t.Fatalf("permissions=%+v err=%v", values, err)
-	}
-	if values, err := service.ListRoleDataScopes(t.Context(), "role"); err != nil || len(values) != 0 {
-		t.Fatalf("scopes=%+v err=%v", values, err)
 	}
 	if values, err := service.ListRoleFieldPermissions(t.Context(), "role"); err != nil || len(values) != 0 {
 		t.Fatalf("fields=%+v err=%v", values, err)

@@ -2,14 +2,15 @@ package database
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/domainry/domainry-audit-sdk/modulehost"
-	ormmigration "github.com/domainry/domainry-orm/migration"
 	"github.com/domainry/domainry-orm/query"
 )
 
@@ -35,6 +36,12 @@ func (s *IdentityStore) ApplyOwnedMigrationsLocked(ctx context.Context, owner st
 		return err
 	}
 	return s.applyOwnedMigrationsLocked(ctx, owner, migrations)
+}
+
+// ApplyNestedOwnedMigrations routes Metadata, Audit, and future nested module
+// migrations through the embedding Runtime when Identity borrows its database.
+func (s *IdentityStore) ApplyNestedOwnedMigrations(ctx context.Context, owner string, migrations []modulehost.SchemaMigration) error {
+	return s.applyNestedOwnedMigrations(ctx, owner, migrations)
 }
 
 func validateOwnedMigrations(owner string, migrations []modulehost.SchemaMigration) error {
@@ -70,7 +77,7 @@ func (s *IdentityStore) applyOwnedMigrationsLocked(ctx context.Context, owner st
 
 func (s *IdentityStore) applyOwnedMigration(ctx context.Context, owner string, migration modulehost.SchemaMigration) error {
 	path := fmt.Sprintf("module_%s_%06d_%s", owner, migration.Version, strings.TrimSpace(migration.Name))
-	checksum := ormmigration.Checksum(migration)
+	checksum := hostModuleMigrationChecksum(migration)
 	renderer := s.BuilderRenderer()
 	queryValue, args, err := query.NewSelectBuilder(renderer, "_schema_migrations").
 		Columns("checksum", "dirty").Where(query.Equal("path", path)).Build()
@@ -100,8 +107,8 @@ func (s *IdentityStore) applyOwnedMigration(ctx context.Context, owner string, m
 		return fmt.Errorf("migration.baseline_mismatch: %s: %w", path, err)
 	}
 	insert, insertArgs, err := query.NewInsertBuilder(renderer, "_schema_migrations").
-		Columns("path", "version", "name", "kind", "checksum", "dirty", "applied_at", "service_version", "duration_ms", "operator", "instance_id", "backup_id").
-		Values(path, fmt.Sprint(migration.Version), migration.Name, "module:"+owner, checksum, !baseline, time.Now().UTC().Format(time.RFC3339), strings.TrimSpace(s.config.ServiceVersion), 0, "module", "identity", "").Build()
+		Columns("path", "version", "name", "kind", "checksum", "dirty", "applied_at", "duration_ms", "operator", "instance_id", "backup_id").
+		Values(path, fmt.Sprint(migration.Version), migration.Name, "module:"+owner, checksum, !baseline, time.Now().UTC().Format(time.RFC3339), 0, "module", "identity", "").Build()
 	if err != nil {
 		return err
 	}
@@ -135,6 +142,30 @@ func (s *IdentityStore) applyOwnedMigration(ctx context.Context, owner string, m
 		return fmt.Errorf("commit module migration %s: %w", path, err)
 	}
 	return nil
+}
+
+// hostModuleMigrationChecksum is byte-identical to the embedding Runtime's
+// host-owned migration ledger identity. Baseline structure is part of that
+// identity even when no DDL statement needs to run, so a nested source module
+// cannot reinterpret an already-applied host migration with a weaker checksum.
+func hostModuleMigrationChecksum(migration modulehost.SchemaMigration) string {
+	hash := sha256.New()
+	_, _ = fmt.Fprintf(hash, "%d\x00%s\x00", migration.Version, strings.TrimSpace(migration.Name))
+	for _, statement := range migration.Statements {
+		_, _ = fmt.Fprintf(hash, "%s\x00", statement)
+	}
+	if migration.Baseline != nil {
+		for _, table := range migration.Baseline.Tables {
+			_, _ = fmt.Fprintf(hash, "table\x00%s\x00", table.Name)
+			for _, column := range table.Columns {
+				_, _ = fmt.Fprintf(hash, "column\x00%s\x00%s\x00%t\x00%t\x00", column.Name, column.Type, column.Nullable, column.PrimaryKey)
+			}
+			for _, index := range table.Indexes {
+				_, _ = fmt.Fprintf(hash, "index\x00%s\x00%t\x00%s\x00", index.Name, index.Unique, strings.Join(index.Columns, ","))
+			}
+		}
+	}
+	return hex.EncodeToString(hash.Sum(nil))
 }
 
 func (s *IdentityStore) proveOwnedMigrationBaseline(ctx context.Context, baseline *modulehost.SchemaBaseline) (bool, error) {

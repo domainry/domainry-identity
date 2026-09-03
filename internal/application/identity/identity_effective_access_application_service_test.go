@@ -2,9 +2,7 @@ package identity
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"strings"
 	"testing"
 
 	"github.com/domainry/domainry-foundation/apperror"
@@ -31,6 +29,13 @@ func (r *effectiveAccessFaultRepository) GetIdentityUser(ctx context.Context, wo
 	return r.identityScopedRepository.GetIdentityUser(ctx, workspaceID, userID)
 }
 
+func (r *effectiveAccessFaultRepository) GetIdentityUserWithinDataScope(ctx context.Context, workspaceID, userID string, scope identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityUser, bool, error) {
+	if r.fail == "user" {
+		return identitymodel.IdentityUser{}, false, r.err
+	}
+	return r.identityScopedRepository.GetIdentityUserWithinDataScope(ctx, workspaceID, userID, scope)
+}
+
 func (r *effectiveAccessFaultRepository) ListIdentityUsers(ctx context.Context, workspaceID string) ([]identitymodel.IdentityUser, error) {
 	r.userCalls++
 	if r.fail == "users" && (r.failUserCall == 0 || r.userCalls == r.failUserCall) {
@@ -53,6 +58,14 @@ func (r *effectiveAccessFaultRepository) ListIdentityUserRoleAssignments(ctx con
 		return nil, r.err
 	}
 	return r.identityScopedRepository.ListIdentityUserRoleAssignments(ctx, workspaceID, userID)
+}
+
+func (r *effectiveAccessFaultRepository) ListIdentityUserRoleAssignmentsWithinDataScope(ctx context.Context, workspaceID, userID string, scope identitymodel.IdentityDataScopeFilter) ([]identitymodel.IdentityUserRoleAssignment, error) {
+	r.assignmentCalls++
+	if r.fail == "assignments" && (r.failAssignmentCall == 0 || r.assignmentCalls == r.failAssignmentCall) {
+		return nil, r.err
+	}
+	return r.identityScopedRepository.ListIdentityUserRoleAssignmentsWithinDataScope(ctx, workspaceID, userID, scope)
 }
 
 type effectiveAccessWorkspaceScope struct {
@@ -97,7 +110,7 @@ func TestIdentityEffectiveAccessSnapshotAndExplainPublishStableGrantSources(t *t
 	identity := NewIdentityApplicationService(repository, executableIdentityPermissionDefinitions("order.read"))
 	identity.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{
 		Key: "operator", PermissionSetKeys: []string{"order_reader"}, GuardrailKeys: []string{"protect_secret"},
-		Permissions: []string{"order.read"}, DataPermissions: []identitymodel.DataPermission{{ObjectKey: "order", Scope: "organization"}},
+		Permissions:      identityTestScopedRolePermissions(identitymodel.IdentityDataScopeOrg, "order.read"),
 		FieldPermissions: []identitymodel.FieldPermission{{ObjectKey: "order", FieldKey: "number", Read: true}},
 		Guardrails: []identitymodel.IdentityGuardrailPolicy{{Key: "protect_secret", FieldRestrictions: []identitymodel.IdentityFieldRestriction{{
 			ObjectKey: "order", FieldKey: "secret", Actions: []string{"read", "export"},
@@ -114,13 +127,10 @@ func TestIdentityEffectiveAccessSnapshotAndExplainPublishStableGrantSources(t *t
 	}}}
 	service := NewIdentityEffectiveAccessApplicationService(IdentityEffectiveAccessDependencies{
 		Identity: identity, Objects: func() []definitionmodel.ObjectSchema { return objects },
-		RecordScopeAllows: func(context.Context, string, string, string, identitymodel.Principal) (bool, error) {
-			return false, nil
-		},
 	})
-	admin := identitymodel.Principal{Known: true, UserID: "admin", WorkspaceID: "workspace-a", Role: identitymodel.RoleSchema{Permissions: []string{
+	admin := identitymodel.Principal{Known: true, UserID: "admin", WorkspaceID: "workspace-a", Role: identitymodel.RoleSchema{Permissions: identityTestRolePermissions(
 		"identity.users.effective_access", "identity.access.explain",
-	}}}
+	)}}
 	snapshot, err := service.Snapshot(t.Context(), "target", admin)
 	if err != nil {
 		t.Fatal(err)
@@ -138,11 +148,6 @@ func TestIdentityEffectiveAccessSnapshotAndExplainPublishStableGrantSources(t *t
 	if err != nil || denied.Allowed || denied.Reason.Code != "guardrail_field_denied" {
 		t.Fatalf("denied explain=%#v err=%v", denied, err)
 	}
-	recordDenied, err := service.Explain(t.Context(), identitymodel.IdentityAccessExplainRequest{UserID: "target", ObjectKey: "order", Action: "read", FieldKey: "number", RecordID: "order-secret-value"}, admin)
-	raw, marshalErr := json.Marshal(recordDenied)
-	if err != nil || marshalErr != nil || recordDenied.Allowed || recordDenied.Reason.Code != "record_scope_denied" || strings.Contains(string(raw), "claim") || strings.Contains(string(raw), "record_data") {
-		t.Fatalf("record explain=%#v raw=%s err=%v marshal=%v", recordDenied, raw, err, marshalErr)
-	}
 }
 
 func TestIdentityEffectiveAccessExplainResolvesNamespacedPermissionAndGrantSource(t *testing.T) {
@@ -153,13 +158,12 @@ func TestIdentityEffectiveAccessExplainResolvesNamespacedPermissionAndGrantSourc
 	}
 	identity := NewIdentityApplicationService(repository, executableIdentityPermissionDefinitions("order.read"))
 	identity.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{
-		Key: "operator", Permissions: []string{"order.read"},
-		DataPermissions: []identitymodel.DataPermission{{ObjectKey: "order", Scope: "all_records"}},
+		Key: "operator", Permissions: identityTestRolePermissions("order.read"),
 	}})
 	service := NewIdentityEffectiveAccessApplicationService(IdentityEffectiveAccessDependencies{
 		Identity: identity, Objects: func() []definitionmodel.ObjectSchema { return []definitionmodel.ObjectSchema{{Key: "order"}} },
 	})
-	admin := identitymodel.Principal{Known: true, UserID: "admin", WorkspaceID: "workspace-a", Role: identitymodel.RoleSchema{Permissions: []string{"identity.access.explain"}}}
+	admin := identitymodel.Principal{Known: true, UserID: "admin", WorkspaceID: "workspace-a", Role: identitymodel.RoleSchema{Permissions: identityTestRolePermissions("identity.access.explain")}}
 	result, err := service.Explain(t.Context(), identitymodel.IdentityAccessExplainRequest{UserID: "target", ObjectKey: "order", Action: "read"}, admin)
 	if err != nil || !result.Allowed || len(result.Reason.Children) < 1 || len(result.Reason.Children[0].Sources) != 1 {
 		t.Fatalf("namespaced permission explain=%#v err=%v", result, err)
@@ -192,8 +196,8 @@ func TestIdentityEffectiveAccessGovernanceSurfacesAndPreview(t *testing.T) {
 	repository := &effectiveAccessFaultRepository{identityScopedRepository: base}
 	identity := NewIdentityApplicationService(repository, executableIdentityPermissionDefinitions("order.read"))
 	identity.ReplaceRoleDefinitions([]identitymodel.RoleSchema{
-		{Key: "operator", Permissions: []string{"order.read"}},
-		{Key: "reader", Permissions: []string{"order.read"}},
+		{Key: "operator", Permissions: identityTestRolePermissions("order.read")},
+		{Key: "reader", Permissions: identityTestRolePermissions("order.read")},
 	})
 	service := NewIdentityEffectiveAccessApplicationService(IdentityEffectiveAccessDependencies{
 		Identity: identity,
@@ -202,9 +206,9 @@ func TestIdentityEffectiveAccessGovernanceSurfacesAndPreview(t *testing.T) {
 	})
 	admin := identitymodel.Principal{
 		Known: true, UserID: "admin", WorkspaceID: "workspace",
-		Role: identitymodel.RoleSchema{Permissions: []string{
+		Role: identitymodel.RoleSchema{Permissions: identityTestRolePermissions(
 			"identity.access.reverse_index", "identity.access.reports", "identity.roles.impact_preview",
-		}},
+		)},
 	}
 	if reverse, err := service.ReverseIndex(t.Context(), admin); err != nil || len(reverse.RolePermissions) == 0 {
 		t.Fatalf("reverse=%#v err=%v", reverse, err)
@@ -220,7 +224,7 @@ func TestIdentityEffectiveAccessGovernanceSurfacesAndPreview(t *testing.T) {
 		t.Fatalf("optional dependencies should remain optional: %v", err)
 	}
 	preview, err := service.PreviewRoleChange(t.Context(), identitymodel.IdentityRoleChangeImpactRequest{
-		Role: identitymodel.RoleSchema{Key: "operator", Permissions: []string{"order.read", "order.write"}},
+		Role: identitymodel.RoleSchema{Key: "operator", Permissions: identityTestRolePermissions("order.read", "order.write")},
 	}, admin)
 	if err != nil || preview.RoleKey != "operator" {
 		t.Fatalf("preview=%#v err=%v", preview, err)
@@ -281,7 +285,7 @@ func TestIdentityEffectiveAccessGovernanceSurfacesAndPreview(t *testing.T) {
 	}
 }
 
-func TestIdentityEffectiveAccessPropagatesRepositoryAndRecordScopeFailures(t *testing.T) {
+func TestIdentityEffectiveAccessPropagatesRepositoryFailures(t *testing.T) {
 	expected := errors.New("injected")
 	base := &identityScopedRepository{
 		users:       []identitymodel.IdentityUser{{ID: "target", Status: identitymodel.IdentityStatusActive}},
@@ -292,15 +296,14 @@ func TestIdentityEffectiveAccessPropagatesRepositoryAndRecordScopeFailures(t *te
 	repository := &effectiveAccessFaultRepository{identityScopedRepository: base, err: expected}
 	identity := NewIdentityApplicationService(repository, executableIdentityPermissionDefinitions("order.read"))
 	identity.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{
-		Key: "operator", Permissions: []string{"order.read"},
-		DataPermissions: []identitymodel.DataPermission{{ObjectKey: "order", Scope: "all_records"}},
+		Key: "operator", Permissions: identityTestRolePermissions("order.read"),
 	}})
 	objects := func() []definitionmodel.ObjectSchema { return []definitionmodel.ObjectSchema{{Key: "order"}} }
 	admin := identitymodel.Principal{
 		Known: true, UserID: "admin", WorkspaceID: "workspace",
-		Role: identitymodel.RoleSchema{Permissions: []string{
+		Role: identitymodel.RoleSchema{Permissions: identityTestRolePermissions(
 			"identity.users.effective_access", "identity.access.explain", "identity.access.reverse_index", "identity.access.reports", "identity.roles.impact_preview",
-		}},
+		)},
 	}
 	service := NewIdentityEffectiveAccessApplicationService(IdentityEffectiveAccessDependencies{Identity: identity, Objects: objects, Actions: func() []definitionmodel.ActionSchema { return nil }})
 
@@ -381,35 +384,6 @@ func TestIdentityEffectiveAccessPropagatesRepositoryAndRecordScopeFailures(t *te
 		t.Fatalf("explain snapshot authorization error=%v", err)
 	}
 
-	nilScope := NewIdentityEffectiveAccessApplicationService(IdentityEffectiveAccessDependencies{Identity: identity, Objects: objects})
-	if _, err := nilScope.Explain(t.Context(), identitymodel.IdentityAccessExplainRequest{
-		UserID: "target", ObjectKey: "order", Action: "read", RecordID: "record",
-	}, admin); err == nil {
-		t.Fatal("nil record scope dependency was accepted")
-	}
-	errorScope := NewIdentityEffectiveAccessApplicationService(IdentityEffectiveAccessDependencies{
-		Identity: identity, Objects: objects,
-		RecordScopeAllows: func(context.Context, string, string, string, identitymodel.Principal) (bool, error) {
-			return false, expected
-		},
-	})
-	if _, err := errorScope.Explain(t.Context(), identitymodel.IdentityAccessExplainRequest{
-		UserID: "target", ObjectKey: "order", Action: "read", RecordID: "record",
-	}, admin); !errors.Is(err, expected) {
-		t.Fatalf("record scope error=%v", err)
-	}
-	allowScope := NewIdentityEffectiveAccessApplicationService(IdentityEffectiveAccessDependencies{
-		Identity: identity, Objects: objects,
-		RecordScopeAllows: func(context.Context, string, string, string, identitymodel.Principal) (bool, error) {
-			return true, nil
-		},
-	})
-	result, err := allowScope.Explain(t.Context(), identitymodel.IdentityAccessExplainRequest{
-		UserID: "target", ObjectKey: "order", Action: "read", RecordID: "record",
-	}, admin)
-	if err != nil || !result.Allowed || result.Reason.Children[len(result.Reason.Children)-1].Code != "record_scope_allowed" {
-		t.Fatalf("allowed record scope=%#v err=%v", result, err)
-	}
 }
 
 func executableIdentityPermissionDefinitions(keys ...string) []identitymodel.IdentityPermissionDefinition {

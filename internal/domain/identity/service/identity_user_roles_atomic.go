@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	identityrepository "github.com/domainry/domainry-identity/internal/domain/identity/repository"
 )
@@ -21,8 +22,13 @@ func (s *IdentityDomainService) UpsertUserWithRoles(
 	if !actor.Known || strings.TrimSpace(actor.UserID) == "" {
 		return forbidden("backend.identity.entitlement_actor_required")
 	}
-	if !identityActorCanManageRoleTarget(actor, user) {
-		return forbidden("backend.identity.role_target_scope_denied")
+	// The request body is mutation intent, not authorization evidence. Resolve
+	// the target through persisted user facts; this endpoint fails closed for a
+	// new ID instead of trusting a client-supplied organization.
+	if _, found, loadErr := s.UserByIDWithinDataScope(ctx, user.ID, actor, identitycontract.IdentityUserRoleAssignmentsAccountUpdatePermission); loadErr != nil {
+		return loadErr
+	} else if !found {
+		return forbidden("backend.identity.data_scope_denied")
 	}
 	prepared := make([]identitymodel.IdentityUserRoleAssignment, 0, len(assignments))
 	definitions := make([]identitymodel.RoleSchema, 0, len(assignments))
@@ -94,9 +100,16 @@ func (s *IdentityDomainService) UpsertUserWithRoles(
 			}
 		}
 	}
-	repository, ok := s.repo.(identityrepository.IdentityUserRoleReconcileRepository)
+	repository, ok := s.repo.(identityrepository.IdentityUserRoleDataScopeReconcileRepository)
 	if !ok {
-		return internalError("atomic identity user role reconcile unavailable", nil)
+		return internalError("scoped atomic identity user role reconcile unavailable", nil)
 	}
-	return repository.UpsertIdentityUserWithRoleAssignmentsAtomically(ctx, s.workspace, user, prepared)
+	updated, err := repository.UpsertIdentityUserWithRoleAssignmentsWithinDataScopeAtomically(ctx, s.workspace, user, prepared, identitycontract.IdentityPermissionDataScopeFilter(actor, identitycontract.IdentityUserRoleAssignmentsAccountUpdatePermission))
+	if err != nil {
+		return err
+	}
+	if !updated {
+		return forbidden("backend.identity.data_scope_denied")
+	}
+	return nil
 }

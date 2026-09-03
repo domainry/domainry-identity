@@ -60,12 +60,9 @@ func (s *IdentityDomainService) BuildPrincipal(ctx context.Context, userID strin
 		activeAssignments = append(activeAssignments, assignment)
 	}
 	role := identitymodel.RoleSchema{
-		Key:         "identity_effective",
-		Name:        "Identity Effective",
-		RecordScope: "none",
+		Key:  "identity_effective",
+		Name: "Identity Effective",
 	}
-	effectiveRecordScopes := []string{}
-	permissionSet := map[string]struct{}{}
 	activeIdentityRoles := []identitymodel.IdentityRole{}
 	activePublishedRoles := []identitymodel.RoleSchema{}
 	for _, identityRole := range roles {
@@ -78,36 +75,20 @@ func (s *IdentityDomainService) BuildPrincipal(ctx context.Context, userID strin
 		}
 		activeIdentityRoles = append(activeIdentityRoles, identityRole)
 		activePublishedRoles = append(activePublishedRoles, published)
-		if scope := strings.TrimSpace(published.RecordScope); scope != "" && scope != "none" {
-			effectiveRecordScopes = append(effectiveRecordScopes, scope)
-		}
-		for _, key := range published.Permissions {
-			if key = strings.TrimSpace(key); key != "" {
-				permissionSet[key] = struct{}{}
-			}
-		}
-		role.DataPermissions = append(role.DataPermissions, published.DataPermissions...)
+		role.Permissions = append(role.Permissions, published.Permissions...)
 		role.FieldPermissions = append(role.FieldPermissions, published.FieldPermissions...)
 		role.ReferencePermissions = append(role.ReferencePermissions, published.ReferencePermissions...)
 		role.ExportRules = append(role.ExportRules, published.ExportRules...)
 		role.GrantableRoleKeys = append(role.GrantableRoleKeys, published.GrantableRoleKeys...)
 		role.Guardrails = append(role.Guardrails, published.Guardrails...)
 	}
-	effectiveRecordScopes = identityUniqueSortedStrings(effectiveRecordScopes)
-	role.RecordScope = identityEffectiveRecordScopeSummary(effectiveRecordScopes)
 	identityCanonicalizeEffectiveRole(&role)
-	role.Permissions = make([]string, 0, len(permissionSet))
-	for key := range permissionSet {
-		role.Permissions = append(role.Permissions, key)
-	}
-	sort.Strings(role.Permissions)
 	role.Permissions = s.identityFilterExecutablePermissions(role.Permissions)
 	role.Permissions = identityFilterGuardrailDeniedPermissions(role)
 	if len(activeIdentityRoles) == 1 {
 		published := activePublishedRoles[0]
 		published.Key = valueOrDefault(published.Key, activeIdentityRoles[0].Key)
 		published.Name = valueOrDefault(published.Name, activeIdentityRoles[0].Label)
-		published.RecordScope = valueOrDefault(published.RecordScope, role.RecordScope)
 		identityCanonicalizeEffectiveRole(&published)
 		published.Permissions = s.identityFilterExecutablePermissions(published.Permissions)
 		published.Permissions = identityFilterGuardrailDeniedPermissions(published)
@@ -123,7 +104,6 @@ func (s *IdentityDomainService) BuildPrincipal(ctx context.Context, userID strin
 		SupportOrgScopeIDs:    supportOrgScopeIDs,
 		ReportingScopeUserIDs: reportingScopeUserIDs,
 		OrganizationPath:      organizationPath,
-		EffectiveRecordScopes: effectiveRecordScopes,
 		Role:                  role,
 		Known:                 true,
 		AuthorizationRevision: authorizationRevision,
@@ -215,54 +195,29 @@ func (s *IdentityDomainService) BuildPrincipalForRole(ctx context.Context, userI
 		SupportOrgScopeIDs:    supportOrgScopeIDs,
 		ReportingScopeUserIDs: reportingScopeUserIDs,
 		OrganizationPath:      organizationPath,
-		EffectiveRecordScopes: identityEffectiveRecordScopes(published.RecordScope),
 		Role:                  published,
 		Known:                 true,
 		AuthorizationRevision: authorizationRevision,
 	}, nil
 }
 
-func identityEffectiveRecordScopes(values ...string) []string {
-	result := make([]string, 0, len(values))
-	for _, value := range values {
-		if value = strings.TrimSpace(value); value != "" && value != "none" {
-			result = append(result, value)
-		}
-	}
-	return identityUniqueSortedStrings(result)
-}
-
-func identityEffectiveRecordScopeSummary(scopes []string) string {
-	if len(scopes) == 0 {
-		return "none"
-	}
-	for _, scope := range scopes {
-		if scope == "all_records" {
-			return scope
-		}
-	}
-	if len(scopes) == 1 {
-		return scopes[0]
-	}
-	return "custom"
-}
-
 // identityFilterExecutablePermissions compiles RoleSchema grants against the
 // current database-backed PermissionDefinition snapshot. RoleSchema remains
 // the grant authority, while an unknown, retired, or administratively disabled
 // Permission can never enter a newly resolved principal.
-func (s *IdentityDomainService) identityFilterExecutablePermissions(keys []string) []string {
+func (s *IdentityDomainService) identityFilterExecutablePermissions(grants []identitymodel.RolePermission) []identitymodel.RolePermission {
 	definitions := s.PermissionDefinitions()
-	filtered := make([]string, 0, len(keys))
-	for _, raw := range keys {
-		key := strings.TrimSpace(raw)
+	filtered := make([]identitymodel.RolePermission, 0, len(grants))
+	for _, grant := range grants {
+		key := strings.TrimSpace(grant.PermissionKey)
 		definition, found := definitions[key]
-		if !found || definition.DefinitionStatus != identitymodel.IdentityPermissionDefinitionActive || !definition.Enabled {
+		if !found || definition.DefinitionStatus != identitymodel.IdentityPermissionDefinitionActive || !definition.Enabled || !grant.DataScope.Valid() {
 			continue
 		}
-		filtered = append(filtered, key)
+		grant.PermissionKey = key
+		filtered = append(filtered, grant)
 	}
-	return identityUniqueSortedStrings(filtered)
+	return identityCanonicalRolePermissions(filtered)
 }
 
 func identityAuthorizationRevision(user identitymodel.IdentityUser, orgScopeIDs, supportOrgScopeIDs, reportingScopeUserIDs []string, assignments []identitymodel.IdentityUserRoleAssignment, roles []identitymodel.IdentityRole, role identitymodel.RoleSchema, permissionStateFingerprint string) string {
@@ -410,14 +365,11 @@ func (s *IdentityDomainService) EffectivePermissionKeys(ctx context.Context, use
 	if !principal.Known {
 		return []string{}, nil
 	}
-	return append([]string(nil), principal.Role.Permissions...), nil
+	return identityUniqueSortedStrings(identitymodel.RolePermissionKeys(principal.Role.Permissions)), nil
 }
 
 func identityCanonicalizeEffectiveRole(role *identitymodel.RoleSchema) {
-	role.Permissions = identityUniqueSortedStrings(role.Permissions)
-	sort.Slice(role.DataPermissions, func(left, right int) bool {
-		return identityCanonicalJSON(role.DataPermissions[left]) < identityCanonicalJSON(role.DataPermissions[right])
-	})
+	role.Permissions = identityCanonicalRolePermissions(role.Permissions)
 	sort.Slice(role.FieldPermissions, func(left, right int) bool {
 		return identityCanonicalJSON(role.FieldPermissions[left]) < identityCanonicalJSON(role.FieldPermissions[right])
 	})
@@ -433,14 +385,43 @@ func identityCanonicalizeEffectiveRole(role *identitymodel.RoleSchema) {
 	role.GrantableRoleKeys = identityUniqueSortedStrings(role.GrantableRoleKeys)
 }
 
-func identityFilterGuardrailDeniedPermissions(role identitymodel.RoleSchema) []string {
-	out := make([]string, 0, len(role.Permissions))
+func identityFilterGuardrailDeniedPermissions(role identitymodel.RoleSchema) []identitymodel.RolePermission {
+	out := make([]identitymodel.RolePermission, 0, len(role.Permissions))
 	for _, permission := range role.Permissions {
-		if !identitycontract.IdentityRoleGuardrailDeniesPermission(role, permission) {
+		if !identitycontract.IdentityRoleGuardrailDeniesPermission(role, permission.PermissionKey) {
 			out = append(out, permission)
 		}
 	}
 	return out
+}
+
+func identityCanonicalRolePermissions(values []identitymodel.RolePermission) []identitymodel.RolePermission {
+	type permissionKey struct {
+		key   string
+		scope identitymodel.IdentityDataScope
+	}
+	byKey := map[permissionKey]identitymodel.RolePermission{}
+	for _, value := range values {
+		value.PermissionKey = strings.TrimSpace(value.PermissionKey)
+		if value.PermissionKey == "" || !value.DataScope.Valid() {
+			continue
+		}
+		key := permissionKey{key: value.PermissionKey, scope: value.DataScope}
+		current := byKey[key]
+		value.AuditDenial = value.AuditDenial || current.AuditDenial
+		byKey[key] = value
+	}
+	result := make([]identitymodel.RolePermission, 0, len(byKey))
+	for _, value := range byKey {
+		result = append(result, value)
+	}
+	sort.Slice(result, func(left, right int) bool {
+		if result[left].PermissionKey == result[right].PermissionKey {
+			return result[left].DataScope < result[right].DataScope
+		}
+		return result[left].PermissionKey < result[right].PermissionKey
+	})
+	return result
 }
 
 func (s *IdentityDomainService) identityRoleAssignmentActive(ctx context.Context, assignment identitymodel.IdentityUserRoleAssignment, now time.Time) (bool, error) {

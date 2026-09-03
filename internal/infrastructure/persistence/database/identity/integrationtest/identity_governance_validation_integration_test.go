@@ -25,20 +25,23 @@ func TestIdentityGovernanceValidationAggregatesCrossReferenceIssuesWithoutPersis
 	validator := identityapplication.NewIdentityGovernanceApplicationService(identity.Repository(), identity.PermissionDefinitions(), func() map[string]definitionmodel.ObjectSchema { return objects })
 	menu := identitymodel.IdentityMenu{ID: "child", Key: "child", ParentID: "missing"}
 	result, err := validator.Validate(t.Context(), identitycontract.IdentityGovernanceValidationRequest{
-		RoleID: "sales", PermissionKeys: []string{"order.read", "order.read", "order.write"},
-		DataScopes:       []identitymodel.IdentityDataScopePolicy{{Resource: "missing", Scope: "invented"}},
+		RoleID: "sales", Permissions: []identitymodel.RolePermission{
+			{PermissionKey: "order.read", DataScope: identitymodel.IdentityDataScopeAll},
+			{PermissionKey: "order.read", DataScope: identitymodel.IdentityDataScopeAll},
+			{PermissionKey: "order.write", DataScope: "invented"},
+		},
 		FieldPermissions: []identitymodel.IdentityFieldPermission{{Resource: "order", Field: "missing", Editable: true}},
 		Menu:             &menu, MenuIDs: []string{"orders", "orders", "missing"},
 	}, identityGovernancePrincipal())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Valid || len(result.Errors) != 9 {
-		t.Fatalf("expected nine aggregated governance issues, got %#v", result)
+	if result.Valid || len(result.Errors) != 8 {
+		t.Fatalf("expected eight aggregated governance issues, got %#v", result)
 	}
 	expectedPaths := map[string]bool{
-		"permission_keys[1]": true, "permission_keys[2]": true,
-		"data_scopes[0].resource": true, "data_scopes[0].scope": true,
+		"permissions[1].permission_key": true, "permissions[2].permission_key": true,
+		"permissions[2].data_scope":  true,
 		"field_permissions[0].field": true, "field_permissions[0].editable": true,
 		"menu.parent_id": true, "menu_ids[1]": true, "menu_ids[2]": true,
 	}
@@ -51,10 +54,6 @@ func TestIdentityGovernanceValidationAggregatesCrossReferenceIssuesWithoutPersis
 	if err != nil || len(permissions) != 0 {
 		t.Fatalf("validation persisted permissions: %#v err=%v", permissions, err)
 	}
-	scopes, err := identity.ListRoleDataScopes(t.Context(), "sales")
-	if err != nil || len(scopes) != 0 {
-		t.Fatalf("validation persisted data scopes: %#v err=%v", scopes, err)
-	}
 }
 
 func TestIdentityGovernanceValidatorAcceptsExistingBusinessReferences(t *testing.T) {
@@ -66,8 +65,7 @@ func TestIdentityGovernanceValidatorAcceptsExistingBusinessReferences(t *testing
 		t.Fatal(err)
 	}
 	result, err := identityapplication.NewIdentityGovernanceApplicationService(identity.Repository(), identity.PermissionDefinitions(), func() map[string]definitionmodel.ObjectSchema { return objects }).Validate(t.Context(), identitycontract.IdentityGovernanceValidationRequest{
-		RoleID: "sales", PermissionKeys: []string{"order.read"}, MenuIDs: []string{"orders"},
-		DataScopes:       []identitymodel.IdentityDataScopePolicy{{Resource: "order", Scope: "all_records"}},
+		RoleID: "sales", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "order.read"), MenuIDs: []string{"orders"},
 		FieldPermissions: []identitymodel.IdentityFieldPermission{{Resource: "order", Field: "name", Visible: true, Editable: true}},
 	}, identityGovernancePrincipal())
 	if err != nil || !result.Valid || len(result.Errors) != 0 {

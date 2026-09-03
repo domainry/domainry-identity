@@ -15,7 +15,7 @@ func TestInstalledActionAuthorizationRequiresPersistedActionAndRoleGrantMatrix(t
 			Key: "booking.cancel",
 		}},
 		Roles: []identitymodel.RoleSchema{
-			{Key: "member", Permissions: []string{"booking.cancel"}},
+			{Key: "member", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "booking.cancel")},
 			{Key: "viewer"},
 		},
 	}
@@ -39,8 +39,8 @@ func TestInstalledActionAuthorizationRequiresPersistedActionAndRoleGrantMatrix(t
 
 	persisted = installed
 	persisted.Roles = []identitymodel.RoleSchema{
-		{Key: "member", Permissions: []string{"booking.cancel"}},
-		{Key: "viewer", Permissions: []string{"booking.cancel"}},
+		{Key: "member", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "booking.cancel")},
+		{Key: "viewer", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "booking.cancel")},
 	}
 	if err := validateInstalledActionAuthorization(installed, persisted); err == nil ||
 		!strings.Contains(err.Error(), `persisted role "viewer" Action permission "booking.cancel"=true, want false`) {

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	identitydatascope "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/datascope"
 	"github.com/domainry/domainry-orm/batch"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 	"github.com/domainry/domainry-orm/query"
@@ -158,14 +159,69 @@ func (s *Store) RemoveUserAssignment(ctx context.Context, workspaceID, userID, r
 	return err
 }
 
+func (s *Store) RemoveUserAssignmentWithinDataScope(ctx context.Context, workspaceID, userID, roleID string, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
+	workspaceID, err := workspace(workspaceID)
+	if err != nil {
+		return false, err
+	}
+	userID, roleID = strings.TrimSpace(userID), strings.TrimSpace(roleID)
+	tx, err := s.backend.DB().BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	candidatePredicates := []query.Predicate{query.Equal("id", userID)}
+	if !scope.Unrestricted {
+		candidatePredicates = append(candidatePredicates, identitydatascope.UserPredicate(scope, query.Column("id"), query.Column("org_id")))
+	}
+	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_users", workspaceID).
+		Columns("id").Where(query.And(candidatePredicates...)).Build()
+	if err != nil {
+		return false, fmt.Errorf("build scoped identity user-role removal candidate: %w", err)
+	}
+	var persistedUserID string
+	if err := tx.QueryRowContext(ctx, statement, arguments...).Scan(&persistedUserID); err == sql.ErrNoRows {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	predicates := []query.Predicate{query.Equal("user_id", userID), query.Equal("role_id", roleID)}
+	if !scope.Unrestricted {
+		predicates = append(predicates, identitydatascope.UserExists(workspaceID, query.TableColumn("_identity_user_role_assignments", "user_id"), scope))
+	}
+	statement, arguments, err = query.NewWorkspaceDeleteBuilder(s.backend.SQLRenderer(), "_identity_user_role_assignments", workspaceID).
+		Where(query.And(predicates...)).Build()
+	if err != nil {
+		return false, fmt.Errorf("build scoped identity user-role assignment delete: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func (s *Store) ListUserAssignments(ctx context.Context, workspaceID, userID string) ([]identitymodel.IdentityUserRoleAssignment, error) {
+	return s.ListUserAssignmentsWithinDataScope(ctx, workspaceID, userID, identitymodel.IdentityDataScopeFilter{Unrestricted: true})
+}
+
+func (s *Store) ListUserAssignmentsWithinDataScope(ctx context.Context, workspaceID, userID string, scope identitymodel.IdentityDataScopeFilter) ([]identitymodel.IdentityUserRoleAssignment, error) {
 	workspaceID, err := workspace(workspaceID)
 	if err != nil {
 		return nil, err
 	}
 	builder := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_user_role_assignments", workspaceID).Columns("user_id", "role_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason", "expires_at", "created_at", "updated_at").OrderBy(query.Ascending("user_id"), query.Ascending("role_id"))
+	predicates := []query.Predicate{}
 	if strings.TrimSpace(userID) != "" {
-		builder.Where(query.Equal("user_id", userID))
+		predicates = append(predicates, query.Equal("user_id", userID))
+	}
+	if !scope.Unrestricted {
+		predicates = append(predicates, identitydatascope.UserExists(workspaceID, query.TableColumn("_identity_user_role_assignments", "user_id"), scope))
+	}
+	if len(predicates) > 0 {
+		builder.Where(query.And(predicates...))
 	}
 	statement, arguments, err := builder.Build()
 	if err != nil {

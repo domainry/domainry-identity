@@ -165,11 +165,6 @@ func (validator *identitySchemaValidator) validateAuthorization() {
 			validator.add(path+".key", "duplicate role %q", roleKey)
 		}
 		seenRoles[roleKey] = true
-		if scope := strings.TrimSpace(role.RecordScope); scope != "" {
-			if _, ok := identitymodel.CanonicalIdentityDataScope(scope); !ok {
-				validator.add(path+".record_scope", "unsupported scope %q", scope)
-			}
-		}
 		for _, conflictRoleKey := range role.ConflictRoleKeys {
 			key := strings.TrimSpace(conflictRoleKey)
 			if key == roleKey {
@@ -178,22 +173,13 @@ func (validator *identitySchemaValidator) validateAuthorization() {
 				validator.add(path+".conflict_role_keys", "references unknown role %q", key)
 			}
 		}
-		for index, permission := range role.DataPermissions {
-			permissionPath := fmt.Sprintf("%s.data_permissions[%d]", path, index)
-			if strings.TrimSpace(permission.ObjectKey) == "" {
-				validator.add(permissionPath+".object_key", "is required")
+		for index, permission := range role.Permissions {
+			permissionPath := fmt.Sprintf("%s.permissions[%d]", path, index)
+			if strings.TrimSpace(permission.PermissionKey) == "" {
+				validator.add(permissionPath+".permission_key", "is required")
 			}
-			if _, ok := identitymodel.CanonicalIdentityDataScope(strings.TrimSpace(permission.Scope)); !ok {
-				validator.add(permissionPath+".scope", "unsupported scope %q", permission.Scope)
-			}
-			if strings.TrimSpace(permission.Scope) == "custom" && permission.Predicate == nil {
-				validator.add(permissionPath+".predicate", "is required for custom scope")
-			}
-			if strings.TrimSpace(permission.Scope) != "custom" && permission.Predicate != nil {
-				validator.add(permissionPath+".predicate", "is only valid for custom scope")
-			}
-			if permission.Predicate != nil {
-				validator.validatePolicyExpression(permissionPath+".predicate", *permission.Predicate, 0)
+			if _, ok := identitymodel.CanonicalIdentityDataScope(strings.TrimSpace(string(permission.DataScope))); !ok {
+				validator.add(permissionPath+".data_scope", "unsupported scope %q", permission.DataScope)
 			}
 		}
 		for index, permission := range role.FieldPermissions {

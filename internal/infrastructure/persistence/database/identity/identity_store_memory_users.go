@@ -10,6 +10,10 @@ import (
 )
 
 func (s *MemoryIdentityStore) ListIdentityUsers(ctx context.Context, workspaceID string) ([]identitymodel.IdentityUser, error) {
+	return s.ListIdentityUsersWithinDataScope(ctx, workspaceID, identitymodel.IdentityDataScopeFilter{Unrestricted: true})
+}
+
+func (s *MemoryIdentityStore) ListIdentityUsersWithinDataScope(ctx context.Context, workspaceID string, scope identitymodel.IdentityDataScopeFilter) ([]identitymodel.IdentityUser, error) {
 	prefix, err := identityWorkspacePrefix(workspaceID)
 	if err != nil {
 		return nil, err
@@ -19,6 +23,9 @@ func (s *MemoryIdentityStore) ListIdentityUsers(ctx context.Context, workspaceID
 	out := make([]identitymodel.IdentityUser, 0, len(s.users))
 	for key, value := range s.users {
 		if !strings.HasPrefix(key, prefix) {
+			continue
+		}
+		if !identityUserMatchesDataScope(value, scope) {
 			continue
 		}
 		out = append(out, cloneIdentityUser(value))
@@ -35,6 +42,10 @@ func (s *MemoryIdentityStore) ListIdentityProfileBindingsByUser(_ context.Contex
 }
 
 func (s *MemoryIdentityStore) GetIdentityUser(ctx context.Context, workspaceID, userID string) (identitymodel.IdentityUser, bool, error) {
+	return s.GetIdentityUserWithinDataScope(ctx, workspaceID, userID, identitymodel.IdentityDataScopeFilter{Unrestricted: true})
+}
+
+func (s *MemoryIdentityStore) GetIdentityUserWithinDataScope(ctx context.Context, workspaceID, userID string, scope identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityUser, bool, error) {
 	key, err := identityWorkspaceKey(workspaceID, userID)
 	if err != nil {
 		return identitymodel.IdentityUser{}, false, err
@@ -42,7 +53,28 @@ func (s *MemoryIdentityStore) GetIdentityUser(ctx context.Context, workspaceID, 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	user, ok := s.users[key]
+	if ok && !identityUserMatchesDataScope(user, scope) {
+		return identitymodel.IdentityUser{}, false, nil
+	}
 	return cloneIdentityUser(user), ok, nil
+}
+
+func identityUserMatchesDataScope(user identitymodel.IdentityUser, scope identitymodel.IdentityDataScopeFilter) bool {
+	scope = scope.Normalized()
+	if scope.Unrestricted {
+		return true
+	}
+	for _, userID := range scope.OwnerUserIDs {
+		if user.ID == userID {
+			return true
+		}
+	}
+	for _, orgID := range scope.OwnerOrgIDs {
+		if user.OrgID == orgID {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *MemoryIdentityStore) UpsertIdentityUser(ctx context.Context, workspaceID string, user identitymodel.IdentityUser) error {
@@ -70,6 +102,31 @@ func (s *MemoryIdentityStore) UpsertIdentityUser(ctx context.Context, workspaceI
 		user.CreatedAt = now
 	}
 	user.UpdatedAt = now
+	s.users[key] = cloneIdentityUser(user)
+	return nil
+}
+
+func (s *MemoryIdentityStore) CreateIdentityUser(_ context.Context, workspaceID string, user identitymodel.IdentityUser) error {
+	key, err := identityWorkspaceKey(workspaceID, user.ID)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(user.ID) == "" {
+		return fmt.Errorf("user id is required")
+	}
+	if user.Status == "" {
+		user.Status = identitymodel.IdentityStatusActive
+	}
+	if user.AccountType == "" {
+		user.AccountType = identitymodel.IdentityAccountHuman
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.users[key]; exists {
+		return fmt.Errorf("identity user %q already exists", user.ID)
+	}
+	now := nowString()
+	user.Version, user.CreatedAt, user.UpdatedAt = 1, now, now
 	s.users[key] = cloneIdentityUser(user)
 	return nil
 }
@@ -123,6 +180,41 @@ func (s *MemoryIdentityStore) UpsertIdentityUsersAtomically(ctx context.Context,
 		s.users[key] = cloneIdentityUser(user)
 	}
 	return nil
+}
+
+func (s *MemoryIdentityStore) UpdateIdentityUsersWithinDataScopeAtomically(_ context.Context, workspaceID string, users []identitymodel.IdentityUser, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
+	prefix, err := identityWorkspacePrefix(workspaceID)
+	if err != nil {
+		return false, err
+	}
+	for _, user := range users {
+		if strings.TrimSpace(user.ID) == "" {
+			return false, fmt.Errorf("user id is required")
+		}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, user := range users {
+		existing, ok := s.users[prefix+user.ID]
+		if !ok || !identityUserMatchesDataScope(existing, scope) {
+			return false, nil
+		}
+	}
+	now := nowString()
+	for _, user := range users {
+		existing := s.users[prefix+user.ID]
+		if user.Status == "" {
+			user.Status = identitymodel.IdentityStatusActive
+		}
+		if user.AccountType == "" {
+			user.AccountType = identitymodel.IdentityAccountHuman
+		}
+		user.Version = existing.Version + 1
+		user.CreatedAt = existing.CreatedAt
+		user.UpdatedAt = now
+		s.users[prefix+user.ID] = cloneIdentityUser(user)
+	}
+	return true, nil
 }
 
 func (s *MemoryIdentityStore) UpsertIdentityUserWithRoleAssignmentsAtomically(
@@ -179,20 +271,84 @@ func (s *MemoryIdentityStore) UpsertIdentityUserWithRoleAssignmentsAtomically(
 	return nil
 }
 
+func (s *MemoryIdentityStore) UpsertIdentityUserWithRoleAssignmentsWithinDataScopeAtomically(
+	_ context.Context,
+	workspaceID string,
+	user identitymodel.IdentityUser,
+	assignments []identitymodel.IdentityUserRoleAssignment,
+	scope identitymodel.IdentityDataScopeFilter,
+) (bool, error) {
+	prefix, err := identityWorkspacePrefix(workspaceID)
+	if err != nil {
+		return false, err
+	}
+	if user.ID == "" {
+		return false, fmt.Errorf("user id is required")
+	}
+	for _, assignment := range assignments {
+		if assignment.UserID != user.ID || assignment.RoleID == "" {
+			return false, fmt.Errorf("user id and role id are required")
+		}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := prefix + user.ID
+	existing, found := s.users[key]
+	if !found || !identityUserMatchesDataScope(existing, scope) {
+		return false, nil
+	}
+	if user.Status == "" {
+		user.Status = identitymodel.IdentityStatusActive
+	}
+	if user.AccountType == "" {
+		user.AccountType = identitymodel.IdentityAccountHuman
+	}
+	now := nowString()
+	user.Version, user.CreatedAt, user.UpdatedAt = existing.Version+1, existing.CreatedAt, now
+	for assignmentKey, assignment := range s.userRoles {
+		if strings.HasPrefix(assignmentKey, prefix) && assignment.UserID == user.ID {
+			delete(s.userRoles, assignmentKey)
+		}
+	}
+	for _, assignment := range assignments {
+		if assignment.Source == "" {
+			assignment.Source = "manual"
+		}
+		if assignment.Status == "" {
+			assignment.Status = "active"
+		}
+		s.userRoles[prefix+assignment.UserID+"\x00"+assignment.RoleID] = assignment
+	}
+	s.users[key] = cloneIdentityUser(user)
+	return true, nil
+}
+
 func cloneIdentityUser(user identitymodel.IdentityUser) identitymodel.IdentityUser {
 	return user
 }
 
 func (s *MemoryIdentityStore) RemoveIdentityUser(ctx context.Context, workspaceID, userID string) error {
-	key, err := identityWorkspaceKey(workspaceID, userID)
+	removed, err := s.RemoveIdentityUserWithinDataScope(ctx, workspaceID, userID, identitymodel.IdentityDataScopeFilter{Unrestricted: true})
 	if err != nil {
 		return err
+	}
+	if !removed {
+		return fmt.Errorf("identity user %q not found", userID)
+	}
+	return nil
+}
+
+func (s *MemoryIdentityStore) RemoveIdentityUserWithinDataScope(_ context.Context, workspaceID, userID string, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
+	key, err := identityWorkspaceKey(workspaceID, userID)
+	if err != nil {
+		return false, err
 	}
 	prefix, _ := identityWorkspacePrefix(workspaceID)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.users[key]; !ok {
-		return fmt.Errorf("identity user %q not found", userID)
+	user, ok := s.users[key]
+	if !ok || !identityUserMatchesDataScope(user, scope) {
+		return false, nil
 	}
 	delete(s.users, key)
 	delete(s.credentials, key)
@@ -211,23 +367,34 @@ func (s *MemoryIdentityStore) RemoveIdentityUser(ctx context.Context, workspaceI
 			delete(s.refreshTokens, tokenID)
 		}
 	}
-	return nil
+	return true, nil
 }
 
 func (s *MemoryIdentityStore) SetIdentityUserStatus(ctx context.Context, workspaceID, userID string, status identitymodel.IdentityStatus) error {
-	key, err := identityWorkspaceKey(workspaceID, userID)
+	updated, err := s.SetIdentityUserStatusWithinDataScope(ctx, workspaceID, userID, status, identitymodel.IdentityDataScopeFilter{Unrestricted: true})
 	if err != nil {
 		return err
+	}
+	if !updated {
+		return fmt.Errorf("identity user %q not found", userID)
+	}
+	return nil
+}
+
+func (s *MemoryIdentityStore) SetIdentityUserStatusWithinDataScope(_ context.Context, workspaceID, userID string, status identitymodel.IdentityStatus, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
+	key, err := identityWorkspaceKey(workspaceID, userID)
+	if err != nil {
+		return false, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	user, ok := s.users[key]
-	if !ok {
-		return fmt.Errorf("identity user %q not found", userID)
+	if !ok || !identityUserMatchesDataScope(user, scope) {
+		return false, nil
 	}
 	user.Status = status
 	user.Version++
 	user.UpdatedAt = nowString()
 	s.users[key] = user
-	return nil
+	return true, nil
 }

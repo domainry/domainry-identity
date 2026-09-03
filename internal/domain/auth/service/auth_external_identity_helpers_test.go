@@ -69,7 +69,7 @@ func TestExternalAutoAssignableRoleUsesDeclaredPolicy(t *testing.T) {
 		want bool
 	}{
 		{role: identitymodel.RoleSchema{}, want: true},
-		{role: identitymodel.RoleSchema{Key: "admin", Permissions: []string{"identity.roles.list"}}, want: true},
+		{role: identitymodel.RoleSchema{Key: "admin", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "identity.roles.list")}, want: true},
 		{role: identitymodel.RoleSchema{AssignmentMode: identitymodel.IdentityRoleAssignmentSystemManaged}},
 		{role: identitymodel.RoleSchema{Audience: identitymodel.IdentityRoleAudienceBusiness}},
 		{role: identitymodel.RoleSchema{RiskLevel: identitymodel.IdentityRoleRiskPrivileged}},

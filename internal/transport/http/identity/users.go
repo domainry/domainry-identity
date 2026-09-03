@@ -17,7 +17,7 @@ type identityUserProvisioningResponse struct {
 }
 
 func (h *IdentityHandler) listIdentityUsers(w http.ResponseWriter, r *http.Request) {
-	users, err := h.users.ListUsers(r.Context())
+	users, err := h.users.ListUsersWithinDataScope(r.Context(), h.principal(r), "identity.users.list")
 	if err != nil {
 		h.writeServiceError(w, r, err)
 		return
@@ -26,7 +26,7 @@ func (h *IdentityHandler) listIdentityUsers(w http.ResponseWriter, r *http.Reque
 }
 
 func (h *IdentityHandler) searchIdentityUsers(w http.ResponseWriter, r *http.Request) {
-	page, err := h.users.SearchUsers(r.Context(), identityListQuery(r))
+	page, err := h.users.SearchUsersWithinDataScope(r.Context(), identityListQuery(r), h.principal(r), "identity.users.search")
 	if err != nil {
 		h.writeServiceError(w, r, err)
 		return
@@ -36,7 +36,7 @@ func (h *IdentityHandler) searchIdentityUsers(w http.ResponseWriter, r *http.Req
 
 func (h *IdentityHandler) searchIdentityUserDirectory(w http.ResponseWriter, r *http.Request) {
 	if batch, ok := h.userSecurity.(IdentityUserSecurityBatch); ok {
-		page, err := h.users.SearchUserDirectoryBatch(r.Context(), identityListQuery(r), func(ctx context.Context, workspaceID string, userIDs []string) (map[string]identityapplication.IdentityUserDirectorySecuritySummary, error) {
+		page, err := h.users.SearchUserDirectoryBatchWithinDataScope(r.Context(), identityListQuery(r), h.principal(r), "identity.users.directory_search", func(ctx context.Context, workspaceID string, userIDs []string) (map[string]identityapplication.IdentityUserDirectorySecuritySummary, error) {
 			profiles, readErr := batch.UserDirectorySecurityProfiles(ctx, workspaceID, userIDs)
 			if readErr != nil {
 				return nil, readErr
@@ -60,7 +60,7 @@ func (h *IdentityHandler) searchIdentityUserDirectory(w http.ResponseWriter, r *
 		h.writeJSON(w, http.StatusOK, page)
 		return
 	}
-	page, err := h.users.SearchUserDirectory(r.Context(), identityListQuery(r), func(ctx context.Context, workspaceID, userID string) (identityapplication.IdentityUserDirectorySecuritySummary, error) {
+	page, err := h.users.SearchUserDirectoryWithinDataScope(r.Context(), identityListQuery(r), h.principal(r), "identity.users.directory_search", func(ctx context.Context, workspaceID, userID string) (identityapplication.IdentityUserDirectorySecuritySummary, error) {
 		profile, readErr := h.userSecurity.UserSecurityProfile(ctx, workspaceID, userID)
 		if readErr != nil {
 			return identityapplication.IdentityUserDirectorySecuritySummary{}, readErr
@@ -82,7 +82,7 @@ func (h *IdentityHandler) searchIdentityUserDirectory(w http.ResponseWriter, r *
 }
 
 func (h *IdentityHandler) getIdentityUser(w http.ResponseWriter, r *http.Request) {
-	user, found, err := h.users.UserByID(r.Context(), strings.TrimSpace(r.PathValue("userID")))
+	user, found, err := h.users.UserByIDWithinDataScope(r.Context(), strings.TrimSpace(r.PathValue("userID")), h.principal(r), "identity.users.get")
 	if err != nil {
 		h.writeServiceError(w, r, err)
 		return
@@ -100,23 +100,12 @@ func (h *IdentityHandler) createIdentityUser(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	user.ID = strings.TrimSpace(user.ID)
-	if _, found, err := h.users.UserByID(r.Context(), user.ID); err != nil {
-		h.writeServiceError(w, r, err)
-		return
-	} else if found {
-		h.writeServiceError(w, r, apperror.New(
-			apperror.KindConflict,
-			"backend.identity.user_already_exists",
-			nil,
-			map[string]string{"user": user.ID},
-		))
-		return
-	}
-	if err := h.users.UpsertUser(r.Context(), user); err != nil {
+	principal := h.principal(r)
+	if err := h.users.CreateUserWithinDataScope(r.Context(), user, principal, "identity.users.create"); err != nil {
 		h.writeServiceError(w, r, err)
 		return
 	}
-	persisted, found, err := h.users.UserByID(r.Context(), user.ID)
+	persisted, found, err := h.users.UserByIDWithinDataScope(r.Context(), user.ID, principal, "identity.users.create")
 	if err != nil {
 		h.writeServiceError(w, r, err)
 		return
@@ -163,13 +152,15 @@ func (h *IdentityHandler) updateIdentityUser(w http.ResponseWriter, r *http.Requ
 	user.ID = valueOrDefault(strings.TrimSpace(r.PathValue("userID")), user.ID)
 	principal := h.principal(r)
 	result, err := h.executeIdentityAuthoringUpsert(r.Context(), "identity.user", user.ID, r.Header.Get("Builder-Task-ID"), r.Header.Get("Idempotency-Key"), r.Header.Get("Expected-Schema-Hash"), user, principal,
-		func(ctx context.Context) (any, bool, error) { return h.users.UserByID(ctx, user.ID) },
+		func(ctx context.Context) (any, bool, error) {
+			return h.users.UserByIDWithinDataScope(ctx, user.ID, principal, "identity.users.update")
+		},
 		func(ctx context.Context) (any, error) {
-			if executeErr := h.users.UpsertUser(ctx, user); executeErr != nil {
+			if executeErr := h.users.UpdateUserWithinDataScope(ctx, user, principal, "identity.users.update"); executeErr != nil {
 				return nil, executeErr
 			}
 			h.appendIdentityMutationAudit(r, "identity_user_updated", "identity_user", user.ID, "Updated identity user", map[string]any{"email": user.Email, "status": user.Status})
-			persisted, found, readErr := h.users.UserByID(ctx, user.ID)
+			persisted, found, readErr := h.users.UserByIDWithinDataScope(ctx, user.ID, principal, "identity.users.update")
 			if readErr != nil {
 				return nil, readErr
 			}
@@ -183,7 +174,7 @@ func (h *IdentityHandler) updateIdentityUser(w http.ResponseWriter, r *http.Requ
 
 func (h *IdentityHandler) deleteIdentityUser(w http.ResponseWriter, r *http.Request) {
 	userID := strings.TrimSpace(r.PathValue("userID"))
-	if err := h.users.RemoveUser(r.Context(), userID); err != nil {
+	if err := h.users.RemoveUserWithinDataScope(r.Context(), userID, h.principal(r), "identity.users.delete"); err != nil {
 		h.writeServiceError(w, r, err)
 		return
 	}
@@ -192,7 +183,7 @@ func (h *IdentityHandler) deleteIdentityUser(w http.ResponseWriter, r *http.Requ
 }
 
 func (h *IdentityHandler) getIdentityUserDeletionImpact(w http.ResponseWriter, r *http.Request) {
-	impact, err := h.users.UserDeletionImpact(r.Context(), strings.TrimSpace(r.PathValue("userID")))
+	impact, err := h.users.UserDeletionImpactWithinDataScope(r.Context(), strings.TrimSpace(r.PathValue("userID")), h.principal(r), "identity.users.deletion_impact")
 	if err != nil {
 		h.writeServiceError(w, r, err)
 		return
@@ -201,7 +192,7 @@ func (h *IdentityHandler) getIdentityUserDeletionImpact(w http.ResponseWriter, r
 }
 
 func (h *IdentityHandler) getIdentityUserDisableImpact(w http.ResponseWriter, r *http.Request) {
-	impact, err := h.users.UserDisableImpact(r.Context(), strings.TrimSpace(r.PathValue("userID")))
+	impact, err := h.users.UserDisableImpactWithinDataScope(r.Context(), strings.TrimSpace(r.PathValue("userID")), h.principal(r), "identity.users.disable_impact")
 	if err != nil {
 		h.writeServiceError(w, r, err)
 		return
@@ -211,7 +202,7 @@ func (h *IdentityHandler) getIdentityUserDisableImpact(w http.ResponseWriter, r 
 
 func (h *IdentityHandler) enableIdentityUser(w http.ResponseWriter, r *http.Request) {
 	userID := strings.TrimSpace(r.PathValue("userID"))
-	if err := h.users.EnableUser(r.Context(), userID); err != nil {
+	if err := h.users.EnableUserWithinDataScope(r.Context(), userID, h.principal(r), "identity.users.enable"); err != nil {
 		h.writeServiceError(w, r, err)
 		return
 	}
@@ -221,7 +212,7 @@ func (h *IdentityHandler) enableIdentityUser(w http.ResponseWriter, r *http.Requ
 
 func (h *IdentityHandler) disableIdentityUser(w http.ResponseWriter, r *http.Request) {
 	userID := strings.TrimSpace(r.PathValue("userID"))
-	revokedSessions, err := h.users.DisableUser(r.Context(), userID, h.userSecurity)
+	revokedSessions, err := h.users.DisableUserWithinDataScope(r.Context(), userID, h.principal(r), "identity.users.disable", h.userSecurity)
 	if err != nil {
 		h.writeServiceError(w, r, err)
 		return

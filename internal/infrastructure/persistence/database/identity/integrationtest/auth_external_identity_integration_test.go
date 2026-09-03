@@ -246,9 +246,9 @@ func newExternalAuthFixture(t *testing.T) (*authdomain.AuthDomainService, *ident
 		seedIdentityDirectoryRole(t, repository, "workspace-primary", role)
 	}
 	identity.ReplaceRoleDefinitions([]identitymodel.RoleSchema{
-		{Key: "sales", Name: "Sales", RecordScope: "all_records"},
-		{Key: "admin", Name: "Admin", Permissions: []string{"identity.roles.list"}, RecordScope: "all_records", RiskLevel: identitymodel.IdentityRoleRiskPrivileged},
-		{Key: "disabled", Name: "Disabled", RecordScope: "all_records"},
+		{Key: "sales", Name: "Sales"},
+		{Key: "admin", Name: "Admin", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "identity.roles.list"), RiskLevel: identitymodel.IdentityRoleRiskPrivileged},
+		{Key: "disabled", Name: "Disabled"},
 	})
 	authRepository := &externalAuthRepository{accounts: map[string]identitymodel.IdentityExternalAccount{}, refreshTokens: map[string]identitymodel.AuthRefreshToken{}}
 	return authdomain.NewAuthDomainService(identity, authRepository, "test-secret", "Password@2026", 0, 0, 0, 0, 0, 0, authpolicy.AuthPasswordPolicy{}), identity, authRepository

@@ -31,5 +31,5 @@ func (r migrationRegistrar) ApplyOwnedMigrations(ctx context.Context, owner stri
 	if r.locked {
 		return r.store.ApplyOwnedMigrationsLocked(ctx, owner, migrations)
 	}
-	return r.store.ApplyOwnedMigrations(ctx, owner, migrations)
+	return r.store.ApplyNestedOwnedMigrations(ctx, owner, migrations)
 }

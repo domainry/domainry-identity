@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
@@ -42,7 +43,15 @@ func (h *IdentityHandler) validateIdentityUserRoleAssignmentAuthoring(w http.Res
 		return
 	}
 	assignment := identitymodel.IdentityUserRoleAssignment{UserID: strings.TrimSpace(r.PathValue("userID")), RoleID: strings.TrimSpace(request.RoleID), ExpiresAt: request.ExpiresAt}
-	if err := h.governance.ValidateUserRoleAssignment(r.Context(), assignment, h.principal(r)); err != nil {
+	principal := h.principal(r)
+	if _, found, err := h.users.UserByIDWithinDataScope(r.Context(), assignment.UserID, principal, identitycontract.IdentityUserRoleAssignmentsValidatePermission); err != nil {
+		h.writeServiceError(w, r, err)
+		return
+	} else if !found {
+		h.writeError(w, r, http.StatusNotFound, "backend.identity.user_not_found", "user", assignment.UserID)
+		return
+	}
+	if err := h.governance.ValidateUserRoleAssignment(r.Context(), assignment, principal); err != nil {
 		h.writeServiceError(w, r, err)
 		return
 	}
@@ -64,16 +73,16 @@ func (h *IdentityHandler) validateIdentityRoleAuthoring(w http.ResponseWriter, r
 
 func (h *IdentityHandler) validateIdentityRolePermissionAuthoring(w http.ResponseWriter, r *http.Request) {
 	var request struct {
-		PermissionKeys []string `json:"permission_keys"`
+		Permissions []identitymodel.RolePermission `json:"permissions"`
 	}
 	if !h.decodeJSON(w, r, &request) {
 		return
 	}
-	if err := h.governance.ValidateRolePermissions(r.Context(), strings.TrimSpace(r.PathValue("roleID")), request.PermissionKeys, h.principal(r)); err != nil {
+	if err := h.governance.ValidateRolePermissions(r.Context(), strings.TrimSpace(r.PathValue("roleID")), request.Permissions, h.principal(r)); err != nil {
 		h.writeServiceError(w, r, err)
 		return
 	}
-	h.writeJSON(w, http.StatusOK, map[string]any{"valid": true, "normalized": map[string]any{"permission_keys": request.PermissionKeys}})
+	h.writeJSON(w, http.StatusOK, map[string]any{"valid": true, "normalized": map[string]any{"permissions": request.Permissions}})
 }
 
 func (h *IdentityHandler) validateIdentityRoleMenuAssignmentAuthoring(w http.ResponseWriter, r *http.Request) {
@@ -92,20 +101,6 @@ func (h *IdentityHandler) validateIdentityRoleMenuAssignmentAuthoring(w http.Res
 		return
 	}
 	h.writeJSON(w, http.StatusOK, map[string]any{"valid": true, "normalized": map[string]any{"menu_ids": request.MenuIDs}})
-}
-
-func (h *IdentityHandler) validateIdentityRoleDataScopeAuthoring(w http.ResponseWriter, r *http.Request) {
-	var request struct {
-		DataScopes []identitymodel.IdentityDataScopePolicy `json:"data_scopes"`
-	}
-	if !h.decodeJSON(w, r, &request) {
-		return
-	}
-	if err := h.governance.ValidateRoleDataScopes(r.Context(), strings.TrimSpace(r.PathValue("roleID")), request.DataScopes, h.principal(r)); err != nil {
-		h.writeServiceError(w, r, err)
-		return
-	}
-	h.writeJSON(w, http.StatusOK, map[string]any{"valid": true, "normalized": map[string]any{"data_scopes": request.DataScopes}})
 }
 
 func (h *IdentityHandler) validateIdentityRoleFieldPermissionAuthoring(w http.ResponseWriter, r *http.Request) {

@@ -33,9 +33,9 @@ func IdentityBuildAccessReverseIndex(roles []identitymodel.IdentityRole, definit
 	}
 	for _, role := range definitions {
 		roleKey := strings.TrimSpace(role.Key)
-		for _, permission := range role.Permissions {
-			permission = strings.TrimSpace(permission)
-			if permission == "" {
+		for _, grant := range role.Permissions {
+			permission := strings.TrimSpace(grant.PermissionKey)
+			if permission == "" || !grant.DataScope.Valid() {
 				continue
 			}
 			index.RolePermissions[roleKey] = append(index.RolePermissions[roleKey], permission)
@@ -74,8 +74,8 @@ func IdentityBuildGovernanceReports(now time.Time, permissions []identitymodel.I
 	for _, definition := range definitions {
 		roleKey := strings.TrimSpace(definition.Key)
 		definitionByKey[roleKey] = definition
-		for _, raw := range definition.Permissions {
-			permissionKey := strings.TrimSpace(raw)
+		for _, grant := range definition.Permissions {
+			permissionKey := strings.TrimSpace(grant.PermissionKey)
 			if permissionKey == "" {
 				continue
 			}
@@ -153,8 +153,8 @@ func IdentityPreviewRoleChange(request identitymodel.IdentityRoleChangeImpactReq
 	}
 	impact.AffectedUserCount = len(affectedUsers)
 	impact.ProfileTypes = identityProjectionUniqueStrings(profileTypes)
-	impact.AddedPermissions = identityProjectionStringDifference(request.Role.Permissions, current.Permissions)
-	impact.RemovedPermissions = identityProjectionStringDifference(current.Permissions, request.Role.Permissions)
+	impact.AddedPermissions = identityProjectionStringDifference(identitymodel.RolePermissionKeys(request.Role.Permissions), identitymodel.RolePermissionKeys(current.Permissions))
+	impact.RemovedPermissions = identityProjectionStringDifference(identitymodel.RolePermissionKeys(current.Permissions), identitymodel.RolePermissionKeys(request.Role.Permissions))
 	for _, permission := range append(append([]string(nil), impact.AddedPermissions...), impact.RemovedPermissions...) {
 		objectKey, action := identityProjectionPermissionParts(permission)
 		impact.AffectedObjects = append(impact.AffectedObjects, objectKey)

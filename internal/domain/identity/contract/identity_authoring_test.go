@@ -96,7 +96,6 @@ func TestIdentityRoleAuthoringContractsPublishExactHTTPShapes(t *testing.T) {
 		required string
 		value    func() authoringcontract.CapabilityAuthoringDefinition
 	}{
-		{key: "identity.role_data_scope", required: "data_scopes", value: IdentityRoleDataScopeAuthoringCapability},
 		{key: "identity.role_field_permission", required: "field_permissions", value: IdentityRoleFieldPermissionAuthoringCapability},
 		{key: "identity.menu", required: "id", value: IdentityMenuAuthoringCapability},
 		{key: "identity.role_menu_assignment", required: "menu_ids", value: IdentityRoleMenuAssignmentAuthoringCapability},
@@ -111,7 +110,7 @@ func TestIdentityRoleAuthoringContractsPublishExactHTTPShapes(t *testing.T) {
 		if _, ok := definition.InputSchema.Properties[capability.required]; !ok {
 			t.Fatalf("owner capability %s missing request field %s", capability.key, capability.required)
 		}
-		if capability.key == "identity.role_data_scope" || capability.key == "identity.role_field_permission" {
+		if capability.key == "identity.role_field_permission" {
 			if definition.ResourceOperations != nil || definition.Execution == nil || definition.Execution.ChangeControl != "direct_audited_versioned_metadata" {
 				t.Fatalf("role policy capability %s does not publish through direct versioned metadata: %#v", capability.key, definition)
 			}

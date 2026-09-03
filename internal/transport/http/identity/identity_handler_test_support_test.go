@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/domainry/domainry-foundation/apperror"
 	identityauthoring "github.com/domainry/domainry-identity/internal/application/authoring"
@@ -37,6 +38,10 @@ func (s *identityHTTPUserSecurity) UserSecurityProfile(context.Context, string, 
 	return s.profile, s.err
 }
 
+func (s *identityHTTPUserSecurity) UserSecurityProfileGoverned(ctx context.Context, principal identitymodel.Principal, userID string) (authdomain.UserSecurityProfile, error) {
+	return s.UserSecurityProfile(ctx, principal.WorkspaceID, userID)
+}
+
 func (s *identityHTTPUserSecurity) IssueInitialPassword(_ context.Context, _, userID string) (string, error) {
 	if s.err != nil {
 		return "", s.err
@@ -50,6 +55,10 @@ func (s *identityHTTPUserSecurity) IssueInitialPassword(_ context.Context, _, us
 
 func (s *identityHTTPUserSecurity) UnlockUser(context.Context, string, string) error {
 	return s.err
+}
+
+func (s *identityHTTPUserSecurity) UnlockUserGoverned(ctx context.Context, principal identitymodel.Principal, userID string) error {
+	return s.UnlockUser(ctx, principal.WorkspaceID, userID)
 }
 
 func (s *identityHTTPUserSecurity) ForceLogoutUser(context.Context, string, string) (int, error) {
@@ -68,6 +77,10 @@ func (s *identityHTTPUserSecurity) ForceLogoutUserIdempotent(_ context.Context, 
 func (s *identityHTTPUserSecurity) RevokeMFAFactor(_ context.Context, _, _, factorID string) error {
 	s.revokedFactorID = factorID
 	return s.err
+}
+
+func (s *identityHTTPUserSecurity) RevokeMFAFactorGoverned(ctx context.Context, principal identitymodel.Principal, userID, factorID string) error {
+	return s.RevokeMFAFactor(ctx, principal.WorkspaceID, userID, factorID)
 }
 
 type identityHTTPRepository struct {
@@ -96,14 +109,12 @@ type identityHTTPRepository struct {
 	listMenuLinksErr                 error
 	commitAuthorizationErr           error
 	listPermissionsErr               error
-	listDataScopesErr                error
 	listFieldPermissionsErr          error
 	failListRolesAfter               int
 	listRolesCalls                   int
 	failListMenusAfterUpsert         bool
 	failListLinksAfterSet            bool
 	failListPermissionsAfterSet      bool
-	failListDataScopesAfterSet       bool
 	failListFieldPermissionsAfterSet bool
 	users                            []identitymodel.IdentityUser
 	organizationUnits                []identitymodel.IdentityOrganizationUnit
@@ -113,7 +124,6 @@ type identityHTTPRepository struct {
 	entitlementReceipts              map[string]identitymodel.IdentityEntitlementBatchReceipt
 	menuLinks                        []identitymodel.IdentityRoleMenuAssignment
 	permissionAssignments            []identitymodel.IdentityRolePermissionAssignment
-	dataScopes                       []identitymodel.IdentityDataScopePolicy
 	fieldPermissions                 []identitymodel.IdentityFieldPermission
 	requests                         []identitymodel.IdentityRoleRequest
 	profileBindings                  []identitymodel.IdentityProfileBinding
@@ -129,6 +139,39 @@ type identityHTTPRepository struct {
 
 func (r *identityHTTPRepository) ListIdentityOrganizationUnits(context.Context, string) ([]identitymodel.IdentityOrganizationUnit, error) {
 	return append([]identitymodel.IdentityOrganizationUnit(nil), r.organizationUnits...), firstIdentityHTTPError(r.listOrganizationUnitsErr, r.err)
+}
+
+func (r *identityHTTPRepository) ListIdentityOrganizationUnitsWithinDataScope(_ context.Context, _ string, scope identitymodel.IdentityDataScopeFilter) ([]identitymodel.IdentityOrganizationUnit, error) {
+	if err := firstIdentityHTTPError(r.listOrganizationUnitsErr, r.err); err != nil {
+		return nil, err
+	}
+	if scope.Unrestricted {
+		return append([]identitymodel.IdentityOrganizationUnit(nil), r.organizationUnits...), nil
+	}
+	allowed := map[string]bool{}
+	for _, id := range scope.Normalized().OwnerOrgIDs {
+		allowed[id] = true
+	}
+	items := make([]identitymodel.IdentityOrganizationUnit, 0, len(r.organizationUnits))
+	for _, item := range r.organizationUnits {
+		if allowed[item.ID] {
+			items = append(items, item)
+		}
+	}
+	return items, nil
+}
+
+func (r *identityHTTPRepository) GetIdentityOrganizationUnitWithinDataScope(ctx context.Context, workspaceID, organizationUnitID string, scope identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityOrganizationUnit, bool, error) {
+	items, err := r.ListIdentityOrganizationUnitsWithinDataScope(ctx, workspaceID, scope)
+	if err != nil {
+		return identitymodel.IdentityOrganizationUnit{}, false, err
+	}
+	for _, item := range items {
+		if item.ID == organizationUnitID {
+			return item, true, nil
+		}
+	}
+	return identitymodel.IdentityOrganizationUnit{}, false, nil
 }
 
 func (r *identityHTTPRepository) UpsertIdentityOrganizationUnit(_ context.Context, _ string, organizationUnit identitymodel.IdentityOrganizationUnit) error {
@@ -157,11 +200,51 @@ func (r *identityHTTPRepository) UpsertIdentityOrganizationUnitsAtomically(ctx c
 	return nil
 }
 
+func (r *identityHTTPRepository) UpsertIdentityOrganizationUnitsWithinDataScopeAtomically(ctx context.Context, workspace string, organizationUnits []identitymodel.IdentityOrganizationUnit, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
+	if !scope.Unrestricted {
+		allowed := map[string]bool{}
+		for _, id := range scope.Normalized().OwnerOrgIDs {
+			allowed[id] = true
+		}
+		existing := map[string]bool{}
+		existingParent := map[string]string{}
+		for _, item := range r.organizationUnits {
+			existing[item.ID] = true
+			if item.ParentID != nil {
+				existingParent[item.ID] = strings.TrimSpace(*item.ParentID)
+			}
+		}
+		for _, item := range organizationUnits {
+			parentID := ""
+			if item.ParentID != nil {
+				parentID = strings.TrimSpace(*item.ParentID)
+			}
+			parentChanged := !existing[item.ID] || existingParent[item.ID] != parentID
+			if existing[item.ID] && !allowed[item.ID] || parentChanged && (parentID == "" || !allowed[parentID]) {
+				return false, nil
+			}
+		}
+	}
+	return true, r.UpsertIdentityOrganizationUnitsAtomically(ctx, workspace, organizationUnits)
+}
+
 func (r *identityHTTPRepository) ListIdentityUsers(context.Context, string) ([]identitymodel.IdentityUser, error) {
 	if r.upsertUserCalls > 0 && r.listUsersErrAfterUpsert != nil {
 		return nil, r.listUsersErrAfterUpsert
 	}
 	return append([]identitymodel.IdentityUser(nil), r.users...), r.err
+}
+func (r *identityHTTPRepository) ListIdentityUsersWithinDataScope(_ context.Context, _ string, scope identitymodel.IdentityDataScopeFilter) ([]identitymodel.IdentityUser, error) {
+	if r.upsertUserCalls > 0 && r.listUsersErrAfterUpsert != nil {
+		return nil, r.listUsersErrAfterUpsert
+	}
+	out := make([]identitymodel.IdentityUser, 0, len(r.users))
+	for _, user := range r.users {
+		if identityHTTPUserMatchesDataScope(user, scope) {
+			out = append(out, user)
+		}
+	}
+	return out, r.err
 }
 func (r *identityHTTPRepository) ListIdentityProfileBindingsByUser(_ context.Context, _, userID string) ([]identitymodel.IdentityProfileBinding, error) {
 	out := []identitymodel.IdentityProfileBinding{}
@@ -175,6 +258,17 @@ func (r *identityHTTPRepository) ListIdentityProfileBindingsByUser(_ context.Con
 func (r *identityHTTPRepository) GetIdentityUser(_ context.Context, _, userID string) (identitymodel.IdentityUser, bool, error) {
 	for _, user := range r.users {
 		if user.ID == userID {
+			return user, true, r.err
+		}
+	}
+	return identitymodel.IdentityUser{}, false, r.err
+}
+func (r *identityHTTPRepository) GetIdentityUserWithinDataScope(_ context.Context, _ string, userID string, scope identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityUser, bool, error) {
+	if r.upsertUserCalls > 0 && r.listUsersErrAfterUpsert != nil {
+		return identitymodel.IdentityUser{}, false, r.listUsersErrAfterUpsert
+	}
+	for _, user := range r.users {
+		if user.ID == userID && identityHTTPUserMatchesDataScope(user, scope) {
 			return user, true, r.err
 		}
 	}
@@ -197,6 +291,14 @@ func (r *identityHTTPRepository) UpsertIdentityUser(_ context.Context, _ string,
 	}
 	r.users = append(r.users, user)
 	return nil
+}
+func (r *identityHTTPRepository) CreateIdentityUser(ctx context.Context, workspaceID string, user identitymodel.IdentityUser) error {
+	for _, existing := range r.users {
+		if existing.ID == user.ID {
+			return errors.New("identity user already exists")
+		}
+	}
+	return r.UpsertIdentityUser(ctx, workspaceID, user)
 }
 func (r *identityHTTPRepository) UpsertIdentityUsersAtomically(_ context.Context, _ string, users []identitymodel.IdentityUser) error {
 	if len(users) == 0 {
@@ -225,20 +327,119 @@ func (r *identityHTTPRepository) UpsertIdentityUsersAtomically(_ context.Context
 	}
 	return nil
 }
+func (r *identityHTTPRepository) UpdateIdentityUsersWithinDataScopeAtomically(_ context.Context, _ string, users []identitymodel.IdentityUser, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
+	if len(users) == 0 {
+		return false, firstIdentityHTTPError(r.upsertUserErr, r.err)
+	}
+	r.lastUser = users[0]
+	if err := firstIdentityHTTPError(r.upsertUserErr, r.err); err != nil {
+		return false, err
+	}
+	for _, update := range users {
+		matched := false
+		for _, existing := range r.users {
+			if existing.ID == update.ID && identityHTTPUserMatchesDataScope(existing, scope) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false, nil
+		}
+	}
+	r.upsertUserCalls++
+	if r.dropUpsertUser {
+		for _, update := range users {
+			for index := range r.users {
+				if r.users[index].ID == update.ID {
+					r.users = append(r.users[:index], r.users[index+1:]...)
+					break
+				}
+			}
+		}
+		return true, nil
+	}
+	for _, update := range users {
+		for index := range r.users {
+			if r.users[index].ID == update.ID {
+				r.users[index] = update
+			}
+		}
+	}
+	return true, nil
+}
 func (r *identityHTTPRepository) UpsertIdentityUserWithRoleAssignmentsAtomically(_ context.Context, _ string, user identitymodel.IdentityUser, assignments []identitymodel.IdentityUserRoleAssignment) error {
 	r.lastUser = user
 	r.lastUserID = user.ID
 	r.assignments = append([]identitymodel.IdentityUserRoleAssignment(nil), assignments...)
 	return firstIdentityHTTPError(r.assignErr, r.err)
 }
+func (r *identityHTTPRepository) UpsertIdentityUserWithRoleAssignmentsWithinDataScopeAtomically(_ context.Context, _ string, user identitymodel.IdentityUser, assignments []identitymodel.IdentityUserRoleAssignment, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
+	r.lastUser, r.lastUserID = user, user.ID
+	if err := firstIdentityHTTPError(r.assignErr, r.err); err != nil {
+		return false, err
+	}
+	for _, existing := range r.users {
+		if existing.ID == user.ID && identityHTTPUserMatchesDataScope(existing, scope) {
+			r.assignments = append([]identitymodel.IdentityUserRoleAssignment(nil), assignments...)
+			return true, nil
+		}
+	}
+	return false, nil
+}
 func (r *identityHTTPRepository) RemoveIdentityUser(_ context.Context, _, userID string) error {
 	r.removeUserCalls++
 	r.lastUserID = userID
 	return firstIdentityHTTPError(r.removeUserErr, r.err)
 }
+func (r *identityHTTPRepository) RemoveIdentityUserWithinDataScope(_ context.Context, _ string, userID string, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
+	r.removeUserCalls++
+	r.lastUserID = userID
+	if err := firstIdentityHTTPError(r.removeUserErr, r.err); err != nil {
+		return false, err
+	}
+	for index, user := range r.users {
+		if user.ID == userID && identityHTTPUserMatchesDataScope(user, scope) {
+			r.users = append(r.users[:index], r.users[index+1:]...)
+			return true, nil
+		}
+	}
+	return false, nil
+}
 func (r *identityHTTPRepository) SetIdentityUserStatus(_ context.Context, _ string, userID string, status identitymodel.IdentityStatus) error {
 	r.lastUserID, r.lastStatus = userID, status
 	return firstIdentityHTTPError(r.statusErr, r.err)
+}
+func (r *identityHTTPRepository) SetIdentityUserStatusWithinDataScope(_ context.Context, _ string, userID string, status identitymodel.IdentityStatus, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
+	r.lastUserID, r.lastStatus = userID, status
+	if err := firstIdentityHTTPError(r.statusErr, r.err); err != nil {
+		return false, err
+	}
+	for index, user := range r.users {
+		if user.ID == userID && identityHTTPUserMatchesDataScope(user, scope) {
+			r.users[index].Status = status
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func identityHTTPUserMatchesDataScope(user identitymodel.IdentityUser, scope identitymodel.IdentityDataScopeFilter) bool {
+	scope = scope.Normalized()
+	if scope.Unrestricted {
+		return true
+	}
+	for _, userID := range scope.OwnerUserIDs {
+		if user.ID == userID {
+			return true
+		}
+	}
+	for _, orgID := range scope.OwnerOrgIDs {
+		if user.OrgID == orgID {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *identityHTTPRepository) ListIdentityRoles(context.Context, string) ([]identitymodel.IdentityRole, error) {
@@ -264,6 +465,23 @@ func (r *identityHTTPRepository) ListIdentityUserRoleAssignments(_ context.Conte
 	r.lastUserID = userID
 	return append([]identitymodel.IdentityUserRoleAssignment(nil), r.assignments...), r.err
 }
+func (r *identityHTTPRepository) ListIdentityUserRoleAssignmentsWithinDataScope(_ context.Context, _ string, userID string, scope identitymodel.IdentityDataScopeFilter) ([]identitymodel.IdentityUserRoleAssignment, error) {
+	r.lastUserID = userID
+	if r.err != nil {
+		return nil, r.err
+	}
+	allowed := map[string]bool{}
+	for _, user := range r.users {
+		allowed[user.ID] = identityHTTPUserMatchesDataScope(user, scope)
+	}
+	out := []identitymodel.IdentityUserRoleAssignment{}
+	for _, assignment := range r.assignments {
+		if (userID == "" || assignment.UserID == userID) && allowed[assignment.UserID] {
+			out = append(out, assignment)
+		}
+	}
+	return out, nil
+}
 func (r *identityHTTPRepository) AssignIdentityUserRole(_ context.Context, _ string, assignment identitymodel.IdentityUserRoleAssignment) error {
 	r.lastUserID, r.lastRoleID = assignment.UserID, assignment.RoleID
 	if err := firstIdentityHTTPError(r.assignErr, r.err); err != nil {
@@ -272,13 +490,41 @@ func (r *identityHTTPRepository) AssignIdentityUserRole(_ context.Context, _ str
 	r.assignments = append(r.assignments, assignment)
 	return nil
 }
+func (r *identityHTTPRepository) AssignIdentityUserRoleWithinDataScope(_ context.Context, _ string, assignment identitymodel.IdentityUserRoleAssignment, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
+	r.lastUserID, r.lastRoleID = assignment.UserID, assignment.RoleID
+	if err := firstIdentityHTTPError(r.assignErr, r.err); err != nil {
+		return false, err
+	}
+	for _, user := range r.users {
+		if user.ID == assignment.UserID && identityHTTPUserMatchesDataScope(user, scope) {
+			r.assignments = append(r.assignments, assignment)
+			return true, nil
+		}
+	}
+	return false, nil
+}
 func (r *identityHTTPRepository) RemoveIdentityUserRole(_ context.Context, _, userID, roleID string) error {
 	r.lastUserID, r.lastRoleID = userID, roleID
 	return firstIdentityHTTPError(r.removeAssignmentErr, r.err)
 }
+func (r *identityHTTPRepository) RemoveIdentityUserRoleWithinDataScope(_ context.Context, _ string, userID, roleID string, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
+	r.lastUserID, r.lastRoleID = userID, roleID
+	if err := firstIdentityHTTPError(r.removeAssignmentErr, r.err); err != nil {
+		return false, err
+	}
+	for _, user := range r.users {
+		if user.ID == userID && identityHTTPUserMatchesDataScope(user, scope) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
 func (r *identityHTTPRepository) GetIdentityEntitlementBatchReceipt(_ context.Context, _, idempotencyKey string) (identitymodel.IdentityEntitlementBatchReceipt, bool, error) {
 	receipt, found := r.entitlementReceipts[idempotencyKey]
 	return receipt, found, r.err
+}
+func (r *identityHTTPRepository) GetIdentityEntitlementBatchReceiptWithinDataScope(ctx context.Context, workspaceID, idempotencyKey string, _ identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityEntitlementBatchReceipt, bool, error) {
+	return r.GetIdentityEntitlementBatchReceipt(ctx, workspaceID, idempotencyKey)
 }
 func (r *identityHTTPRepository) ApplyIdentityEntitlementBatch(_ context.Context, mutation identitymodel.IdentityEntitlementBatchMutation) (identitymodel.IdentityEntitlementBatchReceipt, error) {
 	if err := firstIdentityHTTPError(r.assignErr, r.err); err != nil {
@@ -295,9 +541,30 @@ func (r *identityHTTPRepository) ApplyIdentityEntitlementBatch(_ context.Context
 	r.entitlementReceipts[mutation.IdempotencyKey] = receipt
 	return receipt, nil
 }
+func (r *identityHTTPRepository) ApplyIdentityEntitlementBatchWithinDataScope(ctx context.Context, mutation identitymodel.IdentityEntitlementBatchMutation, _ identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityEntitlementBatchReceipt, bool, error) {
+	receipt, err := r.ApplyIdentityEntitlementBatch(ctx, mutation)
+	return receipt, err == nil, err
+}
 func (r *identityHTTPRepository) ListIdentityRoleRequests(_ context.Context, _, status, userID string) ([]identitymodel.IdentityRoleRequest, error) {
 	r.lastStatus, r.lastUserID = identitymodel.IdentityStatus(status), userID
 	return append([]identitymodel.IdentityRoleRequest(nil), r.requests...), r.err
+}
+func (r *identityHTTPRepository) ListIdentityRoleRequestsWithinDataScope(_ context.Context, _ string, status, userID string, scope identitymodel.IdentityDataScopeFilter) ([]identitymodel.IdentityRoleRequest, error) {
+	r.lastStatus, r.lastUserID = identitymodel.IdentityStatus(status), userID
+	if r.err != nil {
+		return nil, r.err
+	}
+	allowed := map[string]bool{}
+	for _, user := range r.users {
+		allowed[user.ID] = identityHTTPUserMatchesDataScope(user, scope)
+	}
+	out := []identitymodel.IdentityRoleRequest{}
+	for _, request := range r.requests {
+		if (status == "" || request.Status == status) && (userID == "" || request.UserID == userID) && allowed[request.UserID] {
+			out = append(out, request)
+		}
+	}
+	return out, nil
 }
 func (r *identityHTTPRepository) UpdateIdentityRoleRequest(_ context.Context, _ string, request identitymodel.IdentityRoleRequest) error {
 	for index := range r.requests {
@@ -324,6 +591,17 @@ func (r *identityHTTPRepository) ApplyIdentityRoleRequestDecision(_ context.Cont
 		}
 	}
 	return r.err
+}
+func (r *identityHTTPRepository) ApplyIdentityRoleRequestDecisionWithinDataScope(ctx context.Context, workspaceID string, request identitymodel.IdentityRoleRequest, assignments []identitymodel.IdentityUserRoleAssignment, expectedStatus string, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
+	for _, user := range r.users {
+		if user.ID == request.UserID && identityHTTPUserMatchesDataScope(user, scope) {
+			if err := r.ApplyIdentityRoleRequestDecision(ctx, workspaceID, request, assignments, expectedStatus); err != nil {
+				return false, err
+			}
+			return true, nil
+		}
+	}
+	return false, nil
 }
 func (r *identityHTTPRepository) ListIdentityMenus(context.Context, string) ([]identitymodel.IdentityMenu, error) {
 	return append([]identitymodel.IdentityMenu(nil), r.menus...), firstIdentityHTTPError(r.listMenusErr, r.err)
@@ -382,13 +660,6 @@ func (r *identityHTTPRepository) SetIdentityRolePermissions(context.Context, str
 func (r *identityHTTPRepository) ListIdentityRolePermissionAssignments(_ context.Context, _, roleID string) ([]identitymodel.IdentityRolePermissionAssignment, error) {
 	r.lastRoleID = roleID
 	return append([]identitymodel.IdentityRolePermissionAssignment(nil), r.permissionAssignments...), firstIdentityHTTPError(r.listPermissionsErr, r.err)
-}
-func (r *identityHTTPRepository) SetIdentityRoleDataScopes(context.Context, string, string, []identitymodel.IdentityDataScopePolicy) error {
-	return nil
-}
-func (r *identityHTTPRepository) ListIdentityRoleDataScopes(_ context.Context, _, roleID string) ([]identitymodel.IdentityDataScopePolicy, error) {
-	r.lastRoleID = roleID
-	return append([]identitymodel.IdentityDataScopePolicy(nil), r.dataScopes...), firstIdentityHTTPError(r.listDataScopesErr, r.err)
 }
 func (r *identityHTTPRepository) SetIdentityRoleFieldPermissions(context.Context, string, string, []identitymodel.IdentityFieldPermission) error {
 	return nil
@@ -481,13 +752,15 @@ func newIdentityHTTPHandler(repo *identityHTTPRepository, inspectors ...identity
 	service := identityapplication.NewIdentityApplicationServiceWithDependencies(repo, permissions, identityapplication.IdentityApplicationServiceDependencies{UserDeletionInspector: inspector})
 	roleDefinitions := make([]identitymodel.RoleSchema, 0, len(repo.roles))
 	for _, role := range repo.roles {
-		roleDefinitions = append(roleDefinitions, identitymodel.RoleSchema{Key: role.Key, Permissions: []string{"identity.users.list"}})
+		roleDefinitions = append(roleDefinitions, identitymodel.RoleSchema{Key: role.Key, Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "identity.users.list")})
 	}
 	service.ReplaceRoleDefinitions(roleDefinitions)
 	permissionMap := service.PermissionDefinitions()
 	response := &identityHTTPResponse{}
 	permissionCatalog, permissionKeys := newIdentityHTTPPermissionCatalog()
-	principal := identitymodel.Principal{Known: true, UserID: "reviewer-1", WorkspaceID: "workspace-1", Role: identitymodel.RoleSchema{Permissions: permissionKeys, RecordScope: "all_records"}}
+	principal := identitymodel.Principal{Known: true, UserID: "reviewer-1", WorkspaceID: "workspace-1", Role: identitymodel.RoleSchema{
+		Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, permissionKeys...),
+	}}
 	return NewIdentityHandler(IdentityDependencies{
 		Users: service, Roles: service, Policies: service, Menus: service, Authorization: service,
 		UserSecurity: &identityHTTPUserSecurity{},

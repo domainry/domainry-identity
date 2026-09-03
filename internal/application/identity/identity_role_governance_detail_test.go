@@ -67,10 +67,9 @@ func TestRoleGovernanceDetailComposesPublishedAuthorities(t *testing.T) {
 	}
 	service := NewIdentityApplicationService(repository, nil)
 	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{
-		Key: "sales", Permissions: []string{"order.read"}, RecordScope: "all_records",
+		Key: "sales", Permissions: identityTestScopedRolePermissions(identitymodel.IdentityDataScopeOrg, "order.read"),
 		Audience: identitymodel.IdentityRoleAudienceUser, AssignmentMode: identitymodel.IdentityRoleAssignmentManual,
 		PermissionSetKeys: []string{"direct"}, PermissionSetGroups: []string{"sales-group"}, GuardrailKeys: []string{"deny-export"},
-		DataPermissions:  []identitymodel.DataPermission{{ObjectKey: "order", Scope: "organization"}},
 		FieldPermissions: []identitymodel.FieldPermission{{ObjectKey: "order", FieldKey: "amount", Read: true, Export: false}},
 		ExportRules:      []identitymodel.ExportRule{{ObjectKey: "order", Mode: "allowlist", Fields: []string{"id"}}},
 	}})
@@ -104,7 +103,7 @@ func TestRoleGovernanceDetailComposesPublishedAuthorities(t *testing.T) {
 	if len(detail.PermissionSetGroups) != 1 || len(detail.Guardrails) != 1 {
 		t.Fatalf("groups/guardrails = %#v / %#v", detail.PermissionSetGroups, detail.Guardrails)
 	}
-	if len(detail.Permissions) != 1 || len(detail.DataScopes) != 1 || len(detail.FieldPermissions) != 1 || len(detail.ExportRules) != 1 {
+	if len(detail.Permissions) != 1 || detail.Permissions[0].PermissionKey != "order.read" || detail.Permissions[0].DataScope != identitymodel.IdentityDataScopeOrg || len(detail.FieldPermissions) != 1 || len(detail.ExportRules) != 1 {
 		t.Fatalf("authorization projection = %#v", detail)
 	}
 	if len(detail.Menus) != 2 || detail.Menus[0].ID != "menu-orders" || len(detail.Members) != 2 {
@@ -133,8 +132,7 @@ func TestRoleGovernanceDetailPropagatesProjectionFailures(t *testing.T) {
 	}{
 		{name: "role lookup", failRoleCall: 1},
 		{name: "permissions", failRoleCall: 2},
-		{name: "data scopes", failRoleCall: 3},
-		{name: "field permissions", failRoleCall: 4},
+		{name: "field permissions", failRoleCall: 3},
 		{name: "role menus", failRoleMenus: true},
 		{name: "menus", failMenus: true},
 		{name: "members", failUserRoles: true},

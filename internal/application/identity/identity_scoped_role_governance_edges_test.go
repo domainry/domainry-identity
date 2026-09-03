@@ -12,7 +12,7 @@ import (
 func TestAssignUserRoleGovernedCoversRiskAndGrantCeilingPolicies(t *testing.T) {
 	ctx := requestcontext.WithWorkspaceID(t.Context(), "workspace")
 	base := &identityScopedRepository{
-		users: []identitymodel.IdentityUser{{ID: "target", Status: identitymodel.IdentityStatusActive}},
+		users: []identitymodel.IdentityUser{{ID: "target", Status: identitymodel.IdentityStatusActive}, {ID: "actor", Status: identitymodel.IdentityStatusActive}},
 		roles: []identitymodel.IdentityRole{
 			{ID: "normal", Key: "normal", Status: identitymodel.IdentityStatusActive},
 			{ID: "blank-risk", Key: "blank-risk", Status: identitymodel.IdentityStatusActive},
@@ -30,7 +30,7 @@ func TestAssignUserRoleGovernedCoversRiskAndGrantCeilingPolicies(t *testing.T) {
 		{Key: "privileged", RiskLevel: identitymodel.IdentityRoleRiskPrivileged, AssignmentMode: identitymodel.IdentityRoleAssignmentManual},
 	})
 	assignment := identitymodel.IdentityUserRoleAssignment{UserID: "target", RoleID: "normal", Status: "active"}
-	actor := identitymodel.Principal{Known: true, UserID: "actor", WorkspaceID: "workspace"}
+	actor := identityAllowAllRoleAssignments(identitymodel.Principal{Known: true, UserID: "actor", WorkspaceID: "workspace"})
 
 	if err := service.AssignUserRoleGoverned(t.Context(), assignment, actor); apperror.CodeOf(err) != "backend.workspace_scope_required" {
 		t.Fatalf("missing scope=%v", err)
@@ -109,7 +109,7 @@ func TestValidateRoleMenusCoversRoleMenuAndRoutePolicies(t *testing.T) {
 	}
 	repository := &effectiveAccessFaultRepository{identityScopedRepository: base}
 	service := NewIdentityApplicationService(repository, nil)
-	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{Key: "role", Permissions: []string{"identity.users.list"}}})
+	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{Key: "role", Permissions: identityTestRolePermissions("identity.users.list")}})
 
 	if err := service.ValidateRoleMenus(t.Context(), "role", nil); apperror.CodeOf(err) != "backend.workspace_scope_required" {
 		t.Fatalf("missing scope=%v", err)
@@ -157,7 +157,7 @@ func TestValidateRoleMenusCoversRoleMenuAndRoutePolicies(t *testing.T) {
 	if err := service.ValidateRoleMenus(ctx, "role", []string{"account"}); apperror.CodeOf(err) != "backend.identity.menu_route_permission_missing" {
 		t.Fatalf("missing permission=%v", err)
 	}
-	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{Key: "role", Permissions: []string{"identity.users.list"}}})
+	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{Key: "role", Permissions: identityTestRolePermissions("identity.users.list")}})
 	if err := service.SetRoleMenus(ctx, "role", []string{"account"}); err != nil {
 		t.Fatalf("valid role menus=%v", err)
 	}

@@ -7,7 +7,7 @@ import (
 )
 
 func TestWithStandaloneIdentityRoleDefinitionsProvidesAdminAuthorityAndHonorsOverrides(t *testing.T) {
-	roles := WithStandaloneIdentityRoleDefinitions([]identitymodel.RoleSchema{{Key: "admin", Name: "Configured admin", Permissions: []string{"custom.admin"}}})
+	roles := WithStandaloneIdentityRoleDefinitions([]identitymodel.RoleSchema{{Key: "admin", Name: "Configured admin", Permissions: identityTestRolePermissions("custom.admin")}})
 	byKey := map[string]identitymodel.RoleSchema{}
 	for _, role := range roles {
 		byKey[role.Key] = role
@@ -15,7 +15,7 @@ func TestWithStandaloneIdentityRoleDefinitionsProvidesAdminAuthorityAndHonorsOve
 	if len(byKey) != 3 {
 		t.Fatalf("role count = %d, want 3", len(byKey))
 	}
-	if got := byKey["admin"]; got.Name != "Configured admin" || len(got.Permissions) != 1 || got.Permissions[0] != "custom.admin" {
+	if got := byKey["admin"]; got.Name != "Configured admin" || len(got.Permissions) != 1 || got.Permissions[0].PermissionKey != "custom.admin" {
 		t.Fatalf("configured admin override = %#v", got)
 	}
 	organization := byKey["organization_administrator"]
@@ -27,7 +27,7 @@ func TestWithStandaloneIdentityRoleDefinitionsProvidesAdminAuthorityAndHonorsOve
 	} {
 		found := false
 		for _, permission := range organization.Permissions {
-			found = found || permission == expected
+			found = found || permission.PermissionKey == expected
 		}
 		if !found {
 			t.Fatalf("organization administrator missing %s", expected)

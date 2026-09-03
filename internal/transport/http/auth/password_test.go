@@ -47,6 +47,20 @@ func (r *authPasswordRepository) UpsertIdentityCredential(_ context.Context, _ s
 	return nil
 }
 
+func (r *authPasswordRepository) ResetIdentityCredentialWithinDataScope(_ context.Context, _ string, userID, passwordHash, passwordUpdatedAt string, mustChangePassword bool, _ identitymodel.IdentityDataScopeFilter) (bool, error) {
+	if r.credentialErr != nil {
+		return false, r.credentialErr
+	}
+	r.authExternalAccountRepository.credential = identitymodel.IdentityCredential{
+		UserID: userID, PasswordHash: passwordHash, PasswordUpdatedAt: passwordUpdatedAt, MustChangePassword: mustChangePassword,
+	}
+	return true, nil
+}
+
+func (r *authPasswordRepository) IdentityUserExistsWithinDataScope(_ context.Context, _ string, userID string, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
+	return userID == "user-1" && scope.Unrestricted, nil
+}
+
 func (r *authPasswordRepository) GetAuthRefreshTokenByHash(_ context.Context, _ string, hash string) (identitymodel.AuthRefreshToken, bool, error) {
 	if r.refreshErr != nil {
 		return identitymodel.AuthRefreshToken{}, false, r.refreshErr
@@ -238,7 +252,7 @@ func newAuthPasswordHandler(t *testing.T) (*AuthHandler, *authExternalIdentityRe
 	}
 	domain := identityservice.NewIdentityDomainService(identityRepository, authExecutablePermissionDefinitions("records.read"))
 	roleDefinitions := []identitymodel.RoleSchema{
-		{Key: "viewer", Name: "Viewer", Permissions: []string{"records.read"}},
+		{Key: "viewer", Name: "Viewer", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "records.read")},
 		{Key: "customer", Name: "Customer"},
 	}
 	domain.ReplaceRoleDefinitions(roleDefinitions)
@@ -579,7 +593,7 @@ func TestResetPasswordHandlerAuthorizationValidationAndReplay(t *testing.T) {
 		t.Fatalf("application authorization status=%d error=%v", forbidden.Code, capture.serviceErr)
 	}
 
-	principal.Role.Permissions = []string{"auth.reset_password"}
+	principal.Role.Permissions = identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "auth.reset_password")
 	badJSON := httptest.NewRecorder()
 	handler.authResetPassword(badJSON, httptest.NewRequest(http.MethodPost, "/auth/password/reset", strings.NewReader("{")))
 	if badJSON.Code != http.StatusBadRequest {

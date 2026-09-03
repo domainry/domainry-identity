@@ -1,5 +1,7 @@
 package identitymodel
 
+import identitysdk "github.com/domainry/domainry-identity-sdk"
+
 type IdentityStatus string
 
 const (
@@ -8,7 +10,7 @@ const (
 	IdentityStatusDeleted  IdentityStatus = "deleted"
 )
 
-type IdentityDataScope string
+type IdentityDataScope = identitysdk.DataScope
 
 type IdentityAccountType string
 
@@ -210,13 +212,6 @@ type IdentityRoleMenuAssignment struct {
 	MenuID string `json:"menu_id"`
 }
 
-type IdentityDataScopePolicy struct {
-	Resource    string                    `json:"resource"`
-	Scope       IdentityDataScope         `json:"scope"`
-	AuditDenial bool                      `json:"audit_denial,omitempty"`
-	Predicate   *IdentityPolicyExpression `json:"predicate,omitempty"`
-}
-
 type IdentityFieldPermission struct {
 	Resource string                      `json:"resource"`
 	Field    string                      `json:"field"`
@@ -270,8 +265,10 @@ type IdentityRoleRequest struct {
 }
 
 type IdentityRolePermissionAssignment struct {
-	RoleID        string `json:"role_id"`
-	PermissionKey string `json:"permission_key"`
+	RoleID        string            `json:"role_id"`
+	PermissionKey string            `json:"permission_key"`
+	DataScope     IdentityDataScope `json:"data_scope"`
+	AuditDenial   bool              `json:"audit_denial,omitempty"`
 }
 
 type IdentityCredential struct {

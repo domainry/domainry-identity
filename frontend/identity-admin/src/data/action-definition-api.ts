@@ -3,7 +3,6 @@ import type {
   IdentityRoleDefinition as RuntimeManifestRole,
 } from '@domainry/identity-management-contract'
 export type {
-  IdentityRoleDataPermission as RuntimeRoleDataPermission,
   IdentityRoleDefinition as RuntimeManifestRole,
   IdentityRoleFieldPermission as RuntimeRoleFieldPermission,
 } from '@domainry/identity-management-contract'

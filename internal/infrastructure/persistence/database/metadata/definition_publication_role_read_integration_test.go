@@ -30,7 +30,7 @@ func TestApplyRoleDefinitionsRemainListableAfterRestart(t *testing.T) {
 	store, repository := open()
 	mutations := make([]metadatamodel.MetadataDefinitionMutation, 0, 4)
 	for _, key := range []string{"member", "coach", "store_manager", "finance"} {
-		payload, err := json.Marshal(identitymodel.RoleSchema{Key: key, Name: key, RecordScope: "all_records", DataPermissions: []identitymodel.DataPermission{{ObjectKey: "booking", Scope: "all_records"}}})
+		payload, err := json.Marshal(identitymodel.RoleSchema{Key: key, Name: key, Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "booking.read")})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -75,7 +75,7 @@ func TestDirectRolePublicationRollbackAndDisableAreAtomicWithDirectoryAndAudit(t
 		return auditmodel.AuditEvent{ID: id, WorkspaceID: "workspace-primary", Event: event, ObjectKey: "role", RecordID: "reviewer", ActorID: "admin", RoleKey: "admin", CreatedAt: time.Now().UTC().Format(time.RFC3339Nano)}
 	}
 	payload := func(name string) json.RawMessage {
-		raw, marshalErr := json.Marshal(identitymodel.RoleSchema{Key: "reviewer", Name: name, RecordScope: "all_records"})
+		raw, marshalErr := json.Marshal(identitymodel.RoleSchema{Key: "reviewer", Name: name})
 		if marshalErr != nil {
 			t.Fatal(marshalErr)
 		}

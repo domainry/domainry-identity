@@ -7,7 +7,6 @@ const ROUTE_TO_NAV: Record<string, NavKey> = {
   '/admin/org/organization-units': 'organizationUnits',
   '/admin/org/roles': 'roles',
   '/admin/org/menus': 'menus',
-  '/admin/org/data-scopes': 'dataScopes',
   '/admin/org/field-permissions': 'fieldPerms',
   '/admin/system/metadata': 'metadata',
 }
@@ -17,7 +16,6 @@ const ALL_NAV_KEYS: NavKey[] = [
   'organizationUnits',
   'roles',
   'menus',
-  'dataScopes',
   'fieldPerms',
   'metadata',
 ]

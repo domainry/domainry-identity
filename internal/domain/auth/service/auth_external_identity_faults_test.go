@@ -170,8 +170,8 @@ func newFaultAuthDomainService() (*AuthDomainService, *faultExternalIdentityRepo
 			{ID: "role-admin", Key: "admin", Label: "Admin", Status: identitymodel.IdentityStatusActive},
 		},
 		roleDefinitions: map[string]identitymodel.RoleSchema{
-			"sales": {Key: "sales", Name: "Sales", RecordScope: "all_records"},
-			"admin": {Key: "admin", Name: "Admin", Permissions: []string{"identity.roles.list"}, RecordScope: "all_records", RiskLevel: identitymodel.IdentityRoleRiskPrivileged},
+			"sales": {Key: "sales", Name: "Sales"},
+			"admin": {Key: "admin", Name: "Admin", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "identity.roles.list"), RiskLevel: identitymodel.IdentityRoleRiskPrivileged},
 		},
 	}
 	authRepository := &faultExternalAuthRepository{}
@@ -260,7 +260,7 @@ func (r *faultExternalIdentityRepository) ResolveEffectivePermissions(ctx contex
 	permissions := []string{}
 	for _, role := range roles {
 		if published, ok := r.PublishedRoleDefinition(ctx, role.Key); ok {
-			permissions = append(permissions, published.Permissions...)
+			permissions = append(permissions, identitymodel.RolePermissionKeys(published.Permissions)...)
 		}
 	}
 	return permissions, nil

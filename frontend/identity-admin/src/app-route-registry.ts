@@ -10,7 +10,6 @@ export type NavKey =
   | "organizationUnits"
   | "roles"
   | "menus"
-  | "dataScopes"
   | "fieldPerms"
   | "metadata"
   | "audit";
@@ -114,19 +113,6 @@ export const APP_ROUTE_DEFINITIONS = [
     routePurpose: "Manage tenant navigation definitions.",
     featureModule: "src/features/org/menus.tsx",
     acceptanceTests: ["tests/e2e/menu-tree-management.spec.ts"],
-  },
-  {
-    routeKey: "identity.data_scopes",
-    navKey: "dataScopes",
-    path: "/admin/org/data-scopes",
-    kind: "page",
-    navigation: "platform_admin",
-    surface: "admin_console",
-    shell: "admin_console",
-    actorAudiences: ["platform_admin"],
-    routePurpose: "Manage tenant record data-scope policies.",
-    featureModule: "src/features/org/data-scopes.tsx",
-    acceptanceTests: ["tests/e2e/data-scopes-layout.spec.ts"],
   },
   {
     routeKey: "identity.field_permissions",

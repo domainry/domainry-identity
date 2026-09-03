@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/domainry/domainry-foundation/apperror"
+	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
@@ -48,6 +49,13 @@ func (s *IdentityApplicationService) AssignUserRoleGoverned(ctx context.Context,
 	if !actor.Known || strings.TrimSpace(actor.UserID) == "" {
 		return apperror.New(apperror.KindForbidden, "backend.identity.entitlement_actor_required", nil, nil)
 	}
+	_, targetFound, err := scoped.UserByIDWithinDataScope(ctx, assignment.UserID, actor, identitycontract.IdentityUserRoleAssignmentsAssignPermission)
+	if err != nil {
+		return err
+	}
+	if !targetFound {
+		return apperror.New(apperror.KindBadRequest, "backend.identity.user_not_found", nil, map[string]string{"user": assignment.UserID})
+	}
 	role, found, err := scoped.RoleByID(ctx, assignment.RoleID)
 	if err != nil {
 		return err
@@ -69,7 +77,7 @@ func (s *IdentityApplicationService) AssignUserRoleGoverned(ctx context.Context,
 		}
 	}
 	assignment.GrantedBy, assignment.Source = actor.UserID, "manual"
-	return scoped.AssignUserRole(ctx, assignment)
+	return scoped.AssignUserRoleWithinDataScope(ctx, assignment, identitycontract.IdentityPermissionDataScopeFilter(actor, identitycontract.IdentityUserRoleAssignmentsAssignPermission))
 }
 
 func (s *IdentityApplicationService) UpsertUserWithRoles(ctx context.Context, user identitymodel.IdentityUser, assignments []identitymodel.IdentityUserRoleAssignment, actor identitymodel.Principal) error {
@@ -102,7 +110,7 @@ func (s *IdentityApplicationService) RemoveUserRoleGoverned(ctx context.Context,
 	if err != nil {
 		return err
 	}
-	return scoped.RemoveUserRoleGoverned(ctx, userID, roleID, actor.UserID, reason)
+	return scoped.RemoveUserRoleGoverned(ctx, userID, roleID, reason, actor)
 }
 
 func (s *IdentityApplicationService) ListUserRoleAssignments(ctx context.Context, userID string) ([]identitymodel.IdentityUserRoleAssignment, error) {
@@ -113,12 +121,28 @@ func (s *IdentityApplicationService) ListUserRoleAssignments(ctx context.Context
 	return scoped.ListUserRoleAssignments(ctx, userID)
 }
 
+func (s *IdentityApplicationService) ListUserRoleAssignmentsWithinDataScope(ctx context.Context, userID string, actor identitymodel.Principal, permissionKey string) ([]identitymodel.IdentityUserRoleAssignment, error) {
+	scoped, err := s.domainForContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return scoped.ListUserRoleAssignmentsWithinDataScope(ctx, userID, actor, permissionKey)
+}
+
 func (s *IdentityApplicationService) SearchUserRoleAssignments(ctx context.Context, userID string, query identitymodel.IdentityListQuery) (identitymodel.IdentityUserRoleAssignmentPage, error) {
 	scoped, err := s.domainForContext(ctx)
 	if err != nil {
 		return identitymodel.IdentityUserRoleAssignmentPage{}, err
 	}
 	return scoped.SearchUserRoleAssignments(ctx, userID, query)
+}
+
+func (s *IdentityApplicationService) SearchUserRoleAssignmentsWithinDataScope(ctx context.Context, userID string, query identitymodel.IdentityListQuery, actor identitymodel.Principal, permissionKey string) (identitymodel.IdentityUserRoleAssignmentPage, error) {
+	scoped, err := s.domainForContext(ctx)
+	if err != nil {
+		return identitymodel.IdentityUserRoleAssignmentPage{}, err
+	}
+	return scoped.SearchUserRoleAssignmentsWithinDataScope(ctx, userID, query, actor, permissionKey)
 }
 
 func (s *IdentityApplicationService) ListAssignableRoles(ctx context.Context, targetUserID string, actor identitymodel.Principal) ([]identitymodel.IdentityRole, error) {
@@ -153,6 +177,14 @@ func (s *IdentityApplicationService) ListRoleRequests(ctx context.Context, statu
 	return scoped.ListRoleRequests(ctx, status, userID)
 }
 
+func (s *IdentityApplicationService) ListRoleRequestsWithinDataScope(ctx context.Context, status, userID string, actor identitymodel.Principal, permissionKey string) ([]identitymodel.IdentityRoleRequest, error) {
+	scoped, err := s.domainForContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return scoped.ListRoleRequestsWithinDataScope(ctx, status, userID, actor, permissionKey)
+}
+
 func (s *IdentityApplicationService) ApproveRoleRequest(ctx context.Context, requestID, reviewerID, note string, reviewer ...identitymodel.Principal) (identitymodel.IdentityRoleRequest, error) {
 	scoped, err := s.domainForContext(ctx)
 	if err != nil {
@@ -169,6 +201,14 @@ func (s *IdentityApplicationService) RejectRoleRequest(ctx context.Context, requ
 	return scoped.RejectRoleRequest(ctx, requestID, reviewerID, note)
 }
 
+func (s *IdentityApplicationService) RejectRoleRequestGoverned(ctx context.Context, requestID, reviewerID, note string, reviewer identitymodel.Principal) (identitymodel.IdentityRoleRequest, error) {
+	scoped, err := s.domainForContext(ctx)
+	if err != nil {
+		return identitymodel.IdentityRoleRequest{}, err
+	}
+	return scoped.RejectRoleRequestGoverned(ctx, requestID, reviewerID, note, reviewer)
+}
+
 func (s *IdentityApplicationService) RoleByID(ctx context.Context, roleID string) (identitymodel.IdentityRole, bool, error) {
 	scoped, err := s.domainForContext(ctx)
 	if err != nil {
@@ -183,14 +223,6 @@ func (s *IdentityApplicationService) ListRolePermissionAssignments(ctx context.C
 		return nil, err
 	}
 	return scoped.ListRolePermissionAssignments(ctx, roleID)
-}
-
-func (s *IdentityApplicationService) ListRoleDataScopes(ctx context.Context, roleID string) ([]identitymodel.IdentityDataScopePolicy, error) {
-	scoped, err := s.domainForContext(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return scoped.ListRoleDataScopes(ctx, roleID)
 }
 
 func (s *IdentityApplicationService) ListRoleFieldPermissions(ctx context.Context, roleID string) ([]identitymodel.IdentityFieldPermission, error) {
@@ -277,7 +309,7 @@ func (s *IdentityApplicationService) ValidateRoleMenus(ctx context.Context, role
 			return apperror.New(apperror.KindBadRequest, "backend.identity.menu_route_not_registered", nil, map[string]string{"menu": menu.ID, "route": menu.Route})
 		}
 		for _, permission := range required {
-			if !identityStringListContains(definition.Permissions, permission) {
+			if _, found := identitymodel.RolePermissionForKey(definition.Permissions, permission); !found {
 				return apperror.New(apperror.KindBadRequest, "backend.identity.menu_route_permission_missing", nil, map[string]string{"menu": menu.ID, "route": menu.Route, "permission": permission})
 			}
 		}

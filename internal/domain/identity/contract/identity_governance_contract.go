@@ -2,7 +2,7 @@ package contract
 
 import identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 
-const IdentityAuthoringContractVersion = "runtime-authoring-v1"
+const IdentityAuthoringContractVersion = "runtime-authoring-v2"
 
 type IdentityGovernanceValidationIssue struct {
 	Section         string            `json:"section"`
@@ -20,8 +20,7 @@ type IdentityGovernanceValidationRequest struct {
 	RoleAssignment   *identitymodel.IdentityUserRoleAssignment `json:"role_assignment,omitempty"`
 	Role             *identitymodel.IdentityRole               `json:"role,omitempty"`
 	RoleID           string                                    `json:"role_id,omitempty"`
-	PermissionKeys   []string                                  `json:"permission_keys,omitempty"`
-	DataScopes       []identitymodel.IdentityDataScopePolicy   `json:"data_scopes,omitempty"`
+	Permissions      []identitymodel.RolePermission            `json:"permissions,omitempty"`
 	FieldPermissions []identitymodel.IdentityFieldPermission   `json:"field_permissions,omitempty"`
 	Menu             *identitymodel.IdentityMenu               `json:"menu,omitempty"`
 	MenuIDs          []string                                  `json:"menu_ids,omitempty"`

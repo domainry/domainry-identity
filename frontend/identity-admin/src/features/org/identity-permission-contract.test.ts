@@ -42,14 +42,13 @@ describe('identity permission authoring surfaces', () => {
     expect(governance).toContain('menu_ids: menuIDs')
   })
 
-  it('publishes data and field policies directly as versioned RoleSchema changes', () => {
-    const scopes = source('data-scopes.tsx')
+  it('publishes each permission with its own data scope and keeps field policy versioning', () => {
+    const roles = source('roles.tsx')
     const fields = source('field-permissions.tsx')
-    expect(scopes).toContain("authoringParameter(capabilities, 'identity.role_data_scope', 'data_scope')")
-    expect(scopes).toContain('identityPoliciesApi.dataScopeConfiguration')
-    expect(scopes).toContain('identityPoliciesApi.saveDataScopes')
-    expect(scopes).not.toContain('identityPoliciesApi.saveRolePermissions')
-    expect(scopes).not.toContain('systemChangePlansApi')
+    expect(roles).toContain("['all', 'owner', 'org', 'org_child', 'target_org']")
+    expect(roles).toContain('permission.permission_key === key')
+    expect(roles).toContain('data_scope: scope as RuntimeDataScope')
+    expect(roles).not.toContain('saveDataScopes')
     expect(fields).toContain('objectsApi.schemaSnapshot')
     expect(fields).toContain('identityPoliciesApi.fieldPermissionConfiguration')
     expect(fields).toContain('identityPoliciesApi.saveFieldPermissions')
@@ -61,10 +60,9 @@ describe('identity permission authoring surfaces', () => {
 
   it('keeps functional-permission publication on the direct RoleSchema path', () => {
     const rolePolicy = source('roles.tsx')
-    const scopes = source('data-scopes.tsx')
     const fields = source('field-permissions.tsx')
     expect(rolePolicy).toContain('identityPoliciesApi.saveRolePermissions')
-    for (const surface of [scopes, fields]) {
+    for (const surface of [rolePolicy, fields]) {
       expect(surface).not.toContain('roleAuthorizationPlanID')
       expect(surface).not.toContain('existingDraft:')
       expect(surface).not.toContain('systemChangePlansApi')
@@ -87,9 +85,9 @@ describe('identity permission authoring surfaces', () => {
   })
 
   it('maps indexed policy errors back to matrix cells using the submitted snapshot', () => {
-    const runtime = new RuntimeApiError(400, { field_path: 'data_scopes[0].scope' }, 'invalid scope')
-    const error = new RolePolicySaveError({ roleID: 'sales', permissionKeys: [], dataScopes: [{ resource: 'customer', scope: 'custom' }] }, runtime, runtime)
-    expect(rolePolicyControl(error, [])).toBe('sales:customer:scope')
+    const runtime = new RuntimeApiError(400, { field_path: 'permissions[0].data_scope' }, 'invalid scope')
+		const error = new RolePolicySaveError({ roleID: 'sales', permissions: [{ permission_key: 'customer.read', data_scope: 'target_org' }] }, runtime, runtime)
+		expect(rolePolicyControl(error, [])).toBe('sales:customer.read:data_scope')
     expect(fieldPermissionControl(new RuntimeApiError(400, { field_path: 'field_permissions[0].editable' }, 'invalid'), [{ resource: 'customer', field: 'email', visible: false, editable: true }])).toBe('customer:email:editable')
   })
 })

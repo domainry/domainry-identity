@@ -119,5 +119,5 @@ func appendSystemRoleDefinition(roles []identitymodel.RoleSchema, key, name stri
 			return roles
 		}
 	}
-	return append(roles, identitymodel.RoleSchema{Key: key, Name: name, RecordScope: "all_records"})
+	return append(roles, identitymodel.RoleSchema{Key: key, Name: name})
 }

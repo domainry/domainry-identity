@@ -31,7 +31,7 @@ func TestIdentityManagementDutiesDoNotGrantEachOther(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			role := identitymodel.RoleSchema{Permissions: []string{test.granted}}
+			role := identitymodel.RoleSchema{Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, test.granted)}
 			if !IdentityRoleHasPermissionKey(role, test.granted) {
 				t.Fatalf("own duty %q denied", test.granted)
 			}

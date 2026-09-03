@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/domainry/domainry-foundation/apperror"
+	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
@@ -15,10 +16,10 @@ func TestPrepareEntitlementBatchValidatesFinalConflictsAndTreatsWorkspaceCapabil
 	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{
 		{Key: "member", AssignmentMode: identitymodel.IdentityRoleAssignmentManual, ConflictRoleKeys: []string{"viewer"}},
 		{Key: "viewer", AssignmentMode: identitymodel.IdentityRoleAssignmentManual},
-		{Key: "admin", AssignmentMode: identitymodel.IdentityRoleAssignmentManual, Permissions: []string{"identity.roles.list"}},
-		{Key: "owner", AssignmentMode: identitymodel.IdentityRoleAssignmentManual, Permissions: []string{"identity.roles.list"}},
+		{Key: "admin", AssignmentMode: identitymodel.IdentityRoleAssignmentManual, Permissions: identityTestRolePermissions("identity.roles.list")},
+		{Key: "owner", AssignmentMode: identitymodel.IdentityRoleAssignmentManual, Permissions: identityTestRolePermissions("identity.roles.list")},
 	})
-	actor := identitymodel.Principal{Known: true, UserID: "admin-2"}
+	actor := identitymodel.Principal{Known: true, UserID: "admin-2", Role: identitymodel.RoleSchema{Permissions: identityTestRolePermissions(identitycontract.IdentityEntitlementsBatchPermission)}}
 	if _, _, err := service.PrepareIdentityEntitlementBatch(t.Context(), []identitymodel.IdentityEntitlementBatchItem{
 		{Operation: "grant", UserID: "user-1", RoleID: "member-id"},
 		{Operation: "grant", UserID: "user-1", RoleID: "viewer-id"},
@@ -52,12 +53,12 @@ func TestPrepareEntitlementBatchEnforcesGrantCeilingAndSelfGrant(t *testing.T) {
 	})
 	if _, _, err := service.PrepareIdentityEntitlementBatch(t.Context(), []identitymodel.IdentityEntitlementBatchItem{
 		{Operation: "grant", UserID: "user-1", RoleID: "admin-id"},
-	}, identitymodel.Principal{Known: true, UserID: "user-1", Role: identitymodel.RoleSchema{GrantableRoleKeys: []string{"*"}}}); apperror.CodeOf(err) != "backend.identity.privileged_self_grant_denied" {
+	}, identitymodel.Principal{Known: true, UserID: "user-1", Role: identitymodel.RoleSchema{GrantableRoleKeys: []string{"*"}, Permissions: identityTestRolePermissions(identitycontract.IdentityEntitlementsBatchPermission)}}); apperror.CodeOf(err) != "backend.identity.privileged_self_grant_denied" {
 		t.Fatalf("self grant error=%v", err)
 	}
 	if _, _, err := service.PrepareIdentityEntitlementBatch(t.Context(), []identitymodel.IdentityEntitlementBatchItem{
 		{Operation: "grant", UserID: "user-1", RoleID: "viewer-id"},
-	}, identitymodel.Principal{Known: true, UserID: "grantor"}); apperror.CodeOf(err) != "backend.identity.role_grant_ceiling_exceeded" {
+	}, identitymodel.Principal{Known: true, UserID: "grantor", Role: identitymodel.RoleSchema{Permissions: identityTestRolePermissions(identitycontract.IdentityEntitlementsBatchPermission)}}); apperror.CodeOf(err) != "backend.identity.role_grant_ceiling_exceeded" {
 		t.Fatalf("grant ceiling error=%v", err)
 	}
 }
@@ -79,7 +80,7 @@ func TestPrepareEntitlementBatchRejectsActorShapeEmptyInputAndRepositoryFailures
 			}
 		})
 	}
-	actor := identitymodel.Principal{Known: true, UserID: "actor"}
+	actor := identitymodel.Principal{Known: true, UserID: "actor", Role: identitymodel.RoleSchema{Permissions: identityTestRolePermissions(identitycontract.IdentityEntitlementsBatchPermission)}}
 	if _, _, err := service.PrepareIdentityEntitlementBatch(t.Context(), nil, actor); apperror.CodeOf(err) != "backend.identity.entitlement_batch_empty" {
 		t.Fatalf("empty batch error=%v", err)
 	}
@@ -96,7 +97,7 @@ func TestPrepareEntitlementBatchRejectsActorShapeEmptyInputAndRepositoryFailures
 
 func TestPrepareEntitlementBatchRejectsInvalidItemsMissingRolesAndOperations(t *testing.T) {
 	_, service := identityRolesFixture()
-	actor := identitymodel.Principal{Known: true, UserID: "actor"}
+	actor := identitymodel.Principal{Known: true, UserID: "actor", Role: identitymodel.RoleSchema{Permissions: identityTestRolePermissions(identitycontract.IdentityEntitlementsBatchPermission)}}
 	cases := []struct {
 		name  string
 		items []identitymodel.IdentityEntitlementBatchItem
@@ -154,7 +155,7 @@ func TestPrepareEntitlementBatchRejectsSystemManagedMissingAndInactiveRevocation
 		{Key: "member", AssignmentMode: identitymodel.IdentityRoleAssignmentSystemManaged},
 		{Key: "viewer", AssignmentMode: identitymodel.IdentityRoleAssignmentManual},
 	})
-	actor := identitymodel.Principal{Known: true, UserID: "actor"}
+	actor := identitymodel.Principal{Known: true, UserID: "actor", Role: identitymodel.RoleSchema{Permissions: identityTestRolePermissions(identitycontract.IdentityEntitlementsBatchPermission)}}
 	repository.assignments = []identitymodel.IdentityUserRoleAssignment{{
 		UserID: "user-1", RoleID: "member-id", Status: "active",
 	}}

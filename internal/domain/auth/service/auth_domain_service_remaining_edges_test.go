@@ -468,7 +468,7 @@ func TestLinkedExternalLoginBackfillsOnlySafeDefaultRole(t *testing.T) {
 	t.Run("exact permission does not imply privileged risk", func(t *testing.T) {
 		auth, identities, _ := newFixture(identitymodel.RoleSchema{
 			Key: "default-role", AssignmentMode: identitymodel.IdentityRoleAssignmentManual,
-			Permissions: []string{"identity.roles.list"}, RiskLevel: identitymodel.IdentityRoleRiskNormal,
+			Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "identity.roles.list"), RiskLevel: identitymodel.IdentityRoleRiskNormal,
 		})
 		if _, err := auth.ExternalLoginWithPolicy(t.Context(), "workspace-primary", authmodel.AuthExternalIdentityAssertion{Provider: "oidc", Subject: "subject"}, authmodel.AuthExternalLoginPolicy{DefaultRoleKey: "default-role"}); err != nil {
 			t.Fatalf("linked login with exact-permission default role: %v", err)

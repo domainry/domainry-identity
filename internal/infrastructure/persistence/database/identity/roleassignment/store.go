@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	identitydatascope "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/datascope"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 	"github.com/domainry/domainry-orm/query"
 )
@@ -16,12 +17,14 @@ const InsertBatchSize = 40
 var columns = []string{"id", "workspace_id", "user_id", "role_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason", "expires_at", "created_at", "updated_at"}
 
 type Backend interface {
+	DB() *sql.DB
 	SQLRenderer() ormdialect.Renderer
 	ApplyUpsert(*query.InsertBuilder, []string, ...string) *query.InsertBuilder
 }
 
 type Execer interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
 
 type Store struct {
@@ -41,6 +44,84 @@ func (s Store) Upsert(ctx context.Context, execer Execer, workspaceID string, as
 		return err
 	}
 	return s.write(ctx, execer, workspaceID, []identitymodel.IdentityUserRoleAssignment{assignment})
+}
+
+// UpsertWithinDataScope validates the persisted target user and repeats the
+// same workspace+scope predicate in the INSERT ... SELECT that performs the
+// final upsert. The caller receives false when the target is outside scope.
+func (s Store) UpsertWithinDataScope(ctx context.Context, workspaceID string, assignment identitymodel.IdentityUserRoleAssignment, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
+	workspaceID, err := workspaceIdentifier(workspaceID)
+	if err != nil {
+		return false, err
+	}
+	assignment, err = normalize(assignment)
+	if err != nil {
+		return false, err
+	}
+	tx, err := s.backend.DB().BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	allowed, err := s.UpsertWithExecutorWithinDataScope(ctx, tx, workspaceID, assignment, scope)
+	if err != nil || !allowed {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (s Store) UpsertWithExecutorWithinDataScope(ctx context.Context, execer Execer, workspaceID string, assignment identitymodel.IdentityUserRoleAssignment, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
+	workspaceID, err := workspaceIdentifier(workspaceID)
+	if err != nil {
+		return false, err
+	}
+	assignment, err = normalize(assignment)
+	if err != nil {
+		return false, err
+	}
+	predicates := []query.Predicate{query.Equal("id", assignment.UserID)}
+	if !scope.Unrestricted {
+		predicates = append(predicates, identitydatascope.UserPredicate(scope, query.Column("id"), query.Column("org_id")))
+	}
+	candidate, candidateArguments, err := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_users", workspaceID).
+		Columns("id").Where(query.And(predicates...)).Build()
+	if err != nil {
+		return false, fmt.Errorf("build scoped identity user-role assignment candidate: %w", err)
+	}
+	var persistedUserID string
+	if err := execer.QueryRowContext(ctx, candidate, candidateArguments...).Scan(&persistedUserID); err == sql.ErrNoRows {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	allValues := values(workspaceID, assignment, s.now())
+	projections := make([]query.Projection, len(allValues))
+	for index := range allValues {
+		projections[index] = query.Project(query.Value(allValues[index]))
+	}
+	source := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_users", workspaceID).
+		Projections(projections...).Where(query.And(predicates...)).Limit(1)
+	insert := query.NewInsertBuilder(s.backend.SQLRenderer(), "_identity_user_role_assignments").Columns(columns...).FromSelect(source)
+	s.backend.ApplyUpsert(insert, []string{"workspace_id", "id"}, columns[2:]...)
+	statement, arguments, err := insert.Build()
+	if err != nil {
+		return false, fmt.Errorf("build scoped identity user-role assignment upsert: %w", err)
+	}
+	result, err := execer.ExecContext(ctx, statement, arguments...)
+	if err != nil {
+		return false, err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if changed == 0 {
+		return false, nil
+	}
+	return true, nil
 }
 
 func (s Store) UpsertBatch(ctx context.Context, execer Execer, workspaceID string, assignments []identitymodel.IdentityUserRoleAssignment) error {

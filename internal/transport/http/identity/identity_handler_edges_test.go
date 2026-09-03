@@ -31,14 +31,14 @@ func TestIdentityAuthorizationMiddlewareMatrix(t *testing.T) {
 	}{
 		{name: "permission denied", actionKey: "identity.roles.list", principal: identitymodel.Principal{Known: true}, wantStatus: http.StatusForbidden},
 		{name: "permission unknown", actionKey: "identity.roles.list", wantStatus: http.StatusUnauthorized},
-		{name: "another exact Permission is not alias", actionKey: "identity.roles.list", principal: identitymodel.Principal{Known: true, Role: identitymodel.RoleSchema{Permissions: []string{"identity.permissions.list"}}}, wantStatus: http.StatusForbidden},
-		{name: "permission allowed", actionKey: "identity.roles.list", principal: identitymodel.Principal{Known: true, Role: identitymodel.RoleSchema{Permissions: []string{"identity.roles.list"}}}, wantStatus: http.StatusNoContent},
-		{name: "self allowed", actionKey: "identity.users.get", principal: identitymodel.Principal{Known: true, UserID: "user-1"}, pathValues: map[string]string{"userID": "user-1"}, wantStatus: http.StatusNoContent},
+		{name: "another exact Permission is not alias", actionKey: "identity.roles.list", principal: identitymodel.Principal{Known: true, Role: identitymodel.RoleSchema{Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "identity.permissions.list")}}, wantStatus: http.StatusForbidden},
+		{name: "permission allowed", actionKey: "identity.roles.list", principal: identitymodel.Principal{Known: true, Role: identitymodel.RoleSchema{Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "identity.roles.list")}}, wantStatus: http.StatusNoContent},
+		{name: "self requires exact owner Permission", actionKey: "identity.users.get", principal: identitymodel.Principal{Known: true, UserID: "user-1", Role: identitymodel.RoleSchema{Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeOwner, "identity.users.get")}}, pathValues: map[string]string{"userID": "user-1"}, wantStatus: http.StatusNoContent},
 		{name: "non-self denied", actionKey: "identity.users.get", principal: identitymodel.Principal{Known: true, UserID: "user-1"}, pathValues: map[string]string{"userID": "user-2"}, wantStatus: http.StatusForbidden},
-		{name: "non-self permission", actionKey: "identity.users.get", principal: identitymodel.Principal{Known: true, UserID: "user-1", Role: identitymodel.RoleSchema{Permissions: []string{"identity.users.get"}}}, pathValues: map[string]string{"userID": "user-2"}, wantStatus: http.StatusNoContent},
+		{name: "non-self permission", actionKey: "identity.users.get", principal: identitymodel.Principal{Known: true, UserID: "user-1", Role: identitymodel.RoleSchema{Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "identity.users.get")}}, pathValues: map[string]string{"userID": "user-2"}, wantStatus: http.StatusNoContent},
 		{name: "authenticated denied", actionKey: "identity.effective_menus.get", wantStatus: http.StatusUnauthorized},
 		{name: "authenticated allowed", actionKey: "identity.effective_menus.get", principal: identitymodel.Principal{Known: true}, wantStatus: http.StatusNoContent},
-		{name: "domain self deferred", actionKey: "identity.profile_bindings.get", principal: identitymodel.Principal{Known: true}, wantStatus: http.StatusNoContent},
+		{name: "domain self still requires exact Permission", actionKey: "identity.profile_bindings.get", principal: identitymodel.Principal{Known: true, Role: identitymodel.RoleSchema{Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeOwner, "identity.profile_bindings.get")}}, wantStatus: http.StatusNoContent},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -250,7 +250,7 @@ func TestIdentityOrganizationUnitOwnerControlledAuthoringCurrentResource(t *test
 			handler.principal = func(*http.Request) identitymodel.Principal {
 				return identitymodel.Principal{
 					Known: true, WorkspaceID: "workspace-1", UserID: "builder",
-					Role: identitymodel.RoleSchema{Permissions: []string{actionKey}},
+					Role: identitymodel.RoleSchema{Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, actionKey)},
 				}
 			}
 			if test.expected == "" {

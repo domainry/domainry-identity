@@ -13,33 +13,33 @@ var businessRouteKeyPattern = regexp.MustCompile(`^business\.[a-z0-9]+(?:[._-][a
 // required by the built-in Admin users when a standalone Identity manifest is
 // intentionally empty. Project-published definitions with the same key win.
 func WithStandaloneIdentityRoleDefinitions(configured []identitymodel.RoleSchema) []identitymodel.RoleSchema {
-	organizationPermissions := make([]string, 0)
+	organizationPermissionKeys := make([]string, 0)
 	for _, action := range IdentityBuiltinAuthorizationActions() {
 		if action.Permission != nil {
-			organizationPermissions = append(organizationPermissions, action.Key)
+			organizationPermissionKeys = append(organizationPermissionKeys, action.Key)
 		}
 	}
 	defaults := []identitymodel.RoleSchema{
 		{
-			Key: "admin", Name: "Admin", Permissions: append([]string(nil), organizationPermissions...), RecordScope: "all_records",
-			Audience: identitymodel.IdentityRoleAudienceAny, AssignmentMode: identitymodel.IdentityRoleAssignmentManual,
+			Key: "admin", Name: "Admin", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, organizationPermissionKeys...),
+			Audience:        identitymodel.IdentityRoleAudienceAny, AssignmentMode: identitymodel.IdentityRoleAssignmentManual,
 			RiskLevel: identitymodel.IdentityRoleRiskPrivileged, GrantableRoleKeys: []string{"*"},
 		},
 		{
-			Key: "organization_administrator", Name: "Organization administrator", Permissions: organizationPermissions, RecordScope: "all_records",
-			Audience: identitymodel.IdentityRoleAudienceAny, AssignmentMode: identitymodel.IdentityRoleAssignmentManual,
+			Key: "organization_administrator", Name: "Organization administrator", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, organizationPermissionKeys...),
+			Audience:        identitymodel.IdentityRoleAudienceAny, AssignmentMode: identitymodel.IdentityRoleAssignmentManual,
 			RiskLevel: identitymodel.IdentityRoleRiskPrivileged, GrantableRoleKeys: []string{"*"},
 		},
 		{
 			Key: "system_administrator", Name: "System administrator",
-			Permissions: []string{
+			Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll,
 				"audit.governance.read", "audit.governance.export",
 				"identity.metadata.manifest.get", "identity.metadata.reload",
 				"identity.metadata.migration_plan.get", "identity.metadata.object_record_count.get",
 				"identity.metadata.definition.validate", "identity.metadata.definition.upsert",
 				"identity.metadata.definition.disable", "identity.metadata.definition.rollback",
-			},
-			RecordScope: "all_records", Audience: identitymodel.IdentityRoleAudienceAny,
+			),
+			Audience:       identitymodel.IdentityRoleAudienceAny,
 			AssignmentMode: identitymodel.IdentityRoleAssignmentManual, RiskLevel: identitymodel.IdentityRoleRiskElevated,
 		},
 	}
@@ -75,7 +75,7 @@ func generatedManifestIdentitySeed() Seed {
 	roleMenus := generatedIdentityRoleMenus("admin", platformMenus)
 	roleMenus = append(roleMenus, generatedIdentityRoleMenusForIDs("organization_administrator", platformMenus,
 		"org_users", "org_organization_units", "org_roles", "org_menus",
-		"org_data_scopes", "org_field_permissions", "system", "system_metadata", "system_audit",
+		"org_field_permissions", "system", "system_metadata", "system_audit",
 	)...)
 	roleMenus = append(roleMenus, generatedIdentityRoleMenusForIDs("system_administrator", platformMenus,
 		"system", "system_metadata", "system_audit",
@@ -122,7 +122,6 @@ func generatedIdentityMenus() []identitymodel.IdentityMenu {
 	add("org_organization_units", "Organization units", "/admin/org/organization-units", "building-2", "org_access", 220)
 	add("org_roles", "Roles", "/admin/org/roles", "user-cog", "org_access", 240)
 	add("org_menus", "Menus", "/admin/org/menus", "square-menu", "org_access", 250)
-	add("org_data_scopes", "Data scopes", "/admin/org/data-scopes", "shield-check", "org_access", 260)
 	add("org_field_permissions", "Field permissions", "/admin/org/field-permissions", "columns-3", "org_access", 270)
 	add("system_metadata", "Metadata", "/admin/system/metadata", "database", "system", 380)
 	add("system_audit", "Governance audit", "/admin/system/audit", "scroll-text", "system", 390)

@@ -19,20 +19,22 @@ type IdentityGrantSource struct {
 }
 
 type IdentityEffectivePermissionGrant struct {
-	Key       string                `json:"key"`
-	ObjectKey string                `json:"object_key,omitempty"`
-	Action    string                `json:"action,omitempty"`
-	Sources   []IdentityGrantSource `json:"sources"`
+	Key         string                `json:"key"`
+	ObjectKey   string                `json:"object_key,omitempty"`
+	Action      string                `json:"action,omitempty"`
+	DataScope   IdentityDataScope     `json:"data_scope"`
+	AuditDenial bool                  `json:"audit_denial,omitempty"`
+	Sources     []IdentityGrantSource `json:"sources"`
 }
 
 type IdentityEffectiveDataAccess struct {
-	ObjectKey   string                    `json:"object_key"`
-	Allowed     bool                      `json:"allowed"`
-	Scope       string                    `json:"scope"`
-	Scopes      []string                  `json:"scopes"`
-	Predicate   *IdentityPolicyExpression `json:"predicate,omitempty"`
-	AuditDenial bool                      `json:"audit_denial,omitempty"`
-	Sources     []IdentityGrantSource     `json:"sources"`
+	PermissionKey string                `json:"permission_key"`
+	Resource      string                `json:"resource"`
+	Action        string                `json:"action"`
+	Allowed       bool                  `json:"allowed"`
+	Scopes        []IdentityDataScope   `json:"scopes"`
+	AuditDenial   bool                  `json:"audit_denial,omitempty"`
+	Sources       []IdentityGrantSource `json:"sources"`
 }
 
 type IdentityEffectiveFieldAccess struct {
@@ -75,7 +77,6 @@ type IdentityAccessExplainRequest struct {
 	ObjectKey string `json:"object_key,omitempty"`
 	Action    string `json:"action,omitempty"`
 	FieldKey  string `json:"field_key,omitempty"`
-	RecordID  string `json:"record_id,omitempty"`
 }
 
 type IdentityAccessReason struct {
@@ -93,7 +94,6 @@ type IdentityAccessExplainResult struct {
 	ObjectKey             string               `json:"object_key,omitempty"`
 	Action                string               `json:"action,omitempty"`
 	FieldKey              string               `json:"field_key,omitempty"`
-	RecordID              string               `json:"record_id,omitempty"`
 	Allowed               bool                 `json:"allowed"`
 	AuthorizationRevision string               `json:"authorization_revision,omitempty"`
 	Reason                IdentityAccessReason `json:"reason"`

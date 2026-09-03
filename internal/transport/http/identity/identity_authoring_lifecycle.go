@@ -5,20 +5,20 @@ import (
 	"strings"
 
 	auditmodel "github.com/domainry/domainry-audit-sdk/contract"
+	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
+	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
 func (h *IdentityHandler) getIdentityOrganizationUnit(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimSpace(r.PathValue("organizationUnitID"))
-	items, err := h.users.ListOrganizationUnits(r.Context())
+	item, found, err := h.users.OrganizationUnitByIDWithinDataScope(r.Context(), id, h.principal(r), "identity.organization_units.get")
 	if err != nil {
 		h.writeServiceError(w, r, err)
 		return
 	}
-	for _, item := range items {
-		if item.ID == id {
-			h.writeIdentityAuthoringResource(w, r, "identity.organization_unit", id, item)
-			return
-		}
+	if found {
+		h.writeIdentityAuthoringResource(w, r, "identity.organization_unit", id, item)
+		return
 	}
 	h.writeError(w, r, http.StatusNotFound, "backend.identity.organization_unit_not_found", "organization_unit", id)
 }
@@ -66,7 +66,17 @@ func (h *IdentityHandler) identityAuthoringVersions(capabilityKey, objectKey, pa
 			return
 		}
 		resourceID := strings.TrimSpace(r.PathValue(pathKey))
-		events, err := h.audit.Events(r.Context(), auditmodel.AuditEventQuery{ObjectKey: objectKey, RecordID: resourceID, Limit: 1000}, h.principal(r))
+		principal := h.principal(r)
+		visible, err := h.identityAuthoringVersionTargetVisible(r, capabilityKey, resourceID, principal)
+		if err != nil {
+			h.writeServiceError(w, r, err)
+			return
+		}
+		if !visible {
+			h.writeError(w, r, http.StatusNotFound, "backend.identity.authoring_resource_not_found", "resource", resourceID)
+			return
+		}
+		events, err := h.audit.Events(r.Context(), auditmodel.AuditEventQuery{ObjectKey: objectKey, RecordID: resourceID, Limit: 1000}, principal)
 		if err != nil {
 			h.writeServiceError(w, r, err)
 			return
@@ -78,5 +88,23 @@ func (h *IdentityHandler) identityAuthoringVersions(capabilityKey, objectKey, pa
 			}
 		}
 		h.writeJSON(w, http.StatusOK, map[string]any{"capability_key": capabilityKey, "resource_id": resourceID, "versioning": "audit_revision", "items": items, "count": len(items)})
+	}
+}
+
+func (h *IdentityHandler) identityAuthoringVersionTargetVisible(r *http.Request, capabilityKey, resourceID string, principal identitymodel.Principal) (bool, error) {
+	switch capabilityKey {
+	case "identity.user":
+		_, found, err := h.users.UserByIDWithinDataScope(r.Context(), resourceID, principal, identitycontract.IdentityUsersVersionsPermission)
+		return found, err
+	case "identity.user_role_assignment":
+		_, found, err := h.users.UserByIDWithinDataScope(r.Context(), resourceID, principal, identitycontract.IdentityUserRoleAssignmentsVersionsPermission)
+		return found, err
+	case "identity.organization_unit":
+		_, found, err := h.users.OrganizationUnitByIDWithinDataScope(r.Context(), resourceID, principal, identitycontract.IdentityOrganizationUnitsVersionsPermission)
+		return found, err
+	default:
+		// Roles, menus and role-menu bindings are tenant templates/system
+		// resources. Their histories are workspace-scoped, not org-scoped.
+		return true, nil
 	}
 }

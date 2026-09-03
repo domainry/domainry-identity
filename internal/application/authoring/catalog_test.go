@@ -34,8 +34,8 @@ func TestCatalogContainsOnlyIdentityAdminCapabilities(t *testing.T) {
 	}
 	want := map[string]bool{
 		"identity.organization_unit": true, "identity.menu": true, "identity.role": true,
-		"identity.role_data_scope": true, "identity.role_field_permission": true,
-		"identity.role_permission": true, "identity.user": true,
+		"identity.role_field_permission": true,
+		"identity.role_permission":       true, "identity.user": true,
 		"identity.user_role_assignment": true, "identity.role_menu_assignment": true,
 		"identity.profile_binding": true,
 	}

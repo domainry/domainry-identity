@@ -42,7 +42,7 @@ func newAuthProviderHandler(t *testing.T, writer *authProviderWriterStub) (*Auth
 		{"key": "disabled", "label": "Disabled", "type": "oidc", "enabled": false},
 	}
 	service := authapplication.NewAuthProviderApplicationService(configs, true, writer)
-	principal := identitymodel.Principal{Known: true, WorkspaceID: "workspace-a", UserID: "admin", Role: identitymodel.RoleSchema{Permissions: []string{"auth.providers.setup"}}}
+	principal := identitymodel.Principal{Known: true, WorkspaceID: "workspace-a", UserID: "admin", Role: identitymodel.RoleSchema{Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "auth.providers.setup")}}
 	capture := &authProviderHandlerCapture{}
 	handler := NewAuthHandler(AuthDependencies{
 		ProviderConfiguration: service,

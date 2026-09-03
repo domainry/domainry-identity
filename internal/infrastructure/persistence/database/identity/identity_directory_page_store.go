@@ -12,6 +12,10 @@ func (s *SQLIdentityStore) SearchIdentityUsers(ctx context.Context, workspaceID 
 	return directorypersistence.New(s).SearchIdentityUsers(ctx, workspaceID, queryValue)
 }
 
+func (s *SQLIdentityStore) SearchIdentityUsersWithinDataScope(ctx context.Context, workspaceID string, queryValue identitymodel.IdentityListQuery, scope identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityUserPage, error) {
+	return directorypersistence.New(s).SearchIdentityUsersWithinDataScope(ctx, workspaceID, queryValue, scope)
+}
+
 func identityDirectoryPredicates(queryValue identitymodel.IdentityListQuery, columns map[string]string) []query.Predicate {
 	return directorypersistence.Predicates(queryValue, columns)
 }

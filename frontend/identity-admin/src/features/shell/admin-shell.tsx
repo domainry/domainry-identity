@@ -156,7 +156,6 @@ const PALETTE_LABEL_KEYS: Record<Palette, MessageKey> = {
 };
 
 function navLabelKey(nav: NavKey): MessageKey {
-  if (nav === "dataScopes") return "nav.dataScopes";
   if (nav === "fieldPerms") return "nav.fieldPerms";
   for (const group of NAV_GROUPS) {
     const hit = group.items.find((item) => item.key === nav);

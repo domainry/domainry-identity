@@ -31,12 +31,11 @@ func TestIdentityAuthoringProjectionResolvesEveryOperationFromCanonicalActions(t
 			if !found {
 				t.Fatalf("capability %q route %q has no Action", capability.Key, route)
 			}
-			switch action.Authorization.Strategy {
-			case actioncontract.AuthorizationExactRolePermission, actioncontract.AuthorizationSelfOrPermission:
+			if action.Permission != nil {
 				if action.Permission == nil || action.Permission.Key != action.Key || !slices.Contains(capability.Permissions, action.Key) {
 					t.Fatalf("capability %q route %q action=%+v permissions=%v", capability.Key, route, action, capability.Permissions)
 				}
-			default:
+			} else {
 				if action.Permission != nil || slices.Contains(capability.Permissions, action.Key) {
 					t.Fatalf("capability %q non-role Action %q leaked into permissions", capability.Key, action.Key)
 				}
@@ -78,7 +77,7 @@ func TestIdentityAuthoringProjectionKeepsCRUDAndMetadataOperationsIndependent(t 
 		}
 	}
 	userGet, found := projection.ActionForRoute("GET /identity/users/{userID}")
-	if !found || userGet.Key != "identity.users.get" || userGet.Authorization.Strategy != actioncontract.AuthorizationSelfOrPermission {
+	if !found || userGet.Key != "identity.users.get" || userGet.Authorization.Strategy != actioncontract.AuthorizationAuthenticated || userGet.Authorization.PolicyKey == "" {
 		t.Fatalf("user get Action=%+v found=%v", userGet, found)
 	}
 }

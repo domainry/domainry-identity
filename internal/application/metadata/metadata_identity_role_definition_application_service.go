@@ -16,10 +16,6 @@ func (s *MetadataApplicationService) IdentityRolePermissionDefinition(ctx contex
 	return s.identityRoleDefinitionForAction(ctx, roleKey, identitycontract.IdentityActionRolePermissionsList, false, principal)
 }
 
-func (s *MetadataApplicationService) IdentityRoleDataScopeDefinition(ctx context.Context, roleKey string, principal identitymodel.Principal) (identitymodel.RoleSchema, identitymodel.IdentityRoleDefinitionRevision, bool, error) {
-	return s.identityRoleDefinitionForAction(ctx, roleKey, identitycontract.IdentityActionRoleDataScopesList, false, principal)
-}
-
 func (s *MetadataApplicationService) IdentityRoleFieldPermissionDefinition(ctx context.Context, roleKey string, principal identitymodel.Principal) (identitymodel.RoleSchema, identitymodel.IdentityRoleDefinitionRevision, bool, error) {
 	return s.identityRoleDefinitionForAction(ctx, roleKey, identitycontract.IdentityActionRoleFieldPermissionsList, false, principal)
 }
@@ -49,7 +45,7 @@ func (s *MetadataApplicationService) UpdateIdentityRoleDefinition(ctx context.Co
 	return role, revision, nil
 }
 
-func (s *MetadataApplicationService) PublishIdentityRolePermissions(ctx context.Context, roleKey string, permissionKeys []string, expectedSchemaHash, businessReason, operationID string, principal identitymodel.Principal) (identitymodel.IdentityRoleDefinitionRevision, error) {
+func (s *MetadataApplicationService) PublishIdentityRolePermissions(ctx context.Context, roleKey string, permissions []identitymodel.RolePermission, expectedSchemaHash, businessReason, operationID string, principal identitymodel.Principal) (identitymodel.IdentityRoleDefinitionRevision, error) {
 	role, _, found, err := s.identityRoleDefinitionForAction(ctx, roleKey, identitycontract.IdentityActionRolePermissionsPublish, true, principal)
 	if err != nil {
 		return identitymodel.IdentityRoleDefinitionRevision{}, err
@@ -57,20 +53,8 @@ func (s *MetadataApplicationService) PublishIdentityRolePermissions(ctx context.
 	if !found {
 		return identitymodel.IdentityRoleDefinitionRevision{}, notFound("backend.identity.role_definition_not_found", "role", strings.TrimSpace(roleKey))
 	}
-	role.Permissions = append([]string(nil), permissionKeys...)
+	role.Permissions = append([]identitymodel.RolePermission(nil), permissions...)
 	return s.publishIdentityRoleDefinition(ctx, role, expectedSchemaHash, businessReason, operationID, "identity_role_permissions.published", "Published role permissions for "+role.Key, map[string]any{"permission_count": len(role.Permissions)}, false, principal)
-}
-
-func (s *MetadataApplicationService) PublishIdentityRoleDataScopes(ctx context.Context, roleKey string, permissions []identitymodel.DataPermission, expectedSchemaHash, businessReason, operationID string, principal identitymodel.Principal) (identitymodel.IdentityRoleDefinitionRevision, error) {
-	role, _, found, err := s.identityRoleDefinitionForAction(ctx, roleKey, identitycontract.IdentityActionRoleDataScopesPublish, true, principal)
-	if err != nil {
-		return identitymodel.IdentityRoleDefinitionRevision{}, err
-	}
-	if !found {
-		return identitymodel.IdentityRoleDefinitionRevision{}, notFound("backend.identity.role_definition_not_found", "role", strings.TrimSpace(roleKey))
-	}
-	role.DataPermissions = append([]identitymodel.DataPermission(nil), permissions...)
-	return s.publishIdentityRoleDefinition(ctx, role, expectedSchemaHash, businessReason, operationID, "identity_role_data_scopes.published", "Published role data scopes for "+role.Key, map[string]any{"data_scope_count": len(role.DataPermissions)}, false, principal)
 }
 
 func (s *MetadataApplicationService) PublishIdentityRoleFieldPermissions(ctx context.Context, roleKey string, permissions []identitymodel.FieldPermission, expectedSchemaHash, businessReason, operationID string, principal identitymodel.Principal) (identitymodel.IdentityRoleDefinitionRevision, error) {

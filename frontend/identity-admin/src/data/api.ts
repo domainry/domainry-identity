@@ -8,6 +8,7 @@ import type {
 import {
   identityListParams,
   type IdentityAccountSecurity,
+  type IdentityDataScope as RuntimeDataScope,
   type IdentityOrganizationUnit as RuntimeOrganizationUnit,
   type IdentityListQuery,
   type IdentityPage,
@@ -21,7 +22,7 @@ import {
 } from "@domainry/identity-management-contract";
 export type {
   IdentityAccountSecurity,
-  IdentityDataScopePolicy as RuntimeDataScopePolicy,
+	IdentityDataScope as RuntimeDataScope,
   IdentityFieldPermission as RuntimeFieldPermission,
   IdentityListQuery,
   IdentityMenu as RuntimeMenu,
@@ -105,7 +106,11 @@ export interface RolePage {
 
 export interface RoleCreateInput extends Omit<Role, "id"> {
   businessReason: string;
-  permissionKeys: string[];
+  permissions: Array<{
+    permission_key: string;
+    data_scope: RuntimeDataScope;
+    audit_denial?: boolean;
+  }>;
 }
 
 export interface RuntimeSchema {
@@ -651,7 +656,7 @@ export const rolesApi = {
   },
   async create(input: RoleCreateInput): Promise<Role> {
     const key = input.code.toLowerCase();
-    const { businessReason, permissionKeys, ...role } = input;
+    const { businessReason, permissions, ...role } = input;
     const requestID = createRuntimeRequestID();
     await runtimeRequest(`/identity/roles`, {
       method: "POST",
@@ -661,9 +666,7 @@ export const rolesApi = {
         key,
         name: input.name,
         description: input.description,
-        permissions: Array.from(new Set(permissionKeys)).sort(),
-        record_scope: "none",
-        data_permissions: [],
+        permissions: [...permissions].sort((left, right) => left.permission_key.localeCompare(right.permission_key)),
         field_permissions: [],
         audience: "any",
         assignment_mode: "manual",

@@ -86,10 +86,11 @@ func IdentityBuildEffectiveAccessSnapshot(input IdentityEffectiveAccessProjectio
 	sort.Slice(snapshot.RoleAssignments, func(left, right int) bool {
 		return identityProjectionAssignmentKey(snapshot.RoleAssignments[left]) < identityProjectionAssignmentKey(snapshot.RoleAssignments[right])
 	})
-	for _, key := range input.Principal.Role.Permissions {
+	for _, grant := range input.Principal.Role.Permissions {
+		key := strings.TrimSpace(grant.PermissionKey)
 		objectKey, action := identityProjectionPermissionParts(key)
 		sources := identityProjectionSourcesForGrant(key, roleSources, definitionByKey)
-		snapshot.Permissions = append(snapshot.Permissions, identitymodel.IdentityEffectivePermissionGrant{Key: key, ObjectKey: objectKey, Action: action, Sources: sources})
+		snapshot.Permissions = append(snapshot.Permissions, identitymodel.IdentityEffectivePermissionGrant{Key: key, ObjectKey: objectKey, Action: action, DataScope: grant.DataScope, AuditDenial: grant.AuditDenial, Sources: sources})
 	}
 	snapshot.DataAccess = identityProjectionDataAccess(input.Principal.Role, roleSources)
 	snapshot.FieldAccess = identityProjectionFieldAccess(input.Principal.Role, input.Objects, roleSources, input.FieldDecision)
@@ -115,7 +116,7 @@ func IdentityBuildEffectiveAccessSnapshot(input IdentityEffectiveAccessProjectio
 func IdentityExplainEffectiveAccess(snapshot identitymodel.IdentityEffectiveAccessSnapshot, role identitymodel.RoleSchema, request identitymodel.IdentityAccessExplainRequest) identitymodel.IdentityAccessExplainResult {
 	result := identitymodel.IdentityAccessExplainResult{
 		UserID: request.UserID, ObjectKey: strings.TrimSpace(request.ObjectKey), Action: strings.TrimSpace(request.Action),
-		FieldKey: strings.TrimSpace(request.FieldKey), RecordID: strings.TrimSpace(request.RecordID), AuthorizationRevision: snapshot.AuthorizationRevision,
+		FieldKey: strings.TrimSpace(request.FieldKey), AuthorizationRevision: snapshot.AuthorizationRevision,
 	}
 	if !snapshot.Known {
 		result.Reason = identitymodel.IdentityAccessReason{Code: "identity_unknown", Effect: "deny", Layer: "identity"}
@@ -143,10 +144,10 @@ func IdentityExplainEffectiveAccess(snapshot identitymodel.IdentityEffectiveAcce
 	}
 	data, dataAllowed := identityProjectionData(snapshot.DataAccess, result.ObjectKey, result.Action)
 	if !dataAllowed {
-		result.Reason = identitymodel.IdentityAccessReason{Code: "data_permission_missing", Effect: "deny", Layer: "data", Subject: result.ObjectKey, Children: children}
+		result.Reason = identitymodel.IdentityAccessReason{Code: "data_scope_missing", Effect: "deny", Layer: "data", Subject: result.ObjectKey, Children: children}
 		return result
 	}
-	children = append(children, identitymodel.IdentityAccessReason{Code: "data_scope_allowed", Effect: "allow", Layer: "data", Subject: data.Scope, Sources: data.Sources})
+	children = append(children, identitymodel.IdentityAccessReason{Code: "data_scope_allowed", Effect: "allow", Layer: "data", Subject: result.ObjectKey, Details: map[string]string{"scopes": identityProjectionDataScopesText(data.Scopes)}, Sources: data.Sources})
 	if result.FieldKey != "" {
 		if identitycontract.IdentityRoleGuardrailDeniesField(role, result.ObjectKey, result.FieldKey, result.Action) {
 			result.Reason = identitymodel.IdentityAccessReason{Code: "guardrail_field_denied", Effect: "deny", Layer: "guardrail", Subject: result.ObjectKey + "." + result.FieldKey, Children: children}
@@ -168,7 +169,7 @@ func identityProjectionSourcesForGrant(key string, roleSources map[string][]iden
 	out := []identitymodel.IdentityGrantSource{}
 	for roleKey, sources := range roleSources {
 		role := roles[roleKey]
-		if !identityProjectionContains(role.Permissions, key) {
+		if _, found := identitymodel.RolePermissionForKey(role.Permissions, key); !found {
 			continue
 		}
 		for _, source := range sources {
@@ -181,55 +182,21 @@ func identityProjectionSourcesForGrant(key string, roleSources map[string][]iden
 }
 
 func identityProjectionDataAccess(role identitymodel.RoleSchema, sources map[string][]identitymodel.IdentityGrantSource) []identitymodel.IdentityEffectiveDataAccess {
-	type aggregate struct {
-		scopes      []string
-		predicates  []identitymodel.IdentityPolicyExpression
-		auditDenial bool
-		sources     []identitymodel.IdentityGrantSource
-	}
-	policiesByObject := map[string]*aggregate{}
-	for _, permission := range role.DataPermissions {
-		objectKey := strings.TrimSpace(permission.ObjectKey)
-		if objectKey == "" {
+	out := make([]identitymodel.IdentityEffectiveDataAccess, 0, len(role.Permissions))
+	for _, permission := range role.Permissions {
+		permissionKey := strings.TrimSpace(permission.PermissionKey)
+		resource, action := identityProjectionPermissionParts(permissionKey)
+		if permissionKey == "" || resource == "" || action == "" || !permission.DataScope.Valid() {
 			continue
 		}
-		if policiesByObject[objectKey] == nil {
-			policiesByObject[objectKey] = &aggregate{}
-		}
-		value := policiesByObject[objectKey]
-		value.scopes = append(value.scopes, permission.Scope)
-		value.auditDenial = value.auditDenial || permission.AuditDenial
-		if permission.Predicate != nil {
-			value.predicates = append(value.predicates, *permission.Predicate)
-		}
+		grantSources := []identitymodel.IdentityGrantSource{}
 		for _, roleSources := range sources {
-			value.sources = append(value.sources, roleSources...)
+			grantSources = append(grantSources, roleSources...)
 		}
-	}
-	effectiveObjects := map[string]bool{}
-	for _, permissionKey := range role.Permissions {
-		objectKey, action := identityProjectionPermissionParts(permissionKey)
-		if objectKey == "" || action == "" || policiesByObject[objectKey] == nil {
-			continue
-		}
-		effectiveObjects[objectKey] = true
-	}
-	out := make([]identitymodel.IdentityEffectiveDataAccess, 0, len(effectiveObjects))
-	for objectKey := range effectiveObjects {
-		value := policiesByObject[objectKey]
-		scopes := identityProjectionUniqueStrings(value.scopes)
-		scope := identityProjectionCombinedScope(scopes)
-		var predicate *identitymodel.IdentityPolicyExpression
-		if len(value.predicates) == 1 {
-			value := value.predicates[0]
-			predicate = &value
-		} else if len(value.predicates) > 1 {
-			predicate = &identitymodel.IdentityPolicyExpression{Operator: "or", Children: value.predicates}
-		}
-		out = append(out, identitymodel.IdentityEffectiveDataAccess{ObjectKey: objectKey, Allowed: true, Scope: scope, Scopes: scopes, Predicate: predicate, AuditDenial: value.auditDenial, Sources: identityProjectionUniqueSources(value.sources)})
+		out = append(out, identitymodel.IdentityEffectiveDataAccess{PermissionKey: permissionKey, Resource: resource, Action: action, Allowed: true, Scopes: []identitymodel.IdentityDataScope{permission.DataScope}, AuditDenial: permission.AuditDenial, Sources: identityProjectionUniqueSources(grantSources)})
 	}
 	sort.Slice(out, func(left, right int) bool {
-		return out[left].ObjectKey < out[right].ObjectKey
+		return out[left].PermissionKey < out[right].PermissionKey
 	})
 	return out
 }
@@ -323,9 +290,9 @@ func identityProjectionPermissionForAction(values []identitymodel.IdentityEffect
 	return identityProjectionPermission(values, objectKey+"."+action)
 }
 
-func identityProjectionData(values []identitymodel.IdentityEffectiveDataAccess, objectKey, _ string) (identitymodel.IdentityEffectiveDataAccess, bool) {
+func identityProjectionData(values []identitymodel.IdentityEffectiveDataAccess, objectKey, action string) (identitymodel.IdentityEffectiveDataAccess, bool) {
 	for _, value := range values {
-		if value.ObjectKey == objectKey && value.Allowed {
+		if value.Resource == objectKey && value.Action == action && value.Allowed {
 			return value, true
 		}
 	}
@@ -361,19 +328,28 @@ func identityProjectionAssignmentKey(value identitymodel.IdentityUserRoleAssignm
 	return value.UserID + "\x00" + value.RoleID + "\x00" + value.BindingKey + "\x00" + value.ProfileID
 }
 
-func identityProjectionCombinedScope(scopes []string) string {
-	for _, scope := range scopes {
-		if scope == "all_records" {
-			return "all_records"
+func identityProjectionUniqueDataScopes(values []identitymodel.IdentityDataScope) []identitymodel.IdentityDataScope {
+	seen := map[identitymodel.IdentityDataScope]bool{}
+	for _, value := range values {
+		if value.Valid() {
+			seen[value] = true
 		}
 	}
-	if len(scopes) == 0 {
-		return "none"
+	result := make([]identitymodel.IdentityDataScope, 0, len(seen))
+	for _, value := range identitymodel.IdentityDataScopeValues() {
+		if seen[value] {
+			result = append(result, value)
+		}
 	}
-	if len(scopes) == 1 {
-		return scopes[0]
+	return result
+}
+
+func identityProjectionDataScopesText(values []identitymodel.IdentityDataScope) string {
+	parts := make([]string, 0, len(values))
+	for _, value := range values {
+		parts = append(parts, string(value))
 	}
-	return "union"
+	return strings.Join(parts, ",")
 }
 
 func identityProjectionContains(values []string, target string) bool {

@@ -11,14 +11,14 @@ import (
 
 func TestIdentityPrincipalDomainServiceUsesRolesAndDefaultResolver(t *testing.T) {
 	service := NewIdentityPrincipalDomainService(func() []identitymodel.RoleSchema {
-		return []identitymodel.RoleSchema{{Key: "member", Permissions: []string{"customer.read"}}}
+		return []identitymodel.RoleSchema{{Key: "member", Permissions: identityTestRolePermissions("customer.read")}}
 	}, func() string { return "member" })
 	ctx := requestcontext.WithWorkspaceID(t.Context(), "workspace-primary")
 	principal := service.Resolve(ctx, "user-1", "", "")
 	if !principal.Known || principal.UserID != "user-1" || principal.Role.Key != "member" {
 		t.Fatalf("principal=%#v", principal)
 	}
-	if !reflect.DeepEqual(principal.Role.Permissions, []string{"customer.read"}) {
+	if !reflect.DeepEqual(identitymodel.RolePermissionKeys(principal.Role.Permissions), []string{"customer.read"}) {
 		t.Fatalf("permissions=%v", principal.Role.Permissions)
 	}
 	if unknown := service.Resolve(ctx, "user-1", "missing", ""); unknown.Known {

@@ -146,7 +146,7 @@ func TestIdentityUserRoleAtomicReconcileHandler(t *testing.T) {
 	}
 	handler, response := newIdentityHTTPHandler(repo)
 	handler.principal = func(*http.Request) identitymodel.Principal {
-		return identitymodel.Principal{Known: true, UserID: "admin", Role: identitymodel.RoleSchema{RecordScope: "all_records"}}
+		return identitymodel.Principal{Known: true, UserID: "admin", Role: identitymodel.RoleSchema{Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "identity.user_role_assignments.account_and_roles_update")}}
 	}
 	w, request := identityRoleRequest(http.MethodPut, "/identity/users/user-1/account-and-roles",
 		`{"user":{"name":"Updated","email":"updated@example.com","status":"active"},"assignments":[{"role_id":"role-1"}]}`,

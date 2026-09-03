@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"testing"
 
+	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
@@ -32,6 +33,14 @@ func activateIdentityTestPermissions(service *IdentityDomainService, keys ...str
 	service.ReplacePermissionDefinitions(definitions)
 }
 
+func identityTestRolePermissions(keys ...string) []identitymodel.RolePermission {
+	return identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, keys...)
+}
+
+func identityTestScopedRolePermissions(scope identitymodel.IdentityDataScope, keys ...string) []identitymodel.RolePermission {
+	return identitymodel.RolePermissionsWithScope(scope, keys...)
+}
+
 func TestIdentityPrincipalWithoutRolesHasNoImplicitManagementScope(t *testing.T) {
 	repository := &identityAuthorizationRepository{identityRolesRepositoryStub: &identityRolesRepositoryStub{
 		users: []identitymodel.IdentityUser{{ID: "user", Status: identitymodel.IdentityStatusActive}},
@@ -40,33 +49,29 @@ func TestIdentityPrincipalWithoutRolesHasNoImplicitManagementScope(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !principal.Known || principal.Role.RecordScope != "none" || len(principal.EffectiveRecordScopes) != 0 {
+	if !principal.Known || len(principal.Role.Permissions) != 0 {
 		t.Fatalf("principal gained implicit management scope: %+v", principal)
 	}
 }
 
-func TestIdentityActorEvaluatesExplicitEffectiveManagementScopes(t *testing.T) {
+func TestIdentityActorUsesPermissionDataScopeForRoleAssignmentTarget(t *testing.T) {
 	actor := identitymodel.Principal{
 		Known: true, UserID: "manager", OrgID: "sales",
-		OrgScopeIDs: []string{"sales", "sales-east"}, ReportingScopeUserIDs: []string{"manager", "report"},
-		EffectiveRecordScopes: []string{"organization", "self_and_subordinates"},
+		SupportOrgScopeIDs: []string{"sales", "sales-east"},
+		Role:               identitymodel.RoleSchema{Permissions: identityTestScopedRolePermissions(identitymodel.IdentityDataScopeTargetOrg, identitycontract.IdentityUserRoleAssignmentsAssignPermission)},
 	}
-	for _, target := range []identitymodel.IdentityUser{{ID: "peer", OrgID: "sales"}, {ID: "report", OrgID: "other"}} {
-		if !identityActorCanManageRoleTarget(actor, target) {
+	for _, target := range []identitymodel.IdentityUser{{ID: "peer", OrgID: "sales"}, {ID: "east", OrgID: "sales-east"}} {
+		if !identitycontract.IdentityPermissionDataScopeAllows(actor, identitycontract.IdentityUserRoleAssignmentsAssignPermission, identitycontract.IdentityResourceFacts{RecordID: target.ID, OwnerUserID: target.ID, OwnerOrgID: target.OrgID}) {
 			t.Fatalf("explicit management scope rejected target %+v", target)
 		}
 	}
-	if identityActorCanManageRoleTarget(actor, identitymodel.IdentityUser{ID: "outsider", OrgID: "other"}) {
+	if identitycontract.IdentityPermissionDataScopeAllows(actor, identitycontract.IdentityUserRoleAssignmentsAssignPermission, identitycontract.IdentityResourceFacts{RecordID: "outsider", OwnerUserID: "outsider", OwnerOrgID: "other"}) {
 		t.Fatal("explicit management scopes expanded to an unrelated target")
 	}
 }
 
 func (r *identityAuthorizationRepository) ListIdentityRolePermissionAssignments(context.Context, string, string) ([]identitymodel.IdentityRolePermissionAssignment, error) {
 	return append([]identitymodel.IdentityRolePermissionAssignment(nil), r.permissionAssignments...), nil
-}
-
-func (r *identityAuthorizationRepository) ListIdentityRoleDataScopes(context.Context, string, string) ([]identitymodel.IdentityDataScopePolicy, error) {
-	return nil, nil
 }
 
 func (r *identityAuthorizationRepository) ListIdentityRoleFieldPermissions(context.Context, string, string) ([]identitymodel.IdentityFieldPermission, error) {
@@ -100,7 +105,7 @@ func TestIdentityAuthorizationContextBoundaryAndDelegation(t *testing.T) {
 	}
 	service := NewIdentityDomainService(repository, nil).mustForWorkspace(t, "workspace")
 	activateIdentityTestPermissions(service, "record.read")
-	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{Key: "role", Permissions: []string{"record.read"}, RecordScope: "all_records"}})
+	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{Key: "role", Permissions: identityTestRolePermissions("record.read")}})
 	if assignments, err := service.ResolveEffectiveRoleAssignments(t.Context(), "user"); err != nil || len(assignments) != 1 {
 		t.Fatalf("effective assignments=%+v err=%v", assignments, err)
 	}

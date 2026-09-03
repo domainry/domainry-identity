@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "name": "Legacy CRM",
   "objects": [{"key": "customer", "name": "Customer", "fields": [{"key": "name", "name": "Name", "type": "text"}]}],
-  "roles": [{"key": "sales", "name": "Sales", "permissions": ["customer.read"], "record_scope": "all_records"}],
+  "roles": [{"key": "sales", "name": "Sales", "permissions": [{"permission_key": "customer.read", "data_scope": "all"}]}],
   "frontend": {"experience": "admin", "theme": {"density": "compact"}},
   "surfaces": [{"key": "customers", "roles": ["sales"], "components": ["customer_table"], "navigation": ["customer"]}],
   "components": [{"key": "customer_table", "surface_key": "customers", "object_keys": ["customer"], "action_keys": ["customer.update"], "report_keys": ["customer.pipeline"], "view_key": "customer.active", "status_field": "status", "permission": "customer.read"}],

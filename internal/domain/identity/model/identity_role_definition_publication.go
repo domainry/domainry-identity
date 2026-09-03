@@ -41,10 +41,10 @@ type IdentityRoleDefinitionDeleteRequest struct {
 }
 
 type IdentityRolePermissionPublicationRequest struct {
-	PermissionKeys     []string `json:"permission_keys"`
-	ExpectedSchemaHash string   `json:"-"`
-	BusinessReason     string   `json:"business_reason"`
-	OperationID        string   `json:"-"`
+	Permissions        []RolePermission `json:"permissions"`
+	ExpectedSchemaHash string           `json:"-"`
+	BusinessReason     string           `json:"business_reason"`
+	OperationID        string           `json:"-"`
 }
 
 type IdentityRolePermissionConfiguration struct {
@@ -53,21 +53,6 @@ type IdentityRolePermissionConfiguration struct {
 	Permissions   []IdentityRolePermissionAssignment `json:"permissions"`
 	SchemaVersion string                             `json:"schema_version"`
 	SchemaHash    string                             `json:"schema_hash"`
-}
-
-type IdentityRoleDataScopePublicationRequest struct {
-	DataScopes         []IdentityDataScopePolicy `json:"data_scopes"`
-	ExpectedSchemaHash string                    `json:"-"`
-	BusinessReason     string                    `json:"business_reason"`
-	OperationID        string                    `json:"-"`
-}
-
-type IdentityRoleDataScopeConfiguration struct {
-	RoleID        string                    `json:"role_id"`
-	RoleKey       string                    `json:"role_key"`
-	DataScopes    []IdentityDataScopePolicy `json:"data_scopes"`
-	SchemaVersion string                    `json:"schema_version"`
-	SchemaHash    string                    `json:"schema_hash"`
 }
 
 type IdentityRoleFieldPermissionPublicationRequest struct {

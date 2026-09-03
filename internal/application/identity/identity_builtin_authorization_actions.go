@@ -18,6 +18,7 @@ type identityBuiltinActionSpec struct {
 	page                 *identitymodel.IdentityPageActionBinding
 	authorization        actioncontract.Authorization
 	exposures            []actioncontract.Exposure
+	permission           bool
 }
 
 func IdentityBuiltinAuthorizationActions() []identitymodel.IdentityActionDefinition {
@@ -26,7 +27,6 @@ func IdentityBuiltinAuthorizationActions() []identitymodel.IdentityActionDefinit
 	organizationUnits := page("/admin/org/organization-units", "组织机构管理")
 	roles := page("/admin/org/roles", "角色管理")
 	menus := page("/admin/org/menus", "菜单管理")
-	dataScopes := page("/admin/org/data-scopes", "数据范围")
 	fieldPermissions := page("/admin/org/field-permissions", "字段权限")
 	metadata := page("/admin/system/metadata", "元数据")
 
@@ -137,9 +137,6 @@ func IdentityBuiltinAuthorizationActions() []identitymodel.IdentityActionDefinit
 		permissionAction(identitycontract.IdentityActionRolePermissionsList, "角色功能权限", "列出", "GET", "/identity/roles/{roleID}/permissions", "查看角色功能权限", nil),
 		permissionAction(identitycontract.IdentityActionRolePermissionsValidate, "角色功能权限", "校验", "POST", "/identity/roles/{roleID}/permissions/validate", "校验角色功能权限", nil),
 		permissionAction(identitycontract.IdentityActionRolePermissionsPublish, "角色功能权限", "发布", "PUT", "/identity/roles/{roleID}/permissions", "发布角色功能权限", nil),
-		permissionAction(identitycontract.IdentityActionRoleDataScopesList, "角色数据范围", "列出", "GET", "/identity/roles/{roleID}/data-scopes", "列出角色数据范围", dataScopes),
-		permissionAction(identitycontract.IdentityActionRoleDataScopesValidate, "角色数据范围", "校验", "POST", "/identity/roles/{roleID}/data-scopes/validate", "校验角色数据范围", nil),
-		permissionAction(identitycontract.IdentityActionRoleDataScopesPublish, "角色数据范围", "发布", "PUT", "/identity/roles/{roleID}/data-scopes", "发布角色数据范围", nil),
 		permissionAction(identitycontract.IdentityActionRoleFieldPermissionsList, "角色字段权限", "列出", "GET", "/identity/roles/{roleID}/field-permissions", "列出角色字段权限", fieldPermissions),
 		permissionAction(identitycontract.IdentityActionRoleFieldPermissionsValidate, "角色字段权限", "校验", "POST", "/identity/roles/{roleID}/field-permissions/validate", "校验角色字段权限", nil),
 		permissionAction(identitycontract.IdentityActionRoleFieldPermissionsPublish, "角色字段权限", "发布", "PUT", "/identity/roles/{roleID}/field-permissions", "发布角色字段权限", nil),
@@ -181,7 +178,7 @@ func nonHTTPPermissionAction(key, capabilityKey, capabilityLabel, operationKey, 
 		Key: key, Owner: IdentityBuiltinAuthorizationOwner, SourceKind: "builtin_capability",
 		CapabilityKey: capabilityKey, CapabilityLabel: capabilityLabel, OperationKey: operationKey, OperationLabel: operationLabel,
 		Label: label, Exposures: []actioncontract.Exposure{actioncontract.ExposureTenantAdmin},
-		Authorization: actioncontract.Authorization{Strategy: actioncontract.AuthorizationExactRolePermission},
+		Authorization: actioncontract.Authorization{Strategy: actioncontract.AuthorizationAuthenticated},
 		NonHTTP:       []identitymodel.IdentityNonHTTPActionBinding{{Kind: "application_use_case", InvocationKey: key}},
 		Permission: &identitymodel.IdentityPermissionDefinitionContract{
 			Key: key, Owner: IdentityBuiltinAuthorizationOwner, ResourceKey: capabilityKey, OperationKey: operationKey,
@@ -202,7 +199,7 @@ func StandaloneIdentityAuthorizationSliceActions() []identitymodel.IdentityActio
 func permissionAction(key, capabilityLabel, operationLabel, method, route, label string, pageBinding *identitymodel.IdentityPageActionBinding) identityBuiltinActionSpec {
 	return identityBuiltinActionSpec{
 		key: key, capabilityLabel: capabilityLabel, operationLabel: operationLabel, method: method, route: route, label: label, page: pageBinding,
-		authorization: actioncontract.Authorization{Strategy: actioncontract.AuthorizationExactRolePermission},
+		authorization: actioncontract.Authorization{Strategy: actioncontract.AuthorizationAuthenticated}, permission: true,
 	}
 }
 
@@ -215,14 +212,14 @@ func authPermissionAction(key, capabilityLabel, operationLabel, method, route, l
 func principalAction(key, capabilityLabel, operationLabel, method, route, label string) identityBuiltinActionSpec {
 	return identityBuiltinActionSpec{
 		key: key, capabilityLabel: capabilityLabel, operationLabel: operationLabel, method: method, route: route, label: label,
-		authorization: actioncontract.Authorization{Strategy: actioncontract.AuthorizationAuthenticatedPrincipal},
+		authorization: actioncontract.Authorization{Strategy: actioncontract.AuthorizationAuthenticated},
 	}
 }
 
 func anonymousAction(key, capabilityLabel, operationLabel, method, route, label string) identityBuiltinActionSpec {
 	return identityBuiltinActionSpec{
 		key: key, capabilityLabel: capabilityLabel, operationLabel: operationLabel, method: method, route: route, label: label,
-		authorization: actioncontract.Authorization{Strategy: actioncontract.AuthorizationAnonymousProtocol, PolicyKey: key},
+		authorization: actioncontract.Authorization{Strategy: actioncontract.AuthorizationAnonymous},
 		exposures:     []actioncontract.Exposure{actioncontract.ExposurePublic},
 	}
 }
@@ -242,7 +239,7 @@ func authPrincipalAction(key, capabilityLabel, operationLabel, method, route, la
 func selfAction(key, capabilityLabel, operationLabel, method, route, label, policy string) identityBuiltinActionSpec {
 	return identityBuiltinActionSpec{
 		key: key, capabilityLabel: capabilityLabel, operationLabel: operationLabel, method: method, route: route, label: label,
-		authorization: actioncontract.Authorization{Strategy: actioncontract.AuthorizationSelfOrPermission, PolicyKey: policy},
+		authorization: actioncontract.Authorization{Strategy: actioncontract.AuthorizationAuthenticated, PolicyKey: policy}, permission: true,
 	}
 }
 
@@ -286,7 +283,7 @@ func buildIdentityBuiltinAction(spec identityBuiltinActionSpec) identitymodel.Id
 	if spec.page != nil {
 		definition.Pages = []identitymodel.IdentityPageActionBinding{*spec.page}
 	}
-	if definition.Authorization.Strategy == actioncontract.AuthorizationExactRolePermission || definition.Authorization.Strategy == actioncontract.AuthorizationSelfOrPermission {
+	if spec.permission {
 		definition.Permission = &identitymodel.IdentityPermissionDefinitionContract{
 			Key: key, Owner: IdentityBuiltinAuthorizationOwner, ResourceKey: capabilityKey, OperationKey: operationKey,
 			Label: strings.TrimSpace(spec.capabilityLabel) + " · " + strings.TrimSpace(spec.operationLabel), Description: spec.label,

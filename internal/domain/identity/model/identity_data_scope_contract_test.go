@@ -7,32 +7,35 @@ import (
 )
 
 func TestCanonicalIdentityDataScope(t *testing.T) {
-	tests := map[string]IdentityDataScope{"all_records": "all_records", "owned_records": "owned_records", "organization": "organization", "organization_and_children": "organization_and_children", "self_and_subordinates": "self_and_subordinates", "custom": "custom", "none": "none"}
+	tests := map[string]IdentityDataScope{"all": IdentityDataScopeAll, "owner": IdentityDataScopeOwner, "org": IdentityDataScopeOrg, "org_child": IdentityDataScopeOrgChild, "target_org": IdentityDataScopeTargetOrg}
 	for input, want := range tests {
 		if got, ok := CanonicalIdentityDataScope(input); !ok || got != want {
 			t.Errorf("CanonicalIdentityDataScope(%q) = %q, %v; want %q", input, got, ok, want)
 		}
 	}
-	for _, rejected := range []string{"all", "owned", "own_records", "reporting_line", "organization_tree", "team", "warehouse"} {
+	for _, rejected := range []string{"all_records", "owned_records", "organization", "organization_and_children", "self_and_subordinates", "custom", "none", "owned", "team"} {
 		if _, ok := CanonicalIdentityDataScope(rejected); ok {
 			t.Fatalf("legacy or unknown scope %q accepted", rejected)
 		}
 	}
 }
 
-func TestDataPermissionDoesNotOwnFunctionalOperationFlags(t *testing.T) {
-	encoded, err := json.Marshal(DataPermission{ObjectKey: "customer", Scope: "custom"})
+func TestRolePermissionOwnsOneExactPermissionAndDataScope(t *testing.T) {
+	encoded, err := json.Marshal(RolePermission{PermissionKey: "customer.read", DataScope: IdentityDataScopeOwner})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(string(encoded), `"read"`) || strings.Contains(string(encoded), `"write"`) {
 		t.Fatalf("data policy leaked functional authority: %s", encoded)
 	}
-	effective, err := json.Marshal(IdentityEffectiveDataAccess{ObjectKey: "customer", Allowed: true, Scope: "custom"})
+	effective, err := json.Marshal(IdentityEffectiveDataAccess{Resource: "customer", Allowed: true, Scopes: []IdentityDataScope{IdentityDataScopeOwner}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(effective), `"action"`) || strings.Contains(string(effective), `"read"`) || strings.Contains(string(effective), `"write"`) {
-		t.Fatalf("effective data policy leaked functional authority: %s", effective)
+	if strings.Contains(string(effective), `"predicate"`) || strings.Contains(string(effective), `"object_key"`) {
+		t.Fatalf("effective data access leaked legacy policy fields: %s", effective)
+	}
+	if strings.Contains(string(encoded), `"object_key"`) || strings.Contains(string(encoded), `"predicate"`) || strings.Contains(string(encoded), `"resource"`) {
+		t.Fatalf("role permission leaked legacy contract fields: %s", encoded)
 	}
 }

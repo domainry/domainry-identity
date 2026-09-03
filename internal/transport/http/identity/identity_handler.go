@@ -45,11 +45,14 @@ type IdentityHandler struct {
 
 type IdentityUserSecurity interface {
 	UserSecurityProfile(context.Context, string, string) (authdomain.UserSecurityProfile, error)
+	UserSecurityProfileGoverned(context.Context, identitymodel.Principal, string) (authdomain.UserSecurityProfile, error)
 	IssueInitialPassword(context.Context, string, string) (string, error)
 	UnlockUser(context.Context, string, string) error
+	UnlockUserGoverned(context.Context, identitymodel.Principal, string) error
 	ForceLogoutUser(context.Context, string, string) (int, error)
 	ForceLogoutUserIdempotent(context.Context, identitymodel.Principal, string, string) (authdomain.RevokeOtherSessionsResult, bool, error)
 	RevokeMFAFactor(context.Context, string, string, string) error
+	RevokeMFAFactorGoverned(context.Context, identitymodel.Principal, string, string) error
 }
 
 type IdentityUserSecurityBatch interface {
@@ -146,6 +149,9 @@ func (h *IdentityHandler) identityAction(action identitymodel.IdentityActionDefi
 				ContractVersion: identitysdk.PrincipalContextContractVersion,
 				Known:           principal.Known, WorkspaceID: principal.WorkspaceID, UserID: principal.UserID,
 				RoleKey: principal.Role.Key, AuthorizationRevision: principal.AuthorizationRevision,
+				OrgID: principal.OrgID, OrgScopeIDs: append([]string(nil), principal.OrgScopeIDs...),
+				SupportOrgID: principal.SupportOrgID, SupportOrgScopeIDs: append([]string(nil), principal.SupportOrgScopeIDs...),
+				ReportingScopeUserIDs: append([]string(nil), principal.ReportingScopeUserIDs...),
 			},
 			AccessToken: authpolicy.AuthBearerToken(r.Header.Get("Authorization")),
 		}
@@ -153,16 +159,8 @@ func (h *IdentityHandler) identityAction(action identitymodel.IdentityActionDefi
 	}
 }
 
-func (h *IdentityHandler) identityActionAllowed(r *http.Request, principal identitymodel.Principal, action identitymodel.IdentityActionDefinition) bool {
-	policy := strings.TrimSpace(action.Authorization.PolicyKey)
-	facts := identityapplication.IdentityActionAuthorizationContext{}
-	switch policy {
-	case "identity.user.self":
-		facts.SelfSatisfied = strings.TrimSpace(r.PathValue("userID")) == principal.UserID
-	case "identity.profile_binding.self", "identity.effective_access.self":
-		facts.DeferSelfToDomain = true
-	}
-	return h.actionAuthorization.Allows(action, principal, facts)
+func (h *IdentityHandler) identityActionAllowed(_ *http.Request, principal identitymodel.Principal, action identitymodel.IdentityActionDefinition) bool {
+	return h.actionAuthorization.Allows(action, principal, identityapplication.IdentityActionAuthorizationContext{})
 }
 
 func (h *IdentityHandler) EffectiveMenus(w http.ResponseWriter, r *http.Request) {
@@ -180,7 +178,7 @@ func (h *IdentityHandler) EffectiveMenus(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *IdentityHandler) listIdentityOrganizationUnits(w http.ResponseWriter, r *http.Request) {
-	organizationUnits, err := h.users.ListOrganizationUnits(r.Context())
+	organizationUnits, err := h.users.ListOrganizationUnitsWithinDataScope(r.Context(), h.principal(r), "identity.organization_units.list")
 	if err != nil {
 		h.writeServiceError(w, r, err)
 		return
@@ -196,19 +194,10 @@ func (h *IdentityHandler) createIdentityOrganizationUnit(w http.ResponseWriter, 
 	principal := h.principal(r)
 	result, err := h.executeIdentityAuthoringUpsert(r.Context(), "identity.organization_unit", organizationUnit.ID, r.Header.Get("Builder-Task-ID"), r.Header.Get("Idempotency-Key"), r.Header.Get("Expected-Schema-Hash"), organizationUnit, principal,
 		func(ctx context.Context) (any, bool, error) {
-			items, loadErr := h.users.ListOrganizationUnits(ctx)
-			if loadErr != nil {
-				return nil, false, loadErr
-			}
-			for _, item := range items {
-				if item.ID == organizationUnit.ID {
-					return item, true, nil
-				}
-			}
-			return nil, false, nil
+			return h.users.OrganizationUnitByIDWithinDataScope(ctx, organizationUnit.ID, principal, "identity.organization_units.create")
 		},
 		func(ctx context.Context) (any, error) {
-			if executeErr := h.users.UpsertOrganizationUnit(ctx, organizationUnit); executeErr != nil {
+			if executeErr := h.users.UpsertOrganizationUnitWithinDataScope(ctx, organizationUnit, principal, "identity.organization_units.create"); executeErr != nil {
 				return nil, executeErr
 			}
 			h.appendIdentityMutationAudit(r, "identity_organization_unit_created", "identity_organization_unit", organizationUnit.ID, "Created identity organization unit", map[string]any{"name": organizationUnit.Name})
@@ -226,19 +215,10 @@ func (h *IdentityHandler) updateIdentityOrganizationUnit(w http.ResponseWriter, 
 	principal := h.principal(r)
 	result, err := h.executeIdentityAuthoringUpsert(r.Context(), "identity.organization_unit", organizationUnit.ID, r.Header.Get("Builder-Task-ID"), r.Header.Get("Idempotency-Key"), r.Header.Get("Expected-Schema-Hash"), organizationUnit, principal,
 		func(ctx context.Context) (any, bool, error) {
-			items, loadErr := h.users.ListOrganizationUnits(ctx)
-			if loadErr != nil {
-				return nil, false, loadErr
-			}
-			for _, item := range items {
-				if item.ID == organizationUnit.ID {
-					return item, true, nil
-				}
-			}
-			return nil, false, nil
+			return h.users.OrganizationUnitByIDWithinDataScope(ctx, organizationUnit.ID, principal, "identity.organization_units.update")
 		},
 		func(ctx context.Context) (any, error) {
-			if executeErr := h.users.UpsertOrganizationUnit(ctx, organizationUnit); executeErr != nil {
+			if executeErr := h.users.UpsertOrganizationUnitWithinDataScope(ctx, organizationUnit, principal, "identity.organization_units.update"); executeErr != nil {
 				return nil, executeErr
 			}
 			h.appendIdentityMutationAudit(r, "identity_organization_unit_updated", "identity_organization_unit", organizationUnit.ID, "Updated identity organization unit", map[string]any{"name": organizationUnit.Name, "status": organizationUnit.Status})

@@ -108,16 +108,15 @@ func (s *IdentityStore) EnsureEmbeddedSchema(ctx context.Context) error {
 	if err := s.ensureManagedIdentityDatabaseMarker(ctx); err != nil {
 		return err
 	}
-	if err := s.ensureMetadataModuleSchema(ctx); err != nil {
-		return err
-	}
 	if err := s.EnsureMetadataSchema(ctx); err != nil {
 		return err
 	}
 	if err := s.EnsureIdentitySchema(ctx); err != nil {
 		return err
 	}
-	if err := s.EnsureEvidenceSchema(ctx); err != nil {
+	// Nested Audit owns its migrations and submits them after this outer
+	// Identity migration callback releases the Runtime migration lock.
+	if err := identityschema.EnsureEvidenceSchema(ctx, s); err != nil {
 		return err
 	}
 	return nil

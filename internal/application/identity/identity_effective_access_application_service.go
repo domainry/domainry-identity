@@ -14,10 +14,9 @@ import (
 )
 
 type IdentityEffectiveAccessDependencies struct {
-	Identity          IdentityEffectiveAccessWorkspaceScope
-	Objects           func() []definitionmodel.ObjectSchema
-	Actions           func() []definitionmodel.ActionSchema
-	RecordScopeAllows func(context.Context, string, string, string, identitymodel.Principal) (bool, error)
+	Identity IdentityEffectiveAccessWorkspaceScope
+	Objects  func() []definitionmodel.ObjectSchema
+	Actions  func() []definitionmodel.ActionSchema
 }
 
 type IdentityEffectiveAccessWorkspaceScope interface {
@@ -33,7 +32,7 @@ func (s *IdentityEffectiveAccessApplicationService) ReverseIndex(ctx context.Con
 	if err != nil {
 		return identitymodel.IdentityAccessReverseIndex{}, err
 	}
-	assignments, err := scoped.ListUserRoleAssignments(workspaceContext, "")
+	assignments, err := scoped.ListUserRoleAssignmentsWithinDataScope(workspaceContext, "", actor, "identity.access.reverse_index")
 	if err != nil {
 		return identitymodel.IdentityAccessReverseIndex{}, err
 	}
@@ -49,7 +48,7 @@ func (s *IdentityEffectiveAccessApplicationService) GovernanceReports(ctx contex
 	if err != nil {
 		return identitymodel.IdentityGovernanceReports{}, err
 	}
-	assignments, err := scoped.ListUserRoleAssignments(workspaceContext, "")
+	assignments, err := scoped.ListUserRoleAssignmentsWithinDataScope(workspaceContext, "", actor, "identity.access.reports")
 	if err != nil {
 		return identitymodel.IdentityGovernanceReports{}, err
 	}
@@ -73,7 +72,7 @@ func (s *IdentityEffectiveAccessApplicationService) PreviewRoleChange(ctx contex
 	if err != nil {
 		return identitymodel.IdentityRoleChangeImpact{}, err
 	}
-	assignments, err := scoped.ListUserRoleAssignments(workspaceContext, "")
+	assignments, err := scoped.ListUserRoleAssignmentsWithinDataScope(workspaceContext, "", actor, identitycontract.IdentityActionRolesImpactPreview)
 	if err != nil {
 		return identitymodel.IdentityRoleChangeImpact{}, err
 	}
@@ -137,7 +136,15 @@ func (s *IdentityEffectiveAccessApplicationService) snapshot(ctx context.Context
 		return identitymodel.IdentityEffectiveAccessSnapshot{}, err
 	}
 	workspaceContext := requestcontext.WithWorkspaceID(ctx, actor.WorkspaceID)
-	principal, err := scoped.ResolvePrincipal(workspaceContext, strings.TrimSpace(userID))
+	userID = strings.TrimSpace(userID)
+	if userID != strings.TrimSpace(actor.UserID) {
+		if _, found, scopeErr := scoped.UserByIDWithinDataScope(workspaceContext, userID, actor, permission); scopeErr != nil {
+			return identitymodel.IdentityEffectiveAccessSnapshot{}, scopeErr
+		} else if !found {
+			return identitymodel.IdentityEffectiveAccessSnapshot{}, &apperror.AppError{Kind: apperror.KindNotFound, Code: "backend.identity.user_not_found"}
+		}
+	}
+	principal, err := scoped.ResolvePrincipal(workspaceContext, userID)
 	if err != nil {
 		return identitymodel.IdentityEffectiveAccessSnapshot{}, err
 	}
@@ -185,25 +192,6 @@ func (s *IdentityEffectiveAccessApplicationService) Explain(ctx context.Context,
 		return identitymodel.IdentityAccessExplainResult{}, err
 	}
 	result := identityprojection.IdentityExplainEffectiveAccess(snapshot, principal.Role, request)
-	if !result.Allowed || strings.TrimSpace(request.RecordID) == "" {
-		return result, nil
-	}
-	if s.dependencies.RecordScopeAllows == nil {
-		return identitymodel.IdentityAccessExplainResult{}, internalError("explain record scope", nil)
-	}
-	allowed, err := s.dependencies.RecordScopeAllows(ctx, request.ObjectKey, request.RecordID, request.Action, principal)
-	if err != nil {
-		return identitymodel.IdentityAccessExplainResult{}, err
-	}
-	if !allowed {
-		result.Allowed = false
-		result.Reason = identitymodel.IdentityAccessReason{
-			Code: "record_scope_denied", Effect: "deny", Layer: "record", Subject: request.ObjectKey + ":" + request.RecordID,
-			Children: result.Reason.Children,
-		}
-		return result, nil
-	}
-	result.Reason.Children = append(result.Reason.Children, identitymodel.IdentityAccessReason{Code: "record_scope_allowed", Effect: "allow", Layer: "record", Subject: request.ObjectKey + ":" + request.RecordID})
 	return result, nil
 }
 

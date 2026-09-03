@@ -10,7 +10,6 @@ type IdentityRoleGovernanceDetail struct {
 	PermissionSetGroups []IdentityPermissionSetGroup       `json:"permission_set_groups"`
 	Guardrails          []IdentityGuardrailPolicy          `json:"guardrails"`
 	Permissions         []IdentityRolePermissionAssignment `json:"permissions"`
-	DataScopes          []IdentityDataScopePolicy          `json:"data_scopes"`
 	FieldPermissions    []IdentityFieldPermission          `json:"field_permissions"`
 	ExportRules         []ExportRule                       `json:"export_rules"`
 	Menus               []IdentityMenu                     `json:"menus"`

@@ -54,7 +54,24 @@ func (s *IdentityApplicationService) SearchUserDirectory(ctx context.Context, qu
 	if security == nil {
 		return IdentityUserDirectoryPage{}, apperror.New(apperror.KindUnavailable, "backend.identity.user_directory_security_unavailable", nil, nil)
 	}
-	return s.searchUserDirectory(ctx, query, func(ctx context.Context, workspaceID string, userIDs []string) (map[string]IdentityUserDirectorySecuritySummary, error) {
+	return s.searchUserDirectory(ctx, query, identitymodel.Principal{}, "", func(ctx context.Context, workspaceID string, userIDs []string) (map[string]IdentityUserDirectorySecuritySummary, error) {
+		summaries := make(map[string]IdentityUserDirectorySecuritySummary, len(userIDs))
+		for _, userID := range userIDs {
+			summary, err := security(ctx, workspaceID, userID)
+			if err != nil {
+				return nil, err
+			}
+			summaries[userID] = summary
+		}
+		return summaries, nil
+	})
+}
+
+func (s *IdentityApplicationService) SearchUserDirectoryWithinDataScope(ctx context.Context, query identitymodel.IdentityListQuery, actor identitymodel.Principal, permissionKey string, security IdentityUserDirectorySecurityReader) (IdentityUserDirectoryPage, error) {
+	if security == nil {
+		return IdentityUserDirectoryPage{}, apperror.New(apperror.KindUnavailable, "backend.identity.user_directory_security_unavailable", nil, nil)
+	}
+	return s.searchUserDirectory(ctx, query, actor, permissionKey, func(ctx context.Context, workspaceID string, userIDs []string) (map[string]IdentityUserDirectorySecuritySummary, error) {
 		summaries := make(map[string]IdentityUserDirectorySecuritySummary, len(userIDs))
 		for _, userID := range userIDs {
 			summary, err := security(ctx, workspaceID, userID)
@@ -71,15 +88,27 @@ func (s *IdentityApplicationService) SearchUserDirectoryBatch(ctx context.Contex
 	if security == nil {
 		return IdentityUserDirectoryPage{}, apperror.New(apperror.KindUnavailable, "backend.identity.user_directory_security_unavailable", nil, nil)
 	}
-	return s.searchUserDirectory(ctx, query, security)
+	return s.searchUserDirectory(ctx, query, identitymodel.Principal{}, "", security)
 }
 
-func (s *IdentityApplicationService) searchUserDirectory(ctx context.Context, query identitymodel.IdentityListQuery, security IdentityUserDirectorySecurityBatchReader) (IdentityUserDirectoryPage, error) {
+func (s *IdentityApplicationService) SearchUserDirectoryBatchWithinDataScope(ctx context.Context, query identitymodel.IdentityListQuery, actor identitymodel.Principal, permissionKey string, security IdentityUserDirectorySecurityBatchReader) (IdentityUserDirectoryPage, error) {
+	if security == nil {
+		return IdentityUserDirectoryPage{}, apperror.New(apperror.KindUnavailable, "backend.identity.user_directory_security_unavailable", nil, nil)
+	}
+	return s.searchUserDirectory(ctx, query, actor, permissionKey, security)
+}
+
+func (s *IdentityApplicationService) searchUserDirectory(ctx context.Context, query identitymodel.IdentityListQuery, actor identitymodel.Principal, permissionKey string, security IdentityUserDirectorySecurityBatchReader) (IdentityUserDirectoryPage, error) {
 	scoped, err := s.domainForContext(ctx)
 	if err != nil {
 		return IdentityUserDirectoryPage{}, err
 	}
-	users, err := scoped.SearchUsers(ctx, query)
+	var users identitymodel.IdentityUserPage
+	if strings.TrimSpace(permissionKey) == "" {
+		users, err = scoped.SearchUsers(ctx, query)
+	} else {
+		users, err = scoped.SearchUsersWithinDataScope(ctx, query, actor, permissionKey)
+	}
 	if err != nil {
 		return IdentityUserDirectoryPage{}, err
 	}

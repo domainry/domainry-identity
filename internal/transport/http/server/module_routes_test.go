@@ -151,7 +151,7 @@ func inventoryModuleAction(actionOwner string) actioncontract.ActionDefinition {
 		Key: "inventory.items.list", Owner: actionOwner, SourceKind: "module_surface",
 		CapabilityKey: "inventory.items", CapabilityLabel: "Inventory items", OperationKey: "list", OperationLabel: "List",
 		Label: "List inventory items", Exposures: []actioncontract.Exposure{actioncontract.ExposureTenantAdmin},
-		Authorization: actioncontract.Authorization{Strategy: actioncontract.AuthorizationExactRolePermission},
+		Authorization: actioncontract.Authorization{Strategy: actioncontract.AuthorizationAuthenticated},
 		HTTP:          &actioncontract.HTTPBinding{Method: http.MethodGet, RouteTemplate: "/tenant-admin/modules/inventory/items"},
 		Permission: &actioncontract.PermissionDefinition{
 			Key: "inventory.items.list", Owner: actionOwner, ResourceKey: "inventory.items", OperationKey: "list",

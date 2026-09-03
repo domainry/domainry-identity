@@ -1,7 +1,8 @@
 import type { RuntimeApiError } from '@/lib/runtime-api'
-import type { RuntimeDataScopePolicy, RuntimeFieldPermission, RuntimePermissionPoint } from '@/data/api'
+import type { RuntimeFieldPermission, RuntimePermissionPoint } from '@/data/api'
+import type { IdentityRolePermissionGrant } from '@/data/governance-api'
 
-export type RolePolicySubmission = { roleID: string; permissionKeys: string[]; dataScopes: RuntimeDataScopePolicy[] }
+export type RolePolicySubmission = { roleID: string; permissions: IdentityRolePermissionGrant[] }
 
 export class RolePolicySaveError extends Error {
   constructor(readonly submission: RolePolicySubmission, readonly runtime: RuntimeApiError | undefined, cause: unknown) {
@@ -17,14 +18,14 @@ function indexedPath(fieldPath: string, collection: string) {
 
 export function rolePolicyControl(error: RolePolicySaveError, catalog: RuntimePermissionPoint[]) {
   const path = error.runtime?.fieldPath ?? ''
-  const scope = indexedPath(path, 'data_scopes')
-  if (scope) {
-    const policy = error.submission.dataScopes[scope.index]
-    return policy ? `${error.submission.roleID}:${policy.resource}:scope` : undefined
+  const permissionGrant = indexedPath(path, 'permissions')
+  if (permissionGrant) {
+    const permission = error.submission.permissions[permissionGrant.index]
+    return permission ? `${error.submission.roleID}:${permission.permission_key}:${permissionGrant.field}` : undefined
   }
-  const permission = path.match(/^permission_keys\[(\d+)\]$/)
+  const permission = path.match(/^permissions\[(\d+)\]\.permission_key$/)
   if (permission) {
-    const key = error.submission.permissionKeys[Number(permission[1])]
+    const key = error.submission.permissions[Number(permission[1])]?.permission_key
     const point = catalog.find((item) => item.key === key)
     return point ? `${error.submission.roleID}:${point.resource}:${point.action}` : undefined
   }

@@ -70,3 +70,47 @@ func TestEntitlementBatchUsesOneTransactionAndStableIdempotencyReceipt(t *testin
 		t.Fatalf("atomic batch assignments=%#v err=%v", assignments, err)
 	}
 }
+
+func TestScopedEntitlementBatchRejectsOneForeignTargetWithoutPartialWrites(t *testing.T) {
+	identityStore, err := persistence.OpenContext(t.Context(), config.Config{DatabaseDriver: "sqlite", DBPath: filepath.Join(t.TempDir(), "entitlement-batch-scope.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = identityStore.Close() })
+	if err := identityStore.EnsureSchema(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	store, err := identitypersistence.NewSQLIdentityStore(t.Context(), identityStore.DB(), identityStore.PersistenceEngine())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, user := range []identitymodel.IdentityUser{
+		{ID: "sales-user", Name: "Sales", Email: "sales@example.com", OrgID: "sales", Status: identitymodel.IdentityStatusActive},
+		{ID: "finance-user", Name: "Finance", Email: "finance@example.com", OrgID: "finance", Status: identitymodel.IdentityStatusActive},
+	} {
+		if err := store.UpsertIdentityUser(t.Context(), "workspace-primary", user); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mutation := identitymodel.IdentityEntitlementBatchMutation{
+		WorkspaceID: "workspace-primary", ActorID: "admin", IdempotencyKey: "scoped-batch", RequestFingerprint: "scoped-fingerprint",
+		Items: []identitymodel.IdentityEntitlementBatchItem{
+			{Operation: "grant", UserID: "sales-user", RoleID: "role"},
+			{Operation: "grant", UserID: "finance-user", RoleID: "role"},
+		},
+		Assignments: []identitymodel.IdentityUserRoleAssignment{
+			{UserID: "sales-user", RoleID: "role", Status: "active"},
+			{UserID: "finance-user", RoleID: "role", Status: "active"},
+		},
+	}
+	if _, allowed, err := store.ApplyIdentityEntitlementBatchWithinDataScope(t.Context(), mutation, identitymodel.IdentityDataScopeFilter{OwnerOrgIDs: []string{"sales"}}); err != nil || allowed {
+		t.Fatalf("foreign-target batch allowed=%t err=%v", allowed, err)
+	}
+	assignments, err := store.ListIdentityUserRoleAssignments(t.Context(), "workspace-primary", "")
+	if err != nil || len(assignments) != 0 {
+		t.Fatalf("foreign-target batch left partial assignments=%#v err=%v", assignments, err)
+	}
+	if _, found, err := store.GetIdentityEntitlementBatchReceipt(t.Context(), "workspace-primary", "scoped-batch"); err != nil || found {
+		t.Fatalf("foreign-target batch wrote receipt found=%t err=%v", found, err)
+	}
+}

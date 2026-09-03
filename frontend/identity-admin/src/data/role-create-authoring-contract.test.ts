@@ -18,7 +18,7 @@ describe('role creation governance contract', () => {
       members: 0,
       status: 'active',
       businessReason: 'Grant the QA operator only the governed acceptance capabilities.',
-	  permissionKeys: ['identity.organization_units.list'],
+	  permissions: [{ permission_key: 'identity.organization_units.list', data_scope: 'all' }],
     })
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
@@ -31,9 +31,7 @@ describe('role creation governance contract', () => {
     expect(body.role).toMatchObject({
       key: 'runtime_qa',
       description: 'Runtime acceptance role',
-      permissions: ['identity.organization_units.list'],
-      record_scope: 'none',
-      data_permissions: [],
+      permissions: [{ permission_key: 'identity.organization_units.list', data_scope: 'all' }],
       field_permissions: [],
     })
   })

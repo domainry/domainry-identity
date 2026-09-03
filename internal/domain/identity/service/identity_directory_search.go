@@ -8,7 +8,9 @@ import (
 	"strings"
 
 	"github.com/domainry/domainry-foundation/pagination"
+	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	identityrepository "github.com/domainry/domainry-identity/internal/domain/identity/repository"
 )
 
 const identityDirectoryMaximumPageSize = 200
@@ -159,6 +161,14 @@ func identityUserValue(user identitymodel.IdentityUser, field string) string {
 }
 
 func (s *IdentityDomainService) SearchUsers(ctx context.Context, query identitymodel.IdentityListQuery) (identitymodel.IdentityUserPage, error) {
+	return s.searchUsers(ctx, query, identitymodel.IdentityDataScopeFilter{Unrestricted: true})
+}
+
+func (s *IdentityDomainService) SearchUsersWithinDataScope(ctx context.Context, query identitymodel.IdentityListQuery, actor identitymodel.Principal, permissionKey string) (identitymodel.IdentityUserPage, error) {
+	return s.searchUsers(ctx, query, identitycontract.IdentityPermissionDataScopeFilter(actor, permissionKey))
+}
+
+func (s *IdentityDomainService) searchUsers(ctx context.Context, query identitymodel.IdentityListQuery, scope identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityUserPage, error) {
 	allowed := map[string]bool{
 		"id": true, "name": true, "given_name": true, "middle_name": true, "family_name": true,
 		"name_prefix": true, "name_suffix": true, "native_name": true, "name_locale": true,
@@ -180,12 +190,24 @@ func (s *IdentityDomainService) SearchUsers(ctx context.Context, query identitym
 	}
 	cursor := identityDirectoryPagination(query)
 	query.PageSize, query.SearchFields, query.Filters, query.Sort = cursor.PageSize(), fields, mapStringAny(filters), rules
-	if repository, ok := s.repo.(interface {
-		SearchIdentityUsers(context.Context, string, identitymodel.IdentityListQuery) (identitymodel.IdentityUserPage, error)
-	}); ok {
-		return repository.SearchIdentityUsers(ctx, s.workspace, query)
+	if repository, ok := s.repo.(identityrepository.IdentityUserDataScopeSearchRepository); ok {
+		return repository.SearchIdentityUsersWithinDataScope(ctx, s.workspace, query, scope)
 	}
-	users, err := s.repo.ListIdentityUsers(ctx, s.workspace)
+	var users []identitymodel.IdentityUser
+	if scope.Unrestricted {
+		if repository, ok := s.repo.(interface {
+			SearchIdentityUsers(context.Context, string, identitymodel.IdentityListQuery) (identitymodel.IdentityUserPage, error)
+		}); ok {
+			return repository.SearchIdentityUsers(ctx, s.workspace, query)
+		}
+		users, err = s.repo.ListIdentityUsers(ctx, s.workspace)
+	} else {
+		repository, ok := s.repo.(identityrepository.IdentityUserDataScopeRepository)
+		if !ok {
+			return identitymodel.IdentityUserPage{}, internalError("identity user data-scope repository unavailable", nil)
+		}
+		users, err = repository.ListIdentityUsersWithinDataScope(ctx, s.workspace, scope)
+	}
 	if err != nil {
 		return identitymodel.IdentityUserPage{}, err
 	}
@@ -245,24 +267,40 @@ func identityRoleAssignmentValue(assignment identitymodel.IdentityUserRoleAssign
 }
 
 func (s *IdentityDomainService) SearchUserRoleAssignments(ctx context.Context, userID string, query identitymodel.IdentityListQuery) (identitymodel.IdentityUserRoleAssignmentPage, error) {
-	assignments, err := s.repo.ListIdentityUserRoleAssignments(ctx, s.workspace, strings.TrimSpace(userID))
+	return s.searchUserRoleAssignments(ctx, userID, query, identitymodel.IdentityDataScopeFilter{Unrestricted: true})
+}
+
+func (s *IdentityDomainService) SearchUserRoleAssignmentsWithinDataScope(ctx context.Context, userID string, query identitymodel.IdentityListQuery, actor identitymodel.Principal, permissionKey string) (identitymodel.IdentityUserRoleAssignmentPage, error) {
+	return s.searchUserRoleAssignments(ctx, userID, query, identitycontract.IdentityPermissionDataScopeFilter(actor, permissionKey))
+}
+
+func (s *IdentityDomainService) searchUserRoleAssignments(ctx context.Context, userID string, queryValue identitymodel.IdentityListQuery, scope identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityUserRoleAssignmentPage, error) {
+	var assignments []identitymodel.IdentityUserRoleAssignment
+	var err error
+	if scope.Unrestricted {
+		assignments, err = s.repo.ListIdentityUserRoleAssignments(ctx, s.workspace, strings.TrimSpace(userID))
+	} else if repository, ok := s.repo.(identityrepository.IdentityUserRoleAssignmentDataScopeRepository); ok {
+		assignments, err = repository.ListIdentityUserRoleAssignmentsWithinDataScope(ctx, s.workspace, strings.TrimSpace(userID), scope)
+	} else {
+		return identitymodel.IdentityUserRoleAssignmentPage{}, internalError("identity user-role assignment data-scope repository unavailable", nil)
+	}
 	if err != nil {
 		return identitymodel.IdentityUserRoleAssignmentPage{}, err
 	}
 	allowed := map[string]bool{"user_id": true, "role_id": true, "binding_key": true, "profile_id": true, "source": true, "status": true, "valid_from": true, "valid_until": true, "granted_by": true, "created_at": true}
-	fields, err := identityDirectoryFields(query.SearchFields, []string{"role_id", "source", "granted_by"}, allowed, "backend.identity.role_assignment_search_field_invalid")
+	fields, err := identityDirectoryFields(queryValue.SearchFields, []string{"role_id", "source", "granted_by"}, allowed, "backend.identity.role_assignment_search_field_invalid")
 	if err != nil {
 		return identitymodel.IdentityUserRoleAssignmentPage{}, err
 	}
-	filters, err := identityDirectoryFilters(query.Filters, allowed, "backend.identity.role_assignment_filter_field_invalid")
+	filters, err := identityDirectoryFilters(queryValue.Filters, allowed, "backend.identity.role_assignment_filter_field_invalid")
 	if err != nil {
 		return identitymodel.IdentityUserRoleAssignmentPage{}, err
 	}
-	rules, err := identityDirectorySort(query, []identitymodel.IdentitySortRule{{Field: "created_at", Direction: "desc"}, {Field: "role_id", Direction: "asc"}}, allowed, "backend.identity.role_assignment_sort_invalid")
+	rules, err := identityDirectorySort(queryValue, []identitymodel.IdentitySortRule{{Field: "created_at", Direction: "desc"}, {Field: "role_id", Direction: "asc"}}, allowed, "backend.identity.role_assignment_sort_invalid")
 	if err != nil {
 		return identitymodel.IdentityUserRoleAssignmentPage{}, err
 	}
-	needle := strings.ToLower(strings.TrimSpace(query.Search))
+	needle := strings.ToLower(strings.TrimSpace(queryValue.Search))
 	filtered := make([]identitymodel.IdentityUserRoleAssignment, 0, len(assignments))
 	for _, assignment := range assignments {
 		value := func(field string) string { return identityRoleAssignmentValue(assignment, field) }
@@ -275,7 +313,7 @@ func (s *IdentityDomainService) SearchUserRoleAssignments(ctx context.Context, u
 			func(field string) string { return identityRoleAssignmentValue(filtered[left], field) },
 			func(field string) string { return identityRoleAssignmentValue(filtered[right], field) })
 	})
-	cursor := identityDirectoryPagination(query)
+	cursor := identityDirectoryPagination(queryValue)
 	page, err := identityDirectoryPage(cursor, filtered, func(assignment identitymodel.IdentityUserRoleAssignment) string { return assignment.RoleID })
 	if err != nil {
 		return identitymodel.IdentityUserRoleAssignmentPage{}, err

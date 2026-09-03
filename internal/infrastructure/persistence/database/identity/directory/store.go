@@ -33,11 +33,18 @@ var identityUserDirectoryColumns = map[string]string{
 }
 
 func (s Store) SearchIdentityUsers(ctx context.Context, workspaceID string, queryValue identitymodel.IdentityListQuery) (identitymodel.IdentityUserPage, error) {
+	return s.SearchIdentityUsersWithinDataScope(ctx, workspaceID, queryValue, identitymodel.IdentityDataScopeFilter{Unrestricted: true})
+}
+
+func (s Store) SearchIdentityUsersWithinDataScope(ctx context.Context, workspaceID string, queryValue identitymodel.IdentityListQuery, scope identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityUserPage, error) {
 	workspaceID, err := identityWorkspaceID(workspaceID)
 	if err != nil {
 		return identitymodel.IdentityUserPage{}, err
 	}
 	conditions := identityDirectoryPredicates(queryValue, identityUserDirectoryColumns)
+	if !scope.Unrestricted {
+		conditions = append(conditions, identityUserDataScopePredicate(scope))
+	}
 	total, err := s.identityDirectoryCount(ctx, workspaceID, "_identity_users", conditions)
 	if err != nil {
 		return identitymodel.IdentityUserPage{}, err
@@ -81,6 +88,32 @@ func (s Store) SearchIdentityUsers(ctx context.Context, workspaceID string, quer
 	}
 	page := pagination.Boundary(cursor, items, func(user identitymodel.IdentityUser) string { return user.ID })
 	return identitymodel.IdentityUserPage{Items: page.Items, PageSize: cursor.PageSize(), Total: total, HasNext: page.HasNext, NextID: page.NextID}, nil
+}
+
+func identityUserDataScopePredicate(scope identitymodel.IdentityDataScopeFilter) query.Predicate {
+	scope = scope.Normalized()
+	if scope.Unrestricted {
+		return query.AlwaysTrue()
+	}
+	predicates := make([]query.Predicate, 0, 2)
+	if len(scope.OwnerUserIDs) > 0 {
+		values := make([]any, len(scope.OwnerUserIDs))
+		for index := range scope.OwnerUserIDs {
+			values[index] = scope.OwnerUserIDs[index]
+		}
+		predicates = append(predicates, query.In("id", values...))
+	}
+	if len(scope.OwnerOrgIDs) > 0 {
+		values := make([]any, len(scope.OwnerOrgIDs))
+		for index := range scope.OwnerOrgIDs {
+			values[index] = scope.OwnerOrgIDs[index]
+		}
+		predicates = append(predicates, query.In("org_id", values...))
+	}
+	if len(predicates) == 0 {
+		return query.AlwaysFalse()
+	}
+	return query.Or(predicates...)
 }
 
 func identityDirectoryPredicates(queryValue identitymodel.IdentityListQuery, columns map[string]string) []query.Predicate {

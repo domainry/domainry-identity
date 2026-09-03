@@ -40,12 +40,11 @@ func TestIdentityGovernanceValidationReportsEveryReferenceShape(t *testing.T) {
 	role := identitymodel.IdentityRole{
 		ID: "candidate", Key: " DUPLICATE ",
 	}
-	permissionKeys := []string{"order.read", " order.read ", "missing", ""}
-	dataScopes := []identitymodel.IdentityDataScopePolicy{
-		{Resource: "order", Scope: "all_records"},
-		{Resource: " order ", Scope: "invalid"},
-		{Resource: "missing", Scope: "all_records"},
-		{Resource: "", Scope: "all_records"},
+	permissions := []identitymodel.RolePermission{
+		{PermissionKey: "order.read", DataScope: identitymodel.IdentityDataScopeAll},
+		{PermissionKey: " order.read ", DataScope: "invalid"},
+		{PermissionKey: "missing", DataScope: identitymodel.IdentityDataScopeAll},
+		{PermissionKey: "", DataScope: identitymodel.IdentityDataScopeAll},
 	}
 	fieldPermissions := []identitymodel.IdentityFieldPermission{
 		{Resource: "order", Field: "amount", Visible: true},
@@ -57,8 +56,7 @@ func TestIdentityGovernanceValidationReportsEveryReferenceShape(t *testing.T) {
 	result, err := service.Validate(t.Context(), identitycontract.IdentityGovernanceValidationRequest{
 		Role:             &role,
 		RoleID:           "missing-role",
-		PermissionKeys:   permissionKeys,
-		DataScopes:       dataScopes,
+		Permissions:      permissions,
 		FieldPermissions: fieldPermissions,
 		Menu:             &menu,
 		MenuIDs:          []string{"root", " root ", "missing", ""},
@@ -80,9 +78,6 @@ func TestIdentityGovernanceValidationReportsEveryReferenceShape(t *testing.T) {
 		"backend.identity.role_key_exists",
 		"backend.identity.permission_duplicate",
 		"backend.identity.permission_not_found",
-		"backend.identity.data_scope_resource_duplicate",
-		"backend.identity.data_scope_resource_not_found",
-		"backend.identity.data_scope_resource_required",
 		"backend.identity.data_scope_invalid",
 		"backend.identity.field_permission_duplicate",
 		"backend.identity.field_permission_edit_requires_visibility",
@@ -108,7 +103,7 @@ func TestIdentityGovernanceValidationAcceptsCanonicalConfiguration(t *testing.T)
 	service := identityGovernanceTestService(repository)
 	role := identitymodel.IdentityRole{ID: "role", Key: "role"}
 	menu := identitymodel.IdentityMenu{ID: "child", Key: "child", ParentID: "root"}
-	result, err := service.Validate(t.Context(), identitycontract.IdentityGovernanceValidationRequest{Role: &role, RoleID: "role", PermissionKeys: []string{"order.read"}, DataScopes: []identitymodel.IdentityDataScopePolicy{{Resource: "order", Scope: "all_records"}}, FieldPermissions: []identitymodel.IdentityFieldPermission{{Resource: "order", Field: "amount", Visible: true}}, Menu: &menu, MenuIDs: []string{"root"}}, identityGovernanceTestPrincipal())
+	result, err := service.Validate(t.Context(), identitycontract.IdentityGovernanceValidationRequest{Role: &role, RoleID: "role", Permissions: identityTestRolePermissions("order.read"), FieldPermissions: []identitymodel.IdentityFieldPermission{{Resource: "order", Field: "amount", Visible: true}}, Menu: &menu, MenuIDs: []string{"root"}}, identityGovernanceTestPrincipal())
 	if err != nil || !result.Valid || len(result.Errors) != 0 {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}
@@ -123,24 +118,6 @@ func TestIdentityOwnerAuthoringExamplesUseRealGovernanceValidator(t *testing.T) 
 	}
 	service := identityGovernanceTestService(repository)
 	principal := identityGovernanceTestPrincipal()
-
-	dataScope := identitycontract.IdentityRoleDataScopeAuthoringCapability()
-	for _, example := range dataScope.Examples[:2] {
-		var request struct {
-			DataScopes []identitymodel.IdentityDataScopePolicy `json:"data_scopes"`
-		}
-		decodeIdentityAuthoringExample(t, example.Value, &request)
-		if err := service.ValidateRoleDataScopes(t.Context(), "role", request.DataScopes, principal); err != nil {
-			t.Fatalf("data scope example %s: %v", example.Name, err)
-		}
-	}
-	var invalidScopes struct {
-		DataScopes []identitymodel.IdentityDataScopePolicy `json:"data_scopes"`
-	}
-	decodeIdentityAuthoringExample(t, dataScope.Examples[2].Value, &invalidScopes)
-	if err := service.ValidateRoleDataScopes(t.Context(), "role", invalidScopes.DataScopes, principal); apperror.CodeOf(err) != dataScope.Examples[2].ExpectedErrorCodes[0] {
-		t.Fatalf("invalid data scope error=%v", err)
-	}
 
 	field := identitycontract.IdentityRoleFieldPermissionAuthoringCapability()
 	for _, example := range field.Examples[:2] {
@@ -358,10 +335,7 @@ func TestIdentityGovernanceConvenienceValidatorsReturnFirstStructuredError(t *te
 		call func() error
 	}{
 		{name: "permissions", call: func() error {
-			return service.ValidateRolePermissions(t.Context(), "missing", []string{"missing"}, principal)
-		}},
-		{name: "scopes", call: func() error {
-			return service.ValidateRoleDataScopes(t.Context(), "missing", []identitymodel.IdentityDataScopePolicy{{Resource: "missing", Scope: "invalid"}}, principal)
+			return service.ValidateRolePermissions(t.Context(), "missing", identityTestRolePermissions("missing"), principal)
 		}},
 		{name: "fields", call: func() error {
 			return service.ValidateRoleFieldPermissions(t.Context(), "missing", []identitymodel.IdentityFieldPermission{{Resource: "missing", Field: "field"}}, principal)
@@ -445,7 +419,7 @@ func TestIdentityGovernanceRejectsMissingDependenciesAfterAuthorization(t *testi
 
 func TestIdentityGovernancePermissionValidationFailsClosedWithoutCatalog(t *testing.T) {
 	service := NewIdentityGovernanceApplicationServiceWithPermissionSource(&identityScopedRepository{}, nil, func() map[string]definitionmodel.ObjectSchema { return nil })
-	issues := service.validatePermissionKeys([]string{"missing"})
+	issues := service.validatePermissions(identityTestRolePermissions("missing"))
 	if len(issues) != 1 || issues[0].ErrorCode != "backend.identity.permission_not_found" {
 		t.Fatalf("issues=%#v", issues)
 	}
@@ -463,7 +437,7 @@ func TestIdentityGovernancePermissionValidationUsesCurrentDefinitionState(t *tes
 		},
 		func() map[string]definitionmodel.ObjectSchema { return nil },
 	)
-	issues := service.validatePermissionKeys([]string{"active", "disabled", "retired", "missing"})
+	issues := service.validatePermissions(identityTestRolePermissions("active", "disabled", "retired", "missing"))
 	if len(issues) != 3 || issues[0].ErrorCode != "backend.identity.permission_disabled" || issues[1].ErrorCode != "backend.identity.permission_retired" || issues[2].ErrorCode != "backend.identity.permission_not_found" {
 		t.Fatalf("issues=%#v", issues)
 	}

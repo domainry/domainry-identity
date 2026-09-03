@@ -8,7 +8,7 @@ import authoringcontract "github.com/domainry/domainry-identity/internal/domain/
 func IdentityAuthoringDomain() authoringcontract.CapabilityAuthoringDomain {
 	return authoringcontract.CapabilityAuthoringDomain{Key: "identity", Capabilities: []authoringcontract.CapabilityAuthoringDefinition{
 		IdentityUserAuthoringCapability(), IdentityOrganizationUnitAuthoringCapability(), IdentityRoleAuthoringCapability(),
-		IdentityUserRoleAssignmentAuthoringCapability(), IdentityRolePermissionAuthoringCapability(), IdentityRoleDataScopeAuthoringCapability(),
+		IdentityUserRoleAssignmentAuthoringCapability(), IdentityRolePermissionAuthoringCapability(),
 		IdentityRoleFieldPermissionAuthoringCapability(), IdentityMenuAuthoringCapability(), IdentityRoleMenuAssignmentAuthoringCapability(),
 		IdentityProfileBindingAuthoringCapability(),
 	}}

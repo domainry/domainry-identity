@@ -10,7 +10,6 @@ const SYSTEM_MENU_LABEL_KEYS: Readonly<Record<string, MessageKey>> = {
   org_organization_units: 'nav.organizationUnits',
   org_roles: 'nav.roles',
   org_menus: 'nav.menus',
-  org_data_scopes: 'nav.dataScopes',
   org_field_permissions: 'nav.fieldPerms',
   system: 'nav.group.system',
   system_metadata: 'nav.metadata',

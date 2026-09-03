@@ -25,8 +25,7 @@ func (s metadataSchemaApplicationProviderStub) SchemaForPrincipal(context.Contex
 func TestMetadataSchemaApplicationServiceOwnsFeaturePermissionProjection(t *testing.T) {
 	application := NewMetadataSchemaApplicationService(metadataSchemaApplicationProviderStub{snapshot: metadatamodel.MetadataSchemaSnapshot{Objects: []definitionmodel.ObjectSchema{{Key: "customer", Name: "Customer"}}}}, nil)
 	admin := identitymodel.Principal{Known: true, WorkspaceID: "workspace-primary", UserID: "admin", Role: identitymodel.RoleSchema{
-		Permissions:     []string{"customer.read"},
-		DataPermissions: []identitymodel.DataPermission{{ObjectKey: "customer", Scope: "all_records"}},
+		Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "customer.read"),
 	}}
 	permissions, err := application.FeaturePermissions(t.Context(), admin)
 	if err != nil || len(permissions.Objects) != 1 || !permissions.Objects[0].Actions[0].Allowed {
@@ -82,7 +81,7 @@ func TestReloadMetadataPreparesEveryObserverBeforeActivation(t *testing.T) {
 	service.AddReloadObserver(func(context.Context, metadatamodel.MetadataSchemaSnapshot) (MetadataReloadCommit, error) {
 		return nil, observerErr
 	})
-	principal := identitymodel.Principal{Known: true, WorkspaceID: "workspace", Role: identitymodel.RoleSchema{Permissions: []string{metadatacontract.MetadataActionReload}}}
+	principal := identitymodel.Principal{Known: true, WorkspaceID: "workspace", Role: identitymodel.RoleSchema{Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, metadatacontract.MetadataActionReload)}}
 	snapshot, err := service.ReloadMetadata(t.Context(), principal)
 	if !errors.Is(err, observerErr) {
 		t.Fatalf("reload error=%v", err)
@@ -104,7 +103,7 @@ func TestReloadMetadataActivatesExactPreparedCandidateOnce(t *testing.T) {
 		preparedHash = candidate.SchemaHash
 		return func() { committedHash = candidate.SchemaHash }, nil
 	})
-	principal := identitymodel.Principal{Known: true, WorkspaceID: "workspace", Role: identitymodel.RoleSchema{Permissions: []string{metadatacontract.MetadataActionReload}}}
+	principal := identitymodel.Principal{Known: true, WorkspaceID: "workspace", Role: identitymodel.RoleSchema{Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, metadatacontract.MetadataActionReload)}}
 	snapshot, err := service.ReloadMetadata(t.Context(), principal)
 	if err != nil {
 		t.Fatal(err)

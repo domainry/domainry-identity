@@ -4,7 +4,7 @@ import "net/http"
 
 func (h *IdentityHandler) identityUserSecurity(w http.ResponseWriter, r *http.Request) {
 	principal := h.principal(r)
-	profile, err := h.userSecurity.UserSecurityProfile(r.Context(), principal.WorkspaceID, r.PathValue("userID"))
+	profile, err := h.userSecurity.UserSecurityProfileGoverned(r.Context(), principal, r.PathValue("userID"))
 	if err != nil {
 		h.writeServiceError(w, r, err)
 		return
@@ -15,7 +15,7 @@ func (h *IdentityHandler) identityUserSecurity(w http.ResponseWriter, r *http.Re
 func (h *IdentityHandler) unlockIdentityUser(w http.ResponseWriter, r *http.Request) {
 	principal := h.principal(r)
 	userID := r.PathValue("userID")
-	if err := h.userSecurity.UnlockUser(r.Context(), principal.WorkspaceID, userID); err != nil {
+	if err := h.userSecurity.UnlockUserGoverned(r.Context(), principal, userID); err != nil {
 		h.writeServiceError(w, r, err)
 		return
 	}
@@ -41,7 +41,7 @@ func (h *IdentityHandler) forceLogoutIdentityUser(w http.ResponseWriter, r *http
 func (h *IdentityHandler) revokeIdentityUserMFAFactor(w http.ResponseWriter, r *http.Request) {
 	principal := h.principal(r)
 	userID, factorID := r.PathValue("userID"), r.PathValue("factorID")
-	if err := h.userSecurity.RevokeMFAFactor(r.Context(), principal.WorkspaceID, userID, factorID); err != nil {
+	if err := h.userSecurity.RevokeMFAFactorGoverned(r.Context(), principal, userID, factorID); err != nil {
 		h.writeServiceError(w, r, err)
 		return
 	}

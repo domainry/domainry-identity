@@ -90,33 +90,26 @@ A Permission does not own URLs, risk, approval, assurance, or a list of Action u
 
 ### 4.3 Role and policies
 
-RoleSchema remains the assignable responsibility definition. `RoleSchema.Permissions` is the only functional Action-grant authority. Data, field, reference, export, permission-set and guardrail configuration remains separate policy metadata and cannot add functional Action grants.
+RoleSchema remains the assignable responsibility definition. `RoleSchema.Permissions[]` is the only functional Action-grant authority. Each entry binds one exact `permission_key` to its own `data_scope`; field, reference, export, permission-set and guardrail configuration remains separate policy metadata and cannot add functional Action grants.
 
 Operational `_identity_roles` and `_identity_user_role_assignments` remain the user assignment layer. They must not become a second functional-permission definition source.
 
 ### 4.4 Data scope and support organization
 
-`DataPermission` describes only an object's allowed record set: `object_key`, canonical `scope`, optional predicate, and denial-audit intent. It has no `read` or `write` grant. Read, create, update, delete, export, and business commands remain exact Actions in `RoleSchema.Permissions`; the effective access projection keeps one operation-independent record policy per effective object. A data predicate without an exact Action produces no executable authority.
+There is no role-level `DataPermission`. Each exact Action grant carries one canonical `data_scope` and optional denial-audit intent. Read, create, update, delete, export, and business commands are independent entries, so the same resource may deliberately use different scopes for different Actions. Custom predicates exist only in the compiled SDK `AccessBundle`, never in role authoring.
 
-The Identity SDK evaluator currently exposes separate query and mutation filter channels. That is an execution-protocol detail, not role configuration: the Identity SDK adapter compiles the same object predicate into both channels, while the evaluator still requires the exact Action FunctionGrant before either channel can be used. For example, `customer.read` plus the support predicate can query matching customers, but it cannot execute `customer.update` even though the record predicate itself would match.
+The Identity SDK evaluator currently exposes separate query and mutation filter channels. That is an execution-protocol detail, not role configuration: the Identity SDK adapter compiles the same canonical data scope into both channels, while the evaluator still requires the exact Action FunctionGrant before either channel can be used. For example, `customer.read` plus `target_org` can query matching customers, but it cannot execute `customer.update` even when the resource facts match.
 
-`IdentityUser.OrgID` remains the user's real primary organization. A support worker who needs an additional customer-service view uses the separate optional `support_org_id`; assigning it never changes the worker's primary organization. Identity validates that the support root is active, derives its active organization subtree into the subject-specific authorization revision, and freezes that set into the AccessBundle when a policy references the trusted `support_org_scope_ids` actor claim. Missing, disabled, or empty support scope resolves to an empty set and fails closed.
+`IdentityUser.OrgID` remains the user's real primary organization. A support worker who needs an additional customer-service view uses the separate optional `support_org_id`; assigning it never changes the worker's primary organization. Identity validates that the support root is active and derives its active organization subtree into the trusted `support_org_scope_ids` subject fact. Missing, disabled, or empty support scope resolves to an empty set and fails closed.
 
-This case reuses the existing `custom` scope and predicate language rather than adding a support-specific scope type. The application-owned customer role declares only its query Actions and a policy such as:
+The role uses the canonical `target_org` scope. The application-owned customer role declares the scope on each exact Action grant:
 
 ```json
 {
-  "permissions": ["customer.read"],
-  "data_permissions": [
+  "permissions": [
     {
-      "object_key": "customer",
-      "scope": "custom",
-      "predicate": {
-        "operator": "in",
-        "field_key": "owner_org_id",
-        "value_source": "actor_claim",
-        "claim_key": "support_org_scope_ids"
-      }
+      "permission_key": "customer.read",
+      "data_scope": "target_org"
     }
   ]
 }
@@ -232,7 +225,7 @@ Role and policy authoring is a direct, versioned RoleSchema boundary rather than
 - `PUT /identity/roles/{roleID}/permissions`, `/data-scopes` and `/field-permissions` own separate same-key publish Actions and only replace their corresponding RoleSchema field;
 - each command loads the aggregate under its own Action authorization. A publish Action must not acquire the matching list Action as a hidden prerequisite;
 - updates require the original schema hash, an idempotency key and a business reason. The repository performs compare-and-swap publication, idempotent replay, audit, role-directory projection and metadata reload as one existing RoleSchema publication flow;
-- role creation accepts functional Permission selections only. It initializes record scope to `none` and strips caller-supplied data, field, reference, export, delegation and guardrail authority; those policies require their dedicated authoring boundary;
+- role creation accepts exact Permission selections. Every selected Permission carries one canonical `data_scope` (`all | owner | org | org_child | target_org`); field, reference, export, delegation and guardrail policies remain separate dedicated authoring boundaries;
 - general role update changes display metadata only and preserves all authorization-policy fields. Delete is rejected while user-role or role-menu assignments still reference the role.
 
 There is no role-permission join table, role-authorization draft, approval state machine, or generated aggregate administrator grant. Functional, data and field policy editors may have separate transport DTOs, but all of them publish a new version of the same RoleSchema aggregate.

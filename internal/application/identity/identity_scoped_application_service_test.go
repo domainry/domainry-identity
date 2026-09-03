@@ -117,7 +117,7 @@ func identityScopedCalls(service *IdentityApplicationService) []struct {
 			return err
 		}},
 		{"assignable roles", func(ctx context.Context) error {
-			_, err := service.ListAssignableRoles(ctx, "user", identitymodel.Principal{Known: true, UserID: "actor", Role: identitymodel.RoleSchema{RecordScope: "all_records"}})
+			_, err := service.ListAssignableRoles(ctx, "user", identitymodel.Principal{Known: true, UserID: "actor", Role: identitymodel.RoleSchema{Permissions: identityTestRolePermissions("identity.user_role_assignments.assignable_roles")}})
 			return err
 		}},
 		{"requestable roles", func(ctx context.Context) error { _, err := service.ListRequestableRoles(ctx); return err }},
@@ -139,7 +139,6 @@ func identityScopedCalls(service *IdentityApplicationService) []struct {
 			_, err := service.ListRolePermissionAssignments(ctx, "role")
 			return err
 		}},
-		{"list role scopes", func(ctx context.Context) error { _, err := service.ListRoleDataScopes(ctx, "role"); return err }},
 		{"list role fields", func(ctx context.Context) error { _, err := service.ListRoleFieldPermissions(ctx, "role"); return err }},
 		{"upsert menu", func(ctx context.Context) error { return service.UpsertMenu(ctx, identitymodel.IdentityMenu{}) }},
 		{"remove menu", func(ctx context.Context) error { _, err := service.RemoveMenu(ctx, "menu"); return err }},

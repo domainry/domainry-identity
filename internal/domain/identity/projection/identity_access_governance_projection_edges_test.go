@@ -13,7 +13,13 @@ func TestIdentityAccessReverseIndexEdgeInputs(t *testing.T) {
 	index := IdentityBuildAccessReverseIndex(
 		[]identitymodel.IdentityRole{{ID: "fallback", Key: " "}, {ID: "known", Key: "role"}},
 		[]identitymodel.RoleSchema{{
-			Key: "role", Permissions: []string{" ", ".", "object.", "standalone", "namespace.object.update"},
+			Key: "role", Permissions: []identitymodel.RolePermission{
+				{PermissionKey: " ", DataScope: identitymodel.IdentityDataScopeAll},
+				{PermissionKey: ".", DataScope: identitymodel.IdentityDataScopeAll},
+				{PermissionKey: "object.", DataScope: identitymodel.IdentityDataScopeAll},
+				{PermissionKey: "standalone", DataScope: identitymodel.IdentityDataScopeAll},
+				{PermissionKey: "namespace.object.update", DataScope: identitymodel.IdentityDataScopeAll},
+			},
 		}},
 		[]identitymodel.IdentityUserRoleAssignment{
 			{UserID: "inactive", RoleID: "known", Status: string(identitymodel.IdentityStatusDisabled)},
@@ -54,7 +60,7 @@ func TestIdentityGovernanceReportsEdgeInputs(t *testing.T) {
 		now,
 		[]identitymodel.IdentityPermissionDefinition{{Key: " "}, {Key: "orphan", DefinitionStatus: identitymodel.IdentityPermissionDefinitionActive, Enabled: true}, {Key: "published.read", DefinitionStatus: identitymodel.IdentityPermissionDefinitionActive, Enabled: true}},
 		roles,
-		[]identitymodel.RoleSchema{{Key: "published", Permissions: []string{"published.read"}}},
+		[]identitymodel.RoleSchema{{Key: "published", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "published.read")}},
 		assignments,
 	)
 	if len(report.AuthorizationDrift) != 1 || len(report.ExpiredEntitlements) != 2 ||
@@ -75,7 +81,7 @@ func TestIdentityGovernanceReportsPermissionDefinitionDrift(t *testing.T) {
 			{Key: "retired", DefinitionStatus: identitymodel.IdentityPermissionDefinitionRetired, Enabled: true},
 		},
 		nil,
-		[]identitymodel.RoleSchema{{Key: "role", Permissions: []string{"active", "disabled", "retired", "unknown"}}},
+		[]identitymodel.RoleSchema{{Key: "role", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "active", "disabled", "retired", "unknown")}},
 		nil,
 	)
 	want := []string{
@@ -94,12 +100,15 @@ func TestIdentityRoleChangeImpactEdgeInputs(t *testing.T) {
 	impact := IdentityPreviewRoleChange(
 		identitymodel.IdentityRoleChangeImpactRequest{Role: identitymodel.RoleSchema{
 			Key: "fallback-role",
-			Permissions: []string{
+			Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll,
 				".", "plain", "other.read", "account.update", "account.critical",
 				"account.approval", "account.assurance",
-			},
+			),
 		}},
-		identitymodel.RoleSchema{Key: "fallback-role", Permissions: []string{"account.old", " "}},
+		identitymodel.RoleSchema{Key: "fallback-role", Permissions: []identitymodel.RolePermission{
+			{PermissionKey: "account.old", DataScope: identitymodel.IdentityDataScopeAll},
+			{PermissionKey: " ", DataScope: identitymodel.IdentityDataScopeAll},
+		}},
 		identitymodel.IdentityRole{ID: "role-id"},
 		[]identitymodel.IdentityUserRoleAssignment{
 			{UserID: "wrong", RoleID: "other"},

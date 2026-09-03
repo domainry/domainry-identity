@@ -128,9 +128,15 @@ func (s *AuthApplicationService) ResetPasswordIdempotent(ctx context.Context, pr
 	if _, err := identitymodel.NewWorkspaceCommandScope(principal.WorkspaceID); err != nil {
 		return false, authMutationErrorWithCause(apperror.KindForbidden, "backend.workspace_scope_required", err)
 	}
+	if strings.TrimSpace(key) == "" {
+		return false, authMutationError(apperror.KindBadRequest, idempotency.ErrorCodeMissingKey)
+	}
+	if err := s.requireIdentityUserWithinDataScope(ctx, principal, strings.TrimSpace(userID), identitycontract.IdentityActionAuthResetPassword, apperror.KindForbidden, "auth.user_disabled"); err != nil {
+		return false, err
+	}
 	input := authpolicy.AuthPasswordMutationInput{UserID: userID, NewPassword: newPassword, MustChangePassword: mustChangePassword}
 	return s.executePasswordMutation(ctx, principal, key, identitycontract.IdentityActionAuthResetPassword, input, func() error {
-		return s.ResetPassword(requestcontext.WithWorkspaceID(ctx, principal.WorkspaceID), principal.WorkspaceID, userID, newPassword, mustChangePassword)
+		return s.AuthDomainService.ResetPasswordWithinDataScope(requestcontext.WithWorkspaceID(ctx, principal.WorkspaceID), principal.WorkspaceID, userID, newPassword, mustChangePassword, identitycontract.IdentityPermissionDataScopeFilter(principal, identitycontract.IdentityActionAuthResetPassword))
 	})
 }
 

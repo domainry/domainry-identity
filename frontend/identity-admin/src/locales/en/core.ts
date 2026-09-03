@@ -475,7 +475,6 @@ const messages = {
   "effectiveAccessExplain.object": "Object key",
   "effectiveAccessExplain.action": "Action",
   "effectiveAccessExplain.field": "Field key",
-  "effectiveAccessExplain.record": "Record ID",
   "effectiveAccessExplain.optional": "Optional",
   "effectiveAccessExplain.run": "Explain access",
   "effectiveAccessExplain.failed": "Runtime could not explain this access decision.",
@@ -530,7 +529,7 @@ const messages = {
   "roles.validation.codeUnique": "This role code already exists",
   "scopes.title": "Object Access & Data Scopes",
   "scopes.desc":
-    "Configure CRUD permissions and record scope for each role and domain object in one matrix.",
+    "Configure each exact permission and its data scope for every role in one matrix.",
   "scopes.matrixTitle": "Object access matrix",
   "scopes.matrixDescription":
     "Data scopes and CRUD grants are saved independently. Configure other domain actions in the role permission matrix.",
@@ -546,6 +545,7 @@ const messages = {
   "scopes.type.organizationTree": "Organization unit and children",
   "scopes.type.organization": "Current organization unit",
   "scopes.type.self": "Own data only",
+	"scopes.type.targetOrganization": "Support organization and children",
   "managementHome.admin.title": "Tenant governance",
   "managementHome.admin.description": "Review backend-published configuration facts and continue an authorized governance task.",
   "managementHome.runtimeHealth": "Runtime health",
@@ -560,11 +560,10 @@ const messages = {
   "managementHome.admin.rolesHint": "Permission assignment roles",
   "managementHome.authorizedTasks": "Authorized tasks",
   "managementHome.authorizedTasksDescription": "These entries come from the backend effective-menu projection for this Surface.",
-  "scopes.type.custom": "Custom scope",
   "scopes.type.none": "No data access",
   "scopes.hint":
     "CRUD permissions and scopes persist to role permission assignments and data scopes, affecting lists, actions, reports, and exports immediately.",
-  "scopes.editorLimits": "The backend requires at least one data scope per role. Custom scopes need a predicate editor, so this page preserves existing custom values but cannot create a custom scope without a predicate.",
+	"scopes.editorLimits": "No entry means no data access. Roles use only all, owner, org, org_child, or target_org.",
   "scopes.discard": "Discard",
   "scopes.selectPermissions": "All CRUD",
   "scopes.inheritedAdmin": "Global grant",

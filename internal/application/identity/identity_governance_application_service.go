@@ -75,8 +75,7 @@ func (validator *IdentityGovernanceApplicationService) Validate(ctx context.Cont
 		}
 		issues = append(issues, roleIssues...)
 	}
-	issues = append(issues, validator.validatePermissionKeys(request.PermissionKeys)...)
-	issues = append(issues, validator.validateDataScopes(request.DataScopes)...)
+	issues = append(issues, validator.validatePermissions(request.Permissions)...)
 	issues = append(issues, validator.validateFieldPermissions(request.FieldPermissions)...)
 	if request.Menu != nil {
 		menuIssues, err := validator.validateMenu(ctx, principal.WorkspaceID, *request.Menu)
@@ -93,12 +92,8 @@ func (validator *IdentityGovernanceApplicationService) Validate(ctx context.Cont
 	return identitycontract.IdentityGovernanceValidationResult{Valid: len(issues) == 0, Errors: issues, ContractVersion: identitycontract.IdentityAuthoringContractVersion}, nil
 }
 
-func (validator *IdentityGovernanceApplicationService) ValidateRolePermissions(ctx context.Context, roleID string, keys []string, principal identitymodel.Principal) error {
-	return validator.firstError(ctx, identitycontract.IdentityGovernanceValidationRequest{RoleID: roleID, PermissionKeys: keys}, principal)
-}
-
-func (validator *IdentityGovernanceApplicationService) ValidateRoleDataScopes(ctx context.Context, roleID string, scopes []identitymodel.IdentityDataScopePolicy, principal identitymodel.Principal) error {
-	return validator.firstError(ctx, identitycontract.IdentityGovernanceValidationRequest{RoleID: roleID, DataScopes: scopes}, principal)
+func (validator *IdentityGovernanceApplicationService) ValidateRolePermissions(ctx context.Context, roleID string, permissions []identitymodel.RolePermission, principal identitymodel.Principal) error {
+	return validator.firstError(ctx, identitycontract.IdentityGovernanceValidationRequest{RoleID: roleID, Permissions: permissions}, principal)
 }
 
 func (validator *IdentityGovernanceApplicationService) ValidateRoleFieldPermissions(ctx context.Context, roleID string, values []identitymodel.IdentityFieldPermission, principal identitymodel.Principal) error {
@@ -179,7 +174,7 @@ func (validator *IdentityGovernanceApplicationService) validateRoleReference(ctx
 	return []identitycontract.IdentityGovernanceValidationIssue{identityGovernanceIssue("role", "role_id", "backend.identity.role_not_found", "identity.role", map[string]string{"role": roleID, "actual": roleID})}, nil
 }
 
-func (validator *IdentityGovernanceApplicationService) validatePermissionKeys(keys []string) []identitycontract.IdentityGovernanceValidationIssue {
+func (validator *IdentityGovernanceApplicationService) validatePermissions(values []identitymodel.RolePermission) []identitycontract.IdentityGovernanceValidationIssue {
 	issues := []identitycontract.IdentityGovernanceValidationIssue{}
 	seen := map[string]bool{}
 	permissions := map[string]identitymodel.IdentityPermissionDefinition{}
@@ -193,19 +188,22 @@ func (validator *IdentityGovernanceApplicationService) validatePermissionKeys(ke
 		}
 	}
 	sort.Strings(allowed)
-	for index, raw := range keys {
-		key := strings.TrimSpace(raw)
-		path := fmt.Sprintf("permission_keys[%d]", index)
+	for index, grant := range values {
+		key := strings.TrimSpace(grant.PermissionKey)
+		path := fmt.Sprintf("permissions[%d]", index)
 		if key == "" {
-			issues = append(issues, identityGovernanceIssue("permissions", path, "backend.identity.permission_not_found", "identity.role_permission", map[string]string{"actual": raw, "allowed": strings.Join(allowed, ",")}))
+			issues = append(issues, identityGovernanceIssue("permissions", path+".permission_key", "backend.identity.permission_not_found", "identity.role_permission", map[string]string{"actual": grant.PermissionKey, "allowed": strings.Join(allowed, ",")}))
 		} else if seen[key] {
-			issues = append(issues, identityGovernanceIssue("permissions", path, "backend.identity.permission_duplicate", "identity.role_permission", map[string]string{"actual": raw}))
+			issues = append(issues, identityGovernanceIssue("permissions", path+".permission_key", "backend.identity.permission_duplicate", "identity.role_permission", map[string]string{"actual": grant.PermissionKey}))
 		} else if permission, exists := permissions[key]; !exists {
-			issues = append(issues, identityGovernanceIssue("permissions", path, "backend.identity.permission_not_found", "identity.role_permission", map[string]string{"permission": key, "actual": key, "allowed": strings.Join(allowed, ",")}))
+			issues = append(issues, identityGovernanceIssue("permissions", path+".permission_key", "backend.identity.permission_not_found", "identity.role_permission", map[string]string{"permission": key, "actual": key, "allowed": strings.Join(allowed, ",")}))
 		} else if permission.DefinitionStatus != identitymodel.IdentityPermissionDefinitionActive {
-			issues = append(issues, identityGovernanceIssue("permissions", path, "backend.identity.permission_retired", "identity.role_permission", map[string]string{"permission": key, "actual": key, "allowed": strings.Join(allowed, ",")}))
+			issues = append(issues, identityGovernanceIssue("permissions", path+".permission_key", "backend.identity.permission_retired", "identity.role_permission", map[string]string{"permission": key, "actual": key, "allowed": strings.Join(allowed, ",")}))
 		} else if !permission.Enabled {
-			issues = append(issues, identityGovernanceIssue("permissions", path, "backend.identity.permission_disabled", "identity.role_permission", map[string]string{"permission": key, "actual": key, "allowed": strings.Join(allowed, ",")}))
+			issues = append(issues, identityGovernanceIssue("permissions", path+".permission_key", "backend.identity.permission_disabled", "identity.role_permission", map[string]string{"permission": key, "actual": key, "allowed": strings.Join(allowed, ",")}))
+		}
+		if _, valid := identitymodel.CanonicalIdentityDataScope(string(grant.DataScope)); !valid {
+			issues = append(issues, identityGovernanceIssue("permissions", path+".data_scope", "backend.identity.data_scope_invalid", "identity.role_permission", map[string]string{"actual": string(grant.DataScope), "allowed": strings.Join(identitymodel.AuthoringDataScopeValues(), ",")}))
 		}
 		seen[key] = true
 	}
@@ -214,28 +212,6 @@ func (validator *IdentityGovernanceApplicationService) validatePermissionKeys(ke
 
 func internalError(operation string, err error) error {
 	return &apperror.AppError{Kind: apperror.KindInternal, Code: "backend.internal", Params: map[string]string{"operation": operation}, Err: err}
-}
-
-func (validator *IdentityGovernanceApplicationService) validateDataScopes(scopes []identitymodel.IdentityDataScopePolicy) []identitycontract.IdentityGovernanceValidationIssue {
-	issues := []identitycontract.IdentityGovernanceValidationIssue{}
-	seen := map[string]bool{}
-	objects := validator.businessObjects()
-	for index, scope := range scopes {
-		resource := strings.TrimSpace(scope.Resource)
-		path := fmt.Sprintf("data_scopes[%d]", index)
-		if resource == "" {
-			issues = append(issues, identityGovernanceIssue("data_scopes", path+".resource", "backend.identity.data_scope_resource_required", "identity.role_data_scope", map[string]string{"actual": resource}))
-		} else if seen[resource] {
-			issues = append(issues, identityGovernanceIssue("data_scopes", path+".resource", "backend.identity.data_scope_resource_duplicate", "identity.role_data_scope", map[string]string{"resource": resource, "actual": resource}))
-		} else if _, exists := objects[resource]; !exists {
-			issues = append(issues, identityGovernanceIssue("data_scopes", path+".resource", "backend.identity.data_scope_resource_not_found", "identity.role_data_scope", map[string]string{"resource": resource, "actual": resource}))
-		}
-		seen[resource] = true
-		if _, valid := identitymodel.CanonicalIdentityDataScope(string(scope.Scope)); !valid {
-			issues = append(issues, identityGovernanceIssue("data_scopes", path+".scope", "backend.identity.data_scope_invalid", "identity.role_data_scope", map[string]string{"actual": string(scope.Scope), "allowed": strings.Join(identitymodel.AuthoringDataScopeValues(), ",")}))
-		}
-	}
-	return issues
 }
 
 func (validator *IdentityGovernanceApplicationService) businessObjects() map[string]definitionmodel.ObjectSchema {

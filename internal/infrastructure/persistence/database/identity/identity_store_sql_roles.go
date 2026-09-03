@@ -16,6 +16,8 @@ func (s *SQLIdentityStore) roleStore() *rolepersistence.Store {
 func (s *SQLIdentityStore) roleRequestStore() *rolerequestpersistence.Store {
 	return rolerequestpersistence.New(s, nowString, func(ctx context.Context, execer rolerequestpersistence.Execer, workspaceID string, assignment identitymodel.IdentityUserRoleAssignment) error {
 		return s.writeIdentityUserRoleAssignment(ctx, execer, workspaceID, assignment)
+	}, func(ctx context.Context, execer rolerequestpersistence.Execer, workspaceID string, assignment identitymodel.IdentityUserRoleAssignment, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
+		return roleassignmentpersistence.New(s, nowString).UpsertWithExecutorWithinDataScope(ctx, execer, workspaceID, assignment, scope)
 	})
 }
 
@@ -43,6 +45,10 @@ func (s *SQLIdentityStore) AssignIdentityUserRole(ctx context.Context, workspace
 	return s.writeIdentityUserRoleAssignment(ctx, s.db, workspaceID, assignment)
 }
 
+func (s *SQLIdentityStore) AssignIdentityUserRoleWithinDataScope(ctx context.Context, workspaceID string, assignment identitymodel.IdentityUserRoleAssignment, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
+	return roleassignmentpersistence.New(s, nowString).UpsertWithinDataScope(ctx, workspaceID, assignment, scope)
+}
+
 func (s *SQLIdentityStore) writeIdentityUserRoleAssignment(ctx context.Context, execer identityUserExecer, workspaceID string, assignment identitymodel.IdentityUserRoleAssignment) error {
 	return roleassignmentpersistence.New(s, nowString).Upsert(ctx, execer, workspaceID, assignment)
 }
@@ -51,8 +57,16 @@ func (s *SQLIdentityStore) RemoveIdentityUserRole(ctx context.Context, workspace
 	return s.roleStore().RemoveUserAssignment(ctx, workspaceID, userID, roleID)
 }
 
+func (s *SQLIdentityStore) RemoveIdentityUserRoleWithinDataScope(ctx context.Context, workspaceID, userID, roleID string, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
+	return s.roleStore().RemoveUserAssignmentWithinDataScope(ctx, workspaceID, userID, roleID, scope)
+}
+
 func (s *SQLIdentityStore) ListIdentityUserRoleAssignments(ctx context.Context, workspaceID, userID string) ([]identitymodel.IdentityUserRoleAssignment, error) {
 	return s.loadUserRoleAssignments(ctx, workspaceID, userID)
+}
+
+func (s *SQLIdentityStore) ListIdentityUserRoleAssignmentsWithinDataScope(ctx context.Context, workspaceID, userID string, scope identitymodel.IdentityDataScopeFilter) ([]identitymodel.IdentityUserRoleAssignment, error) {
+	return s.roleStore().ListUserAssignmentsWithinDataScope(ctx, workspaceID, userID, scope)
 }
 
 func (s *SQLIdentityStore) CreateIdentityRoleRequest(ctx context.Context, workspaceID string, request identitymodel.IdentityRoleRequest) (identitymodel.IdentityRoleRequest, error) {
@@ -63,12 +77,20 @@ func (s *SQLIdentityStore) ListIdentityRoleRequests(ctx context.Context, workspa
 	return s.loadRoleRequests(ctx, workspaceID, status, userID)
 }
 
+func (s *SQLIdentityStore) ListIdentityRoleRequestsWithinDataScope(ctx context.Context, workspaceID, status, userID string, scope identitymodel.IdentityDataScopeFilter) ([]identitymodel.IdentityRoleRequest, error) {
+	return s.roleRequestStore().ListWithinDataScope(ctx, workspaceID, status, userID, scope)
+}
+
 func (s *SQLIdentityStore) UpdateIdentityRoleRequest(ctx context.Context, workspaceID string, request identitymodel.IdentityRoleRequest) error {
 	return s.roleRequestStore().Update(ctx, workspaceID, request)
 }
 
 func (s *SQLIdentityStore) ApplyIdentityRoleRequestDecision(ctx context.Context, workspaceID string, request identitymodel.IdentityRoleRequest, assignments []identitymodel.IdentityUserRoleAssignment, expectedStatus string) error {
 	return s.roleRequestStore().ApplyDecision(ctx, workspaceID, request, assignments, expectedStatus)
+}
+
+func (s *SQLIdentityStore) ApplyIdentityRoleRequestDecisionWithinDataScope(ctx context.Context, workspaceID string, request identitymodel.IdentityRoleRequest, assignments []identitymodel.IdentityUserRoleAssignment, expectedStatus string, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
+	return s.roleRequestStore().ApplyDecisionWithinDataScope(ctx, workspaceID, request, assignments, expectedStatus, scope)
 }
 
 func (s *SQLIdentityStore) loadRoles(ctx context.Context, workspaceID string) ([]identitymodel.IdentityRole, error) {

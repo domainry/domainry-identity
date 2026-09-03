@@ -8,7 +8,7 @@ export type RuntimeErrorBusinessKind = 'permission' | 'read_only' | 'data_scope'
 export function runtimeErrorBusinessKind(error: RuntimeApiError | undefined): RuntimeErrorBusinessKind {
   if (!error) return 'validation'
   const code = error.code
-  if (/(outside_scope|data_denied|data_permission_denied)/.test(code)) return 'data_scope'
+  if (/(outside_scope|data_denied|data_scope_denied)/.test(code)) return 'data_scope'
   if (/(owner_write_denied|read_only|immutable|field_permission|retention_guard)/.test(code)) return 'read_only'
   if (error.status === 403 || /(permission_denied|permission_required)/.test(code)) return 'permission'
   return 'validation'

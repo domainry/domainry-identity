@@ -37,10 +37,10 @@ func validateRetiredActionPermissionAssignments(active, candidate []definitionmo
 		delete(activeOwned, strings.TrimSpace(action.Key))
 	}
 	for _, role := range roles {
-		for _, permission := range role.Permissions {
-			permission = strings.TrimSpace(permission)
-			if activeOwned[permission] {
-				return fmt.Errorf("role %s retains retired action permission %s at permissions", role.Key, permission)
+		for _, grant := range role.Permissions {
+			permissionKey := strings.TrimSpace(grant.PermissionKey)
+			if activeOwned[permissionKey] {
+				return fmt.Errorf("role %s retains retired action permission %s at permissions", role.Key, permissionKey)
 			}
 		}
 	}
@@ -139,7 +139,7 @@ func validateInstalledActionAuthorization(installed, persisted manifestmodel.Man
 
 func roleHasExactPermission(role identitymodel.RoleSchema, permission string) bool {
 	for _, candidate := range role.Permissions {
-		if strings.TrimSpace(candidate) == permission {
+		if strings.TrimSpace(candidate.PermissionKey) == permission && candidate.DataScope.Valid() {
 			return true
 		}
 	}

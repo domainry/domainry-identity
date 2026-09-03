@@ -14,10 +14,11 @@ describe('account Effective Access Explain', () => {
     expect(api).toContain('"/identity/access/explain"')
   })
 
-  it('supports functional, field, and record-scope explanation inputs', () => {
-    for (const input of ['object_key:', 'action:', 'field_key:', 'record_id:']) {
+  it('supports functional and field explanation inputs without accepting record authorization facts', () => {
+    for (const input of ['object_key:', 'action:', 'field_key:']) {
       expect(card).toContain(input)
     }
+    expect(card).not.toContain('record_id:')
     expect(card).toContain("disabled={!objectKey.trim() || !action.trim()")
   })
 

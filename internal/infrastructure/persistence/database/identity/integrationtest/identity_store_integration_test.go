@@ -67,7 +67,7 @@ func TestIdentityServiceValidatesPermissionsAndComputesEffectiveKeys(t *testing.
 	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{ID: "d-root", Code: "d-root", NodeType: identitymodel.IdentityOrganizationUnitDepartment, Name: "Root", ParentID: &grandchildParent, Path: "/root"}); err == nil {
 		t.Fatalf("expected cyclic organizationUnit hierarchy to be rejected")
 	}
-	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{Key: "admin", Name: "Admin", Permissions: []string{"crm.customer.edit", "crm.customer.view"}, RecordScope: "all_records"}})
+	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{Key: "admin", Name: "Admin", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "crm.customer.edit", "crm.customer.view")}})
 	keys, err := service.EffectivePermissionKeys(t.Context(), "u-admin")
 	if err != nil {
 		t.Fatalf("effective permissions: %v", err)
@@ -81,9 +81,9 @@ func TestIdentityServiceValidatesPermissionsAndComputesEffectiveKeys(t *testing.
 	seedIdentityDirectoryRole(t, repo, "workspace-primary", identitymodel.IdentityRole{ID: "r-temp-active", Key: "temp_active", Label: "Temporary Active"})
 	seedIdentityDirectoryRole(t, repo, "workspace-primary", identitymodel.IdentityRole{ID: "r-temp-expired", Key: "temp_expired", Label: "Temporary Expired"})
 	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{
-		{Key: "admin", Name: "Admin", Permissions: []string{"crm.customer.edit", "crm.customer.view"}, RecordScope: "all_records"},
-		{Key: "temp_active", Name: "Temporary Active", Permissions: []string{"crm.customer.view"}, RecordScope: "all_records"},
-		{Key: "temp_expired", Name: "Temporary Expired", Permissions: []string{"crm.customer.edit"}, RecordScope: "all_records"},
+		{Key: "admin", Name: "Admin", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "crm.customer.edit", "crm.customer.view")},
+		{Key: "temp_active", Name: "Temporary Active", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "crm.customer.view")},
+		{Key: "temp_expired", Name: "Temporary Expired", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "crm.customer.edit")},
 	})
 	future := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
 	past := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
@@ -115,9 +115,9 @@ func TestIdentityServiceValidatesPermissionsAndComputesEffectiveKeys(t *testing.
 		t.Fatalf("expected identity principal to allow customer edit, got %#v", principal.Role.Permissions)
 	}
 	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{
-		{Key: "admin", Name: "Admin", Permissions: []string{"crm.customer.view"}, RecordScope: "all_records"},
-		{Key: "temp_active", Name: "Temporary Active", Permissions: []string{"crm.customer.view"}, RecordScope: "all_records"},
-		{Key: "temp_expired", Name: "Temporary Expired", Permissions: []string{"crm.customer.edit"}, RecordScope: "all_records"},
+		{Key: "admin", Name: "Admin", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "crm.customer.view")},
+		{Key: "temp_active", Name: "Temporary Active", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "crm.customer.view")},
+		{Key: "temp_expired", Name: "Temporary Expired", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "crm.customer.edit")},
 	})
 	principal, err = service.BuildPrincipal(t.Context(), "u-admin")
 	if err != nil {

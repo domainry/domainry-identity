@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	identityrepository "github.com/domainry/domainry-identity/internal/domain/identity/repository"
 )
@@ -15,23 +16,69 @@ func (s *IdentityDomainService) ListOrganizationUnits(ctx context.Context) ([]id
 	return s.repo.ListIdentityOrganizationUnits(ctx, s.workspace)
 }
 
+func (s *IdentityDomainService) ListOrganizationUnitsWithinDataScope(ctx context.Context, actor identitymodel.Principal, permissionKey string) ([]identitymodel.IdentityOrganizationUnit, error) {
+	repository, ok := s.repo.(identityrepository.IdentityOrganizationUnitDataScopeRepository)
+	if !ok {
+		return nil, internalError("identity organization-unit data-scope repository unavailable", nil)
+	}
+	filter := identitycontract.IdentityPermissionDataScopeFilter(actor, permissionKey)
+	return repository.ListIdentityOrganizationUnitsWithinDataScope(ctx, s.workspace, filter)
+}
+
+func (s *IdentityDomainService) OrganizationUnitByIDWithinDataScope(ctx context.Context, organizationUnitID string, actor identitymodel.Principal, permissionKey string) (identitymodel.IdentityOrganizationUnit, bool, error) {
+	repository, ok := s.repo.(identityrepository.IdentityOrganizationUnitDataScopeRepository)
+	if !ok {
+		return identitymodel.IdentityOrganizationUnit{}, false, internalError("identity organization-unit data-scope repository unavailable", nil)
+	}
+	filter := identitycontract.IdentityPermissionDataScopeFilter(actor, permissionKey)
+	return repository.GetIdentityOrganizationUnitWithinDataScope(ctx, s.workspace, strings.TrimSpace(organizationUnitID), filter)
+}
+
 func (s *IdentityDomainService) UpsertOrganizationUnit(ctx context.Context, organizationUnit identitymodel.IdentityOrganizationUnit) error {
+	updates, err := s.prepareOrganizationUnitUpsert(ctx, organizationUnit)
+	if err != nil {
+		return err
+	}
+	return s.repo.UpsertIdentityOrganizationUnitsAtomically(ctx, s.workspace, updates)
+}
+
+func (s *IdentityDomainService) UpsertOrganizationUnitWithinDataScope(ctx context.Context, organizationUnit identitymodel.IdentityOrganizationUnit, actor identitymodel.Principal, permissionKey string) error {
+	repository, ok := s.repo.(identityrepository.IdentityOrganizationUnitDataScopeMutationRepository)
+	if !ok {
+		return internalError("identity organization-unit data-scope mutation repository unavailable", nil)
+	}
+	updates, err := s.prepareOrganizationUnitUpsert(ctx, organizationUnit)
+	if err != nil {
+		return err
+	}
+	filter := identitycontract.IdentityPermissionDataScopeFilter(actor, permissionKey)
+	allowed, err := repository.UpsertIdentityOrganizationUnitsWithinDataScopeAtomically(ctx, s.workspace, updates, filter)
+	if err != nil {
+		return err
+	}
+	if !allowed {
+		return forbidden("auth.permission_denied")
+	}
+	return nil
+}
+
+func (s *IdentityDomainService) prepareOrganizationUnitUpsert(ctx context.Context, organizationUnit identitymodel.IdentityOrganizationUnit) ([]identitymodel.IdentityOrganizationUnit, error) {
 	organizationUnit.ID = strings.TrimSpace(organizationUnit.ID)
 	organizationUnit.Code = strings.TrimSpace(organizationUnit.Code)
 	organizationUnit.Name = strings.TrimSpace(organizationUnit.Name)
 	issues, err := s.validation.ValidateOrganizationUnitConfiguration(ctx, organizationUnit)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := s.validation.FirstConfigurationError(issues); err != nil {
-		return err
+		return nil, err
 	}
 	if organizationUnit.Status == "" {
 		organizationUnit.Status = identitymodel.IdentityStatusActive
 	}
 	organizationUnits, err := s.repo.ListIdentityOrganizationUnits(ctx, s.workspace)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	byID := map[string]identitymodel.IdentityOrganizationUnit{}
 	for _, item := range organizationUnits {
@@ -45,11 +92,11 @@ func (s *IdentityDomainService) UpsertOrganizationUnit(ctx context.Context, orga
 			organizationUnit.ParentID = &parentID
 			parent, ok := byID[parentID]
 			if !ok {
-				return badRequest("backend.identity.parent_organization_unit_not_found", "organization_unit", parentID)
+				return nil, badRequest("backend.identity.parent_organization_unit_not_found", "organization_unit", parentID)
 			}
 			for {
 				if parent.ID == organizationUnit.ID {
-					return badRequest("backend.identity.organization_unit_cycle")
+					return nil, badRequest("backend.identity.organization_unit_cycle")
 				}
 				if parent.ParentID == nil || strings.TrimSpace(*parent.ParentID) == "" {
 					break
@@ -68,14 +115,14 @@ func (s *IdentityDomainService) UpsertOrganizationUnit(ctx context.Context, orga
 		}
 		if identityParentID(existingOrganizationUnit.ParentID) == identityParentID(organizationUnit.ParentID) &&
 			strings.EqualFold(strings.TrimSpace(existingOrganizationUnit.Name), organizationUnit.Name) {
-			return badRequest("backend.identity.organization_unit_name_exists", "organization_unit", organizationUnit.Name)
+			return nil, badRequest("backend.identity.organization_unit_name_exists", "organization_unit", organizationUnit.Name)
 		}
 	}
 	updates, err := identityOrganizationUnitSubtreeUpdates(organizationUnit, organizationUnits)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return s.repo.UpsertIdentityOrganizationUnitsAtomically(ctx, s.workspace, updates)
+	return updates, nil
 }
 
 func identityOrganizationUnitSubtreeUpdates(root identitymodel.IdentityOrganizationUnit, existing []identitymodel.IdentityOrganizationUnit) ([]identitymodel.IdentityOrganizationUnit, error) {
@@ -161,8 +208,26 @@ func (s *IdentityDomainService) ListUsers(ctx context.Context) ([]identitymodel.
 	return s.repo.ListIdentityUsers(ctx, s.workspace)
 }
 
+func (s *IdentityDomainService) ListUsersWithinDataScope(ctx context.Context, actor identitymodel.Principal, permissionKey string) ([]identitymodel.IdentityUser, error) {
+	repository, ok := s.repo.(identityrepository.IdentityUserDataScopeRepository)
+	if !ok {
+		return nil, internalError("identity user data-scope repository unavailable", nil)
+	}
+	filter := identitycontract.IdentityPermissionDataScopeFilter(actor, permissionKey)
+	return repository.ListIdentityUsersWithinDataScope(ctx, s.workspace, filter)
+}
+
 func (s *IdentityDomainService) UserByID(ctx context.Context, userID string) (identitymodel.IdentityUser, bool, error) {
 	return s.userByID(ctx, strings.TrimSpace(userID))
+}
+
+func (s *IdentityDomainService) UserByIDWithinDataScope(ctx context.Context, userID string, actor identitymodel.Principal, permissionKey string) (identitymodel.IdentityUser, bool, error) {
+	repository, ok := s.repo.(identityrepository.IdentityUserDataScopeRepository)
+	if !ok {
+		return identitymodel.IdentityUser{}, false, internalError("identity user data-scope repository unavailable", nil)
+	}
+	filter := identitycontract.IdentityPermissionDataScopeFilter(actor, permissionKey)
+	return repository.GetIdentityUserWithinDataScope(ctx, s.workspace, strings.TrimSpace(userID), filter)
 }
 
 func (s *IdentityDomainService) UserByLogin(ctx context.Context, login string) (identitymodel.IdentityUser, bool, error) {
@@ -200,6 +265,98 @@ func (s *IdentityDomainService) UpsertUser(ctx context.Context, user identitymod
 		updates = append(updates, descendants...)
 	}
 	return s.repo.UpsertIdentityUsersAtomically(ctx, s.workspace, updates)
+}
+
+func (s *IdentityDomainService) CreateUserWithinDataScope(ctx context.Context, user identitymodel.IdentityUser, actor identitymodel.Principal, permissionKey string) error {
+	user.ID = strings.TrimSpace(user.ID)
+	if user.ID == "" {
+		return badRequest("backend.identity.user_required", "user", "")
+	}
+	if _, found, err := s.repo.GetIdentityUser(ctx, s.workspace, user.ID); err != nil {
+		return err
+	} else if found {
+		return conflict("backend.identity.user_already_exists", "user", user.ID)
+	}
+	filter := identitycontract.IdentityPermissionDataScopeFilter(actor, permissionKey)
+	if !filter.Unrestricted {
+		user.OrgID = strings.TrimSpace(user.OrgID)
+		if user.OrgID == "" || !identityStringValueIn(filter.OwnerOrgIDs, user.OrgID) {
+			return forbidden("auth.permission_denied")
+		}
+		organizationUnits, err := s.repo.ListIdentityOrganizationUnits(ctx, s.workspace)
+		if err != nil {
+			return err
+		}
+		trustedOrg := false
+		for _, unit := range organizationUnits {
+			if unit.ID == user.OrgID {
+				trustedOrg = true
+				break
+			}
+		}
+		if !trustedOrg {
+			return notFound("backend.identity.organization_unit_not_found", "organization_unit", user.OrgID)
+		}
+	}
+	prepared, err := s.prepareUser(ctx, user)
+	if err != nil {
+		return err
+	}
+	repository, ok := s.repo.(identityrepository.IdentityUserCreateRepository)
+	if !ok {
+		return internalError("identity user create repository unavailable", nil)
+	}
+	return repository.CreateIdentityUser(ctx, s.workspace, prepared)
+}
+
+func identityStringValueIn(values []string, expected string) bool {
+	expected = strings.TrimSpace(expected)
+	for _, value := range values {
+		if strings.TrimSpace(value) == expected {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *IdentityDomainService) UpdateUserWithinDataScope(ctx context.Context, user identitymodel.IdentityUser, actor identitymodel.Principal, permissionKey string) error {
+	user.ID = strings.TrimSpace(user.ID)
+	filter := identitycontract.IdentityPermissionDataScopeFilter(actor, permissionKey)
+	dataRepository, ok := s.repo.(identityrepository.IdentityUserDataScopeRepository)
+	if !ok {
+		return internalError("identity user data-scope repository unavailable", nil)
+	}
+	existing, found, err := dataRepository.GetIdentityUserWithinDataScope(ctx, s.workspace, user.ID, filter)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return notFound("backend.identity.user_not_found", "user", user.ID)
+	}
+	user, err = s.prepareUser(ctx, user)
+	if err != nil {
+		return err
+	}
+	updates := []identitymodel.IdentityUser{user}
+	if existing.ReportingPath != user.ReportingPath {
+		descendants, rebuildErr := s.rebuildUserReportingPathReferences(ctx, existing.ReportingPath, user.ReportingPath)
+		if rebuildErr != nil {
+			return rebuildErr
+		}
+		updates = append(updates, descendants...)
+	}
+	mutationRepository, ok := s.repo.(identityrepository.IdentityUserDataScopeMutationRepository)
+	if !ok {
+		return internalError("identity user data-scope mutation repository unavailable", nil)
+	}
+	updated, err := mutationRepository.UpdateIdentityUsersWithinDataScopeAtomically(ctx, s.workspace, updates, filter)
+	if err != nil {
+		return err
+	}
+	if !updated {
+		return notFound("backend.identity.user_not_found", "user", user.ID)
+	}
+	return nil
 }
 
 func (s *IdentityDomainService) prepareUser(ctx context.Context, user identitymodel.IdentityUser) (identitymodel.IdentityUser, error) {
@@ -370,9 +527,34 @@ func identityParentID(value *string) string {
 }
 
 func (s *IdentityDomainService) RemoveUser(ctx context.Context, userID string) error {
+	return s.removeUser(ctx, userID, identitymodel.IdentityDataScopeFilter{Unrestricted: true})
+}
+
+func (s *IdentityDomainService) RemoveUserWithinDataScope(ctx context.Context, userID string, actor identitymodel.Principal, permissionKey string) error {
+	return s.removeUser(ctx, userID, identitycontract.IdentityPermissionDataScopeFilter(actor, permissionKey))
+}
+
+func (s *IdentityDomainService) removeUser(ctx context.Context, userID string, filter identitymodel.IdentityDataScopeFilter) error {
 	userID = strings.TrimSpace(userID)
 	if userID == "" {
 		return badRequest("backend.identity.user_required", "user", "")
+	}
+	if filter.Unrestricted {
+		if _, found, err := s.userByID(ctx, userID); err != nil {
+			return err
+		} else if !found {
+			return notFound("backend.identity.user_not_found", "user", userID)
+		}
+	} else {
+		dataRepository, ok := s.repo.(identityrepository.IdentityUserDataScopeRepository)
+		if !ok {
+			return internalError("identity user data-scope repository unavailable", nil)
+		}
+		if _, found, err := dataRepository.GetIdentityUserWithinDataScope(ctx, s.workspace, userID, filter); err != nil {
+			return err
+		} else if !found {
+			return notFound("backend.identity.user_not_found", "user", userID)
+		}
 	}
 	bindings, err := s.repo.ListIdentityProfileBindingsByUser(ctx, s.workspace, userID)
 	if err != nil {
@@ -398,18 +580,52 @@ func (s *IdentityDomainService) RemoveUser(ctx context.Context, userID string) e
 			return conflict("backend.identity.user_direct_reports_exist", "user", userID, "direct_report", user.ID)
 		}
 	}
-	return s.repo.RemoveIdentityUser(ctx, s.workspace, userID)
+	if filter.Unrestricted {
+		return s.repo.RemoveIdentityUser(ctx, s.workspace, userID)
+	}
+	mutationRepository, ok := s.repo.(identityrepository.IdentityUserDataScopeMutationRepository)
+	if !ok {
+		return internalError("identity user data-scope mutation repository unavailable", nil)
+	}
+	removed, err := mutationRepository.RemoveIdentityUserWithinDataScope(ctx, s.workspace, userID, filter)
+	if err != nil {
+		return err
+	}
+	if !removed {
+		return notFound("backend.identity.user_not_found", "user", userID)
+	}
+	return nil
 }
 
 func (s *IdentityDomainService) UserDeletionImpact(ctx context.Context, userID string) (identitymodel.IdentityUserDeletionImpact, error) {
+	return s.userDeletionImpact(ctx, userID, identitymodel.IdentityDataScopeFilter{Unrestricted: true})
+}
+
+func (s *IdentityDomainService) UserDeletionImpactWithinDataScope(ctx context.Context, userID string, actor identitymodel.Principal, permissionKey string) (identitymodel.IdentityUserDeletionImpact, error) {
+	return s.userDeletionImpact(ctx, userID, identitycontract.IdentityPermissionDataScopeFilter(actor, permissionKey))
+}
+
+func (s *IdentityDomainService) userDeletionImpact(ctx context.Context, userID string, filter identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityUserDeletionImpact, error) {
 	userID = strings.TrimSpace(userID)
 	if userID == "" {
 		return identitymodel.IdentityUserDeletionImpact{}, badRequest("backend.identity.user_required")
 	}
-	if _, found, err := s.userByID(ctx, userID); err != nil {
-		return identitymodel.IdentityUserDeletionImpact{}, err
-	} else if !found {
-		return identitymodel.IdentityUserDeletionImpact{}, notFound("backend.identity.user_not_found", "user", userID)
+	if filter.Unrestricted {
+		if _, found, err := s.userByID(ctx, userID); err != nil {
+			return identitymodel.IdentityUserDeletionImpact{}, err
+		} else if !found {
+			return identitymodel.IdentityUserDeletionImpact{}, notFound("backend.identity.user_not_found", "user", userID)
+		}
+	} else {
+		dataRepository, ok := s.repo.(identityrepository.IdentityUserDataScopeRepository)
+		if !ok {
+			return identitymodel.IdentityUserDeletionImpact{}, internalError("identity user data-scope repository unavailable", nil)
+		}
+		if _, found, err := dataRepository.GetIdentityUserWithinDataScope(ctx, s.workspace, userID, filter); err != nil {
+			return identitymodel.IdentityUserDeletionImpact{}, err
+		} else if !found {
+			return identitymodel.IdentityUserDeletionImpact{}, notFound("backend.identity.user_not_found", "user", userID)
+		}
 	}
 	bindings, err := s.repo.ListIdentityProfileBindingsByUser(ctx, s.workspace, userID)
 	if err != nil {
@@ -440,6 +656,32 @@ func (s *IdentityDomainService) UserDeletionImpact(ctx context.Context, userID s
 
 func (s *IdentityDomainService) SetUserStatus(ctx context.Context, userID string, status identitymodel.IdentityStatus) error {
 	return s.repo.SetIdentityUserStatus(ctx, s.workspace, userID, status)
+}
+
+func (s *IdentityDomainService) SetUserStatusWithinDataScope(ctx context.Context, userID string, status identitymodel.IdentityStatus, actor identitymodel.Principal, permissionKey string) error {
+	userID = strings.TrimSpace(userID)
+	filter := identitycontract.IdentityPermissionDataScopeFilter(actor, permissionKey)
+	dataRepository, ok := s.repo.(identityrepository.IdentityUserDataScopeRepository)
+	if !ok {
+		return internalError("identity user data-scope repository unavailable", nil)
+	}
+	if _, found, err := dataRepository.GetIdentityUserWithinDataScope(ctx, s.workspace, userID, filter); err != nil {
+		return err
+	} else if !found {
+		return notFound("backend.identity.user_not_found", "user", userID)
+	}
+	mutationRepository, ok := s.repo.(identityrepository.IdentityUserDataScopeMutationRepository)
+	if !ok {
+		return internalError("identity user data-scope mutation repository unavailable", nil)
+	}
+	updated, err := mutationRepository.SetIdentityUserStatusWithinDataScope(ctx, s.workspace, userID, status, filter)
+	if err != nil {
+		return err
+	}
+	if !updated {
+		return notFound("backend.identity.user_not_found", "user", userID)
+	}
+	return nil
 }
 
 func (s *IdentityDomainService) userByID(ctx context.Context, userID string) (identitymodel.IdentityUser, bool, error) {

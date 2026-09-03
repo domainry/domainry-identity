@@ -191,13 +191,10 @@ func (registry *IdentityActionRegistry) PermissionUsages(permissionKey string) [
 	return result
 }
 
-// IdentityActionAuthorizationContext contains only caller-resolved facts. It
-// deliberately has no permission-key override: a normal Action always checks
-// the Permission with the same key as the Action.
-type IdentityActionAuthorizationContext struct {
-	SelfSatisfied     bool
-	DeferSelfToDomain bool
-}
+// IdentityActionAuthorizationContext deliberately carries no bypass facts or
+// permission-key override. Every Action checks its same-key Permission; target
+// data is authorized separately from trusted storage facts.
+type IdentityActionAuthorizationContext struct{}
 
 // IdentityActionAuthorizationService is the shared request-path evaluator for
 // Identity-owned HTTP surfaces. It combines the immutable Action registry with
@@ -219,28 +216,28 @@ func (service *IdentityActionAuthorizationService) Definition(actionKey string) 
 	return service.registry.Definition(actionKey)
 }
 
-func (service *IdentityActionAuthorizationService) Allows(action identitymodel.IdentityActionDefinition, principal identitymodel.Principal, facts IdentityActionAuthorizationContext) bool {
+func (service *IdentityActionAuthorizationService) Allows(action identitymodel.IdentityActionDefinition, principal identitymodel.Principal, _ IdentityActionAuthorizationContext) bool {
 	if service == nil {
 		return false
 	}
 	switch action.Authorization.Strategy {
-	case actioncontract.AuthorizationAnonymousProtocol:
+	case actioncontract.AuthorizationAnonymous:
 		return true
-	case actioncontract.AuthorizationAuthenticatedPrincipal:
-		return principal.Known
-	case actioncontract.AuthorizationSelfOrPermission:
-		if !principal.Known || action.Permission == nil || action.Permission.Key != action.Key {
+	case actioncontract.AuthorizationAuthenticated:
+		if !principal.Known {
 			return false
 		}
-		if facts.SelfSatisfied || facts.DeferSelfToDomain {
+		if action.Permission == nil {
 			return true
 		}
-		return service.allowsExactPermission(action, principal)
-	case actioncontract.AuthorizationExactRolePermission:
+		// Source-owned policy keys may add constraints after the exact grant,
+		// but they never replace the Permission or its per-Permission data scope.
+		// In particular, "self" access is represented by `owner`, not by an
+		// authenticated-route bypass.
 		return service.allowsExactPermission(action, principal)
 	default:
-		// service_identity and operations_identity are executed by their own
-		// credential boundaries, never by a human RoleSchema evaluator.
+		// Signed Actions are executed by their own credential middleware, never
+		// by a human RoleSchema evaluator.
 		return false
 	}
 }

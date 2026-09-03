@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	definitionmodel "github.com/domainry/domainry-identity/internal/domain/definition/model"
+	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
@@ -13,10 +14,10 @@ func TestIdentityBuildEffectiveAccessSnapshotEdges(t *testing.T) {
 		Principal: identitymodel.Principal{
 			UserID: "user", Known: true,
 			Role: identitymodel.RoleSchema{
-				Permissions: []string{"order.read", "order.update", "domain.order.update"},
-				DataPermissions: []identitymodel.DataPermission{
-					{ObjectKey: "order", Scope: "organization", AuditDenial: true},
-					{ObjectKey: "order", Scope: "all_records", Predicate: &identitymodel.IdentityPolicyExpression{Operator: "eq"}},
+				Permissions: []identitymodel.RolePermission{
+					{PermissionKey: "order.read", DataScope: identitymodel.IdentityDataScopeOrg, AuditDenial: true},
+					{PermissionKey: "order.update", DataScope: identitymodel.IdentityDataScopeAll},
+					{PermissionKey: "domain.order.update", DataScope: identitymodel.IdentityDataScopeAll},
 				},
 				FieldPermissions: []identitymodel.FieldPermission{{ObjectKey: "order", FieldKey: "plain", Read: true, Reason: "sensitive", Policies: []identitymodel.ContextualFieldPolicyRule{{Key: "owner", Priority: 10, Actions: []string{"read"}, Effect: "allow", Predicate: &identitymodel.IdentityPolicyExpression{Operator: "eq", FieldKey: "owner_id", ValueSource: "actor_claim", ClaimKey: "user_id"}}}}},
 			},
@@ -30,11 +31,11 @@ func TestIdentityBuildEffectiveAccessSnapshotEdges(t *testing.T) {
 			{ID: "role-2"},
 		},
 		RoleDefinitions: []identitymodel.RoleSchema{
-			{Key: "manager", Permissions: []string{"order.read"}, PermissionSetKeys: []string{"direct"}, PermissionSetGroups: []string{"group"}, GuardrailKeys: []string{"guardrail"}},
-			{Key: "role-2", Permissions: []string{"domain.order.update"}},
+			{Key: "manager", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "order.read"), PermissionSetKeys: []string{"direct"}, PermissionSetGroups: []string{"group"}, GuardrailKeys: []string{"guardrail"}},
+			{Key: "role-2", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "domain.order.update")},
 		},
 		PermissionSets: []identitymodel.IdentityPermissionSet{
-			{Key: "direct", DataPermissions: []identitymodel.DataPermission{{ObjectKey: "order", Scope: "organization"}}},
+			{Key: "direct"},
 			{Key: "grouped", FieldPermissions: []identitymodel.FieldPermission{{ObjectKey: "order", FieldKey: "plain", Read: true}}},
 		},
 		PermissionSetGroups: []identitymodel.IdentityPermissionSetGroup{{Key: "group", PermissionSetKeys: []string{"grouped"}}},
@@ -69,7 +70,7 @@ func TestIdentityBuildEffectiveAccessSnapshotEdges(t *testing.T) {
 	if len(snapshot.Menus) != 2 || snapshot.Menus[0].Key != "a" || len(snapshot.FieldAccess) != 2 {
 		t.Fatalf("menus/fields = %#v %#v", snapshot.Menus, snapshot.FieldAccess)
 	}
-	if len(snapshot.DataAccess) != 1 || len(snapshot.Permissions) != 3 {
+	if len(snapshot.DataAccess) != 3 || len(snapshot.Permissions) != 3 {
 		t.Fatalf("data/permissions = %#v %#v", snapshot.DataAccess, snapshot.Permissions)
 	}
 	for _, permission := range snapshot.Permissions {
@@ -79,7 +80,8 @@ func TestIdentityBuildEffectiveAccessSnapshotEdges(t *testing.T) {
 			}
 		}
 	}
-	if !snapshot.DataAccess[0].AuditDenial && !snapshot.DataAccess[1].AuditDenial {
+	readData, readFound := identityProjectionData(snapshot.DataAccess, "order", "read")
+	if !readFound || !readData.AuditDenial {
 		t.Fatalf("data denial-audit intent was lost: %#v", snapshot.DataAccess)
 	}
 	if snapshot.FieldAccess[0].Reason != "sensitive" || len(snapshot.FieldAccess[0].Policies) != 1 {
@@ -99,7 +101,7 @@ func TestIdentityExplainEffectiveAccessEdges(t *testing.T) {
 			Key: "order.read", ObjectKey: "order", Action: "read",
 		}},
 		DataAccess: []identitymodel.IdentityEffectiveDataAccess{{
-			ObjectKey: "order", Allowed: true, Scope: "all_records",
+			PermissionKey: "order.read", Resource: "order", Action: "read", Allowed: true, Scopes: []identitymodel.IdentityDataScope{identitymodel.IdentityDataScopeAll},
 		}},
 		FieldAccess: []identitymodel.IdentityEffectiveFieldAccess{{
 			ObjectKey: "order", FieldKey: "secret", Read: true, Write: false, Export: true,
@@ -124,9 +126,9 @@ func TestIdentityExplainEffectiveAccessEdges(t *testing.T) {
 	aliased.Permissions = []identitymodel.IdentityEffectivePermissionGrant{{Key: "domain.order.read", ObjectKey: "order", Action: "read"}}
 	assertReason("grant key guardrail", "guardrail_permission_denied", aliased, identitymodel.RoleSchema{Guardrails: []identitymodel.IdentityGuardrailPolicy{{DeniedPermissionKeys: []string{"domain.order.read"}}}}, request)
 	assertReason("functional permission missing", "functional_permission_missing", identitymodel.IdentityEffectiveAccessSnapshot{Known: true}, identitymodel.RoleSchema{}, request)
-	assertReason("role fallback permission", "effective_access_allowed", identitymodel.IdentityEffectiveAccessSnapshot{Known: true, DataAccess: base.DataAccess}, identitymodel.RoleSchema{Permissions: []string{"order.read"}}, request)
+	assertReason("role fallback permission", "effective_access_allowed", identitymodel.IdentityEffectiveAccessSnapshot{Known: true, DataAccess: base.DataAccess}, identitymodel.RoleSchema{Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "order.read")}, request)
 	assertReason("data guardrail", "guardrail_data_denied", base, identitymodel.RoleSchema{Guardrails: []identitymodel.IdentityGuardrailPolicy{{DataRestrictions: []identitymodel.IdentityDataRestriction{{ObjectKey: "order", Actions: []string{"read"}}}}}}, request)
-	assertReason("data missing", "data_permission_missing", identitymodel.IdentityEffectiveAccessSnapshot{Known: true, Permissions: base.Permissions}, identitymodel.RoleSchema{}, request)
+	assertReason("data missing", "data_scope_missing", identitymodel.IdentityEffectiveAccessSnapshot{Known: true, Permissions: base.Permissions}, identitymodel.RoleSchema{}, request)
 
 	fieldRequest := request
 	fieldRequest.FieldKey = "secret"
@@ -139,17 +141,16 @@ func TestIdentityExplainEffectiveAccessEdges(t *testing.T) {
 }
 
 func TestIdentityEffectiveAccessProjectionHelpers(t *testing.T) {
-	predicate := identitymodel.IdentityPolicyExpression{Operator: "eq"}
-	role := identitymodel.RoleSchema{Permissions: []string{"one.read", "one.update", "two.update", "three.read"}, DataPermissions: []identitymodel.DataPermission{
-		{ObjectKey: "one", Scope: "organization", Predicate: &predicate},
-		{ObjectKey: "one", Scope: "team", Predicate: &predicate},
-		{ObjectKey: "two", Scope: "all_records", Predicate: &predicate},
-		{ObjectKey: "three", Scope: "self"},
+	role := identitymodel.RoleSchema{Permissions: []identitymodel.RolePermission{
+		{PermissionKey: "one.read", DataScope: identitymodel.IdentityDataScopeOrg},
+		{PermissionKey: "one.update", DataScope: identitymodel.IdentityDataScopeOwner},
+		{PermissionKey: "two.update", DataScope: identitymodel.IdentityDataScopeAll},
+		{PermissionKey: "three.read", DataScope: identitymodel.IdentityDataScopeTargetOrg},
 	}}
 	data := identityProjectionDataAccess(role, map[string][]identitymodel.IdentityGrantSource{
 		"role": {{Type: "role", Key: "role"}},
 	})
-	if len(data) != 3 {
+	if len(data) != 4 {
 		t.Fatalf("data access = %#v", data)
 	}
 
@@ -168,8 +169,10 @@ func TestIdentityEffectiveAccessProjectionHelpers(t *testing.T) {
 	}
 
 	dataValues := []identitymodel.IdentityEffectiveDataAccess{
-		{ObjectKey: "order", Allowed: false},
-		{ObjectKey: "order", Allowed: true},
+		{PermissionKey: "order.read", Resource: "order", Action: "read", Allowed: false},
+		{PermissionKey: "order.read", Resource: "order", Action: "read", Allowed: true},
+		{PermissionKey: "order.export", Resource: "order", Action: "export", Allowed: true},
+		{PermissionKey: "order.update", Resource: "order", Action: "update", Allowed: true},
 	}
 	for _, action := range []string{"read", "export", "update"} {
 		if _, ok := identityProjectionData(dataValues, "order", action); !ok {
@@ -199,10 +202,8 @@ func TestIdentityEffectiveAccessProjectionHelpers(t *testing.T) {
 			t.Fatalf("permission parts %q object = %q", input, object)
 		}
 	}
-	for _, scopes := range [][]string{nil, {"self"}, {"self", "team"}, {"self", "all_records"}} {
-		if identityProjectionCombinedScope(scopes) == "" {
-			t.Fatalf("empty combined scope for %#v", scopes)
-		}
+	if scopes := identityProjectionUniqueDataScopes([]identitymodel.IdentityDataScope{"", identitymodel.IdentityDataScopeOrg, identitymodel.IdentityDataScopeOrg, identitymodel.IdentityDataScopeAll}); len(scopes) != 2 || scopes[0] != identitymodel.IdentityDataScopeAll {
+		t.Fatalf("unique scopes=%#v", scopes)
 	}
 	if identityProjectionContains([]string{" other ", " target "}, "target") == false || identityProjectionContains([]string{"other"}, "target") {
 		t.Fatal("contains")
@@ -229,14 +230,12 @@ func TestIdentityEffectiveAccessProjectionHelpers(t *testing.T) {
 }
 
 func TestIdentityProjectionDataPolicyCannotInventFunctionalActions(t *testing.T) {
-	predicate := identitymodel.IdentityPolicyExpression{Operator: "in", FieldKey: "owner_org_id", ValueSource: "actor_claim", ClaimKey: "support_org_scope_ids"}
 	role := identitymodel.RoleSchema{
-		Permissions:     []string{"customer.read"},
-		DataPermissions: []identitymodel.DataPermission{{ObjectKey: "customer", Scope: "custom", Predicate: &predicate}},
+		Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeTargetOrg, "customer.read"),
 	}
 	data := identityProjectionDataAccess(role, nil)
-	if len(data) != 1 || data[0].ObjectKey != "customer" {
-		t.Fatalf("data policy did not project as one operation-independent object scope: %#v", data)
+	if len(data) != 1 || data[0].PermissionKey != "customer.read" || data[0].Action != "read" {
+		t.Fatalf("data policy did not stay attached to its exact permission: %#v", data)
 	}
 	role.Permissions = nil
 	if data = identityProjectionDataAccess(role, nil); len(data) != 0 {
@@ -244,17 +243,15 @@ func TestIdentityProjectionDataPolicyCannotInventFunctionalActions(t *testing.T)
 	}
 }
 
-func TestSupportOrganizationCustomScopeRequiresTrustedDerivedClaim(t *testing.T) {
-	predicate := identitymodel.IdentityPolicyExpression{Operator: "in", FieldKey: "owner_org_id", ValueSource: "actor_claim", ClaimKey: "support_org_scope_ids"}
-	role := identitymodel.RoleSchema{DataPermissions: []identitymodel.DataPermission{{ObjectKey: "customer", Scope: "custom", Predicate: &predicate}}}
+func TestTargetOrganizationScopeRequiresTrustedDerivedClaim(t *testing.T) {
+	role := identitymodel.RoleSchema{Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeTargetOrg, "customer.read")}
+	facts := identitycontract.IdentityResourceFacts{RecordID: "customer", OwnerOrgID: "sales-east"}
 
-	missing := dataScopeDecision(identitymodel.Principal{Known: true, Role: role}, "customer")
-	if missing.Allowed || missing.Reason != "missing_support_org_scope_ids" {
-		t.Fatalf("missing support scope decision=%#v", missing)
+	if identitycontract.IdentityPermissionDataScopeAllows(identitymodel.Principal{Known: true, UserID: "user", Role: role}, "customer.read", facts) {
+		t.Fatal("target organization scope allowed without a trusted support organization set")
 	}
 
-	available := dataScopeDecision(identitymodel.Principal{Known: true, Role: role, SupportOrgID: "sales", SupportOrgScopeIDs: []string{"sales", "sales-east"}}, "customer")
-	if !available.Allowed || available.Reason != "allowed" || available.Predicate == nil {
-		t.Fatalf("available support scope decision=%#v", available)
+	if !identitycontract.IdentityPermissionDataScopeAllows(identitymodel.Principal{Known: true, UserID: "user", Role: role, SupportOrgID: "sales", SupportOrgScopeIDs: []string{"sales", "sales-east"}}, "customer.read", facts) {
+		t.Fatal("target organization scope rejected a trusted derived support organization")
 	}
 }

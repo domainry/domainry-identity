@@ -106,3 +106,28 @@ type AuthMFARepository interface {
 type AuthUserDirectorySecurityRepository interface {
 	ListUserDirectorySecurityFacts(context.Context, string, []string) ([]authmodel.UserDirectorySecurityFact, error)
 }
+
+// These target-user authorization boundaries keep each security capability
+// independently adaptable. Implementations resolve persisted Identity users
+// inside the supplied scope; mutations perform their candidate lookup and
+// final workspace-scoped DML in one transaction and repeat the same scope on
+// the final write.
+type AuthUserDataScopeRepository interface {
+	IdentityUserExistsWithinDataScope(context.Context, string, string, identitymodel.IdentityDataScopeFilter) (bool, error)
+}
+
+type AuthCredentialDataScopeRepository interface {
+	UnlockIdentityCredentialWithinDataScope(context.Context, string, string, identitymodel.IdentityDataScopeFilter) (bool, bool, error)
+}
+
+type AuthPasswordResetDataScopeRepository interface {
+	ResetIdentityCredentialWithinDataScope(context.Context, string, string, string, string, bool, identitymodel.IdentityDataScopeFilter) (bool, error)
+}
+
+type AuthRefreshTokenDataScopeRepository interface {
+	RevokeAuthRefreshTokensForUserWithinDataScope(context.Context, string, string, string, identitymodel.IdentityDataScopeFilter) (int, bool, error)
+}
+
+type AuthMFADataScopeRepository interface {
+	RevokeIdentityMFAFactorWithinDataScope(context.Context, string, string, string, identitymodel.IdentityDataScopeFilter) (bool, bool, error)
+}

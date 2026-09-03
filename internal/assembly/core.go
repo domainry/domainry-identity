@@ -209,7 +209,7 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 	metadataApp.AddReloadObserver(prepareIdentityCatalogRefresh)
 	bootstrapPrincipal := identitymodel.Principal{
 		Known: true, WorkspaceID: workspaceID, UserID: "system",
-		Role: identitymodel.RoleSchema{Key: "system_administrator", Permissions: []string{metadatacontract.MetadataActionReload}},
+		Role: identitymodel.RoleSchema{Key: "system_administrator", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, metadatacontract.MetadataActionReload)},
 	}
 	if _, err := metadataApp.ReloadMetadata(workspaceCtx, bootstrapPrincipal); err != nil {
 		return fail(fmt.Errorf("load persisted Identity metadata: %w", err))
@@ -225,7 +225,6 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 	actions := func() []definitionmodel.ActionSchema { return metadataRuntime.Schema().Actions }
 	effectiveAccess := identityapplication.NewIdentityEffectiveAccessApplicationService(identityapplication.IdentityEffectiveAccessDependencies{
 		Identity: identityApp, Objects: objects, Actions: actions,
-		RecordScopeAllows: func(context.Context, string, string, string, identitymodel.Principal) (bool, error) { return true, nil },
 	})
 	binding, err := identitysdkadapter.NewBinding(identitysdkadapter.BindingDependencies{
 		Config: cfg, Authentication: authApp, ProviderConfiguration: providerConfiguration,

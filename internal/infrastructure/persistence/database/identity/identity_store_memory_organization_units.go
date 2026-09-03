@@ -41,6 +41,37 @@ func (s *MemoryIdentityStore) ListIdentityOrganizationUnits(ctx context.Context,
 	return out, nil
 }
 
+func (s *MemoryIdentityStore) ListIdentityOrganizationUnitsWithinDataScope(ctx context.Context, workspaceID string, scope identitymodel.IdentityDataScopeFilter) ([]identitymodel.IdentityOrganizationUnit, error) {
+	items, err := s.ListIdentityOrganizationUnits(ctx, workspaceID)
+	if err != nil || scope.Unrestricted {
+		return items, err
+	}
+	allowed := make(map[string]struct{}, len(scope.OwnerOrgIDs))
+	for _, id := range scope.Normalized().OwnerOrgIDs {
+		allowed[id] = struct{}{}
+	}
+	result := make([]identitymodel.IdentityOrganizationUnit, 0, len(items))
+	for _, item := range items {
+		if _, ok := allowed[item.ID]; ok {
+			result = append(result, item)
+		}
+	}
+	return result, nil
+}
+
+func (s *MemoryIdentityStore) GetIdentityOrganizationUnitWithinDataScope(ctx context.Context, workspaceID, organizationUnitID string, scope identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityOrganizationUnit, bool, error) {
+	items, err := s.ListIdentityOrganizationUnitsWithinDataScope(ctx, workspaceID, scope)
+	if err != nil {
+		return identitymodel.IdentityOrganizationUnit{}, false, err
+	}
+	for _, item := range items {
+		if item.ID == strings.TrimSpace(organizationUnitID) {
+			return item, true, nil
+		}
+	}
+	return identitymodel.IdentityOrganizationUnit{}, false, nil
+}
+
 func identityOrganizationUnitParentID(value *string) string {
 	if value == nil {
 		return ""
@@ -74,4 +105,31 @@ func (s *MemoryIdentityStore) UpsertIdentityOrganizationUnitsAtomically(_ contex
 		s.organizationUnits[key] = organizationUnit
 	}
 	return nil
+}
+
+func (s *MemoryIdentityStore) UpsertIdentityOrganizationUnitsWithinDataScopeAtomically(ctx context.Context, workspaceID string, organizationUnits []identitymodel.IdentityOrganizationUnit, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
+	if !scope.Unrestricted {
+		allowed := map[string]bool{}
+		for _, id := range scope.Normalized().OwnerOrgIDs {
+			allowed[id] = true
+		}
+		current, err := s.ListIdentityOrganizationUnits(ctx, workspaceID)
+		if err != nil {
+			return false, err
+		}
+		existing := map[string]bool{}
+		existingParent := map[string]string{}
+		for _, item := range current {
+			existing[item.ID] = true
+			existingParent[item.ID] = identityOrganizationUnitParentID(item.ParentID)
+		}
+		for _, item := range organizationUnits {
+			parentID := identityOrganizationUnitParentID(item.ParentID)
+			parentChanged := !existing[item.ID] || existingParent[item.ID] != parentID
+			if existing[item.ID] && !allowed[item.ID] || parentChanged && (parentID == "" || !allowed[parentID]) {
+				return false, nil
+			}
+		}
+	}
+	return true, s.UpsertIdentityOrganizationUnitsAtomically(ctx, workspaceID, organizationUnits)
 }

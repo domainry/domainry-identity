@@ -61,16 +61,11 @@ func (registry *IdentityActionRegistry) ProjectAuthoringDomain(domain authoringc
 				return nil, fmt.Errorf("Identity authoring route %q resolves to both %q and %q", pattern, previous.Key, action.Key)
 			}
 			actionByRoute[identity] = action
-			switch action.Authorization.Strategy {
-			case actioncontract.AuthorizationExactRolePermission, actioncontract.AuthorizationSelfOrPermission:
-				if action.Permission == nil || action.Permission.Key != action.Key || action.Permission.Owner != action.Owner {
+			if action.Permission != nil {
+				if action.Permission.Key != action.Key || action.Permission.Owner != action.Owner {
 					return nil, fmt.Errorf("Action %q has no same-key, same-owner Permission", action.Key)
 				}
 				permissions[action.Key] = struct{}{}
-			default:
-				if action.Permission != nil {
-					return nil, fmt.Errorf("non-role Action %q unexpectedly owns Permission %q", action.Key, action.Permission.Key)
-				}
 			}
 		}
 		capability.ConfigurationRoutes = routes

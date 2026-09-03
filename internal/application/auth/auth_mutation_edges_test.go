@@ -30,6 +30,8 @@ type authMutationEdgeRepository struct {
 	claimCalls     int
 	completeCalls  int
 	credentialGets int
+	scopeChecks    int
+	scopeDenied    bool
 }
 
 type authDirectorySecurityRepository struct {
@@ -58,6 +60,11 @@ func (r *authSessionMutationEdgeRepository) RevokeAuthRefreshTokensForUser(conte
 	return r.revoked, nil
 }
 
+func (r *authSessionMutationEdgeRepository) RevokeAuthRefreshTokensForUserWithinDataScope(context.Context, string, string, string, identitymodel.IdentityDataScopeFilter) (int, bool, error) {
+	r.calls++
+	return r.revoked, true, nil
+}
+
 func (r *authSessionReissueRepository) RevokeAuthRefreshTokensForUser(context.Context, string, string, string) (int, error) {
 	r.revokeCalls++
 	return 0, r.revokeErr
@@ -77,6 +84,11 @@ func (r *authMutationEdgeRepository) GetIdentityCredential(context.Context, stri
 	return r.credential, r.credentialOK, r.credentialErr
 }
 
+func (r *authMutationEdgeRepository) IdentityUserExistsWithinDataScope(context.Context, string, string, identitymodel.IdentityDataScopeFilter) (bool, error) {
+	r.scopeChecks++
+	return !r.scopeDenied, nil
+}
+
 func (r *authMutationEdgeRepository) TryBeginAuthMutation(_ context.Context, _ string, request authmodel.AuthMutationClaimRequest) (authmodel.AuthMutationClaimResult, error) {
 	r.claimCalls++
 	r.claimRequest = request
@@ -90,9 +102,9 @@ func (r *authMutationEdgeRepository) CompleteAuthMutation(_ context.Context, _ s
 }
 
 func authMutationPrincipal() identitymodel.Principal {
-	return identitymodel.Principal{Known: true, WorkspaceID: "workspace-1", UserID: "user-1", RequestID: "request-1", Role: identitymodel.RoleSchema{Permissions: []string{
+	return identitymodel.Principal{Known: true, WorkspaceID: "workspace-1", UserID: "user-1", RequestID: "request-1", Role: identitymodel.RoleSchema{Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll,
 		"auth.reset_password", "auth.providers.setup",
-	}}}
+	)}}
 }
 
 func authAcquiredReceipt(token int64) authmodel.AuthMutationReceipt {
@@ -170,7 +182,7 @@ func TestForceLogoutRequiresDedicatedSecurityPermissionAndReplaysStableResult(t 
 	}
 	principal := identitymodel.Principal{
 		Known: true, WorkspaceID: "workspace-1", UserID: "security-admin", RequestID: "request-1",
-		Role: identitymodel.RoleSchema{Permissions: []string{"identity.users.update"}},
+		Role: identitymodel.RoleSchema{Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "identity.users.update")},
 	}
 	repository := &authSessionMutationEdgeRepository{authMutationEdgeRepository: authMutationEdgeRepository{
 		claim: authmodel.AuthMutationClaimResult{Decision: idempotency.DecisionAcquired, Receipt: authAcquiredReceipt(1)},
@@ -179,7 +191,7 @@ func TestForceLogoutRequiresDedicatedSecurityPermissionAndReplaysStableResult(t 
 	if _, _, gotErr := service.ForceLogoutUserIdempotent(t.Context(), principal, "force-1", "target-user"); apperror.CodeOf(gotErr) != "auth.permission_denied" || repository.claimCalls != 0 {
 		t.Fatalf("identity.users.update unexpectedly authorized force logout: err=%v claims=%d", gotErr, repository.claimCalls)
 	}
-	principal.Role.Permissions = []string{"identity.users.force_logout"}
+	principal.Role.Permissions = identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "identity.users.force_logout")
 	result, replayed, gotErr := service.ForceLogoutUserIdempotent(t.Context(), principal, "force-1", "target-user")
 	if gotErr != nil || replayed || result.RevokedSessions != 2 || repository.calls != 1 || repository.completeCalls != 1 {
 		t.Fatalf("result=%+v replayed=%t err=%v revokes=%d completions=%d", result, replayed, gotErr, repository.calls, repository.completeCalls)
@@ -196,6 +208,14 @@ func TestForceLogoutRequiresDedicatedSecurityPermissionAndReplaysStableResult(t 
 	replayedResult, replayed, gotErr := replayService.ForceLogoutUserIdempotent(t.Context(), principal, "force-1", "target-user")
 	if gotErr != nil || !replayed || replayedResult != result || replayRepository.calls != 0 {
 		t.Fatalf("replay result=%+v replayed=%t err=%v revoke calls=%d", replayedResult, replayed, gotErr, replayRepository.calls)
+	}
+	if replayRepository.scopeChecks != 1 {
+		t.Fatalf("replay did not reauthorize target data scope: checks=%d", replayRepository.scopeChecks)
+	}
+	replayRepository.scopeDenied = true
+	claimCalls := replayRepository.claimCalls
+	if _, _, gotErr := replayService.ForceLogoutUserIdempotent(t.Context(), principal, "force-2", "target-user"); apperror.CodeOf(gotErr) != "backend.identity.user_not_found" || replayRepository.claimCalls != claimCalls {
+		t.Fatalf("scope-revoked replay reached receipt lookup: err=%v claims=%d", gotErr, replayRepository.claimCalls)
 	}
 	if _, _, gotErr := replayService.ForceLogoutUserIdempotent(t.Context(), principal, "", "target-user"); apperror.CodeOf(gotErr) != idempotency.ErrorCodeMissingKey {
 		t.Fatalf("missing key error=%v", gotErr)

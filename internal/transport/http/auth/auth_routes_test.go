@@ -36,7 +36,7 @@ func TestAuthProviderSetupRequiresItsExactDatabaseBackedActionPermission(t *test
 			handler := NewAuthHandler(AuthDependencies{
 				ActionAuthorization: authorizer,
 				Principal: func(*http.Request) identitymodel.Principal {
-					return identitymodel.Principal{Known: true, Role: identitymodel.RoleSchema{Permissions: []string{test.permission}}}
+					return identitymodel.Principal{Known: true, Role: identitymodel.RoleSchema{Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, test.permission)}}
 				},
 				WriteError: func(w http.ResponseWriter, _ *http.Request, status int, _ string, _ ...string) { w.WriteHeader(status) },
 				DecodeJSON: func(w http.ResponseWriter, _ *http.Request, _ any) bool {

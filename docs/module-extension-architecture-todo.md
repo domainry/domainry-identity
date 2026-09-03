@@ -176,7 +176,7 @@ type ProjectExtensionSet struct {
 
 - [ ] 执行 `identity-extension-todo.md` 中的 Profile Binding 和自定义字段计划。
 - [ ] 将 Profile 扩展 DTO、Reader、relation mutation、claim verifier、approval/session revocation 暴露到 `domainry-identity-sdk`。
-- [ ] 把当前硬编码为允许的 `RecordScopeAllows` 替换为必需的授权策略，缺失时 fail closed。
+- [x] 删除旧 `DataPermissionAllows` 特判；角色的每个 exact Permission grant 必须携带规范 data scope，缺失时 fail closed。
 - [ ] 将当前固定 `CallbackAdapter` 演进为经过 descriptor 校验的认证 Provider registry；内置 OIDC/SAML 作为 builtin provider 注册。
 - [ ] `DatabaseHandle` 只表达数据库借用，业务扩展迁移到独立 Host/Extension contract。
 - [ ] module 与 SaaS 使用同一 Profile capability descriptor 和错误码。

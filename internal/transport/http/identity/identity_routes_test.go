@@ -49,7 +49,7 @@ func TestIdentityActionGateUsesRegisteredPermissionForAllowAndDeny(t *testing.T)
 	if denied.Code != http.StatusForbidden || executed {
 		t.Fatalf("denied status=%d executed=%v", denied.Code, executed)
 	}
-	principal.Role.Permissions = []string{identitycontract.IdentityActionPermissionsList}
+	principal.Role.Permissions = identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, identitycontract.IdentityActionPermissionsList)
 	allowed := httptest.NewRecorder()
 	protected(allowed, httptest.NewRequest(http.MethodGet, "/identity/permissions", nil))
 	if allowed.Code != http.StatusNoContent || !executed {

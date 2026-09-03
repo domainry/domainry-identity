@@ -7,7 +7,9 @@ import (
 	"time"
 
 	"github.com/domainry/domainry-foundation/apperror"
+	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	identityrepository "github.com/domainry/domainry-identity/internal/domain/identity/repository"
 )
 
 func (s *IdentityDomainService) ListRoles(ctx context.Context) ([]identitymodel.IdentityRole, error) {
@@ -104,6 +106,25 @@ func (s *IdentityDomainService) AssignUserRole(ctx context.Context, assignment i
 	return s.repo.AssignIdentityUserRole(ctx, s.workspace, assignment)
 }
 
+func (s *IdentityDomainService) AssignUserRoleWithinDataScope(ctx context.Context, assignment identitymodel.IdentityUserRoleAssignment, scope identitymodel.IdentityDataScopeFilter) error {
+	assignment, _, err := s.prepareManualRoleAssignment(ctx, assignment, false)
+	if err != nil {
+		return err
+	}
+	repository, ok := s.repo.(identityrepository.IdentityUserRoleAssignmentDataScopeRepository)
+	if !ok {
+		return internalError("identity user-role assignment data-scope repository unavailable", nil)
+	}
+	assigned, err := repository.AssignIdentityUserRoleWithinDataScope(ctx, s.workspace, assignment, scope)
+	if err != nil {
+		return err
+	}
+	if !assigned {
+		return forbidden("backend.identity.data_scope_denied")
+	}
+	return nil
+}
+
 func (s *IdentityDomainService) prepareManualRoleAssignment(ctx context.Context, assignment identitymodel.IdentityUserRoleAssignment, deferConflictCheck bool) (identitymodel.IdentityUserRoleAssignment, identitymodel.RoleSchema, error) {
 	issues, err := s.validation.ValidateRoleAssignmentConfiguration(ctx, assignment)
 	if err != nil {
@@ -179,10 +200,6 @@ func (s *IdentityDomainService) validateRoleEligibilityWithoutConflicts(ctx cont
 }
 
 func (s *IdentityDomainService) validateRoleConflicts(ctx context.Context, userID string, target identitymodel.RoleSchema) error {
-	conflicts := map[string]bool{}
-	for _, key := range target.ConflictRoleKeys {
-		conflicts[strings.TrimSpace(key)] = true
-	}
 	assignments, err := s.repo.ListIdentityUserRoleAssignments(ctx, s.workspace, userID)
 	if err != nil {
 		return err
@@ -190,6 +207,14 @@ func (s *IdentityDomainService) validateRoleConflicts(ctx context.Context, userI
 	roles, err := s.repo.ListIdentityRoles(ctx, s.workspace)
 	if err != nil {
 		return err
+	}
+	return s.validateRoleConflictsAgainstAssignments(target, assignments, roles)
+}
+
+func (s *IdentityDomainService) validateRoleConflictsAgainstAssignments(target identitymodel.RoleSchema, assignments []identitymodel.IdentityUserRoleAssignment, roles []identitymodel.IdentityRole) error {
+	conflicts := map[string]bool{}
+	for _, key := range target.ConflictRoleKeys {
+		conflicts[strings.TrimSpace(key)] = true
 	}
 	byID := map[string]identitymodel.RoleSchema{}
 	for _, role := range roles {
@@ -259,10 +284,66 @@ func (s *IdentityDomainService) assignSystemManagedRole(ctx context.Context, ass
 }
 
 func (s *IdentityDomainService) RemoveUserRole(ctx context.Context, userID string, roleID string) error {
-	return s.RemoveUserRoleGoverned(ctx, userID, roleID, "", "manual_removal")
+	return s.removeUserRole(ctx, userID, roleID, "", "manual_removal")
 }
 
-func (s *IdentityDomainService) RemoveUserRoleGoverned(ctx context.Context, userID, roleID, actorID, reason string) error {
+func (s *IdentityDomainService) RemoveUserRoleGoverned(ctx context.Context, userID, roleID, reason string, actor identitymodel.Principal) error {
+	_, found, err := s.UserByIDWithinDataScope(ctx, strings.TrimSpace(userID), actor, identitycontract.IdentityUserRoleAssignmentsRevokePermission)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return badRequest("backend.identity.user_not_found", "user", userID)
+	}
+	return s.removeUserRoleWithinDataScope(ctx, userID, roleID, actor.UserID, reason, identitycontract.IdentityPermissionDataScopeFilter(actor, identitycontract.IdentityUserRoleAssignmentsRevokePermission))
+}
+
+func (s *IdentityDomainService) removeUserRoleWithinDataScope(ctx context.Context, userID, roleID, actorID, reason string, scope identitymodel.IdentityDataScopeFilter) error {
+	role, found, err := s.roleByID(ctx, strings.TrimSpace(roleID))
+	if err != nil {
+		return err
+	}
+	if found {
+		if definition, ok := s.publishedRoleDefinition(role); ok && definition.AssignmentMode == identitymodel.IdentityRoleAssignmentSystemManaged {
+			return forbidden("backend.identity.system_managed_role_assignment_denied")
+		}
+	}
+	repository, ok := s.repo.(identityrepository.IdentityUserRoleAssignmentDataScopeRepository)
+	if !ok {
+		return internalError("identity user-role assignment data-scope repository unavailable", nil)
+	}
+	assignments, err := repository.ListIdentityUserRoleAssignmentsWithinDataScope(ctx, s.workspace, userID, scope)
+	if err != nil {
+		return err
+	}
+	for _, assignment := range assignments {
+		if assignment.RoleID != roleID || !identityAssignmentActive(assignment, time.Now()) {
+			continue
+		}
+		assignment.Status = "revoked"
+		assignment.RevokedAt = time.Now().UTC().Format(time.RFC3339)
+		assignment.RevokedBy = strings.TrimSpace(actorID)
+		assignment.RevokeReason = valueOrDefault(strings.TrimSpace(reason), "manual_removal")
+		updated, updateErr := repository.AssignIdentityUserRoleWithinDataScope(ctx, s.workspace, assignment, scope)
+		if updateErr != nil {
+			return updateErr
+		}
+		if !updated {
+			return forbidden("backend.identity.data_scope_denied")
+		}
+		return nil
+	}
+	removed, err := repository.RemoveIdentityUserRoleWithinDataScope(ctx, s.workspace, userID, roleID, scope)
+	if err != nil {
+		return err
+	}
+	if !removed {
+		return forbidden("backend.identity.data_scope_denied")
+	}
+	return nil
+}
+
+func (s *IdentityDomainService) removeUserRole(ctx context.Context, userID, roleID, actorID, reason string) error {
 	role, found, err := s.roleByID(ctx, strings.TrimSpace(roleID))
 	if err != nil {
 		return err
@@ -295,22 +376,27 @@ func (s *IdentityDomainService) ListUserRoleAssignments(ctx context.Context, use
 	return s.repo.ListIdentityUserRoleAssignments(ctx, s.workspace, userID)
 }
 
+func (s *IdentityDomainService) ListUserRoleAssignmentsWithinDataScope(ctx context.Context, userID string, actor identitymodel.Principal, permissionKey string) ([]identitymodel.IdentityUserRoleAssignment, error) {
+	repository, ok := s.repo.(identityrepository.IdentityUserRoleAssignmentDataScopeReader)
+	if !ok {
+		return nil, internalError("identity user-role assignment data-scope repository unavailable", nil)
+	}
+	return repository.ListIdentityUserRoleAssignmentsWithinDataScope(ctx, s.workspace, strings.TrimSpace(userID), identitycontract.IdentityPermissionDataScopeFilter(actor, permissionKey))
+}
+
 func (s *IdentityDomainService) ListAssignableRoles(ctx context.Context, targetUserID string, actor identitymodel.Principal) ([]identitymodel.IdentityRole, error) {
 	targetUserID = strings.TrimSpace(targetUserID)
 	if targetUserID == "" {
 		return nil, badRequest("backend.identity.user_required")
 	}
-	target, found, err := s.userByID(ctx, targetUserID)
+	target, found, err := s.UserByIDWithinDataScope(ctx, targetUserID, actor, identitycontract.IdentityUserRoleAssignmentsAssignableRolesPermission)
 	if err != nil {
 		return nil, err
 	}
 	if !found {
-		return nil, badRequest("backend.identity.user_not_found", "user", targetUserID)
-	}
-	if target.Status != identitymodel.IdentityStatusActive {
 		return []identitymodel.IdentityRole{}, nil
 	}
-	if !identityActorCanManageRoleTarget(actor, target) {
+	if target.Status != identitymodel.IdentityStatusActive {
 		return []identitymodel.IdentityRole{}, nil
 	}
 	bindings, err := s.repo.ListIdentityProfileBindingsByUser(ctx, s.workspace, targetUserID)
@@ -324,6 +410,10 @@ func (s *IdentityDomainService) ListAssignableRoles(ctx context.Context, targetU
 		}
 	}
 	roles, err := s.repo.ListIdentityRoles(ctx, s.workspace)
+	if err != nil {
+		return nil, err
+	}
+	assignments, err := s.ListUserRoleAssignmentsWithinDataScope(ctx, targetUserID, actor, identitycontract.IdentityUserRoleAssignmentsAssignableRolesPermission)
 	if err != nil {
 		return nil, err
 	}
@@ -356,7 +446,7 @@ func (s *IdentityDomainService) ListAssignableRoles(ctx context.Context, targetU
 		case identitymodel.IdentityRoleAudienceService:
 			continue
 		}
-		if err := s.validateRoleConflicts(ctx, targetUserID, definition); err != nil {
+		if err := s.validateRoleConflictsAgainstAssignments(definition, assignments, roles); err != nil {
 			if apperror.CodeOf(err) == "backend.identity.role_conflict" {
 				continue
 			}

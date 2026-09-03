@@ -16,8 +16,8 @@ func TestIdentityPolicyReadHandlers(t *testing.T) {
 	}
 	handler, response := newIdentityHTTPHandler(repo)
 	handler.policies.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{
-		Key: "sales", Permissions: []string{"customer.read"},
-		DataPermissions:  []identitymodel.DataPermission{{ObjectKey: "customer", Scope: "all_records"}},
+		Key:              "sales",
+		Permissions:      identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "customer.read"),
 		FieldPermissions: []identitymodel.FieldPermission{{ObjectKey: "customer", FieldKey: "name", Read: true}},
 	}})
 	for _, test := range []struct {
@@ -25,7 +25,6 @@ func TestIdentityPolicyReadHandlers(t *testing.T) {
 		call func(http.ResponseWriter, *http.Request)
 	}{
 		{name: "permissions", call: handler.listIdentityRolePermissions},
-		{name: "data scopes", call: handler.listIdentityRoleDataScopes},
 		{name: "field permissions", call: handler.listIdentityRoleFieldPermissions},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -43,7 +42,6 @@ func TestIdentityPolicyReadHandlers(t *testing.T) {
 		call func(http.ResponseWriter, *http.Request)
 	}{
 		{name: "permissions", call: handler.listIdentityRolePermissions},
-		{name: "data scopes", call: handler.listIdentityRoleDataScopes},
 		{name: "field permissions", call: handler.listIdentityRoleFieldPermissions},
 	} {
 		t.Run(test.name+" error", func(t *testing.T) {

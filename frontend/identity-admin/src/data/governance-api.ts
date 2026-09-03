@@ -28,7 +28,6 @@ export type {
 import type {
   EffectivePermissions,
   RuntimeAuditEvent,
-  RuntimeDataScopePolicy,
   RuntimeFieldPermission,
   RuntimePermissionPoint,
   RuntimeRoleMenuAssignment,
@@ -118,16 +117,12 @@ export const permissionsApi = {
 };
 
 export interface IdentityRolePermissionConfiguration {
-  permissionKeys: string[];
+  permissions: RuntimeRolePermissionAssignment[];
   schemaHash: string;
   schemaVersion: string;
 }
 
-export interface IdentityRoleDataScopeConfiguration {
-  dataScopes: RuntimeDataScopePolicy[];
-  schemaHash: string;
-  schemaVersion: string;
-}
+export type IdentityRolePermissionGrant = Pick<RuntimeRolePermissionAssignment, "permission_key" | "data_scope" | "audit_denial">;
 
 export interface IdentityRoleFieldPermissionConfiguration {
   fieldPermissions: RuntimeFieldPermission[];
@@ -154,15 +149,9 @@ function rolePermissionConfiguration(
   response: RuntimeResponse<RuntimeRolePermissionAssignment[]>,
 ): IdentityRolePermissionConfiguration {
   return {
-    permissionKeys: response.data.map((item) => item.permission_key).sort(),
+    permissions: [...response.data].sort((left, right) => left.permission_key.localeCompare(right.permission_key)),
     ...roleSchemaRevision(response),
   };
-}
-
-function roleDataScopeConfiguration(
-  response: RuntimeResponse<RuntimeDataScopePolicy[] | null>,
-): IdentityRoleDataScopeConfiguration {
-  return { dataScopes: response.data ?? [], ...roleSchemaRevision(response) };
 }
 
 function roleFieldPermissionConfiguration(
@@ -207,12 +196,12 @@ export const identityPoliciesApi = {
     });
   },
   rolePermissions(roleID: string) {
-    return fetchRolePermissionConfiguration(roleID).then((configuration) => configuration.permissionKeys);
+    return fetchRolePermissionConfiguration(roleID).then((configuration) => configuration.permissions.map((permission) => permission.permission_key));
   },
   rolePermissionConfiguration(roleID: string) {
     return fetchRolePermissionConfiguration(roleID);
   },
-  saveRolePermissions(roleID: string, permissionKeys: string[], businessReason: string, expectedSchemaHash: string) {
+  saveRolePermissions(roleID: string, permissions: IdentityRolePermissionGrant[], businessReason: string, expectedSchemaHash: string) {
     const path = `/identity/roles/${encodeURIComponent(roleID)}/permissions`;
     if (!expectedSchemaHash.trim()) {
       throw new RuntimeApiError(
@@ -228,27 +217,11 @@ export const identityPoliciesApi = {
         "Idempotency-Key": requestID,
         "Expected-Schema-Hash": expectedSchemaHash,
       },
-      body: { permission_keys: permissionKeys, business_reason: businessReason },
+      body: {
+        permissions: permissions.map(({ permission_key, data_scope, audit_denial }) => ({ permission_key, data_scope, audit_denial })),
+        business_reason: businessReason,
+      },
     }).then(rolePermissionConfiguration);
-  },
-  dataScopes(roleID: string) {
-    return identityPoliciesApi.dataScopeConfiguration(roleID).then((configuration) => configuration.dataScopes);
-  },
-  dataScopeConfiguration(roleID: string) {
-    return runtimeRequestWithResponse<RuntimeDataScopePolicy[] | null>(
-      `/identity/roles/${encodeURIComponent(roleID)}/data-scopes`,
-    ).then(roleDataScopeConfiguration);
-  },
-  saveDataScopes(roleID: string, dataScopes: RuntimeDataScopePolicy[], businessReason: string, expectedSchemaHash: string) {
-    if (!expectedSchemaHash.trim()) {
-      throw new RuntimeApiError(503, { code: "backend.authoring.resource_projection_unavailable" }, "Identity did not publish the authoritative RoleSchema hash");
-    }
-    const requestID = createRuntimeRequestID();
-    return runtimeRequestWithResponse<RuntimeDataScopePolicy[]>(`/identity/roles/${encodeURIComponent(roleID)}/data-scopes`, {
-      method: "PUT",
-      headers: { "Idempotency-Key": requestID, "Expected-Schema-Hash": expectedSchemaHash },
-      body: { data_scopes: dataScopes, business_reason: businessReason },
-    }).then(roleDataScopeConfiguration);
   },
   fieldPermissions(roleID: string) {
     return identityPoliciesApi.fieldPermissionConfiguration(roleID).then((configuration) => configuration.fieldPermissions);
@@ -282,7 +255,7 @@ export const identityAccessApi = {
       `/identity/users/${encodeURIComponent(userID)}/effective-access`,
     );
   },
-  explain(input: { user_id: string; object_key: string; action: string; field_key?: string; record_id?: string }) {
+  explain(input: { user_id: string; object_key: string; action: string; field_key?: string }) {
     return runtimeRequest<IdentityAccessExplainResult>("/identity/access/explain", {
       method: "POST",
       body: input,

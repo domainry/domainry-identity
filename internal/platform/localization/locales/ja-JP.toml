@@ -1629,7 +1629,7 @@
 
 [permissionReason]
 "field_permission_denied" = "フィールド権限が拒否されました"
-"missing_data_permission" = "データスコープ権限がありません"
+"missing_data_scope" = "データスコープ権限がありません"
 "missing_field_permission" = "フィールド権限がありません"
 "missing_permission" = "機能権限がありません"
 
@@ -1828,7 +1828,6 @@
 "content" = "コンテンツ"
 "contract" = "契約"
 "cos" = "COS"
-"custom" = "カスタム"
 "customer" = "顧客"
 "data" = "データ"
 "days" = "日"
@@ -3318,14 +3317,13 @@
 "audit.event.record_export_denied" = "エクスポートが拒否されました"
 "audit.event.record_import_denied" = "インポートが拒否されました"
 "audit.event.role_preview_used" = "使用される役割のプレビュー"
-"audit.reason.data_permission" = "データ範囲が不十分です"
+"audit.reason.data_scope" = "データ範囲が不十分です"
 "audit.reason.permission" = "機能権限がありません"
-"audit.reason.record_scope" = "レコードは現在の役割の範囲外です"
 "audit.reason.related_record_status" = "関連レコードのステータスではこれは許可されていません"
 "audit.reason.relation_context" = "関係コンテキストが満たされていません"
 "audit.reason.state_machine" = "状態遷移ルール​​がこれをブロックしました"
 "error.actionPermission" = "この役割はこのアクションを実行できません。拒否イベントが記録されました。"
-"error.dataPermission" = "このロールはこのレコード スコープにアクセスできません。拒否イベントが記録されました。"
+"error.dataScope" = "このロールはこのレコード スコープにアクセスできません。拒否イベントが記録されました。"
 "error.notFound" = "対象のリソースが存在しないか、削除されました。"
 "error.operationFailed" = "操作が失敗しました"
 "error.reportPermission" = "この役割はレポートをエクスポートできません。拒否イベントが記録されました。"
@@ -3404,14 +3402,11 @@
 "warehouse_operator" = "倉庫担当者"
 
 [scope]
-"all_records" = "すべての記録"
-"custom" = "カスタムスコープ"
-"department_records" = "部門記録"
-"department_tree" = "部門ツリー"
-"filtered_records" = "フィルタリングされたレコード"
-"own_records" = "所有レコード"
-"subordinate_records" = "下位レコード"
-"team_records" = "チーム記録"
+"all" = "すべての記録"
+"org" = "部門記録"
+"org_child" = "部門ツリー"
+"owner" = "所有レコード"
+"target_org" = "チーム記録"
 
 [surface]
 "kitchen_exceptions" = "キッチン例外"
@@ -4587,7 +4582,7 @@
 "workflow.resolve_status_invalid" = "デッドレターのワークフロー実行のみ解決できます。"
 "audit.view_permission_required" = "監査表示権限が必要です。"
 "report.permission_denied" = "レポート権限がありません。"
-"report.data_permission_denied" = "レポートデータ権限がありません。"
+"report.data_scope_denied" = "レポートデータ権限がありません。"
 "metadata.migration.addColumn" = "{{table}} に列 {{column}} を追加します。"
 "metadata.migration.createTable" = "テーブル {{table}} を作成します。"
 "capability.approval_required" = "承認ステータスは {{required}} である必要があります。"

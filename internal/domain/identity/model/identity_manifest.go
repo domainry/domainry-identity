@@ -7,9 +7,7 @@ type RoleSchema struct {
 	Name                  string                             `json:"name"`
 	Description           string                             `json:"description,omitempty"`
 	I18n                  localizationmodel.LocalizedTextMap `json:"i18n,omitempty"`
-	Permissions           []string                           `json:"permissions"`
-	RecordScope           string                             `json:"record_scope"`
-	DataPermissions       []DataPermission                   `json:"data_permissions,omitempty"`
+	Permissions           []RolePermission                   `json:"permissions"`
 	FieldPermissions      []FieldPermission                  `json:"field_permissions,omitempty"`
 	ReferencePermissions  []ReferencePermission              `json:"reference_permissions,omitempty"`
 	ExportRules           []ExportRule                       `json:"export_rules,omitempty"`
@@ -116,11 +114,12 @@ type ManifestIdentityRoleMenuSetSchema struct {
 	RoleID  string   `json:"role_id"`
 	MenuIDs []string `json:"menu_ids"`
 }
-type DataPermission struct {
-	ObjectKey   string                    `json:"object_key"`
-	Scope       string                    `json:"scope"`
-	AuditDenial bool                      `json:"audit_denial,omitempty"`
-	Predicate   *IdentityPolicyExpression `json:"predicate,omitempty"`
+// RolePermission is one exact Action Permission grant. DataScope belongs to
+// the grant, so two actions on the same resource can use different scopes.
+type RolePermission struct {
+	PermissionKey string            `json:"permission_key"`
+	DataScope     IdentityDataScope `json:"data_scope"`
+	AuditDenial   bool              `json:"audit_denial,omitempty"`
 }
 type FieldPermission struct {
 	ObjectKey string                      `json:"object_key"`

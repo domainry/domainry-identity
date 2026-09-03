@@ -77,7 +77,7 @@ func (s *MetadataApplicationService) validateCandidatePermissionSelections(candi
 		}
 	}
 	for _, role := range candidate.Roles {
-		collect(role.Permissions)
+		collect(identitymodel.RolePermissionKeys(role.Permissions))
 	}
 	for _, binding := range candidate.IdentityProfileExtensions {
 		collect(binding.RequiredPermissions)

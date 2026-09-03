@@ -203,7 +203,7 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 	validation, err := binding.ValidateCapabilityCandidate(t.Context(), modulecapability.ValidationRequest{
 		ContractVersion: modulecapability.ValidationContractVersion, ModuleKey: "identity", CategoryKey: "identity.roles",
 		ContractSHA256: capabilitySummary.Identity.ContractSHA256, Kind: "identity.role",
-		Candidate: modulecapability.AuthoringFragment{Collection: "roles", Key: "sales", Value: []byte(`{"key":"sales","permissions":[],"record_scope":"all_records","unknown":true}`)},
+		Candidate: modulecapability.AuthoringFragment{Collection: "roles", Key: "sales", Value: []byte(`{"key":"sales","permissions":[],"unknown":true}`)},
 	})
 	if err != nil || len(validation.Diagnostics) == 0 || validation.Diagnostics[0].Owner != "identity" {
 		t.Fatalf("capability validation=%+v err=%v", validation, err)
@@ -248,6 +248,6 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 
 	identitycontracttest.Run(t, identitycontracttest.Fixture{
 		Binding: binding, WorkspaceID: "workspace-primary", ApplicationKey: "orders-runtime", Login: "admin@example.com", Password: "Domainry@2026",
-		Resource: "identity.users", Action: "list", DataAction: identity.DataActionRead,
+		Resource: "identity.users", Action: "list", DataAllowed: true,
 	})
 }

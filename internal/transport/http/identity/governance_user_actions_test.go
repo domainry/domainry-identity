@@ -37,6 +37,20 @@ func (*identityHTTPAuthRepository) ListIdentityExternalAccounts(context.Context,
 func (*identityHTTPAuthRepository) RevokeAuthRefreshTokensForUser(context.Context, string, string, string) (int, error) {
 	return 2, nil
 }
+func (*identityHTTPAuthRepository) IdentityUserExistsWithinDataScope(context.Context, string, string, identitymodel.IdentityDataScopeFilter) (bool, error) {
+	return true, nil
+}
+func (r *identityHTTPAuthRepository) UnlockIdentityCredentialWithinDataScope(context.Context, string, string, identitymodel.IdentityDataScopeFilter) (bool, bool, error) {
+	r.credential.FailedLoginCount = 0
+	r.credential.LockedUntil = ""
+	return true, true, nil
+}
+func (*identityHTTPAuthRepository) RevokeAuthRefreshTokensForUserWithinDataScope(context.Context, string, string, string, identitymodel.IdentityDataScopeFilter) (int, bool, error) {
+	return 2, true, nil
+}
+func (*identityHTTPAuthRepository) RevokeIdentityMFAFactorWithinDataScope(context.Context, string, string, string, identitymodel.IdentityDataScopeFilter) (bool, bool, error) {
+	return true, true, nil
+}
 func (*identityHTTPAuthRepository) TryBeginAuthMutation(_ context.Context, _ string, request authmodel.AuthMutationClaimRequest) (authmodel.AuthMutationClaimResult, error) {
 	receipt := request.Receipt
 	receipt.ID, receipt.LeaseOwner, receipt.FencingToken = "receipt", request.LeaseOwner, 1

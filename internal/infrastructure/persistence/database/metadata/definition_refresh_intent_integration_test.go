@@ -37,7 +37,7 @@ func TestPublishDefinitionUsesIdentityOwnedRefreshIntent(t *testing.T) {
 			Name:       "Order Reviewer",
 			SourceKind: "test",
 			SourceID:   "definition-refresh-intent-test",
-			Payload:    json.RawMessage(`{"key":"order_reviewer","name":"Order Reviewer","record_scope":"all_records"}`),
+			Payload:    json.RawMessage(`{"key":"order_reviewer","name":"Order Reviewer"}`),
 		},
 		auditmodel.AuditEvent{
 			ID:          "audit-metadata-order",

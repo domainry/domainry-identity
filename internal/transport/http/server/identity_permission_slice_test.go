@@ -62,7 +62,7 @@ func TestStandalonePermissionAPIProjectsDatabaseStateAndActionBindingsWithRoleEn
 		t.Fatal(err)
 	}
 	expectedPermissions := registry.OwnedPermissionDefinitions(identityapplication.IdentityBuiltinAuthorizationOwner)
-	if len(expectedPermissions) != 89 || len(permissions) != 96 {
+	if len(expectedPermissions) != 86 || len(permissions) != 93 {
 		t.Fatalf("database permission count=%d Identity owner registry count=%d", len(permissions), len(expectedPermissions))
 	}
 	ownerCounts := map[string]int{}
@@ -83,7 +83,7 @@ func TestStandalonePermissionAPIProjectsDatabaseStateAndActionBindingsWithRoleEn
 			}
 		}
 	}
-	if ownerCounts[identityapplication.IdentityBuiltinAuthorizationOwner] != 89 || ownerCounts["module:audit"] != 7 {
+	if ownerCounts[identityapplication.IdentityBuiltinAuthorizationOwner] != 86 || ownerCounts["module:audit"] != 7 {
 		t.Fatalf("permission owner counts=%v", ownerCounts)
 	}
 
@@ -391,9 +391,8 @@ func TestStandaloneRoleAndPolicyAuthoringPublishesRoleSchemaDirectly(t *testing.
 
 	create := identitymodel.IdentityRoleDefinitionMutationRequest{
 		Role: identitymodel.RoleSchema{
-			Key: "auditor", Name: "Auditor", Description: "Reads audit resources", Permissions: []string{"identity.roles.list"},
-			RecordScope:      "all_records",
-			DataPermissions:  []identitymodel.DataPermission{{ObjectKey: "invoice", Scope: "all_records"}},
+			Key: "auditor", Name: "Auditor", Description: "Reads audit resources",
+			Permissions:      identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "identity.roles.list"),
 			FieldPermissions: []identitymodel.FieldPermission{{ObjectKey: "invoice", FieldKey: "amount", Read: true, Write: true}},
 		},
 		BusinessReason: "create a least-privilege audit role",
@@ -408,7 +407,7 @@ func TestStandaloneRoleAndPolicyAuthoringPublishesRoleSchemaDirectly(t *testing.
 		t.Fatalf("created role revision=%s/%s", createdVersion, createdHash)
 	}
 	createdRole := storedRoleSchema(t, store, "auditor")
-	if createdRole.RecordScope != "none" || len(createdRole.DataPermissions) != 0 || len(createdRole.FieldPermissions) != 0 {
+	if !reflect.DeepEqual(createdRole.Permissions, identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "identity.roles.list")) || len(createdRole.FieldPermissions) != 0 {
 		t.Fatalf("created role was not fail closed: %+v", createdRole)
 	}
 	replay := identityRolePolicyRequest(t, testServer, adminToken, http.MethodPost, "/identity/roles", "", "role-create-1", create)
@@ -418,21 +417,21 @@ func TestStandaloneRoleAndPolicyAuthoringPublishesRoleSchemaDirectly(t *testing.
 	_ = replay.Body.Close()
 	assertRoleDefinitionEventRows(t, store, "auditor", "identity_role.created", 1, 1)
 
-	dataResponse := identityRolePolicyRequest(t, testServer, adminToken, http.MethodPut, "/identity/roles/auditor/data-scopes", createdHash, "role-data-scopes-1", identitymodel.IdentityRoleDataScopePublicationRequest{
-		DataScopes:     []identitymodel.IdentityDataScopePolicy{{Resource: "invoice", Scope: "owned_records"}},
+	permissionResponse := identityRolePolicyRequest(t, testServer, adminToken, http.MethodPut, "/identity/roles/auditor/permissions", createdHash, "role-permissions-1", identitymodel.IdentityRolePermissionPublicationRequest{
+		Permissions:    identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeOwner, "identity.roles.list"),
 		BusinessReason: "restrict invoices to owned records",
 	})
-	if dataResponse.StatusCode != http.StatusOK {
-		t.Fatalf("data-scope publication status=%d body=%s", dataResponse.StatusCode, readResponseBody(t, dataResponse))
+	if permissionResponse.StatusCode != http.StatusOK {
+		t.Fatalf("permission publication status=%d body=%s", permissionResponse.StatusCode, readResponseBody(t, permissionResponse))
 	}
-	dataHash := dataResponse.Header.Get("X-Resource-Hash")
-	_ = dataResponse.Body.Close()
+	dataHash := permissionResponse.Header.Get("X-Resource-Hash")
+	_ = permissionResponse.Body.Close()
 	if dataHash == "" || dataHash == createdHash {
-		t.Fatalf("data-scope publication hash=%q", dataHash)
+		t.Fatalf("permission publication hash=%q", dataHash)
 	}
 	afterData := storedRoleSchema(t, store, "auditor")
-	if !reflect.DeepEqual(afterData.Permissions, []string{"identity.roles.list"}) || len(afterData.DataPermissions) != 1 || afterData.DataPermissions[0].Scope != "owned_records" {
-		t.Fatalf("data-scope publication changed the wrong RoleSchema fields: %+v", afterData)
+	if !reflect.DeepEqual(afterData.Permissions, identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeOwner, "identity.roles.list")) {
+		t.Fatalf("permission publication changed the wrong RoleSchema fields: %+v", afterData)
 	}
 
 	fieldResponse := identityRolePolicyRequest(t, testServer, adminToken, http.MethodPut, "/identity/roles/auditor/field-permissions", dataHash, "role-field-permissions-1", identitymodel.IdentityRoleFieldPermissionPublicationRequest{
@@ -445,10 +444,10 @@ func TestStandaloneRoleAndPolicyAuthoringPublishesRoleSchemaDirectly(t *testing.
 	fieldHash := fieldResponse.Header.Get("X-Resource-Hash")
 	_ = fieldResponse.Body.Close()
 	afterField := storedRoleSchema(t, store, "auditor")
-	if fieldHash == "" || fieldHash == dataHash || !reflect.DeepEqual(afterField.Permissions, []string{"identity.roles.list"}) || len(afterField.DataPermissions) != 1 || len(afterField.FieldPermissions) != 1 || !afterField.FieldPermissions[0].Masked {
+	if fieldHash == "" || fieldHash == dataHash || !reflect.DeepEqual(afterField.Permissions, afterData.Permissions) || len(afterField.FieldPermissions) != 1 || !afterField.FieldPermissions[0].Masked {
 		t.Fatalf("field publication changed the wrong RoleSchema fields: hash=%q role=%+v", fieldHash, afterField)
 	}
-	assertRoleDefinitionEventRows(t, store, "auditor", "identity_role_data_scopes.published", 3, 1)
+	assertRoleDefinitionEventRows(t, store, "auditor", "identity_role_permissions.published", 3, 1)
 	assertRoleDefinitionEventRows(t, store, "auditor", "identity_role_field_permissions.published", 3, 1)
 
 	updateResponse := identityRolePolicyRequest(t, testServer, adminToken, http.MethodPatch, "/identity/roles/auditor", fieldHash, "role-update-1", identitymodel.IdentityRoleDefinitionUpdateRequest{
@@ -460,7 +459,7 @@ func TestStandaloneRoleAndPolicyAuthoringPublishesRoleSchemaDirectly(t *testing.
 	updateHash := updateResponse.Header.Get("X-Resource-Hash")
 	_ = updateResponse.Body.Close()
 	afterUpdate := storedRoleSchema(t, store, "auditor")
-	if updateHash == "" || updateHash == fieldHash || afterUpdate.Name != "Audit viewer" || afterUpdate.Description != "Reviews audit evidence" || !reflect.DeepEqual(afterUpdate.Permissions, afterField.Permissions) || !reflect.DeepEqual(afterUpdate.DataPermissions, afterField.DataPermissions) || !reflect.DeepEqual(afterUpdate.FieldPermissions, afterField.FieldPermissions) {
+	if updateHash == "" || updateHash == fieldHash || afterUpdate.Name != "Audit viewer" || afterUpdate.Description != "Reviews audit evidence" || !reflect.DeepEqual(afterUpdate.Permissions, afterField.Permissions) || !reflect.DeepEqual(afterUpdate.FieldPermissions, afterField.FieldPermissions) {
 		t.Fatalf("role update did not preserve authorization policy: hash=%q role=%+v", updateHash, afterUpdate)
 	}
 	assertRoleDefinitionEventRows(t, store, "auditor", "identity_role.updated", 4, 1)
@@ -589,7 +588,10 @@ func publishRolePermissions(t *testing.T, server *httptest.Server, accessToken, 
 
 func publishRolePermissionsResponse(t *testing.T, server *httptest.Server, accessToken, roleID, expectedHash, operationID string, permissionKeys []string, reason string) *http.Response {
 	t.Helper()
-	payload, err := json.Marshal(identitymodel.IdentityRolePermissionPublicationRequest{PermissionKeys: permissionKeys, BusinessReason: reason})
+	payload, err := json.Marshal(identitymodel.IdentityRolePermissionPublicationRequest{
+		Permissions:    identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, permissionKeys...),
+		BusinessReason: reason,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

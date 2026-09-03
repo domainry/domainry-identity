@@ -2,12 +2,6 @@
   "contract_version": "identity-admin-page-permissions-v1",
   "pages": [
     {
-      "route": "/admin/org/data-scopes",
-      "action_key": "identity.role_data_scopes.list",
-      "permission_key": "identity.role_data_scopes.list",
-      "source_owner": "identity:builtin"
-    },
-    {
       "route": "/admin/org/field-permissions",
       "action_key": "identity.role_field_permissions.list",
       "permission_key": "identity.role_field_permissions.list",

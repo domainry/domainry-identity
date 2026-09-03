@@ -79,7 +79,7 @@ func TestIdentityAuthoringLifecycleCoversLookupMissesAndFailures(t *testing.T) {
 	handler, response := newIdentityHTTPHandler(&identityHTTPRepository{})
 	handler.audit = auditapplication.NewAuditApplicationService(&identityAuthoringAuditRepository{err: errors.New("audit unavailable")})
 	handler.principal = func(*http.Request) identitymodel.Principal {
-		return identitymodel.Principal{Known: true, WorkspaceID: "workspace-1", Role: identitymodel.RoleSchema{Permissions: []string{"audit.governance.read"}}}
+		return identitymodel.Principal{Known: true, WorkspaceID: "workspace-1", Role: identitymodel.RoleSchema{Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "audit.governance.read")}}
 	}
 	request := httptest.NewRequest(http.MethodGet, "/identity/roles/manager/versions", nil)
 	request.SetPathValue("roleID", "manager")
@@ -134,7 +134,7 @@ func TestIdentityAuthoringLifecycleReadsResourcesAndAuditRevisions(t *testing.T)
 		{ID: "ignored-resource", WorkspaceID: "workspace-1", Event: "identity_role_updated", ObjectKey: "identity_role", RecordID: "other"},
 	}})
 	handler.principal = func(*http.Request) identitymodel.Principal {
-		return identitymodel.Principal{Known: true, UserID: "reviewer-1", WorkspaceID: "workspace-1", Role: identitymodel.RoleSchema{Permissions: []string{"audit.governance.read"}}}
+		return identitymodel.Principal{Known: true, UserID: "reviewer-1", WorkspaceID: "workspace-1", Role: identitymodel.RoleSchema{Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "audit.governance.read")}}
 	}
 	request := httptest.NewRequest(http.MethodGet, "/identity/roles/manager/versions", nil)
 	request.SetPathValue("roleID", "manager")
@@ -151,6 +151,41 @@ func TestIdentityAuthoringLifecycleReadsResourcesAndAuditRevisions(t *testing.T)
 	}
 }
 
+func TestIdentityAuthoringVersionsEnforceExactTargetDataScope(t *testing.T) {
+	repository := &identityHTTPRepository{users: []identitymodel.IdentityUser{
+		{ID: "reviewer-1", OrgID: "sales", Status: identitymodel.IdentityStatusActive},
+		{ID: "other-user", OrgID: "finance", Status: identitymodel.IdentityStatusActive},
+	}}
+	handler, response := newIdentityHTTPHandler(repository)
+	handler.audit = auditapplication.NewAuditApplicationService(&identityAuthoringAuditRepository{events: []auditmodel.AuditEvent{
+		{ID: "self-version", WorkspaceID: "workspace-1", Event: "identity_user_updated", ObjectKey: "identity_user", RecordID: "reviewer-1"},
+		{ID: "foreign-version", WorkspaceID: "workspace-1", Event: "identity_user_updated", ObjectKey: "identity_user", RecordID: "other-user"},
+	}})
+	handler.principal = func(*http.Request) identitymodel.Principal {
+		return identitymodel.Principal{Known: true, UserID: "reviewer-1", WorkspaceID: "workspace-1", Role: identitymodel.RoleSchema{Permissions: []identitymodel.RolePermission{
+			{PermissionKey: "audit.governance.read", DataScope: identitymodel.IdentityDataScopeAll},
+			{PermissionKey: "identity.users.versions", DataScope: identitymodel.IdentityDataScopeOwner},
+		}}}
+	}
+	versions := handler.identityAuthoringVersions("identity.user", "identity_user", "userID", "identity_user_updated")
+	request := httptest.NewRequest(http.MethodGet, "/identity/users/reviewer-1/versions", nil)
+	request = request.WithContext(requestcontext.WithWorkspaceID(request.Context(), "workspace-1"))
+	request.SetPathValue("userID", "reviewer-1")
+	versions(httptest.NewRecorder(), request)
+	if response.status != http.StatusOK {
+		t.Fatalf("owner versions status=%d value=%#v err=%v", response.status, response.value, response.err)
+	}
+
+	response.status, response.value, response.err = 0, nil, nil
+	request = httptest.NewRequest(http.MethodGet, "/identity/users/other-user/versions", nil)
+	request = request.WithContext(requestcontext.WithWorkspaceID(request.Context(), "workspace-1"))
+	request.SetPathValue("userID", "other-user")
+	versions(httptest.NewRecorder(), request)
+	if response.status != http.StatusNotFound {
+		t.Fatalf("foreign versions status=%d value=%#v err=%v", response.status, response.value, response.err)
+	}
+}
+
 func TestIdentityAuthoringLeafValidatorsAcceptCapabilityPayloads(t *testing.T) {
 	repository := &identityHTTPRepository{roles: []identitymodel.IdentityRole{{ID: "manager", Key: "manager", Label: "Manager", Status: identitymodel.IdentityStatusActive}}}
 	handler, response := newIdentityHTTPHandler(repository)
@@ -161,7 +196,7 @@ func TestIdentityAuthoringLeafValidatorsAcceptCapabilityPayloads(t *testing.T) {
 		body    string
 		call    func(http.ResponseWriter, *http.Request)
 	}{
-		{pathKey: "roleID", id: "manager", body: `{"data_scopes":[{"resource":"customer","scope":"all_records"}]}`, call: handler.validateIdentityRoleDataScopeAuthoring},
+		{pathKey: "roleID", id: "manager", body: `{"permissions":[{"permission_key":"identity.users.list","data_scope":"all"}]}`, call: handler.validateIdentityRolePermissionAuthoring},
 		{pathKey: "roleID", id: "manager", body: `{"field_permissions":[{"resource":"customer","field":"name","visible":true,"editable":false}]}`, call: handler.validateIdentityRoleFieldPermissionAuthoring},
 		{pathKey: "menuID", id: "orders", body: `{"key":"orders","label":"Orders","status":"active"}`, call: handler.validateIdentityMenuAuthoring},
 	}

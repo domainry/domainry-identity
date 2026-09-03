@@ -44,13 +44,9 @@ Module 接入必须把每个可执行入口声明成 source-owned `ActionDefinit
 
 | Strategy | 使用场景 | 同 key Permission |
 | --- | --- | --- |
-| `exact_role_permission` | module 管理和业务能力 | 必须有；只校验该 key |
-| `anonymous_protocol` | 明确公开的协议入口 | 不得有 |
-| `authenticated_principal` | 任意已登录主体的本人范围能力 | 不得有 |
-| `self_or_permission` | 本人可操作，管理他人需授权 | 必须有；管理分支只校验该 key |
-| `delegated_credential` | agent/tool 等由 source handler 校验的 workspace 级委托凭证 | 不得有；handler 必须校验凭证 scope、expiry 和精确 tool/action 绑定 |
-| `service_identity` | 明确 audience 的服务身份入口 | 不得有普通角色 Permission |
-| `operations_identity` | 运维身份策略 | 不得有普通角色 Permission |
+| `anonymous` | C 端游客、登录、回调和健康检查等明确公开入口 | 不得有；也不得声明 policy/audience |
+| `authenticated` | 登录用户入口 | 可选；存在时只校验 Action 同 key Permission；本人访问等领域规则由 `PolicyKey` 标识并在登录后执行 |
+| `signed` | webhook、schedule、服务调用、agent/tool 和运维调用 | 不得有普通角色 Permission；必须声明签名策略，服务调用可额外声明 audience |
 
 示例：
 
@@ -62,7 +58,7 @@ action.ActionDefinition{
     CapabilityKey: "notification.management",
     OperationKey:  "list",
     Exposures:      []action.Exposure{action.ExposureTenantAdmin},
-    Authorization:  action.Authorization{Strategy: action.AuthorizationExactRolePermission},
+    Authorization:  action.Authorization{Strategy: action.AuthorizationAuthenticated},
     HTTP:           &action.HTTPBinding{Method: "GET", RouteTemplate: "/notifications/templates"},
     Permission: &action.PermissionDefinition{
         Key:         "notification.templates.list",
@@ -179,8 +175,8 @@ resolve registered Action
 
 Notification 的唯一 manifest 是 `internal/application/authorization_actions.go`：
 
-- 21 个管理 Action 使用 `exact_role_permission`，ActionKey 与 PermissionKey 完全相同；
-- 40 个 Business/Portal Inbox Action 使用 `authenticated_principal`，由领域服务限制到当前主体，不生成普通角色 Permission；
+- 21 个管理 Action 使用 `authenticated` 并携带同 key Permission；
+- 40 个 Business/Portal Inbox Action 使用 `authenticated` 且不携带 Permission，由领域服务限制到当前主体；
 - `ProductRoutes()`、Surface、OpenAPI 和 SaaS Permission reconcile 都从该 manifest 投影；
 - handler map 只绑定 Action key 到函数，不重复 Method/URL；
 - resumed publication 只接受 `notification.publications.approve`，不接受任何聚合管理员权限或旧 `notification_publication.approve`；

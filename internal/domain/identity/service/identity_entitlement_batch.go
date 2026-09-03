@@ -6,17 +6,30 @@ import (
 	"strings"
 	"time"
 
+	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
 func (s *IdentityDomainService) PrepareIdentityEntitlementBatch(ctx context.Context, items []identitymodel.IdentityEntitlementBatchItem, actor identitymodel.Principal) ([]identitymodel.IdentityEntitlementBatchItem, []identitymodel.IdentityUserRoleAssignment, error) {
+	return s.PrepareIdentityEntitlementBatchForPermission(ctx, items, actor, identitycontract.IdentityEntitlementsBatchPermission)
+}
+
+func (s *IdentityDomainService) PrepareIdentityEntitlementBatchForPermission(ctx context.Context, items []identitymodel.IdentityEntitlementBatchItem, actor identitymodel.Principal, permissionKey string) ([]identitymodel.IdentityEntitlementBatchItem, []identitymodel.IdentityUserRoleAssignment, error) {
 	if !actor.Known || strings.TrimSpace(actor.UserID) == "" {
 		return nil, nil, forbidden("backend.identity.entitlement_actor_required")
 	}
 	if len(items) == 0 {
 		return nil, nil, badRequest("backend.identity.entitlement_batch_empty", "items", "")
 	}
-	current, err := s.repo.ListIdentityUserRoleAssignments(ctx, s.workspace, "")
+	scopedRepository, ok := s.repo.(interface {
+		ListIdentityUserRoleAssignmentsWithinDataScope(context.Context, string, string, identitymodel.IdentityDataScopeFilter) ([]identitymodel.IdentityUserRoleAssignment, error)
+		GetIdentityUserWithinDataScope(context.Context, string, string, identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityUser, bool, error)
+	})
+	if !ok {
+		return nil, nil, internalError("identity entitlement data-scope repository unavailable", nil)
+	}
+	filter := identitycontract.IdentityPermissionDataScopeFilter(actor, permissionKey)
+	current, err := scopedRepository.ListIdentityUserRoleAssignmentsWithinDataScope(ctx, s.workspace, "", filter)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -41,6 +54,7 @@ func (s *IdentityDomainService) PrepareIdentityEntitlementBatch(ctx context.Cont
 	normalized := make([]identitymodel.IdentityEntitlementBatchItem, 0, len(items))
 	prepared := make([]identitymodel.IdentityUserRoleAssignment, 0, len(items))
 	seen := map[string]bool{}
+	users := map[string]identitymodel.IdentityUser{}
 	now := time.Now().UTC()
 	for _, raw := range items {
 		item := normalizeIdentityEntitlementBatchItem(raw)
@@ -49,6 +63,18 @@ func (s *IdentityDomainService) PrepareIdentityEntitlementBatch(ctx context.Cont
 			return nil, nil, badRequest("backend.identity.entitlement_batch_item_invalid", "role", item.RoleID)
 		}
 		seen[key] = true
+		target, loaded := users[item.UserID]
+		if !loaded {
+			var found bool
+			target, found, err = scopedRepository.GetIdentityUserWithinDataScope(ctx, s.workspace, item.UserID, filter)
+			if err != nil {
+				return nil, nil, err
+			}
+			if !found {
+				return nil, nil, badRequest("backend.identity.user_not_found", "user", item.UserID)
+			}
+			users[item.UserID] = target
+		}
 		role, found := roleByID[item.RoleID]
 		if !found {
 			return nil, nil, badRequest("backend.identity.role_not_found", "role", item.RoleID)

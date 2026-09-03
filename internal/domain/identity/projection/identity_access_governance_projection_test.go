@@ -15,7 +15,7 @@ func TestIdentityAccessReverseIndexAndGovernanceReportsAreDeterministic(t *testi
 		{ID: "reader-id", Key: "reader"},
 		{ID: "empty-id", Key: "empty"},
 	}
-	definitions := []identitymodel.RoleSchema{{Key: "reader", Permissions: []string{"order.read", "order.export"}}}
+	definitions := []identitymodel.RoleSchema{{Key: "reader", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "order.read", "order.export")}}
 	assignments := []identitymodel.IdentityUserRoleAssignment{
 		{UserID: "user-b", RoleID: "reader-id", BindingKey: "member"},
 		{UserID: "user-a", RoleID: "reader-id"},
@@ -42,8 +42,8 @@ func TestIdentityAccessReverseIndexAndGovernanceReportsAreDeterministic(t *testi
 }
 
 func TestIdentityRoleChangeImpactCoversUsersProfilesSensitiveFieldsAndHighRiskActions(t *testing.T) {
-	current := identitymodel.RoleSchema{Key: "operator", Permissions: []string{"order.read"}}
-	next := identitymodel.RoleSchema{Key: "operator", Permissions: []string{"order.read", "order.refund"}}
+	current := identitymodel.RoleSchema{Key: "operator", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "order.read")}
+	next := identitymodel.RoleSchema{Key: "operator", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "order.read", "order.refund")}
 	impact := IdentityPreviewRoleChange(
 		identitymodel.IdentityRoleChangeImpactRequest{RoleKey: "operator", Role: next},
 		current,

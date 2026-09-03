@@ -7,6 +7,7 @@ import (
 
 	"github.com/domainry/domainry-foundation/apperror"
 	"github.com/domainry/domainry-foundation/requestcontext"
+	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	identityrepository "github.com/domainry/domainry-identity/internal/domain/identity/repository"
 	identitydomain "github.com/domainry/domainry-identity/internal/domain/identity/service"
@@ -135,12 +136,36 @@ func (s *IdentityApplicationService) ListOrganizationUnits(ctx context.Context) 
 	return scoped.ListOrganizationUnits(ctx)
 }
 
+func (s *IdentityApplicationService) ListOrganizationUnitsWithinDataScope(ctx context.Context, actor identitymodel.Principal, permissionKey string) ([]identitymodel.IdentityOrganizationUnit, error) {
+	scoped, err := s.domainForContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return scoped.ListOrganizationUnitsWithinDataScope(ctx, actor, permissionKey)
+}
+
+func (s *IdentityApplicationService) OrganizationUnitByIDWithinDataScope(ctx context.Context, organizationUnitID string, actor identitymodel.Principal, permissionKey string) (identitymodel.IdentityOrganizationUnit, bool, error) {
+	scoped, err := s.domainForContext(ctx)
+	if err != nil {
+		return identitymodel.IdentityOrganizationUnit{}, false, err
+	}
+	return scoped.OrganizationUnitByIDWithinDataScope(ctx, organizationUnitID, actor, permissionKey)
+}
+
 func (s *IdentityApplicationService) UpsertOrganizationUnit(ctx context.Context, organizationUnit identitymodel.IdentityOrganizationUnit) error {
 	scoped, err := s.domainForContext(ctx)
 	if err != nil {
 		return err
 	}
 	return scoped.UpsertOrganizationUnit(ctx, organizationUnit)
+}
+
+func (s *IdentityApplicationService) UpsertOrganizationUnitWithinDataScope(ctx context.Context, organizationUnit identitymodel.IdentityOrganizationUnit, actor identitymodel.Principal, permissionKey string) error {
+	scoped, err := s.domainForContext(ctx)
+	if err != nil {
+		return err
+	}
+	return scoped.UpsertOrganizationUnitWithinDataScope(ctx, organizationUnit, actor, permissionKey)
 }
 
 func (s *IdentityApplicationService) ListUsers(ctx context.Context) ([]identitymodel.IdentityUser, error) {
@@ -151,6 +176,14 @@ func (s *IdentityApplicationService) ListUsers(ctx context.Context) ([]identitym
 	return scoped.ListUsers(ctx)
 }
 
+func (s *IdentityApplicationService) ListUsersWithinDataScope(ctx context.Context, actor identitymodel.Principal, permissionKey string) ([]identitymodel.IdentityUser, error) {
+	scoped, err := s.domainForContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return scoped.ListUsersWithinDataScope(ctx, actor, permissionKey)
+}
+
 func (s *IdentityApplicationService) SearchUsers(ctx context.Context, query identitymodel.IdentityListQuery) (identitymodel.IdentityUserPage, error) {
 	scoped, err := s.domainForContext(ctx)
 	if err != nil {
@@ -159,12 +192,28 @@ func (s *IdentityApplicationService) SearchUsers(ctx context.Context, query iden
 	return scoped.SearchUsers(ctx, query)
 }
 
+func (s *IdentityApplicationService) SearchUsersWithinDataScope(ctx context.Context, query identitymodel.IdentityListQuery, actor identitymodel.Principal, permissionKey string) (identitymodel.IdentityUserPage, error) {
+	scoped, err := s.domainForContext(ctx)
+	if err != nil {
+		return identitymodel.IdentityUserPage{}, err
+	}
+	return scoped.SearchUsersWithinDataScope(ctx, query, actor, permissionKey)
+}
+
 func (s *IdentityApplicationService) UserByID(ctx context.Context, userID string) (identitymodel.IdentityUser, bool, error) {
 	scoped, err := s.domainForContext(ctx)
 	if err != nil {
 		return identitymodel.IdentityUser{}, false, err
 	}
 	return scoped.UserByID(ctx, userID)
+}
+
+func (s *IdentityApplicationService) UserByIDWithinDataScope(ctx context.Context, userID string, actor identitymodel.Principal, permissionKey string) (identitymodel.IdentityUser, bool, error) {
+	scoped, err := s.domainForContext(ctx)
+	if err != nil {
+		return identitymodel.IdentityUser{}, false, err
+	}
+	return scoped.UserByIDWithinDataScope(ctx, userID, actor, permissionKey)
 }
 
 func (s *IdentityApplicationService) UserByLogin(ctx context.Context, login string) (identitymodel.IdentityUser, bool, error) {
@@ -181,6 +230,22 @@ func (s *IdentityApplicationService) UpsertUser(ctx context.Context, user identi
 		return err
 	}
 	return scoped.UpsertUser(ctx, user)
+}
+
+func (s *IdentityApplicationService) CreateUserWithinDataScope(ctx context.Context, user identitymodel.IdentityUser, actor identitymodel.Principal, permissionKey string) error {
+	scoped, err := s.domainForContext(ctx)
+	if err != nil {
+		return err
+	}
+	return scoped.CreateUserWithinDataScope(ctx, user, actor, permissionKey)
+}
+
+func (s *IdentityApplicationService) UpdateUserWithinDataScope(ctx context.Context, user identitymodel.IdentityUser, actor identitymodel.Principal, permissionKey string) error {
+	scoped, err := s.domainForContext(ctx)
+	if err != nil {
+		return err
+	}
+	return scoped.UpdateUserWithinDataScope(ctx, user, actor, permissionKey)
 }
 
 func (s *IdentityApplicationService) RemoveUser(ctx context.Context, userID string) error {
@@ -200,12 +265,55 @@ func (s *IdentityApplicationService) RemoveUser(ctx context.Context, userID stri
 	return scoped.RemoveUser(ctx, userID)
 }
 
+func (s *IdentityApplicationService) RemoveUserWithinDataScope(ctx context.Context, userID string, actor identitymodel.Principal, permissionKey string) error {
+	scoped, err := s.domainForContext(ctx)
+	if err != nil {
+		return err
+	}
+	impact, err := s.UserDeletionImpactWithinDataScope(ctx, userID, actor, permissionKey)
+	if err != nil {
+		return err
+	}
+	if !impact.CanDelete {
+		return apperror.New(apperror.KindConflict, "backend.identity.user_deletion_blocked", nil, map[string]string{
+			"user": strings.TrimSpace(userID), "blockers": strings.Join(impact.Blockers, ","),
+		})
+	}
+	return scoped.RemoveUserWithinDataScope(ctx, userID, actor, permissionKey)
+}
+
 func (s *IdentityApplicationService) UserDeletionImpact(ctx context.Context, userID string) (identitymodel.IdentityUserDeletionImpact, error) {
 	scoped, err := s.domainForContext(ctx)
 	if err != nil {
 		return identitymodel.IdentityUserDeletionImpact{}, err
 	}
 	impact, err := scoped.UserDeletionImpact(ctx, userID)
+	if err != nil {
+		return identitymodel.IdentityUserDeletionImpact{}, err
+	}
+	if s.userDeletionInspector == nil {
+		return identitymodel.IdentityUserDeletionImpact{}, apperror.New(apperror.KindUnavailable, "backend.identity.user_deletion_inspector_unavailable", nil, nil)
+	}
+	inspection, err := s.userDeletionInspector.InspectIdentityUserDeletion(ctx, scoped.WorkspaceID(), strings.TrimSpace(userID))
+	if err != nil {
+		return identitymodel.IdentityUserDeletionImpact{}, err
+	}
+	impact.BusinessProfileReferences = append([]identitymodel.IdentityUserRecordReference{}, inspection.BusinessProfileReferences...)
+	impact.OwnedRecordReferences = append([]identitymodel.IdentityUserRecordReference{}, inspection.OwnedRecordReferences...)
+	impact.PendingApprovalTaskIDs = append([]string{}, inspection.PendingApprovalTaskIDs...)
+	impact.RetainedAuditEventIDs = append([]string{}, inspection.RetainedAuditEventIDs...)
+	impact.ActiveLegalHoldIDs = append([]string{}, inspection.ActiveLegalHoldIDs...)
+	impact.Blockers = identityUserDeletionBlockers(impact)
+	impact.CanDelete = len(impact.Blockers) == 0
+	return impact, nil
+}
+
+func (s *IdentityApplicationService) UserDeletionImpactWithinDataScope(ctx context.Context, userID string, actor identitymodel.Principal, permissionKey string) (identitymodel.IdentityUserDeletionImpact, error) {
+	scoped, err := s.domainForContext(ctx)
+	if err != nil {
+		return identitymodel.IdentityUserDeletionImpact{}, err
+	}
+	impact, err := scoped.UserDeletionImpactWithinDataScope(ctx, userID, actor, permissionKey)
 	if err != nil {
 		return identitymodel.IdentityUserDeletionImpact{}, err
 	}
@@ -242,6 +350,18 @@ func (s *IdentityApplicationService) UserDisableImpact(ctx context.Context, user
 	}, nil
 }
 
+func (s *IdentityApplicationService) UserDisableImpactWithinDataScope(ctx context.Context, userID string, actor identitymodel.Principal, permissionKey string) (identitymodel.IdentityUserDisableImpact, error) {
+	impact, err := s.UserDeletionImpactWithinDataScope(ctx, userID, actor, permissionKey)
+	if err != nil {
+		return identitymodel.IdentityUserDisableImpact{}, err
+	}
+	return identitymodel.IdentityUserDisableImpact{
+		UserID: impact.UserID, ProfileBindings: append([]identitymodel.IdentityProfileBinding{}, impact.ProfileBindings...),
+		ActiveEntitlementRoleIDs: append([]string{}, impact.ActiveRoleIDs...),
+		SessionsWillBeRevoked:    true, BusinessFactsPreserved: true,
+	}, nil
+}
+
 func identityUserDeletionBlockers(impact identitymodel.IdentityUserDeletionImpact) []string {
 	blockers := []string{}
 	for code, blocked := range map[string]bool{
@@ -267,6 +387,18 @@ func (s *IdentityApplicationService) SetUserStatus(ctx context.Context, userID s
 	return scoped.SetUserStatus(ctx, userID, status)
 }
 
+func (s *IdentityApplicationService) SetUserStatusWithinDataScope(ctx context.Context, userID string, status identitymodel.IdentityStatus, actor identitymodel.Principal, permissionKey string) error {
+	scoped, err := s.domainForContext(ctx)
+	if err != nil {
+		return err
+	}
+	return scoped.SetUserStatusWithinDataScope(ctx, userID, status, actor, permissionKey)
+}
+
+func (s *IdentityApplicationService) EnableUserWithinDataScope(ctx context.Context, userID string, actor identitymodel.Principal, permissionKey string) error {
+	return s.SetUserStatusWithinDataScope(ctx, strings.TrimSpace(userID), identitymodel.IdentityStatusActive, actor, permissionKey)
+}
+
 func (s *IdentityApplicationService) EnableUser(ctx context.Context, userID string) error {
 	return s.SetUserStatus(ctx, strings.TrimSpace(userID), identitymodel.IdentityStatusActive)
 }
@@ -285,6 +417,32 @@ func (s *IdentityApplicationService) DisableUser(ctx context.Context, userID str
 	}
 	if err := scoped.SetUserStatus(ctx, userID, identitymodel.IdentityStatusDisabled); err != nil {
 		return 0, err
+	}
+	return sessions.ForceLogoutUser(ctx, scoped.WorkspaceID(), userID)
+}
+
+func (s *IdentityApplicationService) DisableUserWithinDataScope(ctx context.Context, userID string, actor identitymodel.Principal, permissionKey string, sessions IdentitySessionRevoker) (int, error) {
+	scoped, err := s.domainForContext(ctx)
+	if err != nil {
+		return 0, err
+	}
+	userID = strings.TrimSpace(userID)
+	filter := identitycontract.IdentityPermissionDataScopeFilter(actor, permissionKey)
+	if repository, ok := scoped.Repository().(identityrepository.IdentityAccountDataScopeDisableRepository); ok {
+		revoked, updated, disableErr := repository.DisableIdentityAccountWithinDataScope(ctx, scoped.WorkspaceID(), userID, filter)
+		if disableErr != nil {
+			return 0, disableErr
+		}
+		if !updated {
+			return 0, apperror.New(apperror.KindNotFound, "backend.identity.user_not_found", nil, map[string]string{"user": userID})
+		}
+		return revoked, nil
+	}
+	if err := scoped.SetUserStatusWithinDataScope(ctx, userID, identitymodel.IdentityStatusDisabled, actor, permissionKey); err != nil {
+		return 0, err
+	}
+	if sessions == nil {
+		return 0, &apperror.AppError{Kind: apperror.KindUnavailable, Code: "backend.identity.user_security_unavailable"}
 	}
 	return sessions.ForceLogoutUser(ctx, scoped.WorkspaceID(), userID)
 }

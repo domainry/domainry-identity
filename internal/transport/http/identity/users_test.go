@@ -2,6 +2,7 @@ package identity
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/domainry/domainry-foundation/apperror"
@@ -68,6 +69,9 @@ func TestIdentityUserMutationHandlers(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			repository := &identityHTTPRepository{}
+			if test.name != "create" {
+				repository.users = []identitymodel.IdentityUser{{ID: test.wantID, Name: "Existing User", Email: test.wantID + "@example.test", Status: identitymodel.IdentityStatusActive}}
+			}
 			handler, response := newIdentityHTTPHandler(repository)
 			response.status, response.value, response.err = 0, nil, nil
 			w, request := identityRoleRequest(test.method, "/identity/users/test", test.body, test.path)
@@ -191,6 +195,9 @@ func TestIdentityUserMutationHandlersRejectInvalidJSONAndServiceFailures(t *test
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			if test.name != "create" {
+				test.repo.users = []identitymodel.IdentityUser{{ID: "user-1", Name: "Existing User", Email: "existing@example.test", Status: identitymodel.IdentityStatusActive}}
+			}
 			handler, response := newIdentityHTTPHandler(test.repo)
 			w, request := identityRoleRequest(http.MethodPost, "/identity/users/user-1", test.body, map[string]string{"userID": "user-1"})
 			test.call(handler, w, request)
@@ -230,6 +237,9 @@ func TestIdentityUserMutationHandlersForwardPostWriteReadFailures(t *testing.T) 
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			if strings.HasPrefix(test.name, "update ") {
+				test.repo.users = []identitymodel.IdentityUser{{ID: "user-1", Name: "Existing User", Email: "existing@example.test", Status: identitymodel.IdentityStatusActive}}
+			}
 			handler, response := newIdentityHTTPHandler(test.repo)
 			w, request := identityRoleRequest(
 				http.MethodPost,
@@ -246,12 +256,12 @@ func TestIdentityUserMutationHandlersForwardPostWriteReadFailures(t *testing.T) 
 }
 
 func TestUpdateIdentityUserUsesCurrentResourceForOwnerControlledAuthoring(t *testing.T) {
-	repository := &identityHTTPRepository{}
+	repository := &identityHTTPRepository{users: []identitymodel.IdentityUser{{ID: "user-1", Name: "Existing User", Email: "existing@example.test", Status: identitymodel.IdentityStatusActive}}}
 	handler, response := newIdentityHTTPHandler(repository)
 	handler.principal = func(*http.Request) identitymodel.Principal {
 		return identitymodel.Principal{
 			Known: true, WorkspaceID: "workspace-1", UserID: "builder",
-			Role: identitymodel.RoleSchema{Permissions: []string{"identity.users.update"}},
+			Role: identitymodel.RoleSchema{Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "identity.users.update")},
 		}
 	}
 	w, request := identityRoleRequest(
@@ -262,7 +272,11 @@ func TestUpdateIdentityUserUsesCurrentResourceForOwnerControlledAuthoring(t *tes
 	)
 	request.Header.Set("Builder-Task-ID", "task-1")
 	request.Header.Set("Idempotency-Key", "update-user-1")
-	request.Header.Set("Expected-Schema-Hash", "empty")
+	expected, err := identityAuthoringResourceHash("identity.user", "user-1", repository.users[0], true)
+	if err != nil {
+		t.Fatalf("resource hash: %v", err)
+	}
+	request.Header.Set("Expected-Schema-Hash", expected)
 	handler.updateIdentityUser(w, request)
 	if response.status != http.StatusOK || response.err != nil || repository.upsertUserCalls != 1 {
 		t.Fatalf("status=%d err=%v value=%#v upserts=%d", response.status, response.err, response.value, repository.upsertUserCalls)
@@ -285,7 +299,7 @@ func TestDeleteIdentityUserWithoutProfileReferences(t *testing.T) {
 			}
 			handler, response := newIdentityHTTPHandler(repository)
 			handler.principal = func(*http.Request) identitymodel.Principal {
-				return identitymodel.Principal{Known: true, WorkspaceID: "workspace-1", Role: identitymodel.RoleSchema{Permissions: []string{"identity.users.delete"}, RecordScope: "all_records"}}
+				return identitymodel.Principal{Known: true, WorkspaceID: "workspace-1", Role: identitymodel.RoleSchema{Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "identity.users.delete")}}
 			}
 			w, request := identityRoleRequest(http.MethodDelete, "/identity/users/user-1", "", map[string]string{"userID": " user-1 "})
 			handler.deleteIdentityUser(w, request)

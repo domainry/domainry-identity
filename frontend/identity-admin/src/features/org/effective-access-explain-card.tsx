@@ -36,14 +36,12 @@ export function EffectiveAccessExplainCard({ userID }: { userID: string }) {
   const [objectKey, setObjectKey] = useState('')
   const [action, setAction] = useState('')
   const [fieldKey, setFieldKey] = useState('')
-  const [recordID, setRecordID] = useState('')
   const explain = useMutation({
     mutationFn: () => identityAccessApi.explain({
       user_id: userID,
       object_key: objectKey.trim(),
       action: action.trim(),
       ...(fieldKey.trim() ? { field_key: fieldKey.trim() } : {}),
-      ...(recordID.trim() ? { record_id: recordID.trim() } : {}),
     }),
   })
   const result = explain.data
@@ -54,11 +52,10 @@ export function EffectiveAccessExplainCard({ userID }: { userID: string }) {
         <CardDescription>{t('effectiveAccessExplain.description')}</CardDescription>
       </CardHeader>
       <CardContent className='space-y-4'>
-        <div className='grid gap-3 md:grid-cols-2 xl:grid-cols-4'>
+        <div className='grid gap-3 md:grid-cols-3'>
           <Field><FieldLabel htmlFor='explain-object'>{t('effectiveAccessExplain.object')}</FieldLabel><Input id='explain-object' value={objectKey} onChange={(event) => setObjectKey(event.target.value)} placeholder='order' /></Field>
           <Field><FieldLabel htmlFor='explain-action'>{t('effectiveAccessExplain.action')}</FieldLabel><Input id='explain-action' value={action} onChange={(event) => setAction(event.target.value)} placeholder='read' /></Field>
           <Field><FieldLabel htmlFor='explain-field'>{t('effectiveAccessExplain.field')}</FieldLabel><Input id='explain-field' value={fieldKey} onChange={(event) => setFieldKey(event.target.value)} placeholder={t('effectiveAccessExplain.optional')} /></Field>
-          <Field><FieldLabel htmlFor='explain-record'>{t('effectiveAccessExplain.record')}</FieldLabel><Input id='explain-record' value={recordID} onChange={(event) => setRecordID(event.target.value)} placeholder={t('effectiveAccessExplain.optional')} /></Field>
         </div>
         <Button disabled={!objectKey.trim() || !action.trim() || explain.isPending} onClick={() => explain.mutate()}>{t('effectiveAccessExplain.run')}</Button>
         {explain.isError ? <p role='alert' className='text-sm text-destructive'>{t('effectiveAccessExplain.failed')}</p> : null}

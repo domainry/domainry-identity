@@ -10,36 +10,39 @@ import (
 
 type identityRolesRepositoryStub struct {
 	identityrepository.IdentityRepository
-	roles                []identitymodel.IdentityRole
-	users                []identitymodel.IdentityUser
-	assignments          []identitymodel.IdentityUserRoleAssignment
-	requests             []identitymodel.IdentityRoleRequest
-	err                  error
-	listRolesErr         error
-	listRolesCalls       int
-	listRolesFunc        func(int) ([]identitymodel.IdentityRole, error)
-	listUsersErr         error
-	getUserErr           error
-	listAssignmentsErr   error
-	listRequestsErr      error
-	updateRequestErr     error
-	assignErr            error
-	removeErr            error
-	profileBindingsErr   error
-	assigned             []identitymodel.IdentityUserRoleAssignment
-	removedRole          string
-	removedUser          string
-	removedUserRole      string
-	statusRole           string
-	status               identitymodel.IdentityStatus
-	upsertedRole         identitymodel.IdentityRole
-	updatedRequest       identitymodel.IdentityRoleRequest
-	reconciledUser       identitymodel.IdentityUser
-	reconciledRoles      []identitymodel.IdentityUserRoleAssignment
-	reconcileErr         error
-	profileBindings      []identitymodel.IdentityProfileBinding
-	organizationUnits    []identitymodel.IdentityOrganizationUnit
-	organizationUnitsErr error
+	roles                      []identitymodel.IdentityRole
+	users                      []identitymodel.IdentityUser
+	assignments                []identitymodel.IdentityUserRoleAssignment
+	requests                   []identitymodel.IdentityRoleRequest
+	err                        error
+	listRolesErr               error
+	listRolesCalls             int
+	listRolesFunc              func(int) ([]identitymodel.IdentityRole, error)
+	listUsersErr               error
+	getUserErr                 error
+	listAssignmentsErr         error
+	listAssignmentsCalls       int
+	listScopedAssignmentsCalls int
+	lastScopedAssignmentUserID string
+	listRequestsErr            error
+	updateRequestErr           error
+	assignErr                  error
+	removeErr                  error
+	profileBindingsErr         error
+	assigned                   []identitymodel.IdentityUserRoleAssignment
+	removedRole                string
+	removedUser                string
+	removedUserRole            string
+	statusRole                 string
+	status                     identitymodel.IdentityStatus
+	upsertedRole               identitymodel.IdentityRole
+	updatedRequest             identitymodel.IdentityRoleRequest
+	reconciledUser             identitymodel.IdentityUser
+	reconciledRoles            []identitymodel.IdentityUserRoleAssignment
+	reconcileErr               error
+	profileBindings            []identitymodel.IdentityProfileBinding
+	organizationUnits          []identitymodel.IdentityOrganizationUnit
+	organizationUnitsErr       error
 }
 
 func (r *identityRolesRepositoryStub) UpsertIdentityUserWithRoleAssignmentsAtomically(_ context.Context, _ string, user identitymodel.IdentityUser, assignments []identitymodel.IdentityUserRoleAssignment) error {
@@ -49,6 +52,20 @@ func (r *identityRolesRepositoryStub) UpsertIdentityUserWithRoleAssignmentsAtomi
 	r.reconciledUser = user
 	r.reconciledRoles = append([]identitymodel.IdentityUserRoleAssignment(nil), assignments...)
 	return nil
+}
+
+func (r *identityRolesRepositoryStub) UpsertIdentityUserWithRoleAssignmentsWithinDataScopeAtomically(_ context.Context, _ string, user identitymodel.IdentityUser, assignments []identitymodel.IdentityUserRoleAssignment, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
+	if r.reconcileErr != nil {
+		return false, r.reconcileErr
+	}
+	for _, persisted := range r.users {
+		if persisted.ID == user.ID && identityRolesTestUserMatchesScope(persisted, scope) {
+			r.reconciledUser = user
+			r.reconciledRoles = append([]identitymodel.IdentityUserRoleAssignment(nil), assignments...)
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (r *identityRolesRepositoryStub) ListIdentityProfileBindingsByUser(_ context.Context, _, userID string) ([]identitymodel.IdentityProfileBinding, error) {
@@ -96,6 +113,21 @@ func (r *identityRolesRepositoryStub) ListIdentityUsers(context.Context, string)
 	}
 	return append([]identitymodel.IdentityUser(nil), r.users...), nil
 }
+func (r *identityRolesRepositoryStub) ListIdentityUsersWithinDataScope(_ context.Context, _ string, scope identitymodel.IdentityDataScopeFilter) ([]identitymodel.IdentityUser, error) {
+	if r.listUsersErr != nil {
+		return nil, r.listUsersErr
+	}
+	if r.err != nil {
+		return nil, r.err
+	}
+	out := []identitymodel.IdentityUser{}
+	for _, user := range r.users {
+		if identityRolesTestUserMatchesScope(user, scope) {
+			out = append(out, user)
+		}
+	}
+	return out, nil
+}
 func (r *identityRolesRepositoryStub) GetIdentityUser(_ context.Context, _, id string) (identitymodel.IdentityUser, bool, error) {
 	if r.getUserErr != nil {
 		return identitymodel.IdentityUser{}, false, r.getUserErr
@@ -109,6 +141,13 @@ func (r *identityRolesRepositoryStub) GetIdentityUser(_ context.Context, _, id s
 		}
 	}
 	return identitymodel.IdentityUser{}, false, nil
+}
+func (r *identityRolesRepositoryStub) GetIdentityUserWithinDataScope(ctx context.Context, workspaceID, id string, scope identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityUser, bool, error) {
+	user, found, err := r.GetIdentityUser(ctx, workspaceID, id)
+	if err != nil || !found || !identityRolesTestUserMatchesScope(user, scope) {
+		return identitymodel.IdentityUser{}, false, err
+	}
+	return user, true, nil
 }
 func (r *identityRolesRepositoryStub) UpsertIdentityRole(_ context.Context, _ string, role identitymodel.IdentityRole) error {
 	if r.err != nil {
@@ -152,6 +191,7 @@ func (r *identityRolesRepositoryStub) RemoveIdentityUserRole(_ context.Context, 
 	return nil
 }
 func (r *identityRolesRepositoryStub) ListIdentityUserRoleAssignments(context.Context, string, string) ([]identitymodel.IdentityUserRoleAssignment, error) {
+	r.listAssignmentsCalls++
 	if r.listAssignmentsErr != nil {
 		return nil, r.listAssignmentsErr
 	}
@@ -159,6 +199,47 @@ func (r *identityRolesRepositoryStub) ListIdentityUserRoleAssignments(context.Co
 		return nil, r.err
 	}
 	return append([]identitymodel.IdentityUserRoleAssignment(nil), r.assignments...), nil
+}
+func (r *identityRolesRepositoryStub) ListIdentityUserRoleAssignmentsWithinDataScope(_ context.Context, _ string, userID string, scope identitymodel.IdentityDataScopeFilter) ([]identitymodel.IdentityUserRoleAssignment, error) {
+	r.listScopedAssignmentsCalls++
+	r.lastScopedAssignmentUserID = userID
+	if r.listAssignmentsErr != nil {
+		return nil, r.listAssignmentsErr
+	}
+	if r.err != nil {
+		return nil, r.err
+	}
+	users := make(map[string]identitymodel.IdentityUser, len(r.users))
+	for _, user := range r.users {
+		users[user.ID] = user
+	}
+	out := []identitymodel.IdentityUserRoleAssignment{}
+	for _, assignment := range r.assignments {
+		if userID != "" && assignment.UserID != userID {
+			continue
+		}
+		if target, found := users[assignment.UserID]; found && identityRolesTestUserMatchesScope(target, scope) {
+			out = append(out, assignment)
+		}
+	}
+	return out, nil
+}
+
+func identityRolesTestUserMatchesScope(user identitymodel.IdentityUser, scope identitymodel.IdentityDataScopeFilter) bool {
+	if scope.Unrestricted {
+		return true
+	}
+	for _, userID := range scope.OwnerUserIDs {
+		if user.ID == userID {
+			return true
+		}
+	}
+	for _, orgID := range scope.OwnerOrgIDs {
+		if user.OrgID == orgID {
+			return true
+		}
+	}
+	return false
 }
 func (r *identityRolesRepositoryStub) CreateIdentityRoleRequest(_ context.Context, _ string, request identitymodel.IdentityRoleRequest) (identitymodel.IdentityRoleRequest, error) {
 	if r.err != nil {
@@ -187,6 +268,31 @@ func (r *identityRolesRepositoryStub) ListIdentityRoleRequests(_ context.Context
 	}
 	return out, nil
 }
+func (r *identityRolesRepositoryStub) ListIdentityRoleRequestsWithinDataScope(_ context.Context, _ string, status, userID string, scope identitymodel.IdentityDataScopeFilter) ([]identitymodel.IdentityRoleRequest, error) {
+	if r.listRequestsErr != nil {
+		return nil, r.listRequestsErr
+	}
+	if r.err != nil {
+		return nil, r.err
+	}
+	users := make(map[string]identitymodel.IdentityUser, len(r.users))
+	for _, user := range r.users {
+		users[user.ID] = user
+	}
+	out := []identitymodel.IdentityRoleRequest{}
+	for _, request := range r.requests {
+		if status != "" && request.Status != status {
+			continue
+		}
+		if userID != "" && request.UserID != userID {
+			continue
+		}
+		if target, found := users[request.UserID]; found && identityRolesTestUserMatchesScope(target, scope) {
+			out = append(out, request)
+		}
+	}
+	return out, nil
+}
 func (r *identityRolesRepositoryStub) UpdateIdentityRoleRequest(_ context.Context, _ string, request identitymodel.IdentityRoleRequest) error {
 	if r.updateRequestErr != nil {
 		return r.updateRequestErr
@@ -212,6 +318,18 @@ func (r *identityRolesRepositoryStub) ApplyIdentityRoleRequestDecision(_ context
 	return nil
 }
 
+func (r *identityRolesRepositoryStub) ApplyIdentityRoleRequestDecisionWithinDataScope(ctx context.Context, workspaceID string, request identitymodel.IdentityRoleRequest, assignments []identitymodel.IdentityUserRoleAssignment, expectedStatus string, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
+	for _, user := range r.users {
+		if user.ID == request.UserID && identityRolesTestUserMatchesScope(user, scope) {
+			if err := r.ApplyIdentityRoleRequestDecision(ctx, workspaceID, request, assignments, expectedStatus); err != nil {
+				return false, err
+			}
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func identityRolesFixture() (*identityRolesRepositoryStub, *IdentityDomainService) {
 	repository := &identityRolesRepositoryStub{
 		roles: []identitymodel.IdentityRole{
@@ -230,12 +348,12 @@ func identityRolesFixture() (*identityRolesRepositoryStub, *IdentityDomainServic
 		panic(err)
 	}
 	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{
-		{Key: "member", Name: "Member", RecordScope: "all_records"},
-		{Key: "viewer", Name: "Viewer", RecordScope: "all_records"},
-		{Key: "admin", Name: "Admin", Permissions: []string{"identity.roles.list"}, RecordScope: "all_records", RiskLevel: identitymodel.IdentityRoleRiskPrivileged},
-		{Key: "owner", Name: "Owner", Permissions: []string{"identity.roles.list"}, RecordScope: "all_records", RiskLevel: identitymodel.IdentityRoleRiskPrivileged},
-		{Key: "team_workspace_admin", Name: "Workspace Admin", Permissions: []string{"identity.roles.list"}, RecordScope: "all_records", RiskLevel: identitymodel.IdentityRoleRiskPrivileged},
-		{Key: "security", Name: "Security", Permissions: []string{"identity.roles.list"}, RecordScope: "all_records", RiskLevel: identitymodel.IdentityRoleRiskPrivileged},
+		{Key: "member", Name: "Member"},
+		{Key: "viewer", Name: "Viewer"},
+		{Key: "admin", Name: "Admin", Permissions: identityTestRolePermissions("identity.roles.list"), RiskLevel: identitymodel.IdentityRoleRiskPrivileged},
+		{Key: "owner", Name: "Owner", Permissions: identityTestRolePermissions("identity.roles.list"), RiskLevel: identitymodel.IdentityRoleRiskPrivileged},
+		{Key: "team_workspace_admin", Name: "Workspace Admin", Permissions: identityTestRolePermissions("identity.roles.list"), RiskLevel: identitymodel.IdentityRoleRiskPrivileged},
+		{Key: "security", Name: "Security", Permissions: identityTestRolePermissions("identity.roles.list"), RiskLevel: identitymodel.IdentityRoleRiskPrivileged},
 	})
 	return repository, service
 }

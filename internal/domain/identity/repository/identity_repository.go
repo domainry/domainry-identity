@@ -37,12 +37,69 @@ type IdentityUserLookupRepository interface {
 	GetIdentityUser(context.Context, string, string) (identitymodel.IdentityUser, bool, error)
 }
 
+// IdentityUserDataScopeRepository is the storage-bound user directory
+// capability. Implementations apply the compiled filter in the database (or
+// in the in-memory repository itself for tests); callers must not load an
+// unscoped page and filter it in the application layer.
+type IdentityUserDataScopeRepository interface {
+	ListIdentityUsersWithinDataScope(context.Context, string, identitymodel.IdentityDataScopeFilter) ([]identitymodel.IdentityUser, error)
+	GetIdentityUserWithinDataScope(context.Context, string, string, identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityUser, bool, error)
+}
+
+// IdentityOrganizationUnitDataScopeRepository applies organization scopes to
+// the unit's natural identity column. Organization units are not user-owned:
+// OwnerUserIDs are deliberately ignored and an owner-only grant matches no
+// units.
+type IdentityOrganizationUnitDataScopeRepository interface {
+	ListIdentityOrganizationUnitsWithinDataScope(context.Context, string, identitymodel.IdentityDataScopeFilter) ([]identitymodel.IdentityOrganizationUnit, error)
+	GetIdentityOrganizationUnitWithinDataScope(context.Context, string, string, identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityOrganizationUnit, bool, error)
+}
+
+type IdentityOrganizationUnitDataScopeMutationRepository interface {
+	UpsertIdentityOrganizationUnitsWithinDataScopeAtomically(context.Context, string, []identitymodel.IdentityOrganizationUnit, identitymodel.IdentityDataScopeFilter) (bool, error)
+}
+
+type IdentityUserDataScopeSearchRepository interface {
+	SearchIdentityUsersWithinDataScope(context.Context, string, identitymodel.IdentityListQuery, identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityUserPage, error)
+}
+
+// IdentityUserRoleAssignmentDataScopeRepository scopes the assignment
+// relation through its target user. Role definitions are workspace templates;
+// they deliberately do not carry organization ownership of their own.
+type IdentityUserRoleAssignmentDataScopeReader interface {
+	ListIdentityUserRoleAssignmentsWithinDataScope(context.Context, string, string, identitymodel.IdentityDataScopeFilter) ([]identitymodel.IdentityUserRoleAssignment, error)
+}
+
+type IdentityUserRoleAssignmentDataScopeRepository interface {
+	IdentityUserRoleAssignmentDataScopeReader
+	AssignIdentityUserRoleWithinDataScope(context.Context, string, identitymodel.IdentityUserRoleAssignment, identitymodel.IdentityDataScopeFilter) (bool, error)
+	RemoveIdentityUserRoleWithinDataScope(context.Context, string, string, string, identitymodel.IdentityDataScopeFilter) (bool, error)
+}
+
+type IdentityUserCreateRepository interface {
+	CreateIdentityUser(context.Context, string, identitymodel.IdentityUser) error
+}
+
+// IdentityUserDataScopeMutationRepository repeats the same compiled data-scope
+// predicate on the final write. A false result means at least one candidate did
+// not exist inside that scope; implementations must leave the whole mutation
+// unchanged in that case.
+type IdentityUserDataScopeMutationRepository interface {
+	UpdateIdentityUsersWithinDataScopeAtomically(context.Context, string, []identitymodel.IdentityUser, identitymodel.IdentityDataScopeFilter) (bool, error)
+	RemoveIdentityUserWithinDataScope(context.Context, string, string, identitymodel.IdentityDataScopeFilter) (bool, error)
+	SetIdentityUserStatusWithinDataScope(context.Context, string, string, identitymodel.IdentityStatus, identitymodel.IdentityDataScopeFilter) (bool, error)
+}
+
 type IdentityUserDirectoryFactsRepository interface {
 	ListIdentityUserDirectoryFacts(context.Context, string, []string) (identitymodel.IdentityUserDirectoryFacts, error)
 }
 
 type IdentityAccountDisableRepository interface {
 	DisableIdentityAccount(context.Context, string, string) (int, error)
+}
+
+type IdentityAccountDataScopeDisableRepository interface {
+	DisableIdentityAccountWithinDataScope(context.Context, string, string, identitymodel.IdentityDataScopeFilter) (int, bool, error)
 }
 
 type IdentityRoleRequestDecisionRepository interface {
@@ -53,9 +110,25 @@ type IdentityUserRoleReconcileRepository interface {
 	UpsertIdentityUserWithRoleAssignmentsAtomically(context.Context, string, identitymodel.IdentityUser, []identitymodel.IdentityUserRoleAssignment) error
 }
 
+type IdentityUserRoleDataScopeReconcileRepository interface {
+	UpsertIdentityUserWithRoleAssignmentsWithinDataScopeAtomically(context.Context, string, identitymodel.IdentityUser, []identitymodel.IdentityUserRoleAssignment, identitymodel.IdentityDataScopeFilter) (bool, error)
+}
+
+// IdentityRoleRequestDataScopeRepository scopes requests through the persisted
+// target user and repeats that predicate inside decision transactions.
+type IdentityRoleRequestDataScopeRepository interface {
+	ListIdentityRoleRequestsWithinDataScope(context.Context, string, string, string, identitymodel.IdentityDataScopeFilter) ([]identitymodel.IdentityRoleRequest, error)
+	ApplyIdentityRoleRequestDecisionWithinDataScope(context.Context, string, identitymodel.IdentityRoleRequest, []identitymodel.IdentityUserRoleAssignment, string, identitymodel.IdentityDataScopeFilter) (bool, error)
+}
+
 type IdentityEntitlementBatchRepository interface {
 	GetIdentityEntitlementBatchReceipt(context.Context, string, string) (identitymodel.IdentityEntitlementBatchReceipt, bool, error)
 	ApplyIdentityEntitlementBatch(context.Context, identitymodel.IdentityEntitlementBatchMutation) (identitymodel.IdentityEntitlementBatchReceipt, error)
+}
+
+type IdentityEntitlementBatchDataScopeRepository interface {
+	GetIdentityEntitlementBatchReceiptWithinDataScope(context.Context, string, string, identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityEntitlementBatchReceipt, bool, error)
+	ApplyIdentityEntitlementBatchWithinDataScope(context.Context, identitymodel.IdentityEntitlementBatchMutation, identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityEntitlementBatchReceipt, bool, error)
 }
 
 type IdentityAccessReviewRepository interface {
@@ -66,6 +139,16 @@ type IdentityAccessReviewRepository interface {
 	ApplyIdentityAccessReviewDecision(context.Context, identitymodel.IdentityAccessReviewDecisionMutation) (identitymodel.IdentityAccessReviewDecisionReceipt, error)
 }
 
+// IdentityAccessReviewDataScopeRepository treats every review item as a user
+// entitlement and therefore scopes it through the item's persisted user.
+type IdentityAccessReviewDataScopeRepository interface {
+	CreateIdentityAccessReviewWithinDataScope(context.Context, identitymodel.IdentityAccessReview, identitymodel.IdentityDataScopeFilter) (bool, error)
+	ListIdentityAccessReviewsWithinDataScope(context.Context, string, string, identitymodel.IdentityDataScopeFilter) ([]identitymodel.IdentityAccessReview, error)
+	GetIdentityAccessReviewItemWithinDataScope(context.Context, string, string, identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityAccessReviewItem, bool, error)
+	GetIdentityAccessReviewDecisionReceiptWithinDataScope(context.Context, string, string, string, identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityAccessReviewDecisionReceipt, bool, error)
+	ApplyIdentityAccessReviewDecisionWithinDataScope(context.Context, identitymodel.IdentityAccessReviewDecisionMutation, identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityAccessReviewDecisionReceipt, bool, error)
+}
+
 // IdentityUserLocaleRepository is the narrow compare-and-swap persistence
 // capability consumed only by current-user locale self-service.
 type IdentityUserLocaleRepository interface {
@@ -74,8 +157,7 @@ type IdentityUserLocaleRepository interface {
 
 type IdentityRoleAuthorizationCommit struct {
 	Role             identitymodel.IdentityRole
-	PermissionKeys   *[]string
-	DataScopes       *[]identitymodel.IdentityDataScopePolicy
+	Permissions      *[]identitymodel.RolePermission
 	FieldPermissions *[]identitymodel.IdentityFieldPermission
 }
 

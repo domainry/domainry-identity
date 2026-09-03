@@ -63,7 +63,7 @@ func NewBinding(dependencies BindingDependencies) (identitysdk.Binding, error) {
 		dependencies.Clock = sdkSystemClock{}
 	}
 	binding := &sdkBinding{descriptor: identitysdk.Descriptor{
-		ProtocolVersion: identitysdk.CurrentProtocolVersion, BundleVersion: identitysdk.CurrentPolicyBundleVersion, AuthorizationVersion: identitysdk.AuthorizationContractVersionV1,
+		ProtocolVersion: identitysdk.CurrentProtocolVersion, BundleVersion: identitysdk.CurrentPolicyBundleVersion, AuthorizationVersion: identitysdk.CurrentAuthorizationContractVersion,
 		Mode: identitysdk.DeploymentModeModule, Issuer: defaultString(dependencies.Config.AuthIssuer, "http://localhost:8081"), Audience: defaultString(dependencies.Config.AuthAudience, "domainry-runtime"),
 		Capabilities: []string{"authentication", "token_verification", "authorization", "principal_resolution", "directory_projection", "application_registration", "permission_reconciliation", "credentials", "oidc", "saml"},
 	}, auth: dependencies.Authentication, providers: dependencies.ProviderConfiguration, flows: dependencies.ProviderFlows,
@@ -296,6 +296,9 @@ func (adapter sdkAuthorization) Reauthorize(ctx context.Context, request identit
 		WorkspaceID:           principal.WorkspaceID,
 		UserID:                principal.UserID,
 		AuthorizationRevision: principal.AuthorizationRevision,
+		OrgID:                 principal.OrgID, OrgScopeIDs: append([]string(nil), principal.OrgScopeIDs...),
+		SupportOrgID: principal.SupportOrgID, SupportOrgScopeIDs: append([]string(nil), principal.SupportOrgScopeIDs...),
+		ReportingScopeUserIDs: append([]string(nil), principal.ReportingScopeUserIDs...),
 	}
 	bundle, err := adapter.ResolveAccess(ctx, identitysdk.AccessBundleRequest{
 		Identity:     request.Identity,
@@ -304,6 +307,14 @@ func (adapter sdkAuthorization) Reauthorize(ctx context.Context, request identit
 	})
 	if err != nil {
 		return identitysdk.AccessDecision{}, sdkBoundaryError(err)
+	}
+	if len(request.Facts) == 0 {
+		return identitysdk.AccessDecision{
+			UserID: principal.UserID, ObjectKey: request.Access.ObjectKey, Action: request.Access.Action,
+			FieldKey: request.Access.FieldKey, RecordID: request.Access.RecordID, Allowed: false,
+			AuthorizationRevision: string(bundle.AuthorizationRevision),
+			Reason:                identitysdk.AccessReason{Code: "resource_facts_required", Effect: "deny", Layer: "effective_policy"},
+		}, nil
 	}
 	decision, err := identityevaluator.Evaluate(bundle, request.Access, request.Facts, adapter.binding.clock.Now().UTC())
 	if err != nil {
@@ -451,7 +462,7 @@ func sdkAuthSession(session authmodel.AuthSession) identitysdk.AuthSession {
 }
 
 func sdkAccessBundle(snapshot identitymodel.IdentityEffectiveAccessSnapshot, principal identitymodel.Principal, now time.Time) identitysdk.AccessBundle {
-	bundle := identitysdk.AccessBundle{ContractVersion: identitysdk.CurrentPolicyBundleVersion, AuthorizationRevision: identitysdk.AuthorizationRevision(snapshot.AuthorizationRevision), ExpiresAt: now.UTC().Add(5 * time.Minute), Subject: identitysdk.Subject{WorkspaceID: identitysdk.WorkspaceID(principal.WorkspaceID), SubjectID: identitysdk.SubjectID(principal.UserID), OrgID: principal.OrgID, OrgScopeIDs: append([]string(nil), principal.OrgScopeIDs...)}}
+	bundle := identitysdk.AccessBundle{ContractVersion: identitysdk.CurrentPolicyBundleVersion, AuthorizationRevision: identitysdk.AuthorizationRevision(snapshot.AuthorizationRevision), ExpiresAt: now.UTC().Add(5 * time.Minute), Subject: identitysdk.Subject{WorkspaceID: identitysdk.WorkspaceID(principal.WorkspaceID), SubjectID: identitysdk.SubjectID(principal.UserID), OrgID: principal.OrgID, OrgScopeIDs: append([]string(nil), principal.OrgScopeIDs...), SupportOrgID: principal.SupportOrgID, SupportOrgScopeIDs: append([]string(nil), principal.SupportOrgScopeIDs...)}}
 	for _, id := range principal.ReportingScopeUserIDs {
 		bundle.Subject.ReportingScopeUserIDs = append(bundle.Subject.ReportingScopeUserIDs, identitysdk.SubjectID(id))
 	}
@@ -462,22 +473,20 @@ func sdkAccessBundle(snapshot identitymodel.IdentityEffectiveAccessSnapshot, pri
 	}
 	dataPolicyIndex := 0
 	for _, policy := range snapshot.DataAccess {
-		if policy.ObjectKey == "" {
+		if policy.Resource == "" {
 			continue
 		}
-		predicate := sdkEffectiveDataPredicate(policy, principal)
+		predicate := sdkEffectiveDataPredicate(policy)
 		effect := identitysdk.EffectAllow
 		if !policy.Allowed {
 			effect = identitysdk.EffectDeny
 		}
-		// Identity stores one operation-independent record set per object. The
-		// SDK evaluator exposes separate query/mutation filtering channels, so
-		// compile the same predicate into both here. Exact FunctionGrants remain
-		// the sole authority for executing an Action.
-		for _, dataAction := range []identitysdk.DataAction{identitysdk.DataActionRead, identitysdk.DataActionWrite} {
-			bundle.DataPolicies = append(bundle.DataPolicies, identitysdk.DataPolicy{Key: "data-" + policy.ObjectKey + "-" + string(dataAction) + "-" + strconv.Itoa(dataPolicyIndex), Resource: identitysdk.ResourceType(policy.ObjectKey), Action: dataAction, Effect: effect, Predicate: predicate, AuditDenial: policy.AuditDenial})
-			dataPolicyIndex++
+		dataScopes := make([]identitysdk.DataScope, 0, len(policy.Scopes))
+		for _, scope := range policy.Scopes {
+			dataScopes = append(dataScopes, identitysdk.DataScope(scope))
 		}
+		bundle.DataPolicies = append(bundle.DataPolicies, identitysdk.DataPolicy{Key: "data-" + policy.PermissionKey + "-" + strconv.Itoa(dataPolicyIndex), Resource: identitysdk.ResourceType(policy.Resource), Action: identitysdk.Action(policy.Action), Effect: effect, DataScopes: dataScopes, Predicate: predicate, AuditDenial: policy.AuditDenial})
+		dataPolicyIndex++
 	}
 	for _, field := range snapshot.FieldAccess {
 		bundle.FieldPolicies = append(bundle.FieldPolicies, identitysdk.FieldPolicy{Resource: identitysdk.ResourceType(field.ObjectKey), Field: field.FieldKey, Read: field.Read, Write: field.Write, Export: field.Export, Masked: field.Masked, Reason: field.Reason, Rules: sdkFieldRules(field.Policies, principal)})
@@ -498,27 +507,16 @@ func sdkAccessBundle(snapshot identitymodel.IdentityEffectiveAccessSnapshot, pri
 	return bundle
 }
 
-func sdkEffectiveDataPredicate(policy identitymodel.IdentityEffectiveDataAccess, principal identitymodel.Principal) identitysdk.Predicate {
-	if len(policy.Scopes) == 0 {
-		if policy.Predicate != nil {
-			return sdkPolicyPredicate(*policy.Predicate, principal)
-		}
-		return sdkScopePredicate(policy.Scope)
-	}
+func sdkEffectiveDataPredicate(policy identitymodel.IdentityEffectiveDataAccess) identitysdk.Predicate {
 	predicates := make([]identitysdk.Predicate, 0, len(policy.Scopes))
 	for _, scope := range policy.Scopes {
-		switch strings.ToLower(strings.TrimSpace(scope)) {
-		case "all_records":
-			return sdkScopePredicate(scope)
-		case "custom":
-			if policy.Predicate != nil {
-				predicates = append(predicates, sdkPolicyPredicate(*policy.Predicate, principal))
-			}
-		case "none", "":
-			continue
-		default:
-			predicates = append(predicates, sdkScopePredicate(scope))
+		if scope == identitymodel.IdentityDataScopeAll {
+			// Canonical `all` is carried by DataScopes and intentionally has no
+			// executable predicate. SDK consumers therefore cannot turn it into
+			// a fake always-true WHERE condition.
+			return identitysdk.Predicate{}
 		}
+		predicates = append(predicates, sdkScopePredicate(scope))
 	}
 	if len(predicates) == 1 {
 		return predicates[0]
@@ -648,18 +646,18 @@ func sdkFieldRules(values []identitymodel.ContextualFieldPolicyRule, principal i
 	return result
 }
 
-func sdkScopePredicate(scope string) identitysdk.Predicate {
-	switch strings.ToLower(strings.TrimSpace(scope)) {
-	case "all_records":
-		return identitysdk.Predicate{Fact: "id", Operator: identitysdk.OperatorExists, Value: true}
-	case "owned_records":
+func sdkScopePredicate(scope identitymodel.IdentityDataScope) identitysdk.Predicate {
+	switch scope {
+	case identitymodel.IdentityDataScopeAll:
+		return identitysdk.Predicate{}
+	case identitymodel.IdentityDataScopeOwner:
 		return identitysdk.Predicate{Fact: "owner_user_id", Operator: identitysdk.OperatorEqual, Value: "$subject.id"}
-	case "organization":
+	case identitymodel.IdentityDataScopeOrg:
 		return identitysdk.Predicate{Fact: "owner_org_id", Operator: identitysdk.OperatorEqual, Value: "$subject.org_id"}
-	case "organization_and_children":
+	case identitymodel.IdentityDataScopeOrgChild:
 		return identitysdk.Predicate{Fact: "owner_org_id", Operator: identitysdk.OperatorIn, Value: "$subject.org_scope_ids"}
-	case "self_and_subordinates":
-		return identitysdk.Predicate{Fact: "owner_user_id", Operator: identitysdk.OperatorIn, Value: "$subject.reporting_scope_user_ids"}
+	case identitymodel.IdentityDataScopeTargetOrg:
+		return identitysdk.Predicate{Fact: "owner_org_id", Operator: identitysdk.OperatorIn, Value: "$subject.support_org_scope_ids"}
 	default:
 		return identitysdk.Predicate{Fact: "__identity_scope_unsupported__", Operator: identitysdk.OperatorEqual, Value: true}
 	}

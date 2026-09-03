@@ -68,9 +68,9 @@ func TestIdentityProfileBindingHTTPHandlers(t *testing.T) {
 		found:   true,
 	}
 	response := &profileBindingHTTPResponse{}
-	principal := identitymodel.Principal{Known: true, UserID: "admin", WorkspaceID: "workspace", Role: identitymodel.RoleSchema{Permissions: []string{
-		"identity.profile_bindings.get", "identity.profile_bindings.command",
-	}}}
+	principal := identitymodel.Principal{Known: true, UserID: "admin", WorkspaceID: "workspace", Role: identitymodel.RoleSchema{Permissions: identitymodel.RolePermissionsWithScope(
+		identitymodel.IdentityDataScopeAll, "identity.profile_bindings.get", "identity.profile_bindings.command",
+	)}}
 	service := identityapplication.NewIdentityProfileBindingApplicationService(identityapplication.IdentityProfileBindingDependencies{
 		Repository: repository, Records: profileBindingHTTPRecords{}, Identity: profileBindingHTTPIdentity{},
 		Objects: func() []definitionmodel.ObjectSchema {

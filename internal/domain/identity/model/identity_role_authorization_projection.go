@@ -7,8 +7,8 @@ import (
 )
 
 // IdentityExpandRoleAuthorization projects reusable non-functional policy and
-// deny guardrails into immutable effective Role schemas. RoleSchema.Permissions
-// is copied only from the role itself and is never expanded by a permission set.
+// deny guardrails into immutable effective Role schemas. Exact scoped
+// Permission grants are copied only from the role itself.
 func IdentityExpandRoleAuthorization(roles []RoleSchema, sets []IdentityPermissionSet, groups []IdentityPermissionSetGroup, guardrails []IdentityGuardrailPolicy) []RoleSchema {
 	setByKey := map[string]IdentityPermissionSet{}
 	for _, set := range sets {
@@ -33,7 +33,7 @@ func IdentityExpandRoleAuthorization(roles []RoleSchema, sets []IdentityPermissi
 	}
 	out := make([]RoleSchema, len(roles))
 	for index, role := range roles {
-		role.DataPermissions = append([]DataPermission(nil), role.DataPermissions...)
+		role.Permissions = append([]RolePermission(nil), role.Permissions...)
 		role.FieldPermissions = append([]FieldPermission(nil), role.FieldPermissions...)
 		role.ReferencePermissions = append([]ReferencePermission(nil), role.ReferencePermissions...)
 		role.ExportRules = append([]ExportRule(nil), role.ExportRules...)
@@ -65,7 +65,6 @@ func IdentityExpandRoleAuthorization(roles []RoleSchema, sets []IdentityPermissi
 			if !ok {
 				continue
 			}
-			role.DataPermissions = append(role.DataPermissions, set.DataPermissions...)
 			role.FieldPermissions = append(role.FieldPermissions, set.FieldPermissions...)
 			role.ReferencePermissions = append(role.ReferencePermissions, set.ReferencePermissions...)
 			role.ExportRules = append(role.ExportRules, set.ExportRules...)
@@ -75,7 +74,9 @@ func IdentityExpandRoleAuthorization(roles []RoleSchema, sets []IdentityPermissi
 				role.Guardrails = append(role.Guardrails, guardrail)
 			}
 		}
-		role.Permissions = identityUniqueSortedStrings(role.Permissions)
+		sort.Slice(role.Permissions, func(i, j int) bool {
+			return role.Permissions[i].PermissionKey < role.Permissions[j].PermissionKey
+		})
 		identityCanonicalizeRoleAuthorization(&role)
 		out[index] = role
 	}
@@ -102,7 +103,7 @@ func identityCanonicalizeRoleAuthorization(role *RoleSchema) {
 		raw, _ := json.Marshal(value)
 		return string(raw)
 	}
-	sort.Slice(role.DataPermissions, func(i, j int) bool { return canonical(role.DataPermissions[i]) < canonical(role.DataPermissions[j]) })
+	sort.Slice(role.Permissions, func(i, j int) bool { return canonical(role.Permissions[i]) < canonical(role.Permissions[j]) })
 	sort.Slice(role.FieldPermissions, func(i, j int) bool { return canonical(role.FieldPermissions[i]) < canonical(role.FieldPermissions[j]) })
 	sort.Slice(role.ReferencePermissions, func(i, j int) bool {
 		return canonical(role.ReferencePermissions[i]) < canonical(role.ReferencePermissions[j])

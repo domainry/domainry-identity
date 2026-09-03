@@ -636,7 +636,7 @@ func profileBindingTestServiceWithoutRepository(record map[string]any) *Identity
 }
 
 func profileBindingPrincipal(userID, permission string) identitymodel.Principal {
-	return identitymodel.Principal{Known: true, UserID: userID, WorkspaceID: "workspace", Role: identitymodel.RoleSchema{Permissions: []string{permission}}}
+	return identitymodel.Principal{Known: true, UserID: userID, WorkspaceID: "workspace", Role: identitymodel.RoleSchema{Permissions: identityTestRolePermissions(permission)}}
 }
 
 func profileBindingCommand(operation identitymodel.IdentityProfileBindingOperation) IdentityProfileBindingCommandRequest {

@@ -36,6 +36,12 @@ import {
   Input,
   Skeleton,
   Separator,
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   Tabs,
   TabsContent,
   TabsList,
@@ -50,7 +56,8 @@ import { cn } from '@/lib/utils'
 import { useI18n } from '@/lib/i18n'
 import { displayText } from '@/data/text'
 import { useCreateRole, useRolePage } from '@/data/hooks'
-import { identityPoliciesApi, menusApi, objectsApi, permissionsApi, type RoleCreateInput } from '@/data/api'
+import { identityPoliciesApi, menusApi, objectsApi, permissionsApi, type RoleCreateInput, type RuntimeDataScope } from '@/data/api'
+import type { IdentityRolePermissionGrant } from '@/data/governance-api'
 import type { Role } from '@/data/types'
 import { runtimeApiError } from '@/lib/runtime-api'
 import { runtimeErrorConstraintMessage } from '@/lib/runtime-error-details'
@@ -62,7 +69,6 @@ import {
   toggleRoleMenuSelection,
   type RoleMenuTreeNode,
 } from './role-menu-selection'
-import { DataScopesPage } from './data-scopes'
 import { FieldPermissionsPage } from './field-permissions'
 import { EffectiveAccessWorkspace } from './effective-access-workspace'
 import { RoleGovernanceDetail } from './role-governance-detail'
@@ -112,15 +118,11 @@ export function RolesPage() {
     <Tabs defaultValue='role-policy' aria-label={t('roles.governanceTabs.label')}>
       <TabsList>
         <TabsTrigger value='role-policy'>{t('roles.governanceTabs.rolePolicy')}</TabsTrigger>
-        <TabsTrigger value='data-scopes'>{t('roles.governanceTabs.dataScopes')}</TabsTrigger>
         <TabsTrigger value='field-permissions'>{t('roles.governanceTabs.fieldPermissions')}</TabsTrigger>
         <TabsTrigger value='effective-access'>{t('roles.governanceTabs.effectiveAccess')}</TabsTrigger>
       </TabsList>
       <TabsContent value='role-policy'>
         <RolePolicyWorkspace />
-      </TabsContent>
-      <TabsContent value='data-scopes'>
-        <DataScopesPage />
       </TabsContent>
       <TabsContent value='field-permissions'>
         <FieldPermissionsPage />
@@ -132,6 +134,18 @@ export function RolesPage() {
   )
 }
 
+const ROLE_DATA_SCOPES: RuntimeDataScope[] = ['all', 'owner', 'org', 'org_child', 'target_org']
+
+function roleDataScopeLabel(scope: RuntimeDataScope, t: ReturnType<typeof useI18n>['t']) {
+  switch (scope) {
+    case 'all': return t('scopes.type.all')
+    case 'owner': return t('scopes.type.self')
+    case 'org': return t('scopes.type.organization')
+    case 'org_child': return t('scopes.type.organizationTree')
+    case 'target_org': return t('scopes.type.targetOrganization')
+  }
+}
+
 function RolePolicyWorkspace() {
   const { t } = useI18n()
   const queryClient = useQueryClient()
@@ -141,7 +155,7 @@ function RolePolicyWorkspace() {
   const roleTotal = rolesQuery.data?.total ?? 0
   const createRoleMut = useCreateRole()
   const [selectedId, setSelectedId] = useState('r1')
-  const [draftPermissionKeys, setDraftPermissionKeys] = useState<string[]>([])
+  const [draftPermissions, setDraftPermissions] = useState<IdentityRolePermissionGrant[]>([])
   const [permsDirty, setPermsDirty] = useState(false)
   const [permissionChangeReason, setPermissionChangeReason] = useState('')
   const [activePolicyTab, setActivePolicyTab] = useState<'overview' | 'permissions' | 'menus'>('overview')
@@ -152,7 +166,7 @@ function RolePolicyWorkspace() {
   const [policyDiscardOpen, setPolicyDiscardOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [discardOpen, setDiscardOpen] = useState(false)
-  const [createPermissionKeys, setCreatePermissionKeys] = useState<string[]>([])
+  const [createPermissions, setCreatePermissions] = useState<IdentityRolePermissionGrant[]>([])
   const [createPermissionSearch, setCreatePermissionSearch] = useState('')
   const permissionCatalogQuery = useQuery({ queryKey: ['runtime', 'identity', 'permission-catalog'], queryFn: permissionsApi.catalog })
   const schemaQuery = useQuery({ queryKey: ['runtime', 'schema', 'role-create'], queryFn: objectsApi.schemaSnapshot })
@@ -195,11 +209,11 @@ function RolePolicyWorkspace() {
       if (!selected) throw new Error('role-not-ready')
       if (!permissionChangeReason.trim()) throw new Error('reason-required')
       if (!rolePermissionsQuery.data?.schemaHash) throw new Error('role-permission-revision-not-ready')
-      return identityPoliciesApi.saveRolePermissions(selected.id, draftPermissionKeys, permissionChangeReason.trim(), rolePermissionsQuery.data.schemaHash)
+      return identityPoliciesApi.saveRolePermissions(selected.id, draftPermissions, permissionChangeReason.trim(), rolePermissionsQuery.data.schemaHash)
     },
     onSuccess: async (configuration) => {
       queryClient.setQueryData(['runtime', 'identity', 'role-permissions', selected?.id], configuration)
-      setDraftPermissionKeys(configuration.permissionKeys)
+      setDraftPermissions(configuration.permissions)
       setPermsDirty(false)
       setPermissionChangeReason('')
       await Promise.all([
@@ -247,7 +261,7 @@ function RolePolicyWorkspace() {
   }, [selected?.id])
   useEffect(() => {
     if (permsDirty || !rolePermissionsQuery.data) return
-    setDraftPermissionKeys(rolePermissionsQuery.data.permissionKeys)
+    setDraftPermissions(rolePermissionsQuery.data.permissions)
   }, [permsDirty, rolePermissionsQuery.data, selected?.code])
   useEffect(() => {
     if (menusDirty || !roleMenusQuery.data) return
@@ -270,10 +284,18 @@ function RolePolicyWorkspace() {
 
   function togglePermissionKeys(permissionKeys: string[]) {
     if (!selected) return
-    const next = new Set(draftPermissionKeys)
+    const next = new Map(draftPermissions.map((permission) => [permission.permission_key, permission]))
     const checked = permissionKeys.length > 0 && permissionKeys.every((key) => next.has(key))
-    for (const key of permissionKeys) checked ? next.delete(key) : next.add(key)
-    setDraftPermissionKeys([...next].sort())
+    for (const key of permissionKeys) {
+      if (checked) next.delete(key)
+      else if (!next.has(key)) next.set(key, { permission_key: key, data_scope: 'all' })
+    }
+    setDraftPermissions([...next.values()].sort((left, right) => left.permission_key.localeCompare(right.permission_key)))
+    setPermsDirty(true)
+  }
+
+  function setPermissionScope(permissionKey: string, dataScope: RuntimeDataScope) {
+    setDraftPermissions((current) => current.map((permission) => permission.permission_key === permissionKey ? { ...permission, data_scope: dataScope } : permission))
     setPermsDirty(true)
   }
 
@@ -295,7 +317,7 @@ function RolePolicyWorkspace() {
 
   function openCreateRole() {
     reset({ name: '', code: '', description: '', businessReason: '' })
-    setCreatePermissionKeys([])
+    setCreatePermissions([])
     setCreatePermissionSearch('')
     setCreateOpen(true)
   }
@@ -313,14 +335,14 @@ function RolePolicyWorkspace() {
       members: 0,
       status: 'active',
       businessReason: values.businessReason.trim(),
-      permissionKeys: createPermissionKeys,
+      permissions: createPermissions,
     }
     try {
       await createRoleMut.mutateAsync(input)
       toast.success(t('roles.create.toast.created'))
       setCreateOpen(false)
       reset({ name: '', code: '', description: '', businessReason: '' })
-      setCreatePermissionKeys([])
+      setCreatePermissions([])
     } catch (error) {
       const structured = runtimeApiError(error)
       setError(roleFormControl(structured) ?? 'root', { message: runtimeErrorConstraintMessage(t, structured, error instanceof Error ? error.message : t('dataTable.errorDescription')) })
@@ -421,7 +443,7 @@ function RolePolicyWorkspace() {
 						<div className='border-b bg-muted/10 px-4 py-2 text-sm font-medium'>{capability.label}</div>
 						<div className='divide-y'>
 						  {capability.operations.map((operation) => {
-						  const checked = operation.permissionKeys.every((key) => draftPermissionKeys.includes(key))
+						  const checked = operation.permissionKeys.every((key) => draftPermissions.some((permission) => permission.permission_key === key))
 						  const selectable = operation.active && operation.enabled
                           return <div key={operation.key} className='grid gap-3 p-4 md:grid-cols-[minmax(120px,0.35fr)_minmax(0,1fr)_auto]'>
                             <div>
@@ -439,6 +461,16 @@ function RolePolicyWorkspace() {
                               </div>)}
 							  {!operation.usageAvailable ? <p className='rounded border border-dashed px-3 py-2 text-xs text-muted-foreground'>{t('roles.capabilities.usageUnavailableDescription')}</p> : null}
                               <details className='text-xs text-muted-foreground'><summary className='cursor-pointer'>{t('roles.capabilities.technicalDetails')}</summary><div className='mt-1 flex flex-wrap gap-1'>{operation.permissionKeys.map((key) => <code key={key} className='rounded bg-muted px-1.5 py-0.5'>{key}</code>)}</div></details>
+                              {operation.permissionKeys.filter((key) => draftPermissions.some((permission) => permission.permission_key === key)).map((key) => {
+                                const grant = draftPermissions.find((permission) => permission.permission_key === key)!
+                                return <div key={`${key}:scope`} className='flex flex-wrap items-center justify-between gap-2 rounded border bg-muted/20 px-3 py-2'>
+                                  <code className='text-xs'>{key}</code>
+                                  <Select value={grant.data_scope} onValueChange={(scope) => setPermissionScope(key, scope as RuntimeDataScope)}>
+                                    <SelectTrigger size='sm' className='w-48' aria-label={`${key} data scope`} data-policy-control={`${selected.id}:${key}:data_scope`}><SelectValue /></SelectTrigger>
+                                    <SelectContent><SelectGroup>{ROLE_DATA_SCOPES.map((scope) => <SelectItem key={scope} value={scope}>{roleDataScopeLabel(scope, t)}</SelectItem>)}</SelectGroup></SelectContent>
+                                  </Select>
+                                </div>
+                              })}
                             </div>
 							<Checkbox aria-label={`${capability.label} - ${operation.operationLabel}`} checked={checked} disabled={rolePermissionsQuery.isPending || !selectable} onCheckedChange={() => togglePermissionKeys(operation.permissionKeys)} />
                           </div>
@@ -509,14 +541,21 @@ function RolePolicyWorkspace() {
               <Input id='role-permission-search' value={createPermissionSearch} placeholder={t('roles.create.permissionsSearch')} onChange={(event) => setCreatePermissionSearch(event.target.value)} />
               <div className='max-h-48 space-y-1 overflow-y-auto rounded-md border p-2'>
                 {createPermissionOptions.map((operation) => {
-                  const checked = operation.permissionKeys.every((key) => createPermissionKeys.includes(key))
+                  const checked = operation.permissionKeys.every((key) => createPermissions.some((permission) => permission.permission_key === key))
                   return <label key={operation.key} className='flex min-h-12 cursor-pointer items-start gap-2 rounded px-2 py-2 text-sm hover:bg-muted'>
-                    <Checkbox className='mt-0.5' checked={checked} disabled={!operation.active || !operation.enabled} onCheckedChange={(next) => setCreatePermissionKeys((current) => { const values = new Set(current); for (const key of operation.permissionKeys) next === true ? values.add(key) : values.delete(key); return [...values].sort() })} />
+                    <Checkbox className='mt-0.5' checked={checked} disabled={!operation.active || !operation.enabled} onCheckedChange={(next) => setCreatePermissions((current) => { const values = new Map(current.map((permission) => [permission.permission_key, permission])); for (const key of operation.permissionKeys) next === true ? values.set(key, values.get(key) ?? { permission_key: key, data_scope: 'all' }) : values.delete(key); return [...values.values()].sort((left, right) => left.permission_key.localeCompare(right.permission_key)) })} />
                     <span className='min-w-0'><span className='block font-medium'>{operation.capabilityLabel} · {operation.operationLabel}</span><span className='block truncate text-xs text-muted-foreground'>{operation.bindings.map((binding) => `${binding.method} ${binding.route}`).join(' · ')}</span></span>
                   </label>
                 })}
               </div>
-              <p className='text-xs text-muted-foreground'>{t('roles.create.permissionsSelected', { count: createPermissionKeys.length })}</p>
+              <p className='text-xs text-muted-foreground'>{t('roles.create.permissionsSelected', { count: createPermissions.length })}</p>
+              {createPermissions.map((grant) => <div key={`${grant.permission_key}:create-scope`} className='flex items-center justify-between gap-2 rounded border px-2 py-1.5'>
+                <code className='truncate text-xs'>{grant.permission_key}</code>
+                <Select value={grant.data_scope} onValueChange={(scope) => setCreatePermissions((current) => current.map((permission) => permission.permission_key === grant.permission_key ? { ...permission, data_scope: scope as RuntimeDataScope } : permission))}>
+                  <SelectTrigger size='sm' className='w-44' aria-label={`${grant.permission_key} data scope`}><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectGroup>{ROLE_DATA_SCOPES.map((scope) => <SelectItem key={scope} value={scope}>{roleDataScopeLabel(scope, t)}</SelectItem>)}</SelectGroup></SelectContent>
+                </Select>
+              </div>)}
             </Field>
           </FieldGroup>
           <FieldError errors={[errors.root]} />

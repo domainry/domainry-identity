@@ -22,7 +22,6 @@ func IdentityBuildFeaturePermissions(objects []definitionmodel.ObjectSchema, act
 		Objects:   make([]identitycontract.IdentityFeatureObjectPermissions, 0, len(objects)),
 		Actions:   make([]identitycontract.IdentityFeatureActionPermission, 0, len(actions)),
 		Functions: functionPermissionSnapshots(principal),
-		Data:      make([]identitycontract.IdentityDataScopePermission, 0, len(objects)),
 		Fields:    []identitycontract.IdentityFieldPermissionSnapshot{},
 		Exports:   make([]identitycontract.IdentityExportPermissionSnapshot, 0, len(objects)),
 	}
@@ -32,7 +31,6 @@ func IdentityBuildFeaturePermissions(objects []definitionmodel.ObjectSchema, act
 			item.Actions = append(item.Actions, objectFeatureDecision(principal, object.Key, action))
 		}
 		result.Objects = append(result.Objects, item)
-		result.Data = append(result.Data, dataScopePermission(principal, object))
 		result.Fields = append(result.Fields, fieldPermissionSnapshots(principal, object)...)
 		result.Exports = append(result.Exports, exportPermissionSnapshot(principal, object))
 	}
@@ -54,7 +52,7 @@ func IdentityBuildFeaturePermissions(objects []definitionmodel.ObjectSchema, act
 			Label:             action.Label,
 			Kind:              action.Kind,
 			PermissionKey:     permissionKey,
-			DataScope:         decision.DataScope,
+			DataScopes:        decision.DataScopes,
 			Allowed:           decision.Allowed,
 			Reason:            decision.Reason,
 			AssuranceRequired: actionAssuranceRequired(action),
@@ -103,8 +101,8 @@ func functionPermissionSnapshots(principal identitymodel.Principal) []identityco
 			},
 		})
 	}
-	for _, permissionKey := range principal.Role.Permissions {
-		permissionKey = strings.TrimSpace(permissionKey)
+	for _, permission := range principal.Role.Permissions {
+		permissionKey := strings.TrimSpace(permission.PermissionKey)
 		if permissionKey == "" {
 			continue
 		}
@@ -116,13 +114,13 @@ func functionPermissionSnapshots(principal identitymodel.Principal) []identityco
 
 func objectFeatureDecision(principal identitymodel.Principal, objectKey string, action string) identitycontract.IdentityFeaturePermissionDecision {
 	permissionKey := strings.TrimSpace(objectKey) + "." + strings.TrimSpace(action)
-	dataScope := identitycontract.IdentityDataScopeForAction(principal.Role, objectKey, action)
+	dataScopes := identitycontract.IdentityDataScopesForAction(principal.Role, objectKey, action)
 	decision := identitycontract.IdentityFeaturePermissionDecision{
 		Key:           permissionKey,
 		ObjectKey:     strings.TrimSpace(objectKey),
 		Action:        strings.TrimSpace(action),
 		PermissionKey: permissionKey,
-		DataScope:     dataScope,
+		DataScopes:    dataScopes,
 		Allowed:       false,
 		Reason:        "missing_permission",
 	}
@@ -134,149 +132,12 @@ func objectFeatureDecision(principal identitymodel.Principal, objectKey string, 
 		return decision
 	}
 	if !identitycontract.IdentityRoleAllowsData(principal.Role, objectKey, action) {
-		decision.Reason = "missing_data_permission"
+		decision.Reason = "missing_data_scope"
 		return decision
 	}
 	decision.Allowed = true
 	decision.Reason = "allowed"
 	return decision
-}
-
-func dataScopePermission(principal identitymodel.Principal, object definitionmodel.ObjectSchema) identitycontract.IdentityDataScopePermission {
-	return identitycontract.IdentityDataScopePermission{
-		ObjectKey:  object.Key,
-		OwnerField: "owner_user_id",
-		OrgIDField: "owner_org_id",
-		Context: identitycontract.IdentityDataScopeContext{
-			OrgID:                 principal.OrgID,
-			OrgScopeIDs:           append([]string(nil), principal.OrgScopeIDs...),
-			SupportOrgID:          principal.SupportOrgID,
-			SupportOrgScopeIDs:    append([]string(nil), principal.SupportOrgScopeIDs...),
-			ReportingScopeUserIDs: append([]string(nil), principal.ReportingScopeUserIDs...),
-		},
-		Policy: dataScopeDecision(principal, object.Key),
-	}
-}
-
-func dataScopeDecision(principal identitymodel.Principal, objectKey string) identitycontract.IdentityDataScopeDecision {
-	scope := identitycontract.IdentityDataScope(principal.Role, objectKey)
-	decision := identitycontract.IdentityDataScopeDecision{
-		Scope:     scope,
-		Predicate: dataPredicateForRole(principal.Role, objectKey),
-		Allowed:   false,
-		Reason:    "missing_data_permission",
-	}
-	if !principal.Known {
-		decision.Reason = "role_unknown"
-		return decision
-	}
-	if scope == "none" {
-		return decision
-	}
-	if isAllScopeName(scope) {
-		decision.Allowed = true
-		decision.Reason = "allowed"
-		return decision
-	}
-	if isOwnedScopeName(scope) {
-		if strings.TrimSpace(principal.UserID) == "" {
-			decision.Reason = "missing_user"
-			return decision
-		}
-		decision.Allowed = true
-		decision.Reason = "allowed"
-		return decision
-	}
-	if isOrganizationScopeName(scope) {
-		if strings.TrimSpace(principal.OrgID) == "" {
-			decision.Reason = "missing_org"
-			return decision
-		}
-		decision.Allowed = true
-		decision.Reason = "allowed"
-		return decision
-	}
-	if isOrganizationAndChildrenScopeName(scope) {
-		if len(principal.OrgScopeIDs) == 0 {
-			decision.Reason = "missing_org_scope_ids"
-			return decision
-		}
-		decision.Allowed = true
-		decision.Reason = "allowed"
-		return decision
-	}
-	if isSelfAndSubordinatesScopeName(scope) {
-		if len(principal.ReportingScopeUserIDs) == 0 {
-			decision.Reason = "missing_reporting_scope_user_ids"
-			return decision
-		}
-		decision.Allowed = true
-		decision.Reason = "allowed"
-		return decision
-	}
-	if scope == "custom" {
-		if decision.Predicate == nil {
-			decision.Reason = "missing_predicate"
-			return decision
-		}
-		if identityPredicateUsesActorClaim(*decision.Predicate, "support_org_scope_ids") && len(principal.SupportOrgScopeIDs) == 0 {
-			decision.Reason = "missing_support_org_scope_ids"
-			return decision
-		}
-		decision.Allowed = true
-		decision.Reason = "allowed"
-		return decision
-	}
-	if strings.TrimSpace(scope) == "none" {
-		return decision
-	}
-	decision.Reason = "unsupported_scope"
-	return decision
-}
-
-func dataPredicateForRole(role identitymodel.RoleSchema, objectKey string) *identitymodel.IdentityPolicyExpression {
-	for _, permission := range role.DataPermissions {
-		if permission.ObjectKey != objectKey {
-			continue
-		}
-		return permission.Predicate
-	}
-	return nil
-}
-
-func identityPredicateUsesActorClaim(expression identitymodel.IdentityPolicyExpression, claimKey string) bool {
-	if strings.EqualFold(strings.TrimSpace(expression.ValueSource), "actor_claim") && strings.EqualFold(strings.TrimSpace(expression.ClaimKey), claimKey) {
-		return true
-	}
-	for _, child := range expression.Children {
-		if identityPredicateUsesActorClaim(child, claimKey) {
-			return true
-		}
-	}
-	return false
-}
-
-func isAllScopeName(scope string) bool {
-	scope = strings.TrimSpace(scope)
-	return scope == "all_records"
-}
-
-func isOwnedScopeName(scope string) bool {
-	scope = strings.TrimSpace(scope)
-	return scope == "owned_records"
-}
-
-func isOrganizationScopeName(scope string) bool {
-	return strings.TrimSpace(scope) == "organization"
-}
-
-func isOrganizationAndChildrenScopeName(scope string) bool {
-	scope = strings.TrimSpace(scope)
-	return scope == "organization_and_children"
-}
-
-func isSelfAndSubordinatesScopeName(scope string) bool {
-	return strings.TrimSpace(scope) == "self_and_subordinates"
 }
 
 func fieldPermissionSnapshots(principal identitymodel.Principal, object definitionmodel.ObjectSchema) []identitycontract.IdentityFieldPermissionSnapshot {
@@ -361,11 +222,11 @@ func exportPermissionSnapshot(principal identitymodel.Principal, object definiti
 		})
 	}
 	return identitycontract.IdentityExportPermissionSnapshot{
-		ObjectKey: object.Key,
-		Allowed:   decision.Allowed,
-		Reason:    decision.Reason,
-		DataScope: decision.DataScope,
-		Fields:    fields,
+		ObjectKey:  object.Key,
+		Allowed:    decision.Allowed,
+		Reason:     decision.Reason,
+		DataScopes: decision.DataScopes,
+		Fields:     fields,
 	}
 }
 

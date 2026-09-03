@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/domainry/domainry-foundation/apperror"
+	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	identityrepository "github.com/domainry/domainry-identity/internal/domain/identity/repository"
 )
@@ -33,12 +34,13 @@ func (s *IdentityApplicationService) ApplyEntitlementBatch(ctx context.Context, 
 	if err != nil {
 		return identitymodel.IdentityEntitlementBatchReceipt{}, err
 	}
-	repository, ok := scoped.Repository().(identityrepository.IdentityEntitlementBatchRepository)
+	repository, ok := scoped.Repository().(identityrepository.IdentityEntitlementBatchDataScopeRepository)
 	if !ok {
 		return identitymodel.IdentityEntitlementBatchReceipt{}, apperror.New(apperror.KindInternal, "backend.identity.entitlement_batch_unavailable", nil, nil)
 	}
 	fingerprint := identityEntitlementBatchFingerprint(actor.UserID, request.Items)
-	if receipt, found, receiptErr := repository.GetIdentityEntitlementBatchReceipt(ctx, scoped.WorkspaceID(), request.IdempotencyKey); receiptErr != nil {
+	filter := identitycontract.IdentityPermissionDataScopeFilter(actor, identitycontract.IdentityEntitlementsBatchPermission)
+	if receipt, found, receiptErr := repository.GetIdentityEntitlementBatchReceiptWithinDataScope(ctx, scoped.WorkspaceID(), request.IdempotencyKey, filter); receiptErr != nil {
 		return identitymodel.IdentityEntitlementBatchReceipt{}, receiptErr
 	} else if found {
 		if receipt.RequestFingerprint != fingerprint {
@@ -51,10 +53,17 @@ func (s *IdentityApplicationService) ApplyEntitlementBatch(ctx context.Context, 
 	if err != nil {
 		return identitymodel.IdentityEntitlementBatchReceipt{}, err
 	}
-	return repository.ApplyIdentityEntitlementBatch(ctx, identitymodel.IdentityEntitlementBatchMutation{
+	receipt, applied, err := repository.ApplyIdentityEntitlementBatchWithinDataScope(ctx, identitymodel.IdentityEntitlementBatchMutation{
 		WorkspaceID: scoped.WorkspaceID(), ActorID: strings.TrimSpace(actor.UserID), IdempotencyKey: request.IdempotencyKey,
 		RequestFingerprint: fingerprint, Items: items, Assignments: assignments,
-	})
+	}, filter)
+	if err != nil {
+		return identitymodel.IdentityEntitlementBatchReceipt{}, err
+	}
+	if !applied {
+		return identitymodel.IdentityEntitlementBatchReceipt{}, apperror.New(apperror.KindForbidden, "backend.identity.data_scope_denied", nil, nil)
+	}
+	return receipt, nil
 }
 
 func identityEntitlementBatchFingerprint(actorID string, items []identitymodel.IdentityEntitlementBatchItem) string {

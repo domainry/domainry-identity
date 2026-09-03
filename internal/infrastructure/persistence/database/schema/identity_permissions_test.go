@@ -19,7 +19,7 @@ func TestIdentityPermissionsSchemaRendersThroughDomainryORM(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			for _, required := range []string{"_identity_permissions", "permission_key", "source_owner", "definition_status", "source_snapshot_hash", "UNIQUE"} {
+			for _, required := range []string{"_identity_permissions", "permission_key", "source_owner", "definition_status", "source_snapshot_hash", "UNIQUE", "workspace_id"} {
 				if !strings.Contains(statement, required) {
 					t.Fatalf("statement %q is missing %q", statement, required)
 				}

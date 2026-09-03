@@ -69,7 +69,6 @@ export function RoleGovernanceDetail({ roleID }: RoleGovernanceDetailProps) {
   const permissionSetGroups = detail.permission_set_groups ?? []
   const permissionSets = detail.permission_sets ?? []
   const guardrails = detail.guardrails ?? []
-  const dataScopes = detail.data_scopes ?? []
   const fieldPermissions = detail.field_permissions ?? []
   const exportRules = detail.export_rules ?? []
   const menus = detail.menus ?? []
@@ -105,7 +104,7 @@ export function RoleGovernanceDetail({ roleID }: RoleGovernanceDetailProps) {
       </GovernanceSection>
 
       <GovernanceSection title={t('roles.detail.dataScopes')}>
-        {dataScopes.length ? dataScopes.map((scope) => <div key={`${scope.resource}:${scope.scope}`} className='flex justify-between gap-3'><code>{scope.resource}</code><span>{scope.scope}{scope.audit_denial ? ` · ${t('roles.detail.auditDenial')}` : ''}</span></div>) : <span className='text-muted-foreground'>{t('common.none')}</span>}
+        {detail.permissions.length ? detail.permissions.map((permission) => <div key={permission.permission_key} className='flex justify-between gap-3'><code>{permission.permission_key}</code><span>{permission.data_scope}{permission.audit_denial ? ` · ${t('roles.detail.auditDenial')}` : ''}</span></div>) : <span className='text-muted-foreground'>{t('common.none')}</span>}
       </GovernanceSection>
 
       <GovernanceSection title={t('roles.detail.fieldExport')}>

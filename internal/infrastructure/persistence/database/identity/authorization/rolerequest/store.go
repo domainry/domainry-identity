@@ -10,6 +10,7 @@ import (
 
 	"github.com/domainry/domainry-foundation/apperror"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	identitydatascope "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/datascope"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 	"github.com/domainry/domainry-orm/query"
 )
@@ -24,14 +25,20 @@ type Execer interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
 type AssignmentWriter func(context.Context, Execer, string, identitymodel.IdentityUserRoleAssignment) error
+type ScopedAssignmentWriter func(context.Context, Execer, string, identitymodel.IdentityUserRoleAssignment, identitymodel.IdentityDataScopeFilter) (bool, error)
 type Store struct {
-	backend         Backend
-	now             func() string
-	writeAssignment AssignmentWriter
+	backend               Backend
+	now                   func() string
+	writeAssignment       AssignmentWriter
+	writeScopedAssignment ScopedAssignmentWriter
 }
 
-func New(backend Backend, now func() string, writer AssignmentWriter) *Store {
-	return &Store{backend: backend, now: now, writeAssignment: writer}
+func New(backend Backend, now func() string, writer AssignmentWriter, scopedWriter ...ScopedAssignmentWriter) *Store {
+	store := &Store{backend: backend, now: now, writeAssignment: writer}
+	if len(scopedWriter) > 0 {
+		store.writeScopedAssignment = scopedWriter[0]
+	}
+	return store
 }
 
 func (s *Store) Create(ctx context.Context, workspaceID string, request identitymodel.IdentityRoleRequest) (identitymodel.IdentityRoleRequest, error) {
@@ -62,6 +69,10 @@ func (s *Store) Create(ctx context.Context, workspaceID string, request identity
 }
 
 func (s *Store) List(ctx context.Context, workspaceID, status, userID string) ([]identitymodel.IdentityRoleRequest, error) {
+	return s.ListWithinDataScope(ctx, workspaceID, status, userID, identitymodel.IdentityDataScopeFilter{Unrestricted: true})
+}
+
+func (s *Store) ListWithinDataScope(ctx context.Context, workspaceID, status, userID string, scope identitymodel.IdentityDataScopeFilter) ([]identitymodel.IdentityRoleRequest, error) {
 	workspaceID, err := workspace(workspaceID)
 	if err != nil {
 		return nil, err
@@ -72,6 +83,9 @@ func (s *Store) List(ctx context.Context, workspaceID, status, userID string) ([
 	}
 	if strings.TrimSpace(userID) != "" {
 		predicates = append(predicates, query.Equal("user_id", userID))
+	}
+	if !scope.Unrestricted {
+		predicates = append(predicates, identitydatascope.UserExists(workspaceID, query.TableColumn("_identity_role_requests", "user_id"), scope))
 	}
 	builder := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_role_requests", workspaceID).Columns("id", "user_id", "requested_by", "provider", "provider_subject", "role_ids_json", "status", "reason", "created_at", "updated_at", "reviewed_by", "reviewed_at", "review_note").OrderBy(query.Descending("created_at"), query.Ascending("id"))
 	if len(predicates) > 0 {
@@ -122,36 +136,84 @@ func (s *Store) Update(ctx context.Context, workspaceID string, request identity
 }
 
 func (s *Store) ApplyDecision(ctx context.Context, workspaceID string, request identitymodel.IdentityRoleRequest, assignments []identitymodel.IdentityUserRoleAssignment, expectedStatus string) error {
-	workspaceID, err := workspace(workspaceID)
+	updated, err := s.applyDecision(ctx, workspaceID, request, assignments, expectedStatus, identitymodel.IdentityDataScopeFilter{Unrestricted: true}, false)
 	if err != nil {
 		return err
+	}
+	if !updated {
+		return &apperror.AppError{Kind: apperror.KindConflict, Code: "backend.identity.role_request_concurrent_decision"}
+	}
+	return nil
+}
+
+func (s *Store) ApplyDecisionWithinDataScope(ctx context.Context, workspaceID string, request identitymodel.IdentityRoleRequest, assignments []identitymodel.IdentityUserRoleAssignment, expectedStatus string, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
+	return s.applyDecision(ctx, workspaceID, request, assignments, expectedStatus, scope, true)
+}
+
+func (s *Store) applyDecision(ctx context.Context, workspaceID string, request identitymodel.IdentityRoleRequest, assignments []identitymodel.IdentityUserRoleAssignment, expectedStatus string, scope identitymodel.IdentityDataScopeFilter, enforceScope bool) (bool, error) {
+	workspaceID, err := workspace(workspaceID)
+	if err != nil {
+		return false, err
 	}
 	tx, err := s.backend.DB().BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer tx.Rollback()
+	candidatePredicates := []query.Predicate{query.Equal("id", request.ID)}
+	if !scope.Unrestricted {
+		candidatePredicates = append(candidatePredicates, identitydatascope.UserExists(workspaceID, query.TableColumn("_identity_role_requests", "user_id"), scope))
+	}
+	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_role_requests", workspaceID).
+		Columns("status").Where(query.And(candidatePredicates...)).Build()
+	if err != nil {
+		return false, fmt.Errorf("build scoped identity role request decision candidate: %w", err)
+	}
+	var persistedStatus string
+	if err := tx.QueryRowContext(ctx, statement, arguments...).Scan(&persistedStatus); err == sql.ErrNoRows {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	if persistedStatus != expectedStatus {
+		return false, &apperror.AppError{Kind: apperror.KindConflict, Code: "backend.identity.role_request_concurrent_decision"}
+	}
 	for _, assignment := range assignments {
-		if err := s.writeAssignment(ctx, tx, workspaceID, assignment); err != nil {
-			return err
+		if enforceScope && s.writeScopedAssignment == nil {
+			return false, fmt.Errorf("scoped identity role assignment writer is unavailable")
+		}
+		if enforceScope {
+			allowed, writeErr := s.writeScopedAssignment(ctx, tx, workspaceID, assignment, scope)
+			if writeErr != nil || !allowed {
+				return false, writeErr
+			}
+		} else if err := s.writeAssignment(ctx, tx, workspaceID, assignment); err != nil {
+			return false, err
 		}
 	}
-	statement, arguments, err := s.update(workspaceID, request).Where(query.And(query.Equal("id", request.ID), query.Equal("status", expectedStatus))).Build()
+	updatePredicates := []query.Predicate{query.Equal("id", request.ID), query.Equal("status", expectedStatus)}
+	if !scope.Unrestricted {
+		updatePredicates = append(updatePredicates, identitydatascope.UserExists(workspaceID, query.TableColumn("_identity_role_requests", "user_id"), scope))
+	}
+	statement, arguments, err = s.update(workspaceID, request).Where(query.And(updatePredicates...)).Build()
 	if err != nil {
-		return fmt.Errorf("build identity role request decision: %w", err)
+		return false, fmt.Errorf("build identity role request decision: %w", err)
 	}
 	result, err := tx.ExecContext(ctx, statement, arguments...)
 	if err != nil {
-		return err
+		return false, err
 	}
 	affected, err := result.RowsAffected()
 	if err != nil {
-		return err
+		return false, err
 	}
 	if affected != 1 {
-		return &apperror.AppError{Kind: apperror.KindConflict, Code: "backend.identity.role_request_concurrent_decision"}
+		return false, &apperror.AppError{Kind: apperror.KindConflict, Code: "backend.identity.role_request_concurrent_decision"}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (s *Store) update(workspaceID string, request identitymodel.IdentityRoleRequest) *query.UpdateBuilder {

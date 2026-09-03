@@ -40,8 +40,8 @@ func TestManifestIdentitySeedBuildsOrganizationHierarchyAndBootstrapUsers(t *tes
 func TestManifestIdentitySeedDoesNotInferPlatformMenusFromBusinessPermissions(t *testing.T) {
 	manifest := manifestmodel.ManifestSchema{
 		Roles: []identitymodel.RoleSchema{
-			{Key: "ceo", Name: "CEO", Permissions: []string{"identity.users.list", "workflow.definition.read", "leave_request.read"}},
-			{Key: "hr_manager", Name: "HR Manager", Permissions: []string{"leave_request.read"}},
+			{Key: "ceo", Name: "CEO", Permissions: identityTestRolePermissions("identity.users.list", "workflow.definition.read", "leave_request.read")},
+			{Key: "hr_manager", Name: "HR Manager", Permissions: identityTestRolePermissions("leave_request.read")},
 		},
 	}
 
@@ -89,8 +89,8 @@ func TestManifestIdentitySeedMaterializesOneDefaultUserForEveryDeclaredRole(t *t
 func TestManifestIdentitySeedDoesNotExpandWorkspaceCapabilityIntoPlatformMenus(t *testing.T) {
 	manifest := manifestmodel.ManifestSchema{
 		Roles: []identitymodel.RoleSchema{
-			{Key: "runtime_admin", Name: "Runtime Administrator", Permissions: []string{" workspace.ADMIN "}},
-			{Key: "business_manager", Name: "Business Manager", Permissions: []string{"identity.users.list"}},
+			{Key: "runtime_admin", Name: "Runtime Administrator", Permissions: identityTestRolePermissions(" workspace.ADMIN ")},
+			{Key: "business_manager", Name: "Business Manager", Permissions: identityTestRolePermissions("identity.users.list")},
 		},
 	}
 

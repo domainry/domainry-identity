@@ -233,7 +233,7 @@ func identityOpenAPIOperation(definition authoringcontract.CapabilityAuthoringDe
 		Strategy: action.Authorization.Strategy, PolicyKey: action.Authorization.PolicyKey,
 		Audiences: append([]string(nil), action.Authorization.Audiences...),
 	}
-	if authorization.Strategy != actioncontract.AuthorizationAnonymousProtocol {
+	if authorization.Strategy != actioncontract.AuthorizationAnonymous {
 		authorization.WorkspaceScope = "application_workspace"
 	}
 	if action.Permission != nil {
@@ -250,7 +250,7 @@ func identityOpenAPIOperation(definition authoringcontract.CapabilityAuthoringDe
 		"description":                          "Identity-owned " + strings.ReplaceAll(definition.Lifecycle, "_", " ") + " operation.",
 		modulecapability.OperationExtensionKey: extension,
 	}
-	if authorization.Strategy == actioncontract.AuthorizationAnonymousProtocol {
+	if authorization.Strategy == actioncontract.AuthorizationAnonymous {
 		operation["security"] = []any{}
 	} else {
 		operation["security"] = []any{map[string]any{"BearerAuth": []any{}}}

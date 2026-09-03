@@ -130,7 +130,7 @@ func TestPermissionReconcileEmitsStableReceiptLogWithGeneratedRequestID(t *testi
 	zap.ReplaceGlobals(zap.New(core))
 	t.Cleanup(func() { zap.ReplaceGlobals(previous) })
 	receipt, err := service.ReconcileOwner(t.Context(), IdentityBuiltinAuthorizationOwner)
-	if err != nil || receipt.Inserted != 89 {
+	if err != nil || receipt.Inserted != 86 {
 		t.Fatalf("reconcile receipt=%+v error=%v", receipt, err)
 	}
 	entries := observed.FilterMessage("identity_permission_reconcile_applied").All()
@@ -138,7 +138,7 @@ func TestPermissionReconcileEmitsStableReceiptLogWithGeneratedRequestID(t *testi
 		t.Fatalf("reconcile log entries=%v", observed.All())
 	}
 	fields := entries[0].ContextMap()
-	if fields["workspace_id"] != "workspace-primary" || fields["source_owner"] != IdentityBuiltinAuthorizationOwner || fields["snapshot_hash"] != receipt.SnapshotHash || fields["inserted"] != int64(89) {
+	if fields["workspace_id"] != "workspace-primary" || fields["source_owner"] != IdentityBuiltinAuthorizationOwner || fields["snapshot_hash"] != receipt.SnapshotHash || fields["inserted"] != int64(86) {
 		t.Fatalf("reconcile log fields=%v", fields)
 	}
 	requestID, _ := fields["request_id"].(string)
@@ -240,7 +240,7 @@ func TestPermissionCatalogQueriesExternalActionUsageWithoutPersistingIt(t *testi
 		Key: "customer.read", Owner: "runtime:orders", SourceKind: "object_default",
 		CapabilityKey: "customer", CapabilityLabel: "Customers", OperationKey: "read", OperationLabel: "Read",
 		Label: "Read customers", Exposures: []actioncontract.Exposure{actioncontract.ExposureTenantAdmin},
-		Authorization: actioncontract.Authorization{Strategy: actioncontract.AuthorizationExactRolePermission},
+		Authorization: actioncontract.Authorization{Strategy: actioncontract.AuthorizationAuthenticated},
 		HTTP:          &actioncontract.HTTPBinding{Method: "GET", RouteTemplate: "/objects/customer/records"},
 		Permission: &actioncontract.PermissionDefinition{
 			Key: "customer.read", Owner: "runtime:orders", ResourceKey: "customer", OperationKey: "read",

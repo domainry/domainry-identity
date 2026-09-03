@@ -92,9 +92,6 @@ export interface IdentityRole {
   label: string
   description: string
   status: 'active' | 'disabled'
-  permission_keys: string[] | null
-  data_scopes: unknown[] | null
-  field_permissions: unknown[] | null
 }
 
 export type IdentityRolePage = IdentityPage<IdentityRole>
@@ -216,7 +213,7 @@ export interface IdentityRoleMenuAssignment {
 export interface EffectivePermissionDecision {
   key: string
   permission_key?: string
-  data_scope?: string
+	data_scopes?: IdentityDataScope[]
   allowed: boolean
   reason: string
 }
@@ -227,7 +224,7 @@ export interface EffectiveActionPermission {
   label?: string
   kind: string
   permission_key: string
-  data_scope: string
+	data_scopes?: IdentityDataScope[]
   allowed: boolean
   reason: string
   assurance_required: string[]
@@ -258,12 +255,7 @@ export interface IdentityPolicyExpression {
   children?: IdentityPolicyExpression[]
 }
 
-export interface IdentityDataScopePolicy {
-  resource: string
-  scope: string
-  audit_denial?: boolean
-  predicate?: IdentityPolicyExpression
-}
+export type IdentityDataScope = 'all' | 'owner' | 'org' | 'org_child' | 'target_org'
 
 export interface IdentityFieldPermission {
   resource: string
@@ -323,13 +315,14 @@ export interface IdentityPermissionPoint {
 export interface IdentityRolePermissionAssignment {
   role_id: string
   permission_key: string
+  data_scope: IdentityDataScope
+  audit_denial?: boolean
 }
 
-export interface IdentityRoleDataPermission {
-  object_key: string
-  scope: string
+export interface IdentityRolePermissionGrant {
+  permission_key: string
+  data_scope: IdentityDataScope
   audit_denial?: boolean
-  predicate?: unknown
 }
 
 export interface IdentityRoleFieldPermission {
@@ -346,9 +339,7 @@ export interface IdentityRoleDefinition {
   key: string
   name: string
   description?: string
-  permissions: string[]
-  record_scope: string
-  data_permissions?: IdentityRoleDataPermission[]
+  permissions: IdentityRolePermissionGrant[]
   field_permissions?: IdentityRoleFieldPermission[]
   reference_permissions?: unknown[]
   export_rules?: Array<{ object_key: string; mode: string; fields: string[] }>
@@ -397,11 +388,9 @@ export interface IdentityEffectiveAccessSnapshot {
     sources: IdentityGrantSource[]
   }>
   data_access: Array<{
-    object_key: string
+	resource: string
     allowed: boolean
-    scope: string
-    scopes: string[]
-    predicate?: IdentityPolicyExpression
+	scopes: IdentityDataScope[]
     audit_denial?: boolean
     sources: IdentityGrantSource[]
   }>
@@ -432,7 +421,6 @@ export interface IdentityAccessExplainResult {
   object_key?: string
   action?: string
   field_key?: string
-  record_id?: string
   allowed: boolean
   authorization_revision?: string
   reason: IdentityAccessReason
@@ -467,7 +455,6 @@ export interface IdentityRoleGovernanceDetail {
     denied_permission_keys?: string[]
   }>
   permissions: IdentityRolePermissionAssignment[]
-  data_scopes: IdentityDataScopePolicy[]
   field_permissions: IdentityFieldPermission[]
   export_rules: Array<{ object_key: string; mode: string; fields: string[] }>
   menus: Array<{ id: string; key: string; label: string; route?: string; status: string }>

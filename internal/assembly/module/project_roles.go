@@ -80,15 +80,24 @@ func projectRoleDefinition(input identitysdk.ProjectRoleDefinition) (identitymod
 		return identitymodel.RoleSchema{}, &identitysdk.Error{Code: "identity.project_role_invalid"}
 	}
 	definition := identitymodel.RoleSchema{
-		Key: key, Name: name, Permissions: append([]string(nil), input.Permissions...), RecordScope: strings.TrimSpace(input.RecordScope),
+		Key: key, Name: name,
 		Audience: identitymodel.IdentityRoleAudience(strings.TrimSpace(input.Audience)), RequiredBindingKey: strings.TrimSpace(input.RequiredBindingKey),
 		AssignmentMode: identitymodel.IdentityRoleAssignmentMode(strings.TrimSpace(input.AssignmentMode)), RiskLevel: identitymodel.IdentityRoleRiskLevel(strings.TrimSpace(input.RiskLevel)),
 		ConflictRoleKeys: append([]string(nil), input.ConflictRoleKeys...), GrantableRoleKeys: append([]string(nil), input.GrantableRoleKeys...),
 		PermissionSetKeys: append([]string(nil), input.PermissionSetKeys...), PermissionSetGroups: append([]string(nil), input.PermissionSetGroups...), GuardrailKeys: append([]string(nil), input.GuardrailKeys...),
 		ProvisionToWorkspaces: input.ProvisionToWorkspaces,
 	}
-	if err := decodeProjectRolePolicy(input.DataPermissions, &definition.DataPermissions); err != nil {
-		return identitymodel.RoleSchema{}, err
+	for _, permission := range input.Permissions {
+		key := strings.TrimSpace(permission.PermissionKey)
+		if key == "" || !permission.DataScope.Valid() {
+			return identitymodel.RoleSchema{}, &identitysdk.Error{Code: "identity.project_role_permission_invalid"}
+		}
+		definition.Permissions = append(definition.Permissions, identitymodel.RolePermission{PermissionKey: key, DataScope: permission.DataScope, AuditDenial: permission.AuditDenial})
+	}
+	if normalized, valid := identitymodel.NormalizeRolePermissions(definition.Permissions); valid {
+		definition.Permissions = normalized
+	} else {
+		return identitymodel.RoleSchema{}, &identitysdk.Error{Code: "identity.project_role_permission_invalid"}
 	}
 	if err := decodeProjectRolePolicy(input.FieldPermissions, &definition.FieldPermissions); err != nil {
 		return identitymodel.RoleSchema{}, err

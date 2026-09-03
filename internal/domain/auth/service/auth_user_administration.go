@@ -67,6 +67,29 @@ func (s *AuthDomainService) UserSecurityProfile(ctx context.Context, workspaceID
 	} else if !ok {
 		return UserSecurityProfile{}, badRequest("backend.identity.user_not_found", "user", userID)
 	}
+	return s.userSecurityProfile(ctx, workspaceID, userID)
+}
+
+func (s *AuthDomainService) UserSecurityProfileWithinDataScope(ctx context.Context, workspaceID, userID string, scope identitymodel.IdentityDataScopeFilter) (UserSecurityProfile, error) {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return UserSecurityProfile{}, badRequest("auth.user_required")
+	}
+	repository, ok := s.identityStore.(authrepository.AuthUserDataScopeRepository)
+	if !ok {
+		return UserSecurityProfile{}, internalError("scoped user security repository unavailable", nil)
+	}
+	visible, err := repository.IdentityUserExistsWithinDataScope(ctx, workspaceID, userID, scope)
+	if err != nil {
+		return UserSecurityProfile{}, err
+	}
+	if !visible {
+		return UserSecurityProfile{}, badRequest("backend.identity.user_not_found", "user", userID)
+	}
+	return s.userSecurityProfile(ctx, workspaceID, userID)
+}
+
+func (s *AuthDomainService) userSecurityProfile(ctx context.Context, workspaceID, userID string) (UserSecurityProfile, error) {
 	profile := UserSecurityProfile{
 		Sessions:         []UserSessionSecuritySummary{},
 		ExternalAccounts: []ExternalAccountSecuritySummary{},
@@ -184,6 +207,31 @@ func (s *AuthDomainService) RevokeMFAFactor(ctx context.Context, workspaceID, us
 	return repository.RevokeIdentityMFAFactor(ctx, workspaceID, userID, factorID)
 }
 
+func (s *AuthDomainService) RevokeMFAFactorWithinDataScope(ctx context.Context, workspaceID, userID, factorID string, scope identitymodel.IdentityDataScopeFilter) error {
+	userID, factorID = strings.TrimSpace(userID), strings.TrimSpace(factorID)
+	if userID == "" {
+		return badRequest("auth.user_required")
+	}
+	if factorID == "" {
+		return badRequest("auth.mfa_factor_id_required")
+	}
+	repository, ok := s.identityStore.(authrepository.AuthMFADataScopeRepository)
+	if !ok {
+		return internalError("scoped user security repository unavailable", nil)
+	}
+	visible, found, err := repository.RevokeIdentityMFAFactorWithinDataScope(ctx, workspaceID, userID, factorID, scope)
+	if err != nil {
+		return err
+	}
+	if !visible {
+		return badRequest("backend.identity.user_not_found", "user", userID)
+	}
+	if !found {
+		return badRequest("auth.mfa_factor_not_found")
+	}
+	return nil
+}
+
 func (s *AuthDomainService) UnlockUser(ctx context.Context, workspaceID, userID string) error {
 	userID = strings.TrimSpace(userID)
 	if userID == "" {
@@ -201,6 +249,28 @@ func (s *AuthDomainService) UnlockUser(ctx context.Context, workspaceID, userID 
 	return s.identityStore.UpsertIdentityCredential(ctx, workspaceID, credential)
 }
 
+func (s *AuthDomainService) UnlockUserWithinDataScope(ctx context.Context, workspaceID, userID string, scope identitymodel.IdentityDataScopeFilter) error {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return badRequest("auth.user_required")
+	}
+	repository, ok := s.identityStore.(authrepository.AuthCredentialDataScopeRepository)
+	if !ok {
+		return internalError("scoped user security repository unavailable", nil)
+	}
+	visible, credentialFound, err := repository.UnlockIdentityCredentialWithinDataScope(ctx, workspaceID, userID, scope)
+	if err != nil {
+		return err
+	}
+	if !visible {
+		return badRequest("backend.identity.user_not_found", "user", userID)
+	}
+	if !credentialFound {
+		return badRequest("auth.credential_missing")
+	}
+	return nil
+}
+
 func (s *AuthDomainService) ForceLogoutUser(ctx context.Context, workspaceID, userID string) (int, error) {
 	userID = strings.TrimSpace(userID)
 	if userID == "" {
@@ -212,6 +282,25 @@ func (s *AuthDomainService) ForceLogoutUser(ctx context.Context, workspaceID, us
 		return 0, badRequest("backend.identity.user_not_found", "user", userID)
 	}
 	return s.identityStore.RevokeAuthRefreshTokensForUser(ctx, workspaceID, userID, time.Now().UTC().Format(time.RFC3339))
+}
+
+func (s *AuthDomainService) ForceLogoutUserWithinDataScope(ctx context.Context, workspaceID, userID string, scope identitymodel.IdentityDataScopeFilter) (int, error) {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return 0, badRequest("auth.user_required")
+	}
+	repository, ok := s.identityStore.(authrepository.AuthRefreshTokenDataScopeRepository)
+	if !ok {
+		return 0, internalError("scoped user security repository unavailable", nil)
+	}
+	count, visible, err := repository.RevokeAuthRefreshTokensForUserWithinDataScope(ctx, workspaceID, userID, time.Now().UTC().Format(time.RFC3339), scope)
+	if err != nil {
+		return 0, err
+	}
+	if !visible {
+		return 0, badRequest("backend.identity.user_not_found", "user", userID)
+	}
+	return count, nil
 }
 
 type RevokeOtherSessionsResult struct {

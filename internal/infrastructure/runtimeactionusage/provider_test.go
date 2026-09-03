@@ -160,7 +160,7 @@ func testPermissionAction(key, owner, route string) actioncontract.ActionDefinit
 	return actioncontract.ActionDefinition{
 		Key: key, Owner: owner, SourceKind: "module_surface", CapabilityKey: resource, CapabilityLabel: resource,
 		OperationKey: operation, OperationLabel: key, Label: key, Exposures: []actioncontract.Exposure{actioncontract.ExposureTenantAdmin},
-		Authorization: actioncontract.Authorization{Strategy: actioncontract.AuthorizationExactRolePermission},
+		Authorization: actioncontract.Authorization{Strategy: actioncontract.AuthorizationAuthenticated},
 		HTTP:          &actioncontract.HTTPBinding{Method: http.MethodGet, RouteTemplate: route},
 		Permission: &actioncontract.PermissionDefinition{
 			Key: key, Owner: owner, ResourceKey: resource, OperationKey: operation, Label: key, Category: resource, LifecycleStatus: actioncontract.LifecycleActive,

@@ -81,9 +81,17 @@ func (factory *Factory) OpenBootstrapWithDatabase(ctx context.Context, applicati
 		_ = store.CloseContext(context.Background())
 		return nil, err
 	}
+	if handle.ModuleMigrations != nil {
+		if err := store.UseHostModuleMigrationRegistrar(handle.ModuleMigrations); err != nil {
+			return fail(err)
+		}
+	}
 	err = handle.Migrations.ApplyOwnedMigration(ctx, "identity", database.EmbeddedIdentitySchemaMigrationVersion, database.EmbeddedIdentitySchemaMigrationName, database.EmbeddedSchemaChecksum(), store.EnsureEmbeddedSchema)
 	if err != nil {
 		return fail(fmt.Errorf("prepare Identity bootstrap schema: %w", err))
+	}
+	if err := store.EnsureEmbeddedModuleBindings(ctx); err != nil {
+		return fail(fmt.Errorf("open Identity bootstrap module bindings: %w", err))
 	}
 	manifest, err := loadModuleManifest()
 	if err != nil {
@@ -148,6 +156,12 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 		return nil, fmt.Errorf("open Identity module database: %w", err)
 	}
 	if handle != nil {
+		if handle.ModuleMigrations != nil {
+			if err := store.UseHostModuleMigrationRegistrar(handle.ModuleMigrations); err != nil {
+				_ = store.CloseContext(context.Background())
+				return nil, err
+			}
+		}
 		err = handle.Migrations.ApplyOwnedMigration(ctx, "identity", database.EmbeddedIdentitySchemaMigrationVersion, database.EmbeddedIdentitySchemaMigrationName, database.EmbeddedSchemaChecksum(), store.EnsureEmbeddedSchema)
 	} else {
 		err = store.EnsureSchema(ctx)
@@ -155,6 +169,12 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 	if err != nil {
 		_ = store.CloseContext(context.Background())
 		return nil, fmt.Errorf("prepare Identity module schema: %w", err)
+	}
+	if handle != nil {
+		if err := store.EnsureEmbeddedModuleBindings(ctx); err != nil {
+			_ = store.CloseContext(context.Background())
+			return nil, fmt.Errorf("open Identity embedded module bindings: %w", err)
+		}
 	}
 	manifest, err := loadModuleManifest()
 	if err != nil {

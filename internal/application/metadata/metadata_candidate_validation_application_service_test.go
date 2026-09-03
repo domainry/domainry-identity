@@ -65,12 +65,12 @@ func loadMetadataCandidateFixture(t *testing.T) manifestmodel.ManifestSchema {
 	t.Helper()
 	return manifestmodel.ManifestSchema{
 		Objects: []definitionmodel.ObjectSchema{{Key: "customer", Name: "Customer", Description: "Customer", Fields: []definitionmodel.FieldSchema{{Key: "name", Name: "Name", Type: "text"}}}},
-		Roles:   []identitymodel.RoleSchema{{Key: "admin", Name: "Admin", Permissions: []string{"identity.roles.list"}, RecordScope: "all_records", DataPermissions: []identitymodel.DataPermission{{ObjectKey: "customer", Scope: "all_records"}}}},
+		Roles:   []identitymodel.RoleSchema{{Key: "admin", Name: "Admin", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "identity.roles.list")}},
 	}
 }
 
 func TestMetadataCandidateValidatesResourcesCreatedTogetherAsOneGraph(t *testing.T) {
-	service := NewMetadataApplicationService(MetadataApplicationDependencies{Repository: metadataCandidateRepository{manifest: loadMetadataCandidateFixture(t)}, Permissions: allowMetadataCandidatePermissions("identity.roles.list")})
+	service := NewMetadataApplicationService(MetadataApplicationDependencies{Repository: metadataCandidateRepository{manifest: loadMetadataCandidateFixture(t)}, Permissions: allowMetadataCandidatePermissions("identity.roles.list", "booking.read")})
 	mutations := []metadatamodel.MetadataDefinitionMutation{
 		{Operation: "create", ResourceType: "object", ResourceKey: "project", Request: metadatamodel.MetadataDefinitionUpsertRequest{Payload: json.RawMessage(`{"key":"project","name":"Project","description":"Project"}`)}},
 		{Operation: "create", ResourceType: "field", ResourceKey: "project.name", Request: metadatamodel.MetadataDefinitionUpsertRequest{ObjectKey: "project", Payload: json.RawMessage(`{"key":"name","name":"Name","type":"text","required":true}`)}},
@@ -119,8 +119,8 @@ func TestIdentityProfileBindingValidationDefaultsBackendProtocolFields(t *testin
 }
 
 func TestMetadataCandidateKeepsApplicationObjectReferencesOpaqueForRuntimeFinalValidation(t *testing.T) {
-	service := NewMetadataApplicationService(MetadataApplicationDependencies{Repository: metadataCandidateRepository{manifest: loadMetadataCandidateFixture(t)}, Permissions: allowMetadataCandidatePermissions("identity.roles.list")})
-	role := json.RawMessage(`{"key":"coach","name":"Coach","record_scope":"all_records","data_permissions":[{"object_key":"booking","scope":"all_records"}],"field_permissions":[{"object_key":"booking","field_key":"member_id","readable":true}]}`)
+	service := NewMetadataApplicationService(MetadataApplicationDependencies{Repository: metadataCandidateRepository{manifest: loadMetadataCandidateFixture(t)}, Permissions: allowMetadataCandidatePermissions("identity.roles.list", "booking.read")})
+	role := json.RawMessage(`{"key":"coach","name":"Coach","permissions":[{"permission_key":"booking.read","data_scope":"all"}],"field_permissions":[{"object_key":"booking","field_key":"member_id","read":true}]}`)
 	mutation := metadatamodel.MetadataDefinitionMutation{Operation: "create", ResourceType: "role", ResourceKey: "coach", Request: metadatamodel.MetadataDefinitionUpsertRequest{Payload: role}}
 	if err := service.ValidateMetadataCandidate(t.Context(), []metadatamodel.MetadataDefinitionMutation{mutation}); err != nil {
 		t.Fatalf("role referencing published application schema rejected: %#v", err)
@@ -132,13 +132,13 @@ func TestMetadataCandidateRequiresRoleCleanupWhenLastDedicatedActionPermissionIs
 	manifest := loadMetadataCandidateFixture(t)
 	action := definitionmodel.ActionSchema{Key: "customer.approve", ObjectKey: "customer", Label: "Approve", Kind: "record_operation", AuditEvent: "customer.approved"}
 	manifest.Actions = []definitionmodel.ActionSchema{action}
-	manifest.Roles = append(manifest.Roles, identitymodel.RoleSchema{Key: "reviewer", Name: "Reviewer", Permissions: []string{"customer.approve"}, RecordScope: "all_records", DataPermissions: []identitymodel.DataPermission{{ObjectKey: "customer", Scope: "all_records"}}})
+	manifest.Roles = append(manifest.Roles, identitymodel.RoleSchema{Key: "reviewer", Name: "Reviewer", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "customer.approve")})
 	service := NewMetadataApplicationService(MetadataApplicationDependencies{Repository: metadataCandidateRepository{manifest: manifest}, Permissions: allowMetadataCandidatePermissions("identity.roles.list", "customer.read")})
 	retire := metadatamodel.MetadataDefinitionMutation{Operation: "archive", ResourceType: "action", ResourceKey: action.Key}
 	if err := service.ValidateMetadataCandidate(t.Context(), []metadatamodel.MetadataDefinitionMutation{retire}); apperror.CodeOf(err) != "backend.metadata.candidate_invalid" || !strings.Contains(apperror.ParamsOf(err)["diagnostic"], "reviewer retains retired action permission customer.approve") {
 		t.Fatalf("dangling role permission error=%#v", err)
 	}
-	rolePayload := json.RawMessage(`{"key":"reviewer","name":"Reviewer","permissions":["customer.read"],"record_scope":"all_records","data_permissions":[{"object_key":"customer","scope":"all_records"}]}`)
+	rolePayload := json.RawMessage(`{"key":"reviewer","name":"Reviewer","permissions":[{"permission_key":"customer.read","data_scope":"all"}]}`)
 	cleanup := metadatamodel.MetadataDefinitionMutation{Operation: "update", ResourceType: "role", ResourceKey: "reviewer", Request: metadatamodel.MetadataDefinitionUpsertRequest{Payload: rolePayload}}
 	if err := service.ValidateMetadataCandidate(t.Context(), []metadatamodel.MetadataDefinitionMutation{retire, cleanup}); err != nil {
 		t.Fatalf("same-draft action retirement and role cleanup rejected: %#v", err)
@@ -148,7 +148,7 @@ func TestMetadataCandidateRequiresRoleCleanupWhenLastDedicatedActionPermissionIs
 func TestMetadataCandidateValidatesExternalPermissionKeysAsOneCurrentStateBatch(t *testing.T) {
 	manifest := loadMetadataCandidateFixture(t)
 	manifest.Actions = []definitionmodel.ActionSchema{{Key: "customer.approve", ObjectKey: "customer", Label: "Approve", Kind: "record_operation", AuditEvent: "customer.approved"}}
-	manifest.Roles[0].Permissions = []string{"identity.roles.list", "customer.read", "customer.approve", "customer.read"}
+	manifest.Roles[0].Permissions = []identitymodel.RolePermission{{PermissionKey: "identity.roles.list", DataScope: identitymodel.IdentityDataScopeAll}, {PermissionKey: "customer.read", DataScope: identitymodel.IdentityDataScopeAll}, {PermissionKey: "customer.approve", DataScope: identitymodel.IdentityDataScopeAll}, {PermissionKey: "customer.read", DataScope: identitymodel.IdentityDataScopeAll}}
 	permissions := allowMetadataCandidatePermissions("identity.roles.list", "customer.read")
 	service := NewMetadataApplicationService(MetadataApplicationDependencies{Repository: metadataCandidateRepository{manifest: manifest}, Permissions: permissions})
 
@@ -170,7 +170,7 @@ func TestMetadataCandidateFailsClosedWhenCurrentPermissionValidatorIsUnavailable
 
 func TestMetadataCandidateRejectsUnknownCurrentPermissionKey(t *testing.T) {
 	manifest := loadMetadataCandidateFixture(t)
-	manifest.Roles[0].Permissions = []string{"missing.action"}
+	manifest.Roles[0].Permissions = identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "missing.action")
 	service := NewMetadataApplicationService(MetadataApplicationDependencies{Repository: metadataCandidateRepository{manifest: manifest}, Permissions: allowMetadataCandidatePermissions()})
 	err := service.ValidateMetadataCandidate(t.Context(), nil)
 	if apperror.CodeOf(err) != "backend.metadata.candidate_invalid" || !strings.Contains(apperror.ParamsOf(err)["diagnostic"], "backend.identity.permission_not_found") {

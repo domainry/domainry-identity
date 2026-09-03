@@ -19,6 +19,10 @@ func (r *entitlementBatchFaultRepository) GetIdentityEntitlementBatchReceipt(con
 	return identitymodel.IdentityEntitlementBatchReceipt{}, false, r.receiptErr
 }
 
+func (r *entitlementBatchFaultRepository) GetIdentityEntitlementBatchReceiptWithinDataScope(context.Context, string, string, identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityEntitlementBatchReceipt, bool, error) {
+	return identitymodel.IdentityEntitlementBatchReceipt{}, false, r.receiptErr
+}
+
 func TestApplyEntitlementBatchValidatesThenPersistsAndReplaysReceipt(t *testing.T) {
 	repository := &identityScopedRepository{
 		users: []identitymodel.IdentityUser{{ID: "target", Status: identitymodel.IdentityStatusActive}},
@@ -33,7 +37,7 @@ func TestApplyEntitlementBatchValidatesThenPersistsAndReplaysReceipt(t *testing.
 		{Key: "writer", AssignmentMode: identitymodel.IdentityRoleAssignmentManual},
 	})
 	ctx := requestcontext.WithWorkspaceID(t.Context(), "workspace")
-	actor := identitymodel.Principal{Known: true, UserID: "grant-admin", WorkspaceID: "workspace"}
+	actor := identityAllowAllRoleAssignments(identitymodel.Principal{Known: true, UserID: "grant-admin", WorkspaceID: "workspace"})
 	request := IdentityEntitlementBatchRequest{
 		IdempotencyKey: "batch-1",
 		Items: []identitymodel.IdentityEntitlementBatchItem{
@@ -66,7 +70,7 @@ func TestApplyEntitlementBatchRejectsInvalidBoundariesAndPropagatesFailures(t *t
 	service := NewIdentityApplicationService(base, nil)
 	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{Key: "reader", AssignmentMode: identitymodel.IdentityRoleAssignmentManual}})
 	ctx := requestcontext.WithWorkspaceID(t.Context(), "workspace")
-	actor := identitymodel.Principal{Known: true, UserID: "actor", WorkspaceID: "workspace"}
+	actor := identityAllowAllRoleAssignments(identitymodel.Principal{Known: true, UserID: "actor", WorkspaceID: "workspace"})
 	valid := IdentityEntitlementBatchRequest{
 		IdempotencyKey: "key",
 		Items:          []identitymodel.IdentityEntitlementBatchItem{{Operation: "grant", UserID: "target", RoleID: "role", Reason: "needed"}},

@@ -27,7 +27,7 @@ func (ApplicationHost) ResolveAuditSurfacePrincipal(_ context.Context, request a
 }
 
 func (ApplicationHost) AuthorizeAuditRecord(context.Context, auditmodulehost.AuditSurfacePrincipal, string, string) error {
-	return apperror.New(apperror.KindForbidden, "backend.audit.record_scope_unavailable", nil, nil)
+	return apperror.New(apperror.KindForbidden, "backend.audit.data_scope_unavailable", nil, nil)
 }
 
 func (ApplicationHost) ProjectAuditEvents(_ context.Context, _ auditmodulehost.AuditSurfacePrincipal, events []contract.Event) ([]contract.Event, error) {

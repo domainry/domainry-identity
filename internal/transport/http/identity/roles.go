@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/domainry/domainry-foundation/apperror"
 	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
+	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 
 	"net/http"
 	"strings"
@@ -114,7 +115,7 @@ func (h *IdentityHandler) getIdentityRoleGovernanceDetail(w http.ResponseWriter,
 
 func (h *IdentityHandler) listIdentityUserRoleAssignments(w http.ResponseWriter, r *http.Request) {
 	userID := strings.TrimSpace(r.PathValue("userID"))
-	assignments, err := h.roles.ListUserRoleAssignments(r.Context(), userID)
+	assignments, err := h.roles.ListUserRoleAssignmentsWithinDataScope(r.Context(), userID, h.principal(r), identitycontract.IdentityUserRoleAssignmentsListPermission)
 	if err != nil {
 		h.writeServiceError(w, r, err)
 		return
@@ -127,7 +128,7 @@ func (h *IdentityHandler) listIdentityUserRoleAssignments(w http.ResponseWriter,
 }
 
 func (h *IdentityHandler) searchIdentityUserRoleAssignments(w http.ResponseWriter, r *http.Request) {
-	page, err := h.roles.SearchUserRoleAssignments(r.Context(), strings.TrimSpace(r.PathValue("userID")), identityListQuery(r))
+	page, err := h.roles.SearchUserRoleAssignmentsWithinDataScope(r.Context(), strings.TrimSpace(r.PathValue("userID")), identityListQuery(r), h.principal(r), identitycontract.IdentityUserRoleAssignmentsSearchPermission)
 	if err != nil {
 		h.writeServiceError(w, r, err)
 		return
@@ -191,7 +192,7 @@ func (h *IdentityHandler) assignIdentityUserRole(w http.ResponseWriter, r *http.
 	principal := h.principal(r)
 	result, err := h.executeIdentityAuthoringUpsert(r.Context(), "identity.user_role_assignment", assignment.UserID, r.Header.Get("Builder-Task-ID"), r.Header.Get("Idempotency-Key"), r.Header.Get("Expected-Schema-Hash"), assignment, principal,
 		func(ctx context.Context) (any, bool, error) {
-			items, loadErr := h.roles.ListUserRoleAssignments(ctx, assignment.UserID)
+			items, loadErr := h.roles.ListUserRoleAssignmentsWithinDataScope(ctx, assignment.UserID, principal, identitycontract.IdentityUserRoleAssignmentsAssignPermission)
 			return items, len(items) > 0, loadErr
 		},
 		func(ctx context.Context) (any, error) {
@@ -246,7 +247,7 @@ func (h *IdentityHandler) applyIdentityEntitlementBatch(w http.ResponseWriter, r
 }
 
 func (h *IdentityHandler) listIdentityRoleRequests(w http.ResponseWriter, r *http.Request) {
-	requests, err := h.roles.ListRoleRequests(r.Context(), strings.TrimSpace(r.URL.Query().Get("status")), strings.TrimSpace(r.URL.Query().Get("user_id")))
+	requests, err := h.roles.ListRoleRequestsWithinDataScope(r.Context(), strings.TrimSpace(r.URL.Query().Get("status")), strings.TrimSpace(r.URL.Query().Get("user_id")), h.principal(r), identitycontract.IdentityRoleRequestsListPermission)
 	if err != nil {
 		h.writeServiceError(w, r, err)
 		return
@@ -282,7 +283,7 @@ func (h *IdentityHandler) rejectIdentityRoleRequest(w http.ResponseWriter, r *ht
 	if r.ContentLength > 0 && !h.decodeJSON(w, r, &req) {
 		return
 	}
-	request, err := h.roles.RejectRoleRequest(r.Context(), strings.TrimSpace(r.PathValue("requestID")), principal.UserID, req.Note)
+	request, err := h.roles.RejectRoleRequestGoverned(r.Context(), strings.TrimSpace(r.PathValue("requestID")), principal.UserID, req.Note, principal)
 	if err != nil {
 		h.writeServiceError(w, r, err)
 		return

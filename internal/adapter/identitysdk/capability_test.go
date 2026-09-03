@@ -58,8 +58,8 @@ func TestIdentityCapabilityModuleAndHTTPParity(t *testing.T) {
 		t.Fatal(err)
 	}
 	contracttest.VerifyModuleRemoteParity(t, binding,
-		contracttest.ValidationCase{Name: "valid role", Request: identityValidationRequest(summary, `{"key":"sales","name":"Sales","permissions":[],"record_scope":"all_records"}`)},
-		contracttest.ValidationCase{Name: "invalid role", Request: identityValidationRequest(summary, `{"key":"other","name":"Sales","permissions":[],"record_scope":"invalid","unknown":true}`)},
+		contracttest.ValidationCase{Name: "valid role", Request: identityValidationRequest(summary, `{"key":"sales","name":"Sales","permissions":[]}`)},
+		contracttest.ValidationCase{Name: "invalid role", Request: identityValidationRequest(summary, `{"key":"other","name":"Sales","permissions":[],"unknown":true}`)},
 	)
 }
 
@@ -69,7 +69,7 @@ func TestIdentityCapabilityValidatorUsesOwnerSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	summary, _ := binding.CapabilitySummary(t.Context())
-	result, err := binding.ValidateCapabilityCandidate(t.Context(), identityValidationRequest(summary, `{"key":"other","name":"Sales","permissions":[],"record_scope":"all_records","unknown":true}`))
+	result, err := binding.ValidateCapabilityCandidate(t.Context(), identityValidationRequest(summary, `{"key":"other","name":"Sales","permissions":[],"unknown":true}`))
 	if err != nil {
 		t.Fatal(err)
 	}

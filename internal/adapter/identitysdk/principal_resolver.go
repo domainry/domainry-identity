@@ -44,8 +44,10 @@ func (adapter sdkPrincipalResolver) Resolve(ctx context.Context, request identit
 		ContractVersion: identitysdk.PrincipalContextContractVersion, Known: principal.Known,
 		WorkspaceID: principal.WorkspaceID, UserID: principal.UserID, RoleKey: principal.Role.Key,
 		AuthorizationRevision: principal.AuthorizationRevision,
-		OrgID:                 principal.OrgID, OrgScopeIDs: append([]string(nil), principal.OrgScopeIDs...), ReportingScopeUserIDs: append([]string(nil), principal.ReportingScopeUserIDs...),
-		User: sdkDirectoryUser(user), Permissions: append([]string(nil), principal.Role.Permissions...), AccessBundle: &bundle,
+		OrgID:                 principal.OrgID, OrgScopeIDs: append([]string(nil), principal.OrgScopeIDs...),
+		SupportOrgID: principal.SupportOrgID, SupportOrgScopeIDs: append([]string(nil), principal.SupportOrgScopeIDs...),
+		ReportingScopeUserIDs: append([]string(nil), principal.ReportingScopeUserIDs...),
+		User:                  sdkDirectoryUser(user), Permissions: identitymodel.RolePermissionKeys(principal.Role.Permissions), AccessBundle: &bundle,
 	}
 	for _, role := range roles {
 		result.Roles = append(result.Roles, sdkDirectoryRole(role))

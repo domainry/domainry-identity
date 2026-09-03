@@ -23,7 +23,6 @@ type Principal struct {
 	SupportOrgScopeIDs    []string
 	ReportingScopeUserIDs []string
 	OrganizationPath      string
-	EffectiveRecordScopes []string
 	RequestID             string
 	CorrelationID         string
 	CausationID           string
