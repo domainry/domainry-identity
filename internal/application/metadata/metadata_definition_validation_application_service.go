@@ -158,6 +158,16 @@ func (s *MetadataApplicationService) ValidateMetadataDefinitionPayload(ctx conte
 		if err := json.Unmarshal(req.Payload, &binding); err != nil {
 			return req, badRequest("backend.identity.profile_binding_invalid")
 		}
+		if binding.ContractVersion == "" {
+			binding.ContractVersion = identitymodel.IdentityProfileExtensionContractVersion
+		}
+		if binding.MinReaderVersion == "" {
+			binding.MinReaderVersion = identitymodel.IdentityProfileExtensionMinReaderVersion
+		}
+		if binding.Cardinality == "" {
+			binding.Cardinality = "one_to_one"
+		}
+		req.Payload, _ = json.Marshal(binding)
 		snapshot := s.runtime.Schema()
 		bindings := make([]identitymodel.IdentityProfileExtension, 0, len(snapshot.IdentityProfileExtensions)+1)
 		for _, current := range snapshot.IdentityProfileExtensions {

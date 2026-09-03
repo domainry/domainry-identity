@@ -80,9 +80,8 @@ func metadataObjectPayloadSchema() authoringcontract.CapabilityAuthoringSchema {
 		},
 	}
 	ledgerPolicy := authoringcontract.CapabilityAuthoringSchema{
-		Type: "object", AdditionalProperties: metadataBoolPointer(false), Required: []string{"integrity"},
+		Type: "object", AdditionalProperties: metadataBoolPointer(false),
 		Properties: map[string]authoringcontract.CapabilityAuthoringSchema{
-			"integrity": {Type: "string", Enum: []any{"sha256_chain"}},
 			"signature": {Type: "string", Enum: []any{"none", "hmac_sha256"}, Default: "none"},
 		},
 	}

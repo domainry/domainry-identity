@@ -56,6 +56,9 @@ func MetadataValidateObjectDefinition(resourceKey string, payload json.RawMessag
 	}
 	if object.LedgerPolicy != nil {
 		object.LedgerPolicy.Integrity = strings.TrimSpace(object.LedgerPolicy.Integrity)
+		if object.LedgerPolicy.Integrity == "" {
+			object.LedgerPolicy.Integrity = definitionmodel.ObjectLedgerIntegritySHA256Chain
+		}
 		object.LedgerPolicy.Signature = strings.TrimSpace(object.LedgerPolicy.Signature)
 		if object.LedgerPolicy.Integrity != definitionmodel.ObjectLedgerIntegritySHA256Chain || object.LifecyclePolicy == nil || object.LifecyclePolicy.Mode != definitionmodel.ObjectLifecycleAppendOnly {
 			return nil, badRequest("backend.metadata.object_ledger_policy_invalid", "object", resourceKey)

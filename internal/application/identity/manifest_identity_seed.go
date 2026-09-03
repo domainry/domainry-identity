@@ -57,14 +57,8 @@ func FromManifest(manifest manifestmodel.ManifestSchema) Seed {
 		} else {
 			roleIndexByID[roleID] = len(seed.Roles)
 			seed.Roles = append(seed.Roles, identityRole)
-			seed.Users = append(seed.Users, identitymodel.IdentityUser{
-				ID:     roleID + "_user",
-				Name:   identityValueOrDefault(role.Name, roleID),
-				Email:  roleID + "@example.com",
-				Status: identitymodel.IdentityStatusActive,
-			})
-			seed.UserRoles = append(seed.UserRoles, identitymodel.IdentityUserRoleAssignment{UserID: roleID + "_user", RoleID: roleID})
 		}
+		seed = ensureManifestRoleBootstrapUser(seed, roleID, identityValueOrDefault(role.Name, roleID))
 	}
 	userIndexByID := map[string]int{}
 	for index, user := range seed.Users {
@@ -121,6 +115,23 @@ func FromManifest(manifest manifestmodel.ManifestSchema) Seed {
 		}
 	}
 	seed.Users = manifestIdentityUserReportingPaths(seed.Users)
+	return seed
+}
+
+func ensureManifestRoleBootstrapUser(seed Seed, roleID, roleName string) Seed {
+	for _, assignment := range seed.UserRoles {
+		if strings.TrimSpace(assignment.RoleID) == roleID {
+			return seed
+		}
+	}
+	userID := roleID + "_user"
+	seed.Users = append(seed.Users, identitymodel.IdentityUser{
+		ID:     userID,
+		Name:   roleName,
+		Email:  roleID + "@example.com",
+		Status: identitymodel.IdentityStatusActive,
+	})
+	seed.UserRoles = append(seed.UserRoles, identitymodel.IdentityUserRoleAssignment{UserID: userID, RoleID: roleID})
 	return seed
 }
 

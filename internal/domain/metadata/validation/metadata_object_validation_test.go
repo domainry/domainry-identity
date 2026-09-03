@@ -57,7 +57,7 @@ func TestMetadataValidateObjectDefinitionNormalizesLifecyclePolicy(t *testing.T)
 }
 
 func TestMetadataValidateObjectDefinitionNormalizesLedgerPolicy(t *testing.T) {
-	normalized, err := MetadataValidateObjectDefinition("financial_entry", json.RawMessage(`{"key":"financial_entry","name":"Financial entry","lifecycle_policy":{"mode":"append_only"},"ledger_policy":{"integrity":" sha256_chain ","signature":" hmac_sha256 "}}`))
+	normalized, err := MetadataValidateObjectDefinition("financial_entry", json.RawMessage(`{"key":"financial_entry","name":"Financial entry","lifecycle_policy":{"mode":"append_only"},"ledger_policy":{"signature":" hmac_sha256 "}}`))
 	if err != nil || string(normalized) != `{"key":"financial_entry","name":"Financial entry","description":"","fields":[],"lifecycle_policy":{"mode":"append_only"},"ledger_policy":{"integrity":"sha256_chain","signature":"hmac_sha256"}}` {
 		t.Fatalf("normalized=%s err=%v", normalized, err)
 	}

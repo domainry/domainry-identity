@@ -8,6 +8,8 @@
 
 本 TODO 覆盖 Runtime 当前模块清单中的 Identity、Notification、Integration、Scheduler、Monitoring、Data Exchange、Agent、Lifecycle、Audit、Metadata、Report，并把 Connector Provider 一并纳入扩展入口设计。
 
+Party 模块已从当前产品拓扑和 Runtime 依赖中移除，不再作为 extension owner，也不应出现在 `ProjectExtensionSet`、模块矩阵、启动装配或 capability inventory 中。原先可能归入 Party 的客户资料、组织扩展等需求，应建模为项目/source-owned 业务对象或 Profile，再通过 Metadata、Identity binding 和窄 Fact Resolver 接入；不得为了兼容旧设计重新引入 Party SDK 依赖。
+
 核心结论：客户代码不应修改或 fork 各模块的 `module` 包。Runtime 只提供一个项目级扩展聚合入口，每个 source module 在自己的公开 SDK 中定义强类型 `ExtensionSet`、Descriptor 和 Registry。所有扩展必须在启动阶段完成批量注册、契约校验和冻结，运行期间不得任意替换。
 
 不能把所有扩展统一成一个万能 Hook。当前代码已经证明至少存在三种不同装配时机：
@@ -58,7 +60,7 @@
 
 ### D. Policy / Validator
 
-负责字段校验、匹配合并、发送资格、保留期限、脱敏、审批、风险和 scope 判定。
+负责字段校验、发送资格、保留期限、脱敏、审批、风险和 scope 判定。
 
 - 返回结构化结论和稳定错误码。
 - 安全相关扩展缺失、超时或结果不完整时 fail closed。
@@ -196,7 +198,7 @@ type ProjectExtensionSet struct {
 - [ ] 工具和 workflow 执行继续走现有 ApplicationHost，不重复建立一个绕过授权的 tool registry。
 - [ ] Runner、context、guardrail capability 在 module/SaaS descriptor 中可发现。
 
-### 7.5 Audit
+### 7.4 Audit
 
 - [ ] 把固定 business/governance/operations retention 天数改为版本化 RetentionPolicy。
 - [ ] 增加 append-time EventEnricher 和 RedactionPolicy；禁止扩展移除必需审计字段。
@@ -205,7 +207,7 @@ type ProjectExtensionSet struct {
 - [ ] 增加 ArchiveSink/IntegrityPolicy 时保持 Audit 为 evidence owner。
 - [ ] 策略版本、redaction 结论和导出格式进入审计证据。
 
-### 7.6 Integration 与 Connector
+### 7.5 Integration 与 Connector
 
 - [ ] 以 Connector Registry 作为所有 Provider Registry 的参考实现。
 - [ ] Integration 不再直接依赖 `domainry-connectors/catalog.Definitions()` 的特殊路径；builtin 和 project provider 都产出统一 catalog contribution。
@@ -213,7 +215,7 @@ type ProjectExtensionSet struct {
 - [ ] 保留 Registry 的原子批量注册、duplicate check、optional capability 校验和 freeze。
 - [ ] process transport 继续受 Runtime allowlist policy 限制，扩展声明不得自行放宽。
 
-### 7.7 Notification
+### 7.6 Notification
 
 - [ ] 保留 Catalog、AudienceResolver、RecipientDirectory、DeliveryGateway、DeliveryMetrics 和 ProviderTemplateValidator。
 - [ ] 把 Catalog 拆成带 source owner/revision 的 contribution set，支持确定性合并和重复 key 检查。
@@ -222,7 +224,7 @@ type ProjectExtensionSet struct {
 - [ ] 增加受控 Routing/RetryPolicy；不得允许项目代码直接操纵 worker lease 或持久化状态。
 - [ ] template、event type、rule、channel 和 provider capability 全部进入 inventory。
 
-### 7.8 Lifecycle
+### 7.7 Lifecycle
 
 - [ ] 将 `OwnerExtensions` 的 executors/handlers 转为按 owner 注册的 registry。
 - [ ] 检查重复 owner、声明能力与接口不一致、subject resolver 冲突。
@@ -230,7 +232,7 @@ type ProjectExtensionSet struct {
 - [ ] 每个持久化业务模块明确是否提供 retention、subject preview/export/erase 和 artifact cleanup。
 - [ ] 不允许 Lifecycle 直接查询或删除其他 owner 的表。
 
-### 7.9 Metadata
+### 7.8 Metadata
 
 - [ ] `Projection.Sync` 增加 source descriptor、revision、schema hash 和 reconcile receipt。
 - [ ] 增加 resource-type validator registry；validator 只校验所属资源，不执行业务写入。
@@ -238,7 +240,7 @@ type ProjectExtensionSet struct {
 - [ ] 字段、字典、i18n、UI projection 保持声明式，不把 Go callback 序列化进 Metadata。
 - [ ] Metadata 只保存定义和投影，不拥有 Identity 或业务 Profile 客户字段的业务值。
 
-### 7.10 Data Exchange
+### 7.9 Data Exchange
 
 - [ ] 给现有 Import/Export Provider 增加统一 descriptor、contract version 和 revision。
 - [ ] Provider 注册成批校验并冻结，禁止 job 运行期间替换。
@@ -246,7 +248,7 @@ type ProjectExtensionSet struct {
 - [ ] Planning/Completion/Projector 等 optional capability 必须与 descriptor 一致。
 - [ ] Provider inventory 展示支持的 object、方向、artifact 模式和限制。
 
-### 7.11 Report
+### 7.10 Report
 
 - [ ] 保留当前 DatasetReader、ObjectSQLExecutor、SourceVersionReader、ExportAuthorization、SnapshotTerminalCommitter 和 ExportGateway。
 - [ ] 先通过 Report definition 扩展数据源、维度、指标和分析，不为普通字段需求增加 Go Hook。
@@ -254,7 +256,7 @@ type ProjectExtensionSet struct {
 - [ ] SQL pushdown 必须由 Report 编译并经 host authorize，Provider 不得提交请求方编写的任意 SQL。
 - [ ] CSV/XLSX/PDF 等 artifact 格式优先通过 Data Exchange provider 扩展，Report 不重复管理文件生命周期。
 
-### 7.12 Scheduler
+### 7.11 Scheduler
 
 - [ ] 将 DefinitionSnapshot 纳入统一 source contribution 和 reconcile receipt。
 - [ ] 保留 Dispatcher 作为业务执行边界，Scheduler 不理解下游 owner 业务。

@@ -58,6 +58,34 @@ func TestManifestIdentitySeedDoesNotInferPlatformMenusFromBusinessPermissions(t 
 	}
 }
 
+func TestManifestIdentitySeedMaterializesOneDefaultUserForEveryDeclaredRole(t *testing.T) {
+	manifest := manifestmodel.ManifestSchema{Roles: []identitymodel.RoleSchema{
+		{Key: "admin", Name: "Project administrator"},
+		{Key: "system_administrator", Name: "Project system administrator"},
+		{Key: "reviewer", Name: "Reviewer"},
+	}}
+	seed := FromManifest(manifest)
+	users := map[string]bool{}
+	for _, user := range seed.Users {
+		users[user.ID] = true
+	}
+	roleUsers := map[string]string{}
+	for _, assignment := range seed.UserRoles {
+		if roleUsers[assignment.RoleID] == "" {
+			roleUsers[assignment.RoleID] = assignment.UserID
+		}
+	}
+	for _, roleKey := range []string{"admin", "system_administrator", "reviewer"} {
+		userID := roleUsers[roleKey]
+		if userID == "" || !users[userID] {
+			t.Fatalf("declared role %q has no materialized bootstrap user: users=%#v assignments=%#v", roleKey, seed.Users, seed.UserRoles)
+		}
+	}
+	if roleUsers["admin"] != "admin" || roleUsers["system_administrator"] != "system_administrator_user" || roleUsers["reviewer"] != "reviewer_user" {
+		t.Fatalf("role bootstrap identities are not deterministic: %#v", roleUsers)
+	}
+}
+
 func TestManifestIdentitySeedDoesNotExpandWorkspaceCapabilityIntoPlatformMenus(t *testing.T) {
 	manifest := manifestmodel.ManifestSchema{
 		Roles: []identitymodel.RoleSchema{

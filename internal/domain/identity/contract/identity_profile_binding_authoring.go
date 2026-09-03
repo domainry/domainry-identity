@@ -27,11 +27,10 @@ func IdentityProfileBindingAuthoringCapability() authoringcontract.CapabilityAut
 		"blacklist_field": {Type: "string"}, "claims": {Type: "array", Items: &claim},
 	}}
 	payload := authoringcontract.CapabilityAuthoringSchema{Type: "object", AdditionalProperties: closed,
-		Required: []string{"contract_version", "min_reader_version", "object_key", "identity_relation_field", "cardinality", "business_identity", "default_visibility"},
+		Required: []string{"object_key", "identity_relation_field", "business_identity", "default_visibility"},
 		Properties: map[string]authoringcontract.CapabilityAuthoringSchema{
-			"contract_version": {Type: "string", Const: "identity-profile-extension"}, "min_reader_version": {Type: "string", Const: "identity-profile-extension-reader"},
 			"object_key": {Type: "string", MinLength: identityIntPointer(1)}, "identity_relation_field": {Type: "string", MinLength: identityIntPointer(1)},
-			"cardinality": {Type: "string", Enum: []any{"one_to_one"}}, "business_identity": businessIdentity,
+			"business_identity": businessIdentity,
 			"binding_lifecycle": bindingLifecycle,
 			"directory":         directory,
 			"summary_fields":    strings, "profile_tabs": strings, "profile_tab_labels": {Type: "object", AdditionalProperties: open},
@@ -53,8 +52,8 @@ func IdentityProfileBindingAuthoringCapability() authoringcontract.CapabilityAut
 		Execution:          execution,
 		Errors:             []authoringcontract.CapabilityAuthoringError{{Code: "backend.identity.profile_binding_invalid", FieldPath: "payload", ParameterKeys: []string{"diagnostic"}, MessageKey: "backend.identity.profile_binding_invalid"}},
 		Examples: []authoringcontract.CapabilityAuthoringExample{
-			{Name: "minimal_valid", Value: map[string]any{"expected_schema_hash": "$instance.schema_hash", "payload": map[string]any{"contract_version": "identity-profile-extension", "min_reader_version": "identity-profile-extension-reader", "object_key": "staff_profile", "identity_relation_field": "identity_user", "cardinality": "one_to_one", "business_identity": map[string]any{"key": "staff", "surface_keys": []any{"admin"}}, "default_visibility": "when_readable"}}},
-			{Name: "representative", Value: map[string]any{"expected_schema_hash": "$instance.schema_hash", "payload": map[string]any{"contract_version": "identity-profile-extension", "min_reader_version": "identity-profile-extension-reader", "object_key": "staff_profile", "identity_relation_field": "identity_user", "cardinality": "one_to_one", "business_identity": map[string]any{"key": "staff", "surface_keys": []any{"admin"}, "status_field": "status", "active_status_values": []any{"active"}, "claims": []any{map[string]any{"claim_key": "territory_id", "field_key": "territory_id"}}}, "summary_fields": []any{"display_name"}, "default_visibility": "when_readable"}}},
+			{Name: "minimal_valid", Value: map[string]any{"expected_schema_hash": "$instance.schema_hash", "payload": map[string]any{"object_key": "staff_profile", "identity_relation_field": "identity_user", "business_identity": map[string]any{"key": "staff", "surface_keys": []any{"admin"}}, "default_visibility": "when_readable"}}},
+			{Name: "representative", Value: map[string]any{"expected_schema_hash": "$instance.schema_hash", "payload": map[string]any{"object_key": "staff_profile", "identity_relation_field": "identity_user", "business_identity": map[string]any{"key": "staff", "surface_keys": []any{"admin"}, "status_field": "status", "active_status_values": []any{"active"}, "claims": []any{map[string]any{"claim_key": "territory_id", "field_key": "territory_id"}}}, "summary_fields": []any{"display_name"}, "default_visibility": "when_readable"}}},
 			{Name: "invalid_with_repair", Value: map[string]any{"expected_schema_hash": "$instance.schema_hash", "payload": map[string]any{"object_key": "missing"}}, ExpectedErrorCodes: []string{"backend.identity.profile_binding_invalid"}},
 		},
 		Sources: []authoringcontract.CapabilityAuthoringSource{{Kind: "contract", Path: "internal/domain/identity/contract/identity_profile_binding_authoring.go", Symbol: "IdentityProfileBindingAuthoringCapability"}, {Kind: "model", Path: "internal/domain/identity/model/identity_profile_extension.go", Symbol: "IdentityProfileExtension"}, {Kind: "validation", Path: "internal/domain/manifest/validation/manifest_validator.go", Symbol: "ValidateIdentityProfileBindings"}, {Kind: "service", Path: "internal/application/metadata/metadata_definition_orchestration_application_service.go", Symbol: "MetadataApplicationService.UpsertMetadataDefinition"}},

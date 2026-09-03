@@ -90,6 +90,34 @@ func TestMetadataCandidateRejectsDanglingReferencesBeforePersistence(t *testing.
 	}
 }
 
+func TestIdentityProfileBindingValidationDefaultsBackendProtocolFields(t *testing.T) {
+	runtime := &metadataLifecycleRuntimeStub{
+		snapshot: metadatamodel.MetadataSchemaSnapshot{
+			Objects: []definitionmodel.ObjectSchema{
+				{
+					Key: "staff_profile",
+					Fields: []definitionmodel.FieldSchema{
+						{Key: "identity_user", Type: "relation", Unique: true, Config: map[string]any{"object_key": "identity_user"}},
+					},
+				},
+			},
+		},
+	}
+	service := NewMetadataApplicationService(MetadataApplicationDependencies{Runtime: runtime})
+	payload := json.RawMessage(`{"object_key":"staff_profile","identity_relation_field":"identity_user","business_identity":{"key":"staff","surface_keys":["admin"]},"default_visibility":"when_readable"}`)
+	normalized, err := service.ValidateMetadataDefinitionPayload(t.Context(), "identity_profile_binding", metadatamodel.MetadataDefinitionUpsertRequest{Payload: payload})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var binding identitymodel.IdentityProfileExtension
+	if err := json.Unmarshal(normalized.Payload, &binding); err != nil {
+		t.Fatal(err)
+	}
+	if binding.ContractVersion != identitymodel.IdentityProfileExtensionContractVersion || binding.MinReaderVersion != identitymodel.IdentityProfileExtensionMinReaderVersion || binding.Cardinality != "one_to_one" {
+		t.Fatalf("backend defaults were not materialized: %#v", binding)
+	}
+}
+
 func TestMetadataCandidateKeepsApplicationObjectReferencesOpaqueForRuntimeFinalValidation(t *testing.T) {
 	service := NewMetadataApplicationService(MetadataApplicationDependencies{Repository: metadataCandidateRepository{manifest: loadMetadataCandidateFixture(t)}, Permissions: allowMetadataCandidatePermissions("identity.roles.list")})
 	role := json.RawMessage(`{"key":"coach","name":"Coach","record_scope":"all_records","data_permissions":[{"object_key":"booking","scope":"all_records"}],"field_permissions":[{"object_key":"booking","field_key":"member_id","readable":true}]}`)
