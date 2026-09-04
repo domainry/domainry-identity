@@ -15,7 +15,7 @@ Domainry Identity 是 Domainry 的基础登录与权限模块，负责用户与�
 - 独立服务的治理审计接口由内嵌 Audit Binding 发布的 `modulehttp` Adapter 提供，Identity Server 只负责认证上下文和挂载，不复制 Audit 查询/导出编排。
 - `internal/application/`、`internal/domain/`：应用服务与领域模型。
 - `internal/infrastructure/persistence/`：SQLite、MySQL、PostgreSQL 持久化实现。
-- `frontend/identity-admin/`：Identity 管理前端。
+- Identity 管理界面由 `domainry-plane/frontend/domainry-admin` 统一维护，本仓库只提供后端与 SDK 契约。
 - `domainry.template.json`：Identity 默认元数据和初始化数据清单。
 
 Go module 位于仓库根目录：
@@ -165,6 +165,4 @@ PermissionDefinition，但该 owner 的 `action_usage_status` 明确为 `unavail
 go build ./cmd/identity-server
 go test ./...
 go vet ./...
-npm --prefix frontend run build
-npm --prefix frontend run test:unit --workspace identity-admin
 ```
