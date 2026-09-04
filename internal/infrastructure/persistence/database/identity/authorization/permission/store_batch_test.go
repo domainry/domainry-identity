@@ -113,7 +113,7 @@ func TestPermissionEnablementUsesCurrentStateOnlyAcrossDialects(t *testing.T) {
 func permissionBatchDefinition(key string) identitymodel.IdentityPermissionDefinitionRecord {
 	return identitymodel.IdentityPermissionDefinitionRecord{
 		PermissionKey: key, ResourceKey: "roles", OperationKey: "read", Label: key,
-		Category: "Identity", SourceKind: "builtin_surface", SourceOwner: "identity:builtin",
+		Category: "Identity", SourceKind: "builtin_http", SourceOwner: "identity:builtin",
 		DefinitionHash: "definition-hash", SourceSnapshotHash: "snapshot-hash",
 	}
 }

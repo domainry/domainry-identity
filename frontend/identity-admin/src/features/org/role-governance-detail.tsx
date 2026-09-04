@@ -1,6 +1,7 @@
-import { useMemo } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Badge, Card, CardContent, CardHeader, CardTitle, Skeleton } from '@domainry/ui'
+import { ChevronRight } from 'lucide-react'
+import { Badge, Skeleton } from '@domainry/ui'
 import { identityAccessApi, permissionsApi, type IdentityRoleGovernanceDetail } from '@/data/api'
 import { displayText } from '@/data/text'
 import { useI18n } from '@/lib/i18n'
@@ -12,15 +13,18 @@ interface RoleGovernanceDetailProps {
 
 function ValueList({ values, empty }: { values: string[]; empty: string }) {
   if (!values.length) return <span className='text-sm text-muted-foreground'>{empty}</span>
-  return <div className='flex flex-wrap gap-1.5'>{values.map((value) => <Badge key={value} variant='outline'>{value}</Badge>)}</div>
+  return <div className='flex min-w-0 flex-wrap gap-1.5'>{values.map((value) => <Badge key={value} variant='outline' className='max-w-full whitespace-normal break-all'>{value}</Badge>)}</div>
 }
 
-function GovernanceSection({ title, children, className }: { title: string; children: React.ReactNode; className?: string }) {
+function GovernanceSection({ title, children, className }: { title: string; children: ReactNode; className?: string }) {
   return (
-    <Card className={cn('min-w-0 shadow-none', className)}>
-      <CardHeader className='pb-2'><CardTitle className='text-sm'>{title}</CardTitle></CardHeader>
-      <CardContent className='space-y-2 text-sm'>{children}</CardContent>
-    </Card>
+    <details className={cn('group/section min-w-0 overflow-hidden rounded-md border bg-card', className)}>
+      <summary className='flex min-h-11 cursor-pointer list-none items-center gap-2 px-4 py-2.5 outline-none hover:bg-muted/35 focus-visible:ring-2 focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden'>
+        <ChevronRight className='size-4 shrink-0 text-muted-foreground transition-transform group-open/section:rotate-90' />
+        <span className='min-w-0 truncate text-sm font-semibold'>{title}</span>
+      </summary>
+      <div className='min-w-0 space-y-2 border-t px-4 py-3 text-sm'>{children}</div>
+    </details>
   )
 }
 
@@ -58,7 +62,7 @@ export function RoleGovernanceDetail({ roleID }: RoleGovernanceDetailProps) {
   }, [detailQuery.data, permissionCatalogQuery.data])
 
   if (detailQuery.isPending) {
-    return <div className='grid gap-3 md:grid-cols-2' aria-label={t('roles.detail.loading')}>{[0, 1, 2, 3].map((item) => <Skeleton key={item} className='h-40 w-full' />)}</div>
+    return <div className='grid gap-2' aria-label={t('roles.detail.loading')}>{[0, 1, 2, 3].map((item) => <Skeleton key={item} className='h-11 w-full' />)}</div>
   }
   if (detailQuery.isError) {
     return <p role='alert' className='text-sm text-destructive'>{t('roles.detail.loadFailed')}</p>
@@ -76,7 +80,7 @@ export function RoleGovernanceDetail({ roleID }: RoleGovernanceDetailProps) {
   const versions = versionsQuery.data?.items ?? []
   const impact = impactQuery.data
   return (
-    <div className='grid gap-3 md:grid-cols-2' data-testid='role-governance-detail'>
+    <div className='grid min-w-0 gap-2' data-testid='role-governance-detail'>
       <GovernanceSection title={t('roles.detail.identity')}>
         <dl className='grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1'>
           <dt className='text-muted-foreground'>{t('roles.detail.roleKey')}</dt><dd><code>{detail.role.key}</code></dd>
@@ -104,7 +108,7 @@ export function RoleGovernanceDetail({ roleID }: RoleGovernanceDetailProps) {
       </GovernanceSection>
 
       <GovernanceSection title={t('roles.detail.dataScopes')}>
-        {detail.permissions.length ? detail.permissions.map((permission) => <div key={permission.permission_key} className='flex justify-between gap-3'><code>{permission.permission_key}</code><span>{permission.data_scope}{permission.audit_denial ? ` · ${t('roles.detail.auditDenial')}` : ''}</span></div>) : <span className='text-muted-foreground'>{t('common.none')}</span>}
+        {detail.permissions.length ? detail.permissions.map((permission) => <div key={permission.permission_key} className='grid min-w-0 grid-cols-[minmax(0,1fr)_max-content] gap-3'><code className='min-w-0 break-all'>{permission.permission_key}</code><span className='text-right'>{permission.data_scope}{permission.audit_denial ? ` · ${t('roles.detail.auditDenial')}` : ''}</span></div>) : <span className='text-muted-foreground'>{t('common.none')}</span>}
       </GovernanceSection>
 
       <GovernanceSection title={t('roles.detail.fieldExport')}>
@@ -113,7 +117,7 @@ export function RoleGovernanceDetail({ roleID }: RoleGovernanceDetailProps) {
         {!fieldPermissions.length && !exportRules.length ? <span className='text-muted-foreground'>{t('common.none')}</span> : null}
       </GovernanceSection>
 
-      <GovernanceSection title={t('roles.detail.menuEntrypoints')} className='md:col-span-2'>
+      <GovernanceSection title={t('roles.detail.menuEntrypoints')}>
         {menus.length ? (
           <div className='overflow-hidden rounded-lg border bg-muted/10' data-testid='role-menu-entrypoints'>
             <div className='hidden grid-cols-[minmax(0,1.1fr)_minmax(10rem,.8fr)_minmax(0,1.4fr)] gap-5 border-b bg-muted/40 px-4 py-2 text-xs font-medium text-muted-foreground md:grid'>

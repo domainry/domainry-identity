@@ -8,12 +8,12 @@ Module onboarding reference: `module-authorization-onboarding-sop.md` (deferred 
 
 ## 1. Outcome
 
-Identity keeps authentication, directory, role administration, authorization policy administration, access review, audit integration, portability, and embedded/SaaS deployment. This refactor changes the functional-permission publication and enforcement model without replacing those capabilities.
+Identity keeps authentication, projection, role administration, authorization policy administration, access review, audit integration, portability, and embedded/SaaS deployment. This refactor changes the functional-permission publication and enforcement model without replacing those capabilities.
 
 The target authorization chain is:
 
 ```text
-ObjectSchema / built-in surface / module surface / authored business Action
+ObjectSchema / built-in adapter / module adapter / authored business Action
   -> canonical ActionDefinition
   -> ActionDefinition.AuthorizationStrategy + same-key Permission when role-authorized
   -> current PermissionDefinition rows in _identity_permissions
@@ -34,15 +34,15 @@ The following Identity capabilities remain in scope and retain their current bus
 | OIDC discovery, JWKS and access/refresh token issuance | Identity authentication | Keep |
 | External providers, provider challenges, callbacks, OTP and external-account binding | Identity authentication | Keep |
 | MFA, account lock/unlock, force logout and session revocation | Identity authentication/security | Keep |
-| Users, personnel facts, direct-manager/reporting paths, and organization units | Identity directory | Keep |
-| Business-profile bindings and user-to-business identity projection | Identity directory | Keep |
+| Users, personnel facts, direct-manager/reporting paths, and organization units | Identity projection | Keep |
+| Business-profile bindings and user-to-business identity projection | Identity projection | Keep |
 | Operational roles, role requests and user-role assignments | Identity authorization | Keep |
 | Versioned RoleSchema definitions | Identity authorization metadata | Keep; RoleSchema.Permissions remains the role configuration source |
 | Permission sets and permission-set groups | Identity data/governance policy | Keep only for non-functional policy composition; they do not grant Action Permissions |
 | Data, field, reference and export policies | Identity policy administration; Runtime enforcement for Runtime objects | Keep and separate from functional PermissionDefinition |
 | Menus and role-menu assignments | Identity navigation authorization | Keep |
 | Effective-access explain, reverse index, reports and access reviews | Identity governance | Keep |
-| Audit binding and governance audit surfaces | Audit owner embedded by Identity | Keep |
+| Audit binding and governance audit adapters | Audit owner embedded by Identity | Keep |
 | Embedded module and standalone SaaS deployment | Identity assembly | Keep |
 | Embedded-to-SaaS portability and write fences | Identity portability | Keep and update table ownership |
 | Runtime application catalog publication | Obsolete boundary | Remove directly; the code has not shipped and no compatibility adapter is permitted |
@@ -73,7 +73,7 @@ An ActionDefinition is the executable authorization boundary. It has a stable ke
 - risk, assurance, approval, idempotency and audit metadata;
 - lifecycle status.
 
-ActionDefinition lives with executable code or project metadata. Identity does not persist a second Action catalog. The owning process registers the Action before exposing the surface.
+ActionDefinition lives with executable code or project metadata. Identity does not persist a second Action catalog. The owning process registers the Action before exposing the adapter.
 
 ### 4.2 PermissionDefinition
 
@@ -125,14 +125,14 @@ The complete Action registry is the union of four sources:
 | --- | --- | --- |
 | Object default Actions | customer create/read/update/delete/export | Object owner |
 | Authored business Actions | refund.approve, order.complete | Action owner; the same-key Permission is owned with the Action |
-| Built-in Identity/Runtime surfaces | Identity user, role, menu and security management | Owning module |
-| Module-contributed surfaces | Notification, Audit and future embedded modules | Contributing module |
+| Built-in Identity/Runtime adapters | Identity user, role, menu and security management | Owning module |
+| Module-contributed adapters | Notification, Audit and future embedded modules | Contributing module |
 
-Every surface must register an ActionDefinition, including reviewed public/protocol surfaces. A route without a registered Action and explicit strategy is an assembly/test failure. A role-authorized Action checks only its same-key Permission; an unknown, retired or disabled definition fails closed. Service, self and operations strategies are validated by their declared identity policy and own no role Permission.
+Every adapter must register an ActionDefinition, including reviewed public/protocol adapters. A route without a registered Action and explicit strategy is an assembly/test failure. A role-authorized Action checks only its same-key Permission; an unknown, retired or disabled definition fails closed. Service, self and operations strategies are validated by their declared identity policy and own no role Permission.
 
 ### 5.1 Default Object Actions
 
-Publishing an ObjectSchema invokes one shared `DefaultActionsForObject` policy. Every successfully activated object declares a capability set; an ordinary mutable record surface emits:
+Publishing an ObjectSchema invokes one shared `DefaultActionsForObject` policy. Every successfully activated object declares a capability set; an ordinary mutable record adapter emits:
 
 - `<object>.create`
 - `<object>.read`
@@ -140,7 +140,7 @@ Publishing an ObjectSchema invokes one shared `DefaultActionsForObject` policy. 
 - `<object>.delete`
 - `<object>.export`
 
-The generator is capability-aware. It omits an operation only when the ObjectSchema explicitly declares that capability unsupported. `system_object` is not a reason to skip authorization. Internal persistence tables that are not ObjectSchema surfaces do not receive permissions.
+The generator is capability-aware. It omits an operation only when the ObjectSchema explicitly declares that capability unsupported. `system_object` is not a reason to skip authorization. Internal persistence tables that are not ObjectSchema adapters do not receive permissions.
 
 ### 5.2 Built-in Identity Actions
 
@@ -148,7 +148,7 @@ Identity management routes move from raw `HandleFunc(pattern, permissionWrapper(
 
 ### 5.3 Module Actions
 
-A module surface contribution uses the existing deployment-neutral `modulehttp.Surface`/`modulehttp.Route` contract with a lossless Action adapter (and the minimum contract extension needed for stable Action/Permission ownership). Host assembly merges it before readiness and rejects duplicate Action keys or conflicting Permission owners. The host reconciles contributed PermissionDefinitions through Identity before exposing the module surface. Standalone modules publish the same owner definitions through the service credential contract.
+A module adapter contribution uses the existing deployment-neutral `modulehttp.Adapter`/`modulehttp.Route` contract with a lossless Action adapter (and the minimum contract extension needed for stable Action/Permission ownership). Host assembly merges it before readiness and rejects duplicate Action keys or conflicting Permission owners. The host reconciles contributed PermissionDefinitions through Identity before exposing the module adapter. Standalone modules publish the same owner definitions through the service credential contract.
 
 ## 6. Database model
 
@@ -164,7 +164,7 @@ The table contains current configuration, not publication versions:
 | `resource_key` | display/grouping resource |
 | `operation_key` | display/grouping operation fragment |
 | `label` / `description` / `category` | configuration presentation |
-| `source_kind` | `platform`, `object_default`, `business_action`, `builtin_surface`, `module_surface` |
+| `source_kind` | `platform`, `object_default`, `business_action`, `builtin_adapter`, `module_adapter` |
 | `source_owner` | canonical owner key |
 | `definition_status` | `active` or `retired`, controlled by reconciliation |
 | `enabled` | administrative runtime switch, preserved by reconciliation |
@@ -203,7 +203,7 @@ Do not add:
 ### 7.1 Startup and metadata activation
 
 ```text
-load metadata and built-in/module surfaces
+load metadata and built-in/module adapters
   -> build and validate complete ActionRegistry
   -> derive owned PermissionDefinitions
   -> reconcile _identity_permissions idempotently
@@ -224,7 +224,7 @@ Role and policy authoring is a direct, versioned RoleSchema boundary rather than
 - `POST /identity/roles`, `PATCH /identity/roles/{roleID}` and `DELETE /identity/roles/{roleID}` own the exact `identity.roles.create`, `identity.roles.update` and `identity.roles.delete` Actions;
 - `PUT /identity/roles/{roleID}/permissions`, `/data-scopes` and `/field-permissions` own separate same-key publish Actions and only replace their corresponding RoleSchema field;
 - each command loads the aggregate under its own Action authorization. A publish Action must not acquire the matching list Action as a hidden prerequisite;
-- updates require the original schema hash, an idempotency key and a business reason. The repository performs compare-and-swap publication, idempotent replay, audit, role-directory projection and metadata reload as one existing RoleSchema publication flow;
+- updates require the original schema hash, an idempotency key and a business reason. The repository performs compare-and-swap publication, idempotent replay, audit, role projection and metadata reload as one existing RoleSchema publication flow;
 - role creation accepts exact Permission selections. Every selected Permission carries one canonical `data_scope` (`all | owner | org | org_child | target_org`); field, reference, export, delegation and guardrail policies remain separate dedicated authoring boundaries;
 - general role update changes display metadata only and preserves all authorization-policy fields. Delete is rejected while user-role or role-menu assignments still reference the role.
 
@@ -243,7 +243,7 @@ request/invocation
 
 The hot path does not parse catalog JSON or Permission usage rows and does not require one database query per request. AccessBundle/authorization snapshots are revisioned and cached. Unknown Action, unknown Permission or stale incompatible policy fails closed.
 
-Permission administration is a read-side exception to the request hot path: `/identity/permissions` joins persisted current PermissionDefinition state with a live, batched Action-registry query. Embedded Runtime binds its frozen registry directly. Standalone Identity calls the Runtime owner endpoint with a short-lived service token restricted to the exact `runtime.authorization.action_usages#query` grant. Browser tokens and ops credentials are not forwarded, responses are never persisted, and an unreachable or unloaded owner is returned as `unavailable` rather than an empty authoritative registry.
+Permission administration is a read-side exception to the request hot path: `/identity/permissions` joins persisted current PermissionDefinition state with a live, batched Action-registry query. Embedded Runtime binds its frozen registry directly. Standalone Identity calls the Runtime Action endpoint with a short-lived service token restricted to the exact `runtime.action.permission_usages#query` grant. Browser tokens and ops credentials are not forwarded, responses are never persisted, and an unreachable or unloaded owner is returned as `unavailable` rather than an empty authoritative registry.
 
 ### 7.4 No aggregate administrator permission
 
@@ -259,7 +259,7 @@ Identity does not define a reserved workspace-wide administrator Permission. Adm
 | Know executable URL/Action inventory | Own only Identity Actions | Action contract | Own Runtime/module Actions |
 | Know Runtime objects/fields/references/facts | No mirror | Typed policy contract | Own |
 | Build subject grants/policy bundle | Own | Carry and validate | Consume |
-| Final Action/data/field enforcement | Identity for Identity surfaces | Shared evaluator primitives | Runtime/module owner for owned surfaces |
+| Final Action/data/field enforcement | Identity for Identity adapters | Shared evaluator primitives | Runtime/module owner for owned adapters |
 | Application redirect registration | Own | Registration contract | Publish application config |
 
 `CatalogRevision` is retired. Identity exposes `AuthorizationRevision`; Runtime owns `MetadataRevision`/ActionRegistry revision. A Runtime cache key combines both when necessary.
@@ -326,8 +326,8 @@ S0 is historical evidence only. The accepted implementation now proceeds through
 
 The refactor is complete only when all of the following hold:
 
-1. Every Identity, Runtime and module surface, including public/protocol surfaces, resolves a registered ActionDefinition with an explicit authorization strategy.
-2. Every role-authorized Action's same-key Permission exists as an active PermissionDefinition before the surface is ready; anonymous, authenticated, self, delegated-credential, service and operations Actions use their explicit non-role strategy.
+1. Every Identity, Runtime and module adapter, including public/protocol adapters, resolves a registered ActionDefinition with an explicit authorization strategy.
+2. Every role-authorized Action's same-key Permission exists as an active PermissionDefinition before the adapter is ready; anonymous, authenticated, self, delegated-credential, service and operations Actions use their explicit non-role strategy.
 3. Every exposed ObjectSchema receives exactly the supported default Action permissions.
 4. Built-in Identity role-management Actions and permissions are present in the database and selectable by roles.
 5. Disabling a Permission changes newly resolved access without a code deployment and survives restart/reconciliation.
@@ -343,7 +343,7 @@ The refactor is complete only when all of the following hold:
 
 ## 11. Explicit non-goals
 
-- Replacing authentication, directory, role-request, access-review or audit business flows.
+- Replacing authentication, projection, role-request, access-review or audit business flows.
 - Converting Permission keys into literal URLs.
 - Persisting Runtime ObjectSchema or Action usage lists in Identity.
 - Creating a second role-permission assignment source.

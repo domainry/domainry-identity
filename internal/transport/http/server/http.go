@@ -25,7 +25,8 @@ type httpSupport struct {
 	corsAllowAnyOrigin     bool
 	request                atomic.Uint64
 	writesFrozen           func(context.Context, string) (bool, error)
-	controls               *httpSurfaceControls
+	controls               *httpListenerControls
+	exposures              *routeExposureResolver
 	initializedWorkspaceID string
 	actionAuthorization    *identityapplication.IdentityActionAuthorizationService
 }
@@ -33,7 +34,7 @@ type httpSupport struct {
 func newHTTPSupport(auth *authapplication.AuthApplicationService, allowedOrigins []string, controlConfig ...httpControlConfig) *httpSupport {
 	support := &httpSupport{auth: auth, corsAllowedOrigins: make(map[string]struct{}, len(allowedOrigins))}
 	if len(controlConfig) > 0 {
-		support.controls = newHTTPSurfaceControls(controlConfig[0])
+		support.controls = newHTTPListenerControls(controlConfig[0])
 	}
 	for _, origin := range allowedOrigins {
 		origin = strings.TrimRight(strings.TrimSpace(origin), "/")
@@ -131,7 +132,7 @@ func (h *httpSupport) writeServiceError(w http.ResponseWriter, r *http.Request, 
 func (h *httpSupport) decodeJSON(w http.ResponseWriter, r *http.Request, value any) bool {
 	limit := int64(4 << 20)
 	if h != nil && h.controls != nil {
-		limit = h.controls.bodyLimit(classifyRouteSurface(r.Method, r.URL.Path))
+		limit = h.controls.bodyLimit(h.exposures.controlClass(r))
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit))
 	decoder.DisallowUnknownFields()
@@ -206,9 +207,9 @@ func (h *httpSupport) middleware(next http.Handler) http.Handler {
 		}
 		ctx := requestcontext.WithRequestID(r.Context(), requestID)
 		ctx = requestcontext.WithWorkspaceID(ctx, workspaceID)
-		surface := classifyRouteSurface(r.Method, r.URL.Path)
+		listener := h.exposures.controlClass(r)
 		if h.controls != nil {
-			allowed, remaining, resetAt := h.controls.allow(surface)
+			allowed, remaining, resetAt := h.controls.allow(listener)
 			if !resetAt.IsZero() {
 				w.Header().Set("X-RateLimit-Remaining", strconv.Itoa(remaining))
 				w.Header().Set("X-RateLimit-Reset", strconv.FormatInt(resetAt.Unix(), 10))
@@ -219,10 +220,10 @@ func (h *httpSupport) middleware(next http.Handler) http.Handler {
 					retryAfter = 1
 				}
 				w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
-				h.writeError(w, r, http.StatusTooManyRequests, "identity.http_rate_limited", "surface", string(surface))
+				h.writeError(w, r, http.StatusTooManyRequests, "identity.http_rate_limited", "listener", string(listener))
 				return
 			}
-			if timeout := h.controls.timeout(surface); timeout > 0 {
+			if timeout := h.controls.timeout(listener); timeout > 0 {
 				var cancel context.CancelFunc
 				ctx, cancel = context.WithTimeout(ctx, timeout)
 				defer cancel()
@@ -245,7 +246,7 @@ func (h *httpSupport) mustRejectFrozenWrite(w http.ResponseWriter, request *http
 	case http.MethodGet, http.MethodHead, http.MethodOptions:
 		return false
 	}
-	if strings.HasPrefix(request.URL.Path, "/ops/identity-portability/") {
+	if h.exposures.controlClass(request) == listenerClassOperations {
 		return false
 	}
 	workspaceID := requestcontext.WorkspaceID(request.Context())

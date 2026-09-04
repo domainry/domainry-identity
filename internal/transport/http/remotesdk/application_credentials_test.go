@@ -155,12 +155,12 @@ func TestApplicationCredentialHTTPBoundaryReturnsRateLimitResponse(t *testing.T)
 		_, _ = w.Write([]byte(code))
 	}}
 	scope := identitysdk.ApplicationScope{WorkspaceID: "workspace-primary", ApplicationKey: "orders-runtime"}
-	firstRequest := httptest.NewRequest(http.MethodPost, "/identity/runtime/directory/users", nil)
+	firstRequest := httptest.NewRequest(http.MethodPost, "/identity/users/query", nil)
 	firstRequest.Header.Set("Authorization", "Bearer orders-service-secret")
 	if !authorizeApplicationCredential(httptest.NewRecorder(), firstRequest, support, registry, scope) {
 		t.Fatal("first request was rejected")
 	}
-	secondRequest := httptest.NewRequest(http.MethodPost, "/identity/runtime/directory/users", nil)
+	secondRequest := httptest.NewRequest(http.MethodPost, "/identity/users/query", nil)
 	secondRequest.Header.Set("Authorization", "Bearer orders-service-secret")
 	response := httptest.NewRecorder()
 	if authorizeApplicationCredential(response, secondRequest, support, registry, scope) {

@@ -6,11 +6,10 @@ type BusinessClaimValue struct {
 }
 
 type BusinessProfileReference struct {
-	BindingKey  string                        `json:"binding_key"`
-	ObjectKey   string                        `json:"object_key"`
-	RecordID    string                        `json:"record_id"`
-	SurfaceKeys []string                      `json:"surface_keys"`
-	Claims      map[string]BusinessClaimValue `json:"claims,omitempty"`
+	BindingKey string                        `json:"binding_key"`
+	ObjectKey  string                        `json:"object_key"`
+	RecordID   string                        `json:"record_id"`
+	Claims     map[string]BusinessClaimValue `json:"claims,omitempty"`
 }
 
 type Principal struct {
@@ -31,7 +30,6 @@ type Principal struct {
 	BusinessProfiles      []BusinessProfileReference
 	ActiveBusinessProfile *BusinessProfileReference
 	BusinessClaims        map[string]BusinessClaimValue
-	SurfaceKey            string
 	AuthorizationRevision string
 	AutomationDepth       int
 	VisitedRuleKeys       []string

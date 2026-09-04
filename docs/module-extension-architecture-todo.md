@@ -24,7 +24,7 @@ Party 模块已从当前产品拓扑和 Runtime 依赖中移除，不再作为 e
 
 - Runtime 已有两套可复用模式：`domainry-runtime/pkg/runtimeext.BusinessHandlerRegistry` 和 `domainry-connector-sdk.Registry` 都支持批量注册、重复检查、descriptor 校验和 `Freeze`。
 - `domainry-runtime/pkg/runtimehost.Options` 已允许项目注入模块 Factory、Business Handler、Connector Provider、项目配置和 i18n，但还没有统一的模块业务扩展集合。
-- Runtime `ModuleInventory` 已列出十一个模块，但目前只报告模块 capability、HTTP surface 和 persistence，不报告项目扩展的 owner、版本、摘要和 readiness。
+- Runtime `ModuleInventory` 已列出十一个模块，但目前只报告模块 capability、HTTP adapter 和 persistence，不报告项目扩展的 owner、版本、摘要和 readiness。
 - Agent、Audit、Report 已使用“先打开持久化，再绑定宿主业务能力”的两阶段装配。
 - Lifecycle 已有 `OwnerExtensions`；Data Exchange 已有 Import/Export Provider；Notification 已有 Catalog、AudienceResolver、DeliveryGateway 等接口；这些能力不应推倒重做。
 - Identity 的公开宿主边界仍不足以承载客户业务字段、业务 Profile 和投影规则。
@@ -74,12 +74,12 @@ Party 模块已从当前产品拓扑和 Runtime 依赖中移除，不再作为 e
 - 由宿主拥有 transaction boundary，扩展只能使用最小 mutation capability。
 - 跨 owner 写入必须通过 owner port；禁止直接写其他模块表。
 
-### F. Projection / Surface
+### F. Projection / Adapter
 
-负责组合查询、摘要字段、Tab、OpenAPI、Action、HTTP surface 和前端展示元数据。
+负责组合查询、摘要字段、Tab、OpenAPI、Action、HTTP adapter 和前端展示元数据。
 
 - 核心 SDK DTO 保持稳定；客户字段通过 projection/facet 返回。
-- HTTP surface 必须先完成授权 Action 注册，再允许发布路由。
+- HTTP adapter 必须先完成授权 Action 注册，再允许发布路由。
 - module 与 SaaS 必须提供等价 capability 和错误语义。
 
 ### G. Lifecycle / Observation
@@ -131,7 +131,7 @@ type ProjectExtensionSet struct {
 - [ ] 同步 Metadata、权限、模板、调度、报表和 Agent definition contributions。
 - [ ] Runtime 组装应用服务后执行 `BindApplicationHost` / `BindOwners`。
 - [ ] 校验所有 required capability 已绑定，构建扩展 inventory 和 release digest。
-- [ ] 冻结 registries，随后发布 HTTP surface 并启动 worker。
+- [ ] 冻结 registries，随后发布 HTTP adapter 并启动 worker。
 - [ ] 任一步失败都不得留下半发布 route、半启动 worker 或可变 registry。
 
 ### P1：扩展清单与运维
@@ -163,7 +163,7 @@ type ProjectExtensionSet struct {
 | Agent | 丰富的 ApplicationHost，definition sync | Runner/模型 Provider registry、context contributor、guardrail/approval policy；复用现有工具调用 Host | P1 |
 | Audit | ApplicationHost 的 principal/authorize/project，Appender/Reader/Exporter | retention policy、append enrichment/redaction、export encoder、archive sink/integrity policy | P1 |
 | Integration/Connector | ProviderDescriptor、ProviderSet、Registry/Freeze、secret cipher、trigger sink | 移除 Integration 对 built-in connector catalog 的直接硬编码；统一 catalog contribution 和 provider inventory | P1 |
-| Notification | Catalog、AudienceResolver、RecipientDirectory、DeliveryGateway、template validator | 把 monolithic Host 拆成可版本化 contribution；发送资格/consent policy、routing/retry policy、可选能力协商 | P1 |
+| Notification | Catalog、AudienceResolver、RecipientProjection、DeliveryGateway、template validator | 把 monolithic Host 拆成可版本化 contribution；发送资格/consent policy、routing/retry policy、可选能力协商 | P1 |
 | Lifecycle | `OwnerExtensions`、OwnerLifecycleExecutor、SubjectExecutionHandler、artifact ports | owner registry 的去重/版本/freeze；确保所有模块按 owner 注册 retention 和 subject 能力 | P1 |
 | Metadata | Definition/Localization/Dictionary、Projection.Sync | source contribution descriptor、resource-type validator、projection reconcile receipt、停用和冲突治理 | P1 |
 | Data Exchange | Import/Export/Artifact/Planning/Completion Provider | 保留现有 provider 模型；补 descriptor registry、freeze、inventory 和项目装配入口 | P1 |
@@ -217,7 +217,7 @@ type ProjectExtensionSet struct {
 
 ### 7.6 Notification
 
-- [ ] 保留 Catalog、AudienceResolver、RecipientDirectory、DeliveryGateway、DeliveryMetrics 和 ProviderTemplateValidator。
+- [ ] 保留 Catalog、AudienceResolver、RecipientProjection、DeliveryGateway、DeliveryMetrics 和 ProviderTemplateValidator。
 - [ ] 把 Catalog 拆成带 source owner/revision 的 contribution set，支持确定性合并和重复 key 检查。
 - [ ] 区分 required 与 optional capability，避免所有宿主被迫实现无关接口。
 - [ ] 增加 DeliveryEligibilityPolicy，消费业务 Profile/Identity 提供的 consent/preference facts，但由 Notification 决定发送结论。

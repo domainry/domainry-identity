@@ -52,12 +52,12 @@ func NewAuthApplicationService(identity authcontract.AuthIdentityPort, repositor
 	return service
 }
 
-func (s *AuthApplicationService) UserDirectorySecurityProfiles(ctx context.Context, workspaceID string, userIDs []string) (map[string]authdomain.UserSecurityProfile, error) {
-	repository, ok := s.repository.(authrepository.AuthUserDirectorySecurityRepository)
+func (s *AuthApplicationService) UserProjectionSecurityProfiles(ctx context.Context, workspaceID string, userIDs []string) (map[string]authdomain.UserSecurityProfile, error) {
+	repository, ok := s.repository.(authrepository.AuthUserProjectionSecurityRepository)
 	if !ok {
-		return nil, apperror.New(apperror.KindUnavailable, "backend.identity.user_directory_security_unavailable", nil, nil)
+		return nil, apperror.New(apperror.KindUnavailable, "backend.identity.user_projection_security_unavailable", nil, nil)
 	}
-	facts, err := repository.ListUserDirectorySecurityFacts(ctx, workspaceID, userIDs)
+	facts, err := repository.ListUserProjectionSecurityFacts(ctx, workspaceID, userIDs)
 	if err != nil {
 		return nil, err
 	}

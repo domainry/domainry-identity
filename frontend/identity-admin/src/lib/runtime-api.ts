@@ -1,8 +1,6 @@
 import { IdentityClientError, type IdentitySession } from '@domainry/identity-client'
 import { identityClient } from './identity-client'
 import type { RuntimeRole, RuntimeUser } from './runtime-session'
-import { routeContractForPath } from '@/app-route-registry'
-import type { RuntimeProductSurface } from '@domainry/surface-contract'
 
 const API_BASE_URL = (import.meta.env.VITE_IDENTITY_API_URL ?? '/api').replace(/\/$/, '')
 
@@ -53,8 +51,6 @@ export function runtimeApiError(error: unknown): RuntimeApiError | undefined {
 export interface RuntimeRequestOptions extends Omit<RequestInit, 'body'> {
   auth?: boolean
   body?: unknown
-  productSurface?: RuntimeProductSurface
-  surfaceContext?: boolean
   requestId?: string
   token?: string
 }
@@ -66,13 +62,6 @@ export interface RuntimeResponse<T> {
 }
 
 const REQUEST_ID_HEADER = 'X-Request-ID'
-const PRODUCT_SURFACE_HEADER = 'X-Domainry-Product-Surface'
-
-export function currentProductSurface(): RuntimeProductSurface {
-  if (typeof window === 'undefined') return 'admin_console'
-  const surface = routeContractForPath(window.location.pathname)?.surface
-  return surface === 'admin_console' ? surface : 'admin_console'
-}
 
 export function createRuntimeRequestID() {
   const random = typeof globalThis.crypto?.randomUUID === 'function'
@@ -108,11 +97,10 @@ export async function runtimeRequest<T>(
 
 export async function runtimeRequestWithResponse<T>(
   path: string,
-  { auth = true, body, productSurface, surfaceContext = true, requestId, token, headers, ...init }: RuntimeRequestOptions = {}
+  { auth = true, body, requestId, token, headers, ...init }: RuntimeRequestOptions = {}
 ): Promise<RuntimeResponse<T>> {
   const requestHeaders = new Headers(headers)
   applyRequestID(requestHeaders, requestId)
-  if (surfaceContext) requestHeaders.set(PRODUCT_SURFACE_HEADER, productSurface ?? currentProductSurface())
   requestHeaders.set('Accept', 'application/json')
   if (body !== undefined) requestHeaders.set('Content-Type', 'application/json')
   if (auth && token) requestHeaders.set('Authorization', `Bearer ${token}`)
@@ -146,11 +134,10 @@ export async function runtimeRequestWithResponse<T>(
 
 export async function runtimeFile(
   path: string,
-  { auth = true, productSurface, surfaceContext = true, requestId, token, headers, ...init }: Omit<RuntimeRequestOptions, 'body'> = {}
+  { auth = true, requestId, token, headers, ...init }: Omit<RuntimeRequestOptions, 'body'> = {}
 ): Promise<{ blob: Blob; filename?: string }> {
   const requestHeaders = new Headers(headers)
   applyRequestID(requestHeaders, requestId)
-  if (surfaceContext) requestHeaders.set(PRODUCT_SURFACE_HEADER, productSurface ?? currentProductSurface())
   if (auth && token) requestHeaders.set('Authorization', `Bearer ${token}`)
   const requestInit: RequestInit = {
     ...init,
@@ -187,7 +174,7 @@ export interface RuntimeAuthMeResponse {
 }
 
 export function fetchRuntimeMe(token?: string) {
-  return runtimeRequest<RuntimeAuthMeResponse>('/auth/me', { token, surfaceContext: false })
+  return runtimeRequest<RuntimeAuthMeResponse>('/auth/me', { token })
 }
 
 export function changeRuntimePassword(

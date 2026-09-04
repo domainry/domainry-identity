@@ -39,7 +39,7 @@ func (s MetadataStore) UpsertMetadataDefinition(ctx context.Context, resourceTyp
 		return metadatamodel.MetadataDefinition{}, err
 	}
 	raw, hash, _ := metadataPayload(shape.Payload)
-	scope := identitymodel.NewSystemScope(identitymodel.SystemScopeInstallation, "legacy metadata definition upsert")
+	scope := identitymodel.NewSystemScope(identitymodel.SystemScopeInstallation, "metadata definition upsert")
 	if replay, found, replayErr := s.metadataDefinitionReplay(ctx, scope, resourceType, shape.Key, hash, req.ExpectedSchemaHash); replayErr != nil {
 		return metadatamodel.MetadataDefinition{}, replayErr
 	} else if found {

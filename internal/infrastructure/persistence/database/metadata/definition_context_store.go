@@ -83,7 +83,7 @@ func (r MetadataStore) publishDefinition(ctx context.Context, scope identitymode
 		}
 		return metadatamodel.MetadataDefinition{}, err
 	}
-	if err := r.applyIdentityRoleDirectoryMutation(ctx, tx, publication, metadatamodel.MetadataDefinitionMutation{Operation: "update", ResourceType: resourceType, ResourceKey: shape.Key, Request: req}, definition); err != nil {
+	if err := r.applyIdentityRoleProjectionMutation(ctx, tx, publication, metadatamodel.MetadataDefinitionMutation{Operation: "update", ResourceType: resourceType, ResourceKey: shape.Key, Request: req}, definition); err != nil {
 		return metadatamodel.MetadataDefinition{}, err
 	}
 	if audit != nil {
@@ -190,7 +190,7 @@ func (r MetadataStore) DisableDefinition(ctx context.Context, scope identitymode
 	if err != nil {
 		return err
 	}
-	if err := r.applyIdentityRoleDirectoryMutation(ctx, tx, publication, mutation, definition); err != nil {
+	if err := r.applyIdentityRoleProjectionMutation(ctx, tx, publication, mutation, definition); err != nil {
 		return err
 	}
 	if err := r.insertChangeAudit(ctx, tx, audit); err != nil {
@@ -243,7 +243,7 @@ func (r MetadataStore) ApplyDefinitionMutations(ctx context.Context, scope ident
 		if err != nil {
 			return nil, err
 		}
-		if err := r.applyIdentityRoleDirectoryMutation(ctx, tx, publication, mutation, definition); err != nil {
+		if err := r.applyIdentityRoleProjectionMutation(ctx, tx, publication, mutation, definition); err != nil {
 			return nil, err
 		}
 		definitions = append(definitions, definition)
@@ -410,7 +410,7 @@ func (r MetadataStore) RollbackDefinition(ctx context.Context, scope identitymod
 		return metadatamodel.MetadataDefinition{}, err
 	}
 	rolledBack := metadatamodel.MetadataDefinition{ResourceType: resourceType, ResourceKey: resourceKey, ObjectKey: shape.ObjectKey, Name: shape.Name, Payload: []byte(payloadJSON), SchemaVersion: nextVersion, SchemaHash: targetHash, SourceKind: "rollback", SourceID: request.SourceID, CreatedAt: now, UpdatedAt: now}
-	if err := r.applyIdentityRoleDirectoryMutation(ctx, tx, publication, metadatamodel.MetadataDefinitionMutation{Operation: "update", ResourceType: resourceType, ResourceKey: resourceKey}, rolledBack); err != nil {
+	if err := r.applyIdentityRoleProjectionMutation(ctx, tx, publication, metadatamodel.MetadataDefinitionMutation{Operation: "update", ResourceType: resourceType, ResourceKey: resourceKey}, rolledBack); err != nil {
 		return metadatamodel.MetadataDefinition{}, err
 	}
 	if err := r.insertChangeAudit(ctx, tx, audit); err != nil {

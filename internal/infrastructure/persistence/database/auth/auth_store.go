@@ -33,7 +33,7 @@ var authRefreshTokenColumns = []string{"id", "user_id", "session_id", "audience"
 
 var _ authrepository.AuthRepository = AuthStore{}
 var _ authrepository.AuthMFARepository = AuthStore{}
-var _ authrepository.AuthUserDirectorySecurityRepository = AuthStore{}
+var _ authrepository.AuthUserProjectionSecurityRepository = AuthStore{}
 var _ authrepository.AuthUserDataScopeRepository = AuthStore{}
 var _ authrepository.AuthCredentialDataScopeRepository = AuthStore{}
 var _ authrepository.AuthPasswordResetDataScopeRepository = AuthStore{}
@@ -82,24 +82,24 @@ func authRefreshTokenInsert(s AuthStore, workspaceID string, token identitymodel
 		Values(token.ID, token.UserID, token.SessionID, token.Audience, token.TokenHash, token.ExpiresAt, database.NullableText(token.RevokedAt), database.NullableText(token.ReplacedByID), database.NullableText(token.LastUsedAt), token.CreatedAt, updatedAt)
 }
 
-func (s AuthStore) ListUserDirectorySecurityFacts(ctx context.Context, workspaceID string, userIDs []string) ([]authmodel.UserDirectorySecurityFact, error) {
+func (s AuthStore) ListUserProjectionSecurityFacts(ctx context.Context, workspaceID string, userIDs []string) ([]authmodel.UserProjectionSecurityFact, error) {
 	workspaceID, err := authWorkspaceID(workspaceID)
 	if err != nil || len(userIDs) == 0 {
-		return []authmodel.UserDirectorySecurityFact{}, err
+		return []authmodel.UserProjectionSecurityFact{}, err
 	}
 	userIDs = normalizedAuthUserIDs(userIDs)
 	ranges, err := (batch.Parameters{Max: s.store.MaxParameters(), Fixed: 9, PerItem: 1, MaxItems: 500}).Ranges(len(userIDs))
 	if err != nil {
-		return nil, fmt.Errorf("build auth directory security batches: %w", err)
+		return nil, fmt.Errorf("build auth projection security batches: %w", err)
 	}
-	facts := make([]authmodel.UserDirectorySecurityFact, 0, len(userIDs))
+	facts := make([]authmodel.UserProjectionSecurityFact, 0, len(userIDs))
 	for _, batch := range ranges {
-		rows, err := s.queryUserDirectorySecurityFacts(ctx, workspaceID, userIDs[batch.Start:batch.End])
+		rows, err := s.queryUserProjectionSecurityFacts(ctx, workspaceID, userIDs[batch.Start:batch.End])
 		if err != nil {
 			return nil, err
 		}
 		for rows.Next() {
-			var fact authmodel.UserDirectorySecurityFact
+			var fact authmodel.UserProjectionSecurityFact
 			if err := rows.Scan(&fact.UserID, &fact.LockedUntil, &fact.LastLoginAt, &fact.ActiveSessions, &fact.MFAEnabled); err != nil {
 				rows.Close()
 				return nil, err
@@ -115,7 +115,7 @@ func (s AuthStore) ListUserDirectorySecurityFacts(ctx context.Context, workspace
 	return facts, nil
 }
 
-func (s AuthStore) queryUserDirectorySecurityFacts(ctx context.Context, workspaceID string, userIDs []string) (*sql.Rows, error) {
+func (s AuthStore) queryUserProjectionSecurityFacts(ctx context.Context, workspaceID string, userIDs []string) (*sql.Rows, error) {
 	outerUserID := query.QualifiedColumn("u", "id")
 	credentialPredicate := query.And(query.Equal("workspace_id", workspaceID), query.EqualExpressions(query.Column("user_id"), outerUserID))
 	refreshPredicate := query.And(query.Equal("workspace_id", workspaceID), query.EqualExpressions(query.Column("user_id"), outerUserID), query.IsNull("revoked_at"), query.GreaterThan("expires_at", identitypersistence.NowString()))
@@ -130,7 +130,7 @@ func (s AuthStore) queryUserDirectorySecurityFacts(ctx context.Context, workspac
 		).
 		Where(query.In("id", authStringValues(userIDs)...)).Build()
 	if err != nil {
-		return nil, fmt.Errorf("build auth directory security query: %w", err)
+		return nil, fmt.Errorf("build auth projection security query: %w", err)
 	}
 	return s.db.QueryContext(ctx, statement, arguments...)
 }

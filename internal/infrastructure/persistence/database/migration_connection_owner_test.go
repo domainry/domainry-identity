@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/base"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/sqlite"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 
@@ -40,7 +41,8 @@ func TestFileMigrationsUseDedicatedManagementConnection(t *testing.T) {
 func TestIdentitySchemaUsesDedicatedManagementConnection(t *testing.T) {
 	queryDB := openMigrationOwnerSQLite(t, "runtime-query")
 	migrationDB := openMigrationOwnerSQLite(t, "runtime-migration")
-	store := &IdentityStore{db: queryDB, migrationDB: migrationDB, engine: sqlite.NewEngine(), config: config.Config{MigrationBackupDir: t.TempDir()}}
+	engine := sqlite.NewEngine()
+	store := &IdentityStore{SQLDatabase: base.NewSQLDatabase(queryDB, engine, "", ""), db: queryDB, migrationDB: migrationDB, engine: engine, config: config.Config{MigrationBackupDir: t.TempDir()}}
 	attachBackupManager(store, nil)
 	attachLockManager(store)
 	attachLedger(store)

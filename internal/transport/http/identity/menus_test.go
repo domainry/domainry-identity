@@ -82,7 +82,7 @@ func TestIdentityPermissionEnablementChangesDatabaseBackedSnapshot(t *testing.T)
 	if !handler.permissionCatalog.PermissionIsExecutable(permissionKey) {
 		t.Fatalf("test permission %q was not initialized", permissionKey)
 	}
-	w, request := identityRoleRequest(http.MethodPut, "/identity/permissions/"+permissionKey+"/enabled", `{"enabled":false,"business_reason":"temporarily suspend organizationUnit directory access"}`, map[string]string{"permissionKey": permissionKey})
+	w, request := identityRoleRequest(http.MethodPut, "/identity/permissions/"+permissionKey+"/enabled", `{"enabled":false,"business_reason":"temporarily suspend organizationUnit projection access"}`, map[string]string{"permissionKey": permissionKey})
 	handler.setIdentityPermissionEnabled(w, request)
 	if response.status != http.StatusOK || response.err != nil {
 		t.Fatalf("enablement response status=%d value=%#v err=%v", response.status, response.value, response.err)
@@ -148,14 +148,14 @@ func TestIdentityMenuMutationHandlers(t *testing.T) {
 	}
 	handler, response := newIdentityHTTPHandler(repo)
 
-	w, request := identityRoleRequest(http.MethodPut, "/identity/menus/menu-2", `{"id":"body-id","key":"orders","label":"Orders","route":"/orders","surface":"admin_console"}`, map[string]string{"menuID": " menu-2 "})
+	w, request := identityRoleRequest(http.MethodPut, "/identity/menus/menu-2", `{"id":"body-id","key":"orders","label":"Orders","route":"/orders"}`, map[string]string{"menuID": " menu-2 "})
 	handler.upsertIdentityMenu(w, request)
 	if response.status != http.StatusOK || response.err != nil || repo.lastMenu.ID != "menu-2" {
 		t.Fatalf("upsert response = status %d menu %#v err %v", response.status, repo.lastMenu, response.err)
 	}
 
 	response.status, response.err = 0, nil
-	w, request = identityRoleRequest(http.MethodPut, "/identity/menus", `{"id":"menu-2","key":"orders","label":"Orders","route":"/orders","surface":"admin_console"}`, nil)
+	w, request = identityRoleRequest(http.MethodPut, "/identity/menus", `{"id":"menu-2","key":"orders","label":"Orders","route":"/orders"}`, nil)
 	handler.upsertIdentityMenu(w, request)
 	if response.status != http.StatusOK || repo.lastMenu.ID != "menu-2" {
 		t.Fatalf("body-id upsert = status %d menu %#v err %v", response.status, repo.lastMenu, response.err)
@@ -211,8 +211,8 @@ func TestIdentityMenuMutationServiceErrors(t *testing.T) {
 		path map[string]string
 	}{
 		{name: "upsert governance", repo: &identityHTTPRepository{}, call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.upsertIdentityMenu(w, r) }, body: `{}`},
-		{name: "upsert repository", repo: &identityHTTPRepository{upsertMenuErr: errIdentityHTTPTest}, call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.upsertIdentityMenu(w, r) }, body: `{"id":"menu-2","key":"orders","surface":"admin_console"}`},
-		{name: "upsert relist", repo: &identityHTTPRepository{failListMenusAfterUpsert: true}, call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.upsertIdentityMenu(w, r) }, body: `{"id":"menu-2","key":"orders","surface":"admin_console"}`},
+		{name: "upsert repository", repo: &identityHTTPRepository{upsertMenuErr: errIdentityHTTPTest}, call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.upsertIdentityMenu(w, r) }, body: `{"id":"menu-2","key":"orders"}`},
+		{name: "upsert relist", repo: &identityHTTPRepository{failListMenusAfterUpsert: true}, call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.upsertIdentityMenu(w, r) }, body: `{"id":"menu-2","key":"orders"}`},
 		{name: "set governance", repo: &identityHTTPRepository{menus: validMenus}, call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.setIdentityRoleMenus(w, r) }, body: `{"menu_ids":["menu-1"]}`, path: map[string]string{"roleID": "missing"}},
 		{name: "set repository", repo: &identityHTTPRepository{menus: validMenus, roles: validRoles, setRoleMenusErr: errIdentityHTTPTest}, call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.setIdentityRoleMenus(w, r) }, body: `{"menu_ids":["menu-1"]}`, path: map[string]string{"roleID": "role-1"}},
 		{name: "set relist", repo: &identityHTTPRepository{menus: validMenus, roles: validRoles, failListLinksAfterSet: true}, call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.setIdentityRoleMenus(w, r) }, body: `{"menu_ids":["menu-1"]}`, path: map[string]string{"roleID": "role-1"}},

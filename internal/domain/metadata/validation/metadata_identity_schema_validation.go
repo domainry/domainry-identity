@@ -333,9 +333,6 @@ func (validator *identitySchemaValidator) validateProfileBindings() {
 			validator.add(path+".business_identity.key", "duplicate binding %q", bindingKey)
 		}
 		seenBindings[bindingKey] = true
-		if len(binding.BusinessIdentity.SurfaceKeys) == 0 {
-			validator.add(path+".business_identity.surface_keys", "must not be empty")
-		}
 		validator.validateProfileFieldReferences(path, binding)
 		if binding.DefaultVisibility != "when_readable" && binding.DefaultVisibility != "hidden" {
 			validator.add(path+".default_visibility", "must be when_readable or hidden")
@@ -345,7 +342,7 @@ func (validator *identitySchemaValidator) validateProfileBindings() {
 
 func (validator *identitySchemaValidator) validateProfileFieldReferences(path string, binding identitymodel.IdentityProfileExtension) {
 	objectKey := strings.TrimSpace(binding.ObjectKey)
-	fieldLists := [][]string{binding.SummaryFields, binding.Directory.SummaryFields, binding.Directory.FilterFields}
+	fieldLists := [][]string{binding.SummaryFields}
 	for _, fields := range binding.ProfileTabFields {
 		fieldLists = append(fieldLists, fields)
 	}

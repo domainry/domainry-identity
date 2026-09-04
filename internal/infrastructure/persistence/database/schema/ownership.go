@@ -6,7 +6,8 @@ type TableBoundary string
 
 const (
 	TableBoundarySchemaControl  TableBoundary = "schema_control"
-	TableBoundaryDirectory      TableBoundary = "identity_directory"
+	TableBoundaryIdentityCore   TableBoundary = "identity_core"
+	TableBoundaryProfileBinding TableBoundary = "profile_binding"
 	TableBoundaryAuthorization  TableBoundary = "authorization"
 	TableBoundaryAuthentication TableBoundary = "authentication"
 	TableBoundaryMetadata       TableBoundary = "metadata_governance"
@@ -48,7 +49,7 @@ var identityTableOwnership = []TableOwnership{
 	{Name: "_identity_applications", Boundary: TableBoundaryAuthentication, MigrationDisposition: MigrationPortable},
 	{Name: "_identity_authoring_receipts", Boundary: TableBoundaryAuthorization, MigrationDisposition: MigrationEvidenceOnly},
 	{Name: "_identity_credentials", Boundary: TableBoundaryAuthentication, MigrationDisposition: MigrationExcluded, ContainsSecret: true},
-	{Name: "_identity_organization_units", Boundary: TableBoundaryDirectory, MigrationDisposition: MigrationPortable},
+	{Name: "_identity_organization_units", Boundary: TableBoundaryIdentityCore, MigrationDisposition: MigrationPortable},
 	{Name: "_identity_profile_binding_definition_versions", Boundary: TableBoundaryMetadata, MigrationDisposition: MigrationPortable},
 	{Name: "_identity_entitlement_batch_receipts", Boundary: TableBoundaryAuthorization, MigrationDisposition: MigrationEvidenceOnly},
 	{Name: "_identity_external_accounts", Boundary: TableBoundaryAuthentication, MigrationDisposition: MigrationPortable},
@@ -57,17 +58,17 @@ var identityTableOwnership = []TableOwnership{
 	{Name: "_identity_permissions", Boundary: TableBoundaryAuthorization, MigrationDisposition: MigrationPortable},
 	{Name: "_identity_metadata_refresh_intents", Boundary: TableBoundaryMetadata, MigrationDisposition: MigrationExcluded},
 	{Name: "_identity_mfa_factors", Boundary: TableBoundaryAuthentication, MigrationDisposition: MigrationExcluded, ContainsSecret: true},
-	{Name: "_identity_profile_binding_events", Boundary: TableBoundaryDirectory, MigrationDisposition: MigrationEvidenceOnly},
+	{Name: "_identity_profile_binding_events", Boundary: TableBoundaryProfileBinding, MigrationDisposition: MigrationEvidenceOnly},
 	{Name: "_identity_profile_binding_definitions", Boundary: TableBoundaryMetadata, MigrationDisposition: MigrationPortable},
-	{Name: "_identity_profile_binding_receipts", Boundary: TableBoundaryDirectory, MigrationDisposition: MigrationEvidenceOnly},
-	{Name: "_identity_profile_bindings", Boundary: TableBoundaryDirectory, MigrationDisposition: MigrationPortable},
+	{Name: "_identity_profile_binding_receipts", Boundary: TableBoundaryProfileBinding, MigrationDisposition: MigrationEvidenceOnly},
+	{Name: "_identity_profile_bindings", Boundary: TableBoundaryProfileBinding, MigrationDisposition: MigrationPortable},
 	{Name: "_identity_role_menu_assignments", Boundary: TableBoundaryAuthorization, MigrationDisposition: MigrationPortable},
 	{Name: "_identity_role_definition_versions", Boundary: TableBoundaryAuthorization, MigrationDisposition: MigrationPortable},
 	{Name: "_identity_role_definitions", Boundary: TableBoundaryAuthorization, MigrationDisposition: MigrationPortable},
 	{Name: "_identity_role_requests", Boundary: TableBoundaryAuthorization, MigrationDisposition: MigrationPortable},
 	{Name: "_identity_roles", Boundary: TableBoundaryAuthorization, MigrationDisposition: MigrationPortable},
 	{Name: "_identity_user_role_assignments", Boundary: TableBoundaryAuthorization, MigrationDisposition: MigrationPortable},
-	{Name: "_identity_users", Boundary: TableBoundaryDirectory, MigrationDisposition: MigrationPortable},
+	{Name: "_identity_users", Boundary: TableBoundaryIdentityCore, MigrationDisposition: MigrationPortable},
 	{Name: "_identity_workspace_write_fences", Boundary: TableBoundarySchemaControl, MigrationDisposition: MigrationEvidenceOnly},
 	{Name: "_identity_manifest_catalog", Boundary: TableBoundaryMetadata, MigrationDisposition: MigrationPortable},
 }

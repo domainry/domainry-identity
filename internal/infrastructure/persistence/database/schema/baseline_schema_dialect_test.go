@@ -19,7 +19,7 @@ func (s dialectScriptedSchemaStore) Placeholder(position int) string {
 	return s.SchemaRenderer().Placeholder(position)
 }
 
-func TestLegacyPhysicalSchemaDDLHasThreeDialectCoverage(t *testing.T) {
+func TestBaselinePhysicalSchemaDDLHasThreeDialectCoverage(t *testing.T) {
 	for _, driver := range []string{"sqlite", "mysql", "postgres"} {
 		t.Run(driver, func(t *testing.T) {
 			state := &schemaSQLState{}
@@ -36,7 +36,7 @@ func TestLegacyPhysicalSchemaDDLHasThreeDialectCoverage(t *testing.T) {
 			if !strings.Contains(rendered, "CREATE TABLE IF NOT EXISTS") ||
 				!strings.Contains(rendered, store.TableIdentifier("_identity_users")) ||
 				!strings.Contains(rendered, store.TableIdentifier("_identity_metadata_refresh_intents")) {
-				t.Fatalf("legacy physical DDL was not rendered through %s identifiers", driver)
+				t.Fatalf("baseline physical DDL was not rendered through %s identifiers", driver)
 			}
 		})
 	}

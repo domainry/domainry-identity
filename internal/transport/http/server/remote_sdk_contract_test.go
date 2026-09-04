@@ -54,7 +54,7 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 	if testServer.URL != issuer {
 		t.Fatalf("test issuer=%q server URL=%q", issuer, testServer.URL)
 	}
-	unauthorizedRequest, err := http.NewRequestWithContext(t.Context(), http.MethodPost, testServer.URL+"/identity/runtime/directory/users", bytes.NewBufferString(`{"application":{"workspace_id":"workspace-primary","application_key":"orders-runtime"}}`))
+	unauthorizedRequest, err := http.NewRequestWithContext(t.Context(), http.MethodPost, testServer.URL+"/identity/users/query", bytes.NewBufferString(`{"application":{"workspace_id":"workspace-primary","application_key":"orders-runtime"}}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,9 +65,9 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 	}
 	_ = unauthorizedResponse.Body.Close()
 	if unauthorizedResponse.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("directory endpoint without service credential status=%d", unauthorizedResponse.StatusCode)
+		t.Fatalf("projection endpoint without service credential status=%d", unauthorizedResponse.StatusCode)
 	}
-	wrongScopeRequest, err := http.NewRequestWithContext(t.Context(), http.MethodPost, testServer.URL+"/identity/runtime/directory/users", bytes.NewBufferString(`{"application":{"workspace_id":"workspace-primary","application_key":"notify-runtime"}}`))
+	wrongScopeRequest, err := http.NewRequestWithContext(t.Context(), http.MethodPost, testServer.URL+"/identity/users/query", bytes.NewBufferString(`{"application":{"workspace_id":"workspace-primary","application_key":"notify-runtime"}}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +79,7 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 	}
 	_ = wrongScopeResponse.Body.Close()
 	if wrongScopeResponse.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("directory endpoint accepted service credential for wrong application, status=%d", wrongScopeResponse.StatusCode)
+		t.Fatalf("projection endpoint accepted service credential for wrong application, status=%d", wrongScopeResponse.StatusCode)
 	}
 	sourceBinding, err := identitycapability.Open(identitycapability.Inputs{})
 	if err != nil {

@@ -59,7 +59,7 @@ func TestApplyRoleDefinitionsRemainListableAfterRestart(t *testing.T) {
 	}
 }
 
-func TestDirectRolePublicationRollbackAndDisableAreAtomicWithDirectoryAndAudit(t *testing.T) {
+func TestDirectRolePublicationRollbackAndDisableAreAtomicWithProjectionAndAudit(t *testing.T) {
 	store, err := database.OpenContext(t.Context(), config.Config{DatabaseDriver: "sqlite", DBPath: filepath.Join(t.TempDir(), "identity.db")})
 	if err != nil {
 		t.Fatal(err)
@@ -90,34 +90,34 @@ func TestDirectRolePublicationRollbackAndDisableAreAtomicWithDirectoryAndAudit(t
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertRoleDirectoryState(t, store, "Senior Reviewer", "active", 2)
+	assertRoleProjectionState(t, store, "Senior Reviewer", "active", 2)
 	rolledBack, err := repository.RollbackDefinition(t.Context(), scope, "role", "reviewer", metadatamodel.MetadataDefinitionRollbackRequest{TargetVersion: "1", ExpectedSchemaHash: second.SchemaHash, BusinessReason: "restore"}, audit("audit-role-rollback", "metadata_definition.rolled_back"), publication)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertRoleDirectoryState(t, store, "Reviewer", "active", 3)
+	assertRoleProjectionState(t, store, "Reviewer", "active", 3)
 	if err := repository.DisableDefinition(t.Context(), scope, "role", "reviewer", strings.Repeat("0", 64), audit("audit-role-stale-disable", "metadata_definition.disabled"), publication); err == nil {
 		t.Fatal("stale role disable was accepted")
 	}
-	assertRoleDirectoryState(t, store, "Reviewer", "active", 3)
+	assertRoleProjectionState(t, store, "Reviewer", "active", 3)
 	if err := repository.DisableDefinition(t.Context(), scope, "role", "reviewer", rolledBack.SchemaHash, audit("audit-role-disable", "metadata_definition.disabled"), publication); err != nil {
 		t.Fatal(err)
 	}
-	assertRoleDirectoryState(t, store, "Reviewer", "disabled", 4)
+	assertRoleProjectionState(t, store, "Reviewer", "disabled", 4)
 	var disabled int
 	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _identity_role_definitions WHERE resource_key='reviewer' AND disabled_at IS NOT NULL`).Scan(&disabled); err != nil || disabled != 1 {
 		t.Fatalf("disabled role definitions=%d err=%v", disabled, err)
 	}
 }
 
-func assertRoleDirectoryState(t *testing.T, store *database.IdentityStore, wantLabel, wantStatus string, wantAuditCount int) {
+func assertRoleProjectionState(t *testing.T, store *database.IdentityStore, wantLabel, wantStatus string, wantAuditCount int) {
 	t.Helper()
 	var label, status string
 	if err := store.DB().QueryRowContext(t.Context(), `SELECT label, status FROM _identity_roles WHERE workspace_id=? AND role_key='reviewer'`, "workspace-primary").Scan(&label, &status); err != nil {
 		t.Fatal(err)
 	}
 	if label != wantLabel || status != wantStatus {
-		t.Fatalf("role directory label=%q status=%q want label=%q status=%q", label, status, wantLabel, wantStatus)
+		t.Fatalf("role projection label=%q status=%q want label=%q status=%q", label, status, wantLabel, wantStatus)
 	}
 	var audits int
 	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _audit_events WHERE workspace_id=? AND object_key='role' AND record_id='reviewer'`, "workspace-primary").Scan(&audits); err != nil {

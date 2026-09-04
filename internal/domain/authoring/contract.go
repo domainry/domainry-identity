@@ -20,13 +20,13 @@ const (
 )
 
 type CapabilityRuntimeAuthoringContract struct {
-	ContractVersion        string                      `json:"contract_version"`
-	SurfaceContractVersion string                      `json:"surface_contract_version"`
-	RuntimeVersion         string                      `json:"runtime_version"`
-	ContractHash           string                      `json:"contract_hash"`
-	InstanceHash           string                      `json:"instance_hash,omitempty"`
-	Domains                []CapabilityAuthoringDomain `json:"domains"`
-	Instance               CapabilityAuthoringInstance `json:"instance"`
+	ContractVersion          string                      `json:"contract_version"`
+	AuthoringContractVersion string                      `json:"authoring_contract_version"`
+	RuntimeVersion           string                      `json:"runtime_version"`
+	ContractHash             string                      `json:"contract_hash"`
+	InstanceHash             string                      `json:"instance_hash,omitempty"`
+	Domains                  []CapabilityAuthoringDomain `json:"domains"`
+	Instance                 CapabilityAuthoringInstance `json:"instance"`
 }
 
 type CapabilityAuthoringDomain struct {

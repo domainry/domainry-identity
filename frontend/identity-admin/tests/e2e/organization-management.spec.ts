@@ -14,7 +14,7 @@ test("organization management keeps account and department pages separate", asyn
   await login(page);
 
   await page.goto("/admin/security/accounts");
-  await expect(page.locator("main")).toContainText(/账号目录|Account directory/i);
+  await expect(page.locator("main")).toContainText(/账号|Accounts/i);
   await expect(page.locator("main")).toContainText(/主组织节点|Primary organization unit/i);
   await expect(page.getByRole("table")).toBeVisible();
 

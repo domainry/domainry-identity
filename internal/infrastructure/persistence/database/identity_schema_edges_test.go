@@ -13,7 +13,6 @@ import (
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/base"
 	migrationowner "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/migration"
 	identityschema "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/schema"
-	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/workspace"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/mysql"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/sqlite"
 	"github.com/domainry/domainry-identity/internal/platform/config"
@@ -24,8 +23,9 @@ func identitySchemaStore(t *testing.T, state *databaseSQLState) *IdentityStore {
 	db := openDatabaseScriptedDB(state)
 	t.Cleanup(func() { _ = db.Close() })
 	engine := sqlite.NewEngine()
-	renderer := base.NewSQLDatabase(db, engine, "", "").SQLRenderer
-	store := &IdentityStore{db: db, engine: engine, ScopeValidator: workspace.NewScopeValidator(db, engine, renderer, "", "")}
+	sqlDatabase := base.NewSQLDatabase(db, engine, "", "")
+	renderer := sqlDatabase.SQLRenderer
+	store := &IdentityStore{SQLDatabase: sqlDatabase, db: db, engine: engine}
 	store.Coordinator = migrationowner.NewCoordinator(migrationowner.CoordinatorOptions{QueryDatabase: db, ManagementDatabase: db, Engine: engine, Renderer: renderer, StatusReader: migrationowner.NewStatusReader(db, engine, renderer, config.Config{})})
 	attachBackupManager(store, nil)
 	attachLockManager(store)
@@ -49,7 +49,7 @@ func identitySchemaLedgerQueries(count int64, checksum string, dirty bool) []dat
 
 func TestIdentitySchemaHelpersAndDatabaseSelection(t *testing.T) {
 	versions := SupportedIdentitySchemaVersions()
-	if len(versions) != 5 || versions[0] != IdentitySchemaVersionBaseline || versions[1] != IdentitySchemaVersionPortability || versions[2] != IdentitySchemaVersionProviderCredential || versions[3] != IdentitySchemaVersionDataExchange || versions[4] != CurrentIdentitySchemaVersion {
+	if len(versions) != 1 || versions[0] != CurrentIdentitySchemaVersion {
 		t.Fatalf("versions=%#v", versions)
 	}
 	store := identitySchemaStore(t, &databaseSQLState{})
@@ -159,18 +159,6 @@ func TestIdentitySchemaMutationFailuresAndDefinitions(t *testing.T) {
 	store = identitySchemaStore(t, &databaseSQLState{execSteps: []databaseSQLExecStep{{err: errDatabaseSQL}}})
 	if err := store.recordIdentitySchemaMigration(t.Context(), "version", time.Second); !errors.Is(err, errDatabaseSQL) {
 		t.Fatalf("record=%v", err)
-	}
-	store = identitySchemaStore(t, &databaseSQLState{querySteps: []databaseSQLQueryStep{{closeErr: errDatabaseSQL}}})
-	if err := store.ensureColumn(t.Context(), "table", "column", "TEXT"); !errors.Is(err, errDatabaseSQL) {
-		t.Fatalf("close=%v", err)
-	}
-	store = identitySchemaStore(t, &databaseSQLState{querySteps: []databaseSQLQueryStep{{err: errDatabaseSQL}}, execSteps: []databaseSQLExecStep{{err: errDatabaseSQL}}})
-	if err := store.ensureColumn(t.Context(), "table", "column", "TEXT"); !errors.Is(err, errDatabaseSQL) {
-		t.Fatalf("alter=%v", err)
-	}
-	store = identitySchemaStore(t, &databaseSQLState{querySteps: []databaseSQLQueryStep{{err: errDatabaseSQL}}})
-	if err := store.ensureColumn(t.Context(), "table", "column", "TEXT"); err != nil {
-		t.Fatal(err)
 	}
 	mysqlStore := &IdentityStore{engine: mysql.NewEngine()}
 	definition := "TEXT NOT NULL DEFAULT '[]', TEXT NOT NULL DEFAULT '{}', TEXT NOT NULL DEFAULT ''"

@@ -13,33 +13,29 @@ import (
 	auditsdk "github.com/domainry/domainry-audit-sdk"
 	auditmodulehost "github.com/domainry/domainry-audit-sdk/modulehost"
 	auditmodule "github.com/domainry/domainry-audit/module"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/base"
 	migrationcontract "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/migration"
 	identityschema "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/schema"
-	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/workspace"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 	"github.com/domainry/domainry-orm/query"
 	ormschema "github.com/domainry/domainry-orm/schema"
 )
 
 const (
-	IdentitySchemaVersionBaseline           = "001_identity_service_baseline"
-	IdentitySchemaVersionPortability        = "002_identity_portability_cutover"
-	IdentitySchemaVersionProviderCredential = "004_workspace_provider_credential_identity"
-	IdentitySchemaVersionDataExchange       = "005_data_exchange_and_authoring_cleanup"
-	CurrentIdentitySchemaVersion            = "006_identity_authorization_permissions"
-	EmbeddedIdentitySchemaMigrationVersion  = uint(2)
-	EmbeddedIdentitySchemaMigrationName     = "identity_authorization_permissions"
+	CurrentIdentitySchemaVersion           = "001_identity_schema"
+	EmbeddedIdentitySchemaMigrationVersion = uint(1)
+	EmbeddedIdentitySchemaMigrationName    = "identity_schema"
 )
 
 const (
 	managedIdentityDatabaseTable           = "_identity_managed_database"
 	managedIdentityDatabaseContractVersion = "domainry-managed-identity-database-v1"
 	identitySchemaMigrationKind            = "identity_schema"
-	identitySchemaMigrationName            = "identity_authorization_permissions"
+	identitySchemaMigrationName            = "identity_schema"
 )
 
 func SupportedIdentitySchemaVersions() []string {
-	return []string{IdentitySchemaVersionBaseline, IdentitySchemaVersionPortability, IdentitySchemaVersionProviderCredential, IdentitySchemaVersionDataExchange, CurrentIdentitySchemaVersion}
+	return []string{CurrentIdentitySchemaVersion}
 }
 
 func (s *IdentityStore) EnsureSchema(ctx context.Context) error {
@@ -70,9 +66,6 @@ func (s *IdentityStore) EnsureSchema(ctx context.Context) error {
 		return err
 	}
 	if pending {
-		if err := s.ValidateLegacyWorkspaceScopes(ctx); err != nil {
-			return err
-		}
 		if err := s.BackupManager.EnsureForExistingData(ctx, s.identityMigrationConfig()); err != nil {
 			return err
 		}
@@ -96,9 +89,6 @@ func (s *IdentityStore) EnsureSchema(ctx context.Context) error {
 		return err
 	}
 	if err := s.recordIdentitySchemaMigrationIfPending(ctx, pending, startedAt); err != nil {
-		return err
-	}
-	if err := s.removeObsoleteIdentityMigrationLedger(ctx); err != nil {
 		return err
 	}
 	return nil
@@ -125,8 +115,9 @@ func (s *IdentityStore) EnsureEmbeddedSchema(ctx context.Context) error {
 func EmbeddedSchemaChecksum() string { return currentIdentitySchemaChecksum() }
 
 func (s *IdentityStore) identityMigrationStore() *IdentityStore {
+	sqlDatabase := base.NewSQLDatabase(s.migrationDB, s.engine, s.databaseSchema, s.relationPrefix)
 	return &IdentityStore{
-		ScopeValidator:       workspace.NewScopeValidator(s.migrationDB, s.engine, s.BuilderRenderer(), s.databaseSchema, s.relationPrefix),
+		SQLDatabase:          sqlDatabase,
 		Coordinator:          s.Coordinator,
 		db:                   s.migrationDB,
 		engine:               s.engine,
@@ -333,15 +324,6 @@ func identitySchemaMigrationPath(version string) string {
 	return "identity_schema_" + strings.TrimSpace(version)
 }
 
-func (s *IdentityStore) removeObsoleteIdentityMigrationLedger(ctx context.Context) error {
-	// domainry-orm intentionally has no DROP TABLE builder. This one-time
-	// migration removes the retired pre-host-ledger table using quoted names.
-	if _, err := s.schemaDatabase().ExecContext(ctx, "DROP TABLE IF EXISTS "+s.tableIdentifier("_schema_materializations")); err != nil {
-		return fmt.Errorf("remove obsolete Identity migration ledger: %w", err)
-	}
-	return nil
-}
-
 func (s *IdentityStore) identityTableExists(ctx context.Context, table string) (bool, error) {
 	var count int
 	queryValue := s.PersistenceEngine().TableExistsQuery(s.BuilderRenderer(), s.DatabaseSchema(), s.relationPrefix+table)
@@ -359,7 +341,7 @@ func (s *IdentityStore) SchemaTableExists(ctx context.Context, table string) (bo
 }
 
 func currentIdentitySchemaChecksum() string {
-	sum := sha256.Sum256([]byte(CurrentIdentitySchemaVersion + ":metadata,identity,audit,authentication,identity_applications,identity_permissions,workspace_provider_credential_identity,data_exchange_and_authoring_cleanup,workspace_write_fences,managed_identity_database"))
+	sum := sha256.Sum256([]byte(CurrentIdentitySchemaVersion + ":metadata,identity,audit,authentication,applications,permissions,workspace_write_fences,managed_database"))
 	return hex.EncodeToString(sum[:])
 }
 
@@ -423,22 +405,6 @@ func (s *IdentityStore) verifyManagedIdentityDatabaseMarkerWith(ctx context.Cont
 	}
 	if _, err := hex.DecodeString(identity); err != nil {
 		return fmt.Errorf("verify managed database cohort marker: invalid marker identity")
-	}
-	return nil
-}
-
-func (s *IdentityStore) ensureColumn(ctx context.Context, table, column, definition string) error {
-	db := s.schemaDatabase()
-	// Legacy ledgers carry engine-provided physical column definitions. The ORM
-	// cannot represent an arbitrary dialect type string, so this compatibility
-	// probe and ALTER are kept in the schema adapter with quoted identifiers.
-	rows, err := db.QueryContext(ctx, "SELECT "+column+" FROM "+s.tableIdentifier(table)+" WHERE 1 = 0")
-	if err == nil {
-		return rows.Close()
-	}
-	definition = s.columnDefinition(definition)
-	if _, alterErr := db.ExecContext(ctx, "ALTER TABLE "+s.tableIdentifier(table)+" ADD COLUMN "+s.identifier(column)+" "+definition); alterErr != nil {
-		return fmt.Errorf("add %s.%s: %w", table, column, alterErr)
 	}
 	return nil
 }

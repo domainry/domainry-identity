@@ -38,7 +38,7 @@ func TestProviderQueriesMultipleOwnersInOneAuthenticatedRequest(t *testing.T) {
 	var calls atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		calls.Add(1)
-		if request.Method != http.MethodPost || request.URL.Path != "/runtime"+queryPath {
+		if request.Method != http.MethodPost || request.URL.Path != queryPath {
 			t.Errorf("request=%s %s", request.Method, request.URL.Path)
 		}
 		if request.Header.Get("Authorization") != "Bearer runtime-service-token" || request.Header.Get("X-Workspace-ID") != "workspace-a" || request.Header.Get("X-Request-ID") != "request-a" {
@@ -60,7 +60,7 @@ func TestProviderQueriesMultipleOwnersInOneAuthenticatedRequest(t *testing.T) {
 		_ = json.NewEncoder(response).Encode(snapshot)
 	}))
 	defer server.Close()
-	provider, err := New(Options{RuntimeURL: server.URL + "/runtime/", RequestTimeout: time.Second, TokenSource: staticTokenSource{token: "runtime-service-token"}})
+	provider, err := New(Options{RuntimeURL: server.URL, RequestTimeout: time.Second, TokenSource: staticTokenSource{token: "runtime-service-token"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,8 +158,8 @@ func TestProviderConfigurationRejectsAmbiguousRuntimeURLs(t *testing.T) {
 func testPermissionAction(key, owner, route string) actioncontract.ActionDefinition {
 	resource, operation, _ := strings.Cut(key, ".")
 	return actioncontract.ActionDefinition{
-		Key: key, Owner: owner, SourceKind: "module_surface", CapabilityKey: resource, CapabilityLabel: resource,
-		OperationKey: operation, OperationLabel: key, Label: key, Exposures: []actioncontract.Exposure{actioncontract.ExposureTenantAdmin},
+		Key: key, Owner: owner, SourceKind: "module_http", CapabilityKey: resource, CapabilityLabel: resource,
+		OperationKey: operation, OperationLabel: key, Label: key, Exposures: []actioncontract.Exposure{actioncontract.ExposureManagement},
 		Authorization: actioncontract.Authorization{Strategy: actioncontract.AuthorizationAuthenticated},
 		HTTP:          &actioncontract.HTTPBinding{Method: http.MethodGet, RouteTemplate: route},
 		Permission: &actioncontract.PermissionDefinition{

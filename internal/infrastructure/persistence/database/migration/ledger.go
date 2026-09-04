@@ -30,7 +30,7 @@ func (ledger *Ledger) Columns() string {
 }
 
 func (ledger *Ledger) SchemaSQL() string {
-	// The host ledger must preserve engine-provided legacy physical types.
+	// The host ledger uses engine-provided physical types.
 	// domainry-orm's schema types cannot represent those arbitrary type strings,
 	// so only this DDL rendering remains in the migration adapter.
 	types := ledger.engine.MigrationLedgerTypes()
@@ -59,7 +59,7 @@ func (ledger *Ledger) Ensure(ctx context.Context) error {
 			_ = rows.Close()
 			continue
 		}
-		// The arbitrary engine-provided legacy definition above has no ORM column
+		// The arbitrary engine-provided definition above has no ORM column
 		// type equivalent; keep the compatibility ALTER beside that reason.
 		if _, alterErr := ledger.database.ExecContext(ctx, "ALTER TABLE "+ledger.renderer.Table("_schema_migrations")+" ADD COLUMN "+ledger.renderer.Identifier(column.name)+" "+column.definition); alterErr != nil {
 			return alterErr

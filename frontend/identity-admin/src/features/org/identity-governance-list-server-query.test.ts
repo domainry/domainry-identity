@@ -31,10 +31,10 @@ describe('governed directories use server list queries', () => {
     expect(hooks.match(/placeholderData: \(previous\) => previous/g)).toHaveLength(3)
   })
 
-  it('loads the user directory projection without per-user role and security requests', () => {
+  it('loads the user projection without per-user role and security requests', () => {
     const start = api.indexOf('export const usersApi')
     const list = api.slice(start, api.indexOf('  async get(', start))
-    expect(list).toContain('/identity/users/directory/search?')
+    expect(list).toContain('/identity/accounts/search?')
     expect(list).toContain('entry.roles.map')
     expect(list).toContain('entry.security.last_login_at')
     expect(list).toContain('entry.identity_badges')

@@ -41,7 +41,7 @@ func IdentityRoleAuthoringCapability() authoringcontract.CapabilityAuthoringDefi
 			{Key: "guardrail_keys", Type: "array", ItemSchema: "guardrail_key"},
 		},
 		AuditEvents:        []string{"metadata_definition.saved"},
-		ValidationEndpoint: "POST /tenant-admin/metadata/definitions/role/{resourceKey}/validate", ConfigurationRoutes: metadatacontract.VersionedMetadataDefinitionRoutes("role"),
+		ValidationEndpoint: "POST /metadata/definitions/role/{resourceKey}/validate", ConfigurationRoutes: metadatacontract.VersionedMetadataDefinitionRoutes("role"),
 		ResourceOperations:       metadatacontract.VersionedMetadataDefinitionOperations("role"),
 		ResourceKeyPathParameter: "resourceKey", InputSchema: input, OutputSchema: output,
 		OutputVariables: []authoringcontract.CapabilityAuthoringOutput{{Name: "role_id", JSONPointer: "/definition/resource_key", Type: "role_key", VisibleTo: "subsequent_capability_calls"}},
@@ -77,8 +77,8 @@ func IdentityRolePermissionAuthoringCapability() authoringcontract.CapabilityAut
 		ResourceKeyPathParameter: "roleID", InputSchema: input, OutputSchema: output,
 		OutputVariables: []authoringcontract.CapabilityAuthoringOutput{{Name: "permission_assignments", JSONPointer: "/", Type: "identity_role_permission_list", VisibleTo: "subsequent_capability_calls"}},
 		ReferenceContracts: []authoringcontract.CapabilityAuthoringReference{
-			{Kind: "role_id", InputJSONPointer: "/@path/roleID", ResolverEndpoint: "GET /tenant-admin/platform-capabilities/references/role_id"},
-			{Kind: "permission_key", InputJSONPointer: "/permissions/*/permission_key", ResolverEndpoint: "GET /tenant-admin/platform-capabilities/references/permission_key"},
+			{Kind: "role_id", InputJSONPointer: "/@path/roleID", ResolverEndpoint: "GET /capabilities/references/role_id"},
+			{Kind: "permission_key", InputJSONPointer: "/permissions/*/permission_key", ResolverEndpoint: "GET /capabilities/references/permission_key"},
 		},
 		Execution: &authoringcontract.CapabilityAuthoringExecution{
 			ReadSet: []string{"identity.role", "identity.permission_catalog"}, WriteSet: []string{"metadata.definition_version", "identity.role"}, Transaction: "metadata_repository_transaction", Idempotency: "builder_task_id_and_idempotency_key",
@@ -118,9 +118,9 @@ func identityRolePermissionGrantSchema(includeRoleID bool) authoringcontract.Cap
 func identityRoleMetadataRoutes(readRoutes ...string) []string {
 	routes := append([]string(nil), readRoutes...)
 	return append(routes,
-		"GET /tenant-admin/metadata/definitions/role/{roleID}",
-		"GET /tenant-admin/metadata/definitions/role/{roleID}/versions",
-		"PUT /tenant-admin/metadata/definitions/role/{roleID}",
+		"GET /metadata/definitions/role/{roleID}",
+		"GET /metadata/definitions/role/{roleID}/versions",
+		"PUT /metadata/definitions/role/{roleID}",
 	)
 }
 

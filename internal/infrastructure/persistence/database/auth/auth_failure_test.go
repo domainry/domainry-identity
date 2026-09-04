@@ -167,13 +167,13 @@ func TestAuthStoreTransactionAndRowsFailures(t *testing.T) {
 	}
 }
 
-func TestAuthDirectorySecurityFactsAndMFAValidationEdges(t *testing.T) {
+func TestAuthProjectionSecurityFactsAndMFAValidationEdges(t *testing.T) {
 	base := authFailureBase(t)
-	wantErr := errors.New("injected directory security failure")
-	if facts, err := base.ListUserDirectorySecurityFacts(t.Context(), "", []string{"user"}); err == nil || len(facts) != 0 {
+	wantErr := errors.New("injected projection security failure")
+	if facts, err := base.ListUserProjectionSecurityFacts(t.Context(), "", []string{"user"}); err == nil || len(facts) != 0 {
 		t.Fatalf("invalid workspace facts=%v err=%v", facts, err)
 	}
-	if facts, err := base.ListUserDirectorySecurityFacts(t.Context(), "workspace-primary", nil); err != nil || len(facts) != 0 {
+	if facts, err := base.ListUserProjectionSecurityFacts(t.Context(), "workspace-primary", nil); err != nil || len(facts) != 0 {
 		t.Fatalf("empty users facts=%v err=%v", facts, err)
 	}
 	columns := []string{"user_id", "locked_until", "last_login_at", "active_sessions", "mfa_enabled"}
@@ -184,14 +184,14 @@ func TestAuthDirectorySecurityFactsAndMFAValidationEdges(t *testing.T) {
 	}
 	for index, step := range steps {
 		repository, closeDB := scriptedAuthStore(base, &authDBState{querySteps: []authMutationQueryStep{step}})
-		_, err := repository.ListUserDirectorySecurityFacts(t.Context(), "workspace-primary", []string{" user "})
+		_, err := repository.ListUserProjectionSecurityFacts(t.Context(), "workspace-primary", []string{" user "})
 		closeDB()
 		if err == nil {
-			t.Fatalf("directory failure %d was accepted", index)
+			t.Fatalf("projection failure %d was accepted", index)
 		}
 	}
 	repository, closeDB := scriptedAuthStore(base, &authDBState{querySteps: []authMutationQueryStep{{columns: columns, rows: [][]driver.Value{{"user", "locked", "last", int64(2), true}}}}})
-	facts, err := repository.ListUserDirectorySecurityFacts(t.Context(), "workspace-primary", []string{" user "})
+	facts, err := repository.ListUserProjectionSecurityFacts(t.Context(), "workspace-primary", []string{" user "})
 	closeDB()
 	if err != nil || len(facts) != 1 || facts[0].UserID != "user" || facts[0].ActiveSessions != 2 || !facts[0].MFAEnabled {
 		t.Fatalf("facts=%#v err=%v", facts, err)

@@ -10,7 +10,7 @@ import (
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 )
 
-// SQLDatabase is the transaction/connection-neutral DDL surface used by the
+// SQLDatabase is the transaction/connection-neutral DDL adapter used by the
 // schema assembler. A Identity migration can provide its advisory-lock-owning
 // *sql.Conn while ordinary bootstrap paths can provide *sql.DB.
 type SQLDatabase interface {
@@ -24,7 +24,6 @@ type SQLDatabase interface {
 type Store interface {
 	SchemaDB() SQLDatabase
 	SchemaRenderer() ormdialect.Renderer
-	MaxParameters() int
 	DatabaseSchema() string
 	Identifier(string) string
 	TableIdentifier(string) string
@@ -32,10 +31,8 @@ type Store interface {
 	SchemaTableExists(context.Context, string) (bool, error)
 	CreateIndexIfMissing(context.Context, string, string, bool, ...string) error
 	NormalizeAuditCursorColumns(context.Context, string, ...string) error
-	TableColumns(context.Context, string) (map[string]bool, error)
 	TableIndexes(context.Context, string) (map[string]bool, error)
 	DropIndex(context.Context, string, string) error
-	EnsureColumn(context.Context, string, string, string) error
 	EnsureCompositePrimaryKey(context.Context, string, ...string) error
 	MetadataIDColumnType() string
 	LocalizedTextKeyColumnType() string

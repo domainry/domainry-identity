@@ -18,7 +18,7 @@ import (
 
 type testModuleHTTPProvider struct {
 	actions  []actioncontract.ActionDefinition
-	surfaces []modulehttp.Surface
+	adapters []modulehttp.Adapter
 }
 
 type testModuleActionProvider struct {
@@ -41,22 +41,22 @@ func (provider testModuleHTTPProvider) AuthorizationActions() ([]actioncontract.
 	return result, nil
 }
 
-func (provider testModuleHTTPProvider) HTTPSurfaces() []modulehttp.Surface {
-	return append([]modulehttp.Surface(nil), provider.surfaces...)
+func (provider testModuleHTTPProvider) HTTPAdapters() []modulehttp.Adapter {
+	return append([]modulehttp.Adapter(nil), provider.adapters...)
 }
 
-type testModuleHTTPSurface struct {
+type testModuleHTTPAdapter struct {
 	owner, name string
 	routes      []modulehttp.Route
 	handler     http.Handler
 }
 
-func (surface testModuleHTTPSurface) ContractVersion() string { return modulehttp.ContractVersion }
-func (surface testModuleHTTPSurface) Owner() string           { return surface.owner }
-func (surface testModuleHTTPSurface) Name() string            { return surface.name }
-func (surface testModuleHTTPSurface) Handler() http.Handler   { return surface.handler }
-func (surface testModuleHTTPSurface) Routes() []modulehttp.Route {
-	return append([]modulehttp.Route(nil), surface.routes...)
+func (adapter testModuleHTTPAdapter) ContractVersion() string { return modulehttp.ContractVersion }
+func (adapter testModuleHTTPAdapter) Owner() string           { return adapter.owner }
+func (adapter testModuleHTTPAdapter) Name() string            { return adapter.name }
+func (adapter testModuleHTTPAdapter) Handler() http.Handler   { return adapter.handler }
+func (adapter testModuleHTTPAdapter) Routes() []modulehttp.Route {
+	return append([]modulehttp.Route(nil), adapter.routes...)
 }
 
 func TestStandaloneGenericModuleContributionReconcilesBeforeMountAndUsesHostGate(t *testing.T) {
@@ -77,7 +77,7 @@ func TestStandaloneGenericModuleContributionReconcilesBeforeMountAndUsesHostGate
 		t.Fatalf("generic module permission rows=%d err=%v", rows, err)
 	}
 	response := httptest.NewRecorder()
-	server.Routes().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/tenant-admin/modules/inventory/items", nil))
+	server.Routes().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/inventory/items", nil))
 	if response.Code != http.StatusUnauthorized || handlerCalls.Load() != 0 {
 		t.Fatalf("generic module host gate status=%d handler_calls=%d body=%s", response.Code, handlerCalls.Load(), response.Body.String())
 	}
@@ -85,7 +85,7 @@ func TestStandaloneGenericModuleContributionReconcilesBeforeMountAndUsesHostGate
 
 func TestStandaloneRejectsModuleActionOwnerMismatchBeforeReady(t *testing.T) {
 	provider := inventoryModuleProvider("module:other", http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
-		t.Fatal("invalid module surface was mounted")
+		t.Fatal("invalid module adapter was mounted")
 	}))
 	cfg, store := openModuleContributionStore(t)
 	_, err := httpserver.NewWithStore(t.Context(), cfg, store, httpserver.ServerAssemblyOptions{ModuleProviders: []actioncontract.Provider{provider}})
@@ -94,11 +94,11 @@ func TestStandaloneRejectsModuleActionOwnerMismatchBeforeReady(t *testing.T) {
 	}
 }
 
-func TestStandaloneRejectsModuleHTTPSurfaceDriftFromSourceManifest(t *testing.T) {
+func TestStandaloneRejectsModuleHTTPAdapterDriftFromSourceManifest(t *testing.T) {
 	provider := inventoryModuleProvider("module:inventory", http.NotFoundHandler())
-	surface := provider.surfaces[0].(testModuleHTTPSurface)
-	surface.routes[0].Action.Label = "Drifted route copy"
-	provider.surfaces[0] = surface
+	adapter := provider.adapters[0].(testModuleHTTPAdapter)
+	adapter.routes[0].Action.Label = "Drifted route copy"
+	provider.adapters[0] = adapter
 	cfg, store := openModuleContributionStore(t)
 	_, err := httpserver.NewWithStore(t.Context(), cfg, store, httpserver.ServerAssemblyOptions{ModuleProviders: []actioncontract.Provider{provider}})
 	if err == nil || !strings.Contains(err.Error(), "differs from its source manifest") {
@@ -134,25 +134,25 @@ func TestStandaloneReconcilesPureNonHTTPModuleActionAndRejectsUnservedHTTP(t *te
 	unserved := inventoryModuleAction("module:inventory")
 	cfg2, store2 := openModuleContributionStore(t)
 	_, err = httpserver.NewWithStore(t.Context(), cfg2, store2, httpserver.ServerAssemblyOptions{ModuleProviders: []actioncontract.Provider{testModuleActionProvider{actions: []actioncontract.ActionDefinition{unserved}}}})
-	if err == nil || !strings.Contains(err.Error(), "has no mounted surface route") {
+	if err == nil || !strings.Contains(err.Error(), "has no mounted adapter route") {
 		t.Fatalf("unserved module HTTP Action error=%v", err)
 	}
 }
 
 func inventoryModuleProvider(actionOwner string, handler http.Handler) testModuleHTTPProvider {
 	action := inventoryModuleAction(actionOwner)
-	return testModuleHTTPProvider{actions: []actioncontract.ActionDefinition{action}, surfaces: []modulehttp.Surface{testModuleHTTPSurface{
+	return testModuleHTTPProvider{actions: []actioncontract.ActionDefinition{action}, adapters: []modulehttp.Adapter{testModuleHTTPAdapter{
 		owner: "inventory", name: "product", routes: []modulehttp.Route{{Action: action}}, handler: handler,
 	}}}
 }
 
 func inventoryModuleAction(actionOwner string) actioncontract.ActionDefinition {
 	return actioncontract.ActionDefinition{
-		Key: "inventory.items.list", Owner: actionOwner, SourceKind: "module_surface",
+		Key: "inventory.items.list", Owner: actionOwner, SourceKind: "module_http",
 		CapabilityKey: "inventory.items", CapabilityLabel: "Inventory items", OperationKey: "list", OperationLabel: "List",
-		Label: "List inventory items", Exposures: []actioncontract.Exposure{actioncontract.ExposureTenantAdmin},
+		Label: "List inventory items", Exposures: []actioncontract.Exposure{actioncontract.ExposureManagement},
 		Authorization: actioncontract.Authorization{Strategy: actioncontract.AuthorizationAuthenticated},
-		HTTP:          &actioncontract.HTTPBinding{Method: http.MethodGet, RouteTemplate: "/tenant-admin/modules/inventory/items"},
+		HTTP:          &actioncontract.HTTPBinding{Method: http.MethodGet, RouteTemplate: "/inventory/items"},
 		Permission: &actioncontract.PermissionDefinition{
 			Key: "inventory.items.list", Owner: actionOwner, ResourceKey: "inventory.items", OperationKey: "list",
 			Label: "Inventory items · List", Category: "Inventory", LifecycleStatus: actioncontract.LifecycleActive,

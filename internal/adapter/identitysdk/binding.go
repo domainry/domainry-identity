@@ -65,7 +65,7 @@ func NewBinding(dependencies BindingDependencies) (identitysdk.Binding, error) {
 	binding := &sdkBinding{descriptor: identitysdk.Descriptor{
 		ProtocolVersion: identitysdk.CurrentProtocolVersion, BundleVersion: identitysdk.CurrentPolicyBundleVersion, AuthorizationVersion: identitysdk.CurrentAuthorizationContractVersion,
 		Mode: identitysdk.DeploymentModeModule, Issuer: defaultString(dependencies.Config.AuthIssuer, "http://localhost:8081"), Audience: defaultString(dependencies.Config.AuthAudience, "domainry-runtime"),
-		Capabilities: []string{"authentication", "token_verification", "authorization", "principal_resolution", "directory_projection", "application_registration", "permission_reconciliation", "credentials", "oidc", "saml"},
+		Capabilities: []string{"authentication", "token_verification", "authorization", "principal_resolution", "identity_projection", "application_registration", "permission_reconciliation", "credentials", "oidc", "saml"},
 	}, auth: dependencies.Authentication, providers: dependencies.ProviderConfiguration, flows: dependencies.ProviderFlows,
 		providerCallback: dependencies.ProviderCallback, access: dependencies.EffectiveAccess, identity: dependencies.Identity,
 		applications: dependencies.Applications, permissions: dependencies.Permissions, clock: dependencies.Clock,
@@ -98,8 +98,8 @@ func (binding *sdkBinding) Authorization() identitysdk.Authorization {
 func (binding *sdkBinding) Principals() identitysdk.PrincipalResolver {
 	return sdkPrincipalResolver{binding: binding}
 }
-func (binding *sdkBinding) Directory() identitysdk.Directory {
-	return sdkDirectory{binding: binding}
+func (binding *sdkBinding) Projection() identitysdk.Projection {
+	return sdkProjection{binding: binding}
 }
 func (binding *sdkBinding) Applications() identitysdk.ApplicationRegistry {
 	return sdkApplications{binding: binding}
@@ -691,7 +691,7 @@ var _ identitysdk.Authentication = sdkAuthentication{}
 var _ identitysdk.TokenVerifier = sdkTokenVerifier{}
 var _ identitysdk.Authorization = sdkAuthorization{}
 var _ identitysdk.PrincipalResolver = sdkPrincipalResolver{}
-var _ identitysdk.Directory = sdkDirectory{}
+var _ identitysdk.Projection = sdkProjection{}
 var _ identitysdk.ApplicationRegistry = sdkApplications{}
 var _ identitysdk.PermissionRegistry = sdkPermissions{}
 var _ identitysdk.CredentialManager = sdkCredentials{}

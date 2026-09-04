@@ -51,7 +51,7 @@ async function putIdentityMenu(
     {
       method: 'PUT',
       headers: {
-        'Builder-Task-ID': `tenant-admin.identity-menu.${requestID}`,
+        'Builder-Task-ID': `identity-management.menu.${requestID}`,
         'Idempotency-Key': requestID,
         'Expected-Schema-Hash': expectedResourceHash,
       },
@@ -66,10 +66,10 @@ export const effectiveMenusApi = {
 }
 
 export const objectsApi = {
-  schemaSnapshot: () => runtimeRequest<RuntimeSchema>('/tenant-admin/runtime-schema'),
+  schemaSnapshot: () => runtimeRequest<RuntimeSchema>('/discovery/schema/administration'),
 
   async schema(objectKey: string): Promise<RuntimeObjectSchema> {
-    const schema = await runtimeRequest<RuntimeSchema>('/tenant-admin/runtime-schema')
+    const schema = await runtimeRequest<RuntimeSchema>('/discovery/schema/administration')
     const object = schema.objects?.find((item) => item.key === objectKey)
     if (!object) throw new RuntimeApiError(404, {}, `Object schema not found: ${objectKey}`)
     return object

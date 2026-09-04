@@ -412,9 +412,8 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 		},
 	}
 	workspaceIdentities := prepareWorkspaceScopedIdentities(tables)
-	// This compatibility map preserves legacy engine-provided physical types
-	// and defaults that domainry-orm cannot express as a custom ColumnType. New
-	// owned schemas are declared with ORM builders in their dedicated files.
+	// These baseline tables use engine-provided physical types that
+	// domainry-orm cannot yet express as a custom ColumnType.
 	for _, table := range sortedSchemaTables(tables) {
 		if _, err := s.SchemaDB().ExecContext(ctx, "CREATE TABLE IF NOT EXISTS "+s.TableIdentifier(table)+" ("+quotedColumnDefinitions(s, tables[table])+")"); err != nil {
 			return fmt.Errorf("create %s: %w", table, err)
@@ -424,12 +423,6 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 		return fmt.Errorf("ensure workspace auth provider credential identity: %w", err)
 	}
 	if err := ensureWorkspaceScopedIdentities(ctx, s, workspaceIdentities); err != nil {
-		return err
-	}
-	if err := migrateLegacyIdentityMenuAudience(ctx, s); err != nil {
-		return err
-	}
-	if err := prepareIdempotencyReceiptMigrations(ctx, s, idempotencyReceiptMigrationSpec{table: "_identity_auth_mutation_receipts", scopeColumns: []string{"use_case", "target_id"}, backfillColumns: []string{"use_case", "target_id"}}); err != nil {
 		return err
 	}
 	if err := s.CreateIndexIfMissing(ctx, "_identity_auth_mutation_receipts", "uniq_auth_mutation_receipt_scope", true, "workspace_id", "use_case", "target_id", "idempotency_key"); err != nil {
@@ -452,65 +445,6 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 	}
 	if err := s.CreateIndexIfMissing(ctx, "_identity_access_review_receipts", "uniq_identity_access_review_receipt", true, "workspace_id", "item_id", "idempotency_key"); err != nil {
 		return fmt.Errorf("create identity access review receipt unique index: %w", err)
-	}
-	if err := s.EnsureColumn(ctx, "_identity_access_review_items", "priority_reasons_json", "TEXT NOT NULL DEFAULT '[]'"); err != nil {
-		return err
-	}
-	if err := s.EnsureColumn(ctx, "_identity_access_review_items", "last_used_at", text); err != nil {
-		return err
-	}
-	if err := s.EnsureColumn(ctx, "_identity_organization_units", "sort_order", "INTEGER NOT NULL DEFAULT 0"); err != nil {
-		return err
-	}
-	for _, column := range []string{"given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale"} {
-		if err := s.EnsureColumn(ctx, "_identity_users", column, "TEXT NOT NULL DEFAULT ''"); err != nil {
-			return err
-		}
-	}
-	for column, definition := range map[string]string{
-		"account_type":    text + " NOT NULL DEFAULT 'human'",
-		"locale":          "TEXT NOT NULL DEFAULT ''",
-		"timezone":        "TEXT NOT NULL DEFAULT ''",
-		"org_id":          text,
-		"support_org_id":  text,
-		"manager_user_id": text,
-		"reporting_path":  "TEXT NOT NULL DEFAULT ''",
-		"worker_no":       "TEXT NOT NULL DEFAULT ''",
-		"worker_type":     "TEXT NOT NULL DEFAULT ''",
-		"work_status":     "TEXT NOT NULL DEFAULT ''",
-		"start_date":      text,
-		"end_date":        text,
-		"version":         "BIGINT NOT NULL DEFAULT 1",
-	} {
-		if err := s.EnsureColumn(ctx, "_identity_users", column, definition); err != nil {
-			return err
-		}
-	}
-	if err := s.EnsureColumn(ctx, "_identity_role_requests", "requested_by", text); err != nil {
-		return err
-	}
-	for column, definition := range map[string]string{
-		"binding_key":   text,
-		"profile_id":    text,
-		"source":        text + " NOT NULL DEFAULT 'manual'",
-		"status":        text + " NOT NULL DEFAULT 'active'",
-		"valid_from":    text,
-		"valid_until":   text,
-		"granted_by":    text,
-		"grant_reason":  "TEXT",
-		"revoked_by":    text,
-		"revoked_at":    text,
-		"revoke_reason": "TEXT",
-	} {
-		if err := s.EnsureColumn(ctx, "_identity_user_role_assignments", column, definition); err != nil {
-			return err
-		}
-	}
-	if err := s.EnsureColumn(ctx, "_identity_profile_binding_events", "approval_id", text); err != nil {
-		return err
-	}
-	if err := s.EnsureColumn(ctx, "_identity_auth_refresh_tokens", "audience", text+" NOT NULL DEFAULT ''"); err != nil {
-		return err
 	}
 	for _, index := range []struct {
 		table   string

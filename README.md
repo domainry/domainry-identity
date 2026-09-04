@@ -10,9 +10,9 @@ Domainry Identity 是 Domainry 的基础登录与权限模块，负责用户与�
 - `internal/assembly/saas/`：独立服务装配和生命周期。
 - `internal/adapter/identitysdk/`：`domainry-identity-sdk` 的本地 `Binding` 实现。
 - `internal/transport/http/remotesdk/`：远程 SDK 调用所使用的 HTTP 协议。
-- `internal/transport/http/module/`：由 Runtime Host 挂载的模块 HTTP surface。
+- `internal/transport/http/module/`：由 Runtime Host 挂载的模块 HTTP adapter。
 - `internal/transport/http/saas/`：独立服务 HTTP transport facade；共享路由实现位于 `internal/transport/http/server/`。
-- 独立服务的治理审计接口由内嵌 Audit Binding 发布的 `modulehttp` Surface 提供，Identity Server 只负责认证上下文和挂载，不复制 Audit 查询/导出编排。
+- 独立服务的治理审计接口由内嵌 Audit Binding 发布的 `modulehttp` Adapter 提供，Identity Server 只负责认证上下文和挂载，不复制 Audit 查询/导出编排。
 - `internal/application/`、`internal/domain/`：应用服务与领域模型。
 - `internal/infrastructure/persistence/`：SQLite、MySQL、PostgreSQL 持久化实现。
 - `frontend/identity-admin/`：Identity 管理前端。
@@ -136,15 +136,15 @@ owner 即使使用有效应用凭证也返回 `identity.permission_source_owner_
 
 独立部署需要在权限管理页展示 Runtime/module 当前 Action 使用关系时，设置
 `IDENTITY_ACTION_USAGE_RUNTIME_URL` 为 Runtime 基础 URL。Identity 会把同一次权限目录请求中的
-多个 source owner/key 合并为一个批量请求，调用 Runtime 的
-`POST /operations/authorization/action-usages/query`；默认超时由
+多个 source owner/key 合并为一个批量请求，调用 Runtime Action 模块的
+`POST /action/permission-usages/query`；默认超时由
 `IDENTITY_ACTION_USAGE_REQUEST_TIMEOUT=3s` 控制。生产环境只接受 HTTPS URL。
 
 该跨服务调用不转发管理员浏览器 token，也不复用 ops token。Identity 使用
 `IDENTITY_ACTION_USAGE_APPLICATION_KEY`（默认 `domainry-identity-control-plane`）、
 `IDENTITY_ACTION_USAGE_RUNTIME_AUDIENCE`（默认 `domainry-runtime`）和
 `IDENTITY_ACTION_USAGE_CREDENTIAL_ID`（默认 `identity-action-usage`）签发只包含
-`runtime.authorization.action_usages#query` 的短期 service token。对应 source credential 必须作为
+`runtime.action.permission_usages#query` 的短期 service token。对应 source credential 必须作为
 真实轮换记录存在于 `IDENTITY_APPLICATION_SERVICE_CREDENTIALS`，例如：
 
 ```text

@@ -202,7 +202,7 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 	managementServer, err := httpserver.NewWithCore(ctx, cfg, identityRuntime)
 	if err != nil {
 		_ = identityRuntime.CloseContext(ctx)
-		return nil, fmt.Errorf("assemble Identity module management surface: %w", err)
+		return nil, fmt.Errorf("assemble Identity module management adapter: %w", err)
 	}
 	actionRoutes, err := identityModuleActionRoutes()
 	if err != nil {
@@ -217,7 +217,7 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 		_ = identityRuntime.CloseContext(ctx)
 		return nil, err
 	}
-	managementSurface := modulehttptransport.NewSurface("identity_management", managementServer.Routes(), managementRoutes)
+	managementAdapter := modulehttptransport.NewAdapter("identity_management", managementServer.Routes(), managementRoutes)
 	browserGateway, err := browsergateway.New(scopedBinding, browsergateway.Config{
 		ApplicationKey:     application.ApplicationKey,
 		DefaultWorkspaceID: application.WorkspaceID,
@@ -228,12 +228,12 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 	})
 	if err != nil {
 		_ = identityRuntime.CloseContext(ctx)
-		return nil, fmt.Errorf("assemble Identity module browser authentication surface: %w", err)
+		return nil, fmt.Errorf("assemble Identity module browser authentication adapter: %w", err)
 	}
 	browserMux := http.NewServeMux()
 	if err := browserGateway.RegisterRoutes(browserMux, ""); err != nil {
 		_ = identityRuntime.CloseContext(ctx)
-		return nil, fmt.Errorf("register Identity module browser authentication surface: %w", err)
+		return nil, fmt.Errorf("register Identity module browser authentication adapter: %w", err)
 	}
 	browserPatterns, err := browsergateway.RoutePatterns("")
 	if err != nil {
@@ -257,7 +257,7 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 		_ = identityRuntime.CloseContext(ctx)
 		return nil, err
 	}
-	browserSurface := modulehttptransport.NewSurface("browser_authentication", browserMux, browserRoutes)
+	browserAdapter := modulehttptransport.NewAdapter("browser_authentication", browserMux, browserRoutes)
 	portabilityRepository, err := portabilitypersistence.NewSQLRepository(store)
 	if err != nil {
 		_ = identityRuntime.CloseContext(ctx)
@@ -269,7 +269,7 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 		return nil, fmt.Errorf("assemble Identity portability service: %w", err)
 	}
 	return &moduleBinding{
-		Binding: scopedBinding, runtime: identityRuntime, application: application, surfaces: []identityhttpapi.Surface{browserSurface, managementSurface},
+		Binding: scopedBinding, runtime: identityRuntime, application: application, adapters: []identityhttpapi.Adapter{browserAdapter, managementAdapter},
 		portability: &identityPortabilityDataExchangeProvider{service: portabilityService},
 	}, nil
 }
@@ -325,7 +325,7 @@ type moduleBinding struct {
 	identitysdk.Binding
 	runtime     *assembly.Core
 	application identitysdk.ApplicationRef
-	surfaces    []identityhttpapi.Surface
+	adapters    []identityhttpapi.Adapter
 	portability *identityPortabilityDataExchangeProvider
 }
 
@@ -336,11 +336,11 @@ func (binding *moduleBinding) IdentityDataExchangeProviders() (string, dataexcha
 	return IdentityPortabilityProviderKey, binding.portability, binding.portability
 }
 
-func (binding *moduleBinding) HTTPSurfaces() []identityhttpapi.Surface {
+func (binding *moduleBinding) HTTPAdapters() []identityhttpapi.Adapter {
 	if binding == nil {
 		return nil
 	}
-	return append([]identityhttpapi.Surface(nil), binding.surfaces...)
+	return append([]identityhttpapi.Adapter(nil), binding.adapters...)
 }
 
 func (binding *moduleBinding) BindPermissionUsageProvider(provider actioncontract.PermissionUsageProvider) error {

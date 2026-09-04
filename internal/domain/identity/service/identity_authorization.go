@@ -12,7 +12,7 @@ import (
 // IdentityAuthorization is the stable read boundary used by authentication and
 // domain-facing HTTP composition. Callers do not access IdentityDomainService state
 // or its repository directly.
-// IdentityDirectory is the stable ctx-first domain lookup boundary. Business
+// IdentityProjection is the stable ctx-first domain lookup boundary. Business
 // services depend on this contract instead of IdentityRepository or
 // IdentityDomainService internals.
 func (s *IdentityDomainService) ResolvePrincipal(ctx context.Context, userID string) (identitymodel.Principal, error) {
@@ -22,11 +22,11 @@ func (s *IdentityDomainService) ResolvePrincipal(ctx context.Context, userID str
 	return s.BuildPrincipal(ctx, userID)
 }
 
-// ResolveEffectiveRoles returns the active published directory roles that
+// ResolveEffectiveRoles returns the active published projection roles that
 // currently contribute to the user's authorization. It deliberately excludes
 // expired, revoked, future, binding-ineligible, disabled,
 // and unpublished role facts so application projections cannot infer access
-// from stale assignment rows or the role directory.
+// from stale assignment rows or the role projection.
 func (s *IdentityDomainService) ResolveEffectiveRoles(ctx context.Context, userID string) ([]identitymodel.IdentityRole, error) {
 	assignments, err := s.ResolveEffectiveRoleAssignments(ctx, userID)
 	if err != nil {
@@ -129,21 +129,21 @@ func (s *IdentityDomainService) FindOrganizationUnit(ctx context.Context, organi
 	return identitymodel.IdentityOrganizationUnit{}, false, nil
 }
 
-func (s *IdentityDomainService) ListDirectoryUsers(ctx context.Context) ([]identitymodel.IdentityUser, error) {
+func (s *IdentityDomainService) ListProjectionUsers(ctx context.Context) ([]identitymodel.IdentityUser, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	return s.repo.ListIdentityUsers(ctx, s.workspace)
 }
 
-func (s *IdentityDomainService) ListDirectoryRoles(ctx context.Context) ([]identitymodel.IdentityRole, error) {
+func (s *IdentityDomainService) ListProjectionRoles(ctx context.Context) ([]identitymodel.IdentityRole, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	return s.repo.ListIdentityRoles(ctx, s.workspace)
 }
 
-func (s *IdentityDomainService) ListDirectoryUserRoleAssignments(ctx context.Context, userID string) ([]identitymodel.IdentityUserRoleAssignment, error) {
+func (s *IdentityDomainService) ListProjectionUserRoleAssignments(ctx context.Context, userID string) ([]identitymodel.IdentityUserRoleAssignment, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

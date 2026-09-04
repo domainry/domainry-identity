@@ -7,7 +7,7 @@ import (
 
 type actionExecutionContextKey struct{}
 
-// Executor is the adapter-private SQL surface shared by
+// Executor is the adapter-private SQL contract shared by
 // persistence collaborators inside one Runtime Action transaction. It omits
 // lifecycle methods so callers cannot commit or roll back the transaction.
 type Executor interface {

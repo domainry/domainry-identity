@@ -25,8 +25,8 @@ func (service *Service) DevelopmentRoutes() http.Handler {
 	return saashttp.DevelopmentRoutes(service.server)
 }
 func (service *Service) PublicRoutes() http.Handler { return saashttp.PublicRoutes(service.server) }
-func (service *Service) TenantAdminRoutes() http.Handler {
-	return saashttp.TenantAdminRoutes(service.server)
+func (service *Service) ManagementRoutes() http.Handler {
+	return saashttp.ManagementRoutes(service.server)
 }
 func (service *Service) OperationsRoutes() http.Handler {
 	return saashttp.OperationsRoutes(service.server)

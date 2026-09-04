@@ -56,7 +56,7 @@ type IdentityUserSecurity interface {
 }
 
 type IdentityUserSecurityBatch interface {
-	UserDirectorySecurityProfiles(context.Context, string, []string) (map[string]authdomain.UserSecurityProfile, error)
+	UserProjectionSecurityProfiles(context.Context, string, []string) (map[string]authdomain.UserSecurityProfile, error)
 }
 
 type IdentityDependencies struct {

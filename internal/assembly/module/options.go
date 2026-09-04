@@ -80,7 +80,7 @@ func moduleOptionValue(value, fallback string) string {
 }
 
 func loadModuleManifest() (manifestmodel.ManifestSchema, error) {
-	manifest, _, err := manifestmodel.DecodeManifest(defaultManifestJSON)
+	manifest, err := manifestmodel.DecodeManifest(defaultManifestJSON)
 	if err != nil {
 		return manifestmodel.ManifestSchema{}, fmt.Errorf("decode embedded Identity module manifest: %w", err)
 	}

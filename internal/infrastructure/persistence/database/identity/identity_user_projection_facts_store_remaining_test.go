@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func identityDirectoryRoleColumns() []string {
+func identityProjectionRoleColumns() []string {
 	return []string{
 		"user_id", "role_id", "binding_key", "profile_id", "source", "status",
 		"valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at",
@@ -14,35 +14,35 @@ func identityDirectoryRoleColumns() []string {
 	}
 }
 
-func identityDirectoryRoleRow() []driver.Value {
+func identityProjectionRoleRow() []driver.Value {
 	return []driver.Value{
 		"user", "role", "binding", "profile", "manual", "active",
 		"from", "until", "admin", "reason", nil, nil, nil, nil, "created", "updated",
 	}
 }
 
-func identityDirectoryBindingColumns() []string {
+func identityProjectionBindingColumns() []string {
 	return []string{
 		"workspace_id", "binding_key", "object_key", "profile_id", "identity_user_id",
 		"status", "invitation_channel", "claim_proof_type", "version", "created_at", "updated_at",
 	}
 }
 
-func identityDirectoryBindingRow() []driver.Value {
+func identityProjectionBindingRow() []driver.Value {
 	return []driver.Value{
 		"workspace", "binding", "member", "profile", "user",
 		"active", "email", "token", int64(1), "created", "updated",
 	}
 }
 
-func TestListIdentityUserDirectoryFactsInputAndQueryFailures(t *testing.T) {
+func TestListIdentityUserProjectionFactsInputAndQueryFailures(t *testing.T) {
 	store, closeDB := scriptedSQLIdentity(&identitySQLState{})
-	if facts, err := store.ListIdentityUserDirectoryFacts(t.Context(), "", []string{"user"}); err == nil || facts.RoleAssignments == nil {
+	if facts, err := store.ListIdentityUserProjectionFacts(t.Context(), "", []string{"user"}); err == nil || facts.RoleAssignments == nil {
 		t.Fatalf("blank workspace facts=%#v error=%v", facts, err)
 	}
 	closeDB()
 	store, closeDB = scriptedSQLIdentity(&identitySQLState{})
-	if facts, err := store.ListIdentityUserDirectoryFacts(t.Context(), "workspace", nil); err != nil ||
+	if facts, err := store.ListIdentityUserProjectionFacts(t.Context(), "workspace", nil); err != nil ||
 		facts.RoleAssignments == nil || facts.ProfileBindings == nil {
 		t.Fatalf("empty IDs facts=%#v error=%v", facts, err)
 	}
@@ -56,41 +56,41 @@ func TestListIdentityUserDirectoryFactsInputAndQueryFailures(t *testing.T) {
 		},
 	} {
 		store, closeDB = scriptedSQLIdentity(state)
-		if _, err := store.ListIdentityUserDirectoryFacts(t.Context(), "workspace", []string{"user"}); err == nil {
-			t.Fatal("directory query failure ignored")
+		if _, err := store.ListIdentityUserProjectionFacts(t.Context(), "workspace", []string{"user"}); err == nil {
+			t.Fatal("projection query failure ignored")
 		}
 		closeDB()
 	}
 }
 
-func TestListIdentityUserDirectoryFactsRoleFailures(t *testing.T) {
+func TestListIdentityUserProjectionFactsRoleFailures(t *testing.T) {
 	for _, roleStep := range []identitySQLQueryStep{
 		{columns: []string{"only"}, rows: [][]driver.Value{{"value"}}},
-		{columns: identityDirectoryRoleColumns(), nextErr: errProfileBindingSQL},
+		{columns: identityProjectionRoleColumns(), nextErr: errProfileBindingSQL},
 	} {
 		store, closeDB := scriptedSQLIdentity(&identitySQLState{querySteps: []identitySQLQueryStep{roleStep}})
-		if _, err := store.ListIdentityUserDirectoryFacts(t.Context(), "workspace", []string{"user"}); err == nil {
+		if _, err := store.ListIdentityUserProjectionFacts(t.Context(), "workspace", []string{"user"}); err == nil {
 			t.Fatal("role row failure ignored")
 		}
 		closeDB()
 	}
 }
 
-func TestListIdentityUserDirectoryFactsBindingFailuresAndSuccess(t *testing.T) {
+func TestListIdentityUserProjectionFactsBindingFailuresAndSuccess(t *testing.T) {
 	store, closeDB := scriptedSQLIdentity(&identitySQLState{querySteps: []identitySQLQueryStep{
 		{},
 		{columns: []string{"only"}, rows: [][]driver.Value{{"value"}}},
 	}})
-	if _, err := store.ListIdentityUserDirectoryFacts(t.Context(), "workspace", []string{"user"}); err == nil {
+	if _, err := store.ListIdentityUserProjectionFacts(t.Context(), "workspace", []string{"user"}); err == nil {
 		t.Fatal("binding scan failure ignored")
 	}
 	closeDB()
 
 	store, closeDB = scriptedSQLIdentity(&identitySQLState{querySteps: []identitySQLQueryStep{
-		{columns: identityDirectoryRoleColumns(), rows: [][]driver.Value{identityDirectoryRoleRow()}},
-		{columns: identityDirectoryBindingColumns(), rows: [][]driver.Value{identityDirectoryBindingRow()}},
+		{columns: identityProjectionRoleColumns(), rows: [][]driver.Value{identityProjectionRoleRow()}},
+		{columns: identityProjectionBindingColumns(), rows: [][]driver.Value{identityProjectionBindingRow()}},
 	}})
-	facts, err := store.ListIdentityUserDirectoryFacts(t.Context(), "workspace", []string{"user", "other"})
+	facts, err := store.ListIdentityUserProjectionFacts(t.Context(), "workspace", []string{"user", "other"})
 	if err != nil || len(facts.RoleAssignments) != 1 || len(facts.ProfileBindings) != 1 {
 		t.Fatalf("facts=%#v error=%v", facts, err)
 	}
@@ -100,15 +100,15 @@ func TestListIdentityUserDirectoryFactsBindingFailuresAndSuccess(t *testing.T) {
 	closeDB()
 }
 
-func TestIdentityUserDirectoryFactsBatchesByParameterBudget(t *testing.T) {
+func TestIdentityUserProjectionFactsBatchesByParameterBudget(t *testing.T) {
 	state := &identitySQLState{}
 	store, closeDB := scriptedSQLIdentity(state)
 	defer closeDB()
-	userIDs := make([]string, identityDirectoryBatchMaxItems+1)
+	userIDs := make([]string, identityProjectionBatchMaxItems+1)
 	for index := range userIDs {
 		userIDs[index] = fmt.Sprintf("user-%04d", index)
 	}
-	if _, err := store.ListIdentityUserDirectoryFacts(t.Context(), "workspace", userIDs); err != nil {
+	if _, err := store.ListIdentityUserProjectionFacts(t.Context(), "workspace", userIDs); err != nil {
 		t.Fatal(err)
 	}
 	if state.queryCount != 4 {

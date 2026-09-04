@@ -8,10 +8,6 @@ import (
 
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/base"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/migration"
-	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/workspace"
-	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/mysql"
-	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/postgres"
-	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/sqlite"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 )
 
@@ -60,102 +56,6 @@ func TestMigrationStatusClassificationsAndVersionBounds(t *testing.T) {
 				t.Fatalf("status=%#v err=%v", status, err)
 			}
 		})
-	}
-}
-
-func TestWorkspaceScopeInventoryAndValidationFailures(t *testing.T) {
-	for _, engine := range []databaseEngine{sqlite.NewEngine(), mysql.NewEngine(), postgres.NewEngine()} {
-		store := identitySchemaStore(t, &databaseSQLState{})
-		store.engine = engine
-		store.ScopeValidator = workspace.NewScopeValidator(store.db, engine, base.NewSQLDatabase(store.db, engine, "", "").SQLRenderer, "", "")
-		if tables, err := store.InventoryWorkspaceTables(t.Context()); err != nil || len(tables) != 0 {
-			t.Fatalf("engine=%s tables=%#v err=%v", engine.Name(), tables, err)
-		}
-	}
-	for _, step := range []databaseSQLQueryStep{
-		{err: errDatabaseSQL},
-		{columns: []string{"table"}, rows: [][]driver.Value{{nil}}},
-		{columns: []string{"table"}, nextErr: errDatabaseSQL},
-	} {
-		store := identitySchemaStore(t, &databaseSQLState{querySteps: []databaseSQLQueryStep{step}})
-		if _, err := store.InventoryWorkspaceTables(t.Context()); err == nil {
-			t.Fatal("expected inventory error")
-		}
-	}
-	store := identitySchemaStore(t, &databaseSQLState{querySteps: []databaseSQLQueryStep{
-		{columns: []string{"table"}, rows: [][]driver.Value{{"records"}}},
-		{err: errDatabaseSQL},
-	}})
-	if err := store.ValidateLegacyWorkspaceScopes(t.Context()); !errors.Is(err, errDatabaseSQL) {
-		t.Fatalf("query error=%v", err)
-	}
-	store = identitySchemaStore(t, &databaseSQLState{querySteps: []databaseSQLQueryStep{
-		{columns: []string{"table"}, rows: [][]driver.Value{{"records"}}},
-		{columns: []string{"workspace", "count"}, rows: [][]driver.Value{{nil, int64(1)}}},
-	}})
-	if err := store.ValidateLegacyWorkspaceScopes(t.Context()); err == nil {
-		t.Fatal("scan error was ignored")
-	}
-	store = identitySchemaStore(t, &databaseSQLState{querySteps: []databaseSQLQueryStep{
-		{columns: []string{"table"}, rows: [][]driver.Value{{"records"}}},
-		{columns: []string{"workspace", "count"}, nextErr: errDatabaseSQL},
-	}})
-	if err := store.ValidateLegacyWorkspaceScopes(t.Context()); !errors.Is(err, errDatabaseSQL) {
-		t.Fatalf("close error=%v", err)
-	}
-	store = identitySchemaStore(t, &databaseSQLState{querySteps: []databaseSQLQueryStep{
-		{columns: []string{"table"}, rows: [][]driver.Value{{"records"}}},
-		{columns: []string{"workspace", "count"}, rows: [][]driver.Value{{"", int64(2)}}},
-	}})
-	if err := store.ValidateLegacyWorkspaceScopes(t.Context()); err == nil || !strings.Contains(err.Error(), "row_count=2") {
-		t.Fatalf("finding error=%v", err)
-	}
-}
-
-func TestWorkspaceScopeInventoryIsolatesBorrowedIdentityRelations(t *testing.T) {
-	for _, engine := range []databaseEngine{sqlite.NewEngine(), mysql.NewEngine(), postgres.NewEngine()} {
-		t.Run(engine.Name(), func(t *testing.T) {
-			store := identitySchemaStore(t, &databaseSQLState{querySteps: []databaseSQLQueryStep{{
-				columns: []string{"table"},
-				rows: [][]driver.Value{
-					{"_audit_events"},
-					{"domainry_identity__identity_users"},
-					{"runtime_jobs"},
-					{"domainry_identity__identity_auth_sessions"},
-				},
-			}}})
-			store.engine = engine
-			store.relationPrefix = "domainry_identity_"
-			store.ScopeValidator = workspace.NewScopeValidator(store.db, engine, base.NewSQLDatabase(store.db, engine, "", store.relationPrefix).SQLRenderer, "", store.relationPrefix)
-
-			tables, err := store.InventoryWorkspaceTables(t.Context())
-			if err != nil {
-				t.Fatal(err)
-			}
-			if got, want := strings.Join(tables, ","), "_identity_auth_sessions,_identity_users"; got != want {
-				t.Fatalf("borrowed inventory=%q want=%q", got, want)
-			}
-		})
-	}
-}
-
-func TestWorkspaceScopeValidationStillInspectsBorrowedIdentityRelations(t *testing.T) {
-	store := identitySchemaStore(t, &databaseSQLState{querySteps: []databaseSQLQueryStep{
-		{
-			columns: []string{"table"},
-			rows: [][]driver.Value{
-				{"_audit_events"},
-				{"domainry_identity__identity_users"},
-			},
-		},
-		{columns: []string{"workspace", "count"}, rows: [][]driver.Value{{"", int64(3)}}},
-	}})
-	store.relationPrefix = "domainry_identity_"
-	store.ScopeValidator = workspace.NewScopeValidator(store.db, store.engine, base.NewSQLDatabase(store.db, store.engine, "", store.relationPrefix).SQLRenderer, "", store.relationPrefix)
-
-	err := store.ValidateLegacyWorkspaceScopes(t.Context())
-	if err == nil || !strings.Contains(err.Error(), "table=_identity_users classification=missing_workspace row_count=3") {
-		t.Fatalf("validation error=%v", err)
 	}
 }
 

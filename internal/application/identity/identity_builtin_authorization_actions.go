@@ -70,7 +70,7 @@ func IdentityBuiltinAuthorizationActions() []identitymodel.IdentityActionDefinit
 
 		permissionAction("identity.users.list", "账号管理", "列出", "GET", "/identity/users", "列出用户", accounts),
 		permissionAction("identity.users.search", "账号管理", "搜索", "GET", "/identity/users/search", "搜索用户", nil),
-		permissionAction("identity.users.directory_search", "账号管理", "目录搜索", "GET", "/identity/users/directory/search", "搜索用户目录", nil),
+		permissionAction("identity.accounts.search", "账号管理", "账号搜索", "GET", "/identity/accounts/search", "搜索账号", nil),
 		selfPageAction("identity.users.get", "账号管理", "查看", "GET", "/identity/users/{userID}", "查看用户", "identity.user.self", accountDetail),
 		permissionAction("identity.users.deletion_impact", "账号管理", "删除影响", "GET", "/identity/users/{userID}/deletion-impact", "查看用户删除影响", nil),
 		permissionAction("identity.users.disable_impact", "账号管理", "停用影响", "GET", "/identity/users/{userID}/disable-impact", "查看用户停用影响", nil),
@@ -100,7 +100,7 @@ func IdentityBuiltinAuthorizationActions() []identitymodel.IdentityActionDefinit
 		principalAction("identity.principal_context.get", "主体上下文", "获取", "GET", "/identity/principal-context", "获取当前主体上下文"),
 		selfAction("identity.access.explain", "有效权限", "解释", "POST", "/identity/access/explain", "解释用户有效权限", "identity.effective_access.self"),
 		permissionAction("identity.access.reverse_index", "权限治理", "反向索引", "GET", "/identity/access/reverse-index", "查看权限反向索引", nil),
-		permissionAction("identity.access.reports", "权限治理", "治理报告", "GET", "/identity/access/reports", "查看权限治理报告", nil),
+		permissionAction("identity.access.reports", "权限治理", "治理报告", "GET", "/identity/access/report", "查看权限治理报告", nil),
 		permissionAction("identity.access_reviews.create", "访问评审", "创建", "POST", "/identity/access-reviews", "创建访问评审", nil),
 		permissionAction("identity.access_reviews.list", "访问评审", "列出", "GET", "/identity/access-reviews", "列出访问评审", nil),
 		permissionAction("identity.access_review_items.decide", "访问评审项", "决策", "POST", "/identity/access-review-items/{itemID}/decision", "决策访问评审项", nil),
@@ -141,9 +141,9 @@ func IdentityBuiltinAuthorizationActions() []identitymodel.IdentityActionDefinit
 		permissionAction(identitycontract.IdentityActionRoleFieldPermissionsValidate, "角色字段权限", "校验", "POST", "/identity/roles/{roleID}/field-permissions/validate", "校验角色字段权限", nil),
 		permissionAction(identitycontract.IdentityActionRoleFieldPermissionsPublish, "角色字段权限", "发布", "PUT", "/identity/roles/{roleID}/field-permissions", "发布角色字段权限", nil),
 
-		principalAction("identity.permissions.effective", "功能权限", "读取当前生效权限", "GET", "/permissions/effective", "读取当前主体的生效权限"),
-		principalAction("identity.runtime_schema.get", "Identity Runtime Schema", "读取", "GET", "/tenant-admin/runtime-schema", "读取按当前主体过滤的 Identity Runtime Schema"),
-		permissionAction("identity.platform_capabilities.get", "平台能力", "读取", "GET", "/tenant-admin/platform-capabilities", "读取 Identity 平台能力目录", nil),
+		principalAction("identity.permissions.effective", "功能权限", "读取当前生效权限", "GET", "/identity/permissions/effective", "读取当前主体的生效权限"),
+		principalAction("identity.runtime_schema.get", "Identity Runtime Schema", "读取", "GET", "/identity/schema", "读取按当前主体过滤的 Identity Runtime Schema"),
+		permissionAction("identity.platform_capabilities.get", "平台能力", "读取", "GET", "/identity/platform-capabilities", "读取 Identity 平台能力目录", nil),
 	}
 
 	out := make([]identitymodel.IdentityActionDefinition, 0, len(specs)+8)
@@ -177,7 +177,7 @@ func nonHTTPPermissionAction(key, capabilityKey, capabilityLabel, operationKey, 
 	return identitymodel.IdentityActionDefinition{
 		Key: key, Owner: IdentityBuiltinAuthorizationOwner, SourceKind: "builtin_capability",
 		CapabilityKey: capabilityKey, CapabilityLabel: capabilityLabel, OperationKey: operationKey, OperationLabel: operationLabel,
-		Label: label, Exposures: []actioncontract.Exposure{actioncontract.ExposureTenantAdmin},
+		Label: label, Exposures: []actioncontract.Exposure{actioncontract.ExposureManagement},
 		Authorization: actioncontract.Authorization{Strategy: actioncontract.AuthorizationAuthenticated},
 		NonHTTP:       []identitymodel.IdentityNonHTTPActionBinding{{Kind: "application_use_case", InvocationKey: key}},
 		Permission: &identitymodel.IdentityPermissionDefinitionContract{
@@ -191,7 +191,7 @@ func nonHTTPPermissionAction(key, capabilityKey, capabilityLabel, operationKey, 
 }
 
 // StandaloneIdentityAuthorizationSliceActions is kept as the assembly entry
-// point while now returning the complete Identity-owned management surface.
+// point while now returning the complete Identity-owned management adapter.
 func StandaloneIdentityAuthorizationSliceActions() []identitymodel.IdentityActionDefinition {
 	return IdentityBuiltinAuthorizationActions()
 }
@@ -205,7 +205,7 @@ func permissionAction(key, capabilityLabel, operationLabel, method, route, label
 
 func authPermissionAction(key, capabilityLabel, operationLabel, method, route, label string) identityBuiltinActionSpec {
 	spec := permissionAction(key, capabilityLabel, operationLabel, method, route, label, nil)
-	spec.exposures = []actioncontract.Exposure{actioncontract.ExposurePublic, actioncontract.ExposureTenantAdmin}
+	spec.exposures = []actioncontract.Exposure{actioncontract.ExposureManagement}
 	return spec
 }
 
@@ -226,13 +226,13 @@ func anonymousAction(key, capabilityLabel, operationLabel, method, route, label 
 
 func authAnonymousAction(key, capabilityLabel, operationLabel, method, route, label string) identityBuiltinActionSpec {
 	spec := anonymousAction(key, capabilityLabel, operationLabel, method, route, label)
-	spec.exposures = []actioncontract.Exposure{actioncontract.ExposurePublic, actioncontract.ExposureTenantAdmin}
+	spec.exposures = []actioncontract.Exposure{actioncontract.ExposureManagement}
 	return spec
 }
 
 func authPrincipalAction(key, capabilityLabel, operationLabel, method, route, label string) identityBuiltinActionSpec {
 	spec := principalAction(key, capabilityLabel, operationLabel, method, route, label)
-	spec.exposures = []actioncontract.Exposure{actioncontract.ExposurePublic, actioncontract.ExposureTenantAdmin}
+	spec.exposures = []actioncontract.Exposure{actioncontract.ExposurePublic}
 	return spec
 }
 
@@ -270,10 +270,10 @@ func buildIdentityBuiltinAction(spec identityBuiltinActionSpec) identitymodel.Id
 	}
 	exposures := append([]actioncontract.Exposure(nil), spec.exposures...)
 	if len(exposures) == 0 {
-		exposures = []actioncontract.Exposure{actioncontract.ExposureTenantAdmin}
+		exposures = []actioncontract.Exposure{actioncontract.ExposureManagement}
 	}
 	definition := identitymodel.IdentityActionDefinition{
-		Key: key, Owner: IdentityBuiltinAuthorizationOwner, SourceKind: "builtin_surface",
+		Key: key, Owner: IdentityBuiltinAuthorizationOwner, SourceKind: "builtin_http",
 		CapabilityKey: capabilityKey, CapabilityLabel: spec.capabilityLabel, OperationKey: operationKey, OperationLabel: spec.operationLabel,
 		Label: spec.label, Exposures: exposures, Authorization: spec.authorization,
 		HTTP:        &identitymodel.IdentityHTTPActionBinding{Method: spec.method, RouteTemplate: spec.route, DisplayRouteTemplate: displayRoute},

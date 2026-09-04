@@ -1,4 +1,4 @@
-package directory
+package projection
 
 import (
 	"context"
@@ -13,8 +13,8 @@ import (
 
 const BatchMaxItems = 500
 
-func (s Store) ListUserFacts(ctx context.Context, workspaceID string, userIDs []string) (identitymodel.IdentityUserDirectoryFacts, error) {
-	facts := identitymodel.IdentityUserDirectoryFacts{RoleAssignments: []identitymodel.IdentityUserRoleAssignment{}, ProfileBindings: []identitymodel.IdentityProfileBinding{}}
+func (s Store) ListUserFacts(ctx context.Context, workspaceID string, userIDs []string) (identitymodel.IdentityUserProjectionFacts, error) {
+	facts := identitymodel.IdentityUserProjectionFacts{RoleAssignments: []identitymodel.IdentityUserRoleAssignment{}, ProfileBindings: []identitymodel.IdentityProfileBinding{}}
 	workspaceID, err := identityWorkspaceID(workspaceID)
 	if err != nil {
 		return facts, err
@@ -25,21 +25,21 @@ func (s Store) ListUserFacts(ctx context.Context, workspaceID string, userIDs []
 	}
 	ranges, err := (batch.Parameters{Max: s.backend.MaxParameters(), Fixed: 1, PerItem: 1, MaxItems: BatchMaxItems}).Ranges(len(userIDs))
 	if err != nil {
-		return facts, fmt.Errorf("build identity directory query batches: %w", err)
+		return facts, fmt.Errorf("build identity projection query batches: %w", err)
 	}
 	for _, batch := range ranges {
 		batchUserIDs := userIDs[batch.Start:batch.End]
-		if err := s.appendIdentityDirectoryRoles(ctx, workspaceID, batchUserIDs, &facts); err != nil {
+		if err := s.appendIdentityProjectionRoles(ctx, workspaceID, batchUserIDs, &facts); err != nil {
 			return facts, err
 		}
-		if err := s.appendIdentityDirectoryBindings(ctx, workspaceID, batchUserIDs, &facts); err != nil {
+		if err := s.appendIdentityProjectionBindings(ctx, workspaceID, batchUserIDs, &facts); err != nil {
 			return facts, err
 		}
 	}
 	return facts, nil
 }
 
-func (s Store) appendIdentityDirectoryRoles(ctx context.Context, workspaceID string, userIDs []string, facts *identitymodel.IdentityUserDirectoryFacts) error {
+func (s Store) appendIdentityProjectionRoles(ctx context.Context, workspaceID string, userIDs []string, facts *identitymodel.IdentityUserProjectionFacts) error {
 	queryValue, args, err := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_user_role_assignments", workspaceID).
 		Columns("user_id", "role_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason", "expires_at", "created_at", "updated_at").
 		Where(query.In("user_id", stringValues(userIDs)...)).Build()
@@ -65,7 +65,7 @@ func (s Store) appendIdentityDirectoryRoles(ctx context.Context, workspaceID str
 	return rows.Err()
 }
 
-func (s Store) appendIdentityDirectoryBindings(ctx context.Context, workspaceID string, userIDs []string, facts *identitymodel.IdentityUserDirectoryFacts) error {
+func (s Store) appendIdentityProjectionBindings(ctx context.Context, workspaceID string, userIDs []string, facts *identitymodel.IdentityUserProjectionFacts) error {
 	queryValue, args, err := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_profile_bindings", workspaceID).
 		Columns("workspace_id", "binding_key", "object_key", "profile_id", "identity_user_id", "status", "invitation_channel", "claim_proof_type", "version", "created_at", "updated_at").
 		Where(query.In("identity_user_id", stringValues(userIDs)...)).Build()

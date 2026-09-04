@@ -26,7 +26,7 @@ func (issuer *tokenIssuerStub) IssueApplicationServiceToken(_ context.Context, r
 func TestApplicationServiceTokenSourceCachesOnlyValidNarrowToken(t *testing.T) {
 	now := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
 	application := identitysdk.ApplicationRef{TenantID: "workspace-a", WorkspaceID: "workspace-a", ApplicationKey: "domainry-identity-control-plane"}
-	grant := identitysdk.ApplicationServiceGrant{Resource: "runtime.authorization.action_usages", Action: "query"}
+	grant := identitysdk.ApplicationServiceGrant{Resource: "runtime.action.permission_usages", Action: "query"}
 	issuer := &tokenIssuerStub{token: identitysdk.ApplicationServiceToken{
 		AccessToken: "short-lived-token", TokenType: "Bearer", ExpiresAt: now.Add(5 * time.Minute),
 		Application: application, Audience: "domainry-runtime", Grants: []identitysdk.ApplicationServiceGrant{grant},
@@ -53,7 +53,7 @@ func TestApplicationServiceTokenSourceCachesOnlyValidNarrowToken(t *testing.T) {
 func TestApplicationServiceTokenSourceRejectsAuthorityDrift(t *testing.T) {
 	now := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
 	application := identitysdk.ApplicationRef{TenantID: "workspace-a", WorkspaceID: "workspace-a", ApplicationKey: "domainry-identity-control-plane"}
-	grant := identitysdk.ApplicationServiceGrant{Resource: "runtime.authorization.action_usages", Action: "query"}
+	grant := identitysdk.ApplicationServiceGrant{Resource: "runtime.action.permission_usages", Action: "query"}
 	issuer := &tokenIssuerStub{token: identitysdk.ApplicationServiceToken{
 		AccessToken: "wrong-token", TokenType: "Bearer", ExpiresAt: now.Add(5 * time.Minute),
 		Application: application, Audience: "other-runtime", Grants: []identitysdk.ApplicationServiceGrant{grant},

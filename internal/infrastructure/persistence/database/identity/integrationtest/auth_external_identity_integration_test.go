@@ -243,7 +243,7 @@ func newExternalAuthFixture(t *testing.T) (*authdomain.AuthDomainService, *ident
 		{ID: "role-admin", Key: "admin", Label: "Admin", Status: identitymodel.IdentityStatusActive},
 		{ID: "role-disabled", Key: "disabled", Label: "Disabled", Status: identitymodel.IdentityStatusDisabled},
 	} {
-		seedIdentityDirectoryRole(t, repository, "workspace-primary", role)
+		seedIdentityProjectionRole(t, repository, "workspace-primary", role)
 	}
 	identity.ReplaceRoleDefinitions([]identitymodel.RoleSchema{
 		{Key: "sales", Name: "Sales"},

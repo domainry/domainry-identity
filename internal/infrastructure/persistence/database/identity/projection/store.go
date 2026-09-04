@@ -1,4 +1,4 @@
-package directory
+package projection
 
 import (
 	"context"
@@ -24,7 +24,7 @@ type Store struct{ backend Backend }
 
 func New(backend Backend) Store { return Store{backend: backend} }
 
-var identityUserDirectoryColumns = map[string]string{
+var identityUserProjectionColumns = map[string]string{
 	"id": "id", "name": "name", "given_name": "given_name", "middle_name": "middle_name", "family_name": "family_name",
 	"name_prefix": "name_prefix", "name_suffix": "name_suffix", "native_name": "native_name", "name_locale": "name_locale",
 	"email": "email", "phone": "phone", "account_type": "account_type", "locale": "locale", "timezone": "timezone",
@@ -41,11 +41,11 @@ func (s Store) SearchIdentityUsersWithinDataScope(ctx context.Context, workspace
 	if err != nil {
 		return identitymodel.IdentityUserPage{}, err
 	}
-	conditions := identityDirectoryPredicates(queryValue, identityUserDirectoryColumns)
+	conditions := identityProjectionPredicates(queryValue, identityUserProjectionColumns)
 	if !scope.Unrestricted {
 		conditions = append(conditions, identityUserDataScopePredicate(scope))
 	}
-	total, err := s.identityDirectoryCount(ctx, workspaceID, "_identity_users", conditions)
+	total, err := s.identityProjectionCount(ctx, workspaceID, "_identity_users", conditions)
 	if err != nil {
 		return identitymodel.IdentityUserPage{}, err
 	}
@@ -62,7 +62,7 @@ func (s Store) SearchIdentityUsersWithinDataScope(ctx context.Context, workspace
 		return identitymodel.IdentityUserPage{}, err
 	}
 	defer rows.Close()
-	cursor := identitySQLDirectoryCursor(queryValue)
+	cursor := identitySQLProjectionCursor(queryValue)
 	items := make([]identitymodel.IdentityUser, 0, cursor.FetchLimit())
 	for rows.Next() {
 		var user identitymodel.IdentityUser
@@ -116,7 +116,7 @@ func identityUserDataScopePredicate(scope identitymodel.IdentityDataScopeFilter)
 	return query.Or(predicates...)
 }
 
-func identityDirectoryPredicates(queryValue identitymodel.IdentityListQuery, columns map[string]string) []query.Predicate {
+func identityProjectionPredicates(queryValue identitymodel.IdentityListQuery, columns map[string]string) []query.Predicate {
 	conditions := make([]query.Predicate, 0, len(queryValue.SearchFields)+len(queryValue.Filters))
 	if needle := strings.ToLower(strings.TrimSpace(queryValue.Search)); needle != "" {
 		search := make([]query.Predicate, 0, len(queryValue.SearchFields))
@@ -137,13 +137,13 @@ func identityDirectoryPredicates(queryValue identitymodel.IdentityListQuery, col
 }
 
 func Predicates(queryValue identitymodel.IdentityListQuery, columns map[string]string) []query.Predicate {
-	return identityDirectoryPredicates(queryValue, columns)
+	return identityProjectionPredicates(queryValue, columns)
 }
 
-func (s Store) identityDirectoryCount(ctx context.Context, workspaceID, table string, conditions []query.Predicate) (int, error) {
+func (s Store) identityProjectionCount(ctx context.Context, workspaceID, table string, conditions []query.Predicate) (int, error) {
 	builder := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), table, workspaceID).
 		Projections(query.Project(query.CountAll()))
-	applyIdentityDirectoryPredicates(builder, conditions)
+	applyIdentityProjectionPredicates(builder, conditions)
 	queryValue, args, err := builder.Build()
 	if err != nil {
 		return 0, err
@@ -154,22 +154,22 @@ func (s Store) identityDirectoryCount(ctx context.Context, workspaceID, table st
 }
 
 func (s Store) PageSQL(ctx context.Context, workspaceID, table string, columns []string, queryValue identitymodel.IdentityListQuery, conditions []query.Predicate) (string, []any, error) {
-	orders := identityDirectoryKeysetOrders(queryValue.Sort)
+	orders := identityProjectionKeysetOrders(queryValue.Sort)
 	builder := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), table, workspaceID).
 		Columns(columns...)
-	applyIdentityDirectoryPredicates(builder, conditions)
-	cursor := identitySQLDirectoryCursor(queryValue)
+	applyIdentityProjectionPredicates(builder, conditions)
+	cursor := identitySQLProjectionCursor(queryValue)
 	if strings.TrimSpace(queryValue.AfterID) == "" {
 		return builder.FirstPage(cursor.FetchLimit(), orders...).Build()
 	}
-	values, err := s.identityDirectoryCursorValues(ctx, workspaceID, table, queryValue.AfterID, queryValue.Sort, conditions)
+	values, err := s.identityProjectionCursorValues(ctx, workspaceID, table, queryValue.AfterID, queryValue.Sort, conditions)
 	if err != nil {
 		return "", nil, err
 	}
 	return builder.NextPage(cursor.AfterID(), cursor.FetchLimit(), values, orders...).Build()
 }
 
-func (s Store) identityDirectoryCursorValues(ctx context.Context, workspaceID, table, afterID string, rules []identitymodel.IdentitySortRule, conditions []query.Predicate) (map[string]any, error) {
+func (s Store) identityProjectionCursorValues(ctx context.Context, workspaceID, table, afterID string, rules []identitymodel.IdentitySortRule, conditions []query.Predicate) (map[string]any, error) {
 	columns := make([]string, 0, len(rules))
 	for _, rule := range rules {
 		if rule.Field != "id" {
@@ -193,7 +193,7 @@ func (s Store) identityDirectoryCursorValues(ctx context.Context, workspaceID, t
 	}
 	if err := s.backend.DB().QueryRowContext(ctx, statement, args...).Scan(destinations...); err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("identity directory cursor %q is not in the workspace result", afterID)
+			return nil, fmt.Errorf("identity projection cursor %q is not in the workspace result", afterID)
 		}
 		return nil, err
 	}
@@ -204,13 +204,13 @@ func (s Store) identityDirectoryCursorValues(ctx context.Context, workspaceID, t
 	return result, nil
 }
 
-func applyIdentityDirectoryPredicates(builder *query.SelectBuilder, conditions []query.Predicate) {
+func applyIdentityProjectionPredicates(builder *query.SelectBuilder, conditions []query.Predicate) {
 	if len(conditions) > 0 {
 		builder.Where(query.And(conditions...))
 	}
 }
 
-func identityDirectoryKeysetOrders(rules []identitymodel.IdentitySortRule) []query.KeysetOrder {
+func identityProjectionKeysetOrders(rules []identitymodel.IdentitySortRule) []query.KeysetOrder {
 	orders := make([]query.KeysetOrder, 0, len(rules))
 	for _, rule := range rules {
 		if strings.EqualFold(rule.Direction, "desc") {
@@ -222,7 +222,7 @@ func identityDirectoryKeysetOrders(rules []identitymodel.IdentitySortRule) []que
 	return orders
 }
 
-func identitySQLDirectoryCursor(queryValue identitymodel.IdentityListQuery) pagination.Cursor {
+func identitySQLProjectionCursor(queryValue identitymodel.IdentityListQuery) pagination.Cursor {
 	return pagination.NewCursor(queryValue.AfterID, queryValue.PageSize, pagination.CursorOptions{DefaultPageSize: 20, MaximumPageSize: 200})
 }
 

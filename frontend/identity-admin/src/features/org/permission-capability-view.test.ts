@@ -24,10 +24,11 @@ describe('permission capability view', () => {
 	}]
 	const groups = buildPermissionCatalogView(points)
 	expect(groups).toHaveLength(1)
-	expect(groups[0]).toMatchObject({
-	  category: 'Identity', sourceKind: 'builtin_surface', sourceOwner: 'identity:builtin', resourceKey: 'identity.roles', resourceLabel: 'Roles',
-	})
-	expect(groups[0].capabilities[0].operations[0]).toMatchObject({ active: false, enabled: false })
+		expect(groups[0]).toMatchObject({
+		  category: 'Identity', sourceKind: 'builtin_surface', sourceOwner: 'identity:builtin', resourceKey: 'identity.roles', resourceLabel: 'Roles',
+		})
+		expect(groups[0].permissions).toEqual([{ key: 'identity.roles.list', label: 'Role list', active: false, enabled: false }])
+		expect(groups[0].capabilities[0].operations[0]).toMatchObject({ active: false, enabled: false })
   })
 
   it('uses the current Runtime schema label for object resources', () => {
@@ -36,9 +37,10 @@ describe('permission capability view', () => {
 	  definition_status: 'active' as const, enabled: true, source_kind: 'object_default', source_owner: 'application:crm',
 	  action_usage_status: 'unavailable' as const,
 	}]
-	const groups = buildPermissionCatalogView(points, new Map([['customer', '客户']]))
-	expect(groups[0].resourceLabel).toBe('客户')
-	expect(groups[0].capabilities[0].operations[0]).toMatchObject({ bindings: [], usageAvailable: false })
+		const groups = buildPermissionCatalogView(points, new Map([['customer', '客户']]))
+		expect(groups[0].resourceLabel).toBe('客户')
+		expect(groups[0].permissions[0]).toMatchObject({ key: 'customer.read', label: 'Read customer' })
+		expect(groups[0].capabilities[0].operations[0]).toMatchObject({ bindings: [], usageAvailable: false })
   })
 
   it('does not fabricate Action bindings when the owner registry is unavailable', () => {

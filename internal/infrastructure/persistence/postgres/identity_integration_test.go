@@ -20,6 +20,9 @@ import (
 func TestPostgresRuntimePersistenceEndToEnd(t *testing.T) {
 	dsn := strings.TrimSpace(os.Getenv("RUNTIME_POSTGRES_TEST_DSN"))
 	if dsn == "" {
+		if strings.EqualFold(strings.TrimSpace(os.Getenv("RUNTIME_POSTGRES_TEST_REQUIRED")), "true") {
+			t.Fatal("RUNTIME_POSTGRES_TEST_DSN is required by the PostgreSQL integration gate")
+		}
 		t.Skip("RUNTIME_POSTGRES_TEST_DSN is not configured")
 	}
 

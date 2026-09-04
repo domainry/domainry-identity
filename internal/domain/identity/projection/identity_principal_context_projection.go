@@ -17,7 +17,6 @@ func IdentityBuildPrincipalContext(principal identitymodel.Principal) identitymo
 		AuthorizationRevision: strings.TrimSpace(principal.AuthorizationRevision),
 		OrgID:                 strings.TrimSpace(principal.OrgID),
 		OrganizationPath:      strings.TrimSpace(principal.OrganizationPath),
-		SurfaceKey:            strings.TrimSpace(principal.SurfaceKey),
 		BusinessProfiles:      []identitymodel.IdentityPrincipalBusinessProfileContext{},
 		RequestContexts:       []identitymodel.IdentityPrincipalRequestContext{},
 	}
@@ -35,27 +34,20 @@ func IdentityBuildPrincipalContext(principal identitymodel.Principal) identitymo
 	for _, profile := range profiles {
 		bindingKey := strings.TrimSpace(profile.BindingKey)
 		recordID := strings.TrimSpace(profile.RecordID)
-		surfaces := identityPrincipalUniqueStrings(profile.SurfaceKeys)
 		active := principal.ActiveBusinessProfile != nil &&
 			strings.TrimSpace(principal.ActiveBusinessProfile.BindingKey) == bindingKey &&
 			strings.TrimSpace(principal.ActiveBusinessProfile.RecordID) == recordID
 		context.BusinessProfiles = append(context.BusinessProfiles, identitymodel.IdentityPrincipalBusinessProfileContext{
-			BindingKey: bindingKey, ObjectKey: strings.TrimSpace(profile.ObjectKey), RecordID: recordID, SurfaceKeys: surfaces, Active: active,
+			BindingKey: bindingKey, ObjectKey: strings.TrimSpace(profile.ObjectKey), RecordID: recordID, Active: active,
 		})
-		requestSurfaces := append([]string{""}, surfaces...)
-		for _, surface := range requestSurfaces {
-			headers := identityPrincipalWorkspaceHeaders(context.WorkspaceID)
-			headers["X-Business-Profile-Key"] = bindingKey
-			headers["X-Business-Profile-ID"] = recordID
-			if surface != "" {
-				headers["X-Surface-Key"] = surface
-			}
-			key := strings.Join([]string{"business_profile", bindingKey, recordID, valueOrUnderscore(surface)}, "/")
-			context.RequestContexts = append(context.RequestContexts, identitymodel.IdentityPrincipalRequestContext{
-				Key: key, SubjectKind: "business_profile", SurfaceKey: surface,
-				BusinessProfileKey: bindingKey, BusinessProfileID: recordID, CanonicalRequestHeader: headers,
-			})
-		}
+		headers := identityPrincipalWorkspaceHeaders(context.WorkspaceID)
+		headers["X-Business-Profile-Key"] = bindingKey
+		headers["X-Business-Profile-ID"] = recordID
+		key := strings.Join([]string{"business_profile", bindingKey, recordID}, "/")
+		context.RequestContexts = append(context.RequestContexts, identitymodel.IdentityPrincipalRequestContext{
+			Key: key, SubjectKind: "business_profile",
+			BusinessProfileKey: bindingKey, BusinessProfileID: recordID, CanonicalRequestHeader: headers,
+		})
 	}
 	return context
 }
@@ -68,28 +60,6 @@ func identityPrincipalWorkspaceHeaders(workspaceID string) map[string]string {
 	return headers
 }
 
-func identityPrincipalUniqueStrings(values []string) []string {
-	seen := map[string]bool{}
-	out := []string{}
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value == "" || seen[value] {
-			continue
-		}
-		seen[value] = true
-		out = append(out, value)
-	}
-	sort.Strings(out)
-	return out
-}
-
 func identityPrincipalBusinessProfileKey(profile identitymodel.BusinessProfileReference) string {
 	return strings.Join([]string{strings.TrimSpace(profile.BindingKey), strings.TrimSpace(profile.RecordID), strings.TrimSpace(profile.ObjectKey)}, "\x00")
-}
-
-func valueOrUnderscore(value string) string {
-	if strings.TrimSpace(value) == "" {
-		return "_"
-	}
-	return strings.TrimSpace(value)
 }

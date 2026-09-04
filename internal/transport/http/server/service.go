@@ -37,6 +37,7 @@ type Server struct {
 	core                         *assembly.Core
 	routes                       http.Handler
 	actions                      *identityapplication.IdentityActionRegistry
+	exposures                    *routeExposureResolver
 	routeInventory               []string
 	identityManagementRoutes     []string
 	embeddedPublicAuthRoutes     []string
@@ -141,7 +142,7 @@ func NewWithStore(ctx context.Context, cfg config.Config, store *database.Identi
 		}
 		tokenSource, tokenErr := runtimeactionusage.NewApplicationServiceTokenSource(issuer, runtimeactionusage.ServiceTokenOptions{
 			Application: usageApplication, Audience: identitysdk.ApplicationKey(strings.TrimSpace(cfg.IdentityActionUsageRuntimeAudience)),
-			Grant:        identitysdk.ApplicationServiceGrant{Resource: "runtime.authorization.action_usages", Action: "query"},
+			Grant:        identitysdk.ApplicationServiceGrant{Resource: "runtime.action.permission_usages", Action: "query"},
 			CredentialID: credentialID,
 		})
 		if tokenErr != nil {
@@ -196,15 +197,15 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 		return nil, fmt.Errorf("project Identity authoring catalog: %w", err)
 	}
 	httpSupport := newHTTPSupport(core.Auth, cfg.CORSAllowedOrigins, httpControlConfig{
-		PublicMaxJSONBodyBytes:        int64(cfg.HTTPPublicMaxJSONBodyBytes),
-		TenantAdminMaxJSONBodyBytes:   int64(cfg.HTTPTenantAdminMaxJSONBodyBytes),
-		OperationsMaxJSONBodyBytes:    int64(cfg.HTTPOpsMaxJSONBodyBytes),
-		PublicRequestTimeout:          cfg.HTTPPublicRequestTimeout,
-		TenantAdminRequestTimeout:     cfg.HTTPTenantAdminRequestTimeout,
-		OperationsRequestTimeout:      cfg.HTTPOpsRequestTimeout,
-		PublicRateLimitPerMinute:      cfg.HTTPPublicRateLimitPerMinute,
-		TenantAdminRateLimitPerMinute: cfg.HTTPTenantAdminRateLimitPerMinute,
-		OperationsRateLimitPerMinute:  cfg.HTTPOpsRateLimitPerMinute,
+		PublicMaxJSONBodyBytes:       int64(cfg.HTTPPublicMaxJSONBodyBytes),
+		ManagementMaxJSONBodyBytes:   int64(cfg.HTTPManagementMaxJSONBodyBytes),
+		OperationsMaxJSONBodyBytes:   int64(cfg.HTTPOpsMaxJSONBodyBytes),
+		PublicRequestTimeout:         cfg.HTTPPublicRequestTimeout,
+		ManagementRequestTimeout:     cfg.HTTPManagementRequestTimeout,
+		OperationsRequestTimeout:     cfg.HTTPOpsRequestTimeout,
+		PublicRateLimitPerMinute:     cfg.HTTPPublicRateLimitPerMinute,
+		ManagementRateLimitPerMinute: cfg.HTTPManagementRateLimitPerMinute,
+		OperationsRateLimitPerMinute: cfg.HTTPOpsRateLimitPerMinute,
 	})
 	httpSupport.initializedWorkspaceID = cfg.IdentityWorkspaceID
 	httpSupport.writesFrozen = core.Store.IdentityWritesFrozen
@@ -224,6 +225,7 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 		return nil, fmt.Errorf("freeze standalone HTTP Action registry: %w", err)
 	}
 	mux := http.NewServeMux()
+	httpSupport.exposures = newRouteExposureResolver(mux, standaloneActions)
 	healthRoutes := newRecordingRouteRegistrar(mux, standaloneActions)
 	registerHealthRoutes(healthRoutes, httpSupport)
 	portabilityRepository, err := portabilitypersistence.NewSQLRepository(core.Store)
@@ -298,7 +300,7 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 	}
 
 	directRoutes := newRecordingRouteRegistrar(mux, standaloneActions)
-	directRoutes.HandleFunc("GET /permissions/effective", httpSupport.action("identity.permissions.effective", func(w http.ResponseWriter, r *http.Request) {
+	directRoutes.HandleFunc("GET /identity/permissions/effective", httpSupport.action("identity.permissions.effective", func(w http.ResponseWriter, r *http.Request) {
 		snapshot, err := core.MetadataSchema.FeaturePermissions(r.Context(), httpSupport.principal(r))
 		if err != nil {
 			httpSupport.writeServiceError(w, r, err)
@@ -306,10 +308,10 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 		}
 		httpSupport.writeJSON(w, http.StatusOK, snapshot)
 	}))
-	directRoutes.HandleFunc("GET /tenant-admin/runtime-schema", httpSupport.action("identity.runtime_schema.get", func(w http.ResponseWriter, r *http.Request) {
+	directRoutes.HandleFunc("GET /identity/schema", httpSupport.action("identity.runtime_schema.get", func(w http.ResponseWriter, r *http.Request) {
 		httpSupport.writeJSON(w, http.StatusOK, core.MetadataSchema.ForPrincipalLocale(r.Context(), httpSupport.principal(r), r.URL.Query().Get("locale")))
 	}))
-	directRoutes.HandleFunc("GET /tenant-admin/platform-capabilities", httpSupport.action("identity.platform_capabilities.get", func(w http.ResponseWriter, r *http.Request) {
+	directRoutes.HandleFunc("GET /identity/platform-capabilities", httpSupport.action("identity.platform_capabilities.get", func(w http.ResponseWriter, r *http.Request) {
 		snapshot := core.MetadataRuntime.SchemaForPrincipal(r.Context(), httpSupport.principal(r))
 		httpSupport.writeJSON(w, http.StatusOK, capabilityCatalog.Contract(identityCapabilityInstance(snapshot, core.Identity.PermissionDefinitions())))
 	}))
@@ -352,7 +354,7 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 	if err != nil {
 		return nil, fmt.Errorf("resolve embedded browser authentication routes: %w", err)
 	}
-	embeddedPublicAuthRoutes, embeddedManagementAuthRoutes := embeddedAuthRouteInventory(authRoutes.patterns, embeddedBrowserRoutes)
+	embeddedPublicAuthRoutes, embeddedManagementAuthRoutes := embeddedAuthRouteInventory(httpSupport.exposures, authRoutes.patterns, embeddedBrowserRoutes)
 	for _, registrar := range []*recordingRouteRegistrar{healthRoutes, portabilityRoutes, authRoutes, identityRoutes, moduleRoutes, directRoutes, remoteSDKRoutes, browserRoutes} {
 		if registrar.err != nil {
 			return nil, registrar.err
@@ -370,7 +372,7 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 		standaloneBrowserRoutes,
 	)
 	return &Server{
-		core: core, routes: httpSupport.middleware(mux), actions: standaloneActions,
+		core: core, routes: httpSupport.middleware(mux), actions: standaloneActions, exposures: httpSupport.exposures,
 		routeInventory:               routeInventory,
 		identityManagementRoutes:     managementRoutes,
 		embeddedPublicAuthRoutes:     embeddedPublicAuthRoutes,
@@ -396,7 +398,13 @@ func mergeRoutePatterns(groups ...[]string) []string {
 	return patterns
 }
 
-func embeddedAuthRouteInventory(authRoutes, browserRoutes []string) ([]string, []string) {
+// embeddedAuthRouteInventory splits AuthHandler routes for embedded mounting.
+// Routes whose Action declares an Identity Permission are administration
+// semantics and stay owned by AuthHandler even when the SDK browser gateway
+// exposes a route at the same path (reset-password accepts Identity's user_id
+// contract while the browser SDK contract uses subject_id). Remaining routes
+// already served by the browser gateway are not mounted twice.
+func embeddedAuthRouteInventory(resolver *routeExposureResolver, authRoutes, browserRoutes []string) ([]string, []string) {
 	browserOwned := make(map[string]struct{}, len(browserRoutes))
 	for _, pattern := range browserRoutes {
 		browserOwned[pattern] = struct{}{}
@@ -408,24 +416,19 @@ func embeddedAuthRouteInventory(authRoutes, browserRoutes []string) ([]string, [
 		if !ok {
 			continue
 		}
-		switch classifyRouteSurface(method, path) {
-		case routeSurfaceTenantAdmin:
-			// Tenant-administration semantics remain owned by AuthHandler even
-			// when the SDK browser gateway exposes a route at the same path.
-			// In particular reset-password accepts Identity's user_id contract,
-			// while the browser SDK contract uses subject_id.
+		if controlClassOf(resolver.listenerClassesForPattern(method, path)) == listenerClassManagement {
 			managementRoutes = append(managementRoutes, pattern)
-		case routeSurfacePublic:
-			if _, duplicate := browserOwned[pattern]; duplicate {
-				continue
-			}
-			publicRoutes = append(publicRoutes, pattern)
+			continue
 		}
+		if _, duplicate := browserOwned[pattern]; duplicate {
+			continue
+		}
+		publicRoutes = append(publicRoutes, pattern)
 	}
 	return publicRoutes, managementRoutes
 }
 
-// NewWithCore assembles the HTTP adapters over an already-opened embedded
+// NewWithCore assembles the HTTP classes over an already-opened embedded
 // Identity core. The caller remains the sole lifecycle owner of core.
 func NewWithCore(ctx context.Context, cfg config.Config, core *assembly.Core) (*Server, error) {
 	if core == nil {
@@ -466,7 +469,7 @@ func (s *Server) Routes() http.Handler {
 
 // RouteInventory returns every route pattern assembled by the standalone
 // Identity server, including auth/browser, management, Remote SDK, Audit,
-// portability operations, health probes and direct tenant-admin routes.
+// portability operations, health probes and direct management routes.
 func (s *Server) RouteInventory() []string {
 	if s == nil {
 		return nil
@@ -481,15 +484,15 @@ func (s *Server) PublicRoutes() http.Handler {
 	if s == nil || s.routes == nil {
 		return nil
 	}
-	return surfaceOnly(routeSurfacePublic, s.routes)
+	return listenerOnly(listenerClassPublic, s.exposures, s.routes)
 }
 
-// TenantAdminRoutes exposes only Identity administration and governance APIs.
-func (s *Server) TenantAdminRoutes() http.Handler {
+// ManagementRoutes exposes only Identity administration and governance APIs.
+func (s *Server) ManagementRoutes() http.Handler {
 	if s == nil || s.routes == nil {
 		return nil
 	}
-	return surfaceOnly(routeSurfaceTenantAdmin, s.routes)
+	return listenerOnly(listenerClassManagement, s.exposures, s.routes)
 }
 
 // OperationsRoutes exposes only authenticated migration/cutover operations.
@@ -497,11 +500,11 @@ func (s *Server) OperationsRoutes() http.Handler {
 	if s == nil || s.routes == nil {
 		return nil
 	}
-	return surfaceOnly(routeSurfaceOperations, s.routes)
+	return listenerOnly(listenerClassOperations, s.exposures, s.routes)
 }
 
 // IdentityManagementRoutes returns the exact method/path patterns owned by
-// the embedded Identity administration surface. Other routes assembled by the
+// the embedded Identity management API. Other routes assembled by the
 // standalone server (browser auth, Remote SDK and health) are intentionally
 // excluded.
 func (s *Server) IdentityManagementRoutes() []string {
@@ -521,7 +524,7 @@ func (s *Server) EmbeddedPublicAuthRoutes() []string {
 }
 
 // EmbeddedManagementAuthRoutes returns provider configuration routes owned by
-// the Identity tenant-administration surface.
+// the Identity management API.
 func (s *Server) EmbeddedManagementAuthRoutes() []string {
 	if s == nil {
 		return nil

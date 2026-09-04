@@ -114,6 +114,7 @@ type ManifestIdentityRoleMenuSetSchema struct {
 	RoleID  string   `json:"role_id"`
 	MenuIDs []string `json:"menu_ids"`
 }
+
 // RolePermission is one exact Action Permission grant. DataScope belongs to
 // the grant, so two actions on the same resource can use different scopes.
 type RolePermission struct {

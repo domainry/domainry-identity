@@ -15,7 +15,7 @@ import (
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 )
 
-// identityReadExecutor is the read-only SQL surface shared by the pooled
+// identityReadExecutor is the read-only SQL contract shared by the pooled
 // database handle and the Runtime Action transaction executor.
 type identityReadExecutor interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)

@@ -76,6 +76,58 @@ func TestBootstrapBindingCreatesNoTenantBeforeHostAtomicProvision(t *testing.T) 
 	assertIdentityRowCount(t, db, "_identity_permissions", "workspace-primary", standaloneIdentityPermissionCount())
 }
 
+func TestNormalBindingPreservesHostProvisionedImplicitAdminLogin(t *testing.T) {
+	databasePath := filepath.Join(t.TempDir(), "identity-bootstrap.db")
+	db, err := sql.Open("sqlite", databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	registrar := &testEmbeddedMigrationRegistrar{}
+	factory := identitymodule.NewFactory(identitymodule.Options{IdentityVersion: "test", DatabaseDriver: "sqlite", DatabasePath: databasePath})
+	bootstrap, err := factory.OpenBootstrapWithDatabase(t.Context(), "runtime", identitysdk.DatabaseHandle{Pool: db, Driver: "sqlite", FilePath: databasePath, Migrations: registrar})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := db.BeginTx(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const password = "BootstrapAdmin1!"
+	result, err := bootstrap.ProvisionWorkspaceIdentity(t.Context(), identitysdk.WorkspaceIdentityProvisionRequest{
+		WorkspaceID: "workspace-primary", AdminLoginID: "management@example.test", AdminName: "Tenant Admin", InitialPassword: password,
+	}, identitysdk.EmbeddedTransaction{Native: tx})
+	if err != nil {
+		_ = tx.Rollback()
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := bootstrap.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+
+	application := identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "runtime"}
+	binding, err := factory.OpenWithDatabase(t.Context(), application, identitysdk.DatabaseHandle{Pool: db, Driver: "sqlite", FilePath: databasePath, Migrations: registrar})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = binding.Close(t.Context()) })
+	if _, err := binding.Applications().Register(t.Context(), identitysdk.ApplicationRegistration{Application: application}); err != nil {
+		t.Fatal(err)
+	}
+	session, err := binding.Authentication().LoginWithPassword(t.Context(), identitysdk.PasswordLoginRequest{
+		WorkspaceID: application.WorkspaceID, ApplicationKey: application.ApplicationKey, Login: result.AdminLoginID, Password: password,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.WorkspaceID != string(application.WorkspaceID) || session.User.ID != "admin" || session.User.Email != result.AdminLoginID || !session.MustChangePassword {
+		t.Fatalf("unexpected host-provisioned admin session: %#v", session)
+	}
+}
+
 func TestEmbeddedWorkspaceProvisioningJoinsHostTransaction(t *testing.T) {
 	databasePath := filepath.Join(t.TempDir(), "embedded-provisioning.db")
 	db, err := sql.Open("sqlite", databasePath)

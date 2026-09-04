@@ -28,7 +28,7 @@ describe('menu direct-authoring contract', () => {
     })
 
     const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers)
-    expect(headers.get('Builder-Task-ID')).toMatch(/^tenant-admin\.identity-menu\.web_/)
+    expect(headers.get('Builder-Task-ID')).toMatch(/^identity-management\.menu\.web_/)
     expect(headers.get('Idempotency-Key')).toMatch(/^web_/)
     expect(headers.get('Expected-Schema-Hash')).toBe('empty')
     expect(created).toMatchObject({ id: 'menu_runtime_qa' })

@@ -80,19 +80,19 @@ func (s *IdentityEffectiveAccessApplicationService) PreviewRoleChange(ctx contex
 	if roleKey == "" {
 		roleKey = strings.TrimSpace(request.Role.Key)
 	}
-	var directoryRole identitymodel.IdentityRole
+	var projectionRole identitymodel.IdentityRole
 	for _, role := range roles {
 		if role.Key == roleKey || role.ID == roleKey {
-			directoryRole = role
+			projectionRole = role
 			break
 		}
 	}
-	if directoryRole.ID == "" {
+	if projectionRole.ID == "" {
 		return identitymodel.IdentityRoleChangeImpact{}, &apperror.AppError{Kind: apperror.KindNotFound, Code: "backend.identity.role_not_found"}
 	}
 	current, _ := scoped.PublishedRoleDefinition(workspaceContext, roleKey)
 	request.RoleKey = roleKey
-	return identityprojection.IdentityPreviewRoleChange(request, current, directoryRole, assignments, scopedEffectiveAccessObjects(s.dependencies.Objects), append([]definitionmodel.ActionSchema(nil), s.dependencies.Actions()...)), nil
+	return identityprojection.IdentityPreviewRoleChange(request, current, projectionRole, assignments, scopedEffectiveAccessObjects(s.dependencies.Objects), append([]definitionmodel.ActionSchema(nil), s.dependencies.Actions()...)), nil
 }
 
 func (s *IdentityEffectiveAccessApplicationService) governanceScope(ctx context.Context, actor identitymodel.Principal, actionKey string) (*IdentityApplicationService, context.Context, error) {
@@ -165,7 +165,7 @@ func (s *IdentityEffectiveAccessApplicationService) snapshot(ctx context.Context
 		return identitymodel.IdentityEffectiveAccessSnapshot{}, err
 	}
 	return identityprojection.IdentityBuildEffectiveAccessSnapshot(identityprojection.IdentityEffectiveAccessProjectionInput{
-		Principal: principal, Assignments: assignments, DirectoryRoles: roles,
+		Principal: principal, Assignments: assignments, ProjectionRoles: roles,
 		RoleDefinitions: scoped.PublishedRoleDefinitions(workspaceContext), PermissionSets: scoped.PublishedPermissionSets(workspaceContext),
 		PermissionSetGroups: scoped.PublishedPermissionSetGroups(workspaceContext), Menus: menus, RoleMenus: roleMenus,
 		Objects: scopedEffectiveAccessObjects(s.dependencies.Objects),

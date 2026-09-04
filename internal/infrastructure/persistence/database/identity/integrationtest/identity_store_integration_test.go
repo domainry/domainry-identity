@@ -26,7 +26,7 @@ func TestIdentityServiceValidatesPermissionsAndComputesEffectiveKeys(t *testing.
 	if err := service.UpsertUser(t.Context(), identitymodel.IdentityUser{ID: "u-admin", Name: "Admin", Email: "admin@example.com"}); err != nil {
 		t.Fatalf("upsert user: %v", err)
 	}
-	seedIdentityDirectoryRole(t, repo, "workspace-primary", identitymodel.IdentityRole{ID: "r-admin", Key: "admin", Label: "Admin"})
+	seedIdentityProjectionRole(t, repo, "workspace-primary", identitymodel.IdentityRole{ID: "r-admin", Key: "admin", Label: "Admin"})
 	if err := service.AssignUserRole(t.Context(), identitymodel.IdentityUserRoleAssignment{UserID: "u-admin", RoleID: "r-admin"}); err != nil {
 		t.Fatalf("assign role: %v", err)
 	}
@@ -78,8 +78,8 @@ func TestIdentityServiceValidatesPermissionsAndComputesEffectiveKeys(t *testing.
 	if err := service.UpsertUser(t.Context(), identitymodel.IdentityUser{ID: "u-temp", Name: "Temp", Email: "temp@example.com"}); err != nil {
 		t.Fatalf("upsert temporary user: %v", err)
 	}
-	seedIdentityDirectoryRole(t, repo, "workspace-primary", identitymodel.IdentityRole{ID: "r-temp-active", Key: "temp_active", Label: "Temporary Active"})
-	seedIdentityDirectoryRole(t, repo, "workspace-primary", identitymodel.IdentityRole{ID: "r-temp-expired", Key: "temp_expired", Label: "Temporary Expired"})
+	seedIdentityProjectionRole(t, repo, "workspace-primary", identitymodel.IdentityRole{ID: "r-temp-active", Key: "temp_active", Label: "Temporary Active"})
+	seedIdentityProjectionRole(t, repo, "workspace-primary", identitymodel.IdentityRole{ID: "r-temp-expired", Key: "temp_expired", Label: "Temporary Expired"})
 	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{
 		{Key: "admin", Name: "Admin", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "crm.customer.edit", "crm.customer.view")},
 		{Key: "temp_active", Name: "Temporary Active", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "crm.customer.view")},

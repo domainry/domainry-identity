@@ -123,7 +123,7 @@ func TestStandalonePermissionAPIQueriesRemoteRuntimeUsageWithoutPersistingIt(t *
 		forwardedAuthorization.Store(request.Header.Get("Authorization"))
 		forwardedWorkspace.Store(request.Header.Get("X-Workspace-ID"))
 		forwardedRequestID.Store(request.Header.Get("X-Request-ID"))
-		if request.Method != http.MethodPost || request.URL.Path != "/operations/authorization/action-usages/query" {
+		if request.Method != http.MethodPost || request.URL.Path != "/action/permission-usages/query" {
 			response.WriteHeader(http.StatusNotFound)
 			return
 		}
@@ -208,14 +208,14 @@ func TestStandalonePermissionAPIQueriesRemoteRuntimeUsageWithoutPersistingIt(t *
 	}
 	servicePrincipal, err := serviceBinding.ApplicationServiceVerifier().Verify(t.Context(), identitysdk.VerifyApplicationServiceTokenRequest{
 		AccessToken: forwardedBearer, Audience: "domainry-runtime",
-		Grant: identitysdk.ApplicationServiceGrant{Resource: "runtime.authorization.action_usages", Action: "query"},
+		Grant: identitysdk.ApplicationServiceGrant{Resource: "runtime.action.permission_usages", Action: "query"},
 	})
 	if err != nil || servicePrincipal.Application.ApplicationKey != "domainry-identity-control-plane" || servicePrincipal.Audience != "domainry-runtime" || servicePrincipal.CredentialID != "identity-action-usage" {
 		t.Fatalf("Runtime service principal=%+v err=%v", servicePrincipal, err)
 	}
 	verifyBody, err := json.Marshal(identitysdk.VerifyApplicationServiceTokenRequest{
 		AccessToken: forwardedBearer, Audience: "domainry-runtime",
-		Grant: identitysdk.ApplicationServiceGrant{Resource: "runtime.authorization.action_usages", Action: "query"},
+		Grant: identitysdk.ApplicationServiceGrant{Resource: "runtime.action.permission_usages", Action: "query"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -471,12 +471,12 @@ func TestStandaloneRoleAndPolicyAuthoringPublishesRoleSchemaDirectly(t *testing.
 		t.Fatalf("role delete status=%d body=%s", deleteResponse.StatusCode, readResponseBody(t, deleteResponse))
 	}
 	_ = deleteResponse.Body.Close()
-	var directoryStatus string
-	if err := store.DB().QueryRowContext(t.Context(), `SELECT status FROM _identity_roles WHERE workspace_id = ? AND role_key = ?`, "workspace-primary", "auditor").Scan(&directoryStatus); err != nil {
+	var projectionStatus string
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT status FROM _identity_roles WHERE workspace_id = ? AND role_key = ?`, "workspace-primary", "auditor").Scan(&projectionStatus); err != nil {
 		t.Fatal(err)
 	}
-	if directoryStatus != string(identitymodel.IdentityStatusDisabled) {
-		t.Fatalf("deleted role directory status=%q", directoryStatus)
+	if projectionStatus != string(identitymodel.IdentityStatusDisabled) {
+		t.Fatalf("deleted role projection status=%q", projectionStatus)
 	}
 	assertRoleDefinitionEventRows(t, store, "auditor", "identity_role.deleted", 4, 1)
 }

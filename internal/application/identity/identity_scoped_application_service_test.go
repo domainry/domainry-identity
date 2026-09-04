@@ -72,10 +72,10 @@ func identityScopedCalls(service *IdentityApplicationService) []struct {
 			_, _, err := service.FindOrganizationUnit(ctx, "organizationUnit")
 			return err
 		}},
-		{"directory users", func(ctx context.Context) error { _, err := service.ListDirectoryUsers(ctx); return err }},
-		{"directory roles", func(ctx context.Context) error { _, err := service.ListDirectoryRoles(ctx); return err }},
-		{"directory assignments", func(ctx context.Context) error {
-			_, err := service.ListDirectoryUserRoleAssignments(ctx, "user")
+		{"projection users", func(ctx context.Context) error { _, err := service.ListProjectionUsers(ctx); return err }},
+		{"projection roles", func(ctx context.Context) error { _, err := service.ListProjectionRoles(ctx); return err }},
+		{"projection assignments", func(ctx context.Context) error {
+			_, err := service.ListProjectionUserRoleAssignments(ctx, "user")
 			return err
 		}},
 		{"list organizationUnits", func(ctx context.Context) error { _, err := service.ListOrganizationUnits(ctx); return err }},

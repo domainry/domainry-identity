@@ -11,7 +11,7 @@ describe('Identity governance audit explorer contract', () => {
     expect(api).toContain("params.set('actor_id', query.actor.trim())")
     expect(api).toContain("params.set('event', query.event.trim())")
     expect(api).toContain("params.set('request_id', query.requestId.trim())")
-    expect(api).toContain('/tenant-admin/audit-events/export?')
+    expect(api).toContain('/audit/governance/events/export?')
     expect(page).toContain("t('audit.detail.request')")
     expect(page).toContain("t('audit.detail.correlation')")
     expect(page).toContain('<JsonCodeBlock value={selectedLog.metadata}')

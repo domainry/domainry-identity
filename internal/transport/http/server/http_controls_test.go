@@ -39,7 +39,7 @@ func TestStandaloneRouteInventoryBaseline(t *testing.T) {
 	routes := server.RouteInventory()
 	sum := sha256.Sum256([]byte(strings.Join(routes, "\n")))
 	const wantCount = 149
-	const wantSHA256 = "5811e6362a680541d8c8562c37ff6d18a3cf2f2ec33efb109e146b48ca286fe6"
+	const wantSHA256 = "a96b84e273913dca368bcec6fe0af27c8af1eea45b33516e6729202332825c57"
 	if len(routes) != wantCount || hex.EncodeToString(sum[:]) != wantSHA256 {
 		t.Fatalf("standalone route inventory count=%d sha256=%s routes=%#v", len(routes), hex.EncodeToString(sum[:]), routes)
 	}
@@ -76,11 +76,11 @@ func TestStandaloneRouteInventoryAndFrozenActionRegistryAreBidirectionallyComple
 		if action.Authorization.Strategy == "" {
 			t.Fatalf("route %q Action %q has no authorization strategy", pattern, action.Key)
 		}
-		wantExposure := actioncontract.ExposureTenantAdmin
-		switch classifyRouteSurface(method, routeTemplate) {
-		case routeSurfacePublic:
+		wantExposure := actioncontract.ExposureManagement
+		switch controlClassOf(server.exposures.listenerClassesForPattern(method, routeTemplate)) {
+		case listenerClassPublic:
 			wantExposure = actioncontract.ExposurePublic
-		case routeSurfaceOperations:
+		case listenerClassOperations:
 			wantExposure = actioncontract.ExposureOps
 		}
 		exposed := false
@@ -132,7 +132,8 @@ func TestEmbeddedAuthRouteInventoryOwnsEveryNonBrowserRoute(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	publicRoutes, managementRoutes := embeddedAuthRouteInventory(authRoutes.patterns, browserRoutes)
+	resolver := testStandaloneExposureResolver(t)
+	publicRoutes, managementRoutes := embeddedAuthRouteInventory(resolver, authRoutes.patterns, browserRoutes)
 	wantPublic := []string{
 		"GET /.well-known/jwks.json",
 		"GET /.well-known/openid-configuration",
@@ -171,18 +172,19 @@ func TestEmbeddedAuthRouteInventoryOwnsEveryNonBrowserRoute(t *testing.T) {
 	}
 }
 
-func TestClassifyRouteSurface(t *testing.T) {
-	tests := map[string]routeSurface{
-		"GET /browser/auth/login":                     routeSurfacePublic,
-		"GET /identity/discovery":                     routeSurfacePublic,
-		"GET /identity/users":                         routeSurfaceTenantAdmin,
-		"GET /tenant-admin/runtime-schema":            routeSurfaceTenantAdmin,
-		"PUT /auth/providers/oidc/setup":              routeSurfaceTenantAdmin,
-		"POST /ops/identity-portability/write-fences": routeSurfaceOperations,
+func TestRouteExposureResolverUsesActionExposure(t *testing.T) {
+	resolver := testStandaloneExposureResolver(t)
+	tests := map[string]listenerClass{
+		"GET /browser/auth/login":                 listenerClassPublic,
+		"GET /identity/discovery":                 listenerClassPublic,
+		"GET /identity/users":                     listenerClassManagement,
+		"GET /identity/schema":                    listenerClassManagement,
+		"PUT /auth/providers/{provider}/setup":    listenerClassManagement,
+		"POST /identity/portability/write-fences": listenerClassOperations,
 	}
 	for requestTarget, want := range tests {
 		method, path, _ := strings.Cut(requestTarget, " ")
-		if got := classifyRouteSurface(method, path); got != want {
+		if got := resolver.controlClass(httptest.NewRequest(method, path, nil)); got != want {
 			t.Fatalf("classify %q=%q want=%q", requestTarget, got, want)
 		}
 	}
@@ -190,15 +192,16 @@ func TestClassifyRouteSurface(t *testing.T) {
 
 func TestHTTPControlsApplyIndependentRateLimitsAndTimeout(t *testing.T) {
 	support := newHTTPSupport(nil, nil, httpControlConfig{
-		PublicMaxJSONBodyBytes: 128, TenantAdminMaxJSONBodyBytes: 128, OperationsMaxJSONBodyBytes: 16,
-		PublicRequestTimeout: time.Minute, TenantAdminRequestTimeout: time.Minute, OperationsRequestTimeout: time.Second,
-		PublicRateLimitPerMinute: 1, TenantAdminRateLimitPerMinute: 1, OperationsRateLimitPerMinute: 1,
+		PublicMaxJSONBodyBytes: 128, ManagementMaxJSONBodyBytes: 128, OperationsMaxJSONBodyBytes: 16,
+		PublicRequestTimeout: time.Minute, ManagementRequestTimeout: time.Minute, OperationsRequestTimeout: time.Second,
+		PublicRateLimitPerMinute: 1, ManagementRateLimitPerMinute: 1, OperationsRateLimitPerMinute: 1,
 	})
 	support.initializedWorkspaceID = "workspace-primary"
+	support.exposures = testStandaloneExposureResolver(t)
 	now := time.Date(2026, time.August, 27, 12, 0, 0, 0, time.UTC)
 	support.controls.clock = func() time.Time { return now }
 	handler := support.middleware(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-		if classifyRouteSurface(request.Method, request.URL.Path) == routeSurfaceOperations {
+		if support.exposures.controlClass(request) == listenerClassOperations {
 			deadline, ok := request.Context().Deadline()
 			if !ok || time.Until(deadline) > 2*time.Second {
 				t.Errorf("operations request deadline=%v ok=%v", deadline, ok)
@@ -207,22 +210,23 @@ func TestHTTPControlsApplyIndependentRateLimitsAndTimeout(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 
-	assertStatus := func(path string, want int) {
+	assertStatus := func(method, path string, want int) {
 		t.Helper()
 		response := httptest.NewRecorder()
-		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		handler.ServeHTTP(response, httptest.NewRequest(method, path, nil))
 		if response.Code != want {
-			t.Fatalf("GET %s status=%d want=%d body=%s", path, response.Code, want, response.Body.String())
+			t.Fatalf("%s %s status=%d want=%d body=%s", method, path, response.Code, want, response.Body.String())
 		}
 	}
-	assertStatus("/healthz", http.StatusNoContent)
-	assertStatus("/healthz", http.StatusTooManyRequests)
-	assertStatus("/identity/users", http.StatusNoContent)
-	assertStatus("/ops/identity-portability/write-fences", http.StatusNoContent)
+	assertStatus(http.MethodGet, "/health", http.StatusNoContent)
+	assertStatus(http.MethodGet, "/health", http.StatusTooManyRequests)
+	assertStatus(http.MethodGet, "/identity/users", http.StatusNoContent)
+	assertStatus(http.MethodPost, "/identity/portability/write-fences", http.StatusNoContent)
 }
 
 func TestHTTPControlsApplySurfaceBodyLimitsAndListenerIsolation(t *testing.T) {
 	support := newHTTPSupport(nil, nil, httpControlConfig{PublicMaxJSONBodyBytes: 128, OperationsMaxJSONBodyBytes: 8})
+	support.exposures = testStandaloneExposureResolver(t)
 	decode := func(path string) int {
 		response := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"value":"payload"}`))
@@ -235,16 +239,43 @@ func TestHTTPControlsApplySurfaceBodyLimitsAndListenerIsolation(t *testing.T) {
 	if status := decode("/browser/auth/login"); status != http.StatusNoContent {
 		t.Fatalf("public body status=%d", status)
 	}
-	if status := decode("/ops/identity-portability/write-fences"); status != http.StatusBadRequest {
+	if status := decode("/identity/portability/write-fences"); status != http.StatusBadRequest {
 		t.Fatalf("operations oversized body status=%d", status)
 	}
 
-	public := surfaceOnly(routeSurfacePublic, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }))
-	for path, want := range map[string]int{"/browser/auth/login": http.StatusNoContent, "/identity/users": http.StatusNotFound, "/ops/identity-portability/write-fences": http.StatusNotFound} {
+	public := listenerOnly(listenerClassPublic, support.exposures, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }))
+	for requestTarget, want := range map[string]int{"POST /browser/auth/login": http.StatusNoContent, "GET /identity/users": http.StatusNotFound, "POST /identity/portability/write-fences": http.StatusNotFound} {
+		method, path, _ := strings.Cut(requestTarget, " ")
 		response := httptest.NewRecorder()
-		public.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		public.ServeHTTP(response, httptest.NewRequest(method, path, nil))
 		if response.Code != want {
 			t.Fatalf("public listener %s status=%d want=%d", path, response.Code, want)
 		}
 	}
+}
+
+func testStandaloneExposureResolver(t *testing.T) *routeExposureResolver {
+	t.Helper()
+	definitions := identityapplication.IdentityBuiltinAuthorizationActions()
+	protocol, err := standaloneProtocolAuthorizationActions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	definitions = append(definitions, protocol...)
+	browser, err := browsergateway.ActionDefinitions("/browser")
+	if err != nil {
+		t.Fatal(err)
+	}
+	definitions = append(definitions, browser...)
+	registry, err := identityapplication.NewIdentityActionRegistry(definitions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	for _, definition := range registry.Definitions() {
+		if definition.HTTP != nil {
+			mux.Handle(definition.HTTP.Method+" "+definition.HTTP.RouteTemplate, http.NotFoundHandler())
+		}
+	}
+	return newRouteExposureResolver(mux, registry)
 }

@@ -279,7 +279,7 @@ export function IdentityUserDetailPage({ userID }: { userID: string }) {
     ) : null}
 	{has('identity.access.explain') ? <EffectiveAccessExplainCard userID={value.id} /> : null}
     <Card>
-      <CardContent className='p-5 text-sm text-muted-foreground'>{t('accounts.separateDirectories')}</CardContent>
+      <CardContent className='p-5 text-sm text-muted-foreground'>{t('accounts.separateAreas')}</CardContent>
     </Card>
     <Dialog open={editing} onOpenChange={setEditing}>
       <DialogContent>

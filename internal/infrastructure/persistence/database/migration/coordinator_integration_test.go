@@ -276,7 +276,7 @@ func TestApplyModeUpgradesLegacyLedgerWithChecksum(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(checksum) != 64 {
-		t.Fatalf("legacy migration checksum length = %d, want 64", len(checksum))
+		t.Fatalf("migration checksum length = %d, want 64", len(checksum))
 	}
 }
 

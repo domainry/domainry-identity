@@ -34,14 +34,14 @@ type authMutationEdgeRepository struct {
 	scopeDenied    bool
 }
 
-type authDirectorySecurityRepository struct {
+type authProjectionSecurityRepository struct {
 	workspaceGuardAuthRepository
-	facts []authmodel.UserDirectorySecurityFact
+	facts []authmodel.UserProjectionSecurityFact
 	err   error
 }
 
-func (r *authDirectorySecurityRepository) ListUserDirectorySecurityFacts(context.Context, string, []string) ([]authmodel.UserDirectorySecurityFact, error) {
-	return append([]authmodel.UserDirectorySecurityFact(nil), r.facts...), r.err
+func (r *authProjectionSecurityRepository) ListUserProjectionSecurityFacts(context.Context, string, []string) ([]authmodel.UserProjectionSecurityFact, error) {
+	return append([]authmodel.UserProjectionSecurityFact(nil), r.facts...), r.err
 }
 
 type authSessionReissueRepository struct {
@@ -222,21 +222,21 @@ func TestForceLogoutRequiresDedicatedSecurityPermissionAndReplaysStableResult(t 
 	}
 }
 
-func TestAuthUserDirectorySecurityProfiles(t *testing.T) {
+func TestAuthUserProjectionSecurityProfiles(t *testing.T) {
 	unsupported := &AuthApplicationService{repository: &workspaceGuardAuthRepository{}}
-	if _, err := unsupported.UserDirectorySecurityProfiles(t.Context(), "workspace-1", []string{"user-1"}); apperror.CodeOf(err) != "backend.identity.user_directory_security_unavailable" {
+	if _, err := unsupported.UserProjectionSecurityProfiles(t.Context(), "workspace-1", []string{"user-1"}); apperror.CodeOf(err) != "backend.identity.user_projection_security_unavailable" {
 		t.Fatalf("unsupported repository error=%v", err)
 	}
 
-	repositoryFailure := errors.New("directory security unavailable")
-	failing := &AuthApplicationService{repository: &authDirectorySecurityRepository{err: repositoryFailure}}
-	if _, err := failing.UserDirectorySecurityProfiles(t.Context(), "workspace-1", []string{"user-1"}); !errors.Is(err, repositoryFailure) {
+	repositoryFailure := errors.New("projection security unavailable")
+	failing := &AuthApplicationService{repository: &authProjectionSecurityRepository{err: repositoryFailure}}
+	if _, err := failing.UserProjectionSecurityProfiles(t.Context(), "workspace-1", []string{"user-1"}); !errors.Is(err, repositoryFailure) {
 		t.Fatalf("repository error=%v", err)
 	}
 
 	future := time.Now().Add(time.Hour).UTC().Format(time.RFC3339Nano)
 	past := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339Nano)
-	repository := &authDirectorySecurityRepository{facts: []authmodel.UserDirectorySecurityFact{
+	repository := &authProjectionSecurityRepository{facts: []authmodel.UserProjectionSecurityFact{
 		{UserID: "plain", MFAEnabled: false, ActiveSessions: 0},
 		{UserID: "locked", MFAEnabled: true, ActiveSessions: 2, LockedUntil: future},
 		{UserID: "last-login", LastLoginAt: "2026-07-27T08:00:00Z"},
@@ -244,7 +244,7 @@ func TestAuthUserDirectorySecurityProfiles(t *testing.T) {
 		{UserID: "invalid-lock", LockedUntil: "invalid"},
 	}}
 	service := &AuthApplicationService{repository: repository}
-	profiles, err := service.UserDirectorySecurityProfiles(t.Context(), "workspace-1", []string{"plain", "locked", "last-login", "expired-lock", "invalid-lock"})
+	profiles, err := service.UserProjectionSecurityProfiles(t.Context(), "workspace-1", []string{"plain", "locked", "last-login", "expired-lock", "invalid-lock"})
 	if err != nil {
 		t.Fatal(err)
 	}

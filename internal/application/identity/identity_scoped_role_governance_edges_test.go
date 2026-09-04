@@ -58,7 +58,7 @@ func TestAssignUserRoleGovernedCoversRiskAndGrantCeilingPolicies(t *testing.T) {
 	unpublished := assignment
 	unpublished.RoleID = "unpublished"
 	if err := service.AssignUserRoleGoverned(ctx, unpublished, actor); err != nil {
-		t.Fatalf("unpublished role should use directory policy: %v", err)
+		t.Fatalf("unpublished role should use projection policy: %v", err)
 	}
 	blankRisk := assignment
 	blankRisk.RoleID = "blank-risk"
@@ -151,7 +151,7 @@ func TestValidateRoleMenusCoversRoleMenuAndRoutePolicies(t *testing.T) {
 		t.Fatalf("literal business path=%v", err)
 	}
 	if err := service.ValidateRoleMenus(ctx, "role", []string{"business-members"}); err != nil {
-		t.Fatalf("business route must not require a Surface permission: %v", err)
+		t.Fatalf("business route must not require a product-shell permission: %v", err)
 	}
 	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{Key: "role"}})
 	if err := service.ValidateRoleMenus(ctx, "role", []string{"account"}); apperror.CodeOf(err) != "backend.identity.menu_route_permission_missing" {

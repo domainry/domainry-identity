@@ -154,13 +154,13 @@ func TestIdentityAuthorizationContextBoundaryAndDelegation(t *testing.T) {
 		t.Fatalf("organizationUnit error=%v", err)
 	}
 	repository.organizationUnitsErr = nil
-	if users, err := service.ListDirectoryUsers(t.Context()); err != nil || len(users) != 1 {
+	if users, err := service.ListProjectionUsers(t.Context()); err != nil || len(users) != 1 {
 		t.Fatalf("users=%+v err=%v", users, err)
 	}
-	if roles, err := service.ListDirectoryRoles(t.Context()); err != nil || len(roles) != 1 {
+	if roles, err := service.ListProjectionRoles(t.Context()); err != nil || len(roles) != 1 {
 		t.Fatalf("roles=%+v err=%v", roles, err)
 	}
-	if assignments, err := service.ListDirectoryUserRoleAssignments(t.Context(), "user"); err != nil || len(assignments) != 1 {
+	if assignments, err := service.ListProjectionUserRoleAssignments(t.Context(), "user"); err != nil || len(assignments) != 1 {
 		t.Fatalf("assignments=%+v err=%v", assignments, err)
 	}
 	cancelled, cancel := context.WithCancel(t.Context())
@@ -172,9 +172,9 @@ func TestIdentityAuthorizationContextBoundaryAndDelegation(t *testing.T) {
 		func() error { _, err := service.ResolveEffectiveMenus(cancelled, "user"); return err },
 		func() error { _, _, err := service.FindUser(cancelled, "user"); return err },
 		func() error { _, _, err := service.FindOrganizationUnit(cancelled, "sales"); return err },
-		func() error { _, err := service.ListDirectoryUsers(cancelled); return err },
-		func() error { _, err := service.ListDirectoryRoles(cancelled); return err },
-		func() error { _, err := service.ListDirectoryUserRoleAssignments(cancelled, "user"); return err },
+		func() error { _, err := service.ListProjectionUsers(cancelled); return err },
+		func() error { _, err := service.ListProjectionRoles(cancelled); return err },
+		func() error { _, err := service.ListProjectionUserRoleAssignments(cancelled, "user"); return err },
 	}
 	for index, check := range checks {
 		if err := check(); !errors.Is(err, context.Canceled) {

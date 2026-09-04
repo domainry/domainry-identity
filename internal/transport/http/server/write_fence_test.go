@@ -9,6 +9,7 @@ import (
 
 func TestHTTPMiddlewareRejectsIdentityMutationsWhileWorkspaceIsFrozen(t *testing.T) {
 	support := newHTTPSupport(nil, nil)
+	support.exposures = testStandaloneExposureResolver(t)
 	support.writesFrozen = func(_ context.Context, workspaceID string) (bool, error) {
 		return workspaceID == "workspace-a", nil
 	}
@@ -34,7 +35,7 @@ func TestHTTPMiddlewareRejectsIdentityMutationsWhileWorkspaceIsFrozen(t *testing
 		t.Fatalf("read status=%d calls=%d", allowed.Code, calls)
 	}
 
-	operation := httptest.NewRequest(http.MethodPost, "/ops/identity-portability/write-fences", nil)
+	operation := httptest.NewRequest(http.MethodPost, "/identity/portability/write-fences", nil)
 	operation.Header.Set("X-Workspace-ID", "workspace-a")
 	ops := httptest.NewRecorder()
 	handler.ServeHTTP(ops, operation)

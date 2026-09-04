@@ -1,6 +1,6 @@
 package authmodel
 
-type UserDirectorySecurityFact struct {
+type UserProjectionSecurityFact struct {
 	UserID         string `json:"user_id"`
 	MFAEnabled     bool   `json:"mfa_enabled"`
 	ActiveSessions int    `json:"active_sessions"`

@@ -17,7 +17,7 @@ import {
   type IdentityRolePage as RuntimeRolePage,
   type IdentityUser as RuntimeUser,
   type IdentityUserDeletionImpact,
-  type IdentityUserDirectoryEntry as RuntimeUserDirectoryEntry,
+  type IdentityUserProjectionEntry as RuntimeUserProjectionEntry,
   type IdentityUserDisableImpact,
 } from "@domainry/identity-management-contract";
 export type {
@@ -250,7 +250,7 @@ export const organizationUnitsApi = {
       {
         method: "POST",
         headers: {
-          "Builder-Task-ID": `tenant-admin.identity-organization-unit.${requestID}`,
+          "Builder-Task-ID": `identity-management.organization-unit.${requestID}`,
           "Idempotency-Key": requestID,
           "Expected-Schema-Hash": "empty",
         },
@@ -290,7 +290,7 @@ export const organizationUnitsApi = {
       {
         method: "PATCH",
         headers: {
-          "Builder-Task-ID": `tenant-admin.identity-organization-unit.${requestID}`,
+          "Builder-Task-ID": `identity-management.organization-unit.${requestID}`,
           "Idempotency-Key": requestID,
           "Expected-Schema-Hash": expectedResourceHash,
         },
@@ -348,7 +348,7 @@ async function assignIdentityUserRole(
   await runtimeRequest(path, {
     method: "POST",
     headers: {
-      "Builder-Task-ID": `tenant-admin.identity-role-assignment.${requestID}`,
+      "Builder-Task-ID": `identity-management.role-assignment.${requestID}`,
       "Idempotency-Key": requestID,
       "Expected-Schema-Hash": expectedResourceHash,
     },
@@ -393,8 +393,8 @@ export const usersApi = {
     let pageNumber = 1;
     let hasNext = true;
     while (hasNext) {
-      const page = await runtimeRequest<IdentityPage<RuntimeUserDirectoryEntry>>(
-        `/identity/users/directory/search?${identityListParams({
+      const page = await runtimeRequest<IdentityPage<RuntimeUserProjectionEntry>>(
+        `/identity/accounts/search?${identityListParams({
           page: pageNumber,
           pageSize: 200,
           sort: [{ field: "name", direction: "asc" }, { field: "id", direction: "asc" }],
@@ -536,7 +536,7 @@ export const identityAccountsApi = {
     >(path, {
       method: "PATCH",
       headers: {
-        "Builder-Task-ID": `tenant-admin.identity-user.${requestID}`,
+        "Builder-Task-ID": `identity-management.user.${requestID}`,
         "Idempotency-Key": requestID,
         "Expected-Schema-Hash": expectedResourceHash,
       },

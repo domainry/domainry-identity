@@ -37,9 +37,6 @@ func (schemaHelperStore) TableIndexes(context.Context, string) (map[string]bool,
 	return map[string]bool{}, nil
 }
 func (schemaHelperStore) DropIndex(context.Context, string, string) error { return nil }
-func (schemaHelperStore) EnsureColumn(context.Context, string, string, string) error {
-	return nil
-}
 func (schemaHelperStore) EnsureCompositePrimaryKey(context.Context, string, ...string) error {
 	return nil
 }
@@ -52,34 +49,9 @@ func (schemaHelperStore) ColumnDefinition(value string) string {
 	return "normalized:" + value
 }
 
-func TestSchemaHelperValueShapes(t *testing.T) {
-	for _, test := range []struct {
-		input any
-		want  string
-	}{
-		{input: nil, want: ""},
-		{input: []byte("x"), want: "x"},
-		{input: "value", want: "value"},
-		{input: 42, want: "42"},
-	} {
-		if got := idempotencyMigrationString(test.input); got != test.want {
-			t.Fatalf("migration string(%#v)=%q want %q", test.input, got, test.want)
-		}
-	}
-	if !idempotencyMigrationStringsEqual(nil, nil) || !idempotencyMigrationStringsEqual([]string{"a", "b"}, []string{"a", "b"}) {
-		t.Fatal("equal migration strings rejected")
-	}
-	if idempotencyMigrationStringsEqual([]string{"a"}, []string{"a", "b"}) || idempotencyMigrationStringsEqual([]string{"a"}, []string{"b"}) {
-		t.Fatal("different migration strings accepted")
-	}
-	if !idempotencyMigrationContains([]string{"a", "b"}, "b") || idempotencyMigrationContains([]string{"a"}, "b") {
-		t.Fatal("migration contains mismatch")
-	}
+func TestSchemaHelperQuotedColumnDefinitions(t *testing.T) {
 	if got := quotedColumnDefinitions(schemaHelperStore{}, []string{"id", "name TEXT NOT NULL"}); got != `"id", "name" normalized:TEXT NOT NULL` {
 		t.Fatalf("quoted definitions=%q", got)
-	}
-	if err := prepareIdempotencyReceiptMigrations(t.Context(), schemaHelperStore{}); err != nil {
-		t.Fatalf("empty migration specs=%v", err)
 	}
 }
 

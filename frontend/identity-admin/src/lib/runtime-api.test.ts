@@ -77,10 +77,10 @@ describe('RuntimeApiError', () => {
     await runtimeRequest('/context-probe', { requestId: 'debug-order-42' })
     const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers)
     expect(headers.get('X-Request-ID')).toBe('debug-order-42')
-    expect(headers.get('X-Domainry-Product-Surface')).toBe('admin_console')
+    expect(headers.get('X-Domainry-Product-Surface')).toBeNull()
   })
 
-  it('keeps authentication requests independent from Surface context', async () => {
+  it('keeps authentication requests independent from frontend shell context', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'content-type': 'application/json' } }))
     vi.stubGlobal('fetch', fetchMock)
     await fetchRuntimeMe('token')
@@ -88,7 +88,7 @@ describe('RuntimeApiError', () => {
     expect(headers.get('X-Domainry-Product-Surface')).toBeNull()
   })
 
-  it('submits password change with bearer auth and idempotency evidence but no Surface', async () => {
+  it('submits password change with bearer auth and idempotency evidence but no frontend shell header', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       access_token: 'new-access',
       refresh_token: 'new-refresh',

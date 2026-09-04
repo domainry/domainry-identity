@@ -104,7 +104,7 @@ func TestIdentityProfileBindingValidationDefaultsBackendProtocolFields(t *testin
 		},
 	}
 	service := NewMetadataApplicationService(MetadataApplicationDependencies{Runtime: runtime})
-	payload := json.RawMessage(`{"object_key":"staff_profile","identity_relation_field":"identity_user","business_identity":{"key":"staff","surface_keys":["admin"]},"default_visibility":"when_readable"}`)
+	payload := json.RawMessage(`{"object_key":"staff_profile","identity_relation_field":"identity_user","business_identity":{"key":"staff"},"default_visibility":"when_readable"}`)
 	normalized, err := service.ValidateMetadataDefinitionPayload(t.Context(), "identity_profile_binding", metadatamodel.MetadataDefinitionUpsertRequest{Payload: payload})
 	if err != nil {
 		t.Fatal(err)

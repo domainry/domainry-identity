@@ -29,8 +29,8 @@ func NewHandler(dependencies Dependencies) *Handler {
 }
 
 func (handler *Handler) RegisterRoutes(registrar RouteRegistrar) {
-	registrar.HandleFunc("POST /ops/identity-portability/write-fences", handler.authorize(handler.freezeWrites))
-	registrar.HandleFunc("POST /ops/identity-portability/write-fences/{workspaceID}/release", handler.authorize(handler.releaseWriteFence))
+	registrar.HandleFunc("POST /identity/portability/write-fences", handler.authorize(handler.freezeWrites))
+	registrar.HandleFunc("POST /identity/portability/write-fences/{workspaceID}/release", handler.authorize(handler.releaseWriteFence))
 }
 
 type freezeRequest struct {

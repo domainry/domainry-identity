@@ -20,7 +20,7 @@ func (h *IdentityHandler) RegisterRoutes(mux routeRegistrar) {
 	h.registerIdentityAction(mux, "identity.organization_units.update", h.updateIdentityOrganizationUnit)
 	h.registerIdentityAction(mux, "identity.users.list", h.listIdentityUsers)
 	h.registerIdentityAction(mux, "identity.users.search", h.searchIdentityUsers)
-	h.registerIdentityAction(mux, "identity.users.directory_search", h.searchIdentityUserDirectory)
+	h.registerIdentityAction(mux, "identity.accounts.search", h.searchIdentityAccounts)
 	h.registerIdentityAction(mux, "identity.users.get", h.getIdentityUser)
 	h.registerIdentityAction(mux, "identity.users.deletion_impact", h.getIdentityUserDeletionImpact)
 	h.registerIdentityAction(mux, "identity.users.disable_impact", h.getIdentityUserDisableImpact)

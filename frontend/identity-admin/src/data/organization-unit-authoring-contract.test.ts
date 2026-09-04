@@ -34,7 +34,7 @@ describe('organization-unit direct-authoring contract', () => {
     })
 
     const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers)
-    expect(headers.get('Builder-Task-ID')).toMatch(/^tenant-admin\.identity-organization-unit\.web_/)
+    expect(headers.get('Builder-Task-ID')).toMatch(/^identity-management\.organization-unit\.web_/)
     expect(headers.get('Idempotency-Key')).toMatch(/^web_/)
     expect(headers.get('Expected-Schema-Hash')).toBe('empty')
     expect(created).toMatchObject({ id: 'org_east_store', code: 'EAST_STORE', nodeType: 'store', status: 'active' })
@@ -70,7 +70,7 @@ describe('organization-unit direct-authoring contract', () => {
     const updated = await organizationUnitsApi.update('east-store', { parentId: 'east-region' })
 
     const updateHeaders = new Headers(fetchMock.mock.calls[1]?.[1]?.headers)
-    expect(updateHeaders.get('Builder-Task-ID')).toMatch(/^tenant-admin\.identity-organization-unit\.web_/)
+    expect(updateHeaders.get('Builder-Task-ID')).toMatch(/^identity-management\.organization-unit\.web_/)
     expect(updateHeaders.get('Idempotency-Key')).toMatch(/^web_/)
     expect(updateHeaders.get('Expected-Schema-Hash')).toBe('organization-unit-resource-hash')
     expect(updated).toMatchObject({ id: 'east-store', parentId: 'east-region' })

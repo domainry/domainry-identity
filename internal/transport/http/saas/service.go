@@ -17,5 +17,5 @@ func New(ctx context.Context, cfg config.Config) (*Server, error) {
 
 func DevelopmentRoutes(server *Server) http.Handler { return server.Routes() }
 func PublicRoutes(server *Server) http.Handler      { return server.PublicRoutes() }
-func TenantAdminRoutes(server *Server) http.Handler { return server.TenantAdminRoutes() }
+func ManagementRoutes(server *Server) http.Handler  { return server.ManagementRoutes() }
 func OperationsRoutes(server *Server) http.Handler  { return server.OperationsRoutes() }

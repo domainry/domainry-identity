@@ -18,7 +18,7 @@ func TestIdentityGovernanceValidationAggregatesCrossReferenceIssuesWithoutPersis
 	objects := identityValidationObjects()
 	store := identitypersistence.NewMemoryIdentityStore()
 	identity, _ := identitybusiness.NewIdentityDomainService(store, []identitymodel.IdentityPermissionDefinition{currentPermission("order.read", "order", "read")}).ForWorkspace("workspace-a")
-	seedIdentityDirectoryRole(t, store, "workspace-a", identitymodel.IdentityRole{ID: "sales", Key: "sales", Label: "Sales", Status: identitymodel.IdentityStatusActive})
+	seedIdentityProjectionRole(t, store, "workspace-a", identitymodel.IdentityRole{ID: "sales", Key: "sales", Label: "Sales", Status: identitymodel.IdentityStatusActive})
 	if err := identity.UpsertMenu(t.Context(), identitymodel.IdentityMenu{ID: "orders", Key: "orders", Label: "Orders", Status: identitymodel.IdentityStatusActive}); err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestIdentityGovernanceValidatorAcceptsExistingBusinessReferences(t *testing
 	objects := identityValidationObjects()
 	store := identitypersistence.NewMemoryIdentityStore()
 	identity, _ := identitybusiness.NewIdentityDomainService(store, []identitymodel.IdentityPermissionDefinition{currentPermission("order.read", "order", "read")}).ForWorkspace("workspace-a")
-	seedIdentityDirectoryRole(t, store, "workspace-a", identitymodel.IdentityRole{ID: "sales", Key: "sales", Label: "Sales", Status: identitymodel.IdentityStatusActive})
+	seedIdentityProjectionRole(t, store, "workspace-a", identitymodel.IdentityRole{ID: "sales", Key: "sales", Label: "Sales", Status: identitymodel.IdentityStatusActive})
 	if err := identity.UpsertMenu(t.Context(), identitymodel.IdentityMenu{ID: "orders", Key: "orders", Label: "Orders", Status: identitymodel.IdentityStatusActive}); err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestIdentityGovernanceValidationAggregatesUserOrganizationUnitAndRoleAssign
 	if err := identity.UpsertUser(t.Context(), identitymodel.IdentityUser{ID: "manager", Name: "Manager", Email: "manager@example.com"}); err != nil {
 		t.Fatal(err)
 	}
-	seedIdentityDirectoryRole(t, store, "workspace-a", identitymodel.IdentityRole{ID: "sales-role", Key: "sales-role", Label: "Sales"})
+	seedIdentityProjectionRole(t, store, "workspace-a", identitymodel.IdentityRole{ID: "sales-role", Key: "sales-role", Label: "Sales"})
 	missingParent, invalidExpiry := "missing", "tomorrow"
 	result, err := identityapplication.NewIdentityGovernanceApplicationService(identity.Repository(), identity.PermissionDefinitions(), func() map[string]definitionmodel.ObjectSchema { return objects }).Validate(t.Context(), identitycontract.IdentityGovernanceValidationRequest{
 		User:             &identitymodel.IdentityUser{ID: "candidate", Email: "not-an-email", Status: "invented"},

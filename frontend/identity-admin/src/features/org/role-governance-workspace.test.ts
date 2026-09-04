@@ -10,7 +10,7 @@ describe('role governance workspace boundary', () => {
     expect(rolesSource).toContain('<EffectiveAccessWorkspace />')
     expect(rolesSource).toContain("value='permissions'")
     expect(rolesSource).toContain("value='menus'")
-    expect(rolesSource).toContain('grant.data_scope')
+    expect(rolesSource).toContain('grant?.data_scope')
     expect(rolesSource).not.toContain("value='data-scopes'")
     expect(rolesSource).not.toContain('<DataScopesPage />')
   })

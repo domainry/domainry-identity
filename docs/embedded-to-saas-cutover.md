@@ -48,7 +48,7 @@ cutover evidence record.
    Do not start the import if the target contains any portable dataset rows.
 
 3. Freeze source writes with
-   `POST /ops/identity-portability/write-fences`:
+   `POST /identity/portability/write-fences`:
 
    ```json
    {
@@ -119,7 +119,7 @@ cutover evidence record.
 - Before Runtime traffic switches, or before the target accepts any production
   mutation, rollback may discard the target attempt and release the source
   fence with
-  `POST /ops/identity-portability/write-fences/{workspaceID}/release` and an
+  `POST /identity/portability/write-fences/{workspaceID}/release` and an
   operator identity.
 - After any target production mutation, never release the old source fence.
   The old source is stale. Roll forward on SaaS, or perform a separately

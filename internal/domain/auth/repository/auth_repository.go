@@ -103,8 +103,8 @@ type AuthMFARepository interface {
 	RevokeIdentityMFAFactor(context.Context, string, string, string) error
 }
 
-type AuthUserDirectorySecurityRepository interface {
-	ListUserDirectorySecurityFacts(context.Context, string, []string) ([]authmodel.UserDirectorySecurityFact, error)
+type AuthUserProjectionSecurityRepository interface {
+	ListUserProjectionSecurityFacts(context.Context, string, []string) ([]authmodel.UserProjectionSecurityFact, error)
 }
 
 // These target-user authorization boundaries keep each security capability

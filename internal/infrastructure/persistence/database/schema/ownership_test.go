@@ -3,6 +3,7 @@ package schema_test
 import (
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 
 	auditmodule "github.com/domainry/domainry-audit/module"
@@ -48,20 +49,32 @@ func TestEveryStandaloneIdentityTableHasOneOwnerAndMigrationDisposition(t *testi
 		if table.ContainsSecret && table.MigrationDisposition == identityschema.MigrationPortable {
 			t.Errorf("secret-bearing table %q cannot be portable", table.Name)
 		}
+		if table.Boundary == "identity_directory" {
+			t.Errorf("table %q retains the retired directory ownership boundary", table.Name)
+		}
 	}
 
+	// SQLite's schema catalog has no portable domainry-orm equivalent. This
+	// dialect-focused regression intentionally inspects the fresh physical schema.
 	rows, err := store.DB().QueryContext(t.Context(), `SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer rows.Close()
 	actual := []string{}
+	actualSet := map[string]bool{}
 	for rows.Next() {
 		var table string
 		if err := rows.Scan(&table); err != nil {
 			t.Fatal(err)
 		}
 		actual = append(actual, table)
+		actualSet[table] = true
+		for _, retired := range []string{"directory", "surface", "business_workspace", "tenant_admin", "portal"} {
+			if strings.Contains(table, retired) {
+				t.Errorf("fresh Identity schema retains retired table %q", table)
+			}
+		}
 		if _, declared := ownership[table]; !declared && !moduleOwned[table] && !hostOwned[table] {
 			t.Errorf("standalone Identity table %q has no ownership classification", table)
 		}
@@ -71,6 +84,43 @@ func TestEveryStandaloneIdentityTableHasOneOwnerAndMigrationDisposition(t *testi
 	}
 	if !sort.StringsAreSorted(actual) {
 		t.Fatalf("table inventory is not deterministic: %v", actual)
+	}
+	for table := range ownership {
+		if table == "_identity_managed_database" {
+			continue // SQLite does not need the managed-database cohort marker.
+		}
+		if !actualSet[table] {
+			t.Errorf("owned Identity table %q is absent from the fresh schema", table)
+		}
+	}
+	if err := rows.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, table := range actual {
+		// pragma_table_info is SQLite-only and has no portable domainry-orm
+		// equivalent; it is required here to reject retired physical columns.
+		columnRows, err := store.DB().QueryContext(t.Context(), `SELECT name FROM pragma_table_info(?)`, table)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for columnRows.Next() {
+			var column string
+			if err := columnRows.Scan(&column); err != nil {
+				_ = columnRows.Close()
+				t.Fatal(err)
+			}
+			for _, retired := range []string{"directory", "surface", "business_workspace", "tenant_admin", "portal"} {
+				if strings.Contains(strings.ToLower(column), retired) {
+					t.Errorf("fresh Identity table %q retains retired column %q", table, column)
+				}
+			}
+			if column == "audience" && table != "_identity_auth_refresh_tokens" {
+				t.Errorf("fresh Identity table %q retains non-auth audience column", table)
+			}
+		}
+		if err := columnRows.Close(); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

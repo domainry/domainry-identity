@@ -79,7 +79,7 @@ export interface IdentityUser {
   must_change_password?: boolean
 }
 
-export interface IdentityUserDirectoryEntry {
+export interface IdentityUserProjectionEntry {
   user: IdentityUser
   roles: Array<{ id: string; key: string; label: string; source?: string; status?: string }>
   security: { mfa_enabled: boolean; locked: boolean; active_sessions: number; last_login_at?: string }

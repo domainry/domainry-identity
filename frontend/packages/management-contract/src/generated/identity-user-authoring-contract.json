@@ -603,17 +603,17 @@
     {
       "kind": "org_id",
       "input_json_pointer": "/org_id",
-      "resolver_endpoint": "GET /tenant-admin/platform-capabilities/references/org_id"
+      "resolver_endpoint": "GET /capabilities/references/org_id"
     },
     {
       "kind": "org_id",
       "input_json_pointer": "/support_org_id",
-      "resolver_endpoint": "GET /tenant-admin/platform-capabilities/references/org_id"
+      "resolver_endpoint": "GET /capabilities/references/org_id"
     },
     {
       "kind": "user_id",
       "input_json_pointer": "/manager_user_id",
-      "resolver_endpoint": "GET /tenant-admin/platform-capabilities/references/user_id"
+      "resolver_endpoint": "GET /capabilities/references/user_id"
     }
   ],
   "execution": {

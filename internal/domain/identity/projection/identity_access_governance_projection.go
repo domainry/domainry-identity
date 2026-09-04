@@ -132,7 +132,7 @@ func IdentityBuildGovernanceReports(now time.Time, permissions []identitymodel.I
 	return report
 }
 
-func IdentityPreviewRoleChange(request identitymodel.IdentityRoleChangeImpactRequest, current identitymodel.RoleSchema, directoryRole identitymodel.IdentityRole, assignments []identitymodel.IdentityUserRoleAssignment, objects []definitionmodel.ObjectSchema, actions []definitionmodel.ActionSchema) identitymodel.IdentityRoleChangeImpact {
+func IdentityPreviewRoleChange(request identitymodel.IdentityRoleChangeImpactRequest, current identitymodel.RoleSchema, projectionRole identitymodel.IdentityRole, assignments []identitymodel.IdentityUserRoleAssignment, objects []definitionmodel.ObjectSchema, actions []definitionmodel.ActionSchema) identitymodel.IdentityRoleChangeImpact {
 	impact := identitymodel.IdentityRoleChangeImpact{RoleKey: strings.TrimSpace(request.RoleKey)}
 	if impact.RoleKey == "" {
 		impact.RoleKey = strings.TrimSpace(request.Role.Key)
@@ -140,7 +140,7 @@ func IdentityPreviewRoleChange(request identitymodel.IdentityRoleChangeImpactReq
 	affectedUsers := map[string]bool{}
 	profileTypes := []string{}
 	for _, assignment := range assignments {
-		if assignment.RoleID != directoryRole.ID || assignment.Status != "" && assignment.Status != string(identitymodel.IdentityStatusActive) {
+		if assignment.RoleID != projectionRole.ID || assignment.Status != "" && assignment.Status != string(identitymodel.IdentityStatusActive) {
 			continue
 		}
 		affectedUsers[assignment.UserID] = true

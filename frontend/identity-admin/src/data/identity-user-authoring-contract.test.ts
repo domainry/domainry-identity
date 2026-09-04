@@ -39,7 +39,7 @@ describe("identity user direct authoring contract", () => {
 
     const headers = new Headers(fetchMock.mock.calls[1]?.[1]?.headers);
     expect(headers.get("Expected-Schema-Hash")).toBe("detail-resource-v1");
-    expect(headers.get("Builder-Task-ID")).toMatch(/^tenant-admin\.identity-user\.web_/);
+    expect(headers.get("Builder-Task-ID")).toMatch(/^identity-management\.user\.web_/);
     expect(headers.get("Idempotency-Key")).toMatch(/^web_/);
     const body = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body)) as Record<string, unknown>;
     expect(body.org_id).toBe("support-team");

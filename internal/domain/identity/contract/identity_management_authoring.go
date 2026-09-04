@@ -41,9 +41,9 @@ func IdentityUserAuthoringCapability() authoringcontract.CapabilityAuthoringDefi
 		ResourceKeyPathParameter: "userID", InputSchema: input, OutputSchema: output,
 		OutputVariables: []authoringcontract.CapabilityAuthoringOutput{{Name: "user_id", JSONPointer: "/id", Type: "user_id", VisibleTo: "subsequent_capability_calls"}},
 		ReferenceContracts: []authoringcontract.CapabilityAuthoringReference{
-			{Kind: "org_id", InputJSONPointer: "/org_id", ResolverEndpoint: "GET /tenant-admin/platform-capabilities/references/org_id"},
-			{Kind: "org_id", InputJSONPointer: "/support_org_id", ResolverEndpoint: "GET /tenant-admin/platform-capabilities/references/org_id"},
-			{Kind: "user_id", InputJSONPointer: "/manager_user_id", ResolverEndpoint: "GET /tenant-admin/platform-capabilities/references/user_id"},
+			{Kind: "org_id", InputJSONPointer: "/org_id", ResolverEndpoint: "GET /capabilities/references/org_id"},
+			{Kind: "org_id", InputJSONPointer: "/support_org_id", ResolverEndpoint: "GET /capabilities/references/org_id"},
+			{Kind: "user_id", InputJSONPointer: "/manager_user_id", ResolverEndpoint: "GET /capabilities/references/user_id"},
 		},
 		Execution: identityManagementExecution([]string{"identity.user"}, "identity.user", "stable_user_id_upsert", "identity_user_updated"),
 		Errors: []authoringcontract.CapabilityAuthoringError{
@@ -83,7 +83,7 @@ func IdentityOrganizationUnitAuthoringCapability() authoringcontract.CapabilityA
 		ConfigurationRoutes: []string{"POST /identity/organization-units", "PATCH /identity/organization-units/{organizationUnitID}", "GET /identity/organization-units/{organizationUnitID}", "GET /identity/organization-units/{organizationUnitID}/versions"}, ResourceKeyPathParameter: "organizationUnitID", InputSchema: input, OutputSchema: output,
 		ResourceOperations: identityAuditedResourceOperations("POST /identity/organization-units/{organizationUnitID}/validate", "PATCH /identity/organization-units/{organizationUnitID}", "GET /identity/organization-units/{organizationUnitID}", "GET /identity/organization-units/{organizationUnitID}/versions", ""),
 		OutputVariables:    []authoringcontract.CapabilityAuthoringOutput{{Name: "org_id", JSONPointer: "/id", Type: "org_id", VisibleTo: "subsequent_capability_calls"}},
-		ReferenceContracts: []authoringcontract.CapabilityAuthoringReference{{Kind: "org_id", InputJSONPointer: "/parent_id", ResolverEndpoint: "GET /tenant-admin/platform-capabilities/references/org_id"}},
+		ReferenceContracts: []authoringcontract.CapabilityAuthoringReference{{Kind: "org_id", InputJSONPointer: "/parent_id", ResolverEndpoint: "GET /capabilities/references/org_id"}},
 		Execution:          identityManagementExecution([]string{"identity.organization_unit"}, "identity.organization_unit", "stable_org_id_upsert", "identity_organization_unit_updated"),
 		Errors: []authoringcontract.CapabilityAuthoringError{
 			{Code: "backend.identity.org_id_required", FieldPath: "id", MessageKey: "backend.identity.org_id_required"}, {Code: "backend.identity.organization_unit_code_required", FieldPath: "code", MessageKey: "backend.identity.organization_unit_code_required"}, {Code: "backend.identity.organization_unit_name_required", FieldPath: "name", MessageKey: "backend.identity.organization_unit_name_required"},
@@ -117,7 +117,7 @@ func IdentityUserRoleAssignmentAuthoringCapability() authoringcontract.Capabilit
 		ValidationEndpoint: "POST /identity/users/{userID}/role-assignments/validate", ConfigurationRoutes: []string{"POST /identity/users/{userID}/role-assignments", "GET /identity/users/{userID}/role-assignments", "GET /identity/users/{userID}/role-assignments/versions", "DELETE /identity/users/{userID}/role-assignments/{roleID}"}, ResourceKeyPathParameter: "userID", InputSchema: input, OutputSchema: output,
 		ResourceOperations: identityAuditedResourceOperations("POST /identity/users/{userID}/role-assignments/validate", "POST /identity/users/{userID}/role-assignments", "GET /identity/users/{userID}/role-assignments", "GET /identity/users/{userID}/role-assignments/versions", "DELETE /identity/users/{userID}/role-assignments/{roleID}"),
 		OutputVariables:    []authoringcontract.CapabilityAuthoringOutput{{Name: "role_assignments", JSONPointer: "/", Type: "identity_user_role_assignment_list", VisibleTo: "subsequent_capability_calls"}},
-		ReferenceContracts: []authoringcontract.CapabilityAuthoringReference{{Kind: "user_id", InputJSONPointer: "/@path/userID", ResolverEndpoint: "GET /tenant-admin/platform-capabilities/references/user_id"}, {Kind: "role_id", InputJSONPointer: "/role_id", ResolverEndpoint: "GET /tenant-admin/platform-capabilities/references/role_id"}},
+		ReferenceContracts: []authoringcontract.CapabilityAuthoringReference{{Kind: "user_id", InputJSONPointer: "/@path/userID", ResolverEndpoint: "GET /capabilities/references/user_id"}, {Kind: "role_id", InputJSONPointer: "/role_id", ResolverEndpoint: "GET /capabilities/references/role_id"}},
 		Execution:          identityManagementExecution([]string{"identity.user", "identity.role"}, "identity.user_role_assignment", "stable_user_role_pair_upsert", "identity_user_role_assigned"),
 		Errors: []authoringcontract.CapabilityAuthoringError{
 			{Code: "backend.identity.user_not_found", FieldPath: "user_id", ParameterKeys: []string{"actual"}, MessageKey: "backend.identity.user_not_found"}, {Code: "backend.identity.role_not_found", FieldPath: "role_id", ParameterKeys: []string{"actual"}, MessageKey: "backend.identity.role_not_found"},

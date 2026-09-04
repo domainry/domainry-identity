@@ -10,79 +10,79 @@ import (
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
-// sdkDirectory publishes only non-secret, read-only Runtime projections. All
+// sdkProjection publishes only non-secret, read-only Runtime projections. All
 // authoring commands remain behind Identity's management application service.
-type sdkDirectory struct{ binding *sdkBinding }
+type sdkProjection struct{ binding *sdkBinding }
 
-func (adapter sdkDirectory) FindUser(ctx context.Context, request identitysdk.UserLookup) (identitysdk.User, bool, error) {
+func (adapter sdkProjection) FindUser(ctx context.Context, request identitysdk.UserLookup) (identitysdk.User, bool, error) {
 	identity, workspaceContext, err := adapter.scoped(ctx, request.Application)
 	if err != nil {
 		return identitysdk.User{}, false, err
 	}
 	user, found, err := identity.FindUser(workspaceContext, string(request.UserID))
-	return sdkDirectoryUser(user), found, sdkBoundaryError(err)
+	return sdkProjectionUser(user), found, sdkBoundaryError(err)
 }
 
-func (adapter sdkDirectory) FindOrganizationUnit(ctx context.Context, request identitysdk.OrganizationUnitLookup) (identitysdk.OrganizationUnit, bool, error) {
+func (adapter sdkProjection) FindOrganizationUnit(ctx context.Context, request identitysdk.OrganizationUnitLookup) (identitysdk.OrganizationUnit, bool, error) {
 	identity, workspaceContext, err := adapter.scoped(ctx, request.Application)
 	if err != nil {
 		return identitysdk.OrganizationUnit{}, false, err
 	}
 	organizationUnit, found, err := identity.FindOrganizationUnit(workspaceContext, strings.TrimSpace(request.OrgID))
-	return sdkDirectoryOrganizationUnit(organizationUnit), found, sdkBoundaryError(err)
+	return sdkProjectionOrganizationUnit(organizationUnit), found, sdkBoundaryError(err)
 }
 
-func (adapter sdkDirectory) ListUsers(ctx context.Context, request identitysdk.DirectoryQuery) ([]identitysdk.User, error) {
+func (adapter sdkProjection) ListUsers(ctx context.Context, request identitysdk.ProjectionQuery) ([]identitysdk.User, error) {
 	identity, workspaceContext, err := adapter.scoped(ctx, request.Application)
 	if err != nil {
 		return nil, err
 	}
-	values, err := identity.ListDirectoryUsers(workspaceContext)
+	values, err := identity.ListProjectionUsers(workspaceContext)
 	if err != nil {
 		return nil, sdkBoundaryError(err)
 	}
 	result := make([]identitysdk.User, 0, len(values))
 	for _, value := range values {
-		result = append(result, sdkDirectoryUser(value))
+		result = append(result, sdkProjectionUser(value))
 	}
 	return result, nil
 }
 
-func (adapter sdkDirectory) ListRoles(ctx context.Context, request identitysdk.DirectoryQuery) ([]identitysdk.Role, error) {
+func (adapter sdkProjection) ListRoles(ctx context.Context, request identitysdk.ProjectionQuery) ([]identitysdk.Role, error) {
 	identity, workspaceContext, err := adapter.scoped(ctx, request.Application)
 	if err != nil {
 		return nil, err
 	}
-	values, err := identity.ListDirectoryRoles(workspaceContext)
+	values, err := identity.ListProjectionRoles(workspaceContext)
 	if err != nil {
 		return nil, sdkBoundaryError(err)
 	}
 	result := make([]identitysdk.Role, 0, len(values))
 	for _, value := range values {
-		result = append(result, sdkDirectoryRole(value))
+		result = append(result, sdkProjectionRole(value))
 	}
 	return result, nil
 }
 
-func (adapter sdkDirectory) ListUserRoleAssignments(ctx context.Context, request identitysdk.UserRoleAssignmentQuery) ([]identitysdk.UserRoleAssignment, error) {
+func (adapter sdkProjection) ListUserRoleAssignments(ctx context.Context, request identitysdk.UserRoleAssignmentQuery) ([]identitysdk.UserRoleAssignment, error) {
 	identity, workspaceContext, err := adapter.scoped(ctx, request.Application)
 	if err != nil {
 		return nil, err
 	}
-	values, err := identity.ListDirectoryUserRoleAssignments(workspaceContext, string(request.UserID))
+	values, err := identity.ListProjectionUserRoleAssignments(workspaceContext, string(request.UserID))
 	if err != nil {
 		return nil, sdkBoundaryError(err)
 	}
 	result := make([]identitysdk.UserRoleAssignment, 0, len(values))
 	for _, value := range values {
-		result = append(result, sdkDirectoryRoleAssignment(value))
+		result = append(result, sdkProjectionRoleAssignment(value))
 	}
 	return result, nil
 }
 
-func (adapter sdkDirectory) scoped(ctx context.Context, scope identitysdk.ApplicationScope) (*identityapplication.IdentityApplicationService, context.Context, error) {
+func (adapter sdkProjection) scoped(ctx context.Context, scope identitysdk.ApplicationScope) (*identityapplication.IdentityApplicationService, context.Context, error) {
 	if adapter.binding == nil || adapter.binding.identity == nil {
-		return nil, ctx, &identitysdk.Error{Code: "identity.directory_unavailable"}
+		return nil, ctx, &identitysdk.Error{Code: "identity.projection_unavailable"}
 	}
 	application := identitysdk.ApplicationRef{TenantID: scope.TenantID, WorkspaceID: scope.WorkspaceID, ApplicationKey: scope.ApplicationKey}
 	if found, err := adapter.binding.applicationRegistered(ctx, application); err != nil {
@@ -97,7 +97,7 @@ func (adapter sdkDirectory) scoped(ctx context.Context, scope identitysdk.Applic
 	return identity, requestcontext.WithWorkspaceID(ctx, string(scope.WorkspaceID)), nil
 }
 
-func sdkDirectoryUser(value identitymodel.IdentityUser) identitysdk.User {
+func sdkProjectionUser(value identitymodel.IdentityUser) identitysdk.User {
 	return identitysdk.User{
 		ID: value.ID, Name: value.Name, GivenName: value.GivenName, MiddleName: value.MiddleName, FamilyName: value.FamilyName,
 		NamePrefix: value.NamePrefix, NameSuffix: value.NameSuffix, NativeName: value.NativeName, NameLocale: value.NameLocale,
@@ -109,18 +109,18 @@ func sdkDirectoryUser(value identitymodel.IdentityUser) identitysdk.User {
 	}
 }
 
-func sdkDirectoryOrganizationUnit(value identitymodel.IdentityOrganizationUnit) identitysdk.OrganizationUnit {
+func sdkProjectionOrganizationUnit(value identitymodel.IdentityOrganizationUnit) identitysdk.OrganizationUnit {
 	return identitysdk.OrganizationUnit{
 		ID: value.ID, Code: value.Code, Name: value.Name, NodeType: string(value.NodeType), ParentID: value.ParentID,
 		Path: value.Path, AncestorIDs: append([]string(nil), value.AncestorIDs...), Depth: value.Depth, SortOrder: value.SortOrder, Status: string(value.Status),
 	}
 }
 
-func sdkDirectoryRole(value identitymodel.IdentityRole) identitysdk.Role {
+func sdkProjectionRole(value identitymodel.IdentityRole) identitysdk.Role {
 	return identitysdk.Role{ID: value.ID, Key: value.Key, Label: value.Label, Description: value.Description, Status: string(value.Status)}
 }
 
-func sdkDirectoryRoleAssignment(value identitymodel.IdentityUserRoleAssignment) identitysdk.UserRoleAssignment {
+func sdkProjectionRoleAssignment(value identitymodel.IdentityUserRoleAssignment) identitysdk.UserRoleAssignment {
 	return identitysdk.UserRoleAssignment{
 		UserID: value.UserID, RoleID: value.RoleID, BindingKey: value.BindingKey,
 		ProfileID: value.ProfileID, Source: value.Source, Status: value.Status, ValidFrom: value.ValidFrom, ValidUntil: value.ValidUntil,

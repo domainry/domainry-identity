@@ -18,7 +18,7 @@ func TestIdentityServiceSearchRolesAcrossRequestedFieldsAndPaginates(t *testing.
 		{ID: "finance-reviewer", Key: "finance_reviewer", Label: "Finance Reviewer"},
 		{ID: "sales-manager", Key: "sales_manager", Label: "Sales Manager"},
 	} {
-		seedIdentityDirectoryRole(t, store, "workspace-primary", role)
+		seedIdentityProjectionRole(t, store, "workspace-primary", role)
 	}
 
 	byLabel, err := identity.SearchRoles(t.Context(), identitymodel.IdentityListQuery{

@@ -50,25 +50,25 @@ func TestIdentityPersistenceDoesNotReintroducePlaneRuntimeOwnership(t *testing.T
 	}
 }
 
-func TestIdentityDirectoryPaginationRemainsWorkspaceKeysetOnly(t *testing.T) {
+func TestIdentityProjectionPaginationRemainsWorkspaceKeysetOnly(t *testing.T) {
 	_, sourceFile, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("resolve Identity persistence source root")
 	}
-	path := filepath.Join(filepath.Dir(filepath.Dir(sourceFile)), "identity", "directory", "store.go")
+	path := filepath.Join(filepath.Dir(filepath.Dir(sourceFile)), "identity", "projection", "store.go")
 	source, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := string(source)
-	for _, forbidden := range []string{" OFFSET ", "identityDirectoryWhere", "identityDirectoryOrder", "Placeholder(", "PageSize + 1", "PageSize+1"} {
+	for _, forbidden := range []string{" OFFSET ", "identityProjectionWhere", "identityProjectionOrder", "Placeholder(", "PageSize + 1", "PageSize+1"} {
 		if strings.Contains(text, forbidden) {
-			t.Fatalf("Identity directory pagination reintroduced forbidden SQL pattern %q", forbidden)
+			t.Fatalf("Identity projection pagination reintroduced forbidden SQL pattern %q", forbidden)
 		}
 	}
 	for _, required := range []string{"NewWorkspaceSelectBuilder", ".FirstPage(", ".NextPage(", "pagination.Boundary", ".FetchLimit()"} {
 		if !strings.Contains(text, required) {
-			t.Fatalf("Identity directory pagination lost required keyset boundary %q", required)
+			t.Fatalf("Identity projection pagination lost required keyset boundary %q", required)
 		}
 	}
 }

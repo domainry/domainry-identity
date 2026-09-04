@@ -17,7 +17,7 @@ type identityHTTPBatchSecurity struct {
 	err      error
 }
 
-func (s *identityHTTPBatchSecurity) UserDirectorySecurityProfiles(context.Context, string, []string) (map[string]authdomain.UserSecurityProfile, error) {
+func (s *identityHTTPBatchSecurity) UserProjectionSecurityProfiles(context.Context, string, []string) (map[string]authdomain.UserSecurityProfile, error) {
 	return s.profiles, s.err
 }
 
@@ -38,7 +38,7 @@ func TestIdentityListQueryParsesPaginationSearchFiltersAndSort(t *testing.T) {
 	}
 }
 
-func TestIdentityUserDirectoryHandlerProjectsSecuritySummary(t *testing.T) {
+func TestIdentityUserProjectionHandlerProjectsSecuritySummary(t *testing.T) {
 	repository := &identityHTTPRepository{
 		users: []identitymodel.IdentityUser{{ID: "user-1", Name: "Alice", Status: identitymodel.IdentityStatusActive}},
 	}
@@ -47,36 +47,36 @@ func TestIdentityUserDirectoryHandlerProjectsSecuritySummary(t *testing.T) {
 		Credential: &authdomain.UserCredentialSecuritySummary{LastLoginAt: "2026-07-25T00:00:00Z"},
 		MFAEnabled: true, Locked: true, ActiveSessions: 2,
 	}}
-	recorder, request := identityRoleRequest(http.MethodGet, "/identity/users/directory/search?page=1&page_size=20", "", nil)
-	handler.searchIdentityUserDirectory(recorder, request)
-	page, ok := response.value.(identityapplication.IdentityUserDirectoryPage)
+	recorder, request := identityRoleRequest(http.MethodGet, "/identity/accounts/search?page=1&page_size=20", "", nil)
+	handler.searchIdentityAccounts(recorder, request)
+	page, ok := response.value.(identityapplication.IdentityUserProjectionPage)
 	if response.status != http.StatusOK || !ok || len(page.Items) != 1 ||
 		!page.Items[0].Security.MFAEnabled || page.Items[0].Security.LastLoginAt == "" {
 		t.Fatalf("status=%d page=%#v err=%v", response.status, response.value, response.err)
 	}
 	handler.userSecurity = &identityHTTPUserSecurity{}
 	response.status, response.value, response.err = 0, nil, nil
-	handler.searchIdentityUserDirectory(recorder, request)
-	page, ok = response.value.(identityapplication.IdentityUserDirectoryPage)
+	handler.searchIdentityAccounts(recorder, request)
+	page, ok = response.value.(identityapplication.IdentityUserProjectionPage)
 	if response.status != http.StatusOK || !ok || len(page.Items) != 1 || page.Items[0].Security.LastLoginAt != "" {
 		t.Fatalf("nil credential status=%d page=%#v err=%v", response.status, response.value, response.err)
 	}
 	handler.userSecurity = &identityHTTPUserSecurity{err: errIdentityHTTPTest}
 	response.status, response.value, response.err = 0, nil, nil
-	handler.searchIdentityUserDirectory(recorder, request)
+	handler.searchIdentityAccounts(recorder, request)
 	if response.status != http.StatusInternalServerError || response.err != errIdentityHTTPTest {
 		t.Fatalf("security failure status=%d err=%v", response.status, response.err)
 	}
 	repository.err = errIdentityHTTPTest
 	handler.userSecurity = &identityHTTPUserSecurity{}
 	response.status, response.value, response.err = 0, nil, nil
-	handler.searchIdentityUserDirectory(recorder, request)
+	handler.searchIdentityAccounts(recorder, request)
 	if response.status != http.StatusInternalServerError || response.err != errIdentityHTTPTest {
 		t.Fatalf("repository failure status=%d err=%v", response.status, response.err)
 	}
 }
 
-func TestIdentityUserDirectoryBatchSecurityProjectionAndFailures(t *testing.T) {
+func TestIdentityUserProjectionBatchSecurityProjectionAndFailures(t *testing.T) {
 	repository := &identityHTTPRepository{users: []identitymodel.IdentityUser{
 		{ID: "user-1", Name: "Alice", Status: identitymodel.IdentityStatusActive},
 		{ID: "user-2", Name: "Bob", Status: identitymodel.IdentityStatusActive},
@@ -93,9 +93,9 @@ func TestIdentityUserDirectoryBatchSecurityProjectionAndFailures(t *testing.T) {
 		},
 	}
 	handler.userSecurity = batch
-	recorder, request := identityRoleRequest(http.MethodGet, "/identity/users/directory/search?page=1&page_size=20", "", nil)
-	handler.searchIdentityUserDirectory(recorder, request)
-	page, ok := response.value.(identityapplication.IdentityUserDirectoryPage)
+	recorder, request := identityRoleRequest(http.MethodGet, "/identity/accounts/search?page=1&page_size=20", "", nil)
+	handler.searchIdentityAccounts(recorder, request)
+	page, ok := response.value.(identityapplication.IdentityUserProjectionPage)
 	if response.status != http.StatusOK || !ok || len(page.Items) != 2 {
 		t.Fatalf("status=%d page=%#v err=%v", response.status, response.value, response.err)
 	}
@@ -105,7 +105,7 @@ func TestIdentityUserDirectoryBatchSecurityProjectionAndFailures(t *testing.T) {
 
 	batch.err = errIdentityHTTPTest
 	response.status, response.value, response.err = 0, nil, nil
-	handler.searchIdentityUserDirectory(recorder, request)
+	handler.searchIdentityAccounts(recorder, request)
 	if response.status != http.StatusInternalServerError || response.err != errIdentityHTTPTest {
 		t.Fatalf("batch failure status=%d err=%v", response.status, response.err)
 	}

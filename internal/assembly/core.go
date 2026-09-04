@@ -121,8 +121,8 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 	if err := auditBinding.Descriptor().Validate(); err != nil {
 		return fail(fmt.Errorf("validate Audit module descriptor: %w", err))
 	}
-	if !auditBinding.Descriptor().Capabilities.HTTPSurface {
-		return fail(fmt.Errorf("Audit Binding does not declare its product HTTP surface capability"))
+	if !auditBinding.Descriptor().Capabilities.HTTPAdapter {
+		return fail(fmt.Errorf("Audit Binding does not declare its product HTTP adapter capability"))
 	}
 	auditHostBinder, ok := auditBinding.(auditsdk.ApplicationHostBinder)
 	if !ok {
@@ -171,7 +171,7 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 		authpolicy.AuthPasswordPolicy{MinLength: cfg.AuthPasswordMinLength, RequireUpper: cfg.AuthPasswordRequireUpper, RequireLower: cfg.AuthPasswordRequireLower, RequireNumber: cfg.AuthPasswordRequireNumber, RequireSymbol: cfg.AuthPasswordRequireSymbol},
 		auditApp.AppendWithMetadata,
 	)
-	if err := authApp.ConfigureSigningKeys(defaultString(cfg.AuthJWTActiveKID, "legacy-v1"), defaultString(cfg.AuthJWTSecret, config.DevJWTSecret), cfg.AuthJWTVerificationKeys); err != nil {
+	if err := authApp.ConfigureSigningKeys(defaultString(cfg.AuthJWTActiveKID, "dev-v1"), defaultString(cfg.AuthJWTSecret, config.DevJWTSecret), cfg.AuthJWTVerificationKeys); err != nil {
 		return fail(fmt.Errorf("configure signing keys: %w", err))
 	}
 	if err := authApp.ConfigureTokenMetadata(defaultString(cfg.AuthIssuer, "http://localhost:8081"), defaultString(cfg.AuthAudience, "domainry-runtime")); err != nil {
@@ -297,7 +297,7 @@ func loadManifest(path string) (manifestmodel.ManifestSchema, error) {
 	if err != nil {
 		return manifestmodel.ManifestSchema{}, fmt.Errorf("read Identity manifest %q: %w", path, err)
 	}
-	manifest, _, err := manifestmodel.DecodeManifest(raw)
+	manifest, err := manifestmodel.DecodeManifest(raw)
 	if err != nil {
 		return manifestmodel.ManifestSchema{}, fmt.Errorf("decode Identity manifest: %w", err)
 	}

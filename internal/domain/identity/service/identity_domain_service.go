@@ -144,7 +144,7 @@ func NewIdentityDomainServiceWithPermissionSource(repo identityrepository.Identi
 }
 
 // ReplaceRoleDefinitions atomically refreshes the published authorization
-// policy catalog. IdentityRole remains the directory and assignment identity;
+// policy catalog. IdentityRole remains the projection and assignment identity;
 // a matching RoleSchema is the sole source of its runtime permissions and
 // row/field policy after publication.
 func (s *IdentityDomainService) ReplaceRoleDefinitions(roles []identitymodel.RoleSchema) {
@@ -246,7 +246,7 @@ func (s *IdentityDomainService) publishedRoleByKey(key string) (identitymodel.Ro
 }
 
 // PublishedRoleDefinition returns the immutable authorization definition for a
-// directory role key. Directory roles never carry permissions themselves.
+// projection role key. Projection roles never carry permissions themselves.
 func (s *IdentityDomainService) PublishedRoleDefinition(_ context.Context, key string) (identitymodel.RoleSchema, bool) {
 	return s.publishedRoleByKey(key)
 }

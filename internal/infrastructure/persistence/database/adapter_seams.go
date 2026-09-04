@@ -67,10 +67,6 @@ func (s *IdentityStore) DropIndex(ctx context.Context, table, index string) erro
 	return base.Engine.DropIndex(ctx, s.schemaDatabase(), base.SQLRenderer, base.DatabaseSchema, base.RelationPrefix, table, index)
 }
 
-func (s *IdentityStore) EnsureColumn(ctx context.Context, table, column, definition string) error {
-	return s.ensureColumn(ctx, table, column, definition)
-}
-
 func (s *IdentityStore) MetadataIDColumnType() string        { return s.metadataIDColumnType() }
 func (s *IdentityStore) SchemaRenderer() ormdialect.Renderer { return s.sqlBase().SQLRenderer }
 func (s *IdentityStore) MaxParameters() int                  { return s.sqlBase().Engine.MaxParameters() }

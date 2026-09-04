@@ -7,8 +7,8 @@ import (
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	identitydatascope "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/datascope"
-	organizationunitpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/directory/organizationunit"
-	userpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/directory/user"
+	organizationunitpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/projection/organizationunit"
+	userpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/projection/user"
 	roleassignmentpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/roleassignment"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/transaction"
 	"github.com/domainry/domainry-orm/query"

@@ -13,7 +13,7 @@ export const identityServiceApi = {
 }
 
 export const platformCapabilitiesApi = {
-  get: () => runtimeRequest<RuntimeAuthoringCapabilityContract>('/tenant-admin/platform-capabilities'),
+  get: () => runtimeRequest<RuntimeAuthoringCapabilityContract>('/capabilities'),
 }
 
 export const metadataApi = {
@@ -26,19 +26,19 @@ export const metadataApi = {
         operation: string
         description: string
       }> | null
-    }>('/tenant-admin/metadata/migration-plan').then((response) => ({
+    }>('/metadata/migration-plan').then((response) => ({
       ...response,
       steps: response.steps ?? [],
     })),
 
   objectRecordCount: (objectKey: string) =>
     runtimeRequest<{ object_key: string; count: number }>(
-      `/tenant-admin/metadata/objects/${encodeURIComponent(objectKey)}/record-count`,
+      `/metadata/objects/${encodeURIComponent(objectKey)}/record-count`,
     ),
 
   fieldDefinition(objectKey: string, fieldKey: string) {
     return runtimeRequest<{ definition: { payload: RuntimeObjectField; schema_hash: string } }>(
-      `/tenant-admin/metadata/definitions/field/${encodeURIComponent(`${objectKey}.${fieldKey}`)}`,
+      `/metadata/definitions/field/${encodeURIComponent(`${objectKey}.${fieldKey}`)}`,
     ).then((response) => ({
       field: response.definition.payload,
       schemaHash: response.definition.schema_hash,

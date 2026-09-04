@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { isRegisteredMenuPath, routeContractForPath } from '@/app-route-registry'
 import { isRouteAllowed } from '@/router'
 
-describe('identity account directory boundary', () => {
+describe('identity account projection boundary', () => {
   it('publishes only the restricted security account route', () => {
     expect(isRegisteredMenuPath('/admin/security/accounts')).toBe(true)
     expect(isRegisteredMenuPath('/admin/org/users')).toBe(false)
@@ -11,7 +11,7 @@ describe('identity account directory boundary', () => {
     expect(readFileSync(new URL('../../router.tsx', import.meta.url), 'utf8')).toContain("path: '/admin/security/accounts/$userId'")
   })
 
-  it('does not grant the full account directory to a business Profile operator', () => {
+  it('does not grant the full account projection to a business Profile operator', () => {
 		const businessPermissions = ['identity.profile_bindings.command', 'member_profile.read']
     expect(isRouteAllowed('/business-profiles/member', ['/business-profiles/member'], businessPermissions)).toBe(false)
     expect(isRouteAllowed('/admin/security/accounts', ['/business-profiles/member'], businessPermissions)).toBe(false)
@@ -43,7 +43,7 @@ describe('identity account directory boundary', () => {
   it('keeps personnel facts on the Runtime user contract and write projection', () => {
     const api = readFileSync(new URL('../../data/api.ts', import.meta.url), 'utf8')
     const identityContract = readFileSync(new URL('../../../../packages/management-contract/src/index.ts', import.meta.url), 'utf8')
-    const runtimeUser = identityContract.slice(identityContract.indexOf('export interface IdentityUser {'), identityContract.indexOf('export interface IdentityUserDirectoryEntry'))
+    const runtimeUser = identityContract.slice(identityContract.indexOf('export interface IdentityUser {'), identityContract.indexOf('export interface IdentityUserProjectionEntry'))
     const writeProjection = api.slice(api.indexOf('export const identityAccountsApi'), api.indexOf('async function runtimeRoles'))
 
     for (const current of ['org_id', 'support_org_id', 'manager_user_id', 'worker_no', 'worker_type', 'work_status', 'start_date', 'end_date']) {

@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	queryPath        = "/operations/authorization/action-usages/query"
+	queryPath        = "/action/permission-usages/query"
 	maxResponseBytes = int64(1 << 20)
 )
 

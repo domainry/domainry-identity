@@ -65,7 +65,7 @@ func (repository *permissionCatalogRepositoryStub) ReconcileIdentityPermissionDe
 func TestPermissionDefinitionAndSnapshotHashesAreCanonical(t *testing.T) {
 	definition := identitymodel.IdentityPermissionDefinitionRecord{
 		PermissionKey: "identity.roles.get", ResourceKey: "identity.roles", OperationKey: "get", Label: "Get role",
-		Description: "Get one role", Category: "Identity", SourceKind: "builtin_surface", SourceOwner: "identity:builtin",
+		Description: "Get one role", Category: "Identity", SourceKind: "builtin_http", SourceOwner: "identity:builtin",
 	}
 	first, err := IdentityPermissionDefinitionHash(definition)
 	if err != nil {
@@ -239,7 +239,7 @@ func TestPermissionCatalogQueriesExternalActionUsageWithoutPersistingIt(t *testi
 	if err := runtimeRegistry.Register(actioncontract.ActionDefinition{
 		Key: "customer.read", Owner: "runtime:orders", SourceKind: "object_default",
 		CapabilityKey: "customer", CapabilityLabel: "Customers", OperationKey: "read", OperationLabel: "Read",
-		Label: "Read customers", Exposures: []actioncontract.Exposure{actioncontract.ExposureTenantAdmin},
+		Label: "Read customers", Exposures: []actioncontract.Exposure{actioncontract.ExposureManagement},
 		Authorization: actioncontract.Authorization{Strategy: actioncontract.AuthorizationAuthenticated},
 		HTTP:          &actioncontract.HTTPBinding{Method: "GET", RouteTemplate: "/objects/customer/records"},
 		Permission: &actioncontract.PermissionDefinition{

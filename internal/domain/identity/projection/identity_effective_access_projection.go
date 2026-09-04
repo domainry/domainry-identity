@@ -14,7 +14,7 @@ type IdentityEffectiveFieldDecision func(identitymodel.RoleSchema, definitionmod
 type IdentityEffectiveAccessProjectionInput struct {
 	Principal           identitymodel.Principal
 	Assignments         []identitymodel.IdentityUserRoleAssignment
-	DirectoryRoles      []identitymodel.IdentityRole
+	ProjectionRoles     []identitymodel.IdentityRole
 	RoleDefinitions     []identitymodel.RoleSchema
 	PermissionSets      []identitymodel.IdentityPermissionSet
 	PermissionSetGroups []identitymodel.IdentityPermissionSetGroup
@@ -34,7 +34,7 @@ func IdentityBuildEffectiveAccessSnapshot(input IdentityEffectiveAccessProjectio
 		ExportRules:          append([]identitymodel.ExportRule(nil), input.Principal.Role.ExportRules...),
 	}
 	roleByID := map[string]identitymodel.IdentityRole{}
-	for _, role := range input.DirectoryRoles {
+	for _, role := range input.ProjectionRoles {
 		roleByID[role.ID] = role
 	}
 	definitionByKey := map[string]identitymodel.RoleSchema{}

@@ -107,7 +107,7 @@ func TestManifestIdentitySeedDoesNotExpandWorkspaceCapabilityIntoPlatformMenus(t
 	}
 }
 
-func TestGeneratedIdentityMenusDoNotPublishBusinessDataOperationsInTenantAdmin(t *testing.T) {
+func TestGeneratedIdentityMenusDoNotPublishBusinessDataOperationsInManagement(t *testing.T) {
 	for _, menu := range generatedIdentityMenus() {
 		if menu.Key == "system_import_export" || menu.Route == "/admin/system/import-export" {
 			t.Fatalf("Tenant Admin seed still owns Business import/export menu: %+v", menu)

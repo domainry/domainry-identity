@@ -5,82 +5,85 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	actioncontract "github.com/domainry/domainry-foundation/action"
+	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
 )
 
-type routeSurface string
+type listenerClass string
 
 const (
-	routeSurfacePublic      routeSurface = "public"
-	routeSurfaceTenantAdmin routeSurface = "tenant_admin"
-	routeSurfaceOperations  routeSurface = "operations"
+	listenerClassPublic     listenerClass = "public"
+	listenerClassManagement listenerClass = "management"
+	listenerClassOperations listenerClass = "operations"
 )
 
 type httpControlConfig struct {
-	PublicMaxJSONBodyBytes        int64
-	TenantAdminMaxJSONBodyBytes   int64
-	OperationsMaxJSONBodyBytes    int64
-	PublicRequestTimeout          time.Duration
-	TenantAdminRequestTimeout     time.Duration
-	OperationsRequestTimeout      time.Duration
-	PublicRateLimitPerMinute      int
-	TenantAdminRateLimitPerMinute int
-	OperationsRateLimitPerMinute  int
+	PublicMaxJSONBodyBytes       int64
+	ManagementMaxJSONBodyBytes   int64
+	OperationsMaxJSONBodyBytes   int64
+	PublicRequestTimeout         time.Duration
+	ManagementRequestTimeout     time.Duration
+	OperationsRequestTimeout     time.Duration
+	PublicRateLimitPerMinute     int
+	ManagementRateLimitPerMinute int
+	OperationsRateLimitPerMinute int
 }
 
-type httpSurfaceControls struct {
+type httpListenerControls struct {
 	config     httpControlConfig
 	public     *fixedWindowLimiter
-	admin      *fixedWindowLimiter
+	management *fixedWindowLimiter
 	operations *fixedWindowLimiter
 	clock      func() time.Time
 }
 
-func newHTTPSurfaceControls(config httpControlConfig) *httpSurfaceControls {
-	controls := &httpSurfaceControls{config: config, clock: func() time.Time { return time.Now().UTC() }}
+func newHTTPListenerControls(config httpControlConfig) *httpListenerControls {
+	controls := &httpListenerControls{config: config, clock: func() time.Time { return time.Now().UTC() }}
 	controls.public = newFixedWindowLimiter(config.PublicRateLimitPerMinute)
-	controls.admin = newFixedWindowLimiter(config.TenantAdminRateLimitPerMinute)
+	controls.management = newFixedWindowLimiter(config.ManagementRateLimitPerMinute)
 	controls.operations = newFixedWindowLimiter(config.OperationsRateLimitPerMinute)
 	return controls
 }
 
-func (controls *httpSurfaceControls) bodyLimit(surface routeSurface) int64 {
+func (controls *httpListenerControls) bodyLimit(listener listenerClass) int64 {
 	if controls == nil {
 		return 4 << 20
 	}
-	switch surface {
-	case routeSurfaceOperations:
+	switch listener {
+	case listenerClassOperations:
 		return positiveInt64(controls.config.OperationsMaxJSONBodyBytes, 1<<20)
-	case routeSurfaceTenantAdmin:
-		return positiveInt64(controls.config.TenantAdminMaxJSONBodyBytes, 2<<20)
+	case listenerClassManagement:
+		return positiveInt64(controls.config.ManagementMaxJSONBodyBytes, 2<<20)
 	default:
 		return positiveInt64(controls.config.PublicMaxJSONBodyBytes, 2<<20)
 	}
 }
 
-func (controls *httpSurfaceControls) timeout(surface routeSurface) time.Duration {
+func (controls *httpListenerControls) timeout(listener listenerClass) time.Duration {
 	if controls == nil {
 		return 0
 	}
-	switch surface {
-	case routeSurfaceOperations:
+	switch listener {
+	case listenerClassOperations:
 		return controls.config.OperationsRequestTimeout
-	case routeSurfaceTenantAdmin:
-		return controls.config.TenantAdminRequestTimeout
+	case listenerClassManagement:
+		return controls.config.ManagementRequestTimeout
 	default:
 		return controls.config.PublicRequestTimeout
 	}
 }
 
-func (controls *httpSurfaceControls) allow(surface routeSurface) (bool, int, time.Time) {
+func (controls *httpListenerControls) allow(listener listenerClass) (bool, int, time.Time) {
 	if controls == nil {
 		return true, 0, time.Time{}
 	}
 	limiter := controls.public
-	switch surface {
-	case routeSurfaceOperations:
+	switch listener {
+	case listenerClassOperations:
 		limiter = controls.operations
-	case routeSurfaceTenantAdmin:
-		limiter = controls.admin
+	case listenerClassManagement:
+		limiter = controls.management
 	}
 	return limiter.Allow(controls.clock())
 }
@@ -114,39 +117,98 @@ func (limiter *fixedWindowLimiter) Allow(now time.Time) (bool, int, time.Time) {
 	return true, limiter.limit - limiter.used, limiter.windowEnd
 }
 
-func classifyRouteSurface(method, path string) routeSurface {
-	path = "/" + strings.TrimLeft(strings.TrimSpace(path), "/")
-	if path == "/ops" || strings.HasPrefix(path, "/ops/") || path == "/operations" || strings.HasPrefix(path, "/operations/") {
-		return routeSurfaceOperations
-	}
-	if path == "/auth/reset-password" || strings.HasSuffix(path, "/setup-check") || method == http.MethodPut && strings.HasSuffix(path, "/setup") {
-		return routeSurfaceTenantAdmin
-	}
-	for _, publicIdentityPath := range []string{
-		"/identity/discovery", "/identity/access-bundle", "/identity/reauthorize",
-		"/identity/application-service/token", "/identity/application-service/verify",
-		"/identity/applications/current", "/identity/permissions/reconcile", "/identity/permissions/source-snapshot",
-	} {
-		if path == publicIdentityPath {
-			return routeSurfacePublic
-		}
-	}
-	if strings.HasPrefix(path, "/identity/runtime/") {
-		return routeSurfacePublic
-	}
-	for _, prefix := range []string{
-		"/tenant-admin", "/identity", "/metadata", "/audit", "/permissions",
-	} {
-		if path == prefix || strings.HasPrefix(path, prefix+"/") {
-			return routeSurfaceTenantAdmin
-		}
-	}
-	return routeSurfacePublic
+// routeExposureResolver derives the listener class of a request from the
+// frozen Action registry (Action.Exposures) and the mux pattern that serves
+// it. URL paths carry no audience; the module owns its root and the Action
+// declares where it is exposed.
+type routeExposureResolver struct {
+	mux     *http.ServeMux
+	actions *identityapplication.IdentityActionRegistry
 }
 
-func surfaceOnly(surface routeSurface, next http.Handler) http.Handler {
+func newRouteExposureResolver(mux *http.ServeMux, actions *identityapplication.IdentityActionRegistry) *routeExposureResolver {
+	return &routeExposureResolver{mux: mux, actions: actions}
+}
+
+func listenerClassForExposure(exposure actioncontract.Exposure) (listenerClass, bool) {
+	switch exposure {
+	case actioncontract.ExposurePublic:
+		return listenerClassPublic, true
+	case actioncontract.ExposureManagement:
+		return listenerClassManagement, true
+	case actioncontract.ExposureOps:
+		return listenerClassOperations, true
+	}
+	return "", false
+}
+
+// listenerClassesForPattern returns every listener class an Action is exposed on.
+// Unknown patterns are exposed nowhere.
+func (resolver *routeExposureResolver) listenerClassesForPattern(method, routeTemplate string) []listenerClass {
+	if resolver == nil || resolver.actions == nil {
+		return nil
+	}
+	action, found := resolver.actions.ResolveHTTP(strings.TrimSpace(method), strings.TrimSpace(routeTemplate))
+	if !found {
+		return nil
+	}
+	classes := make([]listenerClass, 0, len(action.Exposures))
+	for _, exposure := range action.Exposures {
+		if listener, ok := listenerClassForExposure(exposure); ok {
+			classes = append(classes, listener)
+		}
+	}
+	return classes
+}
+
+func (resolver *routeExposureResolver) pattern(request *http.Request) (string, string) {
+	if request == nil {
+		return "", ""
+	}
+	pattern := strings.TrimSpace(request.Pattern)
+	if pattern == "" && resolver != nil && resolver.mux != nil {
+		_, pattern = resolver.mux.Handler(request)
+	}
+	method, routeTemplate, ok := strings.Cut(strings.TrimSpace(pattern), " ")
+	if !ok {
+		return "", ""
+	}
+	return method, routeTemplate
+}
+
+// exposedOn reports whether the request's Action is exposed on the listener.
+func (resolver *routeExposureResolver) exposedOn(request *http.Request, listener listenerClass) bool {
+	method, routeTemplate := resolver.pattern(request)
+	for _, candidate := range resolver.listenerClassesForPattern(method, routeTemplate) {
+		if candidate == listener {
+			return true
+		}
+	}
+	return false
+}
+
+// controlClass picks the listener class whose transport controls govern a
+// request: the least privileged listener the Action is exposed on. Requests
+// that match no Action fall back to public controls and are then 404s.
+func (resolver *routeExposureResolver) controlClass(request *http.Request) listenerClass {
+	method, routeTemplate := resolver.pattern(request)
+	return controlClassOf(resolver.listenerClassesForPattern(method, routeTemplate))
+}
+
+func controlClassOf(classes []listenerClass) listenerClass {
+	rank := map[listenerClass]int{listenerClassPublic: 0, listenerClassManagement: 1, listenerClassOperations: 2}
+	result := listenerClassPublic
+	for index, listener := range classes {
+		if index == 0 || rank[listener] < rank[result] {
+			result = listener
+		}
+	}
+	return result
+}
+
+func listenerOnly(listener listenerClass, resolver *routeExposureResolver, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-		if classifyRouteSurface(request.Method, request.URL.Path) != surface {
+		if !resolver.exposedOn(request, listener) {
 			http.NotFound(w, request)
 			return
 		}

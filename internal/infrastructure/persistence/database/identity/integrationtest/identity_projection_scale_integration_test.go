@@ -50,11 +50,11 @@ func TestIdentityDirectoriesPageAndSearchInSQLAtOneHundredThousandRows(t *testin
 	if err != nil || workers.Total != 1 || len(workers.Items) != 1 || workers.Items[0].ID != "user-100000" {
 		t.Fatalf("worker search=%+v err=%v", workers, err)
 	}
-	facts, err := repository.ListIdentityUserDirectoryFacts(ctx, "workspace-primary", []string{"user-000001", "user-100000"})
+	facts, err := repository.ListIdentityUserProjectionFacts(ctx, "workspace-primary", []string{"user-000001", "user-100000"})
 	if err != nil || facts.RoleAssignments == nil || facts.ProfileBindings == nil {
-		t.Fatalf("bounded directory facts=%+v err=%v", facts, err)
+		t.Fatalf("bounded projection facts=%+v err=%v", facts, err)
 	}
-	securityFacts, err := authpersistence.NewAuthStore(repository).ListUserDirectorySecurityFacts(ctx, "workspace-primary", []string{"user-000001", "user-100000"})
+	securityFacts, err := authpersistence.NewAuthStore(repository).ListUserProjectionSecurityFacts(ctx, "workspace-primary", []string{"user-000001", "user-100000"})
 	if err != nil || len(securityFacts) != 2 {
 		t.Fatalf("bounded security facts=%+v err=%v", securityFacts, err)
 	}

@@ -20,7 +20,7 @@ import (
 
 // AuthRepository is the persistence boundary actually consumed by AuthDomainService.
 // Identity governance uses its own repository; auth must not receive that
-// aggregate's full storage surface merely because Store implements both.
+// aggregate's full storage contract merely because Store implements both.
 // AuthDomainService owns authentication sessions and credential operations.
 type AuthDomainService struct {
 	identity          authcontract.AuthIdentityPort
@@ -100,7 +100,7 @@ func NewAuthDomainService(identity authcontract.AuthIdentityPort, identityStore 
 		readRandomBytes:   rand.Read,
 		challenges:        map[string]authmodel.AuthProviderChallenge{},
 	}
-	_ = service.ConfigureSigningKeys("legacy-v1", secret, nil)
+	_ = service.ConfigureSigningKeys("dev-v1", secret, nil)
 	service.localeIdentity, _ = identity.(authcontract.AuthLocaleIdentityPort)
 	return service
 }
@@ -122,9 +122,8 @@ func (s *AuthDomainService) ConfigureLocalePolicy(defaultLocale string, normaliz
 	s.defaultLocale, s.normalizeLocale, s.supportedLocales = defaultLocale, normalize, allowed
 }
 
-// ConfigureSigningKeys preserves the existing configuration surface while
-// deriving deterministic Ed25519 keys from the configured secrets. This keeps
-// development upgrades stable; production can use ConfigureTokenAuthority to
+// ConfigureSigningKeys derives deterministic Ed25519 keys from configured
+// secrets. Production can use ConfigureTokenAuthority to
 // supply explicit private/public key material.
 func (s *AuthDomainService) ConfigureSigningKeys(activeKID, activeSecret string, verification map[string]string) error {
 	activeKID, activeSecret = strings.TrimSpace(activeKID), strings.TrimSpace(activeSecret)

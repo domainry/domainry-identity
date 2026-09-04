@@ -29,6 +29,13 @@ export interface PermissionCapabilityView {
   operations: PermissionCapabilityOperationView[]
 }
 
+export interface PermissionCatalogItemView {
+  key: string
+  label: string
+  active: boolean
+  enabled: boolean
+}
+
 export interface PermissionCatalogGroupView {
   key: string
   category: string
@@ -36,6 +43,7 @@ export interface PermissionCatalogGroupView {
   sourceOwner: string
   resourceKey: string
   resourceLabel: string
+  permissions: PermissionCatalogItemView[]
   capabilities: PermissionCapabilityView[]
 }
 
@@ -58,7 +66,15 @@ export function buildPermissionCatalogView(points: RuntimePermissionPoint[], run
       sourceKind: first.source_kind || first.source_type || 'unknown',
       sourceOwner: first.source_owner || 'unknown',
       resourceKey: first.resource || first.object_key || 'unknown',
-	  resourceLabel: runtimeResourceLabels.get(first.resource || first.object_key || '') || first.resource_label || first.resource || first.object_key || 'unknown',
+      resourceLabel: runtimeResourceLabels.get(first.resource || first.object_key || '') || first.resource_label || first.resource || first.object_key || 'unknown',
+      permissions: group
+        .map((point) => ({
+          key: point.key,
+          label: point.label || point.action_label || point.key,
+          active: (point.definition_status ?? 'active') === 'active',
+          enabled: point.enabled ?? true,
+        }))
+        .sort((left, right) => left.label.localeCompare(right.label) || left.key.localeCompare(right.key)),
       capabilities: buildPermissionCapabilityView(group),
     })
   }

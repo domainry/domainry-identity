@@ -37,7 +37,7 @@ type IdentityUserLookupRepository interface {
 	GetIdentityUser(context.Context, string, string) (identitymodel.IdentityUser, bool, error)
 }
 
-// IdentityUserDataScopeRepository is the storage-bound user directory
+// IdentityUserDataScopeRepository is the storage-bound user projection
 // capability. Implementations apply the compiled filter in the database (or
 // in the in-memory repository itself for tests); callers must not load an
 // unscoped page and filter it in the application layer.
@@ -90,8 +90,8 @@ type IdentityUserDataScopeMutationRepository interface {
 	SetIdentityUserStatusWithinDataScope(context.Context, string, string, identitymodel.IdentityStatus, identitymodel.IdentityDataScopeFilter) (bool, error)
 }
 
-type IdentityUserDirectoryFactsRepository interface {
-	ListIdentityUserDirectoryFacts(context.Context, string, []string) (identitymodel.IdentityUserDirectoryFacts, error)
+type IdentityUserProjectionFactsRepository interface {
+	ListIdentityUserProjectionFacts(context.Context, string, []string) (identitymodel.IdentityUserProjectionFacts, error)
 }
 
 type IdentityAccountDisableRepository interface {

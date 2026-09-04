@@ -75,7 +75,7 @@ func TestPortabilityOperationsRequireDedicatedBearerToken(t *testing.T) {
 	}).RegisterRoutes(mux)
 
 	request := func(token string) *http.Request {
-		value := httptest.NewRequest(http.MethodPost, "/ops/identity-portability/write-fences", strings.NewReader(`{"workspace_id":"workspace-a","evidence":"ticket-1","operator":"operator-1"}`))
+		value := httptest.NewRequest(http.MethodPost, "/identity/portability/write-fences", strings.NewReader(`{"workspace_id":"workspace-a","evidence":"ticket-1","operator":"operator-1"}`))
 		if token != "" {
 			value.Header.Set("Authorization", "Bearer "+token)
 		}
@@ -96,7 +96,7 @@ func TestPortabilityOperationsRequireDedicatedBearerToken(t *testing.T) {
 func TestPortabilityHTTPDoesNotOwnImportOrExportRoutes(t *testing.T) {
 	mux := http.NewServeMux()
 	NewHandler(Dependencies{}).RegisterRoutes(mux)
-	for _, path := range []string{"/ops/identity-portability/exports", "/ops/identity-portability/imports"} {
+	for _, path := range []string{"/identity/portability/exports", "/identity/portability/imports"} {
 		response := httptest.NewRecorder()
 		mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, path, nil))
 		if response.Code != http.StatusNotFound {

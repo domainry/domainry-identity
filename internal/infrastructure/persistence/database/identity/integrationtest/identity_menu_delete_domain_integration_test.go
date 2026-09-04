@@ -17,7 +17,7 @@ func TestIdentityServiceRemoveMenuDeletesDescendantsAndRoleAssignments(t *testin
 		{Key: "admin", Name: "Admin", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "identity.menus.delete")},
 	})
 	for _, role := range []identitymodel.IdentityRole{{ID: "admin", Key: "admin", Label: "Admin"}} {
-		seedIdentityDirectoryRole(t, store, "workspace-primary", role)
+		seedIdentityProjectionRole(t, store, "workspace-primary", role)
 	}
 	for _, menu := range []identitymodel.IdentityMenu{
 		{ID: "parent", Key: "parent-key", Label: "Parent"},

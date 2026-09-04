@@ -109,10 +109,10 @@ type IdentityAuthorization interface {
 	ResolveEffectiveMenus(context.Context, string) ([]identitymodel.IdentityMenu, error)
 }
 
-type IdentityDirectory interface {
+type IdentityProjection interface {
 	FindUser(context.Context, string) (identitymodel.IdentityUser, bool, error)
 	FindOrganizationUnit(context.Context, string) (identitymodel.IdentityOrganizationUnit, bool, error)
-	ListDirectoryUsers(context.Context) ([]identitymodel.IdentityUser, error)
-	ListDirectoryRoles(context.Context) ([]identitymodel.IdentityRole, error)
-	ListDirectoryUserRoleAssignments(context.Context, string) ([]identitymodel.IdentityUserRoleAssignment, error)
+	ListProjectionUsers(context.Context) ([]identitymodel.IdentityUser, error)
+	ListProjectionRoles(context.Context) ([]identitymodel.IdentityRole, error)
+	ListProjectionUserRoleAssignments(context.Context, string) ([]identitymodel.IdentityUserRoleAssignment, error)
 }

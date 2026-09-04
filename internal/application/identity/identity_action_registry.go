@@ -197,7 +197,7 @@ func (registry *IdentityActionRegistry) PermissionUsages(permissionKey string) [
 type IdentityActionAuthorizationContext struct{}
 
 // IdentityActionAuthorizationService is the shared request-path evaluator for
-// Identity-owned HTTP surfaces. It combines the immutable Action registry with
+// Identity-owned HTTP adapters. It combines the immutable Action registry with
 // the database-backed Permission snapshot; transports only resolve path/body
 // facts and never choose a different Permission.
 type IdentityActionAuthorizationService struct {

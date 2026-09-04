@@ -5,7 +5,6 @@ import {
   runtimeRequestWithResponse,
   type RuntimeResponse,
 } from "@/lib/runtime-api";
-import type { RuntimeProductSurface } from "@domainry/surface-contract";
 import type {
   IdentityAccessExplainResult,
   IdentityAccessReverseIndex,
@@ -69,7 +68,7 @@ export const auditApi = {
   async list(query: AuditListQuery = {}): Promise<AuditLog[]> {
     const params = auditListParams(query);
     const response = await runtimeRequest<RuntimeAuditEvent[] | { items: RuntimeAuditEvent[] }>(
-      `/tenant-admin/audit-events?${params.toString()}`,
+      `/audit/governance/events?${params.toString()}`,
     );
     const events = Array.isArray(response) ? response : response.items ?? [];
     return events.map((event) => {
@@ -101,16 +100,16 @@ export const auditApi = {
       count: number;
       retention_class: string;
       retention_days: number;
-    }>(`/tenant-admin/audit-events/export?${auditListParams(query, 1000).toString()}`);
+    }>(`/audit/governance/events/export?${auditListParams(query, 1000).toString()}`);
   },
 };
 
 export const permissionsApi = {
-  effective: (context?: { objectKey: string; recordID: string }, productSurface?: RuntimeProductSurface) => {
+  effective: (context?: { objectKey: string; recordID: string }) => {
     const query = context
       ? `?object_key=${encodeURIComponent(context.objectKey)}&record_id=${encodeURIComponent(context.recordID)}`
       : "";
-    return runtimeRequest<EffectivePermissions>(`/permissions/effective${query}`, { productSurface });
+    return runtimeRequest<EffectivePermissions>(`/records/permissions/effective${query}`);
   },
   catalog: () =>
     runtimeRequest<RuntimePermissionPoint[]>("/identity/permissions"),
@@ -187,7 +186,7 @@ export const identityPoliciesApi = {
       return runtimeRequest<{ resource: RuntimeRoleMenuAssignment[] }>(path, {
         method: "PUT",
         headers: {
-          "Builder-Task-ID": `tenant-admin.identity-role-menu-assignment.${requestID}`,
+          "Builder-Task-ID": `identity-management.role-menu-assignment.${requestID}`,
           "Idempotency-Key": requestID,
           "Expected-Schema-Hash": expectedResourceHash,
         },

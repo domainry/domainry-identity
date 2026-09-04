@@ -1,12 +1,12 @@
 package identitymodel
 
-// IdentitySortRule describes a stable ordering for Identity directory pages.
+// IdentitySortRule describes a stable ordering for Identity projection pages.
 type IdentitySortRule struct {
 	Field     string `json:"field"`
 	Direction string `json:"direction"`
 }
 
-// IdentityListQuery is the query contract shared by Identity directory,
+// IdentityListQuery is the query contract shared by Identity projection,
 // user and role searches. It is intentionally independent
 // from host business-record filtering and transaction semantics.
 type IdentityListQuery struct {

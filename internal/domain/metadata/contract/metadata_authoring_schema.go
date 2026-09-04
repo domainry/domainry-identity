@@ -165,7 +165,7 @@ func metadataAuthoringExecution(resource string) *authoringcontract.CapabilityAu
 }
 
 func metadataConfigurationRoutes(resourceType string) []string {
-	base := "/tenant-admin/metadata/definitions/" + resourceType + "/{resourceKey}"
+	base := "/metadata/definitions/" + resourceType + "/{resourceKey}"
 	return []string{
 		"GET " + base,
 		"GET " + base + "/versions",
@@ -186,7 +186,7 @@ func VersionedMetadataDefinitionAction(pattern string) (string, bool) {
 		return "", false
 	}
 	method = strings.ToUpper(strings.TrimSpace(method))
-	const prefix = "/tenant-admin/metadata/definitions/"
+	const prefix = "/metadata/definitions/"
 	remaining := strings.TrimPrefix(strings.TrimSpace(path), prefix)
 	if remaining == path {
 		return "", false
@@ -219,7 +219,7 @@ func VersionedMetadataDefinitionAction(pattern string) (string, bool) {
 }
 
 func metadataResourceOperations(resourceType string) *authoringcontract.CapabilityAuthoringResourceOperations {
-	base := "/tenant-admin/metadata/definitions/" + resourceType + "/{resourceKey}"
+	base := "/metadata/definitions/" + resourceType + "/{resourceKey}"
 	return &authoringcontract.CapabilityAuthoringResourceOperations{
 		PersistenceMode: "audited_versioned_resource",
 		Validate:        "POST " + base + "/validate",
@@ -254,11 +254,11 @@ func VersionedMetadataDefinitionExecution(resource string) *authoringcontract.Ca
 }
 
 func metadataObjectReference(pointer string) authoringcontract.CapabilityAuthoringReference {
-	return authoringcontract.CapabilityAuthoringReference{Kind: "object_key", InputJSONPointer: pointer, ResolverEndpoint: "GET /tenant-admin/platform-capabilities/references/object_key"}
+	return authoringcontract.CapabilityAuthoringReference{Kind: "object_key", InputJSONPointer: pointer, ResolverEndpoint: "GET /capabilities/references/object_key"}
 }
 
 func metadataRelationTargetReference(pointer string) authoringcontract.CapabilityAuthoringReference {
-	return authoringcontract.CapabilityAuthoringReference{Kind: "relation_target_object_key", InputJSONPointer: pointer, ResolverEndpoint: "GET /tenant-admin/platform-capabilities/references/relation_target_object_key"}
+	return authoringcontract.CapabilityAuthoringReference{Kind: "relation_target_object_key", InputJSONPointer: pointer, ResolverEndpoint: "GET /capabilities/references/relation_target_object_key"}
 }
 
 func metadataStringSchema(description string) authoringcontract.CapabilityAuthoringSchema {

@@ -34,20 +34,20 @@ func (h *IdentityHandler) searchIdentityUsers(w http.ResponseWriter, r *http.Req
 	h.writeJSON(w, http.StatusOK, page)
 }
 
-func (h *IdentityHandler) searchIdentityUserDirectory(w http.ResponseWriter, r *http.Request) {
+func (h *IdentityHandler) searchIdentityAccounts(w http.ResponseWriter, r *http.Request) {
 	if batch, ok := h.userSecurity.(IdentityUserSecurityBatch); ok {
-		page, err := h.users.SearchUserDirectoryBatchWithinDataScope(r.Context(), identityListQuery(r), h.principal(r), "identity.users.directory_search", func(ctx context.Context, workspaceID string, userIDs []string) (map[string]identityapplication.IdentityUserDirectorySecuritySummary, error) {
-			profiles, readErr := batch.UserDirectorySecurityProfiles(ctx, workspaceID, userIDs)
+		page, err := h.users.SearchUserProjectionBatchWithinDataScope(r.Context(), identityListQuery(r), h.principal(r), "identity.accounts.search", func(ctx context.Context, workspaceID string, userIDs []string) (map[string]identityapplication.IdentityUserProjectionSecuritySummary, error) {
+			profiles, readErr := batch.UserProjectionSecurityProfiles(ctx, workspaceID, userIDs)
 			if readErr != nil {
 				return nil, readErr
 			}
-			summaries := make(map[string]identityapplication.IdentityUserDirectorySecuritySummary, len(profiles))
+			summaries := make(map[string]identityapplication.IdentityUserProjectionSecuritySummary, len(profiles))
 			for userID, profile := range profiles {
 				lastLoginAt := ""
 				if profile.Credential != nil {
 					lastLoginAt = profile.Credential.LastLoginAt
 				}
-				summaries[userID] = identityapplication.IdentityUserDirectorySecuritySummary{
+				summaries[userID] = identityapplication.IdentityUserProjectionSecuritySummary{
 					MFAEnabled: profile.MFAEnabled, Locked: profile.Locked, ActiveSessions: profile.ActiveSessions, LastLoginAt: lastLoginAt,
 				}
 			}
@@ -60,16 +60,16 @@ func (h *IdentityHandler) searchIdentityUserDirectory(w http.ResponseWriter, r *
 		h.writeJSON(w, http.StatusOK, page)
 		return
 	}
-	page, err := h.users.SearchUserDirectoryWithinDataScope(r.Context(), identityListQuery(r), h.principal(r), "identity.users.directory_search", func(ctx context.Context, workspaceID, userID string) (identityapplication.IdentityUserDirectorySecuritySummary, error) {
+	page, err := h.users.SearchUserProjectionWithinDataScope(r.Context(), identityListQuery(r), h.principal(r), "identity.accounts.search", func(ctx context.Context, workspaceID, userID string) (identityapplication.IdentityUserProjectionSecuritySummary, error) {
 		profile, readErr := h.userSecurity.UserSecurityProfile(ctx, workspaceID, userID)
 		if readErr != nil {
-			return identityapplication.IdentityUserDirectorySecuritySummary{}, readErr
+			return identityapplication.IdentityUserProjectionSecuritySummary{}, readErr
 		}
 		lastLoginAt := ""
 		if profile.Credential != nil {
 			lastLoginAt = profile.Credential.LastLoginAt
 		}
-		return identityapplication.IdentityUserDirectorySecuritySummary{
+		return identityapplication.IdentityUserProjectionSecuritySummary{
 			MFAEnabled: profile.MFAEnabled, Locked: profile.Locked,
 			ActiveSessions: profile.ActiveSessions, LastLoginAt: lastLoginAt,
 		}, nil

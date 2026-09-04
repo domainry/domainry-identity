@@ -168,7 +168,7 @@ func TestConfigUnknownProductionPolicyCondition(t *testing.T) {
 	t.Setenv("IDENTITY_DATA_ACTIVE_KEY_ID", "data-1")
 	t.Setenv("CORS_ALLOWED_ORIGINS", "https://admin.example.com")
 	t.Setenv("HTTP_PUBLIC_ADDR", "0.0.0.0:8081")
-	t.Setenv("HTTP_TENANT_ADMIN_ADDR", "127.0.0.1:8082")
+	t.Setenv("HTTP_MANAGEMENT_ADDR", "127.0.0.1:8082")
 	t.Setenv("HTTP_OPS_ADDR", "127.0.0.1:8083")
 	t.Setenv("IDENTITY_OPERATIONS_ACCESS_TOKEN", "operations-access-token")
 	t.Setenv("RUNTIME_UNKNOWN_PRODUCTION_EDGE", "value")

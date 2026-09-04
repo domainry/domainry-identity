@@ -361,7 +361,7 @@
     {
       "kind": "org_id",
       "input_json_pointer": "/parent_id",
-      "resolver_endpoint": "GET /tenant-admin/platform-capabilities/references/org_id"
+      "resolver_endpoint": "GET /capabilities/references/org_id"
     }
   ],
   "execution": {

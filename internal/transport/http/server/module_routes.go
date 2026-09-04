@@ -20,19 +20,19 @@ func registerModuleRoutes(registrar interface {
 	}
 	for _, provider := range providers {
 		if provider == nil {
-			return fmt.Errorf("module HTTP surface provider is required")
+			return fmt.Errorf("module HTTP adapter provider is required")
 		}
-		for _, surface := range provider.HTTPSurfaces() {
-			if err := modulehttp.ValidateSurface(surface); err != nil {
-				return fmt.Errorf("validate module HTTP surface: %w", err)
+		for _, adapter := range provider.HTTPAdapters() {
+			if err := modulehttp.ValidateAdapter(adapter); err != nil {
+				return fmt.Errorf("validate module HTTP adapter: %w", err)
 			}
-			expectedOwner := "module:" + strings.TrimSpace(surface.Owner())
-			for _, declared := range surface.Routes() {
+			expectedOwner := "module:" + strings.TrimSpace(adapter.Owner())
+			for _, declared := range adapter.Routes() {
 				route := declared
 				if strings.TrimSpace(route.Action.Owner) != expectedOwner {
-					return fmt.Errorf("module HTTP surface %q action %q owner=%q want=%q", surface.Owner(), route.Action.Key, route.Action.Owner, expectedOwner)
+					return fmt.Errorf("module HTTP adapter %q action %q owner=%q want=%q", adapter.Owner(), route.Action.Key, route.Action.Owner, expectedOwner)
 				}
-				next := surface.Handler()
+				next := adapter.Handler()
 				registrar.HandleFunc(route.Pattern(), support.action(route.Action.Key, func(w http.ResponseWriter, r *http.Request) {
 					principal := identityModuleSDKPrincipal(support.principal(r), route.Action.Key)
 					token := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))

@@ -14,23 +14,22 @@ func TestIdentityBuildPrincipalContextPublishesCanonicalNonSecretSelectors(t *te
 		OrgID: "sales", OrganizationPath: "/company/sales",
 		Role: identitymodel.RoleSchema{Key: "seller"}, AuthorizationRevision: "revision-1",
 		BusinessProfiles: []identitymodel.BusinessProfileReference{{
-			BindingKey: "member", ObjectKey: "member_profile", RecordID: "member-1", SurfaceKeys: []string{"portal", "portal"},
+			BindingKey: "member", ObjectKey: "member_profile", RecordID: "member-1",
 			Claims: map[string]identitymodel.BusinessClaimValue{"api_secret": {Type: "string", Value: "must-not-leak"}},
 		}},
 	}
 	principal.ActiveBusinessProfile = &principal.BusinessProfiles[0]
-	principal.SurfaceKey = "portal"
 
 	context := IdentityBuildPrincipalContext(principal)
 	if context.ContractVersion != identitymodel.IdentityPrincipalContextContractV1 || context.WorkspaceID != "workspace" || context.OrgID != "sales" || context.OrganizationPath != "/company/sales" {
 		t.Fatalf("principal context identity=%+v", context)
 	}
-	if len(context.BusinessProfiles) != 1 || !context.BusinessProfiles[0].Active || len(context.RequestContexts) != 3 {
+	if len(context.BusinessProfiles) != 1 || !context.BusinessProfiles[0].Active || len(context.RequestContexts) != 2 {
 		t.Fatalf("principal contexts=%+v", context)
 	}
-	profile := context.RequestContexts[2]
+	profile := context.RequestContexts[1]
 	if profile.SubjectKind != "business_profile" || profile.CanonicalRequestHeader["X-Workspace-ID"] != "workspace" ||
-		profile.CanonicalRequestHeader["X-Surface-Key"] != "portal" || profile.CanonicalRequestHeader["X-Business-Profile-Key"] != "member" ||
+		profile.CanonicalRequestHeader["X-Business-Profile-Key"] != "member" ||
 		profile.CanonicalRequestHeader["X-Business-Profile-ID"] != "member-1" {
 		t.Fatalf("business profile selector=%+v", profile)
 	}

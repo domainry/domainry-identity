@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import type { ColumnDef } from '@tanstack/react-table'
-import { FileText, Folder, Plus, Search, ShieldCheck } from 'lucide-react'
+import { ChevronRight, Plus, Search, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import { z } from 'zod'
 import {
@@ -72,42 +73,50 @@ import {
 import { FieldPermissionsPage } from './field-permissions'
 import { EffectiveAccessWorkspace } from './effective-access-workspace'
 import { RoleGovernanceDetail } from './role-governance-detail'
-import { buildPermissionCatalogView } from './permission-capability-view'
+import { buildPermissionCatalogView, type PermissionCatalogGroupView } from './permission-capability-view'
 
 interface RoleMenuRowProps {
   node: RoleMenuTreeNode
   selectedIDs: Set<string>
   disabled: boolean
+  forceExpanded?: boolean
   depth?: number
   onToggle: (menuID: string, checked: boolean) => void
   t: ReturnType<typeof useI18n>['t']
 }
 
-function RoleMenuRow({ node, selectedIDs, disabled, depth = 0, onToggle, t }: RoleMenuRowProps) {
+function RoleMenuRow({ node, selectedIDs, disabled, forceExpanded = false, depth = 0, onToggle, t }: RoleMenuRowProps) {
   const state = roleMenuCheckState(node, selectedIDs)
+  const [expanded, setExpanded] = useState(false)
+  const hasChildren = node.children.length > 0
+  const isExpanded = forceExpanded || expanded
   return (
     <>
-      <div className='flex min-h-11 items-center gap-3 border-b px-3 py-2 last:border-b-0 hover:bg-muted/40' style={{ paddingInlineStart: `${12 + depth * 20}px` }}>
+      <div className='flex min-h-11 items-center gap-2 border-b px-3 py-2 last:border-b-0 hover:bg-muted/40' style={{ paddingInlineStart: `${12 + depth * 20}px` }}>
+        {hasChildren ? (
+          <Button
+            type='button'
+            variant='ghost'
+            size='icon-xs'
+            aria-label={t(isExpanded ? 'tree.collapse' : 'tree.expand', { name: displayText(t, node.name) })}
+            aria-expanded={isExpanded}
+            onClick={() => setExpanded((current) => !current)}
+          >
+            <ChevronRight className={cn('transition-transform', isExpanded && 'rotate-90')} />
+          </Button>
+        ) : <span className='size-6 shrink-0' aria-hidden='true' />}
         <Checkbox
           aria-label={t('roles.menus.toggle', { name: displayText(t, node.name) })}
           checked={state}
           disabled={disabled}
           onCheckedChange={(checked) => onToggle(node.id, checked === true)}
         />
-        {node.type === 'group' ? <Folder className='size-4 shrink-0 text-muted-foreground' /> : <FileText className='size-4 shrink-0 text-muted-foreground' />}
-        <div className='min-w-0 flex-1'>
-          <div className='flex flex-wrap items-center gap-2'>
-            <span className='truncate text-sm font-medium'>{displayText(t, node.name)}</span>
-            <Badge variant='outline' className='h-5 px-1.5 text-[10px]'>{node.type === 'group' ? t('menus.type.group') : t('menus.type.page')}</Badge>
-            {!node.visible ? <Badge variant='secondary' className='h-5 px-1.5 text-[10px]'>{t('common.disabled')}</Badge> : null}
-          </div>
-          <div className='mt-0.5 flex min-w-0 flex-wrap gap-x-3 text-xs text-muted-foreground'>
-            <code>{node.code}</code>
-            {node.path ? <span className='truncate'>{node.path}</span> : null}
-          </div>
-        </div>
+        <span className='min-w-0 flex-1 truncate text-sm font-medium'>{displayText(t, node.name)}</span>
+        {!node.visible ? <span className='text-xs text-muted-foreground'>{t('common.disabled')}</span> : null}
       </div>
-      {node.children.map((child) => <RoleMenuRow key={child.id} node={child} selectedIDs={selectedIDs} disabled={disabled} depth={depth + 1} onToggle={onToggle} t={t} />)}
+      {hasChildren && isExpanded
+        ? node.children.map((child) => <RoleMenuRow key={child.id} node={child} selectedIDs={selectedIDs} disabled={disabled} forceExpanded={forceExpanded} depth={depth + 1} onToggle={onToggle} t={t} />)
+        : null}
     </>
   )
 }
@@ -146,6 +155,100 @@ function roleDataScopeLabel(scope: RuntimeDataScope, t: ReturnType<typeof useI18
   }
 }
 
+interface PermissionChecklistProps {
+  groups: PermissionCatalogGroupView[]
+  grants: IdentityRolePermissionGrant[]
+  query: string
+  disabled?: boolean
+  controlPrefix?: string
+  onToggle: (permissionKey: string, checked: boolean) => void
+  onScopeChange: (permissionKey: string, scope: RuntimeDataScope) => void
+  t: ReturnType<typeof useI18n>['t']
+}
+
+function PermissionChecklist({ groups, grants, query, disabled = false, controlPrefix, onToggle, onScopeChange, t }: PermissionChecklistProps) {
+  const [expandedGroupKeys, setExpandedGroupKeys] = useState<Set<string>>(new Set())
+  const grantByKey = useMemo(() => new Map(grants.map((grant) => [grant.permission_key, grant])), [grants])
+  const searching = Boolean(query.trim())
+  const filteredGroups = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase()
+    if (!normalizedQuery) return groups
+    return groups.flatMap((group) => {
+      const moduleMatches = `${group.resourceLabel} ${group.resourceKey} ${group.category}`.toLowerCase().includes(normalizedQuery)
+      const permissions = moduleMatches
+        ? group.permissions
+        : group.permissions.filter((permission) => `${permission.label} ${permission.key}`.toLowerCase().includes(normalizedQuery))
+      return permissions.length ? [{ ...group, permissions }] : []
+    })
+  }, [groups, query])
+
+  if (!filteredGroups.length) {
+    return <p className='rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground'>{query.trim() ? t('roles.permissions.noResults') : t('roles.capabilities.empty')}</p>
+  }
+
+  return (
+    <div className='divide-y overflow-hidden rounded-md border'>
+      {filteredGroups.map((group) => {
+        const selectedCount = group.permissions.filter((permission) => grantByKey.has(permission.key)).length
+        return (
+        <details
+          key={group.key}
+          open={searching || expandedGroupKeys.has(group.key)}
+          onToggle={(event) => {
+            if (searching) return
+            const open = event.currentTarget.open
+            setExpandedGroupKeys((current) => {
+              const next = new Set(current)
+              if (open) next.add(group.key)
+              else next.delete(group.key)
+              return next
+            })
+          }}
+          className='group/module min-w-0'
+        >
+          <summary className='grid min-h-11 cursor-pointer list-none grid-cols-[1.5rem_minmax(0,1fr)_auto] items-center gap-2 bg-muted/35 px-3 py-2.5 outline-none hover:bg-muted/55 focus-visible:ring-2 focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden'>
+            <ChevronRight className='size-4 text-muted-foreground transition-transform group-open/module:rotate-90' />
+            <span className='min-w-0 truncate text-sm font-semibold'>{group.resourceLabel}</span>
+            <span className='text-xs text-muted-foreground'>{t('roles.permissions.moduleCount', { selected: selectedCount, total: group.permissions.length })}</span>
+          </summary>
+          <div className='grid grid-cols-[2rem_minmax(0,1fr)_11.5rem] items-center gap-2 border-t bg-muted/10 px-3 py-2 text-xs font-medium text-muted-foreground max-sm:hidden'>
+            <span />
+            <span>{t('roles.permissions.permission')}</span>
+            <span>{t('scopes.table.scope')}</span>
+          </div>
+          <div className='divide-y'>
+            {group.permissions.map((permission) => {
+              const grant = grantByKey.get(permission.key)
+              const available = permission.active && permission.enabled
+              const toggleDisabled = disabled || (!available && !grant)
+              return (
+                <div key={permission.key} className='grid min-h-12 grid-cols-[2rem_minmax(0,1fr)] items-center gap-x-2 gap-y-2 px-3 py-2.5 hover:bg-muted/20 sm:grid-cols-[2rem_minmax(0,1fr)_11.5rem]'>
+                  <Checkbox
+                    aria-label={permission.label}
+                    checked={Boolean(grant)}
+                    disabled={toggleDisabled}
+                    onCheckedChange={(checked) => onToggle(permission.key, checked === true)}
+                  />
+                  <div className='min-w-0'>
+                    <p className='break-all text-sm font-medium leading-5'>{permission.label}</p>
+                    {!available ? <p className='text-xs text-muted-foreground'>{permission.active ? t('roles.capabilities.disabled') : t('roles.capabilities.retired')}</p> : null}
+                  </div>
+                  <Select value={grant?.data_scope ?? ''} disabled={disabled || !grant || !available} onValueChange={(scope) => onScopeChange(permission.key, scope as RuntimeDataScope)}>
+                    <SelectTrigger size='sm' className='col-start-2 w-full sm:col-start-3 sm:row-start-1' aria-label={`${permission.label} ${t('scopes.table.scope')}`} data-policy-control={`${controlPrefix ? `${controlPrefix}:` : ''}${permission.key}:data_scope`}>
+                      <SelectValue placeholder={t('scopes.type.none')} />
+                    </SelectTrigger>
+                    <SelectContent><SelectGroup>{ROLE_DATA_SCOPES.map((scope) => <SelectItem key={scope} value={scope}>{roleDataScopeLabel(scope, t)}</SelectItem>)}</SelectGroup></SelectContent>
+                  </Select>
+                </div>
+              )
+            })}
+          </div>
+        </details>
+      )})}
+    </div>
+  )
+}
+
 function RolePolicyWorkspace() {
   const { t } = useI18n()
   const queryClient = useQueryClient()
@@ -158,7 +261,9 @@ function RolePolicyWorkspace() {
   const [draftPermissions, setDraftPermissions] = useState<IdentityRolePermissionGrant[]>([])
   const [permsDirty, setPermsDirty] = useState(false)
   const [permissionChangeReason, setPermissionChangeReason] = useState('')
-  const [activePolicyTab, setActivePolicyTab] = useState<'overview' | 'permissions' | 'menus'>('overview')
+  const [permissionSearch, setPermissionSearch] = useState('')
+  const [permissionPublishOpen, setPermissionPublishOpen] = useState(false)
+  const [activePolicyTab, setActivePolicyTab] = useState<'overview' | 'permissions' | 'menus'>('permissions')
   const [draftMenuIDs, setDraftMenuIDs] = useState<string[]>([])
   const [menusDirty, setMenusDirty] = useState(false)
   const [menuSearch, setMenuSearch] = useState('')
@@ -216,6 +321,7 @@ function RolePolicyWorkspace() {
       setDraftPermissions(configuration.permissions)
       setPermsDirty(false)
       setPermissionChangeReason('')
+      setPermissionPublishOpen(false)
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['runtime', 'identity', 'role-permissions', selected?.id] }),
         queryClient.invalidateQueries({ queryKey: ['runtime', 'identity', 'roles'] }),
@@ -240,13 +346,6 @@ function RolePolicyWorkspace() {
   })
 	const runtimeResourceLabels = useMemo(() => new Map((schemaQuery.data?.objects ?? []).map((object) => [object.key, object.name || object.label || object.key])), [schemaQuery.data?.objects])
 	const permissionCatalogGroups = useMemo(() => buildPermissionCatalogView(permissionCatalogQuery.data ?? [], runtimeResourceLabels), [permissionCatalogQuery.data, runtimeResourceLabels])
-	const permissionOperations = useMemo(() => permissionCatalogGroups.flatMap((group) => group.capabilities.flatMap((capability) => capability.operations)), [permissionCatalogGroups])
-  const createPermissionOptions = useMemo(() => {
-    const query = createPermissionSearch.trim().toLowerCase()
-    return permissionOperations
-      .filter((operation) => !query || `${operation.capabilityLabel} ${operation.operationLabel} ${operation.permissionKeys.join(' ')} ${operation.bindings.map((binding) => `${binding.method} ${binding.route}`).join(' ')}`.toLowerCase().includes(query))
-      .slice(0, 100)
-  }, [createPermissionSearch, permissionOperations])
   const menuTree = useMemo(() => buildRoleMenuTree(menusQuery.data ?? []), [menusQuery.data])
   const filteredMenuTree = useMemo(
     () => filterRoleMenuTree(menuTree, menuSearch, (node) => displayText(t, node.name)),
@@ -256,6 +355,8 @@ function RolePolicyWorkspace() {
   useEffect(() => {
     setPermsDirty(false)
     setPermissionChangeReason('')
+    setPermissionSearch('')
+    setPermissionPublishOpen(false)
     setMenusDirty(false)
     setMenuSearch('')
   }, [selected?.id])
@@ -282,14 +383,11 @@ function RolePolicyWorkspace() {
     { accessorKey: 'status', header: ({ column }) => <TableColumnHeader column={column} title={t('common.status')} />, cell: ({ row }) => <StatusBadge value={row.original.status}>{row.original.status === 'active' ? t('common.enabled') : t('common.disabled')}</StatusBadge> },
   ], [menusDirty, permsDirty, selected?.id, t])
 
-  function togglePermissionKeys(permissionKeys: string[]) {
+  function togglePermission(permissionKey: string, checked: boolean) {
     if (!selected) return
     const next = new Map(draftPermissions.map((permission) => [permission.permission_key, permission]))
-    const checked = permissionKeys.length > 0 && permissionKeys.every((key) => next.has(key))
-    for (const key of permissionKeys) {
-      if (checked) next.delete(key)
-      else if (!next.has(key)) next.set(key, { permission_key: key, data_scope: 'all' })
-    }
+    if (checked) next.set(permissionKey, next.get(permissionKey) ?? { permission_key: permissionKey, data_scope: 'all' })
+    else next.delete(permissionKey)
     setDraftPermissions([...next.values()].sort((left, right) => left.permission_key.localeCompare(right.permission_key)))
     setPermsDirty(true)
   }
@@ -398,8 +496,8 @@ function RolePolicyWorkspace() {
                 </CardDescription>
               </div>
               {activePolicyTab === 'permissions' ? <div className='flex flex-wrap gap-2'>
-				<Button size='sm' disabled={!permsDirty || rolePublicationBusy || !permissionChangeReason.trim()} onClick={() => savePermissions.mutate()}>{t('roles.permissionPublication.publish')}</Button>
-			  </div> : activePolicyTab === 'menus' ? <Button size='sm' disabled={!menusDirty || saveMenus.isPending} onClick={() => saveMenus.mutate()}>{menusDirty ? t('roles.menus.saveDirty') : t('roles.menus.save')}</Button> : null}
+					<Button size='sm' disabled={!permsDirty || rolePublicationBusy} onClick={() => setPermissionPublishOpen(true)}>{t('roles.permissionPublication.publish')}</Button>
+				  </div> : activePolicyTab === 'menus' ? <Button size='sm' disabled={!menusDirty || saveMenus.isPending} onClick={() => saveMenus.mutate()}>{menusDirty ? t('roles.menus.saveDirty') : t('roles.menus.save')}</Button> : null}
             </div>
           </CardHeader>
           <Separator />
@@ -414,73 +512,20 @@ function RolePolicyWorkspace() {
                 <RoleGovernanceDetail roleID={selected.id} />
               </TabsContent>
               <TabsContent value='permissions' className='mt-3'>
-                <div className='mb-4 space-y-2 rounded-md border bg-muted/20 p-3'>
-                  <div className='flex flex-wrap items-center justify-between gap-2'>
-                    <div>
-                      <p className='text-sm font-medium'>{t('roles.permissionPublication.title')}</p>
-                      <p className='text-xs text-muted-foreground'>{t('roles.permissionPublication.description')}</p>
-                    </div>
+                <div className='mb-3 flex flex-wrap items-center gap-2'>
+                  <div className='relative min-w-[220px] flex-1'>
+                    <Search className='pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground' />
+                    <Input value={permissionSearch} onChange={(event) => setPermissionSearch(event.target.value)} placeholder={t('roles.permissions.search')} className='pl-9' />
                   </div>
-                  <Textarea aria-label={t('roles.permissionPublication.reason')} value={permissionChangeReason} onChange={(event) => setPermissionChangeReason(event.target.value)} placeholder={t('roles.permissionPublication.reasonPlaceholder')} rows={2} />
+                  <span className='text-xs text-muted-foreground'>{t('roles.permissions.selectedCount', { count: draftPermissions.length })}</span>
                 </div>
-                <div className='mb-3'>
-                  <p className='text-xs font-medium tracking-wide text-muted-foreground uppercase'>{t('roles.capabilities.title')}</p>
-                  <p className='mt-1 text-xs text-muted-foreground'>{t('roles.capabilities.description')}</p>
-                </div>
-                <div className='space-y-4'>
-				  {permissionCatalogGroups.map((group) => (
-					<section key={group.key} className='overflow-hidden rounded-md border'>
-					  <div className='space-y-2 border-b bg-muted/30 px-4 py-3'>
-						<p className='font-medium'>{group.resourceLabel}</p>
-						<div className='flex flex-wrap gap-1 text-xs text-muted-foreground'>
-						  <Badge variant='outline'>{group.category}</Badge>
-						  <code className='rounded bg-background px-1.5 py-0.5'>{group.resourceKey}</code>
-						  <code className='rounded bg-background px-1.5 py-0.5'>{group.sourceKind}</code>
-						  <code className='rounded bg-background px-1.5 py-0.5'>{group.sourceOwner}</code>
-						</div>
-					  </div>
-					  {group.capabilities.map((capability) => <div key={capability.key}>
-						<div className='border-b bg-muted/10 px-4 py-2 text-sm font-medium'>{capability.label}</div>
-						<div className='divide-y'>
-						  {capability.operations.map((operation) => {
-						  const checked = operation.permissionKeys.every((key) => draftPermissions.some((permission) => permission.permission_key === key))
-						  const selectable = operation.active && operation.enabled
-                          return <div key={operation.key} className='grid gap-3 p-4 md:grid-cols-[minmax(120px,0.35fr)_minmax(0,1fr)_auto]'>
-                            <div>
-                              <p className='text-sm font-medium'>{operation.operationLabel}</p>
-                              <div className='mt-1 flex flex-wrap gap-1'>
-                                <Badge variant={operation.active ? 'secondary' : 'outline'}>{operation.active ? t('roles.capabilities.active') : t('roles.capabilities.retired')}</Badge>
-                                {!operation.enabled ? <Badge variant='destructive'>{t('roles.capabilities.disabled')}</Badge> : null}
-                                {!operation.usageAvailable ? <Badge variant='outline'>{t('roles.capabilities.usageUnavailable')}</Badge> : null}
-                              </div>
-                            </div>
-                            <div className='space-y-2'>
-                              {operation.bindings.map((binding) => <div key={binding.actionKey} className='rounded border bg-background px-3 py-2'>
-                                <div className='flex flex-wrap items-center gap-2 text-sm'><Badge variant='outline'>{binding.method}</Badge><code className='break-all'>{binding.route || t('roles.capabilities.nonHttp')}</code></div>
-                                <div className='mt-1 text-xs text-muted-foreground'>{binding.actionLabel}{binding.pageRoute ? ` · ${binding.pageLabel || t('roles.capabilities.page')} ${binding.pageRoute}` : ''}</div>
-                              </div>)}
-							  {!operation.usageAvailable ? <p className='rounded border border-dashed px-3 py-2 text-xs text-muted-foreground'>{t('roles.capabilities.usageUnavailableDescription')}</p> : null}
-                              <details className='text-xs text-muted-foreground'><summary className='cursor-pointer'>{t('roles.capabilities.technicalDetails')}</summary><div className='mt-1 flex flex-wrap gap-1'>{operation.permissionKeys.map((key) => <code key={key} className='rounded bg-muted px-1.5 py-0.5'>{key}</code>)}</div></details>
-                              {operation.permissionKeys.filter((key) => draftPermissions.some((permission) => permission.permission_key === key)).map((key) => {
-                                const grant = draftPermissions.find((permission) => permission.permission_key === key)!
-                                return <div key={`${key}:scope`} className='flex flex-wrap items-center justify-between gap-2 rounded border bg-muted/20 px-3 py-2'>
-                                  <code className='text-xs'>{key}</code>
-                                  <Select value={grant.data_scope} onValueChange={(scope) => setPermissionScope(key, scope as RuntimeDataScope)}>
-                                    <SelectTrigger size='sm' className='w-48' aria-label={`${key} data scope`} data-policy-control={`${selected.id}:${key}:data_scope`}><SelectValue /></SelectTrigger>
-                                    <SelectContent><SelectGroup>{ROLE_DATA_SCOPES.map((scope) => <SelectItem key={scope} value={scope}>{roleDataScopeLabel(scope, t)}</SelectItem>)}</SelectGroup></SelectContent>
-                                  </Select>
-                                </div>
-                              })}
-                            </div>
-							<Checkbox aria-label={`${capability.label} - ${operation.operationLabel}`} checked={checked} disabled={rolePermissionsQuery.isPending || !selectable} onCheckedChange={() => togglePermissionKeys(operation.permissionKeys)} />
-                          </div>
-						  })}
-						</div>
-					  </div>)}
-					</section>
-				  ))}
-				  {!permissionCatalogGroups.length ? <p className='rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground'>{t('roles.capabilities.empty')}</p> : null}
-                </div>
+                <PermissionChecklist groups={permissionCatalogGroups} grants={draftPermissions} query={permissionSearch} disabled={rolePermissionsQuery.isPending || rolePublicationBusy} controlPrefix={selected.id} onToggle={togglePermission} onScopeChange={setPermissionScope} t={t} />
+                {draftPermissions.some((permission) => permission.data_scope === 'target_org') ? (
+                  <p className='mt-3 text-xs leading-5 text-muted-foreground'>
+                    {t('roles.permissions.targetOrgNotice')}{' '}
+                    <Link to='/admin/security/accounts' className='font-medium text-foreground underline underline-offset-4'>{t('roles.permissions.configureAccounts')}</Link>
+                  </p>
+                ) : null}
               </TabsContent>
               <TabsContent value='menus' className='mt-3'>
                 <div className='mb-3 flex flex-wrap items-center gap-2'>
@@ -511,7 +556,7 @@ function RolePolicyWorkspace() {
                   </div>
                 ) : (
                   <div className='max-h-[560px] overflow-y-auto rounded-md border'>
-					{filteredMenuTree.map((node) => <RoleMenuRow key={node.id} node={node} selectedIDs={selectedMenuIDs} disabled={saveMenus.isPending} onToggle={toggleMenu} t={t} />)}
+						{filteredMenuTree.map((node) => <RoleMenuRow key={node.id} node={node} selectedIDs={selectedMenuIDs} disabled={saveMenus.isPending} forceExpanded={Boolean(menuSearch.trim())} onToggle={toggleMenu} t={t} />)}
                   </div>
                 )}
 				<p className='mt-3 text-xs text-muted-foreground'>{t('roles.menus.hint')}</p>
@@ -539,23 +584,24 @@ function RolePolicyWorkspace() {
             <Field>
               <FieldLabel htmlFor='role-permission-search'>{t('roles.create.permissions')}</FieldLabel>
               <Input id='role-permission-search' value={createPermissionSearch} placeholder={t('roles.create.permissionsSearch')} onChange={(event) => setCreatePermissionSearch(event.target.value)} />
-              <div className='max-h-48 space-y-1 overflow-y-auto rounded-md border p-2'>
-                {createPermissionOptions.map((operation) => {
-                  const checked = operation.permissionKeys.every((key) => createPermissions.some((permission) => permission.permission_key === key))
-                  return <label key={operation.key} className='flex min-h-12 cursor-pointer items-start gap-2 rounded px-2 py-2 text-sm hover:bg-muted'>
-                    <Checkbox className='mt-0.5' checked={checked} disabled={!operation.active || !operation.enabled} onCheckedChange={(next) => setCreatePermissions((current) => { const values = new Map(current.map((permission) => [permission.permission_key, permission])); for (const key of operation.permissionKeys) next === true ? values.set(key, values.get(key) ?? { permission_key: key, data_scope: 'all' }) : values.delete(key); return [...values.values()].sort((left, right) => left.permission_key.localeCompare(right.permission_key)) })} />
-                    <span className='min-w-0'><span className='block font-medium'>{operation.capabilityLabel} · {operation.operationLabel}</span><span className='block truncate text-xs text-muted-foreground'>{operation.bindings.map((binding) => `${binding.method} ${binding.route}`).join(' · ')}</span></span>
-                  </label>
-                })}
+              <div className='max-h-72 overflow-y-auto'>
+                <PermissionChecklist
+                  groups={permissionCatalogGroups}
+                  grants={createPermissions}
+                  query={createPermissionSearch}
+                  disabled={createRoleMut.isPending}
+                  onToggle={(permissionKey, checked) => setCreatePermissions((current) => {
+                    const values = new Map(current.map((permission) => [permission.permission_key, permission]))
+                    if (checked) values.set(permissionKey, values.get(permissionKey) ?? { permission_key: permissionKey, data_scope: 'all' })
+                    else values.delete(permissionKey)
+                    return [...values.values()].sort((left, right) => left.permission_key.localeCompare(right.permission_key))
+                  })}
+                  onScopeChange={(permissionKey, scope) => setCreatePermissions((current) => current.map((permission) => permission.permission_key === permissionKey ? { ...permission, data_scope: scope } : permission))}
+                  t={t}
+                />
               </div>
               <p className='text-xs text-muted-foreground'>{t('roles.create.permissionsSelected', { count: createPermissions.length })}</p>
-              {createPermissions.map((grant) => <div key={`${grant.permission_key}:create-scope`} className='flex items-center justify-between gap-2 rounded border px-2 py-1.5'>
-                <code className='truncate text-xs'>{grant.permission_key}</code>
-                <Select value={grant.data_scope} onValueChange={(scope) => setCreatePermissions((current) => current.map((permission) => permission.permission_key === grant.permission_key ? { ...permission, data_scope: scope as RuntimeDataScope } : permission))}>
-                  <SelectTrigger size='sm' className='w-44' aria-label={`${grant.permission_key} data scope`}><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectGroup>{ROLE_DATA_SCOPES.map((scope) => <SelectItem key={scope} value={scope}>{roleDataScopeLabel(scope, t)}</SelectItem>)}</SelectGroup></SelectContent>
-                </Select>
-              </div>)}
+              {createPermissions.some((permission) => permission.data_scope === 'target_org') ? <p className='text-xs leading-5 text-muted-foreground'>{t('roles.permissions.targetOrgNotice')}</p> : null}
             </Field>
           </FieldGroup>
           <FieldError errors={[errors.root]} />
@@ -564,6 +610,22 @@ function RolePolicyWorkspace() {
               {t('common.cancel')}
             </Button>
             <Button disabled={createRoleMut.isPending} onClick={handleSubmit(createRole)}>{t('common.create')}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={permissionPublishOpen} onOpenChange={setPermissionPublishOpen}>
+        <DialogContent className='sm:max-w-lg'>
+          <DialogHeader>
+            <DialogTitle>{t('roles.permissionPublication.title')}</DialogTitle>
+            <DialogDescription>{t('roles.permissionPublication.description')}</DialogDescription>
+          </DialogHeader>
+          <Field>
+            <FieldLabel htmlFor='role-permission-reason'>{t('roles.permissionPublication.reason')}</FieldLabel>
+            <Textarea id='role-permission-reason' value={permissionChangeReason} onChange={(event) => setPermissionChangeReason(event.target.value)} placeholder={t('roles.permissionPublication.reasonPlaceholder')} rows={3} />
+          </Field>
+          <DialogFooter>
+            <Button variant='outline' onClick={() => setPermissionPublishOpen(false)}>{t('common.cancel')}</Button>
+            <Button disabled={rolePublicationBusy || !permissionChangeReason.trim()} onClick={() => savePermissions.mutate()}>{t('roles.permissionPublication.publish')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

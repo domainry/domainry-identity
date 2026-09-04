@@ -24,7 +24,7 @@ type Config struct {
 	HTTPBindHost                      string
 	Port                              string
 	HTTPPublicAddr                    string
-	HTTPTenantAdminAddr               string
+	HTTPManagementAddr                string
 	HTTPOpsAddr                       string
 	HTTPOpsAllowPublicBindBreakGlass  bool
 	HTTPOpsPublicBindBreakGlassReason string
@@ -36,13 +36,13 @@ type Config struct {
 	HTTPMaxJSONBodyBytes              int
 	HTTPMaxHeaderBytes                int
 	HTTPPublicMaxJSONBodyBytes        int
-	HTTPTenantAdminMaxJSONBodyBytes   int
+	HTTPManagementMaxJSONBodyBytes    int
 	HTTPOpsMaxJSONBodyBytes           int
 	HTTPPublicRequestTimeout          time.Duration
-	HTTPTenantAdminRequestTimeout     time.Duration
+	HTTPManagementRequestTimeout      time.Duration
 	HTTPOpsRequestTimeout             time.Duration
 	HTTPPublicRateLimitPerMinute      int
-	HTTPTenantAdminRateLimitPerMinute int
+	HTTPManagementRateLimitPerMinute  int
 	HTTPOpsRateLimitPerMinute         int
 	TelemetryExporter                 string
 	TelemetryEndpoint                 string
@@ -133,7 +133,7 @@ func FromEnv() Config {
 		HTTPBindHost:                          strings.TrimSpace(os.Getenv("HTTP_BIND_HOST")),
 		Port:                                  env("PORT", "8081"),
 		HTTPPublicAddr:                        strings.TrimSpace(os.Getenv("HTTP_PUBLIC_ADDR")),
-		HTTPTenantAdminAddr:                   strings.TrimSpace(os.Getenv("HTTP_TENANT_ADMIN_ADDR")),
+		HTTPManagementAddr:                    strings.TrimSpace(os.Getenv("HTTP_MANAGEMENT_ADDR")),
 		HTTPOpsAddr:                           strings.TrimSpace(os.Getenv("HTTP_OPS_ADDR")),
 		HTTPOpsAllowPublicBindBreakGlass:      boolEnv("HTTP_OPS_ALLOW_PUBLIC_BIND_BREAK_GLASS", false),
 		HTTPOpsPublicBindBreakGlassReason:     strings.TrimSpace(os.Getenv("HTTP_OPS_PUBLIC_BIND_BREAK_GLASS_REASON")),
@@ -145,13 +145,13 @@ func FromEnv() Config {
 		HTTPMaxJSONBodyBytes:                  intEnv("HTTP_MAX_JSON_BODY_BYTES", 2<<20),
 		HTTPMaxHeaderBytes:                    intEnv("HTTP_MAX_HEADER_BYTES", 1<<20),
 		HTTPPublicMaxJSONBodyBytes:            intEnv("HTTP_PUBLIC_MAX_JSON_BODY_BYTES", 2<<20),
-		HTTPTenantAdminMaxJSONBodyBytes:       intEnv("HTTP_TENANT_ADMIN_MAX_JSON_BODY_BYTES", 2<<20),
+		HTTPManagementMaxJSONBodyBytes:        intEnv("HTTP_MANAGEMENT_MAX_JSON_BODY_BYTES", 2<<20),
 		HTTPOpsMaxJSONBodyBytes:               intEnv("HTTP_OPS_MAX_JSON_BODY_BYTES", 1<<20),
 		HTTPPublicRequestTimeout:              durationEnv("HTTP_PUBLIC_REQUEST_TIMEOUT", 30*time.Second),
-		HTTPTenantAdminRequestTimeout:         durationEnv("HTTP_TENANT_ADMIN_REQUEST_TIMEOUT", 30*time.Second),
+		HTTPManagementRequestTimeout:          durationEnv("HTTP_MANAGEMENT_REQUEST_TIMEOUT", 30*time.Second),
 		HTTPOpsRequestTimeout:                 durationEnv("HTTP_OPS_REQUEST_TIMEOUT", 15*time.Second),
 		HTTPPublicRateLimitPerMinute:          intEnv("HTTP_PUBLIC_RATE_LIMIT_PER_MINUTE", 6000),
-		HTTPTenantAdminRateLimitPerMinute:     intEnv("HTTP_TENANT_ADMIN_RATE_LIMIT_PER_MINUTE", 3000),
+		HTTPManagementRateLimitPerMinute:      intEnv("HTTP_MANAGEMENT_RATE_LIMIT_PER_MINUTE", 3000),
 		HTTPOpsRateLimitPerMinute:             intEnv("HTTP_OPS_RATE_LIMIT_PER_MINUTE", 1200),
 		TelemetryExporter:                     env("TELEMETRY_EXPORTER", env("OTEL_TRACES_EXPORTER", "none")),
 		TelemetryEndpoint:                     strings.TrimSpace(env("TELEMETRY_ENDPOINT", os.Getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"))),
@@ -323,7 +323,7 @@ func (c Config) ValidateSecurity() error {
 			return fmt.Errorf("CORS_ALLOWED_ORIGINS must not contain * in production")
 		}
 	}
-	if err := c.validateProductionSurfaceListeners(); err != nil {
+	if err := c.validateProductionListenerGroups(); err != nil {
 		return err
 	}
 	if err := c.validateProductionHTTPControls(); err != nil {
@@ -374,10 +374,10 @@ func (c Config) validateProductionHTTPControls() error {
 		value int
 	}{
 		{"HTTP_PUBLIC_MAX_JSON_BODY_BYTES", c.HTTPPublicMaxJSONBodyBytes},
-		{"HTTP_TENANT_ADMIN_MAX_JSON_BODY_BYTES", c.HTTPTenantAdminMaxJSONBodyBytes},
+		{"HTTP_MANAGEMENT_MAX_JSON_BODY_BYTES", c.HTTPManagementMaxJSONBodyBytes},
 		{"HTTP_OPS_MAX_JSON_BODY_BYTES", c.HTTPOpsMaxJSONBodyBytes},
 		{"HTTP_PUBLIC_RATE_LIMIT_PER_MINUTE", c.HTTPPublicRateLimitPerMinute},
-		{"HTTP_TENANT_ADMIN_RATE_LIMIT_PER_MINUTE", c.HTTPTenantAdminRateLimitPerMinute},
+		{"HTTP_MANAGEMENT_RATE_LIMIT_PER_MINUTE", c.HTTPManagementRateLimitPerMinute},
 		{"HTTP_OPS_RATE_LIMIT_PER_MINUTE", c.HTTPOpsRateLimitPerMinute},
 	}
 	for _, control := range integerControls {
@@ -390,7 +390,7 @@ func (c Config) validateProductionHTTPControls() error {
 		value time.Duration
 	}{
 		{"HTTP_PUBLIC_REQUEST_TIMEOUT", c.HTTPPublicRequestTimeout},
-		{"HTTP_TENANT_ADMIN_REQUEST_TIMEOUT", c.HTTPTenantAdminRequestTimeout},
+		{"HTTP_MANAGEMENT_REQUEST_TIMEOUT", c.HTTPManagementRequestTimeout},
 		{"HTTP_OPS_REQUEST_TIMEOUT", c.HTTPOpsRequestTimeout},
 	}
 	for _, control := range durationControls {
@@ -410,13 +410,13 @@ func defaultIdentityBrowserReturnURLs(environment string) []string {
 	}
 }
 
-func (c Config) validateProductionSurfaceListeners() error {
+func (c Config) validateProductionListenerGroups() error {
 	listeners := []struct {
 		name string
 		addr string
 	}{
 		{"HTTP_PUBLIC_ADDR", c.HTTPPublicAddr},
-		{"HTTP_TENANT_ADMIN_ADDR", c.HTTPTenantAdminAddr},
+		{"HTTP_MANAGEMENT_ADDR", c.HTTPManagementAddr},
 		{"HTTP_OPS_ADDR", c.HTTPOpsAddr},
 	}
 	seen := map[string]string{}

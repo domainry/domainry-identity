@@ -296,27 +296,27 @@ export async function saveSystemResourceDraft(input: PublishSystemResourceChange
 }
 
 export const actionDefinitionsApi = {
-  list: () => runtimeRequest<{ definitions: RuntimeMetadataDefinition<RuntimeActionDefinition>[] }>('/tenant-admin/metadata/definitions/action').then((value) => value.definitions ?? []),
+  list: () => runtimeRequest<{ definitions: RuntimeMetadataDefinition<RuntimeActionDefinition>[] }>('/metadata/definitions/action').then((value) => value.definitions ?? []),
 }
 
 export const systemChangePlansApi = {
-  snapshot: () => runtimeRequest<RuntimeSystemSnapshot>('/domain-system-snapshot'),
-  graph: () => runtimeRequest<RuntimeReferenceGraph>('/domain-reference-graph'),
-  validate: (plan: RuntimeChangePlan) => runtimeRequest<RuntimeChangePlanValidation>('/tenant-admin/change-plans/validate', { method: 'POST', body: plan }),
-  save: (plan: RuntimeChangePlan, expectedRevision: number) => runtimeRequest<RuntimeChangePlanDraft>(`/tenant-admin/change-plans/${encodeURIComponent(plan.plan_id)}`, { method: 'PUT', body: { expected_revision: expectedRevision, plan } }),
-  get: (planID: string) => runtimeRequest<RuntimeChangePlanDraft>(`/tenant-admin/change-plans/${encodeURIComponent(planID)}`),
-  simulate: (draft: RuntimeChangePlanDraft) => runtimeRequest<{ plan_id: string; draft_revision: number; side_effect_free: boolean; passed: boolean; results: unknown[] }>(`/tenant-admin/change-plans/${encodeURIComponent(draft.plan_id)}/simulate`, { method: 'POST', body: { expected_revision: draft.revision } }),
-  review: (draft: RuntimeChangePlanDraft) => runtimeRequest<{ draft: RuntimeChangePlanDraft; validation: RuntimeChangePlanValidation }>(`/tenant-admin/change-plans/${encodeURIComponent(draft.plan_id)}/review`, { method: 'POST', body: { expected_revision: draft.revision } }),
-  approve: (draft: RuntimeChangePlanDraft) => runtimeRequest<{ draft: RuntimeChangePlanDraft; validation: RuntimeChangePlanValidation }>(`/tenant-admin/change-plans/${encodeURIComponent(draft.plan_id)}/approve`, { method: 'POST', body: { expected_revision: draft.revision } }),
+  snapshot: () => runtimeRequest<RuntimeSystemSnapshot>('/business-system/snapshot?projection=full'),
+  graph: () => runtimeRequest<RuntimeReferenceGraph>('/business-references/graph'),
+  validate: (_plan: RuntimeChangePlan): Promise<RuntimeChangePlanValidation> => Promise.reject(removedSystemChangePlanWrite()),
+  save: (_plan: RuntimeChangePlan, _expectedRevision: number): Promise<RuntimeChangePlanDraft> => Promise.reject(removedSystemChangePlanWrite()),
+  get: (_planID: string): Promise<RuntimeChangePlanDraft> => Promise.reject(removedSystemChangePlanWrite()),
+  simulate: (_draft: RuntimeChangePlanDraft): Promise<{ plan_id: string; draft_revision: number; side_effect_free: boolean; passed: boolean; results: unknown[] }> => Promise.reject(removedSystemChangePlanWrite()),
+  review: (_draft: RuntimeChangePlanDraft): Promise<{ draft: RuntimeChangePlanDraft; validation: RuntimeChangePlanValidation }> => Promise.reject(removedSystemChangePlanWrite()),
+  approve: (_draft: RuntimeChangePlanDraft): Promise<{ draft: RuntimeChangePlanDraft; validation: RuntimeChangePlanValidation }> => Promise.reject(removedSystemChangePlanWrite()),
   validateForPublish: (draft: RuntimeChangePlanDraft) => systemChangePlansApi.validate({
     ...draft.payload,
     draft_revision: draft.revision,
     reviewed: true,
     reviewed_by: draft.updated_by,
   }),
-  publish: (draft: RuntimeChangePlanDraft) => runtimeRequest<{ result: unknown; current_snapshot: RuntimeSystemSnapshot }>('/tenant-admin/change-plans/apply', {
-    method: 'POST',
-    headers: { 'Idempotency-Key': `system-draft:${draft.plan_id}:${draft.revision}` },
-    body: { plan_id: draft.plan_id, expected_revision: draft.revision, confirmation: draft.plan_id },
-  }),
+  publish: (_draft: RuntimeChangePlanDraft): Promise<{ result: unknown; current_snapshot: RuntimeSystemSnapshot }> => Promise.reject(removedSystemChangePlanWrite()),
+}
+
+function removedSystemChangePlanWrite(): Error {
+  return new Error('Runtime does not expose system Change Plan write endpoints')
 }

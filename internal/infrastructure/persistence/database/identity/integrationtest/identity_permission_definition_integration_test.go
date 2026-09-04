@@ -110,7 +110,7 @@ func TestPermissionReconcileRetiresRestoresAndRejectsConflictingSnapshots(t *tes
 	definition := func(workspaceID, owner, key, snapshot, hash string) identitymodel.IdentityPermissionDefinitionRecord {
 		return identitymodel.IdentityPermissionDefinitionRecord{
 			WorkspaceID: workspaceID, PermissionKey: key, ResourceKey: "roles", OperationKey: "read",
-			Label: key, Category: "Identity", SourceKind: "builtin_surface", SourceOwner: owner,
+			Label: key, Category: "Identity", SourceKind: "builtin_http", SourceOwner: owner,
 			DefinitionHash: hash, SourceSnapshotHash: snapshot,
 		}
 	}
@@ -215,7 +215,7 @@ func TestPermissionReconcileParticipatesInHostTransaction(t *testing.T) {
 		WorkspaceID: "workspace-primary", SourceOwner: "identity:builtin", SnapshotHash: "snapshot-1",
 		Definitions: []identitymodel.IdentityPermissionDefinitionRecord{{
 			WorkspaceID: "workspace-primary", PermissionKey: "identity.roles.get", ResourceKey: "identity.roles", OperationKey: "get",
-			Label: "Get role", Category: "Identity", SourceKind: "builtin_surface", SourceOwner: "identity:builtin",
+			Label: "Get role", Category: "Identity", SourceKind: "builtin_http", SourceOwner: "identity:builtin",
 			DefinitionHash: "definition-1", SourceSnapshotHash: "snapshot-1",
 		}},
 	}

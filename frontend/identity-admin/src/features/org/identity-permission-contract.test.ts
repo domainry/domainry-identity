@@ -10,7 +10,7 @@ function source(name: string) {
 }
 
 describe('identity permission authoring surfaces', () => {
-  it('builds the role permission view from DB-backed definitions and publishes a normal RoleSchema version', () => {
+  it('builds a compact module-grouped role permission checklist from DB-backed definitions and publishes a normal RoleSchema version', () => {
     const roles = source('roles.tsx')
     expect(roles).toContain('permissionsApi.catalog')
     expect(roles).toContain('identityPoliciesApi.saveRolePermissions')
@@ -19,17 +19,29 @@ describe('identity permission authoring surfaces', () => {
     expect(roles).not.toContain('systemChangePlansApi')
     expect(roles).toContain('permissionCatalogQuery.data')
     expect(roles).toContain('buildPermissionCatalogView')
-    expect(roles).toContain('group.sourceOwner')
-    expect(roles).toContain('group.sourceKind')
-    expect(roles).toContain('group.category')
+    expect(roles).toContain('group.resourceLabel')
+    expect(roles).toContain('group.permissions.map')
+    expect(roles).toContain('<details')
+    expect(roles).toContain('roles.permissions.moduleCount')
+    expect(roles).toContain('checked={Boolean(grant)}')
+    expect(roles).toContain("value={grant?.data_scope ?? ''}")
     expect(roles).toContain('schemaQuery.data?.objects')
     expect(roles).toContain('runtimeResourceLabels')
-    expect(roles).toContain('binding.method')
-    expect(roles).toContain('binding.route')
-    expect(roles).toContain('operation.permissionKeys')
+    expect(roles).not.toContain('binding.method')
+    expect(roles).not.toContain('binding.route')
+    expect(roles).not.toContain('operation.permissionKeys')
     expect(roles).not.toContain('PERM_MODULES')
     expect(roles).not.toContain('PERM_ACTIONS')
     expect(roles).not.toContain('businessActionPermissionRows')
+  })
+
+  it('explains that target_org uses the target organization configured on each account', () => {
+    const roles = source('roles.tsx')
+    const accounts = source('identity-accounts-page.tsx')
+    expect(roles).toContain("permission.data_scope === 'target_org'")
+    expect(roles).toContain("to='/admin/security/accounts'")
+    expect(roles).toContain("t('roles.permissions.targetOrgNotice')")
+    expect(accounts).toContain('supportOrganizationUnitId')
   })
 
   it('loads and saves explicit role-menu assignments through Runtime', () => {
@@ -38,6 +50,8 @@ describe('identity permission authoring surfaces', () => {
     expect(roles).toContain("value='menus'")
     expect(roles).toContain('identityPoliciesApi.roleMenus')
     expect(roles).toContain('identityPoliciesApi.saveRoleMenus')
+    expect(roles).toContain('aria-expanded={isExpanded}')
+    expect(roles).toContain('forceExpanded={Boolean(menuSearch.trim())}')
     expect(governance).toContain('/menus`')
     expect(governance).toContain('menu_ids: menuIDs')
   })
@@ -46,8 +60,8 @@ describe('identity permission authoring surfaces', () => {
     const roles = source('roles.tsx')
     const fields = source('field-permissions.tsx')
     expect(roles).toContain("['all', 'owner', 'org', 'org_child', 'target_org']")
-    expect(roles).toContain('permission.permission_key === key')
-    expect(roles).toContain('data_scope: scope as RuntimeDataScope')
+    expect(roles).toContain('permission.permission_key === permissionKey')
+    expect(roles).toContain('data_scope: scope')
     expect(roles).not.toContain('saveDataScopes')
     expect(fields).toContain('objectsApi.schemaSnapshot')
     expect(fields).toContain('identityPoliciesApi.fieldPermissionConfiguration')

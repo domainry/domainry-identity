@@ -22,7 +22,10 @@ describe('unified role governance detail', () => {
       expect(detail).toContain(dimension)
     }
     expect(roles).toContain('<RoleGovernanceDetail roleID={selected.id} />')
-    expect(roles).toContain("useState<'overview' | 'permissions' | 'menus'>('overview')")
+    expect(roles).toContain("useState<'overview' | 'permissions' | 'menus'>('permissions')")
+    expect(roles).toContain("<TabsContent value='overview'")
+    expect(detail).toContain('<details')
+    expect(detail).toContain('<summary')
   })
 
   it('uses the Runtime read projection, impact preview, and audit revision history', () => {
@@ -41,13 +44,14 @@ describe('unified role governance detail', () => {
     expect(api).toContain('{ method: "POST", body: { role } }')
   })
 
-  it('renders menu entrypoints as a full-width responsive registry', () => {
-    expect(detail).toContain("className='md:col-span-2'")
+  it('renders menu entrypoints as a full-width responsive registry without long-key overflow', () => {
+    expect(detail).toContain("className='grid min-w-0 gap-2'")
     expect(detail).toContain('roles.detail.menuName')
     expect(detail).toContain('roles.detail.menuKey')
     expect(detail).toContain('roles.detail.entrypoint')
     expect(detail).toContain('break-all')
     expect(detail).toContain("data-testid='role-menu-entrypoints'")
+    expect(detail).toContain('max-w-full whitespace-normal break-all')
     expect(detail).not.toContain('menus.surface.')
   })
 })

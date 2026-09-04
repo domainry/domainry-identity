@@ -104,28 +104,28 @@ func (s *IdentityApplicationService) FindOrganizationUnit(ctx context.Context, o
 	return scoped.FindOrganizationUnit(ctx, organizationUnitID)
 }
 
-func (s *IdentityApplicationService) ListDirectoryUsers(ctx context.Context) ([]identitymodel.IdentityUser, error) {
+func (s *IdentityApplicationService) ListProjectionUsers(ctx context.Context) ([]identitymodel.IdentityUser, error) {
 	scoped, err := s.domainForContext(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return scoped.ListDirectoryUsers(ctx)
+	return scoped.ListProjectionUsers(ctx)
 }
 
-func (s *IdentityApplicationService) ListDirectoryRoles(ctx context.Context) ([]identitymodel.IdentityRole, error) {
+func (s *IdentityApplicationService) ListProjectionRoles(ctx context.Context) ([]identitymodel.IdentityRole, error) {
 	scoped, err := s.domainForContext(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return scoped.ListDirectoryRoles(ctx)
+	return scoped.ListProjectionRoles(ctx)
 }
 
-func (s *IdentityApplicationService) ListDirectoryUserRoleAssignments(ctx context.Context, userID string) ([]identitymodel.IdentityUserRoleAssignment, error) {
+func (s *IdentityApplicationService) ListProjectionUserRoleAssignments(ctx context.Context, userID string) ([]identitymodel.IdentityUserRoleAssignment, error) {
 	scoped, err := s.domainForContext(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return scoped.ListDirectoryUserRoleAssignments(ctx, userID)
+	return scoped.ListProjectionUserRoleAssignments(ctx, userID)
 }
 
 func (s *IdentityApplicationService) ListOrganizationUnits(ctx context.Context) ([]identitymodel.IdentityOrganizationUnit, error) {

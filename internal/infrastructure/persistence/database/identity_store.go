@@ -28,7 +28,6 @@ import (
 type IdentityStore struct {
 	*base.SQLDatabase
 	*workspace.WriteFenceStore
-	*workspace.ScopeValidator
 	*migrationowner.Coordinator
 	db                   *sql.DB
 	migrationDB          *sql.DB
@@ -120,7 +119,7 @@ func openContextWithDependencies(ctx context.Context, cfg config.Config, depende
 		lockDatabase = migrationDB
 	}
 	coordinator := newMigrationCoordinator(db, migrationDB, migrationDatabase, backupDatabase, lockDatabase, engine, sqlDatabase.SQLRenderer, databaseSchema, "", cfg, activeMaterial, operationalMetrics)
-	store := &IdentityStore{SQLDatabase: sqlDatabase, WriteFenceStore: workspace.NewWriteFenceStore(db, sqlDatabase.SQLRenderer), ScopeValidator: workspace.NewScopeValidator(db, engine, sqlDatabase.SQLRenderer, databaseSchema, ""), Coordinator: coordinator, db: db, migrationDB: migrationDB, engine: engine, config: cfg, databaseSchema: databaseSchema, postgresProfile: connectionState.PostgresProfile, postgresCapabilities: connectionState.PostgresCapabilities, migratorCapabilities: connectionState.MigratorCapabilities, secretMaterialKey: activeMaterial, secretKeyProvider: keyRing, idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096), sqlMetrics: sqlMetrics, operationalMetrics: operationalMetrics}
+	store := &IdentityStore{SQLDatabase: sqlDatabase, WriteFenceStore: workspace.NewWriteFenceStore(db, sqlDatabase.SQLRenderer), Coordinator: coordinator, db: db, migrationDB: migrationDB, engine: engine, config: cfg, databaseSchema: databaseSchema, postgresProfile: connectionState.PostgresProfile, postgresCapabilities: connectionState.PostgresCapabilities, migratorCapabilities: connectionState.MigratorCapabilities, secretMaterialKey: activeMaterial, secretKeyProvider: keyRing, idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096), sqlMetrics: sqlMetrics, operationalMetrics: operationalMetrics}
 	var migrationErr error
 	migrationStarted := time.Now()
 	if cfg.EffectiveDatabaseMigrationMode() == "verify" {
@@ -164,9 +163,8 @@ func OpenBorrowedContext(ctx context.Context, cfg config.Config, db *sql.DB) (*I
 	coordinator := newMigrationCoordinator(db, nil, db, db, db, engine, sqlDatabase.SQLRenderer, schema, "", cfg, activeMaterial, operationalMetrics)
 	store := &IdentityStore{
 		SQLDatabase: sqlDatabase, WriteFenceStore: workspace.NewWriteFenceStore(db, sqlDatabase.SQLRenderer),
-		ScopeValidator: workspace.NewScopeValidator(db, engine, sqlDatabase.SQLRenderer, schema, ""),
-		Coordinator:    coordinator,
-		db:             db, engine: engine, config: cfg, databaseSchema: schema,
+		Coordinator: coordinator,
+		db:          db, engine: engine, config: cfg, databaseSchema: schema,
 		secretMaterialKey: activeMaterial, secretKeyProvider: keyRing,
 		idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096),
 		sqlMetrics:         telemetry.NewSQLMetrics(), operationalMetrics: operationalMetrics,
@@ -184,7 +182,7 @@ func identityDataKeyProvider(cfg config.Config, factory func(secrets.Key, ...sec
 	activeMaterial := sha256.Sum256([]byte(cfg.IdentityDataSecretKey))
 	activeID := strings.TrimSpace(cfg.IdentityDataActiveKeyID)
 	if activeID == "" {
-		activeID = "legacy-v1"
+		activeID = "dev-v1"
 	}
 	decryptOnly := make([]secrets.Key, 0, len(cfg.IdentityDataDecryptOnlyKeys))
 	for id, value := range cfg.IdentityDataDecryptOnlyKeys {

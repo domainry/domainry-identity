@@ -11,7 +11,7 @@ import (
 type sdkPrincipalResolver struct{ binding *sdkBinding }
 
 func (adapter sdkPrincipalResolver) Resolve(ctx context.Context, request identitysdk.PrincipalResolutionRequest) (identitysdk.PrincipalResolution, error) {
-	identity, workspaceContext, err := (sdkDirectory{binding: adapter.binding}).scoped(ctx, request.Application)
+	identity, workspaceContext, err := (sdkProjection{binding: adapter.binding}).scoped(ctx, request.Application)
 	if err != nil {
 		return identitysdk.PrincipalResolution{}, err
 	}
@@ -47,10 +47,10 @@ func (adapter sdkPrincipalResolver) Resolve(ctx context.Context, request identit
 		OrgID:                 principal.OrgID, OrgScopeIDs: append([]string(nil), principal.OrgScopeIDs...),
 		SupportOrgID: principal.SupportOrgID, SupportOrgScopeIDs: append([]string(nil), principal.SupportOrgScopeIDs...),
 		ReportingScopeUserIDs: append([]string(nil), principal.ReportingScopeUserIDs...),
-		User:                  sdkDirectoryUser(user), Permissions: identitymodel.RolePermissionKeys(principal.Role.Permissions), AccessBundle: &bundle,
+		User:                  sdkProjectionUser(user), Permissions: identitymodel.RolePermissionKeys(principal.Role.Permissions), AccessBundle: &bundle,
 	}
 	for _, role := range roles {
-		result.Roles = append(result.Roles, sdkDirectoryRole(role))
+		result.Roles = append(result.Roles, sdkProjectionRole(role))
 	}
 	return identitysdk.PrincipalResolution{Principal: result, AccessBundle: bundle}, nil
 }

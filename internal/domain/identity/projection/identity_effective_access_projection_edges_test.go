@@ -26,7 +26,7 @@ func TestIdentityBuildEffectiveAccessSnapshotEdges(t *testing.T) {
 			{UserID: "user", RoleID: "role-2"},
 			{UserID: "user", RoleID: "role-1", ExpiresAt: &expiresAt},
 		},
-		DirectoryRoles: []identitymodel.IdentityRole{
+		ProjectionRoles: []identitymodel.IdentityRole{
 			{ID: "role-1", Key: "manager"},
 			{ID: "role-2"},
 		},

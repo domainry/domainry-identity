@@ -110,6 +110,18 @@ func TestIdentityRoleAuthoringContractsPublishExactHTTPShapes(t *testing.T) {
 		if _, ok := definition.InputSchema.Properties[capability.required]; !ok {
 			t.Fatalf("owner capability %s missing request field %s", capability.key, capability.required)
 		}
+		if capability.key == "identity.menu" {
+			for _, retired := range []string{"audience", "surface", "surface_key", "surface_keys"} {
+				if _, exposed := definition.InputSchema.Properties[retired]; exposed {
+					t.Fatalf("menu authoring contract retains retired field %s", retired)
+				}
+				for _, parameter := range definition.Parameters {
+					if parameter.Key == retired {
+						t.Fatalf("menu authoring parameters retain retired field %s", retired)
+					}
+				}
+			}
+		}
 		if capability.key == "identity.role_field_permission" {
 			if definition.ResourceOperations != nil || definition.Execution == nil || definition.Execution.ChangeControl != "direct_audited_versioned_metadata" {
 				t.Fatalf("role policy capability %s does not publish through direct versioned metadata: %#v", capability.key, definition)

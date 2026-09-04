@@ -123,9 +123,8 @@ func (r *schemaSQLRows) Next(values []driver.Value) error {
 }
 
 type scriptedSchemaStore struct {
-	db        *sql.DB
-	ensureErr error
-	driver    string
+	db     *sql.DB
+	driver string
 }
 
 func (s scriptedSchemaStore) SchemaDB() SQLDatabase               { return s.db }
@@ -164,9 +163,6 @@ func (s scriptedSchemaStore) TableIndexes(ctx context.Context, table string) (ma
 }
 func (s scriptedSchemaStore) DropIndex(ctx context.Context, table, index string) error {
 	return s.engineProfile().DropIndex(ctx, s.db, s.renderer(), s.DatabaseSchema(), "", table, index)
-}
-func (s scriptedSchemaStore) EnsureColumn(context.Context, string, string, string) error {
-	return s.ensureErr
 }
 func (scriptedSchemaStore) EnsureCompositePrimaryKey(context.Context, string, ...string) error {
 	return nil

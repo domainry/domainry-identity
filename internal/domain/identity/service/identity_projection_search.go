@@ -13,28 +13,28 @@ import (
 	identityrepository "github.com/domainry/domainry-identity/internal/domain/identity/repository"
 )
 
-const identityDirectoryMaximumPageSize = 200
+const identityProjectionMaximumPageSize = 200
 
-func identityDirectoryPagination(query identitymodel.IdentityListQuery) pagination.Cursor {
+func identityProjectionPagination(query identitymodel.IdentityListQuery) pagination.Cursor {
 	return pagination.NewCursor(query.AfterID, query.PageSize, pagination.CursorOptions{
 		DefaultPageSize: 20,
-		MaximumPageSize: identityDirectoryMaximumPageSize,
+		MaximumPageSize: identityProjectionMaximumPageSize,
 	})
 }
 
-func identityDirectoryPage[T any](cursor pagination.Cursor, items []T, itemID func(T) string) (pagination.Page[T], error) {
+func identityProjectionPage[T any](cursor pagination.Cursor, items []T, itemID func(T) string) (pagination.Page[T], error) {
 	page, err := pagination.Slice(cursor, items, itemID)
 	if err == nil {
 		return page, nil
 	}
 	var cursorNotFound pagination.CursorNotFoundError
 	if errors.As(err, &cursorNotFound) {
-		return pagination.Page[T]{}, badRequest("backend.identity.directory_cursor_invalid", "after_id", cursorNotFound.AfterID)
+		return pagination.Page[T]{}, badRequest("backend.identity.projection_cursor_invalid", "after_id", cursorNotFound.AfterID)
 	}
 	return pagination.Page[T]{}, err
 }
 
-func identityDirectoryFields(requested, defaults []string, allowed map[string]bool, errorCode string) ([]string, error) {
+func identityProjectionFields(requested, defaults []string, allowed map[string]bool, errorCode string) ([]string, error) {
 	fields := requested
 	if len(fields) == 0 {
 		fields = defaults
@@ -47,7 +47,7 @@ func identityDirectoryFields(requested, defaults []string, allowed map[string]bo
 	return fields, nil
 }
 
-func identityDirectoryFilters(filters map[string]any, allowed map[string]bool, errorCode string) (map[string]string, error) {
+func identityProjectionFilters(filters map[string]any, allowed map[string]bool, errorCode string) (map[string]string, error) {
 	normalized := make(map[string]string, len(filters))
 	for field, value := range filters {
 		if !allowed[field] {
@@ -58,7 +58,7 @@ func identityDirectoryFilters(filters map[string]any, allowed map[string]bool, e
 	return normalized, nil
 }
 
-func identityDirectorySort(query identitymodel.IdentityListQuery, defaultSort []identitymodel.IdentitySortRule, allowed map[string]bool, errorCode string) ([]identitymodel.IdentitySortRule, error) {
+func identityProjectionSort(query identitymodel.IdentityListQuery, defaultSort []identitymodel.IdentitySortRule, allowed map[string]bool, errorCode string) ([]identitymodel.IdentitySortRule, error) {
 	rules := query.Sort
 	if len(rules) == 0 {
 		rules = defaultSort
@@ -76,7 +76,7 @@ func identityDirectorySort(query identitymodel.IdentityListQuery, defaultSort []
 	return rules, nil
 }
 
-func identityDirectoryMatchesSearch(needle string, fields []string, value func(string) string) bool {
+func identityProjectionMatchesSearch(needle string, fields []string, value func(string) string) bool {
 	if needle == "" {
 		return true
 	}
@@ -88,7 +88,7 @@ func identityDirectoryMatchesSearch(needle string, fields []string, value func(s
 	return false
 }
 
-func identityDirectoryMatchesFilters(filters map[string]string, value func(string) string) bool {
+func identityProjectionMatchesFilters(filters map[string]string, value func(string) string) bool {
 	for field, expected := range filters {
 		if !strings.EqualFold(strings.TrimSpace(value(field)), expected) {
 			return false
@@ -97,7 +97,7 @@ func identityDirectoryMatchesFilters(filters map[string]string, value func(strin
 	return true
 }
 
-func identityDirectoryLess(rules []identitymodel.IdentitySortRule, left, right func(string) string) bool {
+func identityProjectionLess(rules []identitymodel.IdentitySortRule, left, right func(string) string) bool {
 	for _, rule := range rules {
 		comparison := strings.Compare(strings.ToLower(left(rule.Field)), strings.ToLower(right(rule.Field)))
 		if comparison == 0 {
@@ -176,19 +176,19 @@ func (s *IdentityDomainService) searchUsers(ctx context.Context, query identitym
 		"worker_no": true, "worker_type": true, "work_status": true, "start_date": true, "end_date": true,
 		"email": true, "phone": true, "status": true,
 	}
-	fields, err := identityDirectoryFields(query.SearchFields, []string{"name", "given_name", "middle_name", "family_name", "native_name", "email", "phone", "worker_no"}, allowed, "backend.identity.user_search_field_invalid")
+	fields, err := identityProjectionFields(query.SearchFields, []string{"name", "given_name", "middle_name", "family_name", "native_name", "email", "phone", "worker_no"}, allowed, "backend.identity.user_search_field_invalid")
 	if err != nil {
 		return identitymodel.IdentityUserPage{}, err
 	}
-	filters, err := identityDirectoryFilters(query.Filters, allowed, "backend.identity.user_filter_field_invalid")
+	filters, err := identityProjectionFilters(query.Filters, allowed, "backend.identity.user_filter_field_invalid")
 	if err != nil {
 		return identitymodel.IdentityUserPage{}, err
 	}
-	rules, err := identityDirectorySort(query, []identitymodel.IdentitySortRule{{Field: "name", Direction: "asc"}, {Field: "id", Direction: "asc"}}, allowed, "backend.identity.user_sort_invalid")
+	rules, err := identityProjectionSort(query, []identitymodel.IdentitySortRule{{Field: "name", Direction: "asc"}, {Field: "id", Direction: "asc"}}, allowed, "backend.identity.user_sort_invalid")
 	if err != nil {
 		return identitymodel.IdentityUserPage{}, err
 	}
-	cursor := identityDirectoryPagination(query)
+	cursor := identityProjectionPagination(query)
 	query.PageSize, query.SearchFields, query.Filters, query.Sort = cursor.PageSize(), fields, mapStringAny(filters), rules
 	if repository, ok := s.repo.(identityrepository.IdentityUserDataScopeSearchRepository); ok {
 		return repository.SearchIdentityUsersWithinDataScope(ctx, s.workspace, query, scope)
@@ -215,16 +215,16 @@ func (s *IdentityDomainService) searchUsers(ctx context.Context, query identitym
 	filtered := make([]identitymodel.IdentityUser, 0, len(users))
 	for _, user := range users {
 		value := func(field string) string { return identityUserValue(user, field) }
-		if identityDirectoryMatchesSearch(needle, fields, value) && identityDirectoryMatchesFilters(filters, value) {
+		if identityProjectionMatchesSearch(needle, fields, value) && identityProjectionMatchesFilters(filters, value) {
 			filtered = append(filtered, user)
 		}
 	}
 	sort.SliceStable(filtered, func(left, right int) bool {
-		return identityDirectoryLess(rules,
+		return identityProjectionLess(rules,
 			func(field string) string { return identityUserValue(filtered[left], field) },
 			func(field string) string { return identityUserValue(filtered[right], field) })
 	})
-	page, err := identityDirectoryPage(cursor, filtered, func(user identitymodel.IdentityUser) string { return user.ID })
+	page, err := identityProjectionPage(cursor, filtered, func(user identitymodel.IdentityUser) string { return user.ID })
 	if err != nil {
 		return identitymodel.IdentityUserPage{}, err
 	}
@@ -288,15 +288,15 @@ func (s *IdentityDomainService) searchUserRoleAssignments(ctx context.Context, u
 		return identitymodel.IdentityUserRoleAssignmentPage{}, err
 	}
 	allowed := map[string]bool{"user_id": true, "role_id": true, "binding_key": true, "profile_id": true, "source": true, "status": true, "valid_from": true, "valid_until": true, "granted_by": true, "created_at": true}
-	fields, err := identityDirectoryFields(queryValue.SearchFields, []string{"role_id", "source", "granted_by"}, allowed, "backend.identity.role_assignment_search_field_invalid")
+	fields, err := identityProjectionFields(queryValue.SearchFields, []string{"role_id", "source", "granted_by"}, allowed, "backend.identity.role_assignment_search_field_invalid")
 	if err != nil {
 		return identitymodel.IdentityUserRoleAssignmentPage{}, err
 	}
-	filters, err := identityDirectoryFilters(queryValue.Filters, allowed, "backend.identity.role_assignment_filter_field_invalid")
+	filters, err := identityProjectionFilters(queryValue.Filters, allowed, "backend.identity.role_assignment_filter_field_invalid")
 	if err != nil {
 		return identitymodel.IdentityUserRoleAssignmentPage{}, err
 	}
-	rules, err := identityDirectorySort(queryValue, []identitymodel.IdentitySortRule{{Field: "created_at", Direction: "desc"}, {Field: "role_id", Direction: "asc"}}, allowed, "backend.identity.role_assignment_sort_invalid")
+	rules, err := identityProjectionSort(queryValue, []identitymodel.IdentitySortRule{{Field: "created_at", Direction: "desc"}, {Field: "role_id", Direction: "asc"}}, allowed, "backend.identity.role_assignment_sort_invalid")
 	if err != nil {
 		return identitymodel.IdentityUserRoleAssignmentPage{}, err
 	}
@@ -304,17 +304,17 @@ func (s *IdentityDomainService) searchUserRoleAssignments(ctx context.Context, u
 	filtered := make([]identitymodel.IdentityUserRoleAssignment, 0, len(assignments))
 	for _, assignment := range assignments {
 		value := func(field string) string { return identityRoleAssignmentValue(assignment, field) }
-		if identityDirectoryMatchesSearch(needle, fields, value) && identityDirectoryMatchesFilters(filters, value) {
+		if identityProjectionMatchesSearch(needle, fields, value) && identityProjectionMatchesFilters(filters, value) {
 			filtered = append(filtered, assignment)
 		}
 	}
 	sort.SliceStable(filtered, func(left, right int) bool {
-		return identityDirectoryLess(rules,
+		return identityProjectionLess(rules,
 			func(field string) string { return identityRoleAssignmentValue(filtered[left], field) },
 			func(field string) string { return identityRoleAssignmentValue(filtered[right], field) })
 	})
-	cursor := identityDirectoryPagination(queryValue)
-	page, err := identityDirectoryPage(cursor, filtered, func(assignment identitymodel.IdentityUserRoleAssignment) string { return assignment.RoleID })
+	cursor := identityProjectionPagination(queryValue)
+	page, err := identityProjectionPage(cursor, filtered, func(assignment identitymodel.IdentityUserRoleAssignment) string { return assignment.RoleID })
 	if err != nil {
 		return identitymodel.IdentityUserRoleAssignmentPage{}, err
 	}

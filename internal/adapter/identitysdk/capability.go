@@ -176,9 +176,9 @@ func NewCapabilityBinding() (*modulecapability.StaticBinding, error) {
 func identityCapabilityCategory(capabilityKey string) string {
 	switch capabilityKey {
 	case "identity.user", "identity.organization_unit":
-		return "identity.directory"
+		return "identity.projection"
 	case "identity.profile_binding":
-		return "identity.directory"
+		return "identity.projection"
 	case "identity.role", "identity.role_permission", "identity.user_role_assignment":
 		return "identity.roles"
 	default:
@@ -188,8 +188,8 @@ func identityCapabilityCategory(capabilityKey string) string {
 
 func identityCategoryText(key string) (string, string) {
 	switch key {
-	case "identity.directory":
-		return "Identity directory", "Configure authenticated users and organization units."
+	case "identity.projection":
+		return "Identity projection", "Configure authenticated users and organization units."
 	case "identity.roles":
 		return "Identity roles", "Configure roles, permission grants, and user-role assignments."
 	default:

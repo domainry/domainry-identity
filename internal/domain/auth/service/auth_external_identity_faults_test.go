@@ -1,18 +1,17 @@
 package service
 
-import authpolicy "github.com/domainry/domainry-identity/internal/domain/auth/policy"
-
-import authmodel "github.com/domainry/domainry-identity/internal/domain/auth/model"
-
 import (
 	"context"
 	"errors"
-	authrepository "github.com/domainry/domainry-identity/internal/domain/auth/repository"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	authmodel "github.com/domainry/domainry-identity/internal/domain/auth/model"
+	authpolicy "github.com/domainry/domainry-identity/internal/domain/auth/policy"
+	authrepository "github.com/domainry/domainry-identity/internal/domain/auth/repository"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
@@ -189,12 +188,12 @@ type faultExternalIdentityRepository struct {
 	listAssignmentsErr error
 	upsertUserErr      error
 	reconcileErr       error
-	reconcileCalls     int
+	reconcileCalls     atomic.Int32
 	assignRoleErr      error
 }
 
 func (r *faultExternalIdentityRepository) ReconcileSystemManagedBusinessRoles(context.Context, string) error {
-	r.reconcileCalls++
+	r.reconcileCalls.Add(1)
 	return r.reconcileErr
 }
 

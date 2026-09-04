@@ -66,17 +66,17 @@ func TestIdentityAuthorizationMiddlewareMatrix(t *testing.T) {
 func TestEffectiveMenusRejectsUnknownPrincipalAndPropagatesServiceError(t *testing.T) {
 	handler, response := newIdentityHTTPHandler(&identityHTTPRepository{})
 	handler.principal = func(*http.Request) identitymodel.Principal { return identitymodel.Principal{} }
-	handler.EffectiveMenus(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/identity/effective-menus?surface=admin_console", nil))
+	handler.EffectiveMenus(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/identity/effective-menus", nil))
 	if response.status != http.StatusUnauthorized {
 		t.Fatalf("unknown principal status=%d", response.status)
 	}
 
 	handler, response = newIdentityHTTPHandler(&identityHTTPRepository{})
-	surfaceFreeRequest := httptest.NewRequest(http.MethodGet, "/identity/effective-menus", nil)
-	surfaceFreeRequest = surfaceFreeRequest.WithContext(requestcontext.WithWorkspaceID(surfaceFreeRequest.Context(), "workspace-1"))
-	handler.EffectiveMenus(httptest.NewRecorder(), surfaceFreeRequest)
+	request := httptest.NewRequest(http.MethodGet, "/identity/effective-menus", nil)
+	request = request.WithContext(requestcontext.WithWorkspaceID(request.Context(), "workspace-1"))
+	handler.EffectiveMenus(httptest.NewRecorder(), request)
 	if response.status != http.StatusOK {
-		t.Fatalf("surface-free effective menus status=%d", response.status)
+		t.Fatalf("effective menus status=%d", response.status)
 	}
 
 	handler, response = newIdentityHTTPHandler(&identityHTTPRepository{err: errIdentityHTTPTest})
@@ -87,7 +87,7 @@ func TestEffectiveMenusRejectsUnknownPrincipalAndPropagatesServiceError(t *testi
 			Role:   identitymodel.RoleSchema{},
 		}
 	}
-	handler.EffectiveMenus(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/identity/effective-menus?surface=admin_console", nil))
+	handler.EffectiveMenus(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/identity/effective-menus", nil))
 	if response.status != http.StatusInternalServerError || response.err == nil {
 		t.Fatalf("service status=%d error=%v", response.status, response.err)
 	}
@@ -100,7 +100,7 @@ func TestEffectiveMenusRejectsUnknownPrincipalAndPropagatesServiceError(t *testi
 			Role:   identitymodel.RoleSchema{},
 		}
 	}
-	successRequest := httptest.NewRequest(http.MethodGet, "/identity/effective-menus?surface=admin_console", nil)
+	successRequest := httptest.NewRequest(http.MethodGet, "/identity/effective-menus", nil)
 	successRequest = successRequest.WithContext(requestcontext.WithWorkspaceID(successRequest.Context(), "workspace-1"))
 	handler.EffectiveMenus(httptest.NewRecorder(), successRequest)
 	if response.status != http.StatusOK || response.err != nil {

@@ -10,6 +10,20 @@ permissions:
 jobs:
   go:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: identity_ci
+          POSTGRES_PASSWORD: identity_ci
+          POSTGRES_DB: identity
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U identity_ci -d identity"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     defaults:
       run:
         working-directory: domainry-identity
@@ -35,7 +49,18 @@ jobs:
             printf 'gofmt required:\n%s\n' "$unformatted"
             exit 1
           fi
-      - run: go test ./...
+      - name: Test Go packages
+        run: go test ./...
+      - name: PostgreSQL integration gate
+        env:
+          RUNTIME_POSTGRES_TEST_REQUIRED: "true"
+          RUNTIME_POSTGRES_TEST_DSN: postgres://identity_ci:identity_ci@localhost:5432/identity?sslmode=disable
+        run: >-
+          go test
+          ./internal/infrastructure/persistence/postgres
+          -run '^TestPostgresRuntimePersistenceEndToEnd$'
+          -count=1
+          -v
       - name: Race-check Identity boundaries
         run: >-
           go test -race

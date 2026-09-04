@@ -175,18 +175,18 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	}
 	httpProvider, ok := binding.(identityhttpapi.Provider)
 	if !ok {
-		t.Fatal("module Binding does not expose its HTTP Surfaces")
+		t.Fatal("module Binding does not expose its HTTP Adapters")
 	}
-	surfaces := httpProvider.HTTPSurfaces()
-	if len(surfaces) != 2 {
-		t.Fatalf("HTTP surface count=%d", len(surfaces))
+	adapters := httpProvider.HTTPAdapters()
+	if len(adapters) != 2 {
+		t.Fatalf("HTTP adapter count=%d", len(adapters))
 	}
 	foundUsers, foundLogin := false, false
-	for _, surface := range surfaces {
-		if surface == nil || surface.Handler() == nil || surface.ContractVersion() != identityhttpapi.ContractVersion {
-			t.Fatalf("invalid module HTTP Surface %#v", surface)
+	for _, adapter := range adapters {
+		if adapter == nil || adapter.Handler() == nil || adapter.ContractVersion() != identityhttpapi.ContractVersion {
+			t.Fatalf("invalid module HTTP Adapter %#v", adapter)
 		}
-		for _, route := range surface.Routes() {
+		for _, route := range adapter.Routes() {
 			if route.Pattern() == "GET /identity/users" {
 				foundUsers = true
 			}
@@ -194,23 +194,23 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 				foundLogin = true
 			}
 			if route.Pattern() == "GET /health" {
-				t.Fatalf("standalone-only route leaked into module HTTP Surface: %q", route.Pattern())
+				t.Fatalf("standalone-only route leaked into module HTTP Adapter: %q", route.Pattern())
 			}
 		}
 	}
 	if !foundUsers || !foundLogin {
-		t.Fatalf("module surfaces users=%v login=%v", foundUsers, foundLogin)
+		t.Fatalf("module adapters users=%v login=%v", foundUsers, foundLogin)
 	}
 	mounted := http.NewServeMux()
 	mountedPatterns := map[string]string{}
-	for _, surface := range surfaces {
-		for _, route := range surface.Routes() {
+	for _, adapter := range adapters {
+		for _, route := range adapter.Routes() {
 			pattern := route.Pattern()
 			if owner, duplicate := mountedPatterns[pattern]; duplicate {
-				t.Fatalf("module route %q is duplicated by %q and %q", pattern, owner, surface.Name())
+				t.Fatalf("module route %q is duplicated by %q and %q", pattern, owner, adapter.Name())
 			}
-			mountedPatterns[pattern] = surface.Name()
-			mounted.Handle(pattern, surface.Handler())
+			mountedPatterns[pattern] = adapter.Name()
+			mounted.Handle(pattern, adapter.Handler())
 		}
 	}
 	for pattern, wantExposure := range map[string]identityhttpapi.Exposure{
@@ -219,8 +219,8 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		"POST /auth/login":                                      identityhttpapi.ExposurePublic,
 		"POST /auth/guest":                                      identityhttpapi.ExposurePublic,
 		"POST /auth/providers/{provider}/exchange":              identityhttpapi.ExposurePublic,
-		"GET /auth/providers/{provider}/setup-check":            identityhttpapi.ExposureTenantAdmin,
-		"PUT /auth/providers/{provider}/setup":                  identityhttpapi.ExposureTenantAdmin,
+		"GET /auth/providers/{provider}/setup-check":            identityhttpapi.ExposureManagement,
+		"PUT /auth/providers/{provider}/setup":                  identityhttpapi.ExposureManagement,
 		"GET /auth/external-accounts":                           identityhttpapi.ExposurePublic,
 		"POST /auth/external-accounts/{provider}/bind":          identityhttpapi.ExposurePublic,
 		"DELETE /auth/external-accounts/{provider}/{accountID}": identityhttpapi.ExposurePublic,
@@ -229,18 +229,18 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		"GET /auth/role-options":                                identityhttpapi.ExposurePublic,
 		"GET /auth/role-requests":                               identityhttpapi.ExposurePublic,
 		"POST /auth/role-requests":                              identityhttpapi.ExposurePublic,
-		"POST /auth/reset-password":                             identityhttpapi.ExposureTenantAdmin,
+		"POST /auth/reset-password":                             identityhttpapi.ExposureManagement,
 	} {
 		owner, ok := mountedPatterns[pattern]
 		if !ok {
 			t.Fatalf("module route %q is not exported", pattern)
 		}
 		foundExposure := false
-		for _, surface := range surfaces {
-			if surface.Name() != owner {
+		for _, adapter := range adapters {
+			if adapter.Name() != owner {
 				continue
 			}
-			for _, route := range surface.Routes() {
+			for _, route := range adapter.Routes() {
 				if route.Pattern() == pattern {
 					for _, exposure := range route.Action.Exposures {
 						if exposure == wantExposure {
@@ -291,7 +291,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	if _, err := rolePublisher.PublishProjectRoles(t.Context(), identitysdk.ProjectRoleCatalog{Application: identitysdk.ApplicationRef{WorkspaceID: "other", ApplicationKey: application.ApplicationKey}}); err == nil {
 		t.Fatal("cross-workspace project role publication accepted")
 	}
-	roles, err := binding.Directory().ListRoles(t.Context(), identitysdk.DirectoryQuery{Application: identitysdk.ApplicationScope{WorkspaceID: application.WorkspaceID, ApplicationKey: application.ApplicationKey}})
+	roles, err := binding.Projection().ListRoles(t.Context(), identitysdk.ProjectionQuery{Application: identitysdk.ApplicationScope{WorkspaceID: application.WorkspaceID, ApplicationKey: application.ApplicationKey}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -300,7 +300,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		foundProjectRole = foundProjectRole || role.Key == "project_viewer"
 	}
 	if !foundProjectRole {
-		t.Fatalf("project role missing from directory: %#v", roles)
+		t.Fatalf("project role missing from projection: %#v", roles)
 	}
 
 	unauthenticatedSetup := httptest.NewRecorder()
@@ -321,7 +321,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	if err := embeddedRegistry.Register(actioncontract.ActionDefinition{
 		Key: "customer.read", Owner: "application:orders-runtime", SourceKind: "object_action",
 		CapabilityKey: "customer", CapabilityLabel: "Customer", OperationKey: "read", OperationLabel: "Read customers", Label: "Read customers",
-		Exposures:     []actioncontract.Exposure{actioncontract.ExposureTenantAdmin},
+		Exposures:     []actioncontract.Exposure{actioncontract.ExposureManagement},
 		Authorization: actioncontract.Authorization{Strategy: actioncontract.AuthorizationAuthenticated},
 		NonHTTP:       []actioncontract.NonHTTPBinding{{Kind: "rpc", InvocationKey: "customer.read"}},
 		Permission: &actioncontract.PermissionDefinition{
@@ -375,11 +375,11 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	resetRequest.Header.Set("Idempotency-Key", "reset-missing-user")
 	mounted.ServeHTTP(reset, resetRequest)
 	if reset.Code != http.StatusOK {
-		t.Fatalf("mounted tenant-admin reset-password status=%d body=%s", reset.Code, reset.Body.String())
+		t.Fatalf("mounted management reset-password status=%d body=%s", reset.Code, reset.Body.String())
 	}
 	for _, resourceType := range []string{"role", "permission"} {
 		response := httptest.NewRecorder()
-		request := httptest.NewRequest(http.MethodGet, "/tenant-admin/metadata/definitions/"+resourceType, nil)
+		request := httptest.NewRequest(http.MethodGet, "/metadata/definitions/"+resourceType, nil)
 		request.Header.Set("Authorization", "Bearer "+adminSession.AccessToken)
 		mounted.ServeHTTP(response, request)
 		if response.Code != http.StatusNotFound {
@@ -452,9 +452,9 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	if unbind.Code != http.StatusOK {
 		t.Fatalf("external-account unbind status=%d body=%s", unbind.Code, unbind.Body.String())
 	}
-	managementSurface := surfaces[1]
+	managementAdapter := adapters[1]
 	response := httptest.NewRecorder()
-	managementSurface.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/identity/users", nil))
+	managementAdapter.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/identity/users", nil))
 	if response.Code == http.StatusNotFound {
 		t.Fatal("module management route list points at an unregistered Handler route")
 	}
@@ -597,7 +597,7 @@ func TestFactoryBorrowsProjectPoolWithoutClosingOrColliding(t *testing.T) {
 	if err := db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name LIKE '%schema_migrations'`).Scan(&migrationLedgers); err != nil || migrationLedgers != 1 {
 		t.Fatalf("migration ledgers=%d err=%v", migrationLedgers, err)
 	}
-	if len(registrar.calls) != 1 || registrar.calls[0] != (testEmbeddedMigrationCall{owner: "identity", version: 2, name: "identity_authorization_permissions"}) {
+	if len(registrar.calls) != 1 || registrar.calls[0] != (testEmbeddedMigrationCall{owner: "identity", version: 1, name: "identity_schema"}) {
 		t.Fatalf("host migration calls=%#v", registrar.calls)
 	}
 }

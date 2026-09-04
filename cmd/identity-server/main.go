@@ -82,7 +82,7 @@ func serve() error {
 	serveErr := make(chan error, len(listeners))
 	for _, listener := range listeners {
 		listener := listener
-		logger.Info("Identity backend listening", zap.String("surface", listener.surface), zap.String("address", listener.server.Addr))
+		logger.Info("Identity backend listening", zap.String("group", listener.group), zap.String("address", listener.server.Addr))
 		go func() { serveErr <- listener.server.ListenAndServe() }()
 	}
 
@@ -104,19 +104,19 @@ func serve() error {
 }
 
 type identityHTTPListener struct {
-	surface string
-	server  *http.Server
+	group  string
+	server *http.Server
 }
 
 func identityHTTPListeners(cfg config.Config, identityServer *saasassembly.Service) []identityHTTPListener {
 	if cfg.IsProduction() {
 		return []identityHTTPListener{
-			{surface: "public", server: newIdentityHTTPServer(cfg.HTTPPublicAddr, identityServer.PublicRoutes(), cfg)},
-			{surface: "tenant_admin", server: newIdentityHTTPServer(cfg.HTTPTenantAdminAddr, identityServer.TenantAdminRoutes(), cfg)},
-			{surface: "operations", server: newIdentityHTTPServer(cfg.HTTPOpsAddr, identityServer.OperationsRoutes(), cfg)},
+			{group: "public", server: newIdentityHTTPServer(cfg.HTTPPublicAddr, identityServer.PublicRoutes(), cfg)},
+			{group: "management", server: newIdentityHTTPServer(cfg.HTTPManagementAddr, identityServer.ManagementRoutes(), cfg)},
+			{group: "operations", server: newIdentityHTTPServer(cfg.HTTPOpsAddr, identityServer.OperationsRoutes(), cfg)},
 		}
 	}
-	return []identityHTTPListener{{surface: "development", server: newIdentityHTTPServer(cfg.HTTPAddr(), identityServer.DevelopmentRoutes(), cfg)}}
+	return []identityHTTPListener{{group: "development", server: newIdentityHTTPServer(cfg.HTTPAddr(), identityServer.DevelopmentRoutes(), cfg)}}
 }
 
 func newIdentityHTTPServer(address string, handler http.Handler, cfg config.Config) *http.Server {

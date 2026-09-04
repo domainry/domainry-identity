@@ -12,7 +12,7 @@ import (
 	"github.com/domainry/domainry-orm/query"
 )
 
-func (r MetadataStore) applyIdentityRoleDirectoryMutation(ctx context.Context, tx *sql.Tx, publication *metadatamodel.MetadataDefinitionPublication, mutation metadatamodel.MetadataDefinitionMutation, definition metadatamodel.MetadataDefinition) error {
+func (r MetadataStore) applyIdentityRoleProjectionMutation(ctx context.Context, tx *sql.Tx, publication *metadatamodel.MetadataDefinitionPublication, mutation metadatamodel.MetadataDefinitionMutation, definition metadatamodel.MetadataDefinition) error {
 	if strings.TrimSpace(mutation.ResourceType) != "role" || mutation.Operation == "noop" {
 		return nil
 	}
@@ -25,7 +25,7 @@ func (r MetadataStore) applyIdentityRoleDirectoryMutation(ctx context.Context, t
 	}
 	roleKey := strings.TrimSpace(mutation.ResourceKey)
 	if roleKey == "" {
-		return fmt.Errorf("role directory projection key is required")
+		return fmt.Errorf("role projection projection key is required")
 	}
 	now := definition.UpdatedAt
 	if now == "" {
@@ -36,10 +36,10 @@ func (r MetadataStore) applyIdentityRoleDirectoryMutation(ctx context.Context, t
 	case "create", "update":
 		var role identitymodel.RoleSchema
 		if err := json.Unmarshal(definition.Payload, &role); err != nil {
-			return fmt.Errorf("decode role directory projection %s: %w", roleKey, err)
+			return fmt.Errorf("decode role projection projection %s: %w", roleKey, err)
 		}
 		if strings.TrimSpace(role.Key) != roleKey {
-			return fmt.Errorf("role directory projection identity mismatch: %s", roleKey)
+			return fmt.Errorf("role projection projection identity mismatch: %s", roleKey)
 		}
 		label := strings.TrimSpace(role.Name)
 		if label == "" {
@@ -49,48 +49,48 @@ func (r MetadataStore) applyIdentityRoleDirectoryMutation(ctx context.Context, t
 			Set("label", label).Set("description", strings.TrimSpace(role.Description)).Set("status", string(identitymodel.IdentityStatusActive)).Set("updated_at", now).
 			Where(query.Equal("role_key", roleKey)).Build()
 		if err != nil {
-			return fmt.Errorf("build role directory projection %s update: %w", roleKey, err)
+			return fmt.Errorf("build role projection projection %s update: %w", roleKey, err)
 		}
 		result, err := tx.ExecContext(ctx, statement, arguments...)
 		if err != nil {
-			return fmt.Errorf("update role directory projection %s: %w", roleKey, err)
+			return fmt.Errorf("update role projection projection %s: %w", roleKey, err)
 		}
 		affected, err := result.RowsAffected()
 		if err != nil {
-			return fmt.Errorf("read updated role directory projection %s rows: %w", roleKey, err)
+			return fmt.Errorf("read updated role projection projection %s rows: %w", roleKey, err)
 		}
 		if affected == 1 {
 			return nil
 		}
 		if affected != 0 {
-			return fmt.Errorf("role directory projection %s is not unique", roleKey)
+			return fmt.Errorf("role projection projection %s is not unique", roleKey)
 		}
 		statement, arguments, err = query.NewWorkspaceInsertBuilder(r.store.SQLRenderer, "_identity_roles", workspaceID.String()).
 			Columns("id", "role_key", "label", "description", "status", "created_at", "updated_at").
 			Values(roleKey, roleKey, label, strings.TrimSpace(role.Description), string(identitymodel.IdentityStatusActive), now, now).Build()
 		if err != nil {
-			return fmt.Errorf("build role directory projection %s insert: %w", roleKey, err)
+			return fmt.Errorf("build role projection projection %s insert: %w", roleKey, err)
 		}
 		if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
-			return fmt.Errorf("insert role directory projection %s: %w", roleKey, err)
+			return fmt.Errorf("insert role projection projection %s: %w", roleKey, err)
 		}
 		return nil
 	case "archive", "delete":
 		statement, arguments, err := query.NewWorkspaceUpdateBuilder(r.store.SQLRenderer, "_identity_roles", workspaceID.String()).
 			Set("status", string(identitymodel.IdentityStatusDisabled)).Set("updated_at", now).Where(query.Equal("role_key", roleKey)).Build()
 		if err != nil {
-			return fmt.Errorf("build role directory projection %s disable: %w", roleKey, err)
+			return fmt.Errorf("build role projection projection %s disable: %w", roleKey, err)
 		}
 		result, err := tx.ExecContext(ctx, statement, arguments...)
 		if err != nil {
-			return fmt.Errorf("disable role directory projection %s: %w", roleKey, err)
+			return fmt.Errorf("disable role projection projection %s: %w", roleKey, err)
 		}
 		affected, err := result.RowsAffected()
 		if err != nil {
-			return fmt.Errorf("read disabled role directory projection %s rows: %w", roleKey, err)
+			return fmt.Errorf("read disabled role projection projection %s rows: %w", roleKey, err)
 		}
 		if affected != 1 {
-			return fmt.Errorf("role directory projection %s not found", roleKey)
+			return fmt.Errorf("role projection projection %s not found", roleKey)
 		}
 		return nil
 	default:

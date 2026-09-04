@@ -25,6 +25,10 @@ type Seed struct {
 	RoleMenus         []identitymodel.IdentityRoleMenuAssignment
 }
 
+type identitySeedUserReader interface {
+	GetIdentityUser(context.Context, string, string) (identitymodel.IdentityUser, bool, error)
+}
+
 func FromManifest(manifest manifestmodel.ManifestSchema) Seed {
 	seed := generatedManifestIdentitySeed()
 	if manifest.IdentityBootstrap != nil {
@@ -260,18 +264,14 @@ func SyncIdentitySeeds(ctx context.Context, checkpoint manifestrepository.Identi
 	if err := syncManifestIdentityRoles(ctx, identityStore, seed.Roles); err != nil {
 		return err
 	}
+	seed, err = preserveExistingImplicitSeedUsers(ctx, identityStore, manifest, seed)
+	if err != nil {
+		return err
+	}
 	if err := identityStore.ApplyIdentityBootstrapAtomically(ctx, manifestIdentityWorkspaceID(ctx), seed.OrganizationUnits, seed.Users, seed.UserRoles); err != nil {
 		return fmt.Errorf("sync manifest Identity Bootstrap atomically: %w", err)
 	}
-	declaredUserIDs := map[string]bool{}
-	for _, user := range manifest.Users {
-		declaredUserIDs[strings.TrimSpace(user.ID)] = true
-	}
-	if manifest.IdentityBootstrap != nil {
-		for _, user := range manifest.IdentityBootstrap.Users {
-			declaredUserIDs[strings.TrimSpace(user.ID)] = true
-		}
-	}
+	declaredUserIDs := manifestDeclaredIdentityUserIDs(manifest)
 	for _, user := range seed.Users {
 		if !declaredUserIDs[user.ID] {
 			continue
@@ -293,6 +293,44 @@ func SyncIdentitySeeds(ctx context.Context, checkpoint manifestrepository.Identi
 		return err
 	}
 	return checkpoint.SetManifestIdentitySeedSyncedVersion(ctx, seedSignature)
+}
+
+func preserveExistingImplicitSeedUsers(ctx context.Context, identityStore identityrepository.IdentitySeedRepository, manifest manifestmodel.ManifestSchema, seed Seed) (Seed, error) {
+	reader, ok := identityStore.(identitySeedUserReader)
+	if !ok {
+		return seed, nil
+	}
+	declaredUserIDs := manifestDeclaredIdentityUserIDs(manifest)
+	workspaceID := manifestIdentityWorkspaceID(ctx)
+	users := append([]identitymodel.IdentityUser(nil), seed.Users...)
+	for index, user := range users {
+		if declaredUserIDs[strings.TrimSpace(user.ID)] {
+			continue
+		}
+		existing, found, err := reader.GetIdentityUser(ctx, workspaceID, user.ID)
+		if err != nil {
+			return Seed{}, fmt.Errorf("load implicit identity seed user %s: %w", user.ID, err)
+		}
+		if found {
+			users[index] = existing
+		}
+	}
+	seed.Users = users
+	return seed, nil
+}
+
+func manifestDeclaredIdentityUserIDs(manifest manifestmodel.ManifestSchema) map[string]bool {
+	declared := map[string]bool{}
+	for _, user := range manifest.Users {
+		declared[strings.TrimSpace(user.ID)] = true
+	}
+	if manifest.IdentityBootstrap != nil {
+		for _, user := range manifest.IdentityBootstrap.Users {
+			declared[strings.TrimSpace(user.ID)] = true
+		}
+	}
+	delete(declared, "")
+	return declared
 }
 
 func manifestIdentityWorkspaceID(ctx context.Context) string {

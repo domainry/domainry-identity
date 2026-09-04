@@ -22,12 +22,12 @@ func WithStandaloneIdentityRoleDefinitions(configured []identitymodel.RoleSchema
 	defaults := []identitymodel.RoleSchema{
 		{
 			Key: "admin", Name: "Admin", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, organizationPermissionKeys...),
-			Audience:        identitymodel.IdentityRoleAudienceAny, AssignmentMode: identitymodel.IdentityRoleAssignmentManual,
+			Audience: identitymodel.IdentityRoleAudienceAny, AssignmentMode: identitymodel.IdentityRoleAssignmentManual,
 			RiskLevel: identitymodel.IdentityRoleRiskPrivileged, GrantableRoleKeys: []string{"*"},
 		},
 		{
 			Key: "organization_administrator", Name: "Organization administrator", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, organizationPermissionKeys...),
-			Audience:        identitymodel.IdentityRoleAudienceAny, AssignmentMode: identitymodel.IdentityRoleAssignmentManual,
+			Audience: identitymodel.IdentityRoleAudienceAny, AssignmentMode: identitymodel.IdentityRoleAssignmentManual,
 			RiskLevel: identitymodel.IdentityRoleRiskPrivileged, GrantableRoleKeys: []string{"*"},
 		},
 		{

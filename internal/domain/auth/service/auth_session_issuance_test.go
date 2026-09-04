@@ -23,8 +23,8 @@ func TestSessionIssuance(t *testing.T) {
 		identityRepository.reconcileErr = fault
 		_, err := auth.issueSession(t.Context(), "workspace-primary", user)
 		assertExternalAuthFault(t, err, fault)
-		if identityRepository.reconcileCalls != 1 {
-			t.Fatalf("reconcile calls=%d", identityRepository.reconcileCalls)
+		if identityRepository.reconcileCalls.Load() != 1 {
+			t.Fatalf("reconcile calls=%d", identityRepository.reconcileCalls.Load())
 		}
 	})
 

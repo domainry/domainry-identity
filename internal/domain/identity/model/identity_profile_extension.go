@@ -12,7 +12,6 @@ type BusinessIdentityClaimBinding struct {
 
 type BusinessIdentityBinding struct {
 	Key                string                         `json:"key"`
-	SurfaceKeys        []string                       `json:"surface_keys"`
 	StatusField        string                         `json:"status_field,omitempty"`
 	ActiveStatusValues []string                       `json:"active_status_values,omitempty"`
 	BlacklistField     string                         `json:"blacklist_field,omitempty"`
@@ -32,18 +31,8 @@ type IdentityProfileBindingLifecycle struct {
 	RebindRevokesSessions  bool                        `json:"rebind_revokes_sessions,omitempty"`
 }
 
-type IdentityProfileDirectory struct {
-	Enabled       bool     `json:"enabled,omitempty"`
-	Label         string   `json:"label,omitempty"`
-	PluralLabel   string   `json:"plural_label,omitempty"`
-	SummaryFields []string `json:"summary_fields,omitempty"`
-	FilterFields  []string `json:"filter_fields,omitempty"`
-	StatusField   string   `json:"status_field,omitempty"`
-	ActionKeys    []string `json:"action_keys,omitempty"`
-}
-
 // IdentityProfileExtension is the Runtime-native discovery contract that joins
-// one domain profile object to the global Identity user directory.
+// one domain profile object to a global Identity user.
 type IdentityProfileExtension struct {
 	ContractVersion          string                          `json:"contract_version"`
 	MinReaderVersion         string                          `json:"min_reader_version"`
@@ -52,7 +41,6 @@ type IdentityProfileExtension struct {
 	Cardinality              string                          `json:"cardinality"`
 	BusinessIdentity         BusinessIdentityBinding         `json:"business_identity"`
 	BindingLifecycle         IdentityProfileBindingLifecycle `json:"binding_lifecycle,omitempty"`
-	Directory                IdentityProfileDirectory        `json:"directory,omitempty"`
 	SummaryFields            []string                        `json:"summary_fields,omitempty"`
 	ProfileTabs              []string                        `json:"profile_tabs,omitempty"`
 	ProfileTabLabels         map[string]string               `json:"profile_tab_labels,omitempty"`
