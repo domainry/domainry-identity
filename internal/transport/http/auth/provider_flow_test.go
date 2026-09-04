@@ -138,6 +138,10 @@ func providerFlowRequest(method, target, provider, body string) *http.Request {
 
 func decodeProviderFlowSession(t *testing.T, response *httptest.ResponseRecorder) authmodel.AuthSession {
 	t.Helper()
+	var outcome authmodel.AuthenticationOutcome
+	if err := json.Unmarshal(response.Body.Bytes(), &outcome); err == nil && outcome.Session != nil {
+		return *outcome.Session
+	}
 	var session authmodel.AuthSession
 	if err := json.Unmarshal(response.Body.Bytes(), &session); err != nil {
 		t.Fatalf("decode session: %v body=%s", err, response.Body.String())

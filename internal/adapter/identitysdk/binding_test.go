@@ -75,6 +75,18 @@ func TestSDKAccessBundleDoesNotInventDataAccessFromFunctionGrant(t *testing.T) {
 	}
 }
 
+func TestSDKAccessBundlePreservesTenantScope(t *testing.T) {
+	now := time.Now().UTC()
+	bundle := sdkAccessBundle(identitymodel.IdentityEffectiveAccessSnapshot{
+		AuthorizationRevision: "revision-tenant",
+	}, identitymodel.Principal{
+		TenantID: "tenant-primary", WorkspaceID: "workspace-primary", UserID: "user-1",
+	}, now)
+	if bundle.Subject.TenantID != "tenant-primary" || bundle.Subject.WorkspaceID != "workspace-primary" {
+		t.Fatalf("bundle subject scope=%#v", bundle.Subject)
+	}
+}
+
 func TestSDKAccessBundlePreservesCompleteV4PolicySemantics(t *testing.T) {
 	relation := &identitymodel.IdentityPolicyExpression{
 		Operator: "eq", FieldKey: "owner_id", ValueSource: "actor_claim", ClaimKey: "business_profile_id",

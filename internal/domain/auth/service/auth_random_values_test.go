@@ -6,34 +6,51 @@ import (
 )
 
 func TestRandomTokenSources(t *testing.T) {
-	success := randomTokenFrom(func(buffer []byte) (int, error) {
+	success, err := randomTokenFrom(func(buffer []byte) (int, error) {
 		for index := range buffer {
 			buffer[index] = byte(index + 1)
 		}
 		return len(buffer), nil
-	}, 1)
-	if success == "" {
-		t.Fatal("random token must not be blank")
+	})
+	if err != nil || success == "" {
+		t.Fatalf("random token=%q err=%v", success, err)
 	}
-	fallback := randomTokenFrom(func([]byte) (int, error) {
+	if fallback, err := randomTokenFrom(func([]byte) (int, error) {
 		return 0, errors.New("random source failed")
-	}, 123)
-	if fallback == "" || fallback == success {
-		t.Fatalf("unexpected fallback token %q", fallback)
+	}); err == nil || fallback != "" {
+		t.Fatalf("entropy failure did not fail closed: token=%q err=%v", fallback, err)
+	}
+	if short, err := randomTokenFrom(func(buffer []byte) (int, error) {
+		return len(buffer) - 1, nil
+	}); err == nil || short != "" {
+		t.Fatalf("short entropy read did not fail closed: token=%q err=%v", short, err)
 	}
 }
 
-func TestRandomDigitExtraction(t *testing.T) {
-	if digits := randomDigitsFromToken("a1b2", 2); digits != "12" {
-		t.Fatalf("unexpected extracted digits %q", digits)
+func TestRandomDigitsUseUnbiasedSecureBytes(t *testing.T) {
+	reader := func(buffer []byte) (int, error) {
+		for index := range buffer {
+			buffer[index] = byte(index)
+		}
+		return len(buffer), nil
 	}
-	if digits := randomDigitsFromToken("/A", 3); digits != "012" {
-		t.Fatalf("unexpected digit fallback %q", digits)
+	if digits, err := randomDigitsFrom(reader, 6); err != nil || digits != "012345" {
+		t.Fatalf("random digits=%q err=%v", digits, err)
 	}
-	if digits := randomDigitsFromToken("12", 0); digits != "122345" {
-		t.Fatalf("unexpected default-length digits %q", digits)
+	if digits, err := randomDigitsFrom(reader, 0); err != nil || len(digits) != 6 {
+		t.Fatalf("default random digits=%q err=%v", digits, err)
 	}
-	if digits := randomDigits(1); len(digits) != 1 {
-		t.Fatalf("random digit generator returned %q", digits)
+	if digits, err := randomDigitsFrom(func([]byte) (int, error) {
+		return 0, errors.New("random source failed")
+	}, 6); err == nil || digits != "" {
+		t.Fatalf("digit entropy failure did not fail closed: digits=%q err=%v", digits, err)
+	}
+	if digits, err := randomDigitsFrom(func(buffer []byte) (int, error) {
+		for index := range buffer {
+			buffer[index] = 255
+		}
+		return len(buffer), nil
+	}, 6); err == nil || digits != "" {
+		t.Fatalf("rejection exhaustion did not fail closed: digits=%q err=%v", digits, err)
 	}
 }

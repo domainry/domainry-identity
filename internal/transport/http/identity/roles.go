@@ -110,6 +110,12 @@ func (h *IdentityHandler) getIdentityRoleGovernanceDetail(w http.ResponseWriter,
 		h.writeServiceError(w, r, err)
 		return
 	}
+	resourceHash, err := identityAuthoringResourceHash("identity.role", detail.Role.Key, detail.Definition, true)
+	if err != nil {
+		h.writeServiceError(w, r, err)
+		return
+	}
+	w.Header().Set(identityResourceHashHeader, resourceHash)
 	h.writeJSON(w, http.StatusOK, detail)
 }
 

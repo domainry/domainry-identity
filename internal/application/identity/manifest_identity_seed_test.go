@@ -117,9 +117,16 @@ func TestGeneratedIdentityMenusDoNotPublishBusinessDataOperationsInManagement(t 
 
 func TestGeneratedIdentityMenusDeclareValidParentChains(t *testing.T) {
 	menus := generatedIdentityMenus()
+	if len(menus) != 31 {
+		t.Fatalf("platform Admin menu count=%d want=31 (6 groups + 25 workspaces)", len(menus))
+	}
 	byID := make(map[string]identitymodel.IdentityMenu, len(menus))
+	routes := map[string]bool{}
 	for _, menu := range menus {
 		byID[menu.ID] = menu
+		if menu.Route != "" {
+			routes[menu.Route] = true
+		}
 	}
 	for _, menu := range menus {
 		if menu.ParentID == "" {
@@ -128,6 +135,27 @@ func TestGeneratedIdentityMenusDeclareValidParentChains(t *testing.T) {
 		_, ok := byID[menu.ParentID]
 		if !ok {
 			t.Fatalf("menu %q parent %q missing", menu.Key, menu.ParentID)
+		}
+	}
+	wantRoutes := []string{
+		"/admin/security/accounts", "/admin/org/organization-units", "/admin/org/roles",
+		"/admin/security/access-governance", "/admin/org/field-permissions", "/admin/org/menus",
+		"/admin/system/metadata", "/admin/system/domain-impact", "/admin/system/dictionaries", "/admin/system/actions",
+		"/admin/system/workflows", "/admin/system/workflow-processes", "/admin/system/automation-rules",
+		"/admin/system/scheduler", "/admin/system/scheduler-operations",
+		"/admin/system/connectors", "/admin/system/integration-activity", "/admin/system/notifications",
+		"/admin/system/audit", "/admin/system/lifecycle", "/admin/system/privacy-requests",
+		"/admin/system", "/admin/system/capability-status", "/admin/system/operations", "/admin/system/agent-operations",
+	}
+	if len(routes) != len(wantRoutes) {
+		t.Fatalf("platform Admin routed menu count=%d want=%d: %#v", len(routes), len(wantRoutes), routes)
+	}
+	for _, route := range wantRoutes {
+		if !routes[route] {
+			t.Fatalf("platform Admin route %q is not seeded", route)
+		}
+		if permissions, ok := platformAdminPagePermissions(route); !ok || len(permissions) == 0 {
+			t.Fatalf("platform Admin route %q has no menu permission contract", route)
 		}
 	}
 }

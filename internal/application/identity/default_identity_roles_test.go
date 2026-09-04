@@ -52,3 +52,27 @@ func TestGeneratedIdentityAdminSeedKeepsGovernanceAuditMenuAssigned(t *testing.T
 		t.Fatalf("governance audit seed menu=%v assignment=%v", menuFound, assignmentFound)
 	}
 }
+
+func TestGeneratedIdentityOrganizationAdministratorMenusMatchItsOwnedPermissions(t *testing.T) {
+	seed := generatedManifestIdentitySeed()
+	assigned := map[string]bool{}
+	for _, assignment := range seed.RoleMenus {
+		if assignment.RoleID == "organization_administrator" {
+			assigned[assignment.MenuID] = true
+		}
+	}
+	for _, expected := range []string{
+		"org_access", "org_users", "org_organization_units", "org_roles",
+		"org_access_governance", "org_field_permissions", "org_menus",
+		"model_config", "system_metadata",
+	} {
+		if !assigned[expected] {
+			t.Fatalf("organization administrator missing menu %q: %#v", expected, assigned)
+		}
+	}
+	for _, forbidden := range []string{"data_compliance", "system_audit"} {
+		if assigned[forbidden] {
+			t.Fatalf("organization administrator received menu %q without its required Audit permission: %#v", forbidden, assigned)
+		}
+	}
+}

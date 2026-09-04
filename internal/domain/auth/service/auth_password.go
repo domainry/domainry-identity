@@ -84,37 +84,48 @@ func (s *AuthDomainService) Login(ctx context.Context, workspaceID, login, passw
 }
 
 func (s *AuthDomainService) LoginForApplication(ctx context.Context, workspaceID, login, password, applicationKey string) (authmodel.AuthSession, error) {
-	user, ok, err := s.identity.UserByLogin(ctx, login)
+	user, err := s.AuthenticatePassword(ctx, workspaceID, login, password)
 	if err != nil {
 		return authmodel.AuthSession{}, err
 	}
+	return s.issueSessionForAudienceWithAuthentication(ctx, workspaceID, user, applicationKey, passwordAuthenticationContext())
+}
+
+// AuthenticatePassword verifies the first factor without issuing any token.
+// Challenge-aware flows use this boundary so an enrolled second factor cannot
+// be bypassed by session creation inside password verification.
+func (s *AuthDomainService) AuthenticatePassword(ctx context.Context, workspaceID, login, password string) (identitymodel.IdentityUser, error) {
+	user, ok, err := s.identity.UserByLogin(ctx, login)
+	if err != nil {
+		return identitymodel.IdentityUser{}, err
+	}
 	if !ok || user.Status != identitymodel.IdentityStatusActive {
-		return authmodel.AuthSession{}, forbidden("auth.invalid_credentials")
+		return identitymodel.IdentityUser{}, forbidden("auth.invalid_credentials")
 	}
 	credential, ok, err := s.identityStore.GetIdentityCredential(ctx, workspaceID, user.ID)
 	if err != nil {
-		return authmodel.AuthSession{}, err
+		return identitymodel.IdentityUser{}, err
 	}
 	if !ok {
-		return authmodel.AuthSession{}, forbidden("auth.invalid_credentials")
+		return identitymodel.IdentityUser{}, forbidden("auth.invalid_credentials")
 	}
 	if credentialLocked(credential, time.Now().UTC()) {
-		return authmodel.AuthSession{}, forbidden("auth.account_locked")
+		return identitymodel.IdentityUser{}, forbidden("auth.account_locked")
 	}
 	credential, err = s.liftExpiredLock(ctx, workspaceID, credential)
 	if err != nil {
-		return authmodel.AuthSession{}, err
+		return identitymodel.IdentityUser{}, err
 	}
 	if bcrypt.CompareHashAndPassword([]byte(credential.PasswordHash), []byte(password)) != nil {
 		if err := s.recordLoginFailure(ctx, workspaceID, credential); err != nil {
-			return authmodel.AuthSession{}, err
+			return identitymodel.IdentityUser{}, err
 		}
-		return authmodel.AuthSession{}, forbidden("auth.invalid_credentials")
+		return identitymodel.IdentityUser{}, forbidden("auth.invalid_credentials")
 	}
 	if err := s.identityStore.RecordIdentityLoginSuccess(ctx, workspaceID, user.ID, time.Now().UTC().Format(time.RFC3339)); err != nil {
-		return authmodel.AuthSession{}, err
+		return identitymodel.IdentityUser{}, err
 	}
-	return s.issueSessionForAudience(ctx, workspaceID, user, applicationKey)
+	return user, nil
 }
 
 func (s *AuthDomainService) ChangePassword(ctx context.Context, workspaceID, userID string, currentPassword string, newPassword string) error {

@@ -50,7 +50,9 @@ func (s *AuthDomainService) RefreshForApplication(ctx context.Context, workspace
 	if !ok || user.Status != identitymodel.IdentityStatusActive {
 		return authmodel.AuthSession{}, forbidden("auth.user_disabled")
 	}
-	result, replacement, err := s.prepareSessionForAudienceWithID(ctx, workspaceID, user, session.SessionID, session.Audience)
+	result, replacement, err := s.prepareSessionForAudienceWithIDAndAuthentication(ctx, workspaceID, user, session.SessionID, session.Audience, authmodel.AuthenticationContext{
+		AuthenticationTime: session.AuthenticationTime, Methods: session.AuthenticationMethods, AssuranceLevel: session.AssuranceLevel,
+	})
 	if err != nil {
 		return authmodel.AuthSession{}, err
 	}

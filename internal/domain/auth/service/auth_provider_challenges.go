@@ -13,6 +13,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -36,9 +37,23 @@ func (s *AuthDomainService) BeginProviderLoginForApplication(ctx context.Context
 	if provider == "" || provider == "local" {
 		return authprojection.AuthProviderStartResponse{}, badRequest("auth.provider_invalid")
 	}
-	state := randomToken()
-	nonce := randomToken()
-	codeVerifier := randomToken() + randomToken()
+	state, err := s.randomToken()
+	if err != nil {
+		return authprojection.AuthProviderStartResponse{}, internalError("generate provider state", err)
+	}
+	nonce, err := s.randomToken()
+	if err != nil {
+		return authprojection.AuthProviderStartResponse{}, internalError("generate provider nonce", err)
+	}
+	verifierFirst, err := s.randomToken()
+	if err != nil {
+		return authprojection.AuthProviderStartResponse{}, internalError("generate PKCE verifier", err)
+	}
+	verifierSecond, err := s.randomToken()
+	if err != nil {
+		return authprojection.AuthProviderStartResponse{}, internalError("generate PKCE verifier", err)
+	}
+	codeVerifier := verifierFirst + verifierSecond
 	codeChallengeDigest := sha256.Sum256([]byte(codeVerifier))
 	codeChallenge := base64.RawURLEncoding.EncodeToString(codeChallengeDigest[:])
 	now := time.Now().UTC()
@@ -90,7 +105,14 @@ func (s *AuthDomainService) BeginSAMLLoginForApplication(ctx context.Context, wo
 	if provider == "" || provider == "local" {
 		return authprojection.AuthProviderStartResponse{}, badRequest("auth.provider_invalid")
 	}
-	state := randomToken()
+	state, err := s.randomToken()
+	if err != nil {
+		return authprojection.AuthProviderStartResponse{}, internalError("generate provider state", err)
+	}
+	requestID, err := s.randomToken()
+	if err != nil {
+		return authprojection.AuthProviderStartResponse{}, internalError("generate SAML request identifier", err)
+	}
 	now := time.Now().UTC()
 	expiresAt := now.Add(10 * time.Minute)
 	challenge := authmodel.AuthProviderChallenge{
@@ -99,7 +121,7 @@ func (s *AuthDomainService) BeginSAMLLoginForApplication(ctx context.Context, wo
 		Provider:       provider,
 		RedirectURL:    strings.TrimSpace(acsURL),
 		State:          state,
-		RequestID:      "_" + randomToken(),
+		RequestID:      "_" + requestID,
 		ReturnURL:      strings.TrimSpace(returnURL),
 		ExpiresAt:      expiresAt.Format(time.RFC3339),
 		CreatedAt:      now.Format(time.RFC3339),
@@ -126,6 +148,18 @@ func (s *AuthDomainService) BeginOTPLogin(ctx context.Context, workspaceID, prov
 }
 
 func (s *AuthDomainService) BeginOTPLoginForApplication(ctx context.Context, workspaceID, provider string, phone string, applicationKey string) (authprojection.AuthProviderStartResponse, error) {
+	result, err := s.BeginOTPChallenge(ctx, workspaceID, provider, phone, applicationKey, authmodel.AuthChallengePurposeLogin, "", nil)
+	if err != nil {
+		return authprojection.AuthProviderStartResponse{}, err
+	}
+	if err := s.UpdateOTPChallengeDelivery(ctx, workspaceID, provider, result.State, authmodel.AuthChallengeStatusActive, "local", ""); err != nil {
+		return authprojection.AuthProviderStartResponse{}, err
+	}
+	result.Status = authmodel.AuthChallengeStatusActive
+	return result, nil
+}
+
+func (s *AuthDomainService) BeginOTPChallenge(ctx context.Context, workspaceID, provider, phone, applicationKey, purpose, userID string, authenticationMethods []string) (authprojection.AuthProviderStartResponse, error) {
 	if err := ctx.Err(); err != nil {
 		return authprojection.AuthProviderStartResponse{}, err
 	}
@@ -135,9 +169,13 @@ func (s *AuthDomainService) BeginOTPLoginForApplication(ctx context.Context, wor
 		return authprojection.AuthProviderStartResponse{}, err
 	}
 	workspaceID = workspace.String()
-	phone = strings.TrimSpace(phone)
-	if provider == "" || phone == "" {
+	phone, err = normalizeE164Phone(phone)
+	if provider == "" || err != nil {
 		return authprojection.AuthProviderStartResponse{}, badRequest("auth.otp_phone_required")
+	}
+	purpose = strings.TrimSpace(purpose)
+	if purpose == "" {
+		purpose = authmodel.AuthChallengePurposeLogin
 	}
 	now := time.Now().UTC()
 	_, persistent := s.identityStore.(authrepository.AuthLoginTransactionRepository)
@@ -157,18 +195,37 @@ func (s *AuthDomainService) BeginOTPLoginForApplication(ctx context.Context, wor
 			}
 		}
 	}
-	state := randomToken()
-	code := randomDigits(6)
+	state, err := s.randomToken()
+	if err != nil {
+		if !persistent {
+			s.challengeMu.Unlock()
+		}
+		return authprojection.AuthProviderStartResponse{}, internalError("generate OTP state", err)
+	}
+	code, err := s.randomDigits(6)
+	if err != nil {
+		if !persistent {
+			s.challengeMu.Unlock()
+		}
+		return authprojection.AuthProviderStartResponse{}, internalError("generate OTP code", err)
+	}
 	expiresAt := now.Add(10 * time.Minute)
 	challenge := authmodel.AuthProviderChallenge{
-		WorkspaceID:    workspaceID,
-		ApplicationKey: strings.TrimSpace(applicationKey),
-		Provider:       provider,
-		State:          state,
-		Phone:          phone,
-		Code:           code,
-		ExpiresAt:      expiresAt.Format(time.RFC3339),
-		CreatedAt:      now.Format(time.RFC3339),
+		WorkspaceID:           workspaceID,
+		ApplicationKey:        strings.TrimSpace(applicationKey),
+		Provider:              provider,
+		Type:                  "otp",
+		Purpose:               purpose,
+		Status:                authmodel.AuthChallengeStatusPending,
+		UserID:                strings.TrimSpace(userID),
+		State:                 state,
+		Phone:                 phone,
+		Code:                  code,
+		MaskedDestination:     maskPhoneDestination(phone),
+		RetryAt:               now.Add(s.otpResendCooldown).Format(time.RFC3339),
+		AuthenticationMethods: append([]string(nil), authenticationMethods...),
+		ExpiresAt:             expiresAt.Format(time.RFC3339),
+		CreatedAt:             now.Format(time.RFC3339),
 	}
 	if persistent {
 		created, err := otpTransactions.CreateAuthOTPTransaction(ctx, challenge, s.otpDeliveryKey(workspaceID, provider, phone), now.Add(s.otpResendCooldown), now)
@@ -183,11 +240,32 @@ func (s *AuthDomainService) BeginOTPLoginForApplication(ctx context.Context, wor
 		s.challengeMu.Unlock()
 	}
 	return authprojection.AuthProviderStartResponse{
-		Provider:  provider,
-		State:     state,
-		Code:      code,
-		ExpiresAt: challenge.ExpiresAt,
+		Provider: provider, State: state, Type: challenge.Type, Purpose: challenge.Purpose, Status: challenge.Status,
+		Code: code, MaskedDestination: challenge.MaskedDestination, RetryAt: challenge.RetryAt, ExpiresAt: challenge.ExpiresAt,
 	}, nil
+}
+
+func (s *AuthDomainService) UpdateOTPChallengeDelivery(ctx context.Context, workspaceID, provider, state, status, deliveryRef, deliveryError string) error {
+	status = strings.TrimSpace(status)
+	if status != authmodel.AuthChallengeStatusActive && status != authmodel.AuthChallengeStatusFailed {
+		return badRequest("auth.otp_delivery_status_invalid")
+	}
+	if transactions, ok := s.identityStore.(authrepository.AuthOTPTransactionRepository); ok {
+		return transactions.UpdateAuthOTPTransactionStatus(ctx, workspaceID, provider, state, status, deliveryRef, deliveryError, time.Now().UTC())
+	}
+	s.challengeMu.Lock()
+	defer s.challengeMu.Unlock()
+	challenge, ok := s.challenges[strings.TrimSpace(state)]
+	if !ok || challenge.WorkspaceID != strings.TrimSpace(workspaceID) || challenge.Provider != normalizeProvider(provider) {
+		return forbidden("auth.provider_state_invalid")
+	}
+	challenge.Status, challenge.DeliveryRef, challenge.DeliveryError = status, strings.TrimSpace(deliveryRef), strings.TrimSpace(deliveryError)
+	if status == authmodel.AuthChallengeStatusFailed {
+		delete(s.challenges, challenge.State)
+	} else {
+		s.challenges[challenge.State] = challenge
+	}
+	return nil
 }
 
 func (s *AuthDomainService) otpDeliveryKey(workspaceID, provider, phone string) string {
@@ -238,47 +316,56 @@ func (s *AuthDomainService) ConsumeProviderChallenge(ctx context.Context, worksp
 }
 
 func (s *AuthDomainService) ConsumeOTPChallenge(ctx context.Context, workspaceID, provider string, state string, code string) (authmodel.AuthExternalIdentityAssertion, error) {
-	assertion, _, err := s.consumeOTPChallenge(ctx, workspaceID, provider, state, code)
+	assertion, _, err := s.consumeOTPChallenge(ctx, workspaceID, provider, state, code, []string{authmodel.AuthChallengePurposeLogin}, "")
 	return assertion, err
 }
 
-func (s *AuthDomainService) consumeOTPChallenge(ctx context.Context, workspaceID, provider string, state string, code string) (authmodel.AuthExternalIdentityAssertion, string, error) {
+func (s *AuthDomainService) consumeOTPChallenge(ctx context.Context, workspaceID, provider string, state string, code string, allowedPurposes []string, expectedUserID string) (authmodel.AuthExternalIdentityAssertion, authmodel.AuthProviderChallenge, error) {
 	if err := ctx.Err(); err != nil {
-		return authmodel.AuthExternalIdentityAssertion{}, "", err
+		return authmodel.AuthExternalIdentityAssertion{}, authmodel.AuthProviderChallenge{}, err
 	}
 	provider = normalizeProvider(provider)
 	workspace, err := identitymodel.NewWorkspaceID(workspaceID)
 	if err != nil {
-		return authmodel.AuthExternalIdentityAssertion{}, "", err
+		return authmodel.AuthExternalIdentityAssertion{}, authmodel.AuthProviderChallenge{}, err
 	}
 	workspaceID = workspace.String()
 	state = strings.TrimSpace(state)
 	if provider == "" || state == "" {
-		return authmodel.AuthExternalIdentityAssertion{}, "", forbidden("auth.provider_state_invalid")
+		return authmodel.AuthExternalIdentityAssertion{}, authmodel.AuthProviderChallenge{}, forbidden("auth.provider_state_invalid")
 	}
 	if transactions, ok := s.identityStore.(authrepository.AuthOTPTransactionRepository); ok {
-		challenge, valid, err := transactions.ConsumeAuthOTPTransaction(ctx, workspaceID, provider, state, code, s.otpMaxAttempts, time.Now().UTC())
+		challenge, valid, err := transactions.ConsumeAuthOTPTransaction(ctx, workspaceID, provider, state, code, allowedPurposes, expectedUserID, s.otpMaxAttempts, time.Now().UTC())
 		if err != nil {
-			return authmodel.AuthExternalIdentityAssertion{}, "", err
+			return authmodel.AuthExternalIdentityAssertion{}, authmodel.AuthProviderChallenge{}, err
 		}
 		if challenge.State == "" {
-			return authmodel.AuthExternalIdentityAssertion{}, "", forbidden("auth.provider_state_invalid")
+			return authmodel.AuthExternalIdentityAssertion{}, authmodel.AuthProviderChallenge{}, forbidden("auth.provider_state_invalid")
 		}
 		if !valid {
-			return authmodel.AuthExternalIdentityAssertion{}, "", forbidden("auth.otp_code_invalid")
+			return authmodel.AuthExternalIdentityAssertion{}, challenge, forbidden("auth.otp_code_invalid")
 		}
-		return otpAssertion(challenge), strings.TrimSpace(challenge.ApplicationKey), nil
+		challenge.Status = authmodel.AuthChallengeStatusConsumed
+		return otpAssertion(challenge), challenge, nil
 	}
 	s.challengeMu.Lock()
 	challenge, ok := s.challenges[state]
 	if !ok || challenge.WorkspaceID != workspaceID || challenge.Provider != provider {
 		s.challengeMu.Unlock()
-		return authmodel.AuthExternalIdentityAssertion{}, "", forbidden("auth.provider_state_invalid")
+		return authmodel.AuthExternalIdentityAssertion{}, authmodel.AuthProviderChallenge{}, forbidden("auth.provider_state_invalid")
+	}
+	if !otpChallengeMatchesPurposeAndUser(challenge, allowedPurposes, expectedUserID) {
+		s.challengeMu.Unlock()
+		return authmodel.AuthExternalIdentityAssertion{}, authmodel.AuthProviderChallenge{}, forbidden("auth.provider_state_invalid")
+	}
+	if challenge.Status != "" && challenge.Status != authmodel.AuthChallengeStatusActive {
+		s.challengeMu.Unlock()
+		return authmodel.AuthExternalIdentityAssertion{}, authmodel.AuthProviderChallenge{}, forbidden("auth.provider_state_invalid")
 	}
 	if tokenExpired(challenge.ExpiresAt) {
 		delete(s.challenges, state)
 		s.challengeMu.Unlock()
-		return authmodel.AuthExternalIdentityAssertion{}, "", forbidden("auth.provider_state_invalid")
+		return authmodel.AuthExternalIdentityAssertion{}, authmodel.AuthProviderChallenge{}, forbidden("auth.provider_state_invalid")
 	}
 	if subtle.ConstantTimeCompare([]byte(strings.TrimSpace(challenge.Code)), []byte(strings.TrimSpace(code))) != 1 {
 		challenge.Attempts++
@@ -288,11 +375,54 @@ func (s *AuthDomainService) consumeOTPChallenge(ctx context.Context, workspaceID
 			s.challenges[state] = challenge
 		}
 		s.challengeMu.Unlock()
-		return authmodel.AuthExternalIdentityAssertion{}, "", forbidden("auth.otp_code_invalid")
+		return authmodel.AuthExternalIdentityAssertion{}, challenge, forbidden("auth.otp_code_invalid")
 	}
 	delete(s.challenges, state)
 	s.challengeMu.Unlock()
-	return otpAssertion(challenge), strings.TrimSpace(challenge.ApplicationKey), nil
+	challenge.Status = authmodel.AuthChallengeStatusConsumed
+	return otpAssertion(challenge), challenge, nil
+}
+
+func otpChallengeMatchesPurposeAndUser(challenge authmodel.AuthProviderChallenge, allowedPurposes []string, expectedUserID string) bool {
+	purposeAllowed := len(allowedPurposes) == 0
+	for _, purpose := range allowedPurposes {
+		if strings.TrimSpace(purpose) == strings.TrimSpace(challenge.Purpose) {
+			purposeAllowed = true
+			break
+		}
+	}
+	return purposeAllowed && (strings.TrimSpace(expectedUserID) == "" || strings.TrimSpace(challenge.UserID) == strings.TrimSpace(expectedUserID))
+}
+
+func normalizeE164Phone(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if strings.HasPrefix(value, "00") {
+		value = "+" + value[2:]
+	}
+	var digits strings.Builder
+	for index, char := range value {
+		switch {
+		case char >= '0' && char <= '9':
+			digits.WriteRune(char)
+		case char == '+' && index == 0:
+		case char == ' ' || char == '-' || char == '(' || char == ')' || char == '.':
+		default:
+			return "", fmt.Errorf("phone contains unsupported characters")
+		}
+	}
+	normalized := digits.String()
+	if len(normalized) < 8 || len(normalized) > 15 || normalized[0] == '0' {
+		return "", fmt.Errorf("phone is not E.164 compatible")
+	}
+	return "+" + normalized, nil
+}
+
+func maskPhoneDestination(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) <= 5 {
+		return "****"
+	}
+	return value[:2] + strings.Repeat("*", len(value)-6) + value[len(value)-4:]
 }
 
 func otpAssertion(challenge authmodel.AuthProviderChallenge) authmodel.AuthExternalIdentityAssertion {

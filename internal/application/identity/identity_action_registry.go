@@ -98,7 +98,11 @@ func (registry *IdentityActionRegistry) RequiredPermissionsForPage(route string)
 	if registry == nil {
 		return nil, false
 	}
-	permission := registry.pagePermissionByRoute[strings.TrimSpace(route)]
+	route = strings.TrimSpace(route)
+	if permissions, ok := platformAdminPagePermissions(route); ok {
+		return permissions, true
+	}
+	permission := registry.pagePermissionByRoute[route]
 	if permission == "" {
 		return nil, false
 	}

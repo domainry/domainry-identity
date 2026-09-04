@@ -13,10 +13,15 @@ type AuthMeResponse struct {
 
 // AuthProviderStartResponse is the public projection for an external login challenge.
 type AuthProviderStartResponse struct {
-	Provider  string `json:"provider"`
-	State     string `json:"state"`
-	Nonce     string `json:"nonce,omitempty"`
-	Code      string `json:"code,omitempty"`
-	AuthURL   string `json:"auth_url,omitempty"`
-	ExpiresAt string `json:"expires_at"`
+	Provider          string `json:"provider"`
+	State             string `json:"state"`
+	Type              string `json:"type,omitempty"`
+	Purpose           string `json:"purpose,omitempty"`
+	Status            string `json:"status,omitempty"`
+	Nonce             string `json:"nonce,omitempty"`
+	Code              string `json:"code,omitempty"`
+	AuthURL           string `json:"auth_url,omitempty"`
+	MaskedDestination string `json:"masked_destination,omitempty"`
+	RetryAt           string `json:"retry_at,omitempty"`
+	ExpiresAt         string `json:"expires_at"`
 }

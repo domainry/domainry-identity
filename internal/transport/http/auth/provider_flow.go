@@ -56,7 +56,29 @@ func (h *AuthHandler) authProviderVerify(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	result, err := h.providerFlows.VerifyOTP(requestcontext.WithWorkspaceID(r.Context(), workspaceID), workspaceID, provider, req.State, req.Code)
+	flowContext := requestcontext.WithWorkspaceID(r.Context(), workspaceID)
+	if challengeAware, ok := h.providerFlows.(authChallengeAwareProviderFlow); ok {
+		outcome, err := challengeAware.VerifyOTPOutcome(flowContext, workspaceID, provider, req.State, req.Code)
+		if err != nil {
+			code := apperror.CodeOf(err)
+			if code == "auth.provider_state_invalid" {
+				h.providerFailureAudit(r, provider, "otp_verify")
+				h.writeError(w, r, http.StatusForbidden, code)
+				return
+			}
+			if code == "auth.otp_code_invalid" {
+				h.providerFailureAudit(r, provider, "otp_verify")
+				h.writeServiceError(w, r, err)
+				return
+			}
+			h.providerFailureAudit(r, provider, "external_login")
+			h.writeError(w, r, http.StatusForbidden, "auth.external_account_unlinked")
+			return
+		}
+		h.writeJSON(w, http.StatusOK, outcome)
+		return
+	}
+	result, err := h.providerFlows.VerifyOTP(flowContext, workspaceID, provider, req.State, req.Code)
 	if err != nil && apperror.CodeOf(err) == "auth.provider_state_invalid" {
 		h.providerFailureAudit(r, provider, "otp_verify")
 		h.writeError(w, r, http.StatusForbidden, "auth.provider_state_invalid")

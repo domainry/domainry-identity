@@ -343,6 +343,14 @@ func (binding *moduleBinding) HTTPAdapters() []identityhttpapi.Adapter {
 	return append([]identityhttpapi.Adapter(nil), binding.adapters...)
 }
 
+// AuthorizationActions exposes Identity's complete canonical Action manifest
+// to an embedding Runtime. HTTPAdapters intentionally contains only mounted
+// browser/management routes; Identity also owns non-HTTP metadata use cases
+// whose Permission definitions must participate in the host registry.
+func (*moduleBinding) AuthorizationActions() ([]actioncontract.ActionDefinition, error) {
+	return identityapplicationinternal.IdentityBuiltinAuthorizationActions(), nil
+}
+
 func (binding *moduleBinding) BindPermissionUsageProvider(provider actioncontract.PermissionUsageProvider) error {
 	if binding == nil || binding.runtime == nil || binding.runtime.PermissionCatalog == nil {
 		return fmt.Errorf("Identity module Permission catalog is unavailable")
@@ -361,6 +369,28 @@ func (binding *moduleBinding) ApplicationServiceVerifier() identitysdk.Applicati
 	return services.ApplicationServiceVerifier()
 }
 
+func (binding *moduleBinding) ActionAssurance() identitysdk.ActionAssurance {
+	if binding == nil || binding.Binding == nil {
+		return nil
+	}
+	assurance, ok := binding.Binding.(identitysdk.ActionAssuranceBinding)
+	if !ok {
+		return nil
+	}
+	return assurance.ActionAssurance()
+}
+
+func (binding *moduleBinding) ChallengeAuthentication() identitysdk.ChallengeAuthentication {
+	if binding == nil || binding.Binding == nil {
+		return nil
+	}
+	challenge, ok := binding.Binding.(identitysdk.ChallengeAuthenticationBinding)
+	if !ok {
+		return nil
+	}
+	return challenge.ChallengeAuthentication()
+}
+
 func (binding *moduleBinding) Close(ctx context.Context) error {
 	if binding == nil || binding.runtime == nil {
 		return nil
@@ -373,6 +403,10 @@ var _ identitysdk.DatabaseFactory = (*Factory)(nil)
 var _ identitysdk.BootstrapDatabaseFactory = (*Factory)(nil)
 var _ identitysdk.Binding = (*moduleBinding)(nil)
 var _ identitysdk.PermissionUsageProviderBinder = (*moduleBinding)(nil)
+var _ identitysdk.SecurityChallengeDeliveryBinder = (*moduleBinding)(nil)
 var _ identitysdk.ApplicationServiceVerificationBinding = (*moduleBinding)(nil)
+var _ identitysdk.ChallengeAuthenticationBinding = (*moduleBinding)(nil)
+var _ identitysdk.ActionAssuranceBinding = (*moduleBinding)(nil)
 var _ identitysdk.ProjectRoleCatalogPublisher = (*moduleBinding)(nil)
 var _ identityhttpapi.Provider = (*moduleBinding)(nil)
+var _ actioncontract.Provider = (*moduleBinding)(nil)

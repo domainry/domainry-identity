@@ -15,6 +15,10 @@ type applicationServiceTokenAuthority interface {
 	VerifyApplicationServiceToken(context.Context, identitysdk.VerifyApplicationServiceTokenRequest) (identitysdk.ApplicationServicePrincipal, error)
 }
 
+type actionAssuranceBinding interface {
+	ActionAssurance() identitysdk.ActionAssurance
+}
+
 type Support struct {
 	DecodeJSON        func(http.ResponseWriter, *http.Request, any) bool
 	WriteJSON         func(http.ResponseWriter, int, any)
@@ -152,6 +156,60 @@ func RegisterRoutes(registrar RouteRegistrar, binding identitysdk.Binding, suppo
 			return
 		}
 		support.writeJSON(w, http.StatusOK, session)
+	})
+	registrar.HandleFunc("POST /auth/action-assurance/challenges", func(w http.ResponseWriter, r *http.Request) {
+		var request identitysdk.BeginActionAssuranceRequest
+		if !support.decodeJSON(w, r, &request) {
+			return
+		}
+		request.AccessToken = sdkBearerToken(r.Header.Get("Authorization"))
+		assurance, ok := binding.(actionAssuranceBinding)
+		if !ok || assurance.ActionAssurance() == nil {
+			support.writeError(w, r, http.StatusNotImplemented, "identity.action_assurance_unavailable")
+			return
+		}
+		challenge, err := assurance.ActionAssurance().BeginActionAssurance(r.Context(), request)
+		if err != nil {
+			support.writeServiceError(w, r, err)
+			return
+		}
+		support.writeJSON(w, http.StatusOK, challenge)
+	})
+	registrar.HandleFunc("POST /auth/action-assurance/challenges/verify", func(w http.ResponseWriter, r *http.Request) {
+		var request identitysdk.VerifyActionAssuranceRequest
+		if !support.decodeJSON(w, r, &request) {
+			return
+		}
+		request.AccessToken = sdkBearerToken(r.Header.Get("Authorization"))
+		assurance, ok := binding.(actionAssuranceBinding)
+		if !ok || assurance.ActionAssurance() == nil {
+			support.writeError(w, r, http.StatusNotImplemented, "identity.action_assurance_unavailable")
+			return
+		}
+		receipt, err := assurance.ActionAssurance().VerifyActionAssurance(r.Context(), request)
+		if err != nil {
+			support.writeServiceError(w, r, err)
+			return
+		}
+		support.writeJSON(w, http.StatusOK, receipt)
+	})
+	registrar.HandleFunc("POST /auth/action-assurance/receipts/validate", func(w http.ResponseWriter, r *http.Request) {
+		var request identitysdk.ValidateActionAssuranceReceiptRequest
+		if !support.decodeJSON(w, r, &request) {
+			return
+		}
+		request.AccessToken = sdkBearerToken(r.Header.Get("Authorization"))
+		assurance, ok := binding.(actionAssuranceBinding)
+		if !ok || assurance.ActionAssurance() == nil {
+			support.writeError(w, r, http.StatusNotImplemented, "identity.action_assurance_unavailable")
+			return
+		}
+		receipt, err := assurance.ActionAssurance().ValidateActionAssuranceReceipt(r.Context(), request)
+		if err != nil {
+			support.writeServiceError(w, r, err)
+			return
+		}
+		support.writeJSON(w, http.StatusOK, receipt)
 	})
 	registrar.HandleFunc("POST /identity/access-bundle", func(w http.ResponseWriter, r *http.Request) {
 		var request struct {

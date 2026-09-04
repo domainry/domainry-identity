@@ -103,17 +103,17 @@ func TestAuthDomainConstructorExplicitConfiguration(t *testing.T) {
 func TestOTPResendStoredChallengeShortCircuitEdges(t *testing.T) {
 	now := time.Now().UTC()
 	tests := []authmodel.AuthProviderChallenge{
-		{WorkspaceID: "other", Provider: "otp", Phone: "phone", ExpiresAt: now.Add(time.Hour).Format(time.RFC3339)},
-		{WorkspaceID: "workspace-a", Provider: "other", Phone: "phone", ExpiresAt: now.Add(time.Hour).Format(time.RFC3339)},
-		{WorkspaceID: "workspace-a", Provider: "otp", Phone: "other", ExpiresAt: now.Add(time.Hour).Format(time.RFC3339)},
-		{WorkspaceID: "workspace-a", Provider: "otp", Phone: "phone", ExpiresAt: now.Add(-time.Hour).Format(time.RFC3339)},
-		{WorkspaceID: "workspace-a", Provider: "otp", Phone: "phone", ExpiresAt: now.Add(time.Hour).Format(time.RFC3339), CreatedAt: "invalid"},
-		{WorkspaceID: "workspace-a", Provider: "otp", Phone: "phone", ExpiresAt: now.Add(time.Hour).Format(time.RFC3339), CreatedAt: now.Add(-2 * time.Hour).Format(time.RFC3339)},
+		{WorkspaceID: "other", Provider: "otp", Phone: "+10000000002", ExpiresAt: now.Add(time.Hour).Format(time.RFC3339)},
+		{WorkspaceID: "workspace-a", Provider: "other", Phone: "+10000000002", ExpiresAt: now.Add(time.Hour).Format(time.RFC3339)},
+		{WorkspaceID: "workspace-a", Provider: "otp", Phone: "+10000000003", ExpiresAt: now.Add(time.Hour).Format(time.RFC3339)},
+		{WorkspaceID: "workspace-a", Provider: "otp", Phone: "+10000000002", ExpiresAt: now.Add(-time.Hour).Format(time.RFC3339)},
+		{WorkspaceID: "workspace-a", Provider: "otp", Phone: "+10000000002", ExpiresAt: now.Add(time.Hour).Format(time.RFC3339), CreatedAt: "invalid"},
+		{WorkspaceID: "workspace-a", Provider: "otp", Phone: "+10000000002", ExpiresAt: now.Add(time.Hour).Format(time.RFC3339), CreatedAt: now.Add(-2 * time.Hour).Format(time.RFC3339)},
 	}
 	for index, challenge := range tests {
 		auth := newChallengeTestAuth(time.Hour, 2)
 		auth.challenges["stored"] = challenge
-		if _, err := auth.BeginOTPLogin(t.Context(), "workspace-a", "otp", "phone"); err != nil {
+		if _, err := auth.BeginOTPLogin(t.Context(), "workspace-a", "otp", "+10000000002"); err != nil {
 			t.Fatalf("case %d begin OTP: %v", index, err)
 		}
 	}
@@ -144,7 +144,7 @@ func TestProviderConfigurationAndFlowRemainingEdges(t *testing.T) {
 	auth.otpResendCooldown = time.Hour
 	auth.otpMaxAttempts = 2
 	providers := NewAuthProviderDomainService([]map[string]any{
-		{"key": "otp", "type": "otp", "enabled": true, "otp_provider": "real"},
+		{"key": "otp", "type": "otp", "enabled": true, "otp_provider": "mock"},
 		{"key": "saml", "type": "saml", "enabled": true},
 		{"key": "oidc", "type": "oidc", "enabled": true},
 		{"key": "unsupported", "type": "custom", "enabled": true},
@@ -159,8 +159,8 @@ func TestProviderConfigurationAndFlowRemainingEdges(t *testing.T) {
 	if _, err := flows.Start(t.Context(), "", "otp", "POST", "phone"); err == nil {
 		t.Fatal("OTP start with invalid workspace accepted")
 	}
-	realOTP, err := flows.Start(t.Context(), "workspace-a", "otp", "POST", "phone")
-	if err != nil || realOTP.Code != "" {
+	realOTP, err := flows.Start(t.Context(), "workspace-a", "otp", "POST", "+10000000002")
+	if err != nil || realOTP.Code == "" {
 		t.Fatalf("real OTP start=%+v err=%v", realOTP, err)
 	}
 	storedCode := auth.challenges[realOTP.State].Code

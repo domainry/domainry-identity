@@ -86,6 +86,18 @@ func (s *AuthProviderApplicationService) SaveSetup(ctx context.Context, provider
 	if strings.TrimSpace(request.Scope) == "" {
 		request.Scope = config.Scope
 	}
+	if strings.EqualFold(request.Type, "otp") {
+		if request.AllowedPurposes == nil {
+			request.AllowedPurposes = append([]string(nil), config.AllowedPurposes...)
+		}
+		allowedPurposes, err := authmodel.NormalizeAuthProviderAllowedPurposes(request.AllowedPurposes)
+		if err != nil {
+			return authmodel.AuthProviderConfig{}, authProviderApplicationError(apperror.KindBadRequest, "auth.provider_allowed_purposes_invalid")
+		}
+		request.AllowedPurposes = allowedPurposes
+	} else if request.AllowedPurposes != nil {
+		return authmodel.AuthProviderConfig{}, authProviderApplicationError(apperror.KindBadRequest, "auth.provider_allowed_purposes_invalid")
+	}
 	if !configurableAuthProviderType(request.Type) {
 		return authmodel.AuthProviderConfig{}, authProviderApplicationError(apperror.KindBadRequest, "auth.provider_type_not_supported")
 	}
@@ -150,7 +162,7 @@ func MergeTypedAuthProviderCredentials(configs []map[string]any, credentials []a
 
 func restorableAuthProviderType(providerType string) bool {
 	switch strings.ToLower(strings.TrimSpace(providerType)) {
-	case "oidc", "oauth2", "saml", "code_exchange", "wechat_mini_program":
+	case "oidc", "oauth2", "saml", "otp", "code_exchange", "wechat_mini_program":
 		return true
 	default:
 		return false
@@ -193,10 +205,9 @@ func authProviderApplyCredential(config *authmodel.AuthProviderConfig, value aut
 		}
 	}
 	if strings.EqualFold(config.Type, "otp") {
-		config.OTPProvider, config.AccessToken, config.PhoneNumberID = value.OTPProvider, value.AccessToken, value.PhoneNumberID
-		config.AccessTokenConfigured = value.AccessToken != ""
-		config.PhoneNumberIDConfigured = value.PhoneNumberID != ""
-		config.Enabled = config.OTPProvider != "" && config.AccessTokenConfigured && config.PhoneNumberIDConfigured
+		config.OTPProvider, config.ConnectionKey = strings.TrimSpace(value.OTPProvider), strings.TrimSpace(value.ConnectionKey)
+		config.AllowedPurposes = append([]string(nil), value.AllowedPurposes...)
+		config.Enabled = config.OTPProvider == "mock" || config.OTPProvider != "" && config.ConnectionKey != ""
 	} else if strings.EqualFold(config.Type, "code_exchange") || strings.EqualFold(config.Type, "wechat_mini_program") {
 		config.ClientID, config.ClientSecret, config.VerificationKey = value.ClientID, value.ClientSecret, value.VerificationKey
 		config.ClientSecretConfigured = value.ClientSecret != ""

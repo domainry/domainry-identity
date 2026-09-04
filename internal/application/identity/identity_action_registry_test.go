@@ -90,12 +90,16 @@ func TestStandaloneAuthorizationSliceRegistryOwnsCompleteRouteAndPermissionMatri
 		"/admin/org/roles":                 "identity.roles.list",
 		"/admin/org/menus":                 "identity.menus.list",
 		"/admin/org/field-permissions":     "identity.role_field_permissions.list",
-		"/admin/system/metadata":           "identity.metadata.manifest.get",
+		"/admin/system/metadata":           "identity.metadata.migration_plan.get",
 	} {
 		required, found := registry.RequiredPermissionsForPage(route)
 		if !found || len(required) != 1 || required[0] != permission {
 			t.Fatalf("page %q required=%v found=%v want=%q", route, required, found, permission)
 		}
+	}
+	accessGovernance, found := registry.RequiredPermissionsForPage("/admin/security/access-governance")
+	if !found || len(accessGovernance) != 4 {
+		t.Fatalf("access governance page required=%v found=%v", accessGovernance, found)
 	}
 }
 

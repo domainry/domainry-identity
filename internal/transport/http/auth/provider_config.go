@@ -106,8 +106,7 @@ func authProviderSetupChecks(config map[string]any) []map[string]any {
 	case "otp":
 		return []map[string]any{
 			{"key": "provider", "ok": stringFromProviderConfig(config, "otp_provider") != "", "label": "OTP provider"},
-			{"key": "access_token", "ok": boolFromProviderConfig(config, "access_token_configured"), "label": "Access token"},
-			{"key": "phone_number_id", "ok": boolFromProviderConfig(config, "phone_number_id_configured"), "label": "Phone number ID"},
+			{"key": "connection_key", "ok": stringFromProviderConfig(config, "connection_key") != "", "label": "Integration connection"},
 		}
 	case "code_exchange", "wechat_mini_program":
 		checks := []map[string]any{

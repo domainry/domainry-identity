@@ -19,7 +19,7 @@ func TestAccessTokenVerification(t *testing.T) {
 		t.Fatal("expected malformed token to fail")
 	}
 	repository.refreshTokens = []identitymodel.AuthRefreshToken{{UserID: "user", SessionID: "session", ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339)}}
-	valid := auth.signClaims(authmodel.AuthClaims{Subject: "user", WorkspaceID: "workspace-primary", SessionID: "session", ExpiresAt: time.Now().Add(time.Hour).Unix()})
+	valid := mustSignClaims(t, auth, authmodel.AuthClaims{Subject: "user", WorkspaceID: "workspace-primary", SessionID: "session", ExpiresAt: time.Now().Add(time.Hour).Unix()})
 	if _, err := auth.VerifyAccessToken(t.Context(), valid+"tampered"); err == nil {
 		t.Fatal("expected invalid signature to fail")
 	}
@@ -29,17 +29,17 @@ func TestAccessTokenVerification(t *testing.T) {
 	if _, err := auth.VerifyAccessToken(t.Context(), signedTestToken(auth, base64.RawURLEncoding.EncodeToString([]byte("not-json")))); err == nil {
 		t.Fatal("expected invalid claims JSON to fail")
 	}
-	if _, err := auth.VerifyAccessToken(t.Context(), auth.signClaims(authmodel.AuthClaims{ExpiresAt: time.Now().Add(time.Hour).Unix()})); err == nil {
+	if _, err := auth.VerifyAccessToken(t.Context(), mustSignClaims(t, auth, authmodel.AuthClaims{ExpiresAt: time.Now().Add(time.Hour).Unix()})); err == nil {
 		t.Fatal("expected missing subject to fail")
 	}
-	if _, err := auth.VerifyAccessToken(t.Context(), auth.signClaims(authmodel.AuthClaims{Subject: "user", ExpiresAt: time.Now().Add(-time.Minute).Unix()})); err == nil {
+	if _, err := auth.VerifyAccessToken(t.Context(), mustSignClaims(t, auth, authmodel.AuthClaims{Subject: "user", ExpiresAt: time.Now().Add(-time.Minute).Unix()})); err == nil {
 		t.Fatal("expected expired token to fail")
 	}
 	claims, err := auth.VerifyAccessToken(t.Context(), valid)
 	if err != nil || claims.Subject != "user" {
 		t.Fatalf("verify valid token: claims=%#v err=%v", claims, err)
 	}
-	applicationToken := auth.signClaims(authmodel.AuthClaims{Audience: "orders-runtime", Subject: "user", WorkspaceID: "workspace-primary", SessionID: "session", ExpiresAt: time.Now().Add(time.Hour).Unix()})
+	applicationToken := mustSignClaims(t, auth, authmodel.AuthClaims{Audience: "orders-runtime", Subject: "user", WorkspaceID: "workspace-primary", SessionID: "session", ExpiresAt: time.Now().Add(time.Hour).Unix()})
 	applicationClaims, err := auth.VerifyAccessToken(t.Context(), applicationToken)
 	if err != nil || applicationClaims.Audience != "orders-runtime" {
 		t.Fatalf("verify application-scoped token: claims=%#v err=%v", applicationClaims, err)
@@ -50,7 +50,7 @@ func TestAccessTokenVerificationFailsClosedForDurableSessionState(t *testing.T) 
 	auth, _, repository := newFaultAuthDomainService()
 	now := time.Now()
 	claims := authmodel.AuthClaims{Subject: "user", WorkspaceID: "workspace-primary", SessionID: "session", ExpiresAt: now.Add(time.Hour).Unix()}
-	token := auth.signClaims(claims)
+	token := mustSignClaims(t, auth, claims)
 	if _, err := auth.VerifyAccessToken(t.Context(), token); apperror.CodeOf(err) != "auth.session_expired" {
 		t.Fatalf("missing durable session error=%v", err)
 	}
@@ -74,14 +74,14 @@ func TestAuthAccessTokenSigningKeyRotationOverlap(t *testing.T) {
 	if err := auth.ConfigureSigningKeys("old-kid", "old-secret", nil); err != nil {
 		t.Fatal(err)
 	}
-	oldToken := auth.signClaims(authmodel.AuthClaims{Subject: "user", WorkspaceID: "workspace-primary", SessionID: "session", ExpiresAt: time.Now().Add(time.Hour).Unix()})
+	oldToken := mustSignClaims(t, auth, authmodel.AuthClaims{Subject: "user", WorkspaceID: "workspace-primary", SessionID: "session", ExpiresAt: time.Now().Add(time.Hour).Unix()})
 	if err := auth.ConfigureSigningKeys("new-kid", "new-secret", map[string]string{"old-kid": "old-secret"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := auth.VerifyAccessToken(t.Context(), oldToken); err != nil {
 		t.Fatalf("old key was not accepted during overlap: %v", err)
 	}
-	newToken := auth.signClaims(authmodel.AuthClaims{Subject: "user", WorkspaceID: "workspace-primary", SessionID: "session", ExpiresAt: time.Now().Add(time.Hour).Unix()})
+	newToken := mustSignClaims(t, auth, authmodel.AuthClaims{Subject: "user", WorkspaceID: "workspace-primary", SessionID: "session", ExpiresAt: time.Now().Add(time.Hour).Unix()})
 	if !strings.Contains(decodeJWTHeader(t, newToken), `"kid":"new-kid"`) {
 		t.Fatalf("new token missing active kid: %s", newToken)
 	}
@@ -91,6 +91,15 @@ func TestAuthAccessTokenSigningKeyRotationOverlap(t *testing.T) {
 	if _, err := auth.VerifyAccessToken(t.Context(), oldToken); err == nil {
 		t.Fatal("retired signing key remained valid after overlap")
 	}
+}
+
+func mustSignClaims(t *testing.T, auth *AuthDomainService, claims authmodel.AuthClaims) string {
+	t.Helper()
+	token, err := auth.signClaims(claims)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return token
 }
 
 func decodeJWTHeader(t *testing.T, token string) string {

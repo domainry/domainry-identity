@@ -339,23 +339,10 @@ func manifestIdentityWorkspaceID(ctx context.Context) string {
 
 func retireRemovedPlatformIdentityMenus(ctx context.Context, identityStore identityrepository.IdentitySeedRepository) error {
 	retiredKeys := map[string]bool{
-		"org_permissions":             true,
-		"identity_permission_list":    true,
-		"runtime_operations":          true,
-		"system_overview":             true,
-		"system_dictionaries":         true,
-		"system_workflows":            true,
-		"system_actions":              true,
-		"system_automation_rules":     true,
-		"system_connectors":           true,
-		"system_notifications":        true,
-		"system_scheduler":            true,
-		"system_domain_impact":        true,
-		"system_workflow_processes":   true,
-		"system_operations":           true,
-		"system_connector_operations": true,
-		"system_scheduler_operations": true,
-		"system_capability_status":    true,
+		"org_permissions":          true,
+		"identity_permission_list": true,
+		"runtime_operations":       true,
+		"system":                   true,
 	}
 	workspaceID := manifestIdentityWorkspaceID(ctx)
 	menus, err := identityStore.ListIdentityMenus(ctx, workspaceID)

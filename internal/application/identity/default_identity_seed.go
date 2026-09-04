@@ -1,6 +1,8 @@
 package identity
 
 import (
+	_ "embed"
+	"encoding/json"
 	"regexp"
 	"strings"
 
@@ -8,6 +10,49 @@ import (
 )
 
 var businessRouteKeyPattern = regexp.MustCompile(`^business\.[a-z0-9]+(?:[._-][a-z0-9]+)*$`)
+
+// platformAdminNavigationSource is the Identity-owned machine contract also
+// shipped with the unified Admin frontend. Runtime seed data and page-level
+// permission validation must be derived from this document rather than from
+// independently maintained lists.
+//
+//go:embed platform_admin_navigation_v9.json
+var platformAdminNavigationSource []byte
+
+type platformAdminNavigationContract struct {
+	ContractVersion string `json:"contract_version"`
+	Groups          []struct {
+		Key       string            `json:"key"`
+		MenuID    string            `json:"menu_id"`
+		Label     map[string]string `json:"label"`
+		Icon      string            `json:"icon"`
+		SortOrder int               `json:"sort_order"`
+	} `json:"groups"`
+	Workspaces []struct {
+		Key                 string            `json:"key"`
+		Group               string            `json:"group"`
+		Label               map[string]string `json:"label"`
+		MenuID              string            `json:"menu_id"`
+		MenuKey             string            `json:"menu_key"`
+		Icon                string            `json:"icon"`
+		Route               string            `json:"route"`
+		SortOrder           int               `json:"sort_order"`
+		RequiredPermissions []string          `json:"required_permissions"`
+	} `json:"workspaces"`
+}
+
+var platformAdminNavigation = mustPlatformAdminNavigationContract()
+
+func mustPlatformAdminNavigationContract() platformAdminNavigationContract {
+	var contract platformAdminNavigationContract
+	if err := json.Unmarshal(platformAdminNavigationSource, &contract); err != nil {
+		panic("parse embedded platform Admin navigation contract: " + err.Error())
+	}
+	if contract.ContractVersion != "domainry-admin-navigation-workspaces-v9" || len(contract.Groups) == 0 || len(contract.Workspaces) == 0 {
+		panic("embedded platform Admin navigation contract is incomplete")
+	}
+	return contract
+}
 
 // WithStandaloneIdentityRoleDefinitions supplies the authorization authority
 // required by the built-in Admin users when a standalone Identity manifest is
@@ -74,11 +119,11 @@ func generatedManifestIdentitySeed() Seed {
 	platformMenus := generatedIdentityMenus()
 	roleMenus := generatedIdentityRoleMenus("admin", platformMenus)
 	roleMenus = append(roleMenus, generatedIdentityRoleMenusForIDs("organization_administrator", platformMenus,
-		"org_users", "org_organization_units", "org_roles", "org_menus",
-		"org_field_permissions", "system", "system_metadata", "system_audit",
+		"org_access", "org_users", "org_organization_units", "org_roles", "org_access_governance", "org_field_permissions", "org_menus",
+		"model_config", "system_metadata",
 	)...)
 	roleMenus = append(roleMenus, generatedIdentityRoleMenusForIDs("system_administrator", platformMenus,
-		"system", "system_metadata", "system_audit",
+		"model_config", "system_metadata", "data_compliance", "system_audit",
 	)...)
 	return Seed{
 		Roles: []identitymodel.IdentityRole{
@@ -102,29 +147,31 @@ func generatedManifestIdentitySeed() Seed {
 }
 
 func generatedIdentityMenus() []identitymodel.IdentityMenu {
-	menus := []identitymodel.IdentityMenu{
-		{ID: "org_access", Key: "org_access", Label: "Organization & access", SortOrder: 100, Status: identitymodel.IdentityStatusActive},
-		{ID: "system", Key: "system", Label: "Identity metadata", SortOrder: 200, Status: identitymodel.IdentityStatusActive},
-	}
-	add := func(key, label, route, icon, parent string, sort int) {
+	menus := make([]identitymodel.IdentityMenu, 0, len(platformAdminNavigation.Groups)+len(platformAdminNavigation.Workspaces))
+	groupIDs := make(map[string]string, len(platformAdminNavigation.Groups))
+	for _, group := range platformAdminNavigation.Groups {
+		groupIDs[group.Key] = group.MenuID
 		menus = append(menus, identitymodel.IdentityMenu{
-			ID:        key,
-			Key:       key,
-			Label:     label,
-			Route:     route,
-			Icon:      icon,
-			ParentID:  parent,
-			SortOrder: sort,
+			ID:        group.MenuID,
+			Key:       group.MenuID,
+			Label:     group.Label["en"],
+			Icon:      group.Icon,
+			SortOrder: group.SortOrder,
 			Status:    identitymodel.IdentityStatusActive,
 		})
 	}
-	add("org_users", "Accounts", "/admin/security/accounts", "users-round", "org_access", 210)
-	add("org_organization_units", "Organization units", "/admin/org/organization-units", "building-2", "org_access", 220)
-	add("org_roles", "Roles", "/admin/org/roles", "user-cog", "org_access", 240)
-	add("org_menus", "Menus", "/admin/org/menus", "square-menu", "org_access", 250)
-	add("org_field_permissions", "Field permissions", "/admin/org/field-permissions", "columns-3", "org_access", 270)
-	add("system_metadata", "Metadata", "/admin/system/metadata", "database", "system", 380)
-	add("system_audit", "Governance audit", "/admin/system/audit", "scroll-text", "system", 390)
+	for _, workspace := range platformAdminNavigation.Workspaces {
+		menus = append(menus, identitymodel.IdentityMenu{
+			ID:        workspace.MenuID,
+			Key:       workspace.MenuKey,
+			Label:     workspace.Label["en"],
+			Route:     workspace.Route,
+			Icon:      workspace.Icon,
+			ParentID:  groupIDs[workspace.Group],
+			SortOrder: workspace.SortOrder,
+			Status:    identitymodel.IdentityStatusActive,
+		})
+	}
 	return menus
 }
 
@@ -133,6 +180,9 @@ func generatedIdentityMenus() []identitymodel.IdentityMenu {
 type identityBuiltinPagePermissions struct{}
 
 func (identityBuiltinPagePermissions) RequiredPermissionsForPage(route string) ([]string, bool) {
+	if permissions, ok := platformAdminPagePermissions(route); ok {
+		return permissions, true
+	}
 	route = strings.TrimSpace(route)
 	for _, action := range IdentityBuiltinAuthorizationActions() {
 		if action.Permission == nil || action.Permission.Key != action.Key {
@@ -142,6 +192,20 @@ func (identityBuiltinPagePermissions) RequiredPermissionsForPage(route string) (
 			if page.Route == route {
 				return []string{action.Key}, true
 			}
+		}
+	}
+	return nil, false
+}
+
+// platformAdminPagePermissions is the stable product-route projection used by
+// Identity's menu governance. The frontend still owns layout and navigation;
+// this map only lets Runtime validate that a role assigned a platform menu also
+// owns every entry permission required by that page.
+func platformAdminPagePermissions(route string) ([]string, bool) {
+	route = strings.TrimSpace(route)
+	for _, workspace := range platformAdminNavigation.Workspaces {
+		if workspace.Route == route {
+			return append([]string(nil), workspace.RequiredPermissions...), true
 		}
 	}
 	return nil, false

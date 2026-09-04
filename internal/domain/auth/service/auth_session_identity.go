@@ -61,6 +61,7 @@ func (s *AuthDomainService) PrincipalFromBearer(ctx context.Context, authorizati
 	if err != nil {
 		return identitymodel.Principal{}, err
 	}
+	principal.TenantID = claims.TenantID
 	principal.WorkspaceID = workspaceID
 	principal.RequestID = requestID
 	return principal, nil

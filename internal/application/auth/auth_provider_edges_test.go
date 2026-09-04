@@ -99,8 +99,8 @@ func TestAuthProviderSaveSetupEdges(t *testing.T) {
 func TestAuthProviderCredentialProjectionEdges(t *testing.T) {
 	otp := NewAuthProviderApplicationService([]map[string]any{{"key": "otp", "type": "otp"}}, false)
 	config, _ := otp.Find(t.Context(), "otp")
-	authProviderApplyCredential(&config, authmodel.AuthProviderCredential{Type: "otp", OTPProvider: "whatsapp", AccessToken: "token", PhoneNumberID: "phone", RoleMappings: []authmodel.AuthProviderRoleMapping{{Claim: "team", Match: "support", RoleKey: "agent"}}})
-	if !config.Enabled || !config.AccessTokenConfigured || !config.PhoneNumberIDConfigured || len(config.RoleMappings) != 1 {
+	authProviderApplyCredential(&config, authmodel.AuthProviderCredential{Type: "otp", OTPProvider: "whatsapp", ConnectionKey: "otp-primary", RoleMappings: []authmodel.AuthProviderRoleMapping{{Claim: "team", Match: "support", RoleKey: "agent"}}})
+	if !config.Enabled || config.ConnectionKey != "otp-primary" || len(config.RoleMappings) != 1 {
 		t.Fatalf("otp config=%+v", config)
 	}
 
@@ -116,6 +116,25 @@ func TestAuthProviderCredentialProjectionEdges(t *testing.T) {
 	providerService := NewAuthProviderApplicationService(nil, false)
 	if NewAuthProviderFlowApplicationService(authService, providerService).AuthProviderFlowDomainService == nil {
 		t.Fatal("provider flow owners were not wired")
+	}
+}
+
+func TestOTPProviderAllowedPurposesAreValidatedAndApplied(t *testing.T) {
+	writer := &authProviderEdgeWriter{credential: authmodel.AuthProviderCredential{
+		ProviderKey: "sms", Type: "otp", OTPProvider: "mock", AllowedPurposes: []string{authmodel.AuthChallengePurposeAction},
+	}}
+	service := NewAuthProviderApplicationService([]map[string]any{{"key": "sms", "type": "otp"}}, false, writer)
+	config, err := service.SaveSetup(t.Context(), "sms", authmodel.AuthProviderCredentialUpsertRequest{
+		Type: "otp", OTPProvider: "mock", AllowedPurposes: []string{authmodel.AuthChallengePurposeAction},
+	}, authMutationPrincipal())
+	if err != nil || !config.Enabled || !config.SupportsChallengePurpose(authmodel.AuthChallengePurposeAction) || config.SupportsChallengePurpose(authmodel.AuthChallengePurposeLoginMFA) {
+		t.Fatalf("action-only config=%+v err=%v", config, err)
+	}
+	for _, purposes := range [][]string{{}, {"unknown"}, {authmodel.AuthChallengePurposeAction, authmodel.AuthChallengePurposeAction}} {
+		calls := writer.calls
+		if _, err := service.SaveSetup(t.Context(), "sms", authmodel.AuthProviderCredentialUpsertRequest{Type: "otp", OTPProvider: "mock", AllowedPurposes: purposes}, authMutationPrincipal()); apperror.CodeOf(err) != "auth.provider_allowed_purposes_invalid" || writer.calls != calls {
+			t.Fatalf("purposes=%#v calls=%d error=%v", purposes, writer.calls, err)
+		}
 	}
 }
 

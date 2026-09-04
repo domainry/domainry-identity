@@ -74,7 +74,8 @@ type AuthLoginTransactionRepository interface {
 // empty challenge represents invalid state.
 type AuthOTPTransactionRepository interface {
 	CreateAuthOTPTransaction(context.Context, authmodel.AuthProviderChallenge, string, time.Time, time.Time) (bool, error)
-	ConsumeAuthOTPTransaction(context.Context, string, string, string, string, int, time.Time) (authmodel.AuthProviderChallenge, bool, error)
+	UpdateAuthOTPTransactionStatus(context.Context, string, string, string, string, string, string, time.Time) error
+	ConsumeAuthOTPTransaction(context.Context, string, string, string, string, []string, string, int, time.Time) (authmodel.AuthProviderChallenge, bool, error)
 }
 
 // AuthAuthorizationCodeRepository owns the short-lived handoff from the

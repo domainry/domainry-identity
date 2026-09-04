@@ -220,7 +220,7 @@ func TestIdentityExportHelpers(t *testing.T) {
 	if identitypersistence.ValueFromNull(sql.NullString{}) != "" || identitypersistence.ValueFromNull(sql.NullString{String: "x", Valid: true}) != "x" {
 		t.Fatal("null conversion")
 	}
-	values := []driver.Value{"id", "user", "session", "audience", "hash", time.Now().Format(time.RFC3339), nil, nil, nil, "created"}
+	values := []driver.Value{"id", "user", "session", "audience", int64(1), `["pwd"]`, "urn:domainry:acr:1", "hash", time.Now().Format(time.RFC3339), nil, nil, nil, "created"}
 	token, err := identitypersistence.ScanAuthRefreshToken(identityTestScanner{values: values})
 	if err != nil || token.ID != "id" || token.RevokedAt != "" {
 		t.Fatalf("token=%#v err=%v", token, err)
@@ -246,6 +246,8 @@ func (s identityTestScanner) Scan(dest ...any) error {
 		switch target := dest[index].(type) {
 		case *string:
 			*target = value.(string)
+		case *int64:
+			*target = value.(int64)
 		case *sql.NullString:
 			if value != nil {
 				target.String, target.Valid = value.(string), true

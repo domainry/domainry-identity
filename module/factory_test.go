@@ -157,6 +157,14 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	if !ok || verification.ApplicationServiceVerifier() == nil {
 		t.Fatal("embedded Identity binding does not expose service token verification")
 	}
+	challenge, ok := binding.(identitysdk.ChallengeAuthenticationBinding)
+	if !ok || challenge.ChallengeAuthentication() == nil {
+		t.Fatal("embedded Identity binding does not expose challenge-aware authentication")
+	}
+	assurance, ok := binding.(identitysdk.ActionAssuranceBinding)
+	if !ok || assurance.ActionAssurance() == nil {
+		t.Fatal("embedded Identity binding does not expose action assurance")
+	}
 	providerSource, ok := binding.(interface {
 		IdentityDataExchangeProviders() (string, dataexchangemodulehost.ImportProvider, dataexchangemodulehost.ExportProvider)
 	})

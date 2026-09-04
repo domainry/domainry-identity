@@ -31,7 +31,15 @@ func (s *AuthDomainService) IssueAuthorizationCode(ctx context.Context, applicat
 		return "", forbidden("identity.redirect_url_not_registered")
 	}
 	now := time.Now().UTC()
-	code := randomToken() + randomToken()
+	first, err := s.randomToken()
+	if err != nil {
+		return "", internalError("generate authorization code", err)
+	}
+	second, err := s.randomToken()
+	if err != nil {
+		return "", internalError("generate authorization code", err)
+	}
+	code := first + second
 	err = repository.CreateAuthAuthorizationCode(ctx, authmodel.AuthAuthorizationCode{Code: code, WorkspaceID: session.WorkspaceID, ApplicationKey: applicationKey, Session: session, RedirectURL: redirectURL, ExpiresAt: now.Add(time.Minute).Format(time.RFC3339Nano), CreatedAt: now.Format(time.RFC3339Nano)})
 	return code, err
 }

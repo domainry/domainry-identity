@@ -42,7 +42,18 @@ func (h *AuthHandler) authLogin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	result, err := h.passwords.LoginForApplication(requestcontext.WithWorkspaceID(r.Context(), workspaceID), workspaceID, login, req.Password, applicationKey)
+	flowContext := requestcontext.WithWorkspaceID(r.Context(), workspaceID)
+	if challengeAware, ok := h.providerFlows.(authChallengeAwareProviderFlow); ok {
+		outcome, err := challengeAware.LoginWithPasswordOutcome(flowContext, workspaceID, login, req.Password, applicationKey)
+		if err != nil {
+			h.securityAudit(r, "auth_login_failed", "Password login failed", map[string]any{"reason": "invalid_credentials", "login": login})
+			h.writeServiceError(w, r, err)
+			return
+		}
+		h.writeJSON(w, http.StatusOK, outcome)
+		return
+	}
+	result, err := h.passwords.LoginForApplication(flowContext, workspaceID, login, req.Password, applicationKey)
 	if err != nil {
 		h.securityAudit(r, "auth_login_failed", "Password login failed", map[string]any{"reason": "invalid_credentials", "login": login})
 		h.writeServiceError(w, r, err)
@@ -63,7 +74,9 @@ func (h *AuthHandler) authGuest(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	result, err := h.passwords.GuestSession(requestcontext.WithWorkspaceID(r.Context(), workspaceID), workspaceID, valueOrDefault(req.Role, "customer"))
+	// req.Role is retained for wire compatibility only. The domain service owns
+	// the sole guest role policy and ignores anonymous role selection.
+	result, err := h.passwords.GuestSession(requestcontext.WithWorkspaceID(r.Context(), workspaceID), workspaceID, req.Role)
 	if err != nil {
 		h.writeServiceError(w, r, err)
 		return

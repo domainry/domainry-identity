@@ -12,7 +12,7 @@ import (
 	authpolicy "github.com/domainry/domainry-identity/internal/domain/auth/policy"
 )
 
-func (s *AuthDomainService) signClaims(claims authmodel.AuthClaims) string {
+func (s *AuthDomainService) signClaims(claims authmodel.AuthClaims) (string, error) {
 	now := time.Now().UTC()
 	claims.Issuer = valueOrDefault(claims.Issuer, s.issuer)
 	claims.Audience = valueOrDefault(claims.Audience, s.audience)
@@ -28,12 +28,16 @@ func (s *AuthDomainService) signClaims(claims authmodel.AuthClaims) string {
 		claims.AuthenticationTime = claims.IssuedAt
 	}
 	if claims.JTI == "" && claims.Subject != "" {
-		claims.JTI = randomToken()
+		jti, err := s.randomToken()
+		if err != nil {
+			return "", internalError("generate access token identifier", err)
+		}
+		claims.JTI = jti
 	}
 	headerJSON, _ := json.Marshal(map[string]string{"alg": "EdDSA", "typ": "JWT", "kid": s.activeKID})
 	payloadJSON, _ := json.Marshal(claims)
 	signed := base64.RawURLEncoding.EncodeToString(headerJSON) + "." + base64.RawURLEncoding.EncodeToString(payloadJSON)
-	return signed + "." + base64.RawURLEncoding.EncodeToString(ed25519.Sign(s.activePrivateKey, []byte(signed)))
+	return signed + "." + base64.RawURLEncoding.EncodeToString(ed25519.Sign(s.activePrivateKey, []byte(signed))), nil
 }
 
 func signHS256(value []byte, secret []byte) string {

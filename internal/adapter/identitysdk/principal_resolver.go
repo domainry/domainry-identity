@@ -24,6 +24,7 @@ func (adapter sdkPrincipalResolver) Resolve(ctx context.Context, request identit
 	if err != nil {
 		return identitysdk.PrincipalResolution{}, sdkBoundaryError(err)
 	}
+	principal.TenantID = string(request.Application.TenantID)
 	user, found, err := identity.FindUser(workspaceContext, principal.UserID)
 	if err != nil {
 		return identitysdk.PrincipalResolution{}, sdkBoundaryError(err)

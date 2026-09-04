@@ -1,0 +1,649 @@
+{
+  "contract_version": "domainry-admin-navigation-workspaces-v9",
+  "source_owner": "domainry-identity",
+  "policy": "task-oriented workspaces group related production routes; backend modules are ownership boundaries, not sidebar items",
+  "admission_policy": {
+    "sidebar_represents": "user_task_workspace",
+    "default_destination": "existing_workspace_local_tab_detail_flow_or_command_search",
+    "count_policy": "derived_from_primary_business_tasks_no_fixed_maximum",
+    "forbidden_drivers": [
+      "backend_module",
+      "capability_key",
+      "resource_type",
+      "production_route"
+    ],
+    "required_evidence": [
+      "cannot_fit_existing_workspace",
+      "independent_permission_boundary",
+      "frequent_direct_access",
+      "restricted_access_test"
+    ]
+  },
+  "groups": [
+    {
+      "key": "identity",
+      "menu_id": "org_access",
+      "label": {
+        "zh-CN": "身份与访问",
+        "en": "Identity & access"
+      },
+      "icon": "users-round",
+      "sort_order": 100
+    },
+    {
+      "key": "model",
+      "menu_id": "model_config",
+      "label": {
+        "zh-CN": "模型与配置",
+        "en": "Model & configuration"
+      },
+      "icon": "boxes",
+      "sort_order": 200
+    },
+    {
+      "key": "automation",
+      "menu_id": "flow_automation",
+      "label": {
+        "zh-CN": "流程与自动化",
+        "en": "Flow & automation"
+      },
+      "icon": "workflow",
+      "sort_order": 300
+    },
+    {
+      "key": "integrations",
+      "menu_id": "integration_notification",
+      "label": {
+        "zh-CN": "集成与通知",
+        "en": "Integrations & notifications"
+      },
+      "icon": "cable",
+      "sort_order": 400
+    },
+    {
+      "key": "compliance",
+      "menu_id": "data_compliance",
+      "label": {
+        "zh-CN": "数据与合规",
+        "en": "Data & compliance"
+      },
+      "icon": "shield-check",
+      "sort_order": 500
+    },
+    {
+      "key": "operations",
+      "menu_id": "platform_operations",
+      "label": {
+        "zh-CN": "平台运行",
+        "en": "Platform operations"
+      },
+      "icon": "activity",
+      "sort_order": 600
+    }
+  ],
+  "workspaces": [
+    {
+      "key": "accounts",
+      "group": "identity",
+      "label": {
+        "zh-CN": "账号管理",
+        "en": "Accounts"
+      },
+      "route_keys": [
+        "identity.users",
+        "identity.user_detail"
+      ],
+      "tab_route_keys": [
+        "identity.users"
+      ],
+      "menu_id": "org_users",
+      "menu_key": "org_users",
+      "icon": "users-round",
+      "route": "/admin/security/accounts",
+      "sort_order": 110,
+      "required_permissions": [
+        "identity.users.list"
+      ]
+    },
+    {
+      "key": "organization",
+      "group": "identity",
+      "label": {
+        "zh-CN": "组织管理",
+        "en": "Organization"
+      },
+      "route_keys": [
+        "identity.organization_units"
+      ],
+      "tab_route_keys": [
+        "identity.organization_units"
+      ],
+      "menu_id": "org_organization_units",
+      "menu_key": "org_organization_units",
+      "icon": "network",
+      "route": "/admin/org/organization-units",
+      "sort_order": 120,
+      "required_permissions": [
+        "identity.organization_units.list"
+      ]
+    },
+    {
+      "key": "roles",
+      "group": "identity",
+      "label": {
+        "zh-CN": "角色管理",
+        "en": "Roles"
+      },
+      "route_keys": [
+        "identity.roles"
+      ],
+      "tab_route_keys": [
+        "identity.roles"
+      ],
+      "menu_id": "org_roles",
+      "menu_key": "org_roles",
+      "icon": "shield-check",
+      "route": "/admin/org/roles",
+      "sort_order": 130,
+      "required_permissions": [
+        "identity.roles.list"
+      ]
+    },
+    {
+      "key": "access-governance",
+      "group": "identity",
+      "label": {
+        "zh-CN": "访问治理",
+        "en": "Access governance"
+      },
+      "route_keys": [
+        "identity.access_governance"
+      ],
+      "tab_route_keys": [
+        "identity.access_governance"
+      ],
+      "menu_id": "org_access_governance",
+      "menu_key": "org_access_governance",
+      "icon": "shield-question",
+      "route": "/admin/security/access-governance",
+      "sort_order": 140,
+      "required_permissions": [
+        "identity.role_requests.list",
+        "identity.access_reviews.list",
+        "identity.access.reports",
+        "identity.access.reverse_index"
+      ]
+    },
+    {
+      "key": "field-access",
+      "group": "identity",
+      "label": {
+        "zh-CN": "字段权限",
+        "en": "Field access"
+      },
+      "route_keys": [
+        "identity.field_permissions"
+      ],
+      "tab_route_keys": [
+        "identity.field_permissions"
+      ],
+      "menu_id": "org_field_permissions",
+      "menu_key": "org_field_permissions",
+      "icon": "file-key-2",
+      "route": "/admin/org/field-permissions",
+      "sort_order": 150,
+      "required_permissions": [
+        "identity.role_field_permissions.list"
+      ]
+    },
+    {
+      "key": "navigation",
+      "group": "identity",
+      "label": {
+        "zh-CN": "导航配置",
+        "en": "Navigation"
+      },
+      "route_keys": [
+        "identity.menus"
+      ],
+      "tab_route_keys": [
+        "identity.menus"
+      ],
+      "menu_id": "org_menus",
+      "menu_key": "org_menus",
+      "icon": "menu",
+      "route": "/admin/org/menus",
+      "sort_order": 160,
+      "required_permissions": [
+        "identity.menus.list"
+      ]
+    },
+    {
+      "key": "metadata",
+      "group": "model",
+      "label": {
+        "zh-CN": "元数据",
+        "en": "Metadata"
+      },
+      "route_keys": [
+        "system.metadata"
+      ],
+      "tab_route_keys": [
+        "system.metadata"
+      ],
+      "menu_id": "system_metadata",
+      "menu_key": "system_metadata",
+      "icon": "boxes",
+      "route": "/admin/system/metadata",
+      "sort_order": 210,
+      "required_permissions": [
+        "identity.metadata.migration_plan.get"
+      ]
+    },
+    {
+      "key": "impact-analysis",
+      "group": "model",
+      "label": {
+        "zh-CN": "影响分析",
+        "en": "Impact analysis"
+      },
+      "route_keys": [
+        "system.domain_impact"
+      ],
+      "tab_route_keys": [
+        "system.domain_impact"
+      ],
+      "menu_id": "system_domain_impact",
+      "menu_key": "system_domain_impact",
+      "icon": "network",
+      "route": "/admin/system/domain-impact",
+      "sort_order": 220,
+      "required_permissions": [
+        "runtime.businessreferences.business_reference_impact"
+      ]
+    },
+    {
+      "key": "dictionaries",
+      "group": "model",
+      "label": {
+        "zh-CN": "数据字典",
+        "en": "Dictionaries"
+      },
+      "route_keys": [
+        "system.dictionaries"
+      ],
+      "tab_route_keys": [
+        "system.dictionaries"
+      ],
+      "menu_id": "system_dictionaries",
+      "menu_key": "system_dictionaries",
+      "icon": "book-open",
+      "route": "/admin/system/dictionaries",
+      "sort_order": 230,
+      "required_permissions": [
+        "metadata.definitions.list"
+      ]
+    },
+    {
+      "key": "actions",
+      "group": "model",
+      "label": {
+        "zh-CN": "动作目录",
+        "en": "Action catalog"
+      },
+      "route_keys": [
+        "system.actions"
+      ],
+      "tab_route_keys": [
+        "system.actions"
+      ],
+      "menu_id": "system_actions",
+      "menu_key": "system_actions",
+      "icon": "blocks",
+      "route": "/admin/system/actions",
+      "sort_order": 240,
+      "required_permissions": [
+        "metadata.definitions.list"
+      ]
+    },
+    {
+      "key": "workflows",
+      "group": "automation",
+      "label": {
+        "zh-CN": "工作流",
+        "en": "Workflows"
+      },
+      "route_keys": [
+        "system.workflows"
+      ],
+      "tab_route_keys": [
+        "system.workflows"
+      ],
+      "menu_id": "system_workflows",
+      "menu_key": "system_workflows",
+      "icon": "workflow",
+      "route": "/admin/system/workflows",
+      "sort_order": 310,
+      "required_permissions": [
+        "metadata.definitions.list"
+      ]
+    },
+    {
+      "key": "workflow-incidents",
+      "group": "automation",
+      "label": {
+        "zh-CN": "流程异常",
+        "en": "Workflow incidents"
+      },
+      "route_keys": [
+        "system.workflow_processes"
+      ],
+      "tab_route_keys": [
+        "system.workflow_processes"
+      ],
+      "menu_id": "system_workflow_processes",
+      "menu_key": "system_workflow_processes",
+      "icon": "git-branch",
+      "route": "/admin/system/workflow-processes",
+      "sort_order": 320,
+      "required_permissions": [
+        "runtime.workflows.list_ops_workflow_processes"
+      ]
+    },
+    {
+      "key": "automation-rules",
+      "group": "automation",
+      "label": {
+        "zh-CN": "自动化规则",
+        "en": "Automation rules"
+      },
+      "route_keys": [
+        "system.automation_rules",
+        "system.automation_rule_new",
+        "system.automation_rule_edit"
+      ],
+      "tab_route_keys": [
+        "system.automation_rules"
+      ],
+      "menu_id": "system_automation_rules",
+      "menu_key": "system_automation_rules",
+      "icon": "zap",
+      "route": "/admin/system/automation-rules",
+      "sort_order": 330,
+      "required_permissions": [
+        "runtime.automation.list_automation_rules"
+      ]
+    },
+    {
+      "key": "schedules",
+      "group": "automation",
+      "label": {
+        "zh-CN": "调度定义",
+        "en": "Schedules"
+      },
+      "route_keys": [
+        "system.scheduler"
+      ],
+      "tab_route_keys": [
+        "system.scheduler"
+      ],
+      "menu_id": "system_scheduler",
+      "menu_key": "system_scheduler",
+      "icon": "bot",
+      "route": "/admin/system/scheduler",
+      "sort_order": 340,
+      "required_permissions": [
+        "scheduler.definitions.list"
+      ]
+    },
+    {
+      "key": "scheduler-operations",
+      "group": "automation",
+      "label": {
+        "zh-CN": "调度运行",
+        "en": "Scheduler operations"
+      },
+      "route_keys": [
+        "system.scheduler_operations"
+      ],
+      "tab_route_keys": [
+        "system.scheduler_operations"
+      ],
+      "menu_id": "system_scheduler_operations",
+      "menu_key": "system_scheduler_operations",
+      "icon": "file-clock",
+      "route": "/admin/system/scheduler-operations",
+      "sort_order": 350,
+      "required_permissions": [
+        "scheduler.state.get"
+      ]
+    },
+    {
+      "key": "connectors",
+      "group": "integrations",
+      "label": {
+        "zh-CN": "连接器",
+        "en": "Connectors"
+      },
+      "route_keys": [
+        "system.connectors"
+      ],
+      "tab_route_keys": [
+        "system.connectors"
+      ],
+      "menu_id": "system_connectors",
+      "menu_key": "system_connectors",
+      "icon": "cable",
+      "route": "/admin/system/connectors",
+      "sort_order": 410,
+      "required_permissions": [
+        "integration.connectors.list"
+      ]
+    },
+    {
+      "key": "integration-activity",
+      "group": "integrations",
+      "label": {
+        "zh-CN": "集成交付",
+        "en": "Integration activity"
+      },
+      "route_keys": [
+        "system.connector_operations"
+      ],
+      "tab_route_keys": [
+        "system.connector_operations"
+      ],
+      "menu_id": "system_connector_operations",
+      "menu_key": "system_connector_operations",
+      "icon": "globe-2",
+      "route": "/admin/system/integration-activity",
+      "sort_order": 420,
+      "required_permissions": [
+        "integration.connectors.list",
+        "integration.invocations.list",
+        "integration.events.list"
+      ]
+    },
+    {
+      "key": "notifications",
+      "group": "integrations",
+      "label": {
+        "zh-CN": "通知",
+        "en": "Notifications"
+      },
+      "route_keys": [
+        "system.notifications"
+      ],
+      "tab_route_keys": [
+        "system.notifications"
+      ],
+      "menu_id": "system_notifications",
+      "menu_key": "system_notifications",
+      "icon": "bell-ring",
+      "route": "/admin/system/notifications",
+      "sort_order": 430,
+      "required_permissions": [
+        "notification.templates.list"
+      ]
+    },
+    {
+      "key": "audit",
+      "group": "compliance",
+      "label": {
+        "zh-CN": "审计日志",
+        "en": "Audit log"
+      },
+      "route_keys": [
+        "system.audit"
+      ],
+      "tab_route_keys": [
+        "system.audit"
+      ],
+      "menu_id": "system_audit",
+      "menu_key": "system_audit",
+      "icon": "file-clock",
+      "route": "/admin/system/audit",
+      "sort_order": 510,
+      "required_permissions": [
+        "audit.governance.read"
+      ]
+    },
+    {
+      "key": "lifecycle",
+      "group": "compliance",
+      "label": {
+        "zh-CN": "生命周期策略",
+        "en": "Lifecycle policies"
+      },
+      "route_keys": [
+        "system.lifecycle"
+      ],
+      "tab_route_keys": [
+        "system.lifecycle"
+      ],
+      "menu_id": "system_lifecycle",
+      "menu_key": "system_lifecycle",
+      "icon": "file-archive",
+      "route": "/admin/system/lifecycle",
+      "sort_order": 520,
+      "required_permissions": [
+        "lifecycle.policies.list",
+        "lifecycle.metrics.read",
+        "lifecycle.cleanup.preview",
+        "lifecycle.archive.list"
+      ]
+    },
+    {
+      "key": "privacy-requests",
+      "group": "compliance",
+      "label": {
+        "zh-CN": "隐私请求",
+        "en": "Privacy requests"
+      },
+      "route_keys": [
+        "system.privacy_requests"
+      ],
+      "tab_route_keys": [
+        "system.privacy_requests"
+      ],
+      "menu_id": "system_privacy_requests",
+      "menu_key": "system_privacy_requests",
+      "icon": "file-key-2",
+      "route": "/admin/system/privacy-requests",
+      "sort_order": 530,
+      "required_permissions": [
+        "lifecycle.subject_requests.create",
+        "lifecycle.external_erasures.list"
+      ]
+    },
+    {
+      "key": "system-overview",
+      "group": "operations",
+      "label": {
+        "zh-CN": "系统概览",
+        "en": "System overview"
+      },
+      "route_keys": [
+        "system.overview"
+      ],
+      "tab_route_keys": [
+        "system.overview"
+      ],
+      "menu_id": "system_overview",
+      "menu_key": "system_overview",
+      "icon": "activity",
+      "route": "/admin/system",
+      "sort_order": 610,
+      "required_permissions": [
+        "runtime.businesssystem.business_system_snapshot"
+      ]
+    },
+    {
+      "key": "capabilities",
+      "group": "operations",
+      "label": {
+        "zh-CN": "能力目录",
+        "en": "Capabilities"
+      },
+      "route_keys": [
+        "system.capability_status"
+      ],
+      "tab_route_keys": [
+        "system.capability_status"
+      ],
+      "menu_id": "system_capability_status",
+      "menu_key": "system_capability_status",
+      "icon": "braces",
+      "route": "/admin/system/capability-status",
+      "sort_order": 620,
+      "required_permissions": [
+        "runtime.operations.list_operations"
+      ]
+    },
+    {
+      "key": "operation-ledger",
+      "group": "operations",
+      "label": {
+        "zh-CN": "操作台账",
+        "en": "Operation ledger"
+      },
+      "route_keys": [
+        "system.operations"
+      ],
+      "tab_route_keys": [
+        "system.operations"
+      ],
+      "menu_id": "system_operations",
+      "menu_key": "system_operations",
+      "icon": "database",
+      "route": "/admin/system/operations",
+      "sort_order": 630,
+      "required_permissions": [
+        "runtime.operations.list_operations"
+      ]
+    },
+    {
+      "key": "agent-operations",
+      "group": "operations",
+      "label": {
+        "zh-CN": "智能体运行",
+        "en": "Agent operations"
+      },
+      "route_keys": [
+        "system.agent_operations"
+      ],
+      "tab_route_keys": [
+        "system.agent_operations"
+      ],
+      "menu_id": "system_agent_operations",
+      "menu_key": "system_agent_operations",
+      "icon": "bot",
+      "route": "/admin/system/agent-operations",
+      "sort_order": 640,
+      "required_permissions": [
+        "agent.tasks.list"
+      ]
+    }
+  ]
+}
+

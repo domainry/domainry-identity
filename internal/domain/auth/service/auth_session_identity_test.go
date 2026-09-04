@@ -24,13 +24,13 @@ func TestCurrentSessionIdentity(t *testing.T) {
 	t.Run("identity lookup failure", func(t *testing.T) {
 		auth, identityRepository, _ := newFaultAuthDomainService()
 		identityRepository.listUsersErr = fault
-		_, err := auth.Me(t.Context(), validIdentityAccessToken(auth, "user", "workspace-primary"))
+		_, err := auth.Me(t.Context(), validIdentityAccessToken(t, auth, "user", "workspace-primary"))
 		assertExternalAuthFault(t, err, fault)
 	})
 
 	t.Run("identity missing", func(t *testing.T) {
 		auth, _, _ := newFaultAuthDomainService()
-		if _, err := auth.Me(t.Context(), validIdentityAccessToken(auth, "missing", "workspace-primary")); err == nil {
+		if _, err := auth.Me(t.Context(), validIdentityAccessToken(t, auth, "missing", "workspace-primary")); err == nil {
 			t.Fatal("expected missing session identity")
 		}
 	})
@@ -40,7 +40,7 @@ func TestCurrentSessionIdentity(t *testing.T) {
 		user := activeExternalIdentityUser("user", "user@example.com")
 		user.Status = identitymodel.IdentityStatusDisabled
 		identityRepository.users = []identitymodel.IdentityUser{user}
-		if _, err := auth.Me(t.Context(), validIdentityAccessToken(auth, user.ID, "workspace-primary")); err == nil {
+		if _, err := auth.Me(t.Context(), validIdentityAccessToken(t, auth, user.ID, "workspace-primary")); err == nil {
 			t.Fatal("expected disabled session identity")
 		}
 	})
@@ -48,14 +48,14 @@ func TestCurrentSessionIdentity(t *testing.T) {
 	t.Run("role lookup failure", func(t *testing.T) {
 		auth, identityRepository, _ := currentIdentityFixture()
 		identityRepository.listAssignmentsErr = fault
-		_, err := auth.Me(t.Context(), validIdentityAccessToken(auth, "user", "workspace-primary"))
+		_, err := auth.Me(t.Context(), validIdentityAccessToken(t, auth, "user", "workspace-primary"))
 		assertExternalAuthFault(t, err, fault)
 	})
 
 	t.Run("permission lookup failure", func(t *testing.T) {
 		auth, _, authorization := currentIdentityFixture()
 		authorization.permissionsErr = fault
-		_, err := auth.Me(t.Context(), validIdentityAccessToken(auth, "user", "workspace-primary"))
+		_, err := auth.Me(t.Context(), validIdentityAccessToken(t, auth, "user", "workspace-primary"))
 		assertExternalAuthFault(t, err, fault)
 	})
 
@@ -63,7 +63,7 @@ func TestCurrentSessionIdentity(t *testing.T) {
 		auth, _, _ := currentIdentityFixture()
 		fault := errors.New("credential handoff lookup")
 		auth.identityStore.(*faultExternalAuthRepository).getCredentialErr = fault
-		_, err := auth.Me(t.Context(), validIdentityAccessToken(auth, "user", "workspace-primary"))
+		_, err := auth.Me(t.Context(), validIdentityAccessToken(t, auth, "user", "workspace-primary"))
 		assertExternalAuthFault(t, err, fault)
 	})
 
@@ -78,7 +78,7 @@ func TestCurrentSessionIdentity(t *testing.T) {
 			"identity.users.list",
 			"runtime.operations.list_operations",
 		}
-		response, err := auth.Me(t.Context(), validIdentityAccessToken(auth, "user", "workspace-primary"))
+		response, err := auth.Me(t.Context(), validIdentityAccessToken(t, auth, "user", "workspace-primary"))
 		if err != nil {
 			t.Fatalf("resolve current session identity: %v", err)
 		}
@@ -124,15 +124,15 @@ func TestPrincipalFromBearerToken(t *testing.T) {
 		t.Fatal("expected invalid bearer token")
 	}
 	authorization.principalErr = fault
-	_, err := auth.PrincipalFromBearer(t.Context(), "Bearer "+validIdentityAccessToken(auth, "user", "workspace-primary"), "request")
+	_, err := auth.PrincipalFromBearer(t.Context(), "Bearer "+validIdentityAccessToken(t, auth, "user", "workspace-primary"), "request")
 	assertExternalAuthFault(t, err, fault)
 	authorization.principalErr = nil
 
-	principal, err := auth.PrincipalFromBearer(t.Context(), "Bearer "+validIdentityAccessToken(auth, "user", "workspace-a"), "request-a")
-	if err != nil || principal.WorkspaceID != "workspace-a" || principal.RequestID != "request-a" {
+	principal, err := auth.PrincipalFromBearer(t.Context(), "Bearer "+validIdentityAccessToken(t, auth, "user", "workspace-a"), "request-a")
+	if err != nil || principal.TenantID != "workspace-a" || principal.WorkspaceID != "workspace-a" || principal.RequestID != "request-a" {
 		t.Fatalf("resolve principal with workspace: principal=%#v err=%v", principal, err)
 	}
-	principal, err = auth.PrincipalFromBearer(t.Context(), "Bearer "+validIdentityAccessToken(auth, "user", ""), "request-b")
+	principal, err = auth.PrincipalFromBearer(t.Context(), "Bearer "+validIdentityAccessToken(t, auth, "user", ""), "request-b")
 	if err == nil || principal.Known {
 		t.Fatalf("missing initialized workspace was accepted: principal=%#v err=%v", principal, err)
 	}
@@ -150,10 +150,11 @@ func currentIdentityFixture() (*AuthDomainService, *faultExternalIdentityReposit
 	return auth, identityRepository, authorization
 }
 
-func validIdentityAccessToken(auth *AuthDomainService, userID string, workspaceID string) string {
+func validIdentityAccessToken(t *testing.T, auth *AuthDomainService, userID string, workspaceID string) string {
+	t.Helper()
 	repository := auth.identityStore.(*faultExternalAuthRepository)
 	repository.refreshTokens = append(repository.refreshTokens, identitymodel.AuthRefreshToken{UserID: userID, SessionID: "session", ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339)})
-	return auth.signClaims(authmodel.AuthClaims{Subject: userID, WorkspaceID: workspaceID, SessionID: "session", ExpiresAt: time.Now().Add(time.Hour).Unix()})
+	return mustSignClaims(t, auth, authmodel.AuthClaims{Subject: userID, WorkspaceID: workspaceID, SessionID: "session", ExpiresAt: time.Now().Add(time.Hour).Unix()})
 }
 
 type faultSessionAuthorization struct {

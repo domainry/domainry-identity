@@ -8,15 +8,20 @@ import (
 	"strings"
 
 	identitysdk "github.com/domainry/domainry-identity-sdk"
+	definitionmodel "github.com/domainry/domainry-identity/internal/domain/definition/model"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
 func (binding *moduleBinding) PublishProjectRoles(ctx context.Context, catalog identitysdk.ProjectRoleCatalog) (identitysdk.ProjectRoleCatalogReceipt, error) {
-	if binding == nil || binding.runtime == nil || binding.runtime.Identity == nil || binding.runtime.IdentityStore == nil {
+	if binding == nil || binding.runtime == nil || binding.runtime.Identity == nil || binding.runtime.IdentityStore == nil || binding.runtime.MetadataRuntime == nil {
 		return identitysdk.ProjectRoleCatalogReceipt{}, &identitysdk.Error{Code: "identity.project_role_catalog_unavailable"}
 	}
 	if catalog.Application.WorkspaceID != binding.application.WorkspaceID || catalog.Application.ApplicationKey != binding.application.ApplicationKey {
 		return identitysdk.ProjectRoleCatalogReceipt{}, &identitysdk.Error{Code: "identity.project_role_catalog_scope_mismatch"}
+	}
+	projectObjects := []definitionmodel.ObjectSchema{}
+	if err := decodeProjectRolePolicy(catalog.Objects, &projectObjects); err != nil {
+		return identitysdk.ProjectRoleCatalogReceipt{}, err
 	}
 	definitions := make([]identitymodel.RoleSchema, 0, len(catalog.Roles))
 	seen := map[string]bool{}
@@ -64,6 +69,7 @@ func (binding *moduleBinding) PublishProjectRoles(ctx context.Context, catalog i
 	for _, definition := range merged {
 		all = append(all, definition)
 	}
+	binding.runtime.MetadataRuntime.ReplaceProjectObjects(projectObjects)
 	binding.runtime.Identity.ReplaceRoleDefinitions(all)
 
 	canonical, err := json.Marshal(catalog)

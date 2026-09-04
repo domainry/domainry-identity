@@ -38,9 +38,26 @@ func (s *AuthProviderDomainService) ListSafe(_ context.Context) []map[string]any
 	}
 	out := make([]map[string]any, 0, len(s.order))
 	for _, key := range s.order {
-		out = append(out, s.configs[key].SafeMap())
+		config := s.configs[key]
+		if strings.EqualFold(config.Type, "otp") && !config.SupportsChallengePurpose(authmodel.AuthChallengePurposeLogin) {
+			continue
+		}
+		out = append(out, config.SafeMap())
 	}
 	return out
+}
+
+func (s *AuthProviderDomainService) FirstByTypeAndPurpose(providerType, purpose string) (authmodel.AuthProviderConfig, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	providerType = strings.ToLower(strings.TrimSpace(providerType))
+	for _, key := range s.order {
+		value := s.configs[key]
+		if strings.EqualFold(value.Type, providerType) && value.SupportsChallengePurpose(purpose) {
+			return value.Clone(), true
+		}
+	}
+	return authmodel.AuthProviderConfig{}, false
 }
 func (s *AuthProviderDomainService) Find(_ context.Context, key string) (authmodel.AuthProviderConfig, bool) {
 	s.mu.RLock()
@@ -51,6 +68,19 @@ func (s *AuthProviderDomainService) Find(_ context.Context, key string) (authmod
 func (s *AuthProviderDomainService) Enabled(ctx context.Context, key string) (authmodel.AuthProviderConfig, bool) {
 	value, ok := s.Find(ctx, key)
 	return value, ok && value.Enabled
+}
+
+func (s *AuthProviderDomainService) FirstEnabledByType(providerType string) (authmodel.AuthProviderConfig, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	providerType = strings.ToLower(strings.TrimSpace(providerType))
+	for _, key := range s.order {
+		value := s.configs[key]
+		if value.Enabled && strings.EqualFold(value.Type, providerType) {
+			return value.Clone(), true
+		}
+	}
+	return authmodel.AuthProviderConfig{}, false
 }
 func (s *AuthProviderDomainService) ReplaceConfig(value authmodel.AuthProviderConfig) (authmodel.AuthProviderConfig, bool) {
 	key := strings.ToLower(strings.TrimSpace(value.Key))

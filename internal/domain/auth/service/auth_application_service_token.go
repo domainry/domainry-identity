@@ -37,15 +37,20 @@ func (s *AuthDomainService) IssueApplicationServiceToken(ctx context.Context, te
 	revision := hex.EncodeToString(revisionDigest[:])
 	now := time.Now().UTC()
 	expiresAt := now.Add(applicationServiceTokenTTL)
+	jti, err := s.randomToken()
+	if err != nil {
+		return "", time.Time{}, "", internalError("generate application service token identifier", err)
+	}
 	claims := authmodel.AuthClaims{
 		Issuer: s.issuer, Audience: audience, Subject: "service:" + applicationKey,
 		TenantID: tenantID, WorkspaceID: workspaceID, SessionID: "service:" + credentialID,
 		AuthorizationRevision: revision, AuthenticationTime: now.Unix(),
 		AuthenticationMethods: []string{"application_credential"}, AssuranceLevel: "urn:domainry:acr:service",
-		IssuedAt: now.Unix(), ExpiresAt: expiresAt.Unix(), JTI: randomToken(),
+		IssuedAt: now.Unix(), ExpiresAt: expiresAt.Unix(), JTI: jti,
 		ServiceApplicationKey: applicationKey, ServiceCredentialID: credentialID, ServiceGrants: grants,
 	}
-	return s.signClaims(claims), expiresAt, revision, nil
+	token, err := s.signClaims(claims)
+	return token, expiresAt, revision, err
 }
 
 func (s *AuthDomainService) VerifyApplicationServiceToken(ctx context.Context, token, audience, resource, action string) (authmodel.AuthClaims, error) {

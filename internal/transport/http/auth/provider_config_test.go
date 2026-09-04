@@ -148,15 +148,15 @@ func TestAuthProviderSetupResultCoversProviderKindsAndWrappers(t *testing.T) {
 		t.Fatalf("external login policy = %#v", policy)
 	}
 
-	otp := authmodel.AuthProviderConfig{Key: "whatsapp", Label: "WhatsApp", Type: "otp", Enabled: true, OTPProvider: "meta", AccessTokenConfigured: true, PhoneNumberIDConfigured: false}
+	otp := authmodel.AuthProviderConfig{Key: "whatsapp", Label: "WhatsApp", Type: "otp", Enabled: true, OTPProvider: "meta"}
 	otpResult := handler.authProviderSetupResult(otp)
 	checks := otpResult["checks"].([]map[string]any)
 	steps := otpResult["next_steps"].([]string)
-	if len(checks) != 3 || checks[0]["ok"] != true || checks[1]["ok"] != true || checks[2]["ok"] != false || len(steps) != 1 || steps[0] != "configure_phone_number_id" {
+	if len(checks) != 2 || checks[0]["ok"] != true || checks[1]["ok"] != false || len(steps) != 1 || steps[0] != "configure_connection_key" {
 		t.Fatalf("OTP checks=%#v steps=%#v", checks, steps)
 	}
 	complete := otp.Map()
-	complete["phone_number_id_configured"] = true
+	complete["connection_key"] = "whatsapp-primary"
 	if steps := authProviderSetupNextSteps(complete); len(steps) != 1 || steps[0] != "run_provider_remote_check" {
 		t.Fatalf("complete next steps = %#v", steps)
 	}

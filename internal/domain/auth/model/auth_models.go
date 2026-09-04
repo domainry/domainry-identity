@@ -19,6 +19,7 @@ type AuthClaims struct {
 	ServiceApplicationKey string             `json:"service_application_key,omitempty"`
 	ServiceCredentialID   string             `json:"service_credential_id,omitempty"`
 	ServiceGrants         []AuthServiceGrant `json:"service_grants,omitempty"`
+	TokenPurpose          string             `json:"token_purpose,omitempty"`
 	// RoleKeys remains source-compatible for callers during the protocol
 	// transition, but is deliberately never serialized into access tokens.
 	RoleKeys []string `json:"-"`
@@ -45,21 +46,49 @@ type AuthRole struct {
 }
 
 type AuthProviderChallenge struct {
-	WorkspaceID    string `json:"workspace_id"`
-	ApplicationKey string `json:"application_key,omitempty"`
-	Provider       string `json:"provider"`
-	RedirectURL    string `json:"redirect_url,omitempty"`
-	State          string `json:"state"`
-	Nonce          string `json:"nonce,omitempty"`
-	CodeVerifier   string `json:"code_verifier,omitempty"`
-	RequestID      string `json:"request_id,omitempty"`
-	ReturnURL      string `json:"return_url,omitempty"`
-	Phone          string `json:"phone,omitempty"`
-	Code           string `json:"code,omitempty"`
-	Attempts       int    `json:"attempts,omitempty"`
-	ExpiresAt      string `json:"expires_at"`
-	CreatedAt      string `json:"created_at"`
+	WorkspaceID           string   `json:"workspace_id"`
+	ApplicationKey        string   `json:"application_key,omitempty"`
+	Provider              string   `json:"provider"`
+	Type                  string   `json:"type,omitempty"`
+	Purpose               string   `json:"purpose,omitempty"`
+	Status                string   `json:"status,omitempty"`
+	UserID                string   `json:"user_id,omitempty"`
+	RedirectURL           string   `json:"redirect_url,omitempty"`
+	State                 string   `json:"state"`
+	Nonce                 string   `json:"nonce,omitempty"`
+	CodeVerifier          string   `json:"code_verifier,omitempty"`
+	RequestID             string   `json:"request_id,omitempty"`
+	ReturnURL             string   `json:"return_url,omitempty"`
+	Phone                 string   `json:"phone,omitempty"`
+	Code                  string   `json:"code,omitempty"`
+	MaskedDestination     string   `json:"masked_destination,omitempty"`
+	RetryAt               string   `json:"retry_at,omitempty"`
+	DeliveryRef           string   `json:"delivery_ref,omitempty"`
+	DeliveryError         string   `json:"delivery_error,omitempty"`
+	AuthenticationMethods []string `json:"authentication_methods,omitempty"`
+	Attempts              int      `json:"attempts,omitempty"`
+	ExpiresAt             string   `json:"expires_at"`
+	CreatedAt             string   `json:"created_at"`
 }
+
+type AuthActionAssuranceReceipt struct {
+	Token       string   `json:"token"`
+	WorkspaceID string   `json:"workspace_id"`
+	UserID      string   `json:"user_id"`
+	Methods     []string `json:"methods"`
+	ExpiresAt   string   `json:"expires_at"`
+}
+
+const (
+	AuthChallengePurposeLogin     = "login"
+	AuthChallengePurposeLoginMFA  = "login_mfa"
+	AuthChallengePurposeAction    = "action_assurance"
+	AuthChallengeStatusPending    = "pending_delivery"
+	AuthChallengeStatusActive     = "active"
+	AuthChallengeStatusFailed     = "failed"
+	AuthChallengeStatusConsumed   = "consumed"
+	AuthChallengeStatusSuperseded = "superseded"
+)
 
 type AuthAuthorizationCode struct {
 	Code           string      `json:"-"`

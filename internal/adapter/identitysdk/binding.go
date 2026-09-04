@@ -18,6 +18,7 @@ import (
 	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
 	authcontract "github.com/domainry/domainry-identity/internal/domain/auth/contract"
 	authmodel "github.com/domainry/domainry-identity/internal/domain/auth/model"
+	authprojection "github.com/domainry/domainry-identity/internal/domain/auth/projection"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 )
@@ -65,7 +66,7 @@ func NewBinding(dependencies BindingDependencies) (identitysdk.Binding, error) {
 	binding := &sdkBinding{descriptor: identitysdk.Descriptor{
 		ProtocolVersion: identitysdk.CurrentProtocolVersion, BundleVersion: identitysdk.CurrentPolicyBundleVersion, AuthorizationVersion: identitysdk.CurrentAuthorizationContractVersion,
 		Mode: identitysdk.DeploymentModeModule, Issuer: defaultString(dependencies.Config.AuthIssuer, "http://localhost:8081"), Audience: defaultString(dependencies.Config.AuthAudience, "domainry-runtime"),
-		Capabilities: []string{"authentication", "token_verification", "authorization", "principal_resolution", "identity_projection", "application_registration", "permission_reconciliation", "credentials", "oidc", "saml"},
+		Capabilities: []string{"authentication", "challenge_authentication", "action_assurance", "token_verification", "authorization", "principal_resolution", "identity_projection", "application_registration", "permission_reconciliation", "credentials", "oidc", "saml"},
 	}, auth: dependencies.Authentication, providers: dependencies.ProviderConfiguration, flows: dependencies.ProviderFlows,
 		providerCallback: dependencies.ProviderCallback, access: dependencies.EffectiveAccess, identity: dependencies.Identity,
 		applications: dependencies.Applications, permissions: dependencies.Permissions, clock: dependencies.Clock,
@@ -90,6 +91,12 @@ func (binding *sdkBinding) ValidateCapabilityCandidate(ctx context.Context, requ
 }
 func (binding *sdkBinding) Authentication() identitysdk.Authentication {
 	return sdkAuthentication{binding}
+}
+func (binding *sdkBinding) ChallengeAuthentication() identitysdk.ChallengeAuthentication {
+	return sdkAuthentication{binding}
+}
+func (binding *sdkBinding) ActionAssurance() identitysdk.ActionAssurance {
+	return sdkActionAssurance{binding: binding}
 }
 func (binding *sdkBinding) Tokens() identitysdk.TokenVerifier { return sdkTokenVerifier{binding} }
 func (binding *sdkBinding) Authorization() identitysdk.Authorization {
@@ -119,6 +126,67 @@ func (binding *sdkBinding) Close(context.Context) error { return nil }
 
 type sdkAuthentication struct{ binding *sdkBinding }
 
+type sdkActionAssurance struct{ binding *sdkBinding }
+
+func (adapter sdkActionAssurance) BeginActionAssurance(ctx context.Context, request identitysdk.BeginActionAssuranceRequest) (identitysdk.ProviderChallenge, error) {
+	claims, err := adapter.userClaims(ctx, request.WorkspaceID, request.AccessToken)
+	if err != nil {
+		return identitysdk.ProviderChallenge{}, err
+	}
+	result, err := adapter.binding.flows.BeginActionAssurance(requestcontext.WithWorkspaceID(ctx, claims.WorkspaceID), claims.WorkspaceID, claims.Subject)
+	if err != nil {
+		return identitysdk.ProviderChallenge{}, sdkBoundaryError(err)
+	}
+	return sdkProviderChallenge(result), nil
+}
+
+func (adapter sdkActionAssurance) VerifyActionAssurance(ctx context.Context, request identitysdk.VerifyActionAssuranceRequest) (identitysdk.ActionAssuranceReceipt, error) {
+	claims, err := adapter.userClaims(ctx, request.WorkspaceID, request.AccessToken)
+	if err != nil {
+		return identitysdk.ActionAssuranceReceipt{}, err
+	}
+	receipt, err := adapter.binding.flows.VerifyActionAssurance(requestcontext.WithWorkspaceID(ctx, claims.WorkspaceID), claims.WorkspaceID, claims.Subject, request.Provider, request.State, request.Code)
+	if err != nil {
+		return identitysdk.ActionAssuranceReceipt{}, sdkBoundaryError(err)
+	}
+	return sdkActionAssuranceReceipt(receipt), nil
+}
+
+func (adapter sdkActionAssurance) ValidateActionAssuranceReceipt(ctx context.Context, request identitysdk.ValidateActionAssuranceReceiptRequest) (identitysdk.ActionAssuranceReceipt, error) {
+	claims, err := adapter.userClaims(ctx, request.WorkspaceID, request.AccessToken)
+	if err != nil {
+		return identitysdk.ActionAssuranceReceipt{}, err
+	}
+	if claims.Subject != string(request.SubjectID) {
+		return identitysdk.ActionAssuranceReceipt{}, &identitysdk.Error{StatusCode: http.StatusForbidden, Code: "auth.action_assurance_receipt_invalid"}
+	}
+	receipt, err := adapter.binding.auth.ValidateActionAssuranceReceipt(ctx, request.Token, string(request.WorkspaceID), string(request.SubjectID))
+	if err != nil {
+		return identitysdk.ActionAssuranceReceipt{}, sdkBoundaryError(err)
+	}
+	return sdkActionAssuranceReceipt(receipt), nil
+}
+
+func (adapter sdkActionAssurance) userClaims(ctx context.Context, workspaceID identitysdk.WorkspaceID, accessToken string) (authmodel.AuthClaims, error) {
+	if !workspaceID.Valid() || strings.TrimSpace(accessToken) == "" {
+		return authmodel.AuthClaims{}, &identitysdk.Error{StatusCode: http.StatusUnauthorized, Code: "auth.token_required"}
+	}
+	claims, err := adapter.binding.auth.VerifyAccessToken(requestcontext.WithWorkspaceID(ctx, string(workspaceID)), accessToken)
+	if err != nil {
+		return authmodel.AuthClaims{}, sdkBoundaryError(err)
+	}
+	if claims.WorkspaceID != string(workspaceID) {
+		return authmodel.AuthClaims{}, &identitysdk.Error{StatusCode: http.StatusForbidden, Code: "auth.workspace_mismatch"}
+	}
+	return claims, nil
+}
+
+func sdkActionAssuranceReceipt(receipt authmodel.AuthActionAssuranceReceipt) identitysdk.ActionAssuranceReceipt {
+	return identitysdk.ActionAssuranceReceipt{Token: receipt.Token, WorkspaceID: identitysdk.WorkspaceID(receipt.WorkspaceID), SubjectID: identitysdk.SubjectID(receipt.UserID), Methods: append([]string(nil), receipt.Methods...), ExpiresAt: receipt.ExpiresAt}
+}
+
+var _ identitysdk.ActionAssurance = sdkActionAssurance{}
+
 func (adapter sdkAuthentication) Providers(ctx context.Context, query identitysdk.ProviderQuery) ([]identitysdk.Provider, error) {
 	if !query.WorkspaceID.Valid() {
 		return nil, &identitysdk.Error{Code: "backend.workspace_scope_required"}
@@ -134,20 +202,25 @@ func (adapter sdkAuthentication) Providers(ctx context.Context, query identitysd
 }
 
 func (adapter sdkAuthentication) LoginWithPassword(ctx context.Context, request identitysdk.PasswordLoginRequest) (identitysdk.AuthSession, error) {
+	outcome, err := adapter.LoginWithPasswordOutcome(ctx, request)
+	return sdkAuthenticatedSession(outcome, err)
+}
+
+func (adapter sdkAuthentication) LoginWithPasswordOutcome(ctx context.Context, request identitysdk.PasswordLoginRequest) (identitysdk.AuthenticationOutcome, error) {
 	if !request.WorkspaceID.Valid() {
-		return identitysdk.AuthSession{}, &identitysdk.Error{Code: "backend.workspace_scope_required"}
+		return identitysdk.AuthenticationOutcome{}, &identitysdk.Error{Code: "backend.workspace_scope_required"}
 	}
 	if err := adapter.binding.requireMutableWorkspace(ctx, request.WorkspaceID); err != nil {
-		return identitysdk.AuthSession{}, err
+		return identitysdk.AuthenticationOutcome{}, err
 	}
 	application := identitysdk.ApplicationRef{WorkspaceID: request.WorkspaceID, ApplicationKey: request.ApplicationKey}
 	if found, err := adapter.binding.applicationRegistered(ctx, application); err != nil {
-		return identitysdk.AuthSession{}, sdkBoundaryError(err)
+		return identitysdk.AuthenticationOutcome{}, sdkBoundaryError(err)
 	} else if !found {
-		return identitysdk.AuthSession{}, &identitysdk.Error{Code: "identity.application_not_registered"}
+		return identitysdk.AuthenticationOutcome{}, &identitysdk.Error{Code: "identity.application_not_registered"}
 	}
-	session, err := adapter.binding.auth.LoginForApplication(requestcontext.WithWorkspaceID(ctx, string(request.WorkspaceID)), string(request.WorkspaceID), request.Login, request.Password, string(request.ApplicationKey))
-	return sdkAuthSession(session), sdkBoundaryError(err)
+	outcome, err := adapter.binding.flows.LoginWithPasswordOutcome(requestcontext.WithWorkspaceID(ctx, string(request.WorkspaceID)), string(request.WorkspaceID), request.Login, request.Password, string(request.ApplicationKey))
+	return sdkAuthenticationOutcome(outcome), sdkBoundaryError(err)
 }
 
 func (adapter sdkAuthentication) BeginFederatedLogin(ctx context.Context, request identitysdk.BeginFederatedLoginRequest) (identitysdk.ProviderChallenge, error) {
@@ -161,7 +234,7 @@ func (adapter sdkAuthentication) BeginFederatedLogin(ctx context.Context, reques
 	if err != nil {
 		return identitysdk.ProviderChallenge{}, sdkBoundaryError(err)
 	}
-	return identitysdk.ProviderChallenge{Provider: result.Provider, State: result.State, Nonce: result.Nonce, Code: result.Code, AuthURL: result.AuthURL, ExpiresAt: result.ExpiresAt}, nil
+	return sdkProviderChallenge(result), nil
 }
 
 func (adapter sdkAuthentication) ExchangeAuthorizationCode(ctx context.Context, request identitysdk.ExchangeAuthorizationCodeRequest) (identitysdk.AuthSession, error) {
@@ -205,11 +278,16 @@ func (adapter sdkAuthentication) CompleteFederatedLogin(ctx context.Context, req
 }
 
 func (adapter sdkAuthentication) VerifyOTP(ctx context.Context, request identitysdk.VerifyOTPRequest) (identitysdk.AuthSession, error) {
+	outcome, err := adapter.VerifyOTPOutcome(ctx, request)
+	return sdkAuthenticatedSession(outcome, err)
+}
+
+func (adapter sdkAuthentication) VerifyOTPOutcome(ctx context.Context, request identitysdk.VerifyOTPRequest) (identitysdk.AuthenticationOutcome, error) {
 	if err := adapter.binding.requireMutableWorkspace(ctx, request.WorkspaceID); err != nil {
-		return identitysdk.AuthSession{}, err
+		return identitysdk.AuthenticationOutcome{}, err
 	}
-	session, err := adapter.binding.flows.VerifyOTP(requestcontext.WithWorkspaceID(ctx, string(request.WorkspaceID)), string(request.WorkspaceID), request.Provider, request.State, request.Code)
-	return sdkAuthSession(session), sdkBoundaryError(err)
+	outcome, err := adapter.binding.flows.VerifyOTPOutcome(requestcontext.WithWorkspaceID(ctx, string(request.WorkspaceID)), string(request.WorkspaceID), request.Provider, request.State, request.Code)
+	return sdkAuthenticationOutcome(outcome), sdkBoundaryError(err)
 }
 
 func (adapter sdkAuthentication) RefreshSession(ctx context.Context, request identitysdk.RefreshRequest) (identitysdk.AuthSession, error) {
@@ -458,11 +536,41 @@ func sdkAuthSession(session authmodel.AuthSession) identitysdk.AuthSession {
 	for _, role := range session.Roles {
 		roles = append(roles, identitysdk.Role{ID: role.ID, Key: role.Key, Label: role.Label})
 	}
-	return identitysdk.AuthSession{SessionID: identitysdk.SessionID(session.SessionID), TenantID: identitysdk.TenantID(session.TenantID), WorkspaceID: session.WorkspaceID, AccessToken: session.AccessToken, RefreshToken: session.RefreshToken, TokenType: session.TokenType, ExpiresAt: session.ExpiresAt, User: identitysdk.User{ID: session.User.ID, Name: session.User.Name, Email: session.User.Email, Locale: session.User.Locale, Version: session.User.Version, Status: string(session.User.Status)}, Roles: roles, DefaultRole: session.DefaultRole, Permissions: append([]string(nil), session.Permissions...), MustChangePassword: session.MustChangePassword}
+	return identitysdk.AuthSession{SessionID: identitysdk.SessionID(session.SessionID), TenantID: identitysdk.TenantID(session.TenantID), WorkspaceID: session.WorkspaceID, AccessToken: session.AccessToken, RefreshToken: session.RefreshToken, TokenType: session.TokenType, ExpiresAt: session.ExpiresAt, User: identitysdk.User{ID: session.User.ID, Name: session.User.Name, Email: session.User.Email, Locale: session.User.Locale, Version: session.User.Version, Status: string(session.User.Status)}, Roles: roles, DefaultRole: session.DefaultRole, Permissions: append([]string(nil), session.Permissions...), MustChangePassword: session.MustChangePassword, AuthenticationTime: session.AuthenticationTime, AuthenticationMethods: append([]string(nil), session.AuthenticationMethods...), AssuranceLevel: session.AssuranceLevel}
+}
+
+func sdkAuthenticationOutcome(outcome authmodel.AuthenticationOutcome) identitysdk.AuthenticationOutcome {
+	result := identitysdk.AuthenticationOutcome{Status: identitysdk.AuthenticationStatus(outcome.Status)}
+	if outcome.Session != nil {
+		session := sdkAuthSession(*outcome.Session)
+		result.Session = &session
+	}
+	if outcome.Challenge != nil {
+		challenge := identitysdk.ProviderChallenge{Provider: outcome.Challenge.Provider, State: outcome.Challenge.State, Type: outcome.Challenge.Type, Purpose: outcome.Challenge.Purpose, Status: identitysdk.ChallengeStatus(outcome.Challenge.Status), Nonce: outcome.Challenge.Nonce, Code: outcome.Challenge.Code, MaskedDestination: outcome.Challenge.MaskedDestination, RetryAt: outcome.Challenge.RetryAt, ExpiresAt: outcome.Challenge.ExpiresAt}
+		result.Challenge = &challenge
+	}
+	return result
+}
+
+func sdkProviderChallenge(result authprojection.AuthProviderStartResponse) identitysdk.ProviderChallenge {
+	return identitysdk.ProviderChallenge{Provider: result.Provider, State: result.State, Type: result.Type, Purpose: result.Purpose, Status: identitysdk.ChallengeStatus(result.Status), Nonce: result.Nonce, Code: result.Code, AuthURL: result.AuthURL, MaskedDestination: result.MaskedDestination, RetryAt: result.RetryAt, ExpiresAt: result.ExpiresAt}
+}
+
+func sdkAuthenticatedSession(outcome identitysdk.AuthenticationOutcome, err error) (identitysdk.AuthSession, error) {
+	if err != nil {
+		return identitysdk.AuthSession{}, err
+	}
+	if outcome.Status == identitysdk.AuthenticationStatusAuthenticated && outcome.Session != nil {
+		return *outcome.Session, nil
+	}
+	if outcome.Status == identitysdk.AuthenticationStatusChallengeRequired && outcome.Challenge != nil {
+		return identitysdk.AuthSession{}, &identitysdk.Error{StatusCode: http.StatusConflict, Code: "auth.challenge_required", Params: map[string]string{"provider": outcome.Challenge.Provider, "state": outcome.Challenge.State}}
+	}
+	return identitysdk.AuthSession{}, &identitysdk.Error{StatusCode: http.StatusBadGateway, Code: "identity.authentication_response_invalid"}
 }
 
 func sdkAccessBundle(snapshot identitymodel.IdentityEffectiveAccessSnapshot, principal identitymodel.Principal, now time.Time) identitysdk.AccessBundle {
-	bundle := identitysdk.AccessBundle{ContractVersion: identitysdk.CurrentPolicyBundleVersion, AuthorizationRevision: identitysdk.AuthorizationRevision(snapshot.AuthorizationRevision), ExpiresAt: now.UTC().Add(5 * time.Minute), Subject: identitysdk.Subject{WorkspaceID: identitysdk.WorkspaceID(principal.WorkspaceID), SubjectID: identitysdk.SubjectID(principal.UserID), OrgID: principal.OrgID, OrgScopeIDs: append([]string(nil), principal.OrgScopeIDs...), SupportOrgID: principal.SupportOrgID, SupportOrgScopeIDs: append([]string(nil), principal.SupportOrgScopeIDs...)}}
+	bundle := identitysdk.AccessBundle{ContractVersion: identitysdk.CurrentPolicyBundleVersion, AuthorizationRevision: identitysdk.AuthorizationRevision(snapshot.AuthorizationRevision), ExpiresAt: now.UTC().Add(5 * time.Minute), Subject: identitysdk.Subject{TenantID: identitysdk.TenantID(principal.TenantID), WorkspaceID: identitysdk.WorkspaceID(principal.WorkspaceID), SubjectID: identitysdk.SubjectID(principal.UserID), OrgID: principal.OrgID, OrgScopeIDs: append([]string(nil), principal.OrgScopeIDs...), SupportOrgID: principal.SupportOrgID, SupportOrgScopeIDs: append([]string(nil), principal.SupportOrgScopeIDs...)}}
 	for _, id := range principal.ReportingScopeUserIDs {
 		bundle.Subject.ReportingScopeUserIDs = append(bundle.Subject.ReportingScopeUserIDs, identitysdk.SubjectID(id))
 	}

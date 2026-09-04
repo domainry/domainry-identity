@@ -3,8 +3,8 @@ package auth
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
-	"github.com/domainry/domainry-orm/batch"
 	"strings"
 	"time"
 
@@ -17,6 +17,7 @@ import (
 	"github.com/domainry/domainry-foundation/idempotency"
 	"github.com/domainry/domainry-foundation/secrets"
 	identitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity"
+	"github.com/domainry/domainry-orm/batch"
 	"github.com/domainry/domainry-orm/query"
 )
 
@@ -29,7 +30,7 @@ type AuthStore struct {
 	codeSecrets  secrets.Cipher
 }
 
-var authRefreshTokenColumns = []string{"id", "user_id", "session_id", "audience", "token_hash", "expires_at", "revoked_at", "replaced_by_id", "last_used_at", "created_at"}
+var authRefreshTokenColumns = []string{"id", "user_id", "session_id", "audience", "authentication_time", "authentication_methods", "assurance_level", "token_hash", "expires_at", "revoked_at", "replaced_by_id", "last_used_at", "created_at"}
 
 var _ authrepository.AuthRepository = AuthStore{}
 var _ authrepository.AuthMFARepository = AuthStore{}
@@ -77,9 +78,10 @@ func authRefreshTokenSelect(s AuthStore, workspaceID string) *query.SelectBuilde
 }
 
 func authRefreshTokenInsert(s AuthStore, workspaceID string, token identitymodel.AuthRefreshToken, updatedAt string) *query.InsertBuilder {
+	methods, _ := json.Marshal(token.AuthenticationMethods)
 	return query.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_auth_refresh_tokens", workspaceID).
-		Columns("id", "user_id", "session_id", "audience", "token_hash", "expires_at", "revoked_at", "replaced_by_id", "last_used_at", "created_at", "updated_at").
-		Values(token.ID, token.UserID, token.SessionID, token.Audience, token.TokenHash, token.ExpiresAt, database.NullableText(token.RevokedAt), database.NullableText(token.ReplacedByID), database.NullableText(token.LastUsedAt), token.CreatedAt, updatedAt)
+		Columns("id", "user_id", "session_id", "audience", "authentication_time", "authentication_methods", "assurance_level", "token_hash", "expires_at", "revoked_at", "replaced_by_id", "last_used_at", "created_at", "updated_at").
+		Values(token.ID, token.UserID, token.SessionID, token.Audience, token.AuthenticationTime, string(methods), token.AssuranceLevel, token.TokenHash, token.ExpiresAt, database.NullableText(token.RevokedAt), database.NullableText(token.ReplacedByID), database.NullableText(token.LastUsedAt), token.CreatedAt, updatedAt)
 }
 
 func (s AuthStore) ListUserProjectionSecurityFacts(ctx context.Context, workspaceID string, userIDs []string) ([]authmodel.UserProjectionSecurityFact, error) {

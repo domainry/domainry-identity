@@ -32,3 +32,14 @@ func TestAuthProviderDomainServiceOwnsTypedConfig(t *testing.T) {
 		t.Fatal("unknown provider replacement must fail")
 	}
 }
+
+func TestAuthProviderDiscoveryHidesActionOnlyOTP(t *testing.T) {
+	providers := NewAuthProviderDomainService([]map[string]any{
+		{"key": "action_pin", "type": "otp", "enabled": true, "allowed_purposes": []any{authmodel.AuthChallengePurposeAction}},
+		{"key": "login_pin", "type": "otp", "enabled": true, "allowed_purposes": []any{authmodel.AuthChallengePurposeLogin}},
+	}, false)
+	values := providers.ListSafe(t.Context())
+	if len(values) != 1 || values[0]["key"] != "login_pin" {
+		t.Fatalf("login discovery=%#v", values)
+	}
+}

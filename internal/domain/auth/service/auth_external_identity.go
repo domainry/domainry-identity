@@ -21,6 +21,10 @@ func (s *AuthDomainService) ExternalLoginWithPolicy(ctx context.Context, workspa
 }
 
 func (s *AuthDomainService) ExternalLoginWithPolicyForApplication(ctx context.Context, workspaceID string, assertion authmodel.AuthExternalIdentityAssertion, policy authmodel.AuthExternalLoginPolicy, applicationKey string) (authmodel.AuthSession, error) {
+	return s.ExternalLoginWithPolicyForApplicationAndAuthentication(ctx, workspaceID, assertion, policy, applicationKey, authmodel.AuthenticationContext{Methods: []string{"federated"}, AssuranceLevel: "urn:domainry:acr:1"})
+}
+
+func (s *AuthDomainService) ExternalLoginWithPolicyForApplicationAndAuthentication(ctx context.Context, workspaceID string, assertion authmodel.AuthExternalIdentityAssertion, policy authmodel.AuthExternalLoginPolicy, applicationKey string, authentication authmodel.AuthenticationContext) (authmodel.AuthSession, error) {
 	assertion.Provider = normalizeProvider(assertion.Provider)
 	assertion.Subject = strings.TrimSpace(assertion.Subject)
 	if assertion.Provider == "" || assertion.Subject == "" {
@@ -41,7 +45,7 @@ func (s *AuthDomainService) ExternalLoginWithPolicyForApplication(ctx context.Co
 		if err := s.ensureExternalDefaultRole(ctx, user.ID, policy.DefaultRoleKey); err != nil {
 			return authmodel.AuthSession{}, err
 		}
-		return s.issueSessionForAudience(ctx, workspaceID, user, applicationKey)
+		return s.issueSessionForAudienceWithAuthentication(ctx, workspaceID, user, applicationKey, authentication)
 	}
 	if !policy.AutoCreateUsers {
 		return authmodel.AuthSession{}, forbidden("auth.external_account_unlinked")
@@ -49,8 +53,12 @@ func (s *AuthDomainService) ExternalLoginWithPolicyForApplication(ctx context.Co
 	if user, ok, err := s.externalLoginUserByVerifiedEmail(ctx, assertion); err != nil {
 		return authmodel.AuthSession{}, err
 	} else if ok {
+		accountID, err := s.randomToken()
+		if err != nil {
+			return authmodel.AuthSession{}, internalError("generate external account identifier", err)
+		}
 		account = identitymodel.IdentityExternalAccount{
-			ID:              "ext_" + randomToken(),
+			ID:              "ext_" + accountID,
 			UserID:          user.ID,
 			Provider:        assertion.Provider,
 			ProviderSubject: assertion.Subject,
@@ -64,14 +72,18 @@ func (s *AuthDomainService) ExternalLoginWithPolicyForApplication(ctx context.Co
 		if err := s.identityStore.UpsertIdentityExternalAccount(ctx, workspaceID, account); err != nil {
 			return authmodel.AuthSession{}, err
 		}
-		return s.issueSessionForAudience(ctx, workspaceID, user, applicationKey)
+		return s.issueSessionForAudienceWithAuthentication(ctx, workspaceID, user, applicationKey, authentication)
 	}
 	user, err := s.createExternalIdentityUser(ctx, assertion, policy)
 	if err != nil {
 		return authmodel.AuthSession{}, err
 	}
+	accountID, err := s.randomToken()
+	if err != nil {
+		return authmodel.AuthSession{}, internalError("generate external account identifier", err)
+	}
 	account = identitymodel.IdentityExternalAccount{
-		ID:              "ext_" + randomToken(),
+		ID:              "ext_" + accountID,
 		UserID:          user.ID,
 		Provider:        assertion.Provider,
 		ProviderSubject: assertion.Subject,
@@ -85,7 +97,7 @@ func (s *AuthDomainService) ExternalLoginWithPolicyForApplication(ctx context.Co
 	if err := s.identityStore.UpsertIdentityExternalAccount(ctx, workspaceID, account); err != nil {
 		return authmodel.AuthSession{}, err
 	}
-	return s.issueSessionForAudience(ctx, workspaceID, user, applicationKey)
+	return s.issueSessionForAudienceWithAuthentication(ctx, workspaceID, user, applicationKey, authentication)
 }
 
 func (s *AuthDomainService) externalLoginUserByVerifiedEmail(ctx context.Context, assertion authmodel.AuthExternalIdentityAssertion) (identitymodel.IdentityUser, bool, error) {
@@ -134,8 +146,12 @@ func (s *AuthDomainService) BindExternalAccount(ctx context.Context, workspaceID
 		}
 		return existing, nil
 	}
+	accountID, err := s.randomToken()
+	if err != nil {
+		return identitymodel.IdentityExternalAccount{}, internalError("generate external account identifier", err)
+	}
 	account := identitymodel.IdentityExternalAccount{
-		ID:              "ext_" + randomToken(),
+		ID:              "ext_" + accountID,
 		UserID:          userID,
 		Provider:        assertion.Provider,
 		ProviderSubject: assertion.Subject,

@@ -21,8 +21,7 @@ type AuthProviderCredential struct {
 	VerificationKey string                    `json:"-"`
 	RedirectURL     string                    `json:"redirect_url,omitempty"`
 	OTPProvider     string                    `json:"otp_provider,omitempty"`
-	AccessToken     string                    `json:"-"`
-	PhoneNumberID   string                    `json:"phone_number_id,omitempty"`
+	AllowedPurposes []string                  `json:"allowed_purposes,omitempty"`
 	AutoCreateUsers bool                      `json:"auto_create_users"`
 	DefaultRoleKey  string                    `json:"default_role_key,omitempty"`
 	RoleMappings    []AuthProviderRoleMapping `json:"role_mappings,omitempty"`
@@ -53,8 +52,7 @@ type AuthProviderCredentialUpsertRequest struct {
 	VerificationKey string                    `json:"verification_key,omitempty"`
 	RedirectURL     string                    `json:"redirect_url,omitempty"`
 	OTPProvider     string                    `json:"otp_provider,omitempty"`
-	AccessToken     string                    `json:"access_token,omitempty"`
-	PhoneNumberID   string                    `json:"phone_number_id,omitempty"`
+	AllowedPurposes []string                  `json:"allowed_purposes,omitempty"`
 	AutoCreateUsers *bool                     `json:"auto_create_users,omitempty"`
 	DefaultRoleKey  string                    `json:"default_role_key,omitempty"`
 	RoleMappings    []AuthProviderRoleMapping `json:"role_mappings,omitempty"`

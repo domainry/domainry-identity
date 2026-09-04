@@ -76,7 +76,7 @@ func TestAuthProviderFlowUsesNeutralCallbackAdapterAfterConsumingState(t *testin
 
 func TestOTPChallengeCannotBeConsumedOrInvalidatedAcrossWorkspaces(t *testing.T) {
 	auth := NewAuthDomainService(nil, nil, "secret", "", 0, 0, 0, 0, 0, 0, authpolicy.AuthPasswordPolicy{})
-	started, err := auth.BeginOTPLogin(t.Context(), "workspace-a", "otp", "10000000002")
+	started, err := auth.BeginOTPLogin(t.Context(), "workspace-a", "otp", "+10000000002")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func TestOTPChallengeCannotBeConsumedOrInvalidatedAcrossWorkspaces(t *testing.T)
 		t.Fatalf("cross-workspace consume error=%v", err)
 	}
 	assertion, err := auth.ConsumeOTPChallenge(t.Context(), "workspace-a", "otp", started.State, started.Code)
-	if err != nil || assertion.Phone != "10000000002" || assertion.Email != "10000000002@otp.identity.invalid" || assertion.DisplayName != "10000000002" {
+	if err != nil || assertion.Phone != "+10000000002" || assertion.Email != "10000000002@otp.identity.invalid" || assertion.DisplayName != "+10000000002" {
 		t.Fatalf("workspace A challenge was invalidated: assertion=%#v err=%v", assertion, err)
 	}
 }

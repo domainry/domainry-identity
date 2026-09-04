@@ -136,7 +136,7 @@ func TestOTPChallengeRateLimitAttemptsExpiryAndWorkspaceIsolation(t *testing.T) 
 		t.Fatal(err)
 	}
 	assertion, err := auth.ConsumeOTPChallenge(t.Context(), "workspace-a", "otp", valid.State, " "+valid.Code+" ")
-	if err != nil || assertion.Provider != "otp" || assertion.Subject != "10000000003" || assertion.Email != "10000000003@otp.identity.invalid" || assertion.Metadata != `{"source":"otp","phone_verified":true}` {
+	if err != nil || assertion.Provider != "otp" || assertion.Subject != "+10000000003" || assertion.Email != "10000000003@otp.identity.invalid" || assertion.Metadata != `{"source":"otp","phone_verified":true}` {
 		t.Fatalf("assertion=%+v err=%v", assertion, err)
 	}
 	auth.challenges["expired"] = authmodel.AuthProviderChallenge{WorkspaceID: "workspace-a", Provider: "otp", State: "expired", Code: "123456", ExpiresAt: time.Now().UTC().Add(-time.Minute).Format(time.RFC3339)}

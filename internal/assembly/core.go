@@ -221,7 +221,7 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 	}
 	providerConfiguration := authapplication.NewAuthProviderApplicationService(authapplication.MergeTypedAuthProviderCredentials(cfg.AuthProviders(), providerCredentials), cfg.AuthExternalAutoCreateUsers, authStore)
 	providerFlows := authapplication.NewAuthProviderFlowApplicationService(authApp, providerConfiguration)
-	objects := func() []definitionmodel.ObjectSchema { return metadataRuntime.Schema().Objects }
+	objects := metadataRuntime.EffectiveAccessObjects
 	actions := func() []definitionmodel.ActionSchema { return metadataRuntime.Schema().Actions }
 	effectiveAccess := identityapplication.NewIdentityEffectiveAccessApplicationService(identityapplication.IdentityEffectiveAccessDependencies{
 		Identity: identityApp, Objects: objects, Actions: actions,

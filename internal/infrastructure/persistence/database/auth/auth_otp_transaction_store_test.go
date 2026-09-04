@@ -25,15 +25,15 @@ func TestOTPTransactionPersistsAttemptsAndConsumesExactlyOnce(t *testing.T) {
 	if err != nil || !created {
 		t.Fatalf("created=%v err=%v", created, err)
 	}
-	wrong, valid, err := repository.ConsumeAuthOTPTransaction(t.Context(), "workspace-primary", "otp", challenge.State, "000000", 3, now)
+	wrong, valid, err := repository.ConsumeAuthOTPTransaction(t.Context(), "workspace-primary", "otp", challenge.State, "000000", []string{authmodel.AuthChallengePurposeLogin}, "", 3, now)
 	if err != nil || valid || wrong.Attempts != 1 {
 		t.Fatalf("wrong=%#v valid=%v err=%v", wrong, valid, err)
 	}
-	accepted, valid, err := repository.ConsumeAuthOTPTransaction(t.Context(), "workspace-primary", "otp", challenge.State, challenge.Code, 3, now)
+	accepted, valid, err := repository.ConsumeAuthOTPTransaction(t.Context(), "workspace-primary", "otp", challenge.State, challenge.Code, []string{authmodel.AuthChallengePurposeLogin}, "", 3, now)
 	if err != nil || !valid || accepted.Phone != challenge.Phone {
 		t.Fatalf("accepted=%#v valid=%v err=%v", accepted, valid, err)
 	}
-	if replay, valid, err := repository.ConsumeAuthOTPTransaction(t.Context(), "workspace-primary", "otp", challenge.State, challenge.Code, 3, now); err != nil || valid || replay.State != "" {
+	if replay, valid, err := repository.ConsumeAuthOTPTransaction(t.Context(), "workspace-primary", "otp", challenge.State, challenge.Code, []string{authmodel.AuthChallengePurposeLogin}, "", 3, now); err != nil || valid || replay.State != "" {
 		t.Fatalf("replay=%#v valid=%v err=%v", replay, valid, err)
 	}
 }
@@ -64,5 +64,38 @@ func TestOTPTransactionEnforcesDeliveryCooldownAcrossRequests(t *testing.T) {
 	created, err = repository.CreateAuthOTPTransaction(t.Context(), challenge("next"), "same-phone", now.Add(2*time.Minute), now.Add(time.Minute))
 	if err != nil || !created {
 		t.Fatalf("next created=%v err=%v", created, err)
+	}
+}
+
+func TestOTPTransactionPurposeAndSubjectMismatchDoesNotConsumeChallenge(t *testing.T) {
+	store := openStoreForGeneratedListTest(t)
+	defer store.Close()
+	if err := store.EnsureSchema(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	identityStore, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceEngine())
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository := NewAuthStoreWithKeyProvider(identityStore, store.SecretKeyProvider())
+	now := time.Now().UTC()
+	challenge := authmodel.AuthProviderChallenge{
+		WorkspaceID: "workspace-primary", Provider: "otp", State: "action-state", Phone: "+10000000000", Code: "123456",
+		Purpose: authmodel.AuthChallengePurposeAction, UserID: "user-a", Status: authmodel.AuthChallengeStatusActive,
+		ExpiresAt: now.Add(time.Minute).Format(time.RFC3339Nano),
+	}
+	created, err := repository.CreateAuthOTPTransaction(t.Context(), challenge, "action-user-key", now.Add(time.Minute), now)
+	if err != nil || !created {
+		t.Fatalf("created=%v err=%v", created, err)
+	}
+	if rejected, valid, err := repository.ConsumeAuthOTPTransaction(t.Context(), "workspace-primary", "otp", challenge.State, challenge.Code, []string{authmodel.AuthChallengePurposeLogin}, "", 3, now); err != nil || valid || rejected.State != "" {
+		t.Fatalf("login mismatch challenge=%#v valid=%v err=%v", rejected, valid, err)
+	}
+	if rejected, valid, err := repository.ConsumeAuthOTPTransaction(t.Context(), "workspace-primary", "otp", challenge.State, challenge.Code, []string{authmodel.AuthChallengePurposeAction}, "user-b", 3, now); err != nil || valid || rejected.State != "" {
+		t.Fatalf("subject mismatch challenge=%#v valid=%v err=%v", rejected, valid, err)
+	}
+	accepted, valid, err := repository.ConsumeAuthOTPTransaction(t.Context(), "workspace-primary", "otp", challenge.State, challenge.Code, []string{authmodel.AuthChallengePurposeAction}, "user-a", 3, now)
+	if err != nil || !valid || accepted.UserID != "user-a" || accepted.Purpose != authmodel.AuthChallengePurposeAction {
+		t.Fatalf("accepted=%#v valid=%v err=%v", accepted, valid, err)
 	}
 }

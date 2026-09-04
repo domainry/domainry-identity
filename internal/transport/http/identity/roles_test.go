@@ -55,6 +55,11 @@ func TestIdentityRoleReadHandlers(t *testing.T) {
 	if repo.lastUserID != "user-1" {
 		t.Fatalf("trimmed user id = %q", repo.lastUserID)
 	}
+	governanceWriter, governanceRequest := identityRoleRequest(http.MethodGet, "/identity/roles/role-1/governance-detail", "", map[string]string{"roleID": "role-1"})
+	handler.getIdentityRoleGovernanceDetail(governanceWriter, governanceRequest)
+	if got := governanceWriter.Header().Get(identityResourceHashHeader); got == "" || got == "empty" {
+		t.Fatalf("role governance resource hash = %q", got)
+	}
 	w, request := identityRoleRequest(http.MethodGet, "/identity/users/user-1/role-assignments", "", map[string]string{"userID": "user-1"})
 	handler.listIdentityUserRoleAssignments(w, request)
 	if got := w.Header().Get(identityResourceHashHeader); got == "" || got == "empty" {

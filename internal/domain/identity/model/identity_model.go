@@ -282,16 +282,19 @@ type IdentityCredential struct {
 }
 
 type AuthRefreshToken struct {
-	ID           string `json:"id"`
-	UserID       string `json:"user_id"`
-	SessionID    string `json:"session_id"`
-	Audience     string `json:"audience"`
-	TokenHash    string `json:"token_hash"`
-	ExpiresAt    string `json:"expires_at"`
-	RevokedAt    string `json:"revoked_at,omitempty"`
-	ReplacedByID string `json:"replaced_by_id,omitempty"`
-	CreatedAt    string `json:"created_at,omitempty"`
-	LastUsedAt   string `json:"last_used_at,omitempty"`
+	ID                    string   `json:"id"`
+	UserID                string   `json:"user_id"`
+	SessionID             string   `json:"session_id"`
+	Audience              string   `json:"audience"`
+	AuthenticationTime    int64    `json:"auth_time,omitempty"`
+	AuthenticationMethods []string `json:"amr,omitempty"`
+	AssuranceLevel        string   `json:"acr,omitempty"`
+	TokenHash             string   `json:"token_hash"`
+	ExpiresAt             string   `json:"expires_at"`
+	RevokedAt             string   `json:"revoked_at,omitempty"`
+	ReplacedByID          string   `json:"replaced_by_id,omitempty"`
+	CreatedAt             string   `json:"created_at,omitempty"`
+	LastUsedAt            string   `json:"last_used_at,omitempty"`
 }
 
 type IdentityExternalAccount struct {

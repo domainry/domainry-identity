@@ -162,7 +162,7 @@ func (s *AuthDomainService) RegisterVerifiedMFAFactor(ctx context.Context, works
 		return badRequest("auth.mfa_factor_id_required")
 	}
 	switch factor.Type {
-	case "totp", "webauthn", "recovery", "external":
+	case "otp", "totp", "webauthn", "recovery", "external":
 	default:
 		return badRequest("auth.mfa_factor_type_invalid")
 	}
