@@ -76,6 +76,68 @@ func TestBootstrapBindingCreatesNoTenantBeforeHostAtomicProvision(t *testing.T) 
 	assertIdentityRowCount(t, db, "_identity_permissions", "workspace-primary", standaloneIdentityPermissionCount())
 }
 
+func TestBootstrapProjectRoleCatalogProvisionsBaselineAcceptanceGraphAtomically(t *testing.T) {
+	databasePath := filepath.Join(t.TempDir(), "identity-bootstrap-project-roles.db")
+	db, err := sql.Open("sqlite", databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	bootstrap, err := identitymodule.NewFactory(identitymodule.Options{IdentityVersion: "test", DatabaseDriver: "sqlite", DatabasePath: databasePath}).OpenBootstrapWithDatabase(
+		t.Context(), "domainry-runtime", identitysdk.DatabaseHandle{Pool: db, Driver: "sqlite", FilePath: databasePath, Migrations: &testEmbeddedMigrationRegistrar{}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = bootstrap.Close(t.Context()) })
+	if err := bootstrap.BindBootstrapProjectRoleCatalog(t.Context(), identitysdk.ProjectRoleCatalog{
+		Application: identitysdk.ApplicationRef{ApplicationKey: "domainry-runtime"},
+		Roles: []identitysdk.ProjectRoleDefinition{
+			{Key: "sales_director", Name: "Sales Director", Audience: "user", ProvisionToWorkspaces: true, Permissions: []identitysdk.ProjectRolePermission{{PermissionKey: "lead.read", DataScope: identitysdk.DataScopeAll}}},
+			{Key: "sales_rep", Name: "Sales Representative", Audience: "user", ProvisionToWorkspaces: true, Permissions: []identitysdk.ProjectRolePermission{{PermissionKey: "lead.read", DataScope: identitysdk.DataScopeOrg}}},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, table := range []string{"_identity_organization_units", "_identity_users", "_identity_roles", "_identity_user_role_assignments", "_identity_credentials"} {
+		assertAllIdentityRows(t, db, table, 0)
+	}
+
+	tx, err := db.BeginTx(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := identitysdk.WorkspaceIdentityProvisionRequest{
+		WorkspaceID: "workspace-baseline", AdminLoginID: "admin@example.test", AdminName: "Admin", InitialPassword: "BootstrapAdmin1!",
+		AcceptanceOrganizations: []identitysdk.WorkspaceAcceptanceOrganization{
+			{ID: "department-1", Code: "department-1", Name: "Department 1"},
+			{ID: "department-2", Code: "department-2", Name: "Department 2"},
+		},
+		AcceptanceActors: []identitysdk.WorkspaceAcceptanceActor{
+			{ID: "director", LoginID: "director@example.test", Name: "Director", RoleKey: "sales_director", InitialPassword: "DirectorPassword1!"},
+			{ID: "rep-1", LoginID: "rep-1@example.test", Name: "Rep 1", RoleKey: "sales_rep", OrganizationID: "department-1", ManagerUserID: "director", InitialPassword: "RepresentativePassword1!"},
+			{ID: "rep-2", LoginID: "rep-2@example.test", Name: "Rep 2", RoleKey: "sales_rep", OrganizationID: "department-2", ManagerUserID: "director", InitialPassword: "RepresentativePassword2!"},
+		},
+	}
+	result, err := bootstrap.ProvisionWorkspaceIdentity(t.Context(), request, identitysdk.EmbeddedTransaction{Native: tx})
+	if err != nil {
+		_ = tx.Rollback()
+		t.Fatal(err)
+	}
+	if result.ProvisionedRoles != 3 {
+		_ = tx.Rollback()
+		t.Fatalf("provisioned roles=%d", result.ProvisionedRoles)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	assertIdentityRowCount(t, db, "_identity_organization_units", request.WorkspaceID, 2)
+	assertIdentityRowCount(t, db, "_identity_users", request.WorkspaceID, 4)
+	assertIdentityRowCount(t, db, "_identity_roles", request.WorkspaceID, 3)
+	assertIdentityRowCount(t, db, "_identity_user_role_assignments", request.WorkspaceID, 4)
+	assertIdentityRowCount(t, db, "_identity_credentials", request.WorkspaceID, 4)
+}
+
 func TestNormalBindingPreservesHostProvisionedImplicitAdminLogin(t *testing.T) {
 	databasePath := filepath.Join(t.TempDir(), "identity-bootstrap.db")
 	db, err := sql.Open("sqlite", databasePath)

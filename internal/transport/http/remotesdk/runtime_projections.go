@@ -53,6 +53,22 @@ func registerRuntimeProjectionRoutes(registrar RouteRegistrar, binding identitys
 			Found            bool                         `json:"found"`
 		}{OrganizationUnit: organizationUnit, Found: found})
 	})
+	registrar.HandleFunc("POST /identity/display-names/resolve", func(w http.ResponseWriter, r *http.Request) {
+		var request identitysdk.DisplayNameQuery
+		if !support.decodeJSON(w, r, &request) {
+			return
+		}
+		if !authorizeApplicationCredential(w, r, support, credentials, request.Application) {
+			return
+		}
+		resolver, ok := binding.Projection().(identitysdk.DisplayNameProjection)
+		if !ok {
+			support.writeServiceError(w, r, &identitysdk.Error{Code: "identity.display_name_projection_unavailable"})
+			return
+		}
+		result, err := resolver.ResolveDisplayNames(r.Context(), request)
+		writeRuntimeProjection(w, r, result, err, support)
+	})
 	registrar.HandleFunc("POST /identity/users/query", func(w http.ResponseWriter, r *http.Request) {
 		request, ok := decodeProjectionQuery(w, r)
 		if !ok {

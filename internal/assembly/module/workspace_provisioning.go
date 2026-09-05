@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -47,11 +48,15 @@ func (binding *moduleBinding) ProvisionWorkspaceIdentity(ctx context.Context, re
 		return identitysdk.WorkspaceIdentityProvisionResult{}, fmt.Errorf("hash initial workspace password: %w", err)
 	}
 	roles := binding.provisionedWorkspaceRoles(request.WorkspaceID)
+	organizations, users, assignments, credentials, err := acceptanceFixtures(request, roles)
+	if err != nil {
+		return identitysdk.WorkspaceIdentityProvisionResult{}, err
+	}
 	admin := identitymodel.IdentityUser{
 		ID: "admin", Name: request.AdminName, Email: request.AdminLoginID,
 		AccountType: identitymodel.IdentityAccountHuman, Status: identitymodel.IdentityStatusActive,
 	}
-	if err := binding.runtime.IdentityStore.ProvisionWorkspaceIdentityWithExecutor(ctx, tx, request.WorkspaceID, admin, roles, func(stage identitypersistence.WorkspaceIdentityProvisionStage) error {
+	if err := binding.runtime.IdentityStore.ProvisionWorkspaceIdentityWithExecutor(ctx, tx, request.WorkspaceID, admin, roles, organizations, users, assignments, func(stage identitypersistence.WorkspaceIdentityProvisionStage) error {
 		if transaction.WorkspaceProvisionFailures == nil {
 			return nil
 		}
@@ -84,6 +89,11 @@ func (binding *moduleBinding) ProvisionWorkspaceIdentity(ctx context.Context, re
 	}); err != nil {
 		return identitysdk.WorkspaceIdentityProvisionResult{}, fmt.Errorf("provision workspace administrator credential: %w", err)
 	}
+	for _, credential := range credentials {
+		if err := binding.runtime.AuthStore.UpsertIdentityCredentialWithExecutor(ctx, tx, request.WorkspaceID, credential); err != nil {
+			return identitysdk.WorkspaceIdentityProvisionResult{}, fmt.Errorf("provision acceptance actor credential: %w", err)
+		}
+	}
 	if transaction.WorkspaceProvisionFailures != nil {
 		if err := transaction.WorkspaceProvisionFailures.InjectWorkspaceProvisionFailure(identitysdk.WorkspaceProvisionFailureAfterCredential); err != nil {
 			return identitysdk.WorkspaceIdentityProvisionResult{}, err
@@ -92,6 +102,106 @@ func (binding *moduleBinding) ProvisionWorkspaceIdentity(ctx context.Context, re
 	return identitysdk.WorkspaceIdentityProvisionResult{
 		AdminLoginID: request.AdminLoginID, InitialPassword: password, MustChangePassword: true, ProvisionedRoles: len(roles),
 	}, nil
+}
+
+func acceptanceFixtures(request identitysdk.WorkspaceIdentityProvisionRequest, roles []identitymodel.IdentityRole) ([]identitymodel.IdentityOrganizationUnit, []identitymodel.IdentityUser, []identitymodel.IdentityUserRoleAssignment, []identitymodel.IdentityCredential, error) {
+	roleIDs := map[string]string{}
+	for _, role := range roles {
+		roleIDs[strings.TrimSpace(role.Key)] = role.ID
+	}
+	organizations := make([]identitymodel.IdentityOrganizationUnit, 0, len(request.AcceptanceOrganizations))
+	organizationIDs := map[string]bool{}
+	for index, item := range request.AcceptanceOrganizations {
+		id, code, name := strings.TrimSpace(item.ID), strings.TrimSpace(item.Code), strings.TrimSpace(item.Name)
+		if id == "" {
+			return nil, nil, nil, nil, acceptanceFixtureInvalid("organization", index, "id", "required", nil)
+		}
+		if organizationIDs[id] {
+			return nil, nil, nil, nil, acceptanceFixtureInvalid("organization", index, "id", "duplicate", map[string]string{"organization_id": id})
+		}
+		if code == "" {
+			return nil, nil, nil, nil, acceptanceFixtureInvalid("organization", index, "code", "required", map[string]string{"organization_id": id})
+		}
+		if name == "" {
+			return nil, nil, nil, nil, acceptanceFixtureInvalid("organization", index, "name", "required", map[string]string{"organization_id": id})
+		}
+		organizationIDs[id] = true
+		organizations = append(organizations, identitymodel.IdentityOrganizationUnit{ID: id, Code: code, Name: name, NodeType: identitymodel.IdentityOrganizationUnitDepartment, Path: "/" + id, AncestorIDs: []string{}, Depth: 0, SortOrder: index, Status: identitymodel.IdentityStatusActive})
+	}
+	users := make([]identitymodel.IdentityUser, 0, len(request.AcceptanceActors))
+	assignments := make([]identitymodel.IdentityUserRoleAssignment, 0, len(request.AcceptanceActors))
+	credentials := make([]identitymodel.IdentityCredential, 0, len(request.AcceptanceActors))
+	userIDs := map[string]bool{}
+	for index, actor := range request.AcceptanceActors {
+		id, loginID, name := strings.TrimSpace(actor.ID), strings.ToLower(strings.TrimSpace(actor.LoginID)), strings.TrimSpace(actor.Name)
+		roleKey := strings.TrimSpace(actor.RoleKey)
+		organizationID, managerUserID := strings.TrimSpace(actor.OrganizationID), strings.TrimSpace(actor.ManagerUserID)
+		roleID, roleFound := roleIDs[roleKey]
+		if id == "" {
+			return nil, nil, nil, nil, acceptanceFixtureInvalid("actor", index, "id", "required", nil)
+		}
+		if userIDs[id] {
+			return nil, nil, nil, nil, acceptanceFixtureInvalid("actor", index, "id", "duplicate", map[string]string{"actor_id": id})
+		}
+		if loginID == "" {
+			return nil, nil, nil, nil, acceptanceFixtureInvalid("actor", index, "login_id", "required", map[string]string{"actor_id": id})
+		}
+		if name == "" {
+			return nil, nil, nil, nil, acceptanceFixtureInvalid("actor", index, "name", "required", map[string]string{"actor_id": id})
+		}
+		if roleKey == "" {
+			return nil, nil, nil, nil, acceptanceFixtureInvalid("actor", index, "role_key", "required", map[string]string{"actor_id": id})
+		}
+		if !roleFound {
+			return nil, nil, nil, nil, acceptanceFixtureInvalid("actor", index, "role_key", "unknown", map[string]string{"actor_id": id, "role_key": roleKey})
+		}
+		if organizationID != "" && !organizationIDs[organizationID] {
+			return nil, nil, nil, nil, acceptanceFixtureInvalid("actor", index, "organization_id", "unknown", map[string]string{"actor_id": id, "organization_id": organizationID})
+		}
+		if !validBootstrapInitialPassword(actor.InitialPassword) {
+			return nil, nil, nil, nil, acceptanceFixtureInvalid("actor", index, "initial_password", "policy_violation", map[string]string{"actor_id": id})
+		}
+		passwordHash, err := bcrypt.GenerateFromPassword([]byte(actor.InitialPassword), bcrypt.DefaultCost)
+		if err != nil {
+			return nil, nil, nil, nil, fmt.Errorf("hash acceptance actor password: %w", err)
+		}
+		userIDs[id] = true
+		users = append(users, identitymodel.IdentityUser{ID: id, Name: name, Email: loginID, AccountType: identitymodel.IdentityAccountHuman, OrgID: organizationID, ManagerUserID: managerUserID, ReportingPath: acceptanceReportingPath(id, managerUserID), Status: identitymodel.IdentityStatusActive})
+		assignments = append(assignments, identitymodel.IdentityUserRoleAssignment{UserID: id, RoleID: roleID, Source: "runtime_acceptance_fixture", Status: "active"})
+		credentials = append(credentials, identitymodel.IdentityCredential{UserID: id, PasswordHash: string(passwordHash), MustChangePassword: false})
+	}
+	for index, user := range users {
+		if user.ManagerUserID != "" && !userIDs[user.ManagerUserID] {
+			return nil, nil, nil, nil, acceptanceFixtureInvalid("actor", index, "manager_user_id", "unknown", map[string]string{"actor_id": user.ID, "manager_user_id": user.ManagerUserID})
+		}
+	}
+	return organizations, users, assignments, credentials, nil
+}
+
+func acceptanceFixtureInvalid(kind string, index int, field, reason string, values map[string]string) *identitysdk.Error {
+	params := map[string]string{
+		"fixture_kind":  kind,
+		"fixture_index": strconv.Itoa(index),
+		"field":         field,
+		"reason":        reason,
+	}
+	for key, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			params[key] = value
+		}
+	}
+	return &identitysdk.Error{
+		Code:    "identity.workspace_acceptance_fixture_invalid",
+		Message: fmt.Sprintf("%s[%d].%s reason=%s", kind, index, field, reason),
+		Params:  params,
+	}
+}
+
+func acceptanceReportingPath(userID, managerUserID string) string {
+	if managerUserID == "" {
+		return "/" + userID
+	}
+	return "/" + managerUserID + "/" + userID
 }
 
 func (binding *moduleBinding) ReconcileWorkspaceRoles(ctx context.Context, request identitysdk.WorkspaceRoleReconcileRequest, transaction identitysdk.EmbeddedTransaction) (identitysdk.WorkspaceRoleReconcileResult, error) {
@@ -171,3 +281,4 @@ func validBootstrapInitialPassword(password string) bool {
 }
 
 var _ identitysdk.EmbeddedWorkspaceProvisioner = (*moduleBinding)(nil)
+var _ identitysdk.BootstrapBinding = (*moduleBinding)(nil)

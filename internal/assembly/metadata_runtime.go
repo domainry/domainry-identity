@@ -18,6 +18,7 @@ type MetadataRuntime struct {
 	mu             sync.RWMutex
 	snapshot       metadatamodel.MetadataSchemaSnapshot
 	projectObjects []definitionmodel.ObjectSchema
+	projectRoles   []identitymodel.RoleSchema
 }
 
 func NewMetadataRuntime(state metadataservice.SchemaSnapshotState) *MetadataRuntime {
@@ -45,6 +46,45 @@ func (r *MetadataRuntime) ReplaceProjectObjects(objects []definitionmodel.Object
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.projectObjects = projectObjects
+}
+
+// ReplaceProjectRoles keeps the embedding application's role catalog separate
+// from Identity-owned metadata. Metadata authoring reloads the source snapshot;
+// the application overlay must therefore be reapplied instead of being lost.
+func (r *MetadataRuntime) ReplaceProjectRoles(roles []identitymodel.RoleSchema) {
+	projectRoles := append([]identitymodel.RoleSchema(nil), roles...)
+	sort.Slice(projectRoles, func(left, right int) bool { return projectRoles[left].Key < projectRoles[right].Key })
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.projectRoles = projectRoles
+}
+
+// EffectiveRoleDefinitions composes Identity-owned definitions with the
+// application-owned overlay. The application definition wins on a key
+// collision, matching the project-role publication contract.
+func (r *MetadataRuntime) EffectiveRoleDefinitions(source []identitymodel.RoleSchema) []identitymodel.RoleSchema {
+	r.mu.RLock()
+	projectRoles := append([]identitymodel.RoleSchema(nil), r.projectRoles...)
+	r.mu.RUnlock()
+	byKey := make(map[string]identitymodel.RoleSchema, len(source)+len(projectRoles))
+	for _, role := range source {
+		if key := strings.TrimSpace(role.Key); key != "" {
+			role.Key = key
+			byKey[key] = role
+		}
+	}
+	for _, role := range projectRoles {
+		if key := strings.TrimSpace(role.Key); key != "" {
+			role.Key = key
+			byKey[key] = role
+		}
+	}
+	roles := make([]identitymodel.RoleSchema, 0, len(byKey))
+	for _, role := range byKey {
+		roles = append(roles, role)
+	}
+	sort.Slice(roles, func(left, right int) bool { return roles[left].Key < roles[right].Key })
+	return roles
 }
 
 // EffectiveAccessObjects combines source-owned Identity objects with the

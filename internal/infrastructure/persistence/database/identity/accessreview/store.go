@@ -71,7 +71,7 @@ func (s *Store) CreateIdentityAccessReview(ctx context.Context, review identitym
 		return fmt.Errorf("build identity access review insert: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
-		return err
+		return normalizeAccessReviewCreateError(err)
 	}
 	items := query.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_access_review_items", workspaceID).
 		Columns("id", "review_id", "user_id", "role_id", "role_key", "binding_key", "profile_id", "risk_level", "priority", "priority_reasons_json", "last_used_at", "status", "decision", "replacement_role_id", "expires_at", "reviewer_id", "reason", "decided_at", "version", "created_at", "updated_at")
@@ -116,7 +116,7 @@ func (s *Store) CreateIdentityAccessReviewWithinDataScope(ctx context.Context, r
 		return false, fmt.Errorf("build identity access review insert: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
-		return false, err
+		return false, normalizeAccessReviewCreateError(err)
 	}
 	columns := []string{"workspace_id", "id", "review_id", "user_id", "role_id", "role_key", "binding_key", "profile_id", "risk_level", "priority", "priority_reasons_json", "last_used_at", "status", "decision", "replacement_role_id", "expires_at", "reviewer_id", "reason", "decided_at", "version", "created_at", "updated_at"}
 	for _, item := range review.Items {
@@ -159,6 +159,17 @@ func (s *Store) CreateIdentityAccessReviewWithinDataScope(ctx context.Context, r
 		return false, err
 	}
 	return true, nil
+}
+
+func normalizeAccessReviewCreateError(err error) error {
+	if err == nil {
+		return nil
+	}
+	message := strings.ToLower(err.Error())
+	if strings.Contains(message, "unique") || strings.Contains(message, "duplicate") {
+		return &apperror.AppError{Kind: apperror.KindConflict, Code: "backend.identity.access_review_exists", Err: err}
+	}
+	return err
 }
 
 func (s *Store) ListIdentityAccessReviews(ctx context.Context, workspaceID, status string) ([]identitymodel.IdentityAccessReview, error) {

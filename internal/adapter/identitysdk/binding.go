@@ -603,7 +603,19 @@ func sdkAccessBundle(snapshot identitymodel.IdentityEffectiveAccessSnapshot, pri
 		bundle.ReferencePolicies = append(bundle.ReferencePolicies, identitysdk.ReferencePolicy{SourceResource: identitysdk.ResourceType(reference.SourceObjectKey), Reference: reference.RelationFieldKey, TargetResource: identitysdk.ResourceType(reference.TargetObjectKey), DisplayFields: append([]string(nil), reference.DisplayFields...), Allowed: reference.Mode != "deny", Reason: reference.Reason})
 	}
 	for _, rule := range snapshot.ExportRules {
-		bundle.ExportPolicies = append(bundle.ExportPolicies, identitysdk.ExportPolicy{Resource: identitysdk.ResourceType(rule.ObjectKey), Mode: identitysdk.ExportMode(rule.Mode), Fields: append([]string(nil), rule.Fields...)})
+		// `all_fields` is the manifest representation of unrestricted export.
+		// The SDK contract represents the same state by omitting an export
+		// restriction; forwarding `all_fields` as an SDK ExportMode makes the
+		// complete access bundle invalid and can break unrelated authenticated
+		// requests such as a mandatory password change.
+		mode := strings.TrimSpace(rule.Mode)
+		if mode == "all_fields" {
+			continue
+		}
+		if mode == "selected_fields" {
+			mode = string(identitysdk.ExportModeAllowList)
+		}
+		bundle.ExportPolicies = append(bundle.ExportPolicies, identitysdk.ExportPolicy{Resource: identitysdk.ResourceType(rule.ObjectKey), Mode: identitysdk.ExportMode(mode), Fields: append([]string(nil), rule.Fields...)})
 	}
 	guardrailKeys := map[string]bool{}
 	for _, key := range snapshot.GuardrailKeys {

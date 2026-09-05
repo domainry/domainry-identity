@@ -20,8 +20,9 @@ func IdentityRoleAuthoringCapability() authoringcontract.CapabilityAuthoringDefi
 			"field_permissions": openList, "reference_permissions": openList, "export_rules": openList,
 			"audience":             {Type: "string", Enum: []any{"any", "user", "business_profile", "service"}, Default: "any"},
 			"required_binding_key": {Type: "string"}, "assignment_mode": {Type: "string", Enum: []any{"manual", "request_only", "system_managed"}, Default: "manual"},
-			"risk_level":         {Type: "string", Enum: []any{"normal", "elevated", "privileged"}, Default: "normal"},
-			"conflict_role_keys": stringList, "grantable_role_keys": stringList,
+			"provision_to_workspaces": {Type: "boolean", Default: false},
+			"risk_level":              {Type: "string", Enum: []any{"normal", "elevated", "privileged"}, Default: "normal"},
+			"conflict_role_keys":      stringList, "grantable_role_keys": stringList,
 			"permission_set_keys": stringList, "permission_set_group_keys": stringList, "guardrail_keys": stringList,
 		},
 	}
@@ -35,6 +36,7 @@ func IdentityRoleAuthoringCapability() authoringcontract.CapabilityAuthoringDefi
 			{Key: "expected_schema_hash", Type: "schema_hash", Required: true},
 			{Key: "audience", Type: "string", Default: "any", Enum: []string{"any", "user", "business_profile", "service"}},
 			{Key: "required_binding_key", Type: "string"}, {Key: "assignment_mode", Type: "string", Default: "manual", Enum: []string{"manual", "request_only", "system_managed"}},
+			{Key: "provision_to_workspaces", Type: "boolean", Default: false},
 			{Key: "risk_level", Type: "string", Default: "normal", Enum: []string{"normal", "elevated", "privileged"}},
 			{Key: "permission_set_keys", Type: "array", ItemSchema: "permission_set_key"},
 			{Key: "permission_set_group_keys", Type: "array", ItemSchema: "permission_set_group_key"},
@@ -53,7 +55,7 @@ func IdentityRoleAuthoringCapability() authoringcontract.CapabilityAuthoringDefi
 		},
 		Examples: []authoringcontract.CapabilityAuthoringExample{
 			{Name: "minimal_valid", Value: map[string]any{"expected_schema_hash": "$instance.schema_hash", "payload": map[string]any{"key": "sales_manager", "name": "Sales Manager", "permissions": []any{map[string]any{"permission_key": "order.read", "data_scope": "org_child"}}}}},
-			{Name: "representative", Value: map[string]any{"expected_schema_hash": "$instance.schema_hash", "payload": map[string]any{"key": "sales_manager", "name": "Sales Manager", "permissions": []any{}, "permission_set_group_keys": []any{"sales_operations"}, "guardrail_keys": []any{"protect_security_raw"}}}},
+			{Name: "representative", Value: map[string]any{"expected_schema_hash": "$instance.schema_hash", "payload": map[string]any{"key": "sales_manager", "name": "Sales Manager", "permissions": []any{}, "audience": "user", "assignment_mode": "manual", "provision_to_workspaces": true, "permission_set_group_keys": []any{"sales_operations"}, "guardrail_keys": []any{"protect_security_raw"}}}},
 			{Name: "invalid_with_repair", Value: map[string]any{"expected_schema_hash": "$instance.schema_hash", "payload": map[string]any{"key": "", "name": "Sales Manager", "permissions": []any{}}}, ExpectedErrorCodes: []string{"backend.identity.role_id_key_required"}},
 		},
 		Sources: []authoringcontract.CapabilityAuthoringSource{{Kind: "model", Path: "internal/domain/identity/model/identity_manifest.go", Symbol: "RoleSchema"}, {Kind: "validation", Path: "internal/application/metadata/metadata_candidate_validation_application_service.go", Symbol: "ValidateMetadataCandidate"}, {Kind: "service", Path: "internal/application/metadata/metadata_application_service.go", Symbol: "UpsertMetadataDefinition"}},

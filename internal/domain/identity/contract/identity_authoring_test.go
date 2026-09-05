@@ -82,10 +82,22 @@ func TestIdentityRoleAuthoringContractsPublishExactHTTPShapes(t *testing.T) {
 		t.Fatalf("role=%#v", role)
 	}
 	rolePayload := role.InputSchema.Properties["payload"]
-	for _, field := range []string{"permission_set_keys", "permission_set_group_keys", "guardrail_keys"} {
+	for _, field := range []string{"permission_set_keys", "permission_set_group_keys", "guardrail_keys", "provision_to_workspaces"} {
 		if _, ok := rolePayload.Properties[field]; !ok {
 			t.Fatalf("role authoring contract missing %s", field)
 		}
+	}
+	if field := rolePayload.Properties["provision_to_workspaces"]; field.Type != "boolean" || field.Default != false {
+		t.Fatalf("role workspace provisioning field=%#v", field)
+	}
+	parameterFound := false
+	for _, parameter := range role.Parameters {
+		if parameter.Key == "provision_to_workspaces" {
+			parameterFound = parameter.Type == "boolean" && parameter.Default == false
+		}
+	}
+	if !parameterFound {
+		t.Fatalf("role authoring parameters omit provision_to_workspaces: %#v", role.Parameters)
 	}
 	permission := IdentityRolePermissionAuthoringCapability()
 	if permission.InputSchema == nil || permission.OutputSchema == nil || len(permission.ReferenceContracts) != 2 || permission.ResourceOperations != nil || permission.Execution.ChangeControl != "direct_audited_versioned_metadata" {

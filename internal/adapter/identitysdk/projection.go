@@ -2,6 +2,7 @@ package identitysdkadapter
 
 import (
 	"context"
+	"sort"
 	"strings"
 
 	"github.com/domainry/domainry-foundation/requestcontext"
@@ -30,6 +31,64 @@ func (adapter sdkProjection) FindOrganizationUnit(ctx context.Context, request i
 	}
 	organizationUnit, found, err := identity.FindOrganizationUnit(workspaceContext, strings.TrimSpace(request.OrgID))
 	return sdkProjectionOrganizationUnit(organizationUnit), found, sdkBoundaryError(err)
+}
+
+func (adapter sdkProjection) ResolveDisplayNames(ctx context.Context, request identitysdk.DisplayNameQuery) (identitysdk.DisplayNameResult, error) {
+	identity, workspaceContext, err := adapter.scoped(ctx, request.Application)
+	if err != nil {
+		return identitysdk.DisplayNameResult{}, err
+	}
+	userIDs := sdkDisplayNameIDSet(request.UserIDs)
+	organizationUnitIDs := sdkDisplayNameIDSet(request.OrganizationUnitIDs)
+	if len(userIDs) > 1000 || len(organizationUnitIDs) > 1000 {
+		return identitysdk.DisplayNameResult{}, &identitysdk.Error{Code: "identity.display_name_query_too_large"}
+	}
+	result := identitysdk.DisplayNameResult{Users: []identitysdk.DisplayName{}, OrganizationUnits: []identitysdk.DisplayName{}}
+	users, organizationUnits, err := identity.ResolveProjectionDisplayNames(workspaceContext, sdkDisplayNameIDs(userIDs), sdkDisplayNameIDs(organizationUnitIDs))
+	if err != nil {
+		return identitysdk.DisplayNameResult{}, sdkBoundaryError(err)
+	}
+	for _, user := range users {
+		result.Users = append(result.Users, sdkDisplayName(user.ID, user.Name))
+	}
+	for _, organizationUnit := range organizationUnits {
+		result.OrganizationUnits = append(result.OrganizationUnits, sdkDisplayName(organizationUnit.ID, organizationUnit.Name))
+	}
+	sort.Slice(result.Users, func(left, right int) bool { return result.Users[left].ID < result.Users[right].ID })
+	sort.Slice(result.OrganizationUnits, func(left, right int) bool {
+		return result.OrganizationUnits[left].ID < result.OrganizationUnits[right].ID
+	})
+	return result, nil
+}
+
+func sdkDisplayNameIDs(values map[string]bool) []string {
+	result := make([]string, 0, len(values))
+	for value := range values {
+		if values[value] {
+			result = append(result, value)
+		}
+	}
+	sort.Strings(result)
+	return result
+}
+
+func sdkDisplayNameIDSet(values []string) map[string]bool {
+	result := make(map[string]bool, len(values))
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			result[value] = true
+		}
+	}
+	return result
+}
+
+func sdkDisplayName(id, name string) identitysdk.DisplayName {
+	id = strings.TrimSpace(id)
+	name = strings.TrimSpace(name)
+	if name == "" {
+		name = id
+	}
+	return identitysdk.DisplayName{ID: id, Name: name}
 }
 
 func (adapter sdkProjection) ListUsers(ctx context.Context, request identitysdk.ProjectionQuery) ([]identitysdk.User, error) {
@@ -128,3 +187,5 @@ func sdkProjectionRoleAssignment(value identitymodel.IdentityUserRoleAssignment)
 		RevokeReason: value.RevokeReason, CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt, ExpiresAt: value.ExpiresAt,
 	}
 }
+
+var _ identitysdk.DisplayNameProjection = sdkProjection{}

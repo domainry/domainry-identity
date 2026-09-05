@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	identitysdk "github.com/domainry/domainry-identity-sdk"
@@ -23,18 +24,9 @@ func (binding *moduleBinding) PublishProjectRoles(ctx context.Context, catalog i
 	if err := decodeProjectRolePolicy(catalog.Objects, &projectObjects); err != nil {
 		return identitysdk.ProjectRoleCatalogReceipt{}, err
 	}
-	definitions := make([]identitymodel.RoleSchema, 0, len(catalog.Roles))
-	seen := map[string]bool{}
-	for _, input := range catalog.Roles {
-		definition, err := projectRoleDefinition(input)
-		if err != nil {
-			return identitysdk.ProjectRoleCatalogReceipt{}, err
-		}
-		if seen[definition.Key] {
-			return identitysdk.ProjectRoleCatalogReceipt{}, &identitysdk.Error{Code: "identity.project_role_duplicate"}
-		}
-		seen[definition.Key] = true
-		definitions = append(definitions, definition)
+	definitions, err := projectRoleDefinitions(catalog.Roles)
+	if err != nil {
+		return identitysdk.ProjectRoleCatalogReceipt{}, err
 	}
 
 	workspaceID := string(catalog.Application.WorkspaceID)
@@ -58,19 +50,13 @@ func (binding *moduleBinding) PublishProjectRoles(ctx context.Context, catalog i
 			return identitysdk.ProjectRoleCatalogReceipt{}, fmt.Errorf("sync project role %s: %w", definition.Key, err)
 		}
 	}
-	merged := map[string]identitymodel.RoleSchema{}
-	for _, definition := range binding.runtime.Identity.PublishedRoleDefinitions(ctx) {
-		merged[definition.Key] = definition
-	}
-	for _, definition := range definitions {
-		merged[definition.Key] = definition
-	}
-	all := make([]identitymodel.RoleSchema, 0, len(merged))
-	for _, definition := range merged {
-		all = append(all, definition)
-	}
 	binding.runtime.MetadataRuntime.ReplaceProjectObjects(projectObjects)
-	binding.runtime.Identity.ReplaceRoleDefinitions(all)
+	binding.runtime.MetadataRuntime.ReplaceProjectRoles(definitions)
+	binding.runtime.Identity.ReplaceRoleDefinitions(
+		binding.runtime.MetadataRuntime.EffectiveRoleDefinitions(
+			binding.runtime.MetadataRuntime.Schema().Roles,
+		),
+	)
 
 	canonical, err := json.Marshal(catalog)
 	if err != nil {
@@ -78,6 +64,70 @@ func (binding *moduleBinding) PublishProjectRoles(ctx context.Context, catalog i
 	}
 	digest := sha256.Sum256(canonical)
 	return identitysdk.ProjectRoleCatalogReceipt{Published: len(definitions), SHA256: fmt.Sprintf("%x", digest[:])}, nil
+}
+
+// BindBootstrapProjectRoleCatalog makes application roles available to the
+// first-workspace provisioner without writing any tenant-owned rows. The same
+// project-role decoder used by ordinary publication validates the catalog;
+// the host transaction remains the only place where workspace roles, users,
+// organizations, assignments, and credentials are persisted.
+func (binding *moduleBinding) BindBootstrapProjectRoleCatalog(ctx context.Context, catalog identitysdk.ProjectRoleCatalog) error {
+	if binding == nil || binding.runtime == nil || binding.runtime.Identity == nil || binding.runtime.IdentityStore == nil || binding.runtime.MetadataRuntime != nil || binding.application.WorkspaceID != "" {
+		return &identitysdk.Error{Code: "identity.bootstrap_project_role_catalog_unavailable"}
+	}
+	if ctx == nil {
+		return &identitysdk.Error{Code: "identity.context_required"}
+	}
+	if err := ctx.Err(); err != nil {
+		return &identitysdk.Error{Code: "identity.context_unavailable", Cause: err}
+	}
+	if catalog.Application.WorkspaceID != "" || catalog.Application.ApplicationKey != binding.application.ApplicationKey {
+		return &identitysdk.Error{Code: "identity.bootstrap_project_role_catalog_scope_mismatch"}
+	}
+	projectObjects := []definitionmodel.ObjectSchema{}
+	if err := decodeProjectRolePolicy(catalog.Objects, &projectObjects); err != nil {
+		return err
+	}
+	definitions, err := projectRoleDefinitions(catalog.Roles)
+	if err != nil {
+		return err
+	}
+	byKey := make(map[string]identitymodel.RoleSchema, len(binding.runtime.Manifest.Roles)+len(definitions))
+	for _, definition := range binding.runtime.Manifest.Roles {
+		if key := strings.TrimSpace(definition.Key); key != "" {
+			definition.Key = key
+			byKey[key] = definition
+		}
+	}
+	// Application-owned role definitions intentionally win on collisions, just
+	// as they do after the ordinary workspace-bound binding is opened.
+	for _, definition := range definitions {
+		byKey[definition.Key] = definition
+	}
+	roles := make([]identitymodel.RoleSchema, 0, len(byKey))
+	for _, definition := range byKey {
+		roles = append(roles, definition)
+	}
+	sort.Slice(roles, func(left, right int) bool { return roles[left].Key < roles[right].Key })
+	binding.runtime.Identity.ReplaceRoleDefinitions(roles)
+	return nil
+}
+
+func projectRoleDefinitions(inputs []identitysdk.ProjectRoleDefinition) ([]identitymodel.RoleSchema, error) {
+	definitions := make([]identitymodel.RoleSchema, 0, len(inputs))
+	seen := map[string]bool{}
+	for _, input := range inputs {
+		definition, err := projectRoleDefinition(input)
+		if err != nil {
+			return nil, err
+		}
+		if seen[definition.Key] {
+			return nil, &identitysdk.Error{Code: "identity.project_role_duplicate"}
+		}
+		seen[definition.Key] = true
+		definitions = append(definitions, definition)
+	}
+	return definitions, nil
 }
 
 func projectRoleDefinition(input identitysdk.ProjectRoleDefinition) (identitymodel.RoleSchema, error) {

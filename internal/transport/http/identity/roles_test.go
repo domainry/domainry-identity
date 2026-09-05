@@ -85,7 +85,7 @@ func TestIdentityRoleReadHandlers(t *testing.T) {
 		t.Fatalf("search service error = %v", response.err)
 	}
 	response.status, response.err = 0, nil
-	_, governanceRequest := identityRoleRequest(http.MethodGet, "/identity/roles/role-1/governance-detail", "", map[string]string{"roleID": "role-1"})
+	_, governanceRequest = identityRoleRequest(http.MethodGet, "/identity/roles/role-1/governance-detail", "", map[string]string{"roleID": "role-1"})
 	handler.getIdentityRoleGovernanceDetail(w, governanceRequest)
 	if response.err != errIdentityHTTPTest {
 		t.Fatalf("governance detail service error = %v", response.err)

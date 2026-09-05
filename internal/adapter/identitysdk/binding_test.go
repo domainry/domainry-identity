@@ -119,6 +119,30 @@ func TestSDKAccessBundlePreservesCompleteV4PolicySemantics(t *testing.T) {
 	}
 }
 
+func TestSDKAccessBundleOmitsUnrestrictedAllFieldsExportRule(t *testing.T) {
+	bundle := sdkAccessBundle(identitymodel.IdentityEffectiveAccessSnapshot{
+		AuthorizationRevision: "revision-export",
+		ExportRules: []identitymodel.ExportRule{
+			{ObjectKey: "customer", Mode: "all_fields"},
+			{ObjectKey: "invoice", Mode: "selected_fields", Fields: []string{"id", "amount"}},
+			{ObjectKey: "secret", Mode: "deny"},
+		},
+	}, identitymodel.Principal{WorkspaceID: "workspace-primary", UserID: "user-1"}, time.Now())
+
+	if len(bundle.ExportPolicies) != 2 {
+		t.Fatalf("unrestricted all_fields export rule must not become an SDK restriction: %#v", bundle.ExportPolicies)
+	}
+	if bundle.ExportPolicies[0].Resource != "invoice" || bundle.ExportPolicies[0].Mode != identitysdk.ExportModeAllowList || !reflect.DeepEqual(bundle.ExportPolicies[0].Fields, []string{"id", "amount"}) {
+		t.Fatalf("allow-list export policy changed unexpectedly: %#v", bundle.ExportPolicies[0])
+	}
+	if bundle.ExportPolicies[1].Resource != "secret" || bundle.ExportPolicies[1].Mode != identitysdk.ExportModeDeny || len(bundle.ExportPolicies[1].Fields) != 0 {
+		t.Fatalf("deny export policy changed unexpectedly: %#v", bundle.ExportPolicies[1])
+	}
+	if err := bundle.Validate(time.Now()); err != nil {
+		t.Fatalf("normalized SDK access bundle is invalid: %v", err)
+	}
+}
+
 func TestSDKAccessBundleFreezesSupportOrganizationScopeAndFailsClosed(t *testing.T) {
 	now := time.Now().UTC()
 	snapshot := identitymodel.IdentityEffectiveAccessSnapshot{

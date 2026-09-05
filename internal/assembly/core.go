@@ -197,7 +197,7 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 	})
 	metadataSchemaApp := metadataapplication.NewMetadataSchemaApplicationService(metadataRuntime, metadataStore)
 	prepareIdentityCatalogRefresh := func(_ context.Context, snapshot metadatamodel.MetadataSchemaSnapshot) (metadataapplication.MetadataReloadCommit, error) {
-		roles := append([]identitymodel.RoleSchema(nil), snapshot.Roles...)
+		roles := metadataRuntime.EffectiveRoleDefinitions(snapshot.Roles)
 		permissionSets := append([]identitymodel.IdentityPermissionSet(nil), snapshot.PermissionSets...)
 		permissionSetGroups := append([]identitymodel.IdentityPermissionSetGroup(nil), snapshot.PermissionSetGroups...)
 		guardrails := append([]identitymodel.IdentityGuardrailPolicy(nil), snapshot.Guardrails...)
