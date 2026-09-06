@@ -206,6 +206,7 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"initial_admin_user_id " + identityIndexText + " NOT NULL",
 			"initial_admin_login_id TEXT NOT NULL",
 			"role_catalog_sha256 " + identityIndexText + " NOT NULL DEFAULT ''",
+			"navigation_catalog_sha256 " + identityIndexText + " NOT NULL DEFAULT ''",
 			"initial_workspace_administrator_role_key " + identityIndexText + " NOT NULL DEFAULT ''",
 			"credential_claimed_at " + identityIndexText,
 			"created_at " + identityIndexText + " NOT NULL",
@@ -609,7 +610,7 @@ func ensureWorkspaceBootstrapRolePolicyEvidence(ctx context.Context, s Store) er
 	if err != nil {
 		return fmt.Errorf("inspect Workspace bootstrap receipt role-policy columns: %w", err)
 	}
-	for _, column := range []string{"role_catalog_sha256", "initial_workspace_administrator_role_key"} {
+	for _, column := range []string{"role_catalog_sha256", "navigation_catalog_sha256", "initial_workspace_administrator_role_key"} {
 		if columns[column] {
 			continue
 		}

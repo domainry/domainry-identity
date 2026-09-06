@@ -19,6 +19,8 @@ const (
 	WorkspaceIdentityProvisionStageUser           WorkspaceIdentityProvisionStage = "user"
 	WorkspaceIdentityProvisionStageRole           WorkspaceIdentityProvisionStage = "role"
 	WorkspaceIdentityProvisionStageRoleAssignment WorkspaceIdentityProvisionStage = "role_assignment"
+	WorkspaceIdentityProvisionStageMenu           WorkspaceIdentityProvisionStage = "menu"
+	WorkspaceIdentityProvisionStageRoleMenu       WorkspaceIdentityProvisionStage = "role_menu"
 	WorkspaceIdentityProvisionStageCompany        WorkspaceIdentityProvisionStage = "company"
 	WorkspaceIdentityProvisionStageFirstStore     WorkspaceIdentityProvisionStage = "first_store"
 )
@@ -129,6 +131,8 @@ type WorkspaceIdentityBootstrapGraph struct {
 	InitialAdmin identitymodel.IdentityUser
 	Roles        []identitymodel.IdentityRole
 	AdminRoleID  string
+	Menus        []identitymodel.IdentityMenu
+	RoleMenus    []identitymodel.IdentityRoleMenuAssignment
 }
 
 type WorkspaceIdentityBootstrapReceipt struct {
@@ -143,6 +147,7 @@ type WorkspaceIdentityBootstrapReceipt struct {
 	InitialAdminUserID                   string
 	InitialAdminLoginID                  string
 	RoleCatalogSHA256                    string
+	NavigationCatalogSHA256              string
 	InitialWorkspaceAdministratorRoleKey string
 	CredentialClaimedAt                  string
 	CreatedAt                            string
@@ -163,7 +168,8 @@ func (s *SQLIdentityStore) WorkspaceIdentityBootstrapStateExistsWithExecutor(ctx
 	}
 	for _, table := range []string{
 		"_identity_organization_units", "_identity_users", "_identity_roles",
-		"_identity_user_role_assignments", "_identity_credentials", "_identity_permissions",
+		"_identity_user_role_assignments", "_identity_menus", "_identity_role_menu_assignments",
+		"_identity_credentials", "_identity_permissions",
 	} {
 		statement, arguments, err := query.NewWorkspaceSelectBuilder(s.sqlRenderer(), table, workspaceID).
 			Projections(query.Project(query.CountAll())).Build()
@@ -222,6 +228,22 @@ func (s *SQLIdentityStore) WriteWorkspaceIdentityBootstrapGraphWithExecutor(ctx 
 			return err
 		}
 	}
+	if err := s.writeWorkspaceBootstrapMenus(ctx, execer, workspaceID, graph.Menus); err != nil {
+		return err
+	}
+	if after != nil {
+		if err := after(WorkspaceIdentityProvisionStageMenu); err != nil {
+			return err
+		}
+	}
+	if err := s.writeWorkspaceBootstrapRoleMenus(ctx, execer, workspaceID, graph.RoleMenus); err != nil {
+		return err
+	}
+	if after != nil {
+		if err := after(WorkspaceIdentityProvisionStageRoleMenu); err != nil {
+			return err
+		}
+	}
 	if err := s.writeIdentityUserRoleAssignment(ctx, execer, workspaceID, identitymodel.IdentityUserRoleAssignment{
 		UserID: graph.InitialAdmin.ID, RoleID: strings.TrimSpace(graph.AdminRoleID), Source: "workspace_bootstrap_v1", Status: "active",
 	}); err != nil {
@@ -235,13 +257,71 @@ func (s *SQLIdentityStore) WriteWorkspaceIdentityBootstrapGraphWithExecutor(ctx 
 	return nil
 }
 
+func (s *SQLIdentityStore) writeWorkspaceBootstrapMenus(ctx context.Context, execer identityUserExecer, workspaceID string, menus []identitymodel.IdentityMenu) error {
+	if len(menus) == 0 {
+		return nil
+	}
+	now := nowString()
+	insert := query.NewWorkspaceInsertBuilder(s.sqlRenderer(), "_identity_menus", workspaceID).
+		Columns("id", "menu_key", "label", "description", "route", "icon", "parent_id", "sort_order", "status", "created_at", "updated_at")
+	for _, menu := range menus {
+		if strings.TrimSpace(menu.ID) == "" || strings.TrimSpace(menu.Key) == "" {
+			return fmt.Errorf("provision workspace bootstrap menu: menu id and key are required")
+		}
+		status := menu.Status
+		if status == "" {
+			status = identitymodel.IdentityStatusActive
+		}
+		insert.Values(menu.ID, menu.Key, menu.Label, menu.Description, menu.Route, menu.Icon, nullableText(menu.ParentID), menu.SortOrder, string(status), now, now)
+	}
+	statement, arguments, err := insert.Build()
+	if err != nil {
+		return fmt.Errorf("build workspace bootstrap menu insert: %w", err)
+	}
+	if _, err := execer.ExecContext(ctx, statement, arguments...); err != nil {
+		return fmt.Errorf("provision workspace bootstrap menus: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLIdentityStore) writeWorkspaceBootstrapRoleMenus(ctx context.Context, execer identityUserExecer, workspaceID string, assignments []identitymodel.IdentityRoleMenuAssignment) error {
+	if len(assignments) == 0 {
+		return nil
+	}
+	now := nowString()
+	insert := query.NewWorkspaceInsertBuilder(s.sqlRenderer(), "_identity_role_menu_assignments", workspaceID).
+		Columns("id", "role_id", "menu_id", "created_at", "updated_at")
+	seen := map[string]struct{}{}
+	for _, assignment := range assignments {
+		roleID := strings.TrimSpace(assignment.RoleID)
+		menuID := strings.TrimSpace(assignment.MenuID)
+		if roleID == "" || menuID == "" {
+			return fmt.Errorf("provision workspace bootstrap role menus: role id and menu id are required")
+		}
+		key := roleID + "\x00" + menuID
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		insert.Values(identityID("rolemenu", workspaceID, roleID, menuID), roleID, menuID, now, now)
+	}
+	statement, arguments, err := insert.Build()
+	if err != nil {
+		return fmt.Errorf("build workspace bootstrap role-menu insert: %w", err)
+	}
+	if _, err := execer.ExecContext(ctx, statement, arguments...); err != nil {
+		return fmt.Errorf("provision workspace bootstrap role menus: %w", err)
+	}
+	return nil
+}
+
 func (s *SQLIdentityStore) GetWorkspaceIdentityBootstrapReceiptWithExecutor(ctx context.Context, execer identityUserExecer, workspaceID, invocationID string) (WorkspaceIdentityBootstrapReceipt, bool, error) {
 	workspaceID, err := identityWorkspaceID(workspaceID)
 	if err != nil {
 		return WorkspaceIdentityBootstrapReceipt{}, false, err
 	}
 	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.sqlRenderer(), "_identity_workspace_bootstrap_receipts", workspaceID).
-		Columns("id", "invocation_id", "request_fingerprint", "contract_version", "contract_hash", "company_id", "first_store_id", "initial_admin_user_id", "initial_admin_login_id", "role_catalog_sha256", "initial_workspace_administrator_role_key", "credential_claimed_at", "created_at").
+		Columns("id", "invocation_id", "request_fingerprint", "contract_version", "contract_hash", "company_id", "first_store_id", "initial_admin_user_id", "initial_admin_login_id", "role_catalog_sha256", "navigation_catalog_sha256", "initial_workspace_administrator_role_key", "credential_claimed_at", "created_at").
 		Where(query.Equal("invocation_id", strings.TrimSpace(invocationID))).Limit(1).Build()
 	if err != nil {
 		return WorkspaceIdentityBootstrapReceipt{}, false, fmt.Errorf("build workspace bootstrap receipt query: %w", err)
@@ -284,8 +364,8 @@ func (s *SQLIdentityStore) InsertWorkspaceIdentityBootstrapReceiptWithExecutor(c
 		receipt.CreatedAt = nowString()
 	}
 	statement, arguments, err := query.NewWorkspaceInsertBuilder(s.sqlRenderer(), "_identity_workspace_bootstrap_receipts", receipt.WorkspaceID).
-		Columns("id", "invocation_id", "request_fingerprint", "contract_version", "contract_hash", "company_id", "first_store_id", "initial_admin_user_id", "initial_admin_login_id", "role_catalog_sha256", "initial_workspace_administrator_role_key", "created_at").
-		Values(receipt.ID, receipt.InvocationID, receipt.RequestFingerprint, receipt.ContractVersion, receipt.ContractHash, receipt.CompanyID, receipt.FirstStoreID, receipt.InitialAdminUserID, receipt.InitialAdminLoginID, receipt.RoleCatalogSHA256, receipt.InitialWorkspaceAdministratorRoleKey, receipt.CreatedAt).Build()
+		Columns("id", "invocation_id", "request_fingerprint", "contract_version", "contract_hash", "company_id", "first_store_id", "initial_admin_user_id", "initial_admin_login_id", "role_catalog_sha256", "navigation_catalog_sha256", "initial_workspace_administrator_role_key", "created_at").
+		Values(receipt.ID, receipt.InvocationID, receipt.RequestFingerprint, receipt.ContractVersion, receipt.ContractHash, receipt.CompanyID, receipt.FirstStoreID, receipt.InitialAdminUserID, receipt.InitialAdminLoginID, receipt.RoleCatalogSHA256, receipt.NavigationCatalogSHA256, receipt.InitialWorkspaceAdministratorRoleKey, receipt.CreatedAt).Build()
 	if err != nil {
 		return fmt.Errorf("build workspace bootstrap receipt insert: %w", err)
 	}
@@ -301,7 +381,7 @@ func (s *SQLIdentityStore) GetCommittedWorkspaceIdentityBootstrapReceipt(ctx con
 		return WorkspaceIdentityBootstrapReceipt{}, false, err
 	}
 	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.sqlRenderer(), "_identity_workspace_bootstrap_receipts", workspaceID).
-		Columns("id", "invocation_id", "request_fingerprint", "contract_version", "contract_hash", "company_id", "first_store_id", "initial_admin_user_id", "initial_admin_login_id", "role_catalog_sha256", "initial_workspace_administrator_role_key", "credential_claimed_at", "created_at").
+		Columns("id", "invocation_id", "request_fingerprint", "contract_version", "contract_hash", "company_id", "first_store_id", "initial_admin_user_id", "initial_admin_login_id", "role_catalog_sha256", "navigation_catalog_sha256", "initial_workspace_administrator_role_key", "credential_claimed_at", "created_at").
 		Where(query.Equal("id", strings.TrimSpace(receiptID))).Limit(1).Build()
 	if err != nil {
 		return WorkspaceIdentityBootstrapReceipt{}, false, err
@@ -339,7 +419,7 @@ func (s *SQLIdentityStore) MarkWorkspaceIdentityBootstrapCredentialClaimed(ctx c
 func scanWorkspaceIdentityBootstrapReceipt(row *sql.Row) (WorkspaceIdentityBootstrapReceipt, error) {
 	var receipt WorkspaceIdentityBootstrapReceipt
 	var claimed sql.NullString
-	err := row.Scan(&receipt.ID, &receipt.InvocationID, &receipt.RequestFingerprint, &receipt.ContractVersion, &receipt.ContractHash, &receipt.CompanyID, &receipt.FirstStoreID, &receipt.InitialAdminUserID, &receipt.InitialAdminLoginID, &receipt.RoleCatalogSHA256, &receipt.InitialWorkspaceAdministratorRoleKey, &claimed, &receipt.CreatedAt)
+	err := row.Scan(&receipt.ID, &receipt.InvocationID, &receipt.RequestFingerprint, &receipt.ContractVersion, &receipt.ContractHash, &receipt.CompanyID, &receipt.FirstStoreID, &receipt.InitialAdminUserID, &receipt.InitialAdminLoginID, &receipt.RoleCatalogSHA256, &receipt.NavigationCatalogSHA256, &receipt.InitialWorkspaceAdministratorRoleKey, &claimed, &receipt.CreatedAt)
 	if claimed.Valid {
 		receipt.CredentialClaimedAt = claimed.String
 	}

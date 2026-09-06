@@ -72,7 +72,7 @@ func (binding *moduleBinding) PublishProjectRoles(ctx context.Context, catalog i
 // the host transaction remains the only place where workspace roles, users,
 // organizations, assignments, and credentials are persisted.
 func (binding *moduleBinding) BindBootstrapProjectRoleCatalog(ctx context.Context, catalog identitysdk.ProjectRoleCatalog) error {
-	if binding == nil || binding.runtime == nil || binding.runtime.Identity == nil || binding.runtime.IdentityStore == nil || binding.runtime.MetadataRuntime != nil || binding.application.WorkspaceID != "" {
+	if binding == nil || binding.runtime == nil || binding.runtime.Identity == nil || binding.runtime.IdentityStore == nil {
 		return &identitysdk.Error{Code: "identity.bootstrap_project_role_catalog_unavailable"}
 	}
 	if ctx == nil {

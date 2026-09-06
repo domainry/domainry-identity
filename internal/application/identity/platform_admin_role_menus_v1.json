@@ -1,0 +1,64 @@
+{
+  "contract_version": "domainry-admin-role-menu-sets-v1",
+  "role_menu_sets": [
+    {
+      "role_key": "admin",
+      "menu_keys": [
+        "org_access",
+        "model_config",
+        "flow_automation",
+        "integration_notification",
+        "data_compliance",
+        "platform_operations",
+        "org_users",
+        "org_organization_units",
+        "org_roles",
+        "org_access_governance",
+        "org_field_permissions",
+        "org_menus",
+        "system_metadata",
+        "system_domain_impact",
+        "system_dictionaries",
+        "system_actions",
+        "system_workflows",
+        "system_workflow_processes",
+        "system_automation_rules",
+        "system_scheduler",
+        "system_scheduler_operations",
+        "system_connectors",
+        "system_connector_operations",
+        "system_notifications",
+        "system_audit",
+        "system_lifecycle",
+        "system_privacy_requests",
+        "system_overview",
+        "system_capability_status",
+        "system_operations",
+        "system_agent_operations"
+      ]
+    },
+    {
+      "role_key": "organization_administrator",
+      "menu_keys": [
+        "org_access",
+        "org_users",
+        "org_organization_units",
+        "org_roles",
+        "org_access_governance",
+        "org_field_permissions",
+        "org_menus",
+        "model_config",
+        "system_metadata"
+      ]
+    },
+    {
+      "role_key": "system_administrator",
+      "menu_keys": [
+        "model_config",
+        "system_metadata",
+        "data_compliance",
+        "system_audit"
+      ]
+    }
+  ]
+}

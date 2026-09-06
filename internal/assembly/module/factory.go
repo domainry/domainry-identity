@@ -111,8 +111,9 @@ func (factory *Factory) OpenBootstrapWithDatabase(ctx context.Context, applicati
 	}
 	authStore := authpersistence.NewAuthStoreWithKeyProvider(identityStore, store.SecretKeyProvider(), store.IdempotencyMetrics(ctx))
 	inner := &moduleBinding{
-		runtime:     &assembly.Core{Store: store, Manifest: manifest, IdentityStore: identityStore, Identity: identityApp, IdentityActions: identityActions, AuthStore: authStore},
-		application: identitysdk.ApplicationRef{ApplicationKey: applicationKey},
+		runtime:                    &assembly.Core{Store: store, Manifest: manifest, IdentityStore: identityStore, Identity: identityApp, IdentityActions: identityActions, AuthStore: authStore},
+		application:                identitysdk.ApplicationRef{ApplicationKey: applicationKey},
+		bootstrapNavigationCatalog: emptyWorkspaceBootstrapNavigationCatalog(),
 	}
 	return newBootstrapBinding(inner), nil
 }
@@ -287,6 +288,7 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 	return &moduleBinding{
 		Binding: scopedBinding, runtime: identityRuntime, application: application, adapters: []identityhttpapi.Adapter{browserAdapter, managementAdapter},
 		portability: &identityPortabilityDataExchangeProvider{service: portabilityService}, workspaceUsage: workspaceUsage,
+		bootstrapNavigationCatalog: emptyWorkspaceBootstrapNavigationCatalog(),
 	}, nil
 }
 
@@ -339,14 +341,15 @@ func (resolver moduleBusinessProfileResolver) ResolveIdentityBusinessProfiles(ct
 
 type moduleBinding struct {
 	identitysdk.Binding
-	runtime              *assembly.Core
-	application          identitysdk.ApplicationRef
-	adapters             []identityhttpapi.Adapter
-	portability          *identityPortabilityDataExchangeProvider
-	workspaceUsage       *identityapplicationinternal.IdentityWorkspaceUsageApplicationService
-	bootstrapMu          sync.Mutex
-	bootstrapCredentials map[string]*workspaceBootstrapPendingCredential
-	bootstrapRoleCatalog workspaceBootstrapRoleCatalog
+	runtime                    *assembly.Core
+	application                identitysdk.ApplicationRef
+	adapters                   []identityhttpapi.Adapter
+	portability                *identityPortabilityDataExchangeProvider
+	workspaceUsage             *identityapplicationinternal.IdentityWorkspaceUsageApplicationService
+	bootstrapMu                sync.Mutex
+	bootstrapCredentials       map[string]*workspaceBootstrapPendingCredential
+	bootstrapRoleCatalog       workspaceBootstrapRoleCatalog
+	bootstrapNavigationCatalog workspaceBootstrapNavigationCatalog
 }
 
 func (binding *moduleBinding) IdentityDataExchangeProviders() (string, dataexchangemodulehost.ImportProvider, dataexchangemodulehost.ExportProvider) {
@@ -423,6 +426,7 @@ func (binding *moduleBinding) Close(ctx context.Context) error {
 	}
 	binding.bootstrapCredentials = nil
 	binding.bootstrapRoleCatalog = workspaceBootstrapRoleCatalog{}
+	binding.bootstrapNavigationCatalog = workspaceBootstrapNavigationCatalog{}
 	binding.bootstrapMu.Unlock()
 	return binding.runtime.CloseContext(ctx)
 }

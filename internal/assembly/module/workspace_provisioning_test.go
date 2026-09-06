@@ -67,6 +67,47 @@ func TestAcceptanceFixturesRejectMissingManager(t *testing.T) {
 	}
 }
 
+func TestWorkspaceBootstrapNavigationMaterializesTenantOwnedCopies(t *testing.T) {
+	catalog, err := identitysdk.NormalizeProjectNavigationCatalog(identitysdk.ProjectNavigationCatalog{
+		ContractVersion: identitysdk.ProjectNavigationContractVersion,
+		Menus: []identitysdk.ProjectMenuDefinition{
+			{Key: "orders", Label: map[string]string{"zh-CN": "订单"}, Route: "/orders", SortOrder: 10},
+			{Key: "orders.open", Label: map[string]string{"en": "Open orders"}, Route: "/orders/open", ParentKey: "orders", SortOrder: 20},
+		},
+		RoleMenuSets: []identitysdk.ProjectRoleMenuSet{{RoleKey: "operator", MenuKeys: []string{"orders", "orders.open"}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest, err := identitysdk.ProjectNavigationCatalogSHA256(catalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	materialize := func(workspaceID string) ([]identitymodel.IdentityMenu, []identitymodel.IdentityRoleMenuAssignment) {
+		t.Helper()
+		menus, assignments, materializeErr := workspaceBootstrapNavigation(workspaceID, workspaceBootstrapNavigationCatalog{catalog: catalog, sha256: digest})
+		if materializeErr != nil {
+			t.Fatal(materializeErr)
+		}
+		return menus, assignments
+	}
+	firstMenus, firstAssignments := materialize("tenant-a")
+	secondMenus, secondAssignments := materialize("tenant-b")
+	if len(firstMenus) != 2 || len(secondMenus) != 2 || firstMenus[0].Key != secondMenus[0].Key || firstMenus[0].ID == secondMenus[0].ID {
+		t.Fatalf("tenant menu copies first=%+v second=%+v", firstMenus, secondMenus)
+	}
+	if firstMenus[1].ParentID != firstMenus[0].ID || secondMenus[1].ParentID != secondMenus[0].ID || firstMenus[1].ParentID == secondMenus[1].ParentID {
+		t.Fatalf("tenant-local parents first=%+v second=%+v", firstMenus, secondMenus)
+	}
+	if len(firstAssignments) != 2 || len(secondAssignments) != 2 || firstAssignments[0].RoleID == secondAssignments[0].RoleID || firstAssignments[0].MenuID == secondAssignments[0].MenuID {
+		t.Fatalf("tenant role-menu copies first=%+v second=%+v", firstAssignments, secondAssignments)
+	}
+	firstMenus[0].Label = "Tenant A custom label"
+	if secondMenus[0].Label == firstMenus[0].Label {
+		t.Fatal("editing one tenant menu changed another tenant copy")
+	}
+}
+
 func TestAcceptanceFixturesDiagnoseUnknownProjectRoleWithoutCredentialDisclosure(t *testing.T) {
 	const secret = "DirectorPassword1!"
 	_, _, _, _, err := acceptanceFixtures(identitysdk.WorkspaceIdentityProvisionRequest{

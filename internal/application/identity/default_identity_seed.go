@@ -19,6 +19,9 @@ var businessRouteKeyPattern = regexp.MustCompile(`^business\.[a-z0-9]+(?:[._-][a
 //go:embed platform_admin_navigation_v9.json
 var platformAdminNavigationSource []byte
 
+//go:embed platform_admin_role_menus_v1.json
+var platformAdminRoleMenusSource []byte
+
 type platformAdminNavigationContract struct {
 	ContractVersion string `json:"contract_version"`
 	Groups          []struct {
@@ -41,7 +44,16 @@ type platformAdminNavigationContract struct {
 	} `json:"workspaces"`
 }
 
+type platformAdminRoleMenusContract struct {
+	ContractVersion string `json:"contract_version"`
+	RoleMenuSets    []struct {
+		RoleKey  string   `json:"role_key"`
+		MenuKeys []string `json:"menu_keys"`
+	} `json:"role_menu_sets"`
+}
+
 var platformAdminNavigation = mustPlatformAdminNavigationContract()
+var platformAdminRoleMenus = mustPlatformAdminRoleMenusContract()
 
 func mustPlatformAdminNavigationContract() platformAdminNavigationContract {
 	var contract platformAdminNavigationContract
@@ -50,6 +62,40 @@ func mustPlatformAdminNavigationContract() platformAdminNavigationContract {
 	}
 	if contract.ContractVersion != "domainry-admin-navigation-workspaces-v9" || len(contract.Groups) == 0 || len(contract.Workspaces) == 0 {
 		panic("embedded platform Admin navigation contract is incomplete")
+	}
+	return contract
+}
+
+func mustPlatformAdminRoleMenusContract() platformAdminRoleMenusContract {
+	var contract platformAdminRoleMenusContract
+	if err := json.Unmarshal(platformAdminRoleMenusSource, &contract); err != nil {
+		panic("parse embedded platform Admin role-menu contract: " + err.Error())
+	}
+	if contract.ContractVersion != "domainry-admin-role-menu-sets-v1" || len(contract.RoleMenuSets) == 0 {
+		panic("embedded platform Admin role-menu contract is incomplete")
+	}
+	knownMenus := make(map[string]bool, len(platformAdminNavigation.Groups)+len(platformAdminNavigation.Workspaces))
+	for _, group := range platformAdminNavigation.Groups {
+		knownMenus[group.MenuID] = true
+	}
+	for _, workspace := range platformAdminNavigation.Workspaces {
+		knownMenus[workspace.MenuKey] = true
+	}
+	seenRoles := map[string]bool{}
+	for _, set := range contract.RoleMenuSets {
+		roleKey := strings.TrimSpace(set.RoleKey)
+		if roleKey == "" || seenRoles[roleKey] {
+			panic("embedded platform Admin role-menu contract has an invalid or duplicated role")
+		}
+		seenRoles[roleKey] = true
+		seenMenus := map[string]bool{}
+		for _, menuKey := range set.MenuKeys {
+			menuKey = strings.TrimSpace(menuKey)
+			if !knownMenus[menuKey] || seenMenus[menuKey] {
+				panic("embedded platform Admin role-menu contract has an invalid or duplicated menu")
+			}
+			seenMenus[menuKey] = true
+		}
 	}
 	return contract
 }
@@ -117,14 +163,7 @@ func identityValueOrDefault(value, fallback string) string {
 
 func generatedManifestIdentitySeed() Seed {
 	platformMenus := generatedIdentityMenus()
-	roleMenus := generatedIdentityRoleMenus("admin", platformMenus)
-	roleMenus = append(roleMenus, generatedIdentityRoleMenusForIDs("organization_administrator", platformMenus,
-		"org_access", "org_users", "org_organization_units", "org_roles", "org_access_governance", "org_field_permissions", "org_menus",
-		"model_config", "system_metadata",
-	)...)
-	roleMenus = append(roleMenus, generatedIdentityRoleMenusForIDs("system_administrator", platformMenus,
-		"model_config", "system_metadata", "data_compliance", "system_audit",
-	)...)
+	roleMenus := generatedIdentityRoleMenusFromTemplate(platformMenus)
 	return Seed{
 		Roles: []identitymodel.IdentityRole{
 			{ID: "admin", Key: "admin", Label: "Admin", Status: identitymodel.IdentityStatusActive},
@@ -211,26 +250,17 @@ func platformAdminPagePermissions(route string) ([]string, bool) {
 	return nil, false
 }
 
-func generatedIdentityRoleMenus(roleID string, menus []identitymodel.IdentityMenu) []identitymodel.IdentityRoleMenuAssignment {
-	assignments := make([]identitymodel.IdentityRoleMenuAssignment, 0, len(menus))
+func generatedIdentityRoleMenusFromTemplate(menus []identitymodel.IdentityMenu) []identitymodel.IdentityRoleMenuAssignment {
+	menuIDsByKey := make(map[string]string, len(menus))
 	for _, menu := range menus {
-		if strings.TrimSpace(menu.ID) == "" {
-			continue
-		}
-		assignments = append(assignments, identitymodel.IdentityRoleMenuAssignment{RoleID: roleID, MenuID: menu.ID})
+		menuIDsByKey[menu.Key] = menu.ID
 	}
-	return assignments
-}
-
-func generatedIdentityRoleMenusForIDs(roleID string, menus []identitymodel.IdentityMenu, menuIDs ...string) []identitymodel.IdentityRoleMenuAssignment {
-	allowed := make(map[string]bool, len(menuIDs))
-	for _, menuID := range menuIDs {
-		allowed[menuID] = true
-	}
-	assignments := make([]identitymodel.IdentityRoleMenuAssignment, 0, len(menuIDs))
-	for _, menu := range menus {
-		if allowed[menu.ID] {
-			assignments = append(assignments, identitymodel.IdentityRoleMenuAssignment{RoleID: roleID, MenuID: menu.ID})
+	assignments := make([]identitymodel.IdentityRoleMenuAssignment, 0)
+	for _, set := range platformAdminRoleMenus.RoleMenuSets {
+		for _, menuKey := range set.MenuKeys {
+			assignments = append(assignments, identitymodel.IdentityRoleMenuAssignment{
+				RoleID: strings.TrimSpace(set.RoleKey), MenuID: menuIDsByKey[strings.TrimSpace(menuKey)],
+			})
 		}
 	}
 	return assignments

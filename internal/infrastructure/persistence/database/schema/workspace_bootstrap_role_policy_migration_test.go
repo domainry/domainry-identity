@@ -31,7 +31,7 @@ func TestWorkspaceBootstrapRolePolicyMigrationAddsEvidenceColumns(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, column := range []string{"role_catalog_sha256", "initial_workspace_administrator_role_key"} {
+	for _, column := range []string{"role_catalog_sha256", "navigation_catalog_sha256", "initial_workspace_administrator_role_key"} {
 		if !columns[column] {
 			t.Fatalf("migration omitted %s: %#v", column, columns)
 		}

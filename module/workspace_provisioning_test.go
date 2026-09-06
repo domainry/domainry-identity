@@ -186,6 +186,74 @@ func TestWorkspaceIdentityBootstrapCreatesGraphAndReleasesCredentialAfterCommit(
 	assertBootstrapPasswordNotPersisted(t, db, credential.InitialPassword)
 }
 
+func TestWorkspaceIdentityBootstrapCopiesNavigationTemplatePerWorkspace(t *testing.T) {
+	bootstrap, db := openWorkspaceIdentityBootstrapCatalog(t, m1WorkspaceBootstrapRoleCatalog())
+	navigation := identitysdk.ProjectNavigationCatalog{
+		ContractVersion: identitysdk.ProjectNavigationContractVersion,
+		Menus: []identitysdk.ProjectMenuDefinition{
+			{Key: "business.crm", Label: map[string]string{"en": "CRM"}, Route: "/crm", SortOrder: 10},
+			{Key: "business.crm.leads", Label: map[string]string{"en": "Leads"}, Route: "/crm/leads", ParentKey: "business.crm", SortOrder: 20},
+		},
+		RoleMenuSets: []identitysdk.ProjectRoleMenuSet{{RoleKey: "sales_rep", MenuKeys: []string{"business.crm.leads"}}},
+	}
+	if err := bootstrap.BindBootstrapProjectNavigationCatalog(t.Context(), navigation); err != nil {
+		t.Fatal(err)
+	}
+	materialize := func(workspaceID string) identitysdk.WorkspaceIdentityBootstrapReceipt {
+		t.Helper()
+		request := workspaceIdentityBootstrapRequest(workspaceID, "navigation-"+workspaceID)
+		tx := beginBootstrapTx(t, db)
+		receipt, err := bootstrap.BootstrapWorkspaceIdentity(t.Context(), request, identitysdk.EmbeddedTransaction{Executor: tx})
+		if err != nil {
+			_ = tx.Rollback()
+			t.Fatal(err)
+		}
+		if receipt.NavigationCatalogSHA256 == "" {
+			_ = tx.Rollback()
+			t.Fatal("workspace bootstrap receipt omitted the navigation template digest")
+		}
+		if err := tx.Commit(); err != nil {
+			t.Fatal(err)
+		}
+		completeWorkspaceIdentityBootstrap(t, bootstrap, receipt, identitysdk.WorkspaceIdentityBootstrapTransactionCommitted)
+		return receipt
+	}
+	materialize("workspace-navigation-a")
+	if _, err := db.ExecContext(t.Context(), `UPDATE _identity_menus SET label=? WHERE workspace_id=? AND menu_key=?`, "Tenant A CRM", "workspace-navigation-a", "business.crm"); err != nil {
+		t.Fatal(err)
+	}
+	materialize("workspace-navigation-b")
+
+	type workspaceNavigation struct {
+		rootID, childID, parentID, rootLabel string
+		assignments                          int
+	}
+	load := func(workspaceID string) workspaceNavigation {
+		t.Helper()
+		var item workspaceNavigation
+		if err := db.QueryRowContext(t.Context(), `SELECT id,label FROM _identity_menus WHERE workspace_id=? AND menu_key=?`, workspaceID, "business.crm").Scan(&item.rootID, &item.rootLabel); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.QueryRowContext(t.Context(), `SELECT id,parent_id FROM _identity_menus WHERE workspace_id=? AND menu_key=?`, workspaceID, "business.crm.leads").Scan(&item.childID, &item.parentID); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _identity_role_menu_assignments a JOIN _identity_roles r ON r.workspace_id=a.workspace_id AND r.id=a.role_id JOIN _identity_menus m ON m.workspace_id=a.workspace_id AND m.id=a.menu_id WHERE a.workspace_id=? AND r.role_key=? AND m.menu_key=?`, workspaceID, "sales_rep", "business.crm.leads").Scan(&item.assignments); err != nil {
+			t.Fatal(err)
+		}
+		return item
+	}
+	first, second := load("workspace-navigation-a"), load("workspace-navigation-b")
+	if first.rootID == second.rootID || first.childID == second.childID {
+		t.Fatalf("workspace menu copies share IDs: first=%+v second=%+v", first, second)
+	}
+	if first.parentID != first.rootID || second.parentID != second.rootID || first.assignments != 1 || second.assignments != 1 {
+		t.Fatalf("workspace navigation graph differs: first=%+v second=%+v", first, second)
+	}
+	if first.rootLabel != "Tenant A CRM" || second.rootLabel != "CRM" {
+		t.Fatalf("tenant customization leaked or was overwritten: first=%q second=%q", first.rootLabel, second.rootLabel)
+	}
+}
+
 func TestWorkspaceIdentityBootstrapMaterializesM1RolesAndAssignsExplicitAdministrator(t *testing.T) {
 	catalog := m1WorkspaceBootstrapRoleCatalog()
 	bootstrap, db := openWorkspaceIdentityBootstrapCatalog(t, catalog)

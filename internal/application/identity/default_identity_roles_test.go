@@ -42,14 +42,21 @@ func TestGeneratedIdentityAdminSeedKeepsGovernanceAuditMenuAssigned(t *testing.T
 	seed := generatedManifestIdentitySeed()
 	menuFound := false
 	assignmentFound := false
+	adminAssignments := 0
 	for _, menu := range seed.Menus {
 		menuFound = menuFound || menu.ID == "system_audit" && menu.Route == "/admin/system/audit"
 	}
 	for _, assignment := range seed.RoleMenus {
 		assignmentFound = assignmentFound || assignment.RoleID == "admin" && assignment.MenuID == "system_audit"
+		if assignment.RoleID == "admin" {
+			adminAssignments++
+		}
 	}
 	if !menuFound || !assignmentFound {
 		t.Fatalf("governance audit seed menu=%v assignment=%v", menuFound, assignmentFound)
+	}
+	if adminAssignments != len(seed.Menus) {
+		t.Fatalf("file-based Admin role-menu template assigned %d of %d menus", adminAssignments, len(seed.Menus))
 	}
 }
 

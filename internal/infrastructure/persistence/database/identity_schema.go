@@ -22,9 +22,9 @@ import (
 )
 
 const (
-	CurrentIdentitySchemaVersion           = "008_workspace_bootstrap_role_policy"
-	EmbeddedIdentitySchemaMigrationVersion = uint(8)
-	EmbeddedIdentitySchemaMigrationName    = "workspace_bootstrap_role_policy"
+	CurrentIdentitySchemaVersion           = "009_workspace_bootstrap_navigation_policy"
+	EmbeddedIdentitySchemaMigrationVersion = uint(9)
+	EmbeddedIdentitySchemaMigrationName    = "workspace_bootstrap_navigation_policy"
 )
 
 const (

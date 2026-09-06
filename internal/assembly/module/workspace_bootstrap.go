@@ -48,17 +48,18 @@ func (binding *moduleBinding) BootstrapWorkspaceIdentity(ctx context.Context, re
 	}
 	request = normalizeWorkspaceBootstrapRequest(request)
 	roleCatalog := binding.workspaceBootstrapRoleCatalogSnapshot()
-	if err := validateWorkspaceBootstrapRequest(request, roleCatalog); err != nil {
+	navigationCatalog := binding.workspaceBootstrapNavigationCatalogSnapshot()
+	if err := validateWorkspaceBootstrapRequest(request, roleCatalog, navigationCatalog); err != nil {
 		return identitysdk.WorkspaceIdentityBootstrapReceipt{}, err
 	}
-	fingerprint := workspaceBootstrapFingerprint(request, roleCatalog)
+	fingerprint := workspaceBootstrapFingerprint(request, roleCatalog, navigationCatalog)
 	stored, found, err := binding.runtime.IdentityStore.GetWorkspaceIdentityBootstrapReceiptWithExecutor(ctx, tx, request.WorkspaceID, request.InvocationID)
 	if err != nil {
 		return identitysdk.WorkspaceIdentityBootstrapReceipt{}, fmt.Errorf("load workspace bootstrap receipt: %w", err)
 	}
 	if found {
 		if stored.RequestFingerprint != fingerprint || stored.ContractVersion != request.ContractVersion || stored.ContractHash != request.ContractHash ||
-			stored.RoleCatalogSHA256 != roleCatalog.sha256 || stored.InitialWorkspaceAdministratorRoleKey != roleCatalog.initialWorkspaceAdministratorRoleKey {
+			stored.RoleCatalogSHA256 != roleCatalog.sha256 || stored.NavigationCatalogSHA256 != navigationCatalog.sha256 || stored.InitialWorkspaceAdministratorRoleKey != roleCatalog.initialWorkspaceAdministratorRoleKey {
 			return identitysdk.WorkspaceIdentityBootstrapReceipt{}, bootstrapError("identity.workspace_bootstrap_idempotency_conflict", nil)
 		}
 		return workspaceBootstrapReceipt(stored, true), nil
@@ -87,6 +88,10 @@ func (binding *moduleBinding) BootstrapWorkspaceIdentity(ctx context.Context, re
 		return identitysdk.WorkspaceIdentityBootstrapReceipt{}, err
 	}
 	adminRoleID := identitypersistence.WorkspaceRoleID(request.WorkspaceID, roleCatalog.initialWorkspaceAdministratorRoleKey)
+	menus, roleMenus, err := workspaceBootstrapNavigation(request.WorkspaceID, navigationCatalog)
+	if err != nil {
+		return identitysdk.WorkspaceIdentityBootstrapReceipt{}, err
+	}
 	companyID := request.CompanyID
 	graph := identitypersistence.WorkspaceIdentityBootstrapGraph{
 		Company: identitymodel.IdentityOrganizationUnit{
@@ -105,7 +110,7 @@ func (binding *moduleBinding) BootstrapWorkspaceIdentity(ctx context.Context, re
 			AccountType: identitymodel.IdentityAccountHuman, OrgID: companyID,
 			ReportingPath: "/" + request.InitialAdminUserID, Status: identitymodel.IdentityStatusActive,
 		},
-		Roles: roles, AdminRoleID: adminRoleID,
+		Roles: roles, AdminRoleID: adminRoleID, Menus: menus, RoleMenus: roleMenus,
 	}
 	if err := binding.runtime.IdentityStore.WriteWorkspaceIdentityBootstrapGraphWithExecutor(ctx, tx, request.WorkspaceID, graph, func(stage identitypersistence.WorkspaceIdentityProvisionStage) error {
 		return injectWorkspaceBootstrapFailure(transaction.WorkspaceProvisionFailures, stage)
@@ -135,7 +140,8 @@ func (binding *moduleBinding) BootstrapWorkspaceIdentity(ctx context.Context, re
 		ContractVersion: request.ContractVersion, ContractHash: request.ContractHash,
 		CompanyID: request.CompanyID, FirstStoreID: request.FirstStoreID,
 		InitialAdminUserID: request.InitialAdminUserID, InitialAdminLoginID: request.InitialAdminLoginID,
-		RoleCatalogSHA256: roleCatalog.sha256, InitialWorkspaceAdministratorRoleKey: roleCatalog.initialWorkspaceAdministratorRoleKey,
+		RoleCatalogSHA256: roleCatalog.sha256, NavigationCatalogSHA256: navigationCatalog.sha256,
+		InitialWorkspaceAdministratorRoleKey: roleCatalog.initialWorkspaceAdministratorRoleKey,
 	}
 	if err := binding.runtime.IdentityStore.InsertWorkspaceIdentityBootstrapReceiptWithExecutor(ctx, tx, receipt); err != nil {
 		return identitysdk.WorkspaceIdentityBootstrapReceipt{}, err
@@ -293,12 +299,18 @@ func normalizeWorkspaceBootstrapRequest(request identitysdk.WorkspaceIdentityBoo
 	return request
 }
 
-func validateWorkspaceBootstrapRequest(request identitysdk.WorkspaceIdentityBootstrapRequest, roleCatalog workspaceBootstrapRoleCatalog) error {
+func validateWorkspaceBootstrapRequest(request identitysdk.WorkspaceIdentityBootstrapRequest, roleCatalog workspaceBootstrapRoleCatalog, navigationCatalog workspaceBootstrapNavigationCatalog) error {
 	if request.ContractVersion != identitysdk.WorkspaceIdentityBootstrapContractVersion || request.ContractHash != identitysdk.WorkspaceIdentityBootstrapContractHash {
 		return bootstrapError("identity.workspace_bootstrap_contract_unsupported", nil)
 	}
 	if len(roleCatalog.roles) == 0 || roleCatalog.sha256 == "" || roleCatalog.initialWorkspaceAdministratorRoleKey == "" {
 		return bootstrapError("identity.workspace_bootstrap_role_catalog_unavailable", nil)
+	}
+	if navigationCatalog.sha256 == "" || navigationCatalog.catalog.ContractVersion != identitysdk.ProjectNavigationContractVersion {
+		return bootstrapError("identity.workspace_bootstrap_navigation_catalog_unavailable", nil)
+	}
+	if err := validateWorkspaceBootstrapNavigationRoles(roleCatalog, navigationCatalog); err != nil {
+		return bootstrapError("identity.workspace_bootstrap_navigation_catalog_invalid", err)
 	}
 	if _, err := identitymodel.NewWorkspaceID(request.WorkspaceID); err != nil {
 		return bootstrapError("identity.workspace_bootstrap_invalid", err)
@@ -324,14 +336,14 @@ func validateWorkspaceBootstrapRequest(request identitysdk.WorkspaceIdentityBoot
 	return nil
 }
 
-func workspaceBootstrapFingerprint(request identitysdk.WorkspaceIdentityBootstrapRequest, roleCatalog workspaceBootstrapRoleCatalog) string {
+func workspaceBootstrapFingerprint(request identitysdk.WorkspaceIdentityBootstrapRequest, roleCatalog workspaceBootstrapRoleCatalog, navigationCatalog workspaceBootstrapNavigationCatalog) string {
 	values := []string{
 		request.ContractVersion, request.ContractHash, request.InvocationID, request.WorkspaceID,
 		request.CompanyID, request.CompanyCode, request.CompanyName,
 		request.FirstStoreID, request.FirstStoreCode, request.FirstStoreName,
 		request.InitialAdminUserID, request.InitialAdminLoginID, request.InitialAdminName,
 	}
-	values = append(values, roleCatalog.sha256, roleCatalog.initialWorkspaceAdministratorRoleKey)
+	values = append(values, roleCatalog.sha256, navigationCatalog.sha256, roleCatalog.initialWorkspaceAdministratorRoleKey)
 	canonical, _ := json.Marshal(values)
 	digest := sha256.Sum256(canonical)
 	return hex.EncodeToString(digest[:])
@@ -343,8 +355,9 @@ func workspaceBootstrapReceipt(receipt identitypersistence.WorkspaceIdentityBoot
 		ReceiptID: receipt.ID, InvocationID: receipt.InvocationID, WorkspaceID: receipt.WorkspaceID,
 		CompanyID: receipt.CompanyID, FirstStoreID: receipt.FirstStoreID,
 		InitialAdminUserID: receipt.InitialAdminUserID, InitialAdminLoginID: receipt.InitialAdminLoginID,
-		RoleCatalogSHA256: receipt.RoleCatalogSHA256, InitialWorkspaceAdministratorRoleKey: receipt.InitialWorkspaceAdministratorRoleKey,
-		Replayed: replayed,
+		RoleCatalogSHA256: receipt.RoleCatalogSHA256, NavigationCatalogSHA256: receipt.NavigationCatalogSHA256,
+		InitialWorkspaceAdministratorRoleKey: receipt.InitialWorkspaceAdministratorRoleKey,
+		Replayed:                             replayed,
 	}
 }
 
@@ -445,6 +458,8 @@ func injectWorkspaceBootstrapFailure(injector identitysdk.WorkspaceProvisionFail
 		identitypersistence.WorkspaceIdentityProvisionStageFirstStore:     identitysdk.WorkspaceProvisionFailureAfterFirstStore,
 		identitypersistence.WorkspaceIdentityProvisionStageUser:           identitysdk.WorkspaceProvisionFailureAfterIdentityUser,
 		identitypersistence.WorkspaceIdentityProvisionStageRole:           identitysdk.WorkspaceProvisionFailureAfterIdentityRole,
+		identitypersistence.WorkspaceIdentityProvisionStageMenu:           identitysdk.WorkspaceProvisionFailureAfterIdentityMenu,
+		identitypersistence.WorkspaceIdentityProvisionStageRoleMenu:       identitysdk.WorkspaceProvisionFailureAfterRoleMenu,
 		identitypersistence.WorkspaceIdentityProvisionStageRoleAssignment: identitysdk.WorkspaceProvisionFailureAfterRoleAssignment,
 	}
 	if point := points[stage]; point != "" {
@@ -495,6 +510,13 @@ func (binding *bootstrapBinding) BindBootstrapProjectRoleCatalog(ctx context.Con
 		return bootstrapError("identity.workspace_bootstrap_unavailable", nil)
 	}
 	return binding.inner.BindBootstrapProjectRoleCatalog(ctx, catalog)
+}
+
+func (binding *bootstrapBinding) BindBootstrapProjectNavigationCatalog(ctx context.Context, catalog identitysdk.ProjectNavigationCatalog) error {
+	if binding == nil {
+		return bootstrapError("identity.workspace_bootstrap_unavailable", nil)
+	}
+	return binding.inner.BindBootstrapProjectNavigationCatalog(ctx, catalog)
 }
 
 func (binding *bootstrapBinding) Close(ctx context.Context) error {
