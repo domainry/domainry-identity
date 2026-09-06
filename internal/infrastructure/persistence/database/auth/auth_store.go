@@ -30,6 +30,13 @@ type AuthStore struct {
 	codeSecrets  secrets.Cipher
 }
 
+// Ready reports whether the value-backed store has its required persistence
+// dependencies. AuthStore is intentionally passed by value, so its zero value
+// must be distinguished explicitly instead of being compared with nil.
+func (s AuthStore) Ready() bool {
+	return s.store != nil && s.db != nil
+}
+
 var authRefreshTokenColumns = []string{"id", "user_id", "session_id", "audience", "authentication_time", "authentication_methods", "assurance_level", "token_hash", "expires_at", "revoked_at", "replaced_by_id", "last_used_at", "created_at"}
 
 var _ authrepository.AuthRepository = AuthStore{}
@@ -393,7 +400,7 @@ func (s AuthStore) ListAuthRefreshTokensForUser(ctx context.Context, workspaceID
 	if err != nil {
 		return nil, fmt.Errorf("build auth refresh tokens query: %w", err)
 	}
-	rows, err := s.db.QueryContext(ctx, statement, arguments...)
+	rows, err := s.store.QueryIdentityContext(ctx, statement, arguments...)
 	if err != nil {
 		return nil, err
 	}
@@ -480,7 +487,7 @@ func (s AuthStore) AuthSessionState(ctx context.Context, workspaceID, userID, se
 	if err != nil {
 		return authrepository.AuthSessionStateMissing, fmt.Errorf("build auth session state query: %w", err)
 	}
-	rows, err := s.db.QueryContext(ctx, statement, arguments...)
+	rows, err := s.store.QueryIdentityContext(ctx, statement, arguments...)
 	if err != nil {
 		return authrepository.AuthSessionStateMissing, err
 	}
@@ -607,7 +614,7 @@ func (s AuthStore) ListIdentityExternalAccounts(ctx context.Context, workspaceID
 	if err != nil {
 		return nil, fmt.Errorf("build identity external accounts query: %w", err)
 	}
-	rows, err := s.db.QueryContext(ctx, statement, arguments...)
+	rows, err := s.store.QueryIdentityContext(ctx, statement, arguments...)
 	if err != nil {
 		return nil, err
 	}
@@ -668,7 +675,7 @@ func (s AuthStore) ListIdentityMFAFactors(ctx context.Context, workspaceID, user
 	if err != nil {
 		return nil, fmt.Errorf("build identity MFA factors query: %w", err)
 	}
-	rows, err := s.db.QueryContext(ctx, statement, arguments...)
+	rows, err := s.store.QueryIdentityContext(ctx, statement, arguments...)
 	if err != nil {
 		return nil, err
 	}

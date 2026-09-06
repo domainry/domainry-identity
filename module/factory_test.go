@@ -28,6 +28,51 @@ type testClock struct{ now time.Time }
 
 func (clock testClock) Now() time.Time { return clock.now }
 
+type testWorkspaceIdentityUsageAuthority struct {
+	authorizations int
+}
+
+func (authority *testWorkspaceIdentityUsageAuthority) AuthorizeWorkspaceIdentityUsage(_ context.Context, request identitymodulehost.WorkspaceIdentityUsageAuthorizationRequest) (identitymodulehost.WorkspaceIdentityUsageGrant, error) {
+	authority.authorizations++
+	if request.AccessToken != "installation-usage-token" || request.PermissionKey != identitysdk.WorkspaceIdentityUsageAggregatePermission {
+		return identitymodulehost.WorkspaceIdentityUsageGrant{}, errors.New("installation usage denied")
+	}
+	return identitymodulehost.WorkspaceIdentityUsageGrant{
+		InstallationID: "installation-1", ApplicationKey: "crm", SubjectID: "billing-service",
+		AuditWorkspaceID: "workspace-primary", PermissionKey: request.PermissionKey,
+		AuthorizationRevision: "authorization-1", AuthorizationAuditID: fmt.Sprintf("authority-audit-%d", authority.authorizations),
+	}, nil
+}
+
+func (*testWorkspaceIdentityUsageAuthority) ListAuthorizedWorkspaceIdentityUsage(_ context.Context, _ identitymodulehost.WorkspaceIdentityUsageGrant, query identitymodulehost.WorkspaceIdentityUsageCatalogQuery) (identitymodulehost.WorkspaceIdentityUsageCatalogPage, error) {
+	if query.Limit < 1 || query.Limit > identitysdk.WorkspaceIdentityUsageMaxPageSize+1 || query.ExpectedCatalogRevision != "" && query.ExpectedCatalogRevision != "catalog-1" {
+		return identitymodulehost.WorkspaceIdentityUsageCatalogPage{}, errors.New("invalid catalog query")
+	}
+	entries := []identitymodulehost.WorkspaceIdentityUsageCatalogEntry{
+		{WorkspaceID: "workspace-primary", Status: identitymodulehost.WorkspaceIdentityUsageCatalogActive, Known: true, Authorized: true},
+		{WorkspaceID: "workspace-secondary", Status: identitymodulehost.WorkspaceIdentityUsageCatalogActive, Known: true, Authorized: true},
+	}
+	page := identitymodulehost.WorkspaceIdentityUsageCatalogPage{CatalogRevision: "catalog-1"}
+	for _, entry := range entries {
+		if entry.WorkspaceID > query.AfterWorkspaceID {
+			page.Workspaces = append(page.Workspaces, entry)
+		}
+		if len(page.Workspaces) == query.Limit {
+			break
+		}
+	}
+	return page, nil
+}
+
+func (*testWorkspaceIdentityUsageAuthority) ResolveAuthorizedWorkspaceIdentityUsage(_ context.Context, _ identitymodulehost.WorkspaceIdentityUsageGrant, request identitymodulehost.WorkspaceIdentityUsageCatalogResolve) (identitymodulehost.WorkspaceIdentityUsageCatalogEntry, error) {
+	for workspaceCode, workspaceID := range map[string]string{"primary": "workspace-primary", "secondary": "workspace-secondary"} {
+		if request.WorkspaceCode == workspaceCode {
+			return identitymodulehost.WorkspaceIdentityUsageCatalogEntry{WorkspaceID: workspaceID, Status: identitymodulehost.WorkspaceIdentityUsageCatalogActive, Known: true, Authorized: true}, nil
+		}
+	}
+	return identitymodulehost.WorkspaceIdentityUsageCatalogEntry{}, errors.New("unknown Workspace usage scope")
+}
+
 func permissionReconcileRequest(t *testing.T, application identitysdk.ApplicationRef, sourceOwner, previousSnapshotHash string, definitions []identitysdk.PermissionDefinition) identitysdk.PermissionReconcileRequest {
 	t.Helper()
 	request, err := identitysdk.NewPermissionReconcileRequest(application, sourceOwner, previousSnapshotHash, definitions)
@@ -605,8 +650,133 @@ func TestFactoryBorrowsProjectPoolWithoutClosingOrColliding(t *testing.T) {
 	if err := db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name LIKE '%schema_migrations'`).Scan(&migrationLedgers); err != nil || migrationLedgers != 1 {
 		t.Fatalf("migration ledgers=%d err=%v", migrationLedgers, err)
 	}
-	if len(registrar.calls) != 1 || registrar.calls[0] != (testEmbeddedMigrationCall{owner: "identity", version: 1, name: "identity_schema"}) {
+	if len(registrar.calls) != 1 || registrar.calls[0] != (testEmbeddedMigrationCall{owner: "identity", version: 7, name: "installation_administrator_bootstrap"}) {
 		t.Fatalf("host migration calls=%#v", registrar.calls)
+	}
+}
+
+func TestEmbeddedWorkspaceIdentityUsageJoinsHostTransactionAndAuditsReleasedPage(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "workspace-usage-project.db")
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	db.SetMaxOpenConns(3)
+	authority := &testWorkspaceIdentityUsageAuthority{}
+	binding, err := identitymodule.NewFactory(identitymodule.Options{DatabaseDriver: "sqlite", DatabasePath: dbPath}).OpenWithDatabase(
+		t.Context(),
+		identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "crm"},
+		identitysdk.DatabaseHandle{
+			Pool: db, Driver: "sqlite", FilePath: dbPath, Migrations: &testEmbeddedMigrationRegistrar{},
+			WorkspaceIdentityUsageAuthority: authority, WorkspaceIdentityUsageCursorKey: []byte("0123456789abcdef0123456789abcdef"),
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer binding.Close(t.Context())
+	if _, err := db.ExecContext(t.Context(), `INSERT INTO _identity_users (id, workspace_id, name, email, account_type, reporting_path, status, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"secondary-service", "workspace-secondary", "Service", "service@example.test", "service", "/secondary-service", "active", 1, "now", "now"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(t.Context(), `INSERT INTO _identity_users (id, workspace_id, name, email, account_type, reporting_path, status, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"secondary-automation", "workspace-secondary", "Automation", "automation@example.test", "automation", "/secondary-automation", "disabled", 1, "now", "now"); err != nil {
+		t.Fatal(err)
+	}
+	embedded, ok := binding.(identitysdk.EmbeddedWorkspaceIdentityUsageBinding)
+	if !ok {
+		t.Fatal("embedded binding does not expose the Workspace usage UoW binder")
+	}
+
+	call := func(tx *sql.Tx) identitysdk.WorkspaceIdentityUsagePage {
+		t.Helper()
+		aggregate, err := embedded.WorkspaceIdentityUsageUnitOfWorkBinder().BindWorkspaceIdentityUsageUnitOfWork(identitysdk.EmbeddedTransaction{Executor: tx})
+		if err != nil {
+			t.Fatal(err)
+		}
+		page, err := aggregate.ListWorkspaceIdentityUsage(t.Context(), identitysdk.WorkspaceIdentityUsageRequest{
+			ContractVersion: identitysdk.CurrentWorkspaceIdentityUsageContractVersion,
+			ContractHash:    identitysdk.CurrentWorkspaceIdentityUsageContractHash,
+			AccessToken:     "installation-usage-token", PageSize: 10,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(page.Items) != 2 || page.Items[0].WorkspaceID != "workspace-primary" || page.Items[1].WorkspaceID != "workspace-secondary" {
+			t.Fatalf("usage page=%+v", page)
+		}
+		if counts := page.Items[1].Accounts; counts.ServiceAccounts != 1 || counts.AutomationAccounts != 1 || counts.ActiveHumanAccounts != 0 || counts.DisabledHumanAccounts != 0 {
+			t.Fatalf("secondary counts=%+v", counts)
+		}
+		exact, err := aggregate.ResolveWorkspaceIdentityUsage(t.Context(), identitysdk.WorkspaceIdentityUsageResolveRequest{
+			ContractVersion: identitysdk.CurrentWorkspaceIdentityUsageContractVersion,
+			ContractHash:    identitysdk.CurrentWorkspaceIdentityUsageContractHash,
+			AccessToken:     "installation-usage-token",
+			WorkspaceCode:   "secondary",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if exact.WorkspaceID != "workspace-secondary" || exact.Accounts.ServiceAccounts != 1 || exact.Accounts.AutomationAccounts != 1 {
+			t.Fatalf("exact usage=%+v", exact)
+		}
+		return page
+	}
+
+	tx, err := db.BeginTx(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	call(tx)
+	var transactionalAudits int
+	if err := tx.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _audit_events WHERE workspace_id = ? AND event = ? AND record_id = ?`, "workspace-primary", "identity.workspace_identity_usage.aggregate", "installation-1").Scan(&transactionalAudits); err != nil || transactionalAudits != 1 {
+		_ = tx.Rollback()
+		t.Fatalf("transactional audits=%d err=%v", transactionalAudits, err)
+	}
+	if err := tx.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+	var rolledBackAudits int
+	if err := db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _audit_events WHERE event = ? AND record_id = ?`, "identity.workspace_identity_usage.aggregate", "installation-1").Scan(&rolledBackAudits); err != nil || rolledBackAudits != 0 {
+		t.Fatalf("rolled back audits=%d err=%v", rolledBackAudits, err)
+	}
+
+	tx, err = db.BeginTx(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	call(tx)
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	var committedAudits int
+	if err := db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _audit_events WHERE event = ? AND record_id = ?`, "identity.workspace_identity_usage.aggregate", "installation-1").Scan(&committedAudits); err != nil || committedAudits != 1 {
+		t.Fatalf("committed audits=%d err=%v", committedAudits, err)
+	}
+	if authority.authorizations != 4 {
+		t.Fatalf("authority audit decisions=%d want=4", authority.authorizations)
+	}
+}
+
+func TestEmbeddedWorkspaceIdentityUsageRequiresStableCursorKey(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "workspace-usage-missing-key.db")
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	_, err = identitymodule.NewFactory(identitymodule.Options{DatabaseDriver: "sqlite", DatabasePath: dbPath}).OpenWithDatabase(
+		t.Context(),
+		identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "crm"},
+		identitysdk.DatabaseHandle{
+			Pool: db, Driver: "sqlite", FilePath: dbPath, Migrations: &testEmbeddedMigrationRegistrar{},
+			WorkspaceIdentityUsageAuthority: &testWorkspaceIdentityUsageAuthority{},
+		},
+	)
+	var sdkError *identitysdk.Error
+	if !errors.As(err, &sdkError) || sdkError.Code != "identity.workspace_usage_cursor_key_required" {
+		t.Fatalf("missing cursor key err=%v", err)
 	}
 }
 

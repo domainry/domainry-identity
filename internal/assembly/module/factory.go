@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"sync"
 
 	dataexchangemodulehost "github.com/domainry/domainry-data-exchange-sdk/modulehost"
 	actioncontract "github.com/domainry/domainry-foundation/action"
@@ -44,8 +45,8 @@ func (factory *Factory) OpenWithDatabase(ctx context.Context, application identi
 }
 
 // OpenBootstrapWithDatabase opens only the atomic workspace provisioner. It
-// creates no compatibility workspace, user, role, credential, browser route,
-// or ordinary Identity Binding before the host commits the first tenant.
+// creates no compatibility Workspace, user, role, credential, browser route,
+// or ordinary Identity Binding before the host commits the first Workspace.
 func (factory *Factory) OpenBootstrapWithDatabase(ctx context.Context, applicationKey identitysdk.ApplicationKey, handle identitysdk.DatabaseHandle) (identitysdk.BootstrapBinding, error) {
 	if ctx == nil {
 		return nil, &identitysdk.Error{Code: "identity.context_required"}
@@ -109,10 +110,11 @@ func (factory *Factory) OpenBootstrapWithDatabase(ctx context.Context, applicati
 		return fail(fmt.Errorf("assemble Identity bootstrap authorization Action registry: %w", err))
 	}
 	authStore := authpersistence.NewAuthStoreWithKeyProvider(identityStore, store.SecretKeyProvider(), store.IdempotencyMetrics(ctx))
-	return &moduleBinding{
+	inner := &moduleBinding{
 		runtime:     &assembly.Core{Store: store, Manifest: manifest, IdentityStore: identityStore, Identity: identityApp, IdentityActions: identityActions, AuthStore: authStore},
 		application: identitysdk.ApplicationRef{ApplicationKey: applicationKey},
-	}, nil
+	}
+	return newBootstrapBinding(inner), nil
 }
 
 func (factory *Factory) open(ctx context.Context, application identitysdk.ApplicationRef, handle *identitysdk.DatabaseHandle) (identitysdk.Binding, error) {
@@ -188,6 +190,20 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 	}
 	if handle != nil && handle.BusinessProfileResolver != nil {
 		identityRuntime.Identity.UseBusinessProfileResolver(moduleBusinessProfileResolver{resolve: handle.BusinessProfileResolver})
+	}
+	var workspaceUsage *identityapplicationinternal.IdentityWorkspaceUsageApplicationService
+	if handle != nil && handle.WorkspaceIdentityUsageAuthority != nil {
+		if len(handle.WorkspaceIdentityUsageCursorKey) != 32 {
+			_ = identityRuntime.CloseContext(ctx)
+			return nil, &identitysdk.Error{Code: "identity.workspace_usage_cursor_key_required"}
+		}
+		workspaceUsage = identityapplicationinternal.NewIdentityWorkspaceUsageApplicationService(identityapplicationinternal.IdentityWorkspaceUsageDependencies{
+			ApplicationKey: string(application.ApplicationKey),
+			Authority:      moduleWorkspaceIdentityUsageAuthority{authority: handle.WorkspaceIdentityUsageAuthority},
+			Repository:     identityRuntime.IdentityStore,
+			Audit:          identityRuntime.Audit,
+			CursorKey:      append([]byte(nil), handle.WorkspaceIdentityUsageCursorKey...),
+		})
 	}
 	binding := identityRuntime.Binding
 	if binding == nil {
@@ -270,7 +286,7 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 	}
 	return &moduleBinding{
 		Binding: scopedBinding, runtime: identityRuntime, application: application, adapters: []identityhttpapi.Adapter{browserAdapter, managementAdapter},
-		portability: &identityPortabilityDataExchangeProvider{service: portabilityService},
+		portability: &identityPortabilityDataExchangeProvider{service: portabilityService}, workspaceUsage: workspaceUsage,
 	}, nil
 }
 
@@ -323,10 +339,14 @@ func (resolver moduleBusinessProfileResolver) ResolveIdentityBusinessProfiles(ct
 
 type moduleBinding struct {
 	identitysdk.Binding
-	runtime     *assembly.Core
-	application identitysdk.ApplicationRef
-	adapters    []identityhttpapi.Adapter
-	portability *identityPortabilityDataExchangeProvider
+	runtime              *assembly.Core
+	application          identitysdk.ApplicationRef
+	adapters             []identityhttpapi.Adapter
+	portability          *identityPortabilityDataExchangeProvider
+	workspaceUsage       *identityapplicationinternal.IdentityWorkspaceUsageApplicationService
+	bootstrapMu          sync.Mutex
+	bootstrapCredentials map[string]*workspaceBootstrapPendingCredential
+	bootstrapRoleLabels  map[string]string
 }
 
 func (binding *moduleBinding) IdentityDataExchangeProviders() (string, dataexchangemodulehost.ImportProvider, dataexchangemodulehost.ExportProvider) {
@@ -395,6 +415,15 @@ func (binding *moduleBinding) Close(ctx context.Context) error {
 	if binding == nil || binding.runtime == nil {
 		return nil
 	}
+	binding.bootstrapMu.Lock()
+	for receiptID, credential := range binding.bootstrapCredentials {
+		credential.timer.Stop()
+		clear(credential.password)
+		delete(binding.bootstrapCredentials, receiptID)
+	}
+	binding.bootstrapCredentials = nil
+	binding.bootstrapRoleLabels = nil
+	binding.bootstrapMu.Unlock()
 	return binding.runtime.CloseContext(ctx)
 }
 
@@ -408,5 +437,6 @@ var _ identitysdk.ApplicationServiceVerificationBinding = (*moduleBinding)(nil)
 var _ identitysdk.ChallengeAuthenticationBinding = (*moduleBinding)(nil)
 var _ identitysdk.ActionAssuranceBinding = (*moduleBinding)(nil)
 var _ identitysdk.ProjectRoleCatalogPublisher = (*moduleBinding)(nil)
+var _ identitysdk.EmbeddedWorkspaceIdentityUsageBinding = (*moduleBinding)(nil)
 var _ identityhttpapi.Provider = (*moduleBinding)(nil)
 var _ actioncontract.Provider = (*moduleBinding)(nil)

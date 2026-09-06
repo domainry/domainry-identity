@@ -256,6 +256,12 @@ func TestAuthStoreContractAndCancellation(t *testing.T) {
 	}
 }
 
+func TestAuthStoreReadyRejectsZeroValue(t *testing.T) {
+	if (AuthStore{}).Ready() {
+		t.Fatal("zero-value AuthStore reported ready")
+	}
+}
+
 func TestAuthStoreWorkspaceIsolationContract(t *testing.T) {
 	store := openStoreForGeneratedListTest(t)
 	defer store.Close()

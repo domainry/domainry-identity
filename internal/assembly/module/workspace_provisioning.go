@@ -3,7 +3,6 @@ package moduleassembly
 import (
 	"context"
 	"crypto/rand"
-	"database/sql"
 	"encoding/base64"
 	"fmt"
 	"sort"
@@ -23,8 +22,8 @@ func (binding *moduleBinding) ProvisionWorkspaceIdentity(ctx context.Context, re
 	if binding == nil || binding.runtime == nil || binding.runtime.Identity == nil || binding.runtime.IdentityStore == nil || binding.runtime.IdentityActions == nil {
 		return identitysdk.WorkspaceIdentityProvisionResult{}, &identitysdk.Error{Code: "identity.workspace_provisioning_unavailable"}
 	}
-	tx, ok := transaction.Native.(*sql.Tx)
-	if !ok || tx == nil {
+	tx, ok := embeddedTransactionExecutor(transaction)
+	if !ok {
 		return identitysdk.WorkspaceIdentityProvisionResult{}, &identitysdk.Error{Code: "identity.workspace_provisioning_transaction_required"}
 	}
 	request.WorkspaceID = strings.TrimSpace(request.WorkspaceID)
@@ -56,7 +55,7 @@ func (binding *moduleBinding) ProvisionWorkspaceIdentity(ctx context.Context, re
 		ID: "admin", Name: request.AdminName, Email: request.AdminLoginID,
 		AccountType: identitymodel.IdentityAccountHuman, Status: identitymodel.IdentityStatusActive,
 	}
-	if err := binding.runtime.IdentityStore.ProvisionWorkspaceIdentityWithExecutor(ctx, tx, request.WorkspaceID, admin, roles, organizations, users, assignments, func(stage identitypersistence.WorkspaceIdentityProvisionStage) error {
+	if err := binding.runtime.IdentityStore.ProvisionWorkspaceIdentityWithExecutor(ctx, tx, request.WorkspaceID, admin, roles, organizations, users, assignments, identitypersistence.WorkspaceRoleID(request.WorkspaceID, "admin"), func(stage identitypersistence.WorkspaceIdentityProvisionStage) error {
 		if transaction.WorkspaceProvisionFailures == nil {
 			return nil
 		}
@@ -178,6 +177,49 @@ func acceptanceFixtures(request identitysdk.WorkspaceIdentityProvisionRequest, r
 	return organizations, users, assignments, credentials, nil
 }
 
+func (binding *moduleBinding) ProvisionWorkspaceAcceptanceFixtures(ctx context.Context, request identitysdk.WorkspaceAcceptanceFixtureRequest, transaction identitysdk.EmbeddedTransaction) error {
+	if binding == nil || binding.runtime == nil || binding.runtime.Identity == nil || binding.runtime.IdentityStore == nil {
+		return &identitysdk.Error{Code: "identity.workspace_acceptance_fixture_unavailable"}
+	}
+	tx, ok := embeddedTransactionExecutor(transaction)
+	if !ok {
+		return &identitysdk.Error{Code: "identity.workspace_provisioning_transaction_required"}
+	}
+	request.WorkspaceID = strings.TrimSpace(request.WorkspaceID)
+	if _, err := identitymodel.NewWorkspaceID(request.WorkspaceID); err != nil {
+		return &identitysdk.Error{Code: "identity.workspace_acceptance_fixture_invalid", Cause: err}
+	}
+	if len(request.Organizations) == 0 && len(request.Actors) == 0 {
+		return nil
+	}
+	allRoles := binding.provisionedWorkspaceRoles(request.WorkspaceID)
+	organizations, users, assignments, credentials, err := acceptanceFixtures(identitysdk.WorkspaceIdentityProvisionRequest{
+		WorkspaceID: request.WorkspaceID, AcceptanceOrganizations: request.Organizations, AcceptanceActors: request.Actors,
+	}, allRoles)
+	if err != nil {
+		return err
+	}
+	requiredRoleIDs := make(map[string]bool, len(assignments))
+	for _, assignment := range assignments {
+		requiredRoleIDs[assignment.RoleID] = true
+	}
+	roles := make([]identitymodel.IdentityRole, 0, len(requiredRoleIDs))
+	for _, role := range allRoles {
+		if requiredRoleIDs[role.ID] {
+			roles = append(roles, role)
+		}
+	}
+	if err := binding.runtime.IdentityStore.ProvisionWorkspaceAcceptanceFixturesWithExecutor(ctx, tx, request.WorkspaceID, roles, organizations, users, assignments); err != nil {
+		return err
+	}
+	for _, credential := range credentials {
+		if err := binding.runtime.AuthStore.UpsertIdentityCredentialWithExecutor(ctx, tx, request.WorkspaceID, credential); err != nil {
+			return fmt.Errorf("provision acceptance actor credential: %w", err)
+		}
+	}
+	return nil
+}
+
 func acceptanceFixtureInvalid(kind string, index int, field, reason string, values map[string]string) *identitysdk.Error {
 	params := map[string]string{
 		"fixture_kind":  kind,
@@ -208,8 +250,8 @@ func (binding *moduleBinding) ReconcileWorkspaceRoles(ctx context.Context, reque
 	if binding == nil || binding.runtime == nil || binding.runtime.Identity == nil || binding.runtime.IdentityStore == nil {
 		return identitysdk.WorkspaceRoleReconcileResult{}, &identitysdk.Error{Code: "identity.workspace_role_reconciliation_unavailable"}
 	}
-	tx, ok := transaction.Native.(*sql.Tx)
-	if !ok || tx == nil {
+	tx, ok := embeddedTransactionExecutor(transaction)
+	if !ok {
 		return identitysdk.WorkspaceRoleReconcileResult{}, &identitysdk.Error{Code: "identity.workspace_provisioning_transaction_required"}
 	}
 	workspaceID := strings.TrimSpace(request.WorkspaceID)
@@ -281,4 +323,5 @@ func validBootstrapInitialPassword(password string) bool {
 }
 
 var _ identitysdk.EmbeddedWorkspaceProvisioner = (*moduleBinding)(nil)
+var _ identitysdk.EmbeddedWorkspaceAcceptanceFixtureProvisioner = (*moduleBinding)(nil)
 var _ identitysdk.BootstrapBinding = (*moduleBinding)(nil)

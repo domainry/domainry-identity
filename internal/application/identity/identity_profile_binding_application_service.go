@@ -11,6 +11,43 @@ import (
 	identityrepository "github.com/domainry/domainry-identity/internal/domain/identity/repository"
 )
 
+type embeddedHandlerProfileRecordContextKey struct{}
+
+type embeddedHandlerProfileRecord struct {
+	objectKey string
+	profileID string
+	record    map[string]any
+}
+
+// WithEmbeddedHandlerProfileRecord is called only by Identity's transaction-
+// bound module adapter after Runtime has validated a staged profile create.
+// The deployment-neutral/unbound HandlerDelivery path cannot activate it.
+func WithEmbeddedHandlerProfileRecord(ctx context.Context, objectKey, profileID string, record map[string]any) context.Context {
+	if ctx == nil || strings.TrimSpace(objectKey) == "" || strings.TrimSpace(profileID) == "" || len(record) == 0 {
+		return ctx
+	}
+	cloned := make(map[string]any, len(record))
+	for key, value := range record {
+		cloned[key] = value
+	}
+	return context.WithValue(ctx, embeddedHandlerProfileRecordContextKey{}, embeddedHandlerProfileRecord{objectKey: strings.TrimSpace(objectKey), profileID: strings.TrimSpace(profileID), record: cloned})
+}
+
+func embeddedHandlerProfileRecordFromContext(ctx context.Context, objectKey, profileID string) (map[string]any, bool) {
+	if ctx == nil {
+		return nil, false
+	}
+	value, ok := ctx.Value(embeddedHandlerProfileRecordContextKey{}).(embeddedHandlerProfileRecord)
+	if !ok || value.objectKey != strings.TrimSpace(objectKey) || value.profileID != strings.TrimSpace(profileID) || len(value.record) == 0 {
+		return nil, false
+	}
+	cloned := make(map[string]any, len(value.record))
+	for key, item := range value.record {
+		cloned[key] = item
+	}
+	return cloned, true
+}
+
 type IdentityProfileBindingRecordReader interface {
 	GetIdentityProfileBindingRecord(context.Context, string, definitionmodel.ObjectSchema, string) (map[string]any, bool, error)
 }
@@ -83,19 +120,122 @@ func (s *IdentityProfileBindingApplicationService) Execute(ctx context.Context, 
 		!identitycontract.IdentityRoleHasPermissionKey(principal.Role, identitycontract.IdentityActionProfileBindingsCommand) {
 		return identitymodel.IdentityProfileBindingReceipt{}, profileBindingError(apperror.KindForbidden, "backend.identity.profile_binding_manage_required")
 	}
+	if probe, ok, probeErr := s.replayProbe(ctx, request, principal); probeErr != nil {
+		return identitymodel.IdentityProfileBindingReceipt{}, probeErr
+	} else if ok {
+		if receipt, found, receiptErr := s.dependencies.Repository.GetIdentityProfileBindingReceipt(ctx, probe); receiptErr != nil {
+			return identitymodel.IdentityProfileBindingReceipt{}, receiptErr
+		} else if found {
+			if receipt.RequestFingerprint != probe.RequestFingerprint {
+				return identitymodel.IdentityProfileBindingReceipt{}, profileBindingError(apperror.KindConflict, "backend.idempotency_key_reused")
+			}
+			receipt.Replayed = true
+			return receipt, nil
+		}
+	}
+	mutation, currentUserID, err := s.PrepareMutation(ctx, request, principal)
+	if err != nil {
+		return identitymodel.IdentityProfileBindingReceipt{}, err
+	}
+	if receipt, found, receiptErr := s.dependencies.Repository.GetIdentityProfileBindingReceipt(ctx, mutation); receiptErr != nil {
+		return identitymodel.IdentityProfileBindingReceipt{}, receiptErr
+	} else if found {
+		if receipt.RequestFingerprint != mutation.RequestFingerprint {
+			return identitymodel.IdentityProfileBindingReceipt{}, profileBindingError(apperror.KindConflict, "backend.idempotency_key_reused")
+		}
+		receipt.Replayed = true
+		return receipt, nil
+	}
+	receipt, err := s.dependencies.Repository.ExecuteIdentityProfileBindingMutation(ctx, mutation)
+	if err != nil {
+		return identitymodel.IdentityProfileBindingReceipt{}, err
+	}
+	if mutation.Operation == identitymodel.IdentityProfileBindingRebind {
+		extension, _, _ := s.profileBindingDefinition(mutation.ObjectKey, mutation.BindingKey)
+		if extension.BindingLifecycle.RebindRevokesSessions {
+			if s.dependencies.SessionRevoker == nil {
+				return identitymodel.IdentityProfileBindingReceipt{}, profileBindingError(apperror.KindInternal, "backend.identity.profile_rebind_session_revocation_unavailable")
+			}
+			if err := s.dependencies.SessionRevoker.RevokeIdentityProfileSessions(ctx, principal.WorkspaceID, currentUserID, "identity_profile_rebind"); err != nil {
+				return identitymodel.IdentityProfileBindingReceipt{}, err
+			}
+		}
+	}
+	return receipt, nil
+}
+
+func (s *IdentityProfileBindingApplicationService) replayProbe(ctx context.Context, request IdentityProfileBindingCommandRequest, principal identitymodel.Principal) (identitymodel.IdentityProfileBindingMutation, bool, error) {
+	operation := identitymodel.IdentityProfileBindingOperation(strings.TrimSpace(request.Operation))
+	objectKey, profileID := strings.TrimSpace(request.ObjectKey), strings.TrimSpace(request.ProfileID)
+	bindingKey, idempotencyKey := strings.TrimSpace(request.BindingKey), strings.TrimSpace(request.IdempotencyKey)
+	if s.dependencies.Repository == nil || !identityProfileBindingOperationAllowed(operation) || objectKey == "" || profileID == "" || bindingKey == "" || idempotencyKey == "" || request.ExpectedVersion < 0 {
+		return identitymodel.IdentityProfileBindingMutation{}, false, nil
+	}
+	extension, _, found := s.profileBindingDefinition(objectKey, bindingKey)
+	if !found {
+		return identitymodel.IdentityProfileBindingMutation{}, false, nil
+	}
+	mutation := identitymodel.IdentityProfileBindingMutation{
+		WorkspaceID: principal.WorkspaceID, BindingKey: bindingKey, ObjectKey: objectKey, ProfileID: profileID,
+		IdentityField: extension.IdentityRelationField, Operation: operation,
+		IdentityUserID: profileBindingRequestedTarget(request, operation, principal.UserID), InvitationChannel: strings.TrimSpace(request.InvitationChannel),
+		ClaimProofType: strings.TrimSpace(request.ClaimProofType), Reason: strings.TrimSpace(request.Reason), ApprovalID: strings.TrimSpace(request.ApprovalID),
+		ExpectedVersion: request.ExpectedVersion, IdempotencyKey: idempotencyKey, ActorID: principal.UserID,
+	}
+	if s.dependencies.SystemRoles != nil {
+		roleIDs, err := s.dependencies.SystemRoles.ResolveIdentityProfileSystemRoleIDs(ctx, bindingKey)
+		if err != nil {
+			return identitymodel.IdentityProfileBindingMutation{}, false, err
+		}
+		mutation.SystemManagedRoleIDs = roleIDs
+	}
+	mutation.RequestFingerprint = identityProfileBindingFingerprint(mutation)
+	return mutation, true, nil
+}
+
+// PrepareMutation performs the complete metadata, business-record, claim,
+// target, approval, and role-policy validation without writing. Composite
+// Identity delivery uses the returned mutation inside its own transaction.
+func (s *IdentityProfileBindingApplicationService) PrepareMutation(ctx context.Context, request IdentityProfileBindingCommandRequest, principal identitymodel.Principal) (identitymodel.IdentityProfileBindingMutation, string, error) {
+	return s.prepareMutation(ctx, request, principal, nil, identitycontract.IdentityActionProfileBindingsCommand)
+}
+
+// PrepareMutationForAtomicDelivery accepts one already-validated prospective
+// target user. This is the only path that may bind a profile in the same
+// transaction that creates that user; public profile commands still require a
+// persisted target.
+func (s *IdentityProfileBindingApplicationService) PrepareMutationForAtomicDelivery(ctx context.Context, request IdentityProfileBindingCommandRequest, principal identitymodel.Principal, target identitymodel.IdentityUser, permissionKey string) (identitymodel.IdentityProfileBindingMutation, string, error) {
+	return s.prepareMutation(ctx, request, principal, &target, permissionKey)
+}
+
+func (s *IdentityProfileBindingApplicationService) prepareMutation(ctx context.Context, request IdentityProfileBindingCommandRequest, principal identitymodel.Principal, prospectiveTarget *identitymodel.IdentityUser, permissionKey string) (identitymodel.IdentityProfileBindingMutation, string, error) {
+	if err := ctx.Err(); err != nil {
+		return identitymodel.IdentityProfileBindingMutation{}, "", err
+	}
+	if _, err := identitymodel.CommandScopeForPrincipal(principal); err != nil {
+		return identitymodel.IdentityProfileBindingMutation{}, "", &apperror.AppError{Kind: apperror.KindForbidden, Code: "backend.workspace_scope_required", Err: err}
+	}
+	operation := identitymodel.IdentityProfileBindingOperation(strings.TrimSpace(request.Operation))
+	if !identityProfileBindingOperationAllowed(operation) {
+		return identitymodel.IdentityProfileBindingMutation{}, "", profileBindingError(apperror.KindBadRequest, "backend.identity.profile_binding_operation_invalid")
+	}
+	if operation != identitymodel.IdentityProfileBindingClaim &&
+		!identitycontract.IdentityRoleHasPermissionKey(principal.Role, strings.TrimSpace(permissionKey)) {
+		return identitymodel.IdentityProfileBindingMutation{}, "", profileBindingError(apperror.KindForbidden, "backend.identity.profile_binding_manage_required")
+	}
 	request.ObjectKey = strings.TrimSpace(request.ObjectKey)
 	request.ProfileID = strings.TrimSpace(request.ProfileID)
 	request.BindingKey = strings.TrimSpace(request.BindingKey)
 	request.IdempotencyKey = strings.TrimSpace(request.IdempotencyKey)
 	if request.ObjectKey == "" || request.ProfileID == "" || request.BindingKey == "" || request.IdempotencyKey == "" || request.ExpectedVersion < 0 {
-		return identitymodel.IdentityProfileBindingReceipt{}, profileBindingError(apperror.KindBadRequest, "backend.identity.profile_binding_command_invalid")
+		return identitymodel.IdentityProfileBindingMutation{}, "", profileBindingError(apperror.KindBadRequest, "backend.identity.profile_binding_command_invalid")
 	}
 	extension, object, found := s.profileBindingDefinition(request.ObjectKey, request.BindingKey)
 	if !found {
-		return identitymodel.IdentityProfileBindingReceipt{}, profileBindingError(apperror.KindNotFound, "backend.identity.profile_binding_definition_not_found")
+		return identitymodel.IdentityProfileBindingMutation{}, "", profileBindingError(apperror.KindNotFound, "backend.identity.profile_binding_definition_not_found")
 	}
 	if s.dependencies.Repository == nil {
-		return identitymodel.IdentityProfileBindingReceipt{}, profileBindingError(apperror.KindInternal, "backend.identity.profile_binding_unavailable")
+		return identitymodel.IdentityProfileBindingMutation{}, "", profileBindingError(apperror.KindInternal, "backend.identity.profile_binding_unavailable")
 	}
 	mutation := identitymodel.IdentityProfileBindingMutation{
 		WorkspaceID: principal.WorkspaceID, BindingKey: request.BindingKey, ObjectKey: request.ObjectKey, ProfileID: request.ProfileID,
@@ -107,49 +247,33 @@ func (s *IdentityProfileBindingApplicationService) Execute(ctx context.Context, 
 	if s.dependencies.SystemRoles != nil {
 		resolvedRoleIDs, roleErr := s.dependencies.SystemRoles.ResolveIdentityProfileSystemRoleIDs(ctx, request.BindingKey)
 		if roleErr != nil {
-			return identitymodel.IdentityProfileBindingReceipt{}, roleErr
+			return identitymodel.IdentityProfileBindingMutation{}, "", roleErr
 		}
 		mutation.SystemManagedRoleIDs = resolvedRoleIDs
 	}
-	mutation.RequestFingerprint = identityProfileBindingFingerprint(mutation)
-	if receipt, found, receiptErr := s.dependencies.Repository.GetIdentityProfileBindingReceipt(ctx, mutation); receiptErr != nil {
-		return identitymodel.IdentityProfileBindingReceipt{}, receiptErr
-	} else if found {
-		if receipt.RequestFingerprint != mutation.RequestFingerprint {
-			return identitymodel.IdentityProfileBindingReceipt{}, profileBindingError(apperror.KindConflict, "backend.idempotency_key_reused")
-		}
-		receipt.Replayed = true
-		return receipt, nil
-	}
 	if s.dependencies.Records == nil {
-		return identitymodel.IdentityProfileBindingReceipt{}, profileBindingError(apperror.KindInternal, "backend.identity.profile_binding_unavailable")
+		return identitymodel.IdentityProfileBindingMutation{}, "", profileBindingError(apperror.KindInternal, "backend.identity.profile_binding_unavailable")
 	}
 	record, recordFound, err := s.dependencies.Records.GetIdentityProfileBindingRecord(ctx, principal.WorkspaceID, object, request.ProfileID)
 	if err != nil {
-		return identitymodel.IdentityProfileBindingReceipt{}, err
+		return identitymodel.IdentityProfileBindingMutation{}, "", err
 	}
 	if !recordFound {
-		return identitymodel.IdentityProfileBindingReceipt{}, profileBindingError(apperror.KindNotFound, "backend.identity.profile_not_found")
+		if embedded, ok := embeddedHandlerProfileRecordFromContext(ctx, request.ObjectKey, request.ProfileID); ok {
+			record, recordFound = embedded, true
+		}
+	}
+	if !recordFound {
+		return identitymodel.IdentityProfileBindingMutation{}, "", profileBindingError(apperror.KindNotFound, "backend.identity.profile_not_found")
 	}
 	currentUserID := identityProfileBindingRecordString(record[extension.IdentityRelationField])
-	targetUserID, err := s.validateProfileBindingCommand(ctx, request, operation, extension, record, principal)
+	targetUserID, err := s.validateProfileBindingCommandForTarget(ctx, request, operation, extension, record, principal, prospectiveTarget)
 	if err != nil {
-		return identitymodel.IdentityProfileBindingReceipt{}, err
+		return identitymodel.IdentityProfileBindingMutation{}, "", err
 	}
 	mutation.IdentityUserID = targetUserID
-	receipt, err := s.dependencies.Repository.ExecuteIdentityProfileBindingMutation(ctx, mutation)
-	if err != nil {
-		return identitymodel.IdentityProfileBindingReceipt{}, err
-	}
-	if operation == identitymodel.IdentityProfileBindingRebind && extension.BindingLifecycle.RebindRevokesSessions {
-		if s.dependencies.SessionRevoker == nil {
-			return identitymodel.IdentityProfileBindingReceipt{}, profileBindingError(apperror.KindInternal, "backend.identity.profile_rebind_session_revocation_unavailable")
-		}
-		if err := s.dependencies.SessionRevoker.RevokeIdentityProfileSessions(ctx, principal.WorkspaceID, currentUserID, "identity_profile_rebind"); err != nil {
-			return identitymodel.IdentityProfileBindingReceipt{}, err
-		}
-	}
-	return receipt, nil
+	mutation.RequestFingerprint = identityProfileBindingFingerprint(mutation)
+	return mutation, currentUserID, nil
 }
 
 func profileBindingRequestedTarget(request IdentityProfileBindingCommandRequest, operation identitymodel.IdentityProfileBindingOperation, principalUserID string) string {
@@ -181,7 +305,22 @@ func (s *IdentityProfileBindingApplicationService) Get(ctx context.Context, obje
 	return binding, true, nil
 }
 
+// CurrentBinding is an internal command-orchestration read. Its caller must
+// already have authorized either the profile-binding command or the composed
+// HandlerDelivery operation; it deliberately avoids requiring the separate
+// UI/read permission during one atomic command.
+func (s *IdentityProfileBindingApplicationService) CurrentBinding(ctx context.Context, workspaceID, objectKey, profileID string) (identitymodel.IdentityProfileBinding, bool, error) {
+	if s == nil || s.dependencies.Repository == nil {
+		return identitymodel.IdentityProfileBinding{}, false, profileBindingError(apperror.KindInternal, "backend.identity.profile_binding_unavailable")
+	}
+	return s.dependencies.Repository.GetIdentityProfileBinding(ctx, strings.TrimSpace(workspaceID), strings.TrimSpace(objectKey), strings.TrimSpace(profileID))
+}
+
 func (s *IdentityProfileBindingApplicationService) validateProfileBindingCommand(ctx context.Context, request IdentityProfileBindingCommandRequest, operation identitymodel.IdentityProfileBindingOperation, extension identitymodel.IdentityProfileExtension, record map[string]any, principal identitymodel.Principal) (string, error) {
+	return s.validateProfileBindingCommandForTarget(ctx, request, operation, extension, record, principal, nil)
+}
+
+func (s *IdentityProfileBindingApplicationService) validateProfileBindingCommandForTarget(ctx context.Context, request IdentityProfileBindingCommandRequest, operation identitymodel.IdentityProfileBindingOperation, extension identitymodel.IdentityProfileExtension, record map[string]any, principal identitymodel.Principal, prospectiveTarget *identitymodel.IdentityUser) (string, error) {
 	currentUserID := identityProfileBindingRecordString(record[extension.IdentityRelationField])
 	if operation != identitymodel.IdentityProfileBindingUnlink && !identityProfileBindingBusinessActive(extension.BusinessIdentity, record) {
 		return "", profileBindingError(apperror.KindConflict, "backend.identity.profile_inactive")
@@ -205,12 +344,12 @@ func (s *IdentityProfileBindingApplicationService) validateProfileBindingCommand
 		if currentUserID != "" {
 			return "", profileBindingError(apperror.KindConflict, "backend.identity.profile_already_bound")
 		}
-		return s.validateTargetIdentity(ctx, strings.TrimSpace(request.IdentityUserID))
+		return s.validateTargetIdentityForDelivery(ctx, strings.TrimSpace(request.IdentityUserID), prospectiveTarget)
 	case identitymodel.IdentityProfileBindingRebind:
 		if currentUserID == "" || strings.TrimSpace(request.Reason) == "" {
 			return "", profileBindingError(apperror.KindBadRequest, "backend.identity.profile_rebind_reason_required")
 		}
-		targetUserID, err := s.validateTargetIdentity(ctx, strings.TrimSpace(request.IdentityUserID))
+		targetUserID, err := s.validateTargetIdentityForDelivery(ctx, strings.TrimSpace(request.IdentityUserID), prospectiveTarget)
 		if err != nil {
 			return "", err
 		}
@@ -272,8 +411,15 @@ func identityProfileBindingBusinessActive(binding identitymodel.BusinessIdentity
 }
 
 func (s *IdentityProfileBindingApplicationService) validateTargetIdentity(ctx context.Context, userID string) (string, error) {
+	return s.validateTargetIdentityForDelivery(ctx, userID, nil)
+}
+
+func (s *IdentityProfileBindingApplicationService) validateTargetIdentityForDelivery(ctx context.Context, userID string, prospectiveTarget *identitymodel.IdentityUser) (string, error) {
 	if userID == "" || s.dependencies.Identity == nil {
 		return "", profileBindingError(apperror.KindBadRequest, "backend.identity.profile_binding_target_invalid")
+	}
+	if prospectiveTarget != nil && strings.TrimSpace(prospectiveTarget.ID) == userID && prospectiveTarget.Status == identitymodel.IdentityStatusActive {
+		return userID, nil
 	}
 	user, found, err := s.dependencies.Identity.FindUser(ctx, userID)
 	if err != nil {

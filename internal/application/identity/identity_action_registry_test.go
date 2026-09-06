@@ -13,8 +13,8 @@ func TestStandaloneAuthorizationSliceRegistryOwnsCompleteRouteAndPermissionMatri
 		t.Fatal(err)
 	}
 	definitions := registry.Definitions()
-	if len(definitions) != 116 {
-		t.Fatalf("Identity Action count=%d want=116", len(definitions))
+	if len(definitions) != 126 {
+		t.Fatalf("Identity Action count=%d want=126", len(definitions))
 	}
 	seenHTTP := map[string]string{}
 	pageBindings := 0
@@ -24,8 +24,15 @@ func TestStandaloneAuthorizationSliceRegistryOwnsCompleteRouteAndPermissionMatri
 			pageBindings++
 		}
 		if definition.HTTP == nil {
-			if len(definition.NonHTTP) != 1 || definition.Permission == nil || definition.Permission.Key != definition.Key {
+			if len(definition.NonHTTP) != 1 {
 				t.Fatalf("non-HTTP action %q binding=%v permission=%v", definition.Key, definition.NonHTTP, definition.Permission)
+			}
+			if definition.Key == "identity.workspace_identity_usage.aggregate" {
+				if definition.Permission != nil || definition.Authorization.Strategy != actioncontract.AuthorizationSigned || definition.Authorization.PolicyKey != definition.Key {
+					t.Fatalf("installation usage action %q must use only its signed policy key: %+v", definition.Key, definition)
+				}
+			} else if definition.Permission == nil || definition.Permission.Key != definition.Key {
+				t.Fatalf("non-HTTP action %q permission=%v", definition.Key, definition.Permission)
 			}
 			nonHTTPBindings++
 			continue
@@ -51,8 +58,8 @@ func TestStandaloneAuthorizationSliceRegistryOwnsCompleteRouteAndPermissionMatri
 	if pageBindings != 7 {
 		t.Fatalf("page-bound Identity Actions=%d want=7", pageBindings)
 	}
-	if nonHTTPBindings != 10 {
-		t.Fatalf("non-HTTP Identity Actions=%d want=10", nonHTTPBindings)
+	if nonHTTPBindings != 20 {
+		t.Fatalf("non-HTTP Identity Actions=%d want=20", nonHTTPBindings)
 	}
 	for key, binding := range map[string]string{
 		"auth.session.get":                        "GET /auth/session",
@@ -75,8 +82,31 @@ func TestStandaloneAuthorizationSliceRegistryOwnsCompleteRouteAndPermissionMatri
 		}
 	}
 	permissions := registry.OwnedPermissionDefinitions(IdentityBuiltinAuthorizationOwner)
-	if len(permissions) != 86 {
-		t.Fatalf("owned permission count=%d want=86", len(permissions))
+	if len(permissions) != 95 {
+		t.Fatalf("owned permission count=%d want=95", len(permissions))
+	}
+	for _, key := range []string{
+		"identity.handler_delivery.create", "identity.handler_delivery.update",
+		"identity.handler_delivery.disable", "identity.handler_delivery.resolve",
+	} {
+		definition, found := registry.Definition(key)
+		if !found || definition.HTTP != nil || len(definition.NonHTTP) != 1 || definition.NonHTTP[0].InvocationKey != key {
+			t.Fatalf("HandlerDelivery Action %q must be non-HTTP and purpose-specific: found=%v definition=%+v", key, found, definition)
+		}
+	}
+	usage, found := registry.Definition("identity.workspace_identity_usage.aggregate")
+	if !found || usage.HTTP != nil || len(usage.NonHTTP) != 1 || usage.Authorization.Strategy != actioncontract.AuthorizationSigned || usage.Authorization.PolicyKey != usage.Key || usage.Permission != nil {
+		t.Fatalf("Workspace usage Action is not an exact purpose-specific non-HTTP permission: found=%v definition=%+v", found, usage)
+	}
+	for _, key := range []string{
+		"identity.store_organization_delivery.create", "identity.store_organization_delivery.rename",
+		"identity.store_organization_delivery.disable", "identity.store_organization_delivery.resolve",
+		"identity.store_organization_delivery.list",
+	} {
+		definition, found := registry.Definition(key)
+		if !found || definition.HTTP != nil || len(definition.NonHTTP) != 1 || definition.NonHTTP[0].InvocationKey != key {
+			t.Fatalf("StoreOrganization Action %q must be non-HTTP and purpose-specific: found=%v definition=%+v", key, found, definition)
+		}
 	}
 	for _, permission := range permissions {
 		if len(registry.PermissionUsages(permission.PermissionKey)) == 0 {

@@ -162,6 +162,10 @@ func (s *Store) Upsert(ctx context.Context, execer Execer, workspaceID string, i
 }
 
 func (s *Store) Create(ctx context.Context, workspaceID string, item identitymodel.IdentityUser) error {
+	return s.CreateWithExecutor(ctx, s.backend.DB(), workspaceID, item)
+}
+
+func (s *Store) CreateWithExecutor(ctx context.Context, execer Execer, workspaceID string, item identitymodel.IdentityUser) error {
 	workspaceID, err := workspace(workspaceID)
 	if err != nil {
 		return err
@@ -184,8 +188,60 @@ func (s *Store) Create(ctx context.Context, workspaceID string, item identitymod
 	if err != nil {
 		return fmt.Errorf("build identity user create: %w", err)
 	}
-	_, err = s.backend.DB().ExecContext(ctx, statement, arguments...)
+	_, err = execer.ExecContext(ctx, statement, arguments...)
 	return err
+}
+
+// UpdateManyWithExecutorCAS updates complete user projections only when every
+// row is still at the version validated by the application service and still
+// matches the trusted data scope. Any mismatch is reported as false so the
+// enclosing transaction can roll back all earlier effects.
+func (s *Store) UpdateManyWithExecutorCAS(ctx context.Context, execer Execer, workspaceID string, items []identitymodel.IdentityUser, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
+	workspaceID, err := workspace(workspaceID)
+	if err != nil {
+		return false, err
+	}
+	for _, item := range items {
+		if strings.TrimSpace(item.ID) == "" || item.Version < 1 {
+			return false, fmt.Errorf("user id and current version are required")
+		}
+		if item.Status == "" {
+			item.Status = identitymodel.IdentityStatusActive
+		}
+		if item.AccountType == "" {
+			item.AccountType = identitymodel.IdentityAccountHuman
+		}
+		predicates := []query.Predicate{query.Equal("id", item.ID), query.Equal("version", item.Version)}
+		if !scope.Unrestricted {
+			predicates = append(predicates, userDataScopePredicate(scope))
+		}
+		statement, arguments, buildErr := query.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_users", workspaceID).
+			Set("name", item.Name).Set("given_name", item.GivenName).Set("middle_name", item.MiddleName).
+			Set("family_name", item.FamilyName).Set("name_prefix", item.NamePrefix).Set("name_suffix", item.NameSuffix).
+			Set("native_name", item.NativeName).Set("name_locale", item.NameLocale).Set("email", item.Email).
+			Set("phone", item.Phone).Set("account_type", string(item.AccountType)).Set("locale", item.Locale).
+			Set("timezone", item.Timezone).Set("org_id", nullable(item.OrgID)).Set("support_org_id", nullable(item.SupportOrgID)).
+			Set("manager_user_id", nullable(item.ManagerUserID)).Set("reporting_path", item.ReportingPath).Set("worker_no", item.WorkerNo).
+			Set("worker_type", string(item.WorkerType)).Set("work_status", string(item.WorkStatus)).Set("start_date", nullable(item.StartDate)).
+			Set("end_date", nullable(item.EndDate)).Set("status", string(item.Status)).
+			SetExpression("version", query.Add(query.Column("version"), query.Value(1))).Set("updated_at", s.now()).
+			Where(query.And(predicates...)).Build()
+		if buildErr != nil {
+			return false, fmt.Errorf("build CAS identity user update: %w", buildErr)
+		}
+		result, executeErr := execer.ExecContext(ctx, statement, arguments...)
+		if executeErr != nil {
+			return false, executeErr
+		}
+		changed, countErr := result.RowsAffected()
+		if countErr != nil {
+			return false, countErr
+		}
+		if changed != 1 {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 func (s *Store) UpdateLocale(ctx context.Context, workspaceID, userID, locale string, expectedVersion int64) (identitymodel.IdentityUser, bool, error) {

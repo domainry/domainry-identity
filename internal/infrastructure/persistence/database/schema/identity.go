@@ -183,6 +183,59 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"result_json TEXT NOT NULL",
 			"created_at " + text + " NOT NULL",
 		},
+		"_identity_handler_deliveries": {
+			"id " + identityIndexText + " PRIMARY KEY",
+			"workspace_id " + identityIndexText + " NOT NULL",
+			"actor_id " + identityIndexText + " NOT NULL",
+			"idempotency_key " + identityIndexText + " NOT NULL",
+			"request_fingerprint " + identityIndexText + " NOT NULL",
+			"result_json TEXT NOT NULL",
+			"created_at " + identityIndexText + " NOT NULL",
+		},
+		"_identity_workspace_bootstrap_receipts": {
+			"id " + identityIndexText + " PRIMARY KEY",
+			"workspace_id " + identityIndexText + " NOT NULL",
+			"invocation_id " + identityIndexText + " NOT NULL",
+			"request_fingerprint " + identityIndexText + " NOT NULL",
+			"contract_version " + identityIndexText + " NOT NULL",
+			"contract_hash " + identityIndexText + " NOT NULL",
+			"company_id " + identityIndexText + " NOT NULL",
+			"first_store_id " + identityIndexText + " NOT NULL",
+			"initial_admin_user_id " + identityIndexText + " NOT NULL",
+			"initial_admin_login_id TEXT NOT NULL",
+			"credential_claimed_at " + identityIndexText,
+			"created_at " + identityIndexText + " NOT NULL",
+		},
+		"_identity_installation_administrator_bootstrap_receipts": {
+			"id " + identityIndexText + " PRIMARY KEY",
+			"workspace_id " + identityIndexText + " NOT NULL",
+			"invocation_id " + identityIndexText + " NOT NULL",
+			"request_fingerprint " + identityIndexText + " NOT NULL",
+			"contract_version " + identityIndexText + " NOT NULL",
+			"contract_hash " + identityIndexText + " NOT NULL",
+			"user_id " + identityIndexText + " NOT NULL",
+			"login_id TEXT NOT NULL",
+			"credential_claimed_at " + identityIndexText,
+			"credential_delivered_at " + identityIndexText,
+			"created_at " + identityIndexText + " NOT NULL",
+		},
+		"_identity_store_organization_states": {
+			"id " + identityIndexText + " PRIMARY KEY",
+			"workspace_id " + identityIndexText + " NOT NULL",
+			"organization_id " + identityIndexText + " NOT NULL",
+			"version BIGINT NOT NULL",
+			"state_fingerprint " + identityIndexText + " NOT NULL",
+			"updated_at " + identityIndexText + " NOT NULL",
+		},
+		"_identity_store_organization_deliveries": {
+			"id " + identityIndexText + " PRIMARY KEY",
+			"workspace_id " + identityIndexText + " NOT NULL",
+			"actor_id " + identityIndexText + " NOT NULL",
+			"idempotency_key " + identityIndexText + " NOT NULL",
+			"request_fingerprint " + identityIndexText + " NOT NULL",
+			"result_json TEXT NOT NULL",
+			"created_at " + identityIndexText + " NOT NULL",
+		},
 		"_identity_access_reviews": {
 			"id " + text + " PRIMARY KEY",
 			"workspace_id " + text + " NOT NULL",
@@ -441,6 +494,39 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 	}
 	if err := s.CreateIndexIfMissing(ctx, "_identity_entitlement_batch_receipts", "uniq_identity_entitlement_batch_receipt", true, "workspace_id", "idempotency_key"); err != nil {
 		return fmt.Errorf("create identity entitlement batch receipt unique index: %w", err)
+	}
+	if err := s.CreateIndexIfMissing(ctx, "_identity_handler_deliveries", "uniq_identity_handler_delivery_key", true, "workspace_id", "idempotency_key"); err != nil {
+		return fmt.Errorf("create identity handler delivery unique index: %w", err)
+	}
+	if err := s.CreateIndexIfMissing(ctx, "_identity_workspace_bootstrap_receipts", "uniq_identity_workspace_bootstrap_invocation", true, "workspace_id", "invocation_id"); err != nil {
+		return fmt.Errorf("create Identity Workspace bootstrap invocation index: %w", err)
+	}
+	if err := s.CreateIndexIfMissing(ctx, "_identity_workspace_bootstrap_receipts", "uniq_identity_workspace_bootstrap_once", true, "workspace_id"); err != nil {
+		return fmt.Errorf("create Identity Workspace bootstrap uniqueness index: %w", err)
+	}
+	if err := s.CreateIndexIfMissing(ctx, "_identity_installation_administrator_bootstrap_receipts", "uniq_identity_installation_administrator_bootstrap_invocation", true, "workspace_id", "invocation_id"); err != nil {
+		return fmt.Errorf("create installation administrator bootstrap invocation index: %w", err)
+	}
+	if err := s.CreateIndexIfMissing(ctx, "_identity_installation_administrator_bootstrap_receipts", "uniq_identity_installation_administrator_bootstrap_once", true, "workspace_id"); err != nil {
+		return fmt.Errorf("create installation administrator bootstrap uniqueness index: %w", err)
+	}
+	if err := s.CreateIndexIfMissing(ctx, "_identity_organization_units", "idx_identity_organization_unit_type_page", false, "workspace_id", "node_type", "id"); err != nil {
+		return fmt.Errorf("create Identity organization unit type page index: %w", err)
+	}
+	if err := s.CreateIndexIfMissing(ctx, "_identity_store_organization_states", "uniq_identity_store_organization_state", true, "workspace_id", "organization_id"); err != nil {
+		return fmt.Errorf("create Identity store organization state unique index: %w", err)
+	}
+	if err := s.CreateIndexIfMissing(ctx, "_identity_store_organization_deliveries", "uniq_identity_store_organization_delivery_key", true, "workspace_id", "idempotency_key"); err != nil {
+		return fmt.Errorf("create Identity store organization delivery unique index: %w", err)
+	}
+	if err := s.CreateIndexIfMissing(ctx, "_identity_users", "idx_identity_users_workspace_usage", false, "workspace_id", "account_type", "status"); err != nil {
+		return fmt.Errorf("create Identity Workspace usage index: %w", err)
+	}
+	if err := s.CreateIndexIfMissing(ctx, "_identity_users", "idx_identity_users_workspace_active_role_usage", false, "workspace_id", "account_type", "status", "id"); err != nil {
+		return fmt.Errorf("create active human Identity Workspace role usage user index: %w", err)
+	}
+	if err := s.CreateIndexIfMissing(ctx, "_identity_user_role_assignments", "idx_identity_user_roles_workspace_active_usage", false, "workspace_id", "status", "user_id"); err != nil {
+		return fmt.Errorf("create active human Identity Workspace role usage assignment index: %w", err)
 	}
 	if err := s.CreateIndexIfMissing(ctx, "_identity_authoring_receipts", "uniq_identity_authoring_receipt_key", true, "workspace_id", "idempotency_key"); err != nil {
 		return fmt.Errorf("create identity authoring receipt unique index: %w", err)

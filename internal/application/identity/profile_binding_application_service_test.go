@@ -7,6 +7,7 @@ import (
 
 	"github.com/domainry/domainry-foundation/apperror"
 	definitionmodel "github.com/domainry/domainry-identity/internal/domain/definition/model"
+	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
@@ -230,6 +231,52 @@ func TestProfileBindingManagedCommandPolicyAndTransitions(t *testing.T) {
 				t.Fatalf("mutation=%#v", repository.lastMutation)
 			}
 		})
+	}
+}
+
+func TestProfileBindingAtomicDeliveryAcceptsOnlyItsValidatedProspectiveTarget(t *testing.T) {
+	service := profileBindingTestService(&profileBindingRepositoryStub{}, map[string]any{"identity_user": nil}, true)
+	service.dependencies.Identity = profileBindingIdentityStub{users: map[string]identitymodel.IdentityUser{}}
+	request := profileBindingCommand(identitymodel.IdentityProfileBindingBind)
+	request.IdentityUserID = "created-in-same-transaction"
+	principal := profileBindingPrincipal("admin", identitycontract.IdentityHandlerDeliveryCreatePermission)
+	prospective := identitymodel.IdentityUser{ID: request.IdentityUserID, Status: identitymodel.IdentityStatusActive}
+	mutation, _, err := service.PrepareMutationForAtomicDelivery(t.Context(), request, principal, prospective, identitycontract.IdentityHandlerDeliveryCreatePermission)
+	if err != nil || mutation.IdentityUserID != prospective.ID {
+		t.Fatalf("mutation=%+v err=%v", mutation, err)
+	}
+	request.IdentityUserID = "different"
+	if _, _, err := service.PrepareMutationForAtomicDelivery(t.Context(), request, principal, prospective, identitycontract.IdentityHandlerDeliveryCreatePermission); apperror.CodeOf(err) != "backend.identity.profile_binding_target_invalid" {
+		t.Fatalf("different prospective target err=%v", err)
+	}
+}
+
+func TestProfileBindingAtomicDeliveryAcceptsOnlyExactEmbeddedStagedProfile(t *testing.T) {
+	service := profileBindingTestService(&profileBindingRepositoryStub{}, nil, false)
+	service.dependencies.Identity = profileBindingIdentityStub{users: map[string]identitymodel.IdentityUser{}}
+	request := profileBindingCommand(identitymodel.IdentityProfileBindingBind)
+	request.IdentityUserID = "created-in-same-transaction"
+	principal := profileBindingPrincipal("admin", identitycontract.IdentityHandlerDeliveryCreatePermission)
+	prospective := identitymodel.IdentityUser{ID: request.IdentityUserID, Status: identitymodel.IdentityStatusActive}
+	ctx := WithEmbeddedHandlerProfileRecord(t.Context(), request.ObjectKey, request.ProfileID, map[string]any{"identity_user": nil, "status": "active"})
+	mutation, _, err := service.PrepareMutationForAtomicDelivery(ctx, request, principal, prospective, identitycontract.IdentityHandlerDeliveryCreatePermission)
+	if err != nil || mutation.ProfileID != request.ProfileID || mutation.IdentityUserID != prospective.ID {
+		t.Fatalf("mutation=%#v err=%v", mutation, err)
+	}
+	wrong := WithEmbeddedHandlerProfileRecord(t.Context(), request.ObjectKey, "other-profile", map[string]any{"identity_user": nil})
+	if _, _, err := service.PrepareMutationForAtomicDelivery(wrong, request, principal, prospective, identitycontract.IdentityHandlerDeliveryCreatePermission); apperror.CodeOf(err) != "backend.identity.profile_not_found" {
+		t.Fatalf("mismatched embedded profile error=%v", err)
+	}
+}
+
+func TestProfileBindingReplayStillRequiresCurrentPurposePermission(t *testing.T) {
+	repository := &profileBindingRepositoryStub{receiptFound: true}
+	service := profileBindingTestService(repository, map[string]any{"identity_user": nil}, true)
+	request := profileBindingCommand(identitymodel.IdentityProfileBindingBind)
+	request.IdentityUserID = "target"
+	principal := profileBindingPrincipal("operator", "unrelated.permission")
+	if _, err := service.Execute(t.Context(), request, principal); apperror.CodeOf(err) != "backend.identity.profile_binding_manage_required" {
+		t.Fatalf("unauthorized replay error=%v", err)
 	}
 }
 

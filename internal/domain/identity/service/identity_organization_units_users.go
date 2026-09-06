@@ -42,6 +42,29 @@ func (s *IdentityDomainService) UpsertOrganizationUnit(ctx context.Context, orga
 	return s.repo.UpsertIdentityOrganizationUnitsAtomically(ctx, s.workspace, updates)
 }
 
+// PrepareOrganizationUnitForAtomicDelivery applies the canonical hierarchy
+// validation and derives all descendant paths without persisting. Composite
+// organization delivery writes the returned graph in its host transaction.
+func (s *IdentityDomainService) PrepareOrganizationUnitForAtomicDelivery(ctx context.Context, organizationUnit identitymodel.IdentityOrganizationUnit) (identitymodel.IdentityOrganizationUnit, []identitymodel.IdentityOrganizationUnit, error) {
+	updates, err := s.prepareOrganizationUnitUpsert(ctx, organizationUnit)
+	if err != nil {
+		return identitymodel.IdentityOrganizationUnit{}, nil, err
+	}
+	for _, update := range updates {
+		if update.ID == strings.TrimSpace(organizationUnit.ID) {
+			root := update
+			related := make([]identitymodel.IdentityOrganizationUnit, 0, len(updates)-1)
+			for _, candidate := range updates {
+				if candidate.ID != root.ID {
+					related = append(related, candidate)
+				}
+			}
+			return root, related, nil
+		}
+	}
+	return identitymodel.IdentityOrganizationUnit{}, nil, internalError("prepared organization unit missing", nil)
+}
+
 func (s *IdentityDomainService) UpsertOrganizationUnitWithinDataScope(ctx context.Context, organizationUnit identitymodel.IdentityOrganizationUnit, actor identitymodel.Principal, permissionKey string) error {
 	repository, ok := s.repo.(identityrepository.IdentityOrganizationUnitDataScopeMutationRepository)
 	if !ok {
@@ -437,6 +460,25 @@ func (s *IdentityDomainService) prepareUser(ctx context.Context, user identitymo
 	}
 	user.Phone = strings.TrimSpace(user.Phone)
 	return user, nil
+}
+
+// PrepareUserForAtomicDelivery returns the canonical target plus any
+// reporting-path projections that must move with it. The caller persists the
+// returned set in one transaction with its other Identity-owned effects.
+func (s *IdentityDomainService) PrepareUserForAtomicDelivery(ctx context.Context, user identitymodel.IdentityUser) (identitymodel.IdentityUser, []identitymodel.IdentityUser, error) {
+	existing, found, err := s.repo.GetIdentityUser(ctx, s.workspace, strings.TrimSpace(user.ID))
+	if err != nil {
+		return identitymodel.IdentityUser{}, nil, err
+	}
+	prepared, err := s.prepareUser(ctx, user)
+	if err != nil {
+		return identitymodel.IdentityUser{}, nil, err
+	}
+	if !found || existing.ReportingPath == prepared.ReportingPath {
+		return prepared, nil, nil
+	}
+	related, err := s.rebuildUserReportingPathReferences(ctx, existing.ReportingPath, prepared.ReportingPath)
+	return prepared, related, err
 }
 
 func identityUserReportingPath(userID string, users map[string]identitymodel.IdentityUser) string {

@@ -146,12 +146,57 @@ func IdentityBuiltinAuthorizationActions() []identitymodel.IdentityActionDefinit
 		permissionAction("identity.platform_capabilities.get", "平台能力", "读取", "GET", "/identity/platform-capabilities", "读取 Identity 平台能力目录", nil),
 	}
 
-	out := make([]identitymodel.IdentityActionDefinition, 0, len(specs)+8)
+	out := make([]identitymodel.IdentityActionDefinition, 0, len(specs)+19)
 	out = append(out, identityMetadataNonHTTPActions(metadata)...)
+	out = append(out, identityHandlerDeliveryNonHTTPActions()...)
+	out = append(out, identityStoreOrganizationDeliveryNonHTTPActions()...)
+	out = append(out, identityWorkspaceUsageNonHTTPActions()...)
 	for _, spec := range specs {
 		out = append(out, buildIdentityBuiltinAction(spec))
 	}
 	return out
+}
+
+func identityWorkspaceUsageNonHTTPActions() []identitymodel.IdentityActionDefinition {
+	action := nonHTTPPermissionAction(
+		identitycontract.IdentityWorkspaceIdentityUsageAggregate,
+		"identity.workspace_identity_usage",
+		"Workspace Identity 用量",
+		"aggregate",
+		"聚合",
+		"按宿主授权的活跃 Workspace 聚合非敏感账号分类计数",
+		actioncontract.EffectRead,
+		actioncontract.RiskMedium,
+	)
+	// The embedded installation authority validates this purpose-specific
+	// credential. A Workspace principal is not sufficient.
+	action.Permission = nil
+	action.Authorization = actioncontract.Authorization{
+		Strategy:  actioncontract.AuthorizationSigned,
+		PolicyKey: identitycontract.IdentityWorkspaceIdentityUsageAggregate,
+	}
+	action.IdempotencyDecision = "not_applicable_current_usage_read"
+	action.AuditClass = "installation_identity_usage"
+	return []identitymodel.IdentityActionDefinition{action}
+}
+
+func identityStoreOrganizationDeliveryNonHTTPActions() []identitymodel.IdentityActionDefinition {
+	return []identitymodel.IdentityActionDefinition{
+		nonHTTPPermissionAction(identitycontract.IdentityStoreOrganizationDeliveryCreatePermission, "identity.store_organization_delivery", "Handler 门店组织交付", "create", "创建", "在公司节点下原子创建门店组织", actioncontract.EffectWrite, actioncontract.RiskHigh),
+		nonHTTPPermissionAction(identitycontract.IdentityStoreOrganizationDeliveryRenamePermission, "identity.store_organization_delivery", "Handler 门店组织交付", "rename", "改名", "原子修改门店组织名称", actioncontract.EffectWrite, actioncontract.RiskMedium),
+		nonHTTPPermissionAction(identitycontract.IdentityStoreOrganizationDeliveryDisablePermission, "identity.store_organization_delivery", "Handler 门店组织交付", "disable", "停用", "原子停用门店组织", actioncontract.EffectWrite, actioncontract.RiskHigh),
+		nonHTTPPermissionAction(identitycontract.IdentityStoreOrganizationDeliveryResolvePermission, "identity.store_organization_delivery", "Handler 门店组织交付", "resolve", "解析", "读取一个最小门店组织投影", actioncontract.EffectRead, actioncontract.RiskLow),
+		nonHTTPPermissionAction(identitycontract.IdentityStoreOrganizationDeliveryListPermission, "identity.store_organization_delivery", "Handler 门店组织交付", "list", "列表", "读取数据范围内的最小门店组织列表", actioncontract.EffectRead, actioncontract.RiskLow),
+	}
+}
+
+func identityHandlerDeliveryNonHTTPActions() []identitymodel.IdentityActionDefinition {
+	return []identitymodel.IdentityActionDefinition{
+		nonHTTPPermissionAction(identitycontract.IdentityHandlerDeliveryCreatePermission, "identity.handler_delivery", "Handler 身份交付", "create", "创建", "原子创建用户、精确角色与业务身份绑定", actioncontract.EffectWrite, actioncontract.RiskHigh),
+		nonHTTPPermissionAction(identitycontract.IdentityHandlerDeliveryUpdatePermission, "identity.handler_delivery", "Handler 身份交付", "update", "更新", "原子更新用户、精确角色与业务身份绑定", actioncontract.EffectWrite, actioncontract.RiskHigh),
+		nonHTTPPermissionAction(identitycontract.IdentityHandlerDeliveryDisablePermission, "identity.handler_delivery", "Handler 身份交付", "disable", "停用", "原子停用用户并撤销会话", actioncontract.EffectWrite, actioncontract.RiskHigh),
+		nonHTTPPermissionAction(identitycontract.IdentityHandlerDeliveryResolvePermission, "identity.handler_delivery", "Handler 身份交付", "resolve", "解析", "读取业务 Handler 所需的最小规范身份投影", actioncontract.EffectRead, actioncontract.RiskLow),
+	}
 }
 
 func identityMetadataNonHTTPActions(metadataPage *identitymodel.IdentityPageActionBinding) []identitymodel.IdentityActionDefinition {

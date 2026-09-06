@@ -23,6 +23,7 @@ type identitySQLState struct {
 	queryCount, queryFailAt      int
 	failure, beginErr, commitErr error
 	querySteps                   []identitySQLQueryStep
+	queryStatements              []string
 }
 type identitySQLQueryStep struct {
 	columns []string
@@ -71,8 +72,9 @@ type identitySQLResult struct{ err error }
 
 func (identitySQLResult) LastInsertId() (int64, error)   { return 0, nil }
 func (r identitySQLResult) RowsAffected() (int64, error) { return 0, r.err }
-func (c *identitySQLConn) QueryContext(context.Context, string, []driver.NamedValue) (driver.Rows, error) {
+func (c *identitySQLConn) QueryContext(_ context.Context, statement string, _ []driver.NamedValue) (driver.Rows, error) {
 	c.state.queryCount++
+	c.state.queryStatements = append(c.state.queryStatements, statement)
 	if c.state.queryCount == c.state.queryFailAt {
 		return nil, c.state.failure
 	}

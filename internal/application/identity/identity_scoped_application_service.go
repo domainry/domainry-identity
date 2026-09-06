@@ -160,6 +160,14 @@ func (s *IdentityApplicationService) UpsertOrganizationUnit(ctx context.Context,
 	return scoped.UpsertOrganizationUnit(ctx, organizationUnit)
 }
 
+func (s *IdentityApplicationService) PrepareOrganizationUnitForAtomicDelivery(ctx context.Context, organizationUnit identitymodel.IdentityOrganizationUnit) (identitymodel.IdentityOrganizationUnit, []identitymodel.IdentityOrganizationUnit, error) {
+	scoped, err := s.domainForContext(ctx)
+	if err != nil {
+		return identitymodel.IdentityOrganizationUnit{}, nil, err
+	}
+	return scoped.PrepareOrganizationUnitForAtomicDelivery(ctx, organizationUnit)
+}
+
 func (s *IdentityApplicationService) UpsertOrganizationUnitWithinDataScope(ctx context.Context, organizationUnit identitymodel.IdentityOrganizationUnit, actor identitymodel.Principal, permissionKey string) error {
 	scoped, err := s.domainForContext(ctx)
 	if err != nil {

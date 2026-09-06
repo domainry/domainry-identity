@@ -67,7 +67,7 @@ func (binding *moduleBinding) PublishProjectRoles(ctx context.Context, catalog i
 }
 
 // BindBootstrapProjectRoleCatalog makes application roles available to the
-// first-workspace provisioner without writing any tenant-owned rows. The same
+// first-Workspace provisioner without writing any Workspace-owned rows. The same
 // project-role decoder used by ordinary publication validates the catalog;
 // the host transaction remains the only place where workspace roles, users,
 // organizations, assignments, and credentials are persisted.
@@ -110,6 +110,13 @@ func (binding *moduleBinding) BindBootstrapProjectRoleCatalog(ctx context.Contex
 	}
 	sort.Slice(roles, func(left, right int) bool { return roles[left].Key < roles[right].Key })
 	binding.runtime.Identity.ReplaceRoleDefinitions(roles)
+	bootstrapRoleLabels := make(map[string]string, len(catalog.Roles))
+	for _, role := range catalog.Roles {
+		bootstrapRoleLabels[strings.TrimSpace(role.Key)] = strings.TrimSpace(role.Name)
+	}
+	binding.bootstrapMu.Lock()
+	binding.bootstrapRoleLabels = bootstrapRoleLabels
+	binding.bootstrapMu.Unlock()
 	return nil
 }
 

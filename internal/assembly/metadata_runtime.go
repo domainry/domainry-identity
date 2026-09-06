@@ -15,10 +15,11 @@ import (
 // MetadataRuntime is an in-process, read-optimized projection of the persisted
 // metadata catalog. It is deliberately not the Plane Runtime engine.
 type MetadataRuntime struct {
-	mu             sync.RWMutex
-	snapshot       metadatamodel.MetadataSchemaSnapshot
-	projectObjects []definitionmodel.ObjectSchema
-	projectRoles   []identitymodel.RoleSchema
+	mu                       sync.RWMutex
+	snapshot                 metadatamodel.MetadataSchemaSnapshot
+	projectObjects           []definitionmodel.ObjectSchema
+	projectRoles             []identitymodel.RoleSchema
+	projectProfileExtensions []identitymodel.IdentityProfileExtension
 }
 
 func NewMetadataRuntime(state metadataservice.SchemaSnapshotState) *MetadataRuntime {
@@ -34,7 +35,37 @@ func (r *MetadataRuntime) ActivateMetadata(snapshot metadatamodel.MetadataSchema
 func (r *MetadataRuntime) Schema() metadatamodel.MetadataSchemaSnapshot {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.snapshot
+	result := r.snapshot
+	result.IdentityProfileExtensions = effectiveProjectProfileExtensions(result.IdentityProfileExtensions, r.projectProfileExtensions)
+	return result
+}
+
+func (r *MetadataRuntime) ReplaceProjectProfileExtensions(extensions []identitymodel.IdentityProfileExtension) {
+	project := append([]identitymodel.IdentityProfileExtension(nil), extensions...)
+	sort.Slice(project, func(left, right int) bool { return project[left].ObjectKey < project[right].ObjectKey })
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.projectProfileExtensions = project
+}
+
+func effectiveProjectProfileExtensions(source, project []identitymodel.IdentityProfileExtension) []identitymodel.IdentityProfileExtension {
+	byObject := make(map[string]identitymodel.IdentityProfileExtension, len(source)+len(project))
+	for _, extension := range source {
+		if key := strings.TrimSpace(extension.ObjectKey); key != "" {
+			byObject[key] = extension
+		}
+	}
+	for _, extension := range project {
+		if key := strings.TrimSpace(extension.ObjectKey); key != "" {
+			byObject[key] = extension
+		}
+	}
+	result := make([]identitymodel.IdentityProfileExtension, 0, len(byObject))
+	for _, extension := range byObject {
+		result = append(result, extension)
+	}
+	sort.Slice(result, func(left, right int) bool { return result[left].ObjectKey < result[right].ObjectKey })
+	return result
 }
 
 // ReplaceProjectObjects refreshes the application-owned object directory used

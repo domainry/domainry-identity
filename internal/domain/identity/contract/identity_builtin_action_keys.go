@@ -31,4 +31,5 @@ const (
 	IdentityActionRoleFieldPermissionsList     = "identity.role_field_permissions.list"
 	IdentityActionRoleFieldPermissionsValidate = "identity.role_field_permissions.validate"
 	IdentityActionRoleFieldPermissionsPublish  = "identity.role_field_permissions.publish"
+	IdentityWorkspaceIdentityUsageAggregate    = "identity.workspace_identity_usage.aggregate"
 )

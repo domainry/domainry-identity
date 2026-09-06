@@ -13,6 +13,7 @@ import (
 
 	"github.com/domainry/domainry-foundation/apperror"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	identitytransaction "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/transaction"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 	"github.com/domainry/domainry-orm/query"
 )
@@ -64,7 +65,7 @@ func (s *Store) GetIdentityProfileBinding(ctx context.Context, workspaceID, obje
 	if err != nil {
 		return identitymodel.IdentityProfileBinding{}, false, err
 	}
-	binding, err := scanIdentityProfileBinding(s.store.DB().QueryRowContext(ctx, statement, arguments...))
+	binding, err := scanIdentityProfileBinding(s.queryer(ctx).QueryRowContext(ctx, statement, arguments...))
 	if errors.Is(err, sql.ErrNoRows) {
 		return identitymodel.IdentityProfileBinding{}, false, nil
 	}
@@ -80,7 +81,7 @@ func (s *Store) GetIdentityProfileBindingByKey(ctx context.Context, workspaceID,
 	if err != nil {
 		return identitymodel.IdentityProfileBinding{}, false, err
 	}
-	binding, err := scanIdentityProfileBinding(s.store.DB().QueryRowContext(ctx, statement, arguments...))
+	binding, err := scanIdentityProfileBinding(s.queryer(ctx).QueryRowContext(ctx, statement, arguments...))
 	if errors.Is(err, sql.ErrNoRows) {
 		return identitymodel.IdentityProfileBinding{}, false, nil
 	}
@@ -104,7 +105,7 @@ func (s *Store) GetIdentityProfileBindingReceipt(ctx context.Context, mutation i
 	if s == nil || s.store == nil {
 		return identitymodel.IdentityProfileBindingReceipt{}, false, profileBindingStoreError(apperror.KindInternal, "backend.identity.profile_binding_unavailable")
 	}
-	return s.loadReceipt(ctx, s.store.DB(), mutation)
+	return s.loadReceipt(ctx, s.queryer(ctx), mutation)
 }
 
 func (s *Store) ExecuteIdentityProfileBindingMutation(ctx context.Context, mutation identitymodel.IdentityProfileBindingMutation) (identitymodel.IdentityProfileBindingReceipt, error) {
@@ -114,12 +115,26 @@ func (s *Store) ExecuteIdentityProfileBindingMutation(ctx context.Context, mutat
 	if err := validateIdentityProfileBindingMutation(mutation); err != nil {
 		return identitymodel.IdentityProfileBindingReceipt{}, err
 	}
+	if executor := identitytransaction.ExecutorFromContext(ctx); executor != nil {
+		return s.executeIdentityProfileBindingMutation(ctx, executor, mutation)
+	}
 	tx, err := s.store.DB().BeginTx(ctx, nil)
 	if err != nil {
 		return identitymodel.IdentityProfileBindingReceipt{}, err
 	}
 	defer tx.Rollback()
-	if receipt, found, loadErr := s.loadReceipt(ctx, tx, mutation); loadErr != nil {
+	receipt, err := s.executeIdentityProfileBindingMutation(ctx, tx, mutation)
+	if err != nil {
+		return identitymodel.IdentityProfileBindingReceipt{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return identitymodel.IdentityProfileBindingReceipt{}, normalizeProfileBindingWriteError(err)
+	}
+	return receipt, nil
+}
+
+func (s *Store) executeIdentityProfileBindingMutation(ctx context.Context, executor identitytransaction.Executor, mutation identitymodel.IdentityProfileBindingMutation) (identitymodel.IdentityProfileBindingReceipt, error) {
+	if receipt, found, loadErr := s.loadReceipt(ctx, executor, mutation); loadErr != nil {
 		return identitymodel.IdentityProfileBindingReceipt{}, loadErr
 	} else if found {
 		if receipt.RequestFingerprint != mutation.RequestFingerprint {
@@ -128,14 +143,14 @@ func (s *Store) ExecuteIdentityProfileBindingMutation(ctx context.Context, mutat
 		receipt.Replayed = true
 		return receipt, nil
 	}
-	currentUserID, err := s.loadProfileIdentityUser(ctx, tx, mutation)
+	currentUserID, err := s.loadProfileIdentityUser(ctx, executor, mutation)
 	if errors.Is(err, sql.ErrNoRows) {
 		return identitymodel.IdentityProfileBindingReceipt{}, profileBindingStoreError(apperror.KindNotFound, "backend.identity.profile_not_found")
 	}
 	if err != nil {
 		return identitymodel.IdentityProfileBindingReceipt{}, err
 	}
-	current, found, err := s.loadBinding(ctx, tx, mutation.WorkspaceID, mutation.ObjectKey, mutation.ProfileID)
+	current, found, err := s.loadBinding(ctx, executor, mutation.WorkspaceID, mutation.ObjectKey, mutation.ProfileID)
 	if err != nil {
 		return identitymodel.IdentityProfileBindingReceipt{}, err
 	}
@@ -168,14 +183,14 @@ func (s *Store) ExecuteIdentityProfileBindingMutation(ctx context.Context, mutat
 		Version: currentVersion + 1, CreatedAt: createdAt, UpdatedAt: now,
 	}
 	if mutation.Operation != identitymodel.IdentityProfileBindingInvite {
-		if err := s.updateProfileIdentityUser(ctx, tx, mutation, currentUserID, desiredUserID, now); err != nil {
+		if err := s.updateProfileIdentityUser(ctx, executor, mutation, currentUserID, desiredUserID, now); err != nil {
 			return identitymodel.IdentityProfileBindingReceipt{}, err
 		}
 	}
-	if err := s.writeBinding(ctx, tx, next, found); err != nil {
+	if err := s.writeBinding(ctx, executor, next, found); err != nil {
 		return identitymodel.IdentityProfileBindingReceipt{}, normalizeProfileBindingWriteError(err)
 	}
-	if err := s.synchronizeSystemManagedRoles(ctx, tx, mutation, currentUserID, desiredUserID, now); err != nil {
+	if err := s.synchronizeSystemManagedRoles(ctx, executor, mutation, currentUserID, desiredUserID, now); err != nil {
 		return identitymodel.IdentityProfileBindingReceipt{}, normalizeProfileBindingWriteError(err)
 	}
 	receipt := identitymodel.IdentityProfileBindingReceipt{
@@ -184,7 +199,7 @@ func (s *Store) ExecuteIdentityProfileBindingMutation(ctx context.Context, mutat
 		Operation: mutation.Operation, IdempotencyKey: mutation.IdempotencyKey, RequestFingerprint: mutation.RequestFingerprint,
 		Binding: next, CreatedAt: now,
 	}
-	if err := s.writeReceipt(ctx, tx, receipt); err != nil {
+	if err := s.writeReceipt(ctx, executor, receipt); err != nil {
 		return identitymodel.IdentityProfileBindingReceipt{}, normalizeProfileBindingWriteError(err)
 	}
 	event := identitymodel.IdentityProfileBindingEvent{
@@ -194,16 +209,13 @@ func (s *Store) ExecuteIdentityProfileBindingMutation(ctx context.Context, mutat
 		IdempotencyKey: mutation.IdempotencyKey, ActorID: mutation.ActorID, Reason: mutation.Reason, Status: "pending", CreatedAt: now,
 		ApprovalID: mutation.ApprovalID,
 	}
-	if err := s.writeEvent(ctx, tx, event); err != nil {
-		return identitymodel.IdentityProfileBindingReceipt{}, normalizeProfileBindingWriteError(err)
-	}
-	if err := tx.Commit(); err != nil {
+	if err := s.writeEvent(ctx, executor, event); err != nil {
 		return identitymodel.IdentityProfileBindingReceipt{}, normalizeProfileBindingWriteError(err)
 	}
 	return receipt, nil
 }
 
-func (s *Store) synchronizeSystemManagedRoles(ctx context.Context, tx *sql.Tx, mutation identitymodel.IdentityProfileBindingMutation, previousUserID, nextUserID, now string) error {
+func (s *Store) synchronizeSystemManagedRoles(ctx context.Context, executor identitytransaction.Executor, mutation identitymodel.IdentityProfileBindingMutation, previousUserID, nextUserID, now string) error {
 	roleIDs := uniqueProfileBindingStrings(mutation.SystemManagedRoleIDs)
 	if len(roleIDs) == 0 || mutation.Operation == identitymodel.IdentityProfileBindingInvite {
 		return nil
@@ -216,7 +228,7 @@ func (s *Store) synchronizeSystemManagedRoles(ctx context.Context, tx *sql.Tx, m
 		if buildErr != nil {
 			return buildErr
 		}
-		if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
+		if _, err := executor.ExecContext(ctx, statement, arguments...); err != nil {
 			return err
 		}
 	}
@@ -232,7 +244,7 @@ func (s *Store) synchronizeSystemManagedRoles(ctx context.Context, tx *sql.Tx, m
 		if buildErr != nil {
 			return buildErr
 		}
-		if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
+		if _, err := executor.ExecContext(ctx, statement, arguments...); err != nil {
 			return err
 		}
 	}
@@ -293,6 +305,13 @@ type identityProfileBindingQuerier interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
 
+func (s *Store) queryer(ctx context.Context) identityProfileBindingQuerier {
+	if executor := identitytransaction.ExecutorFromContext(ctx); executor != nil {
+		return executor
+	}
+	return s.store.DB()
+}
+
 func (s *Store) loadReceipt(ctx context.Context, queryer identityProfileBindingQuerier, mutation identitymodel.IdentityProfileBindingMutation) (identitymodel.IdentityProfileBindingReceipt, bool, error) {
 	statement, arguments, buildErr := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_profile_binding_receipts", mutation.WorkspaceID).
 		Columns("id", "workspace_id", "binding_key", "object_key", "profile_id", "operation", "idempotency_key", "request_fingerprint", "binding_json", "created_at").
@@ -317,7 +336,7 @@ func (s *Store) loadReceipt(ctx context.Context, queryer identityProfileBindingQ
 	return receipt, true, nil
 }
 
-func (s *Store) loadProfileIdentityUser(ctx context.Context, tx *sql.Tx, mutation identitymodel.IdentityProfileBindingMutation) (string, error) {
+func (s *Store) loadProfileIdentityUser(ctx context.Context, executor identityProfileBindingQuerier, mutation identitymodel.IdentityProfileBindingMutation) (string, error) {
 	statement, arguments, buildErr := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), mutation.ObjectKey, mutation.WorkspaceID).
 		Projections(query.Project(query.Coalesce(query.Column(mutation.IdentityField), query.Value("")))).
 		Where(query.Equal("id", mutation.ProfileID)).Build()
@@ -325,7 +344,7 @@ func (s *Store) loadProfileIdentityUser(ctx context.Context, tx *sql.Tx, mutatio
 		return "", buildErr
 	}
 	var userID string
-	err := tx.QueryRowContext(ctx, statement, arguments...).Scan(&userID)
+	err := executor.QueryRowContext(ctx, statement, arguments...).Scan(&userID)
 	return strings.TrimSpace(userID), err
 }
 
@@ -342,14 +361,14 @@ func (s *Store) loadBinding(ctx context.Context, queryer identityProfileBindingQ
 	return binding, err == nil, err
 }
 
-func (s *Store) updateProfileIdentityUser(ctx context.Context, tx *sql.Tx, mutation identitymodel.IdentityProfileBindingMutation, currentUserID, desiredUserID, now string) error {
+func (s *Store) updateProfileIdentityUser(ctx context.Context, executor identitytransaction.Executor, mutation identitymodel.IdentityProfileBindingMutation, currentUserID, desiredUserID, now string) error {
 	statement, arguments, buildErr := query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), mutation.ObjectKey, mutation.WorkspaceID).
 		Set(mutation.IdentityField, nullableProfileBindingUser(desiredUserID)).Set("updated_at", now).
 		Where(query.And(query.Equal("id", mutation.ProfileID), query.EqualExpressions(query.Coalesce(query.Column(mutation.IdentityField), query.Value("")), query.Value(currentUserID)))).Build()
 	if buildErr != nil {
 		return buildErr
 	}
-	result, err := tx.ExecContext(ctx, statement, arguments...)
+	result, err := executor.ExecContext(ctx, statement, arguments...)
 	if err != nil {
 		return normalizeProfileBindingWriteError(err)
 	}
@@ -367,7 +386,7 @@ func (s *Store) UpdateProfileIdentityUser(ctx context.Context, tx *sql.Tx, mutat
 	return s.updateProfileIdentityUser(ctx, tx, mutation, currentUserID, desiredUserID, now)
 }
 
-func (s *Store) writeBinding(ctx context.Context, tx *sql.Tx, binding identitymodel.IdentityProfileBinding, found bool) error {
+func (s *Store) writeBinding(ctx context.Context, executor identitytransaction.Executor, binding identitymodel.IdentityProfileBinding, found bool) error {
 	if found {
 		statement, arguments, buildErr := query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_profile_bindings", binding.WorkspaceID).
 			Set("binding_key", binding.BindingKey).Set("identity_user_id", nullableProfileBindingUser(binding.IdentityUserID)).
@@ -377,7 +396,7 @@ func (s *Store) writeBinding(ctx context.Context, tx *sql.Tx, binding identitymo
 		if buildErr != nil {
 			return buildErr
 		}
-		_, err := tx.ExecContext(ctx, statement, arguments...)
+		_, err := executor.ExecContext(ctx, statement, arguments...)
 		return err
 	}
 	statement, arguments, buildErr := query.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_profile_bindings", binding.WorkspaceID).
@@ -386,11 +405,11 @@ func (s *Store) writeBinding(ctx context.Context, tx *sql.Tx, binding identitymo
 	if buildErr != nil {
 		return buildErr
 	}
-	_, err := tx.ExecContext(ctx, statement, arguments...)
+	_, err := executor.ExecContext(ctx, statement, arguments...)
 	return err
 }
 
-func (s *Store) writeReceipt(ctx context.Context, tx *sql.Tx, receipt identitymodel.IdentityProfileBindingReceipt) error {
+func (s *Store) writeReceipt(ctx context.Context, executor identitytransaction.Executor, receipt identitymodel.IdentityProfileBindingReceipt) error {
 
 	bindingJSON, _ := json.Marshal(receipt.Binding)
 	statement, arguments, buildErr := query.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_profile_binding_receipts", receipt.WorkspaceID).
@@ -399,18 +418,18 @@ func (s *Store) writeReceipt(ctx context.Context, tx *sql.Tx, receipt identitymo
 	if buildErr != nil {
 		return buildErr
 	}
-	_, err := tx.ExecContext(ctx, statement, arguments...)
+	_, err := executor.ExecContext(ctx, statement, arguments...)
 	return err
 }
 
-func (s *Store) writeEvent(ctx context.Context, tx *sql.Tx, event identitymodel.IdentityProfileBindingEvent) error {
+func (s *Store) writeEvent(ctx context.Context, executor identitytransaction.Executor, event identitymodel.IdentityProfileBindingEvent) error {
 	statement, arguments, buildErr := query.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_profile_binding_events", event.WorkspaceID).
 		Columns("id", "binding_key", "object_key", "profile_id", "operation", "previous_user_id", "identity_user_id", "binding_version", "idempotency_key", "actor_id", "reason", "approval_id", "status", "created_at").
 		Values(event.ID, event.BindingKey, event.ObjectKey, event.ProfileID, string(event.Operation), nullableProfileBindingText(event.PreviousUserID), nullableProfileBindingText(event.IdentityUserID), event.BindingVersion, event.IdempotencyKey, event.ActorID, nullableProfileBindingText(event.Reason), nullableProfileBindingText(event.ApprovalID), event.Status, event.CreatedAt).Build()
 	if buildErr != nil {
 		return buildErr
 	}
-	_, err := tx.ExecContext(ctx, statement, arguments...)
+	_, err := executor.ExecContext(ctx, statement, arguments...)
 	return err
 }
 

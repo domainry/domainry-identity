@@ -63,6 +63,9 @@ type Core struct {
 	EffectiveAccess       *identityapplication.IdentityEffectiveAccessApplicationService
 	IdentityActions       *identityapplication.IdentityActionRegistry
 	PermissionCatalog     *identityapplication.IdentityPermissionCatalogApplicationService
+	ProfileBindings       *identityapplication.IdentityProfileBindingApplicationService
+	HandlerDelivery       *identityapplication.IdentityHandlerDeliveryApplicationService
+	StoreOrganizations    *identityapplication.IdentityStoreOrganizationDeliveryApplicationService
 	Binding               identitysdk.Binding
 }
 
@@ -226,11 +229,27 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 	effectiveAccess := identityapplication.NewIdentityEffectiveAccessApplicationService(identityapplication.IdentityEffectiveAccessDependencies{
 		Identity: identityApp, Objects: objects, Actions: actions,
 	})
+	profileBindings := identityapplication.NewIdentityProfileBindingApplicationService(identityapplication.IdentityProfileBindingDependencies{
+		Repository: identitypersistence.NewIdentityProfileBindingStore(identityStore), Records: identityStore, Identity: identityApp,
+		ExternalClaims: identityProfileExternalClaimVerifier{store: authStore}, SessionRevoker: identityProfileSessionRevoker{auth: authApp},
+		SystemRoles: identityProfileSystemRoleResolver{identity: identityApp}, Objects: metadataRuntime.EffectiveAccessObjects,
+		Extensions: func() []identitymodel.IdentityProfileExtension {
+			return metadataRuntime.Schema().IdentityProfileExtensions
+		},
+	})
+	handlerDelivery := identityapplication.NewIdentityHandlerDeliveryApplicationService(identityapplication.IdentityHandlerDeliveryDependencies{
+		WorkspaceID: workspaceID, Authentication: authApp, Applications: applicationRegistrations, Identity: identityApp,
+		ProfileBindings: profileBindings, Transactions: identityStore, Repository: identityStore, Audit: auditApp,
+	})
+	storeOrganizations := identityapplication.NewIdentityStoreOrganizationDeliveryApplicationService(identityapplication.IdentityStoreOrganizationDeliveryDependencies{
+		WorkspaceID: workspaceID, Authentication: authApp, Applications: applicationRegistrations, Identity: identityApp,
+		Transactions: identityStore, Repository: identityStore, Audit: auditApp,
+	})
 	binding, err := identitysdkadapter.NewBinding(identitysdkadapter.BindingDependencies{
 		Config: cfg, Authentication: authApp, ProviderConfiguration: providerConfiguration,
 		ProviderFlows: providerFlows, ProviderCallback: identityprovider.CallbackAdapter{},
 		EffectiveAccess: effectiveAccess, Identity: identityApp,
-		Applications: applicationRegistrations, Permissions: permissionCatalog,
+		Applications: applicationRegistrations, Permissions: permissionCatalog, HandlerDelivery: handlerDelivery, StoreOrganizations: storeOrganizations,
 		Clock: options.Clock, MutationFence: store, LoginTransactions: authStore,
 	})
 	if err != nil {
@@ -242,7 +261,8 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 		Applications:    applicationRegistrations,
 		MetadataRuntime: metadataRuntime, Metadata: metadataApp, MetadataSchema: metadataSchemaApp,
 		ProviderConfiguration: providerConfiguration, ProviderFlows: providerFlows,
-		EffectiveAccess: effectiveAccess, IdentityActions: identityActions, PermissionCatalog: permissionCatalog, Binding: binding,
+		EffectiveAccess: effectiveAccess, IdentityActions: identityActions, PermissionCatalog: permissionCatalog,
+		ProfileBindings: profileBindings, HandlerDelivery: handlerDelivery, StoreOrganizations: storeOrganizations, Binding: binding,
 	}, nil
 }
 

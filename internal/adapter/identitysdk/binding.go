@@ -33,31 +33,35 @@ type BindingDependencies struct {
 	Identity              *identityapplication.IdentityApplicationService
 	Applications          *authapplication.AuthApplicationRegistrationService
 	Permissions           *identityapplication.IdentityPermissionCatalogApplicationService
+	HandlerDelivery       *identityapplication.IdentityHandlerDeliveryApplicationService
+	StoreOrganizations    *identityapplication.IdentityStoreOrganizationDeliveryApplicationService
 	Clock                 identitysdk.Clock
 	MutationFence         IdentityMutationFence
 	LoginTransactions     FederatedLoginTransactionReader
 }
 
 type sdkBinding struct {
-	descriptor        identitysdk.Descriptor
-	auth              *authapplication.AuthApplicationService
-	providers         *authapplication.AuthProviderApplicationService
-	flows             *authapplication.AuthProviderFlowApplicationService
-	providerCallback  authcontract.AuthProviderCallbackAdapter
-	access            *identityapplication.IdentityEffectiveAccessApplicationService
-	identity          *identityapplication.IdentityApplicationService
-	applications      *authapplication.AuthApplicationRegistrationService
-	permissions       *identityapplication.IdentityPermissionCatalogApplicationService
-	clock             identitysdk.Clock
-	mutationFence     IdentityMutationFence
-	loginTransactions FederatedLoginTransactionReader
-	capabilities      *modulecapability.StaticBinding
+	descriptor         identitysdk.Descriptor
+	auth               *authapplication.AuthApplicationService
+	providers          *authapplication.AuthProviderApplicationService
+	flows              *authapplication.AuthProviderFlowApplicationService
+	providerCallback   authcontract.AuthProviderCallbackAdapter
+	access             *identityapplication.IdentityEffectiveAccessApplicationService
+	identity           *identityapplication.IdentityApplicationService
+	applications       *authapplication.AuthApplicationRegistrationService
+	permissions        *identityapplication.IdentityPermissionCatalogApplicationService
+	handlerDelivery    *identityapplication.IdentityHandlerDeliveryApplicationService
+	storeOrganizations *identityapplication.IdentityStoreOrganizationDeliveryApplicationService
+	clock              identitysdk.Clock
+	mutationFence      IdentityMutationFence
+	loginTransactions  FederatedLoginTransactionReader
+	capabilities       *modulecapability.StaticBinding
 }
 
 func NewBinding(dependencies BindingDependencies) (identitysdk.Binding, error) {
 	if dependencies.Authentication == nil || dependencies.ProviderConfiguration == nil || dependencies.ProviderFlows == nil ||
 		dependencies.ProviderCallback == nil || dependencies.EffectiveAccess == nil || dependencies.Identity == nil ||
-		dependencies.Applications == nil || dependencies.Permissions == nil || dependencies.MutationFence == nil || dependencies.LoginTransactions == nil {
+		dependencies.Applications == nil || dependencies.Permissions == nil || dependencies.HandlerDelivery == nil || dependencies.StoreOrganizations == nil || dependencies.MutationFence == nil || dependencies.LoginTransactions == nil {
 		return nil, errors.New("complete Identity SDK Binding dependencies are required")
 	}
 	if dependencies.Clock == nil {
@@ -66,10 +70,10 @@ func NewBinding(dependencies BindingDependencies) (identitysdk.Binding, error) {
 	binding := &sdkBinding{descriptor: identitysdk.Descriptor{
 		ProtocolVersion: identitysdk.CurrentProtocolVersion, BundleVersion: identitysdk.CurrentPolicyBundleVersion, AuthorizationVersion: identitysdk.CurrentAuthorizationContractVersion,
 		Mode: identitysdk.DeploymentModeModule, Issuer: defaultString(dependencies.Config.AuthIssuer, "http://localhost:8081"), Audience: defaultString(dependencies.Config.AuthAudience, "domainry-runtime"),
-		Capabilities: []string{"authentication", "challenge_authentication", "action_assurance", "token_verification", "authorization", "principal_resolution", "identity_projection", "application_registration", "permission_reconciliation", "credentials", "oidc", "saml"},
+		Capabilities: []string{"authentication", "challenge_authentication", "action_assurance", "token_verification", "authorization", "principal_resolution", "identity_projection", "handler_delivery", "store_organization_delivery", "application_registration", "permission_reconciliation", "credentials", "oidc", "saml"},
 	}, auth: dependencies.Authentication, providers: dependencies.ProviderConfiguration, flows: dependencies.ProviderFlows,
 		providerCallback: dependencies.ProviderCallback, access: dependencies.EffectiveAccess, identity: dependencies.Identity,
-		applications: dependencies.Applications, permissions: dependencies.Permissions, clock: dependencies.Clock,
+		applications: dependencies.Applications, permissions: dependencies.Permissions, handlerDelivery: dependencies.HandlerDelivery, storeOrganizations: dependencies.StoreOrganizations, clock: dependencies.Clock,
 		mutationFence: dependencies.MutationFence, loginTransactions: dependencies.LoginTransactions}
 	capabilities, err := NewCapabilityBinding()
 	if err != nil {

@@ -155,6 +155,41 @@ type IdentityUserLocaleRepository interface {
 	UpdateIdentityUserLocale(context.Context, string, string, string, int64) (identitymodel.IdentityUser, bool, error)
 }
 
+// IdentityTransactionManager executes one application-owned operation inside
+// Identity's transaction, or joins the host transaction already carried by
+// the adapter-private context. It never exposes commit or rollback to callers.
+type IdentityTransactionManager interface {
+	WithinIdentityTransaction(context.Context, func(context.Context) error) error
+}
+
+// IdentityHandlerDeliveryRepository is the narrow persistence port for the
+// generated-handler delivery aggregate. Implementations require an active
+// Identity transaction and persist the top-level replay receipt with every
+// owned effect.
+type IdentityHandlerDeliveryRepository interface {
+	GetIdentityHandlerDeliveryReceipt(context.Context, string, string) (identitymodel.IdentityHandlerDeliveryReceipt, bool, error)
+	ExecuteIdentityHandlerDelivery(context.Context, identitymodel.IdentityHandlerDeliveryMutation) (identitymodel.IdentityHandlerDeliveryReceipt, error)
+}
+
+// IdentityStoreOrganizationDeliveryRepository owns only concurrency evidence
+// and the atomic StoreOrganization mutation. Organization facts remain in the
+// canonical Identity organization aggregate; the state record stores a CAS
+// version and fingerprint, not a duplicate organization projection.
+type IdentityStoreOrganizationDeliveryRepository interface {
+	GetIdentityStoreOrganizationDeliveryReceipt(context.Context, string, string) (identitymodel.IdentityStoreOrganizationDeliveryReceipt, bool, error)
+	GetIdentityStoreOrganizationState(context.Context, string, string) (identitymodel.IdentityStoreOrganizationState, bool, error)
+	ListIdentityStoreOrganizationsPage(context.Context, string, identitymodel.IdentityDataScopeFilter, string, int) ([]identitymodel.IdentityStoreOrganization, error)
+	ExecuteIdentityStoreOrganizationDelivery(context.Context, identitymodel.IdentityStoreOrganizationDeliveryMutation) (identitymodel.IdentityStoreOrganizationDeliveryReceipt, error)
+}
+
+// IdentityWorkspaceUsageRepository returns grouped account dimensions for a
+// bounded, authority-selected Workspace page in one query. It never loads
+// user projections or performs per-Workspace reads.
+type IdentityWorkspaceUsageRepository interface {
+	CountIdentityWorkspaceUsage(context.Context, []string) ([]identitymodel.IdentityWorkspaceUsageGroup, error)
+	CountIdentityWorkspaceActiveHumanAccountsWithActiveRole(context.Context, []string) ([]identitymodel.IdentityWorkspaceActiveHumanRoleCount, error)
+}
+
 type IdentityRoleAuthorizationCommit struct {
 	Role             identitymodel.IdentityRole
 	Permissions      *[]identitymodel.RolePermission

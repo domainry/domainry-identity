@@ -17,6 +17,7 @@ type Backend interface {
 	SQLRenderer() ormdialect.Renderer
 	ApplyUpsert(*query.InsertBuilder, []string, ...string) *query.InsertBuilder
 	QueryIdentityContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryIdentityRowContext(context.Context, string, ...any) *sql.Row
 }
 
 type Execer interface {
@@ -236,7 +237,7 @@ func (s *Store) GetWithinDataScope(ctx context.Context, workspaceID, organizatio
 	var item identitymodel.IdentityOrganizationUnit
 	var parentID sql.NullString
 	var nodeType, ancestors string
-	err = s.backend.DB().QueryRowContext(ctx, statement, arguments...).Scan(&item.ID, &item.Code, &item.Name, &nodeType, &parentID, &item.Path, &ancestors, &item.Depth, &item.SortOrder, &item.Status)
+	err = s.backend.QueryIdentityRowContext(ctx, statement, arguments...).Scan(&item.ID, &item.Code, &item.Name, &nodeType, &parentID, &item.Path, &ancestors, &item.Depth, &item.SortOrder, &item.Status)
 	if err == sql.ErrNoRows {
 		return identitymodel.IdentityOrganizationUnit{}, false, nil
 	}
