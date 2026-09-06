@@ -31,6 +31,7 @@ type Store interface {
 	SchemaTableExists(context.Context, string) (bool, error)
 	CreateIndexIfMissing(context.Context, string, string, bool, ...string) error
 	NormalizeAuditCursorColumns(context.Context, string, ...string) error
+	TableColumns(context.Context, string) (map[string]bool, error)
 	TableIndexes(context.Context, string) (map[string]bool, error)
 	DropIndex(context.Context, string, string) error
 	EnsureCompositePrimaryKey(context.Context, string, ...string) error

@@ -3,6 +3,8 @@ package schema
 import (
 	"context"
 	"fmt"
+
+	ormschema "github.com/domainry/domainry-orm/schema"
 )
 
 func EnsureIdentitySchema(ctx context.Context, s Store) error {
@@ -203,6 +205,8 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"first_store_id " + identityIndexText + " NOT NULL",
 			"initial_admin_user_id " + identityIndexText + " NOT NULL",
 			"initial_admin_login_id TEXT NOT NULL",
+			"role_catalog_sha256 " + identityIndexText + " NOT NULL DEFAULT ''",
+			"initial_workspace_administrator_role_key " + identityIndexText + " NOT NULL DEFAULT ''",
 			"credential_claimed_at " + identityIndexText,
 			"created_at " + identityIndexText + " NOT NULL",
 		},
@@ -480,6 +484,9 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			return fmt.Errorf("create %s: %w", table, err)
 		}
 	}
+	if err := ensureWorkspaceBootstrapRolePolicyEvidence(ctx, s); err != nil {
+		return err
+	}
 	if err := s.EnsureCompositePrimaryKey(ctx, "_identity_auth_provider_credentials", "workspace_id", "provider_key"); err != nil {
 		return fmt.Errorf("ensure workspace auth provider credential identity: %w", err)
 	}
@@ -592,6 +599,28 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 	}
 	if err := ensureIdentityApplicationsSchema(ctx, s); err != nil {
 		return err
+	}
+	return nil
+}
+
+func ensureWorkspaceBootstrapRolePolicyEvidence(ctx context.Context, s Store) error {
+	const table = "_identity_workspace_bootstrap_receipts"
+	columns, err := s.TableColumns(ctx, table)
+	if err != nil {
+		return fmt.Errorf("inspect Workspace bootstrap receipt role-policy columns: %w", err)
+	}
+	for _, column := range []string{"role_catalog_sha256", "initial_workspace_administrator_role_key"} {
+		if columns[column] {
+			continue
+		}
+		definition := ormschema.Column(column, ormschema.TextKey(191)).NotNull().DefaultValue("")
+		statement, arguments, err := ormschema.NewAddColumn(s.SchemaRenderer(), table, definition).Build()
+		if err != nil {
+			return fmt.Errorf("build Workspace bootstrap receipt column %s: %w", column, err)
+		}
+		if _, err := s.SchemaDB().ExecContext(ctx, statement, arguments...); err != nil {
+			return fmt.Errorf("add Workspace bootstrap receipt column %s: %w", column, err)
+		}
 	}
 	return nil
 }

@@ -346,7 +346,7 @@ type moduleBinding struct {
 	workspaceUsage       *identityapplicationinternal.IdentityWorkspaceUsageApplicationService
 	bootstrapMu          sync.Mutex
 	bootstrapCredentials map[string]*workspaceBootstrapPendingCredential
-	bootstrapRoleLabels  map[string]string
+	bootstrapRoleCatalog workspaceBootstrapRoleCatalog
 }
 
 func (binding *moduleBinding) IdentityDataExchangeProviders() (string, dataexchangemodulehost.ImportProvider, dataexchangemodulehost.ExportProvider) {
@@ -422,7 +422,7 @@ func (binding *moduleBinding) Close(ctx context.Context) error {
 		delete(binding.bootstrapCredentials, receiptID)
 	}
 	binding.bootstrapCredentials = nil
-	binding.bootstrapRoleLabels = nil
+	binding.bootstrapRoleCatalog = workspaceBootstrapRoleCatalog{}
 	binding.bootstrapMu.Unlock()
 	return binding.runtime.CloseContext(ctx)
 }

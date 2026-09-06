@@ -92,6 +92,10 @@ func (binding *moduleBinding) BindBootstrapProjectRoleCatalog(ctx context.Contex
 	if err != nil {
 		return err
 	}
+	bootstrapCatalog, err := newWorkspaceBootstrapRoleCatalog(catalog.Roles, definitions, catalog.InitialWorkspaceAdministratorRoleKey)
+	if err != nil {
+		return err
+	}
 	byKey := make(map[string]identitymodel.RoleSchema, len(binding.runtime.Manifest.Roles)+len(definitions))
 	for _, definition := range binding.runtime.Manifest.Roles {
 		if key := strings.TrimSpace(definition.Key); key != "" {
@@ -110,12 +114,8 @@ func (binding *moduleBinding) BindBootstrapProjectRoleCatalog(ctx context.Contex
 	}
 	sort.Slice(roles, func(left, right int) bool { return roles[left].Key < roles[right].Key })
 	binding.runtime.Identity.ReplaceRoleDefinitions(roles)
-	bootstrapRoleLabels := make(map[string]string, len(catalog.Roles))
-	for _, role := range catalog.Roles {
-		bootstrapRoleLabels[strings.TrimSpace(role.Key)] = strings.TrimSpace(role.Name)
-	}
 	binding.bootstrapMu.Lock()
-	binding.bootstrapRoleLabels = bootstrapRoleLabels
+	binding.bootstrapRoleCatalog = bootstrapCatalog
 	binding.bootstrapMu.Unlock()
 	return nil
 }

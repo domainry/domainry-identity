@@ -22,9 +22,9 @@ import (
 )
 
 const (
-	CurrentIdentitySchemaVersion           = "007_installation_administrator_bootstrap"
-	EmbeddedIdentitySchemaMigrationVersion = uint(7)
-	EmbeddedIdentitySchemaMigrationName    = "installation_administrator_bootstrap"
+	CurrentIdentitySchemaVersion           = "008_workspace_bootstrap_role_policy"
+	EmbeddedIdentitySchemaMigrationVersion = uint(8)
+	EmbeddedIdentitySchemaMigrationName    = "workspace_bootstrap_role_policy"
 )
 
 const (
@@ -341,7 +341,7 @@ func (s *IdentityStore) SchemaTableExists(ctx context.Context, table string) (bo
 }
 
 func currentIdentitySchemaChecksum() string {
-	sum := sha256.Sum256([]byte(CurrentIdentitySchemaVersion + ":metadata,identity,audit,authentication,applications,permissions,workspace_write_fences,handler_delivery,store_organization_delivery,workspace_identity_usage_active_roles,workspace_identity_bootstrap_v2,installation_administrator_bootstrap,managed_database"))
+	sum := sha256.Sum256([]byte(CurrentIdentitySchemaVersion + ":metadata,identity,audit,authentication,applications,permissions,workspace_write_fences,handler_delivery,store_organization_delivery,workspace_identity_usage_active_roles,workspace_identity_bootstrap_v1,installation_administrator_bootstrap,managed_database"))
 	return hex.EncodeToString(sum[:])
 }
 

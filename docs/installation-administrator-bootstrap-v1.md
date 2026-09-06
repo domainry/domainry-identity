@@ -1,8 +1,9 @@
 # Installation administrator bootstrap V1
 
 This embedded-only contract creates the first installation administrator after
-the ordinary Workspace bootstrap has committed. Ordinary bootstrap continues
-to assign its initial user only `headquarters_admin`; it never grants
+the ordinary Workspace bootstrap has committed. Workspace bootstrap assigns
+its initial user only the application catalog's explicitly bound
+`InitialWorkspaceAdministratorRoleKey`; it never implicitly grants
 `tenant_admin`.
 
 The Runtime host enables the capability only through explicit process-start

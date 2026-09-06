@@ -89,7 +89,7 @@ func (binding *moduleBinding) BootstrapInstallationAdministratorV1(ctx context.C
 		IdempotencyKey: request.InvocationID, Event: "identity.installation_administrator.bootstrap",
 		ObjectKey: "identity.installation_administrator", RecordID: userID, Principal: principal,
 		Summary:  "Issued first installation administrator",
-		Metadata: map[string]any{"contract_version": request.ContractVersion, "contract_hash": request.ContractHash, "role_key": identitysdk.WorkspaceBootstrapRoleTenantAdmin},
+		Metadata: map[string]any{"contract_version": request.ContractVersion, "contract_hash": request.ContractHash, "role_key": identitymodulehost.InstallationAdministratorRoleKey},
 	}); err != nil {
 		return identitymodulehost.InstallationAdministratorBootstrapReceipt{}, fmt.Errorf("audit installation administrator issuance: %w", err)
 	}
@@ -218,7 +218,7 @@ func installationAdministratorReceipt(stored identitypersistence.InstallationAdm
 	return identitymodulehost.InstallationAdministratorBootstrapReceipt{
 		ContractVersion: stored.ContractVersion, ContractHash: stored.ContractHash, ReceiptID: stored.ID,
 		InvocationID: stored.InvocationID, WorkspaceID: stored.WorkspaceID, UserID: stored.UserID,
-		LoginID: stored.LoginID, RoleKey: identitysdk.WorkspaceBootstrapRoleTenantAdmin, Replayed: replayed,
+		LoginID: stored.LoginID, RoleKey: identitymodulehost.InstallationAdministratorRoleKey, Replayed: replayed,
 		CredentialClaimed: stored.CredentialClaimedAt != "", CredentialDelivered: stored.CredentialDeliveredAt != "",
 	}
 }

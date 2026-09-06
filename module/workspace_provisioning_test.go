@@ -17,10 +17,10 @@ import (
 )
 
 func TestInstallationAdministratorBootstrapIsEmbeddedAtomicAuditedAndFirstOnly(t *testing.T) {
-	bootstrap, db := openWorkspaceIdentityBootstrapV2(t, workspaceBootstrapRoleDefinitions())
-	workspaceRequest := workspaceIdentityBootstrapV2Request("workspace-primary", "workspace-bootstrap")
+	bootstrap, db := openWorkspaceIdentityBootstrapCatalog(t, installationBootstrapRoleCatalog())
+	workspaceRequest := workspaceIdentityBootstrapRequest("workspace-primary", "workspace-bootstrap")
 	workspaceTx := beginBootstrapTx(t, db)
-	workspaceReceipt, err := bootstrap.BootstrapWorkspaceIdentityV2(t.Context(), workspaceRequest, identitysdk.EmbeddedTransaction{Executor: workspaceTx})
+	workspaceReceipt, err := bootstrap.BootstrapWorkspaceIdentity(t.Context(), workspaceRequest, identitysdk.EmbeddedTransaction{Executor: workspaceTx})
 	if err != nil {
 		_ = workspaceTx.Rollback()
 		t.Fatal(err)
@@ -28,7 +28,7 @@ func TestInstallationAdministratorBootstrapIsEmbeddedAtomicAuditedAndFirstOnly(t
 	if err := workspaceTx.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	completeWorkspaceIdentityBootstrapV2(t, bootstrap, workspaceReceipt, identitysdk.WorkspaceIdentityBootstrapTransactionCommitted)
+	completeWorkspaceIdentityBootstrap(t, bootstrap, workspaceReceipt, identitysdk.WorkspaceIdentityBootstrapTransactionCommitted)
 	if err := bootstrap.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestInstallationAdministratorBootstrapIsEmbeddedAtomicAuditedAndFirstOnly(t
 		_ = tx.Rollback()
 		t.Fatal(err)
 	}
-	if receipt.Replayed || receipt.RoleKey != identitysdk.WorkspaceBootstrapRoleTenantAdmin || receipt.UserID == "" || receipt.ReceiptID == "" {
+	if receipt.Replayed || receipt.RoleKey != identitymodulehost.InstallationAdministratorRoleKey || receipt.UserID == "" || receipt.ReceiptID == "" {
 		_ = tx.Rollback()
 		t.Fatalf("receipt=%#v", receipt)
 	}
@@ -108,7 +108,7 @@ func TestInstallationAdministratorBootstrapIsEmbeddedAtomicAuditedAndFirstOnly(t
 	if err := db.QueryRowContext(t.Context(), `SELECT role.role_key, user.org_id FROM _identity_users user JOIN _identity_user_role_assignments assignment ON assignment.workspace_id=user.workspace_id AND assignment.user_id=user.id JOIN _identity_roles role ON role.workspace_id=assignment.workspace_id AND role.id=assignment.role_id WHERE user.workspace_id=? AND user.id=?`, request.WorkspaceID, receipt.UserID).Scan(&roleKey, &orgID); err != nil {
 		t.Fatal(err)
 	}
-	if roleKey != identitysdk.WorkspaceBootstrapRoleTenantAdmin || orgID != workspaceRequest.CompanyID {
+	if roleKey != identitymodulehost.InstallationAdministratorRoleKey || orgID != workspaceRequest.CompanyID {
 		t.Fatalf("role=%q org=%q", roleKey, orgID)
 	}
 	var audits int
@@ -143,55 +143,202 @@ func (injector exactWorkspaceProvisionFailureInjector) InjectWorkspaceProvisionF
 	return nil
 }
 
-func TestWorkspaceIdentityBootstrapV2CreatesFixedGraphAndReleasesCredentialAfterCommit(t *testing.T) {
-	bootstrap, db := openWorkspaceIdentityBootstrapV2(t, workspaceBootstrapRoleDefinitions())
-	if _, legacy := bootstrap.(identitysdk.EmbeddedWorkspaceProvisioner); legacy {
-		t.Fatal("Protocol V3 bootstrap binding exposes V1 legacy provisioning")
+func TestWorkspaceIdentityBootstrapCreatesGraphAndReleasesCredentialAfterCommit(t *testing.T) {
+	bootstrap, db := openWorkspaceIdentityBootstrapCatalog(t, m1WorkspaceBootstrapRoleCatalog())
+	if _, exposed := bootstrap.(identitysdk.EmbeddedWorkspaceProvisioner); exposed {
+		t.Fatal("bootstrap binding exposes the earlier role-selectable provisioner")
 	}
-	request := workspaceIdentityBootstrapV2Request("workspace-primary", "invocation-primary")
+	request := workspaceIdentityBootstrapRequest("workspace-primary", "invocation-primary")
 	tx := beginBootstrapTx(t, db)
-	receipt, err := bootstrap.BootstrapWorkspaceIdentityV2(t.Context(), request, identitysdk.EmbeddedTransaction{Executor: tx})
+	receipt, err := bootstrap.BootstrapWorkspaceIdentity(t.Context(), request, identitysdk.EmbeddedTransaction{Executor: tx})
 	if err != nil {
 		_ = tx.Rollback()
 		t.Fatal(err)
 	}
-	if receipt.Replayed || receipt.ReceiptID == "" || receipt.ContractVersion != identitysdk.CurrentWorkspaceIdentityBootstrapContractVersion || receipt.ContractHash != identitysdk.CurrentWorkspaceIdentityBootstrapContractHash {
+	if receipt.Replayed || receipt.ReceiptID == "" || receipt.ContractVersion != identitysdk.WorkspaceIdentityBootstrapContractVersion || receipt.ContractHash != identitysdk.WorkspaceIdentityBootstrapContractHash {
 		_ = tx.Rollback()
 		t.Fatalf("receipt=%#v", receipt)
 	}
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := bootstrap.ClaimWorkspaceIdentityBootstrapCredentialV2(t.Context(), identitysdk.WorkspaceIdentityBootstrapCredentialClaim{WorkspaceID: request.WorkspaceID, ReceiptID: receipt.ReceiptID}); err == nil {
+	if _, err := bootstrap.ClaimWorkspaceIdentityBootstrapCredential(t.Context(), identitysdk.WorkspaceIdentityBootstrapCredentialClaim{WorkspaceID: request.WorkspaceID, ReceiptID: receipt.ReceiptID}); err == nil {
 		t.Fatal("credential was released before the host reported transaction completion")
 	}
-	completeWorkspaceIdentityBootstrapV2(t, bootstrap, receipt, identitysdk.WorkspaceIdentityBootstrapTransactionCommitted)
+	completeWorkspaceIdentityBootstrap(t, bootstrap, receipt, identitysdk.WorkspaceIdentityBootstrapTransactionCommitted)
 
 	assertIdentityRowCount(t, db, "_identity_organization_units", request.WorkspaceID, 2)
 	assertIdentityRowCount(t, db, "_identity_users", request.WorkspaceID, 1)
-	assertIdentityRowCount(t, db, "_identity_roles", request.WorkspaceID, 4)
+	assertIdentityRowCount(t, db, "_identity_roles", request.WorkspaceID, 3)
 	assertIdentityRowCount(t, db, "_identity_user_role_assignments", request.WorkspaceID, 1)
 	assertIdentityRowCount(t, db, "_identity_credentials", request.WorkspaceID, 1)
 	assertIdentityRowCount(t, db, "_identity_workspace_bootstrap_receipts", request.WorkspaceID, 1)
 	assertIdentityRowCount(t, db, "_identity_permissions", request.WorkspaceID, standaloneIdentityPermissionCount())
 
 	assertBootstrapOrganizationGraph(t, db, request)
-	assertBootstrapRolesAndAssignment(t, db, request)
-	credential, err := bootstrap.ClaimWorkspaceIdentityBootstrapCredentialV2(t.Context(), identitysdk.WorkspaceIdentityBootstrapCredentialClaim{WorkspaceID: request.WorkspaceID, ReceiptID: receipt.ReceiptID})
+	credential, err := bootstrap.ClaimWorkspaceIdentityBootstrapCredential(t.Context(), identitysdk.WorkspaceIdentityBootstrapCredentialClaim{WorkspaceID: request.WorkspaceID, ReceiptID: receipt.ReceiptID})
 	if err != nil || credential.LoginID != "admin@example.test" || credential.InitialPassword == "" || !credential.MustChangePassword {
 		t.Fatalf("credential=%#v error=%v", credential, err)
 	}
-	if _, err := bootstrap.ClaimWorkspaceIdentityBootstrapCredentialV2(t.Context(), identitysdk.WorkspaceIdentityBootstrapCredentialClaim{WorkspaceID: request.WorkspaceID, ReceiptID: receipt.ReceiptID}); err == nil {
+	if _, err := bootstrap.ClaimWorkspaceIdentityBootstrapCredential(t.Context(), identitysdk.WorkspaceIdentityBootstrapCredentialClaim{WorkspaceID: request.WorkspaceID, ReceiptID: receipt.ReceiptID}); err == nil {
 		t.Fatal("one-time bootstrap credential was replayed")
 	}
 	assertBootstrapPasswordNotPersisted(t, db, credential.InitialPassword)
 }
 
-func TestWorkspaceIdentityBootstrapV2ReplayAndDuplicateAreDeterministic(t *testing.T) {
-	bootstrap, db := openWorkspaceIdentityBootstrapV2(t, workspaceBootstrapRoleDefinitions())
-	request := workspaceIdentityBootstrapV2Request("workspace-replay", "invocation-replay")
+func TestWorkspaceIdentityBootstrapMaterializesM1RolesAndAssignsExplicitAdministrator(t *testing.T) {
+	catalog := m1WorkspaceBootstrapRoleCatalog()
+	bootstrap, db := openWorkspaceIdentityBootstrapCatalog(t, catalog)
+	request := workspaceIdentityBootstrapRequest("workspace-m1", "invocation-m1")
+	tx := beginBootstrapTx(t, db)
+	receipt, err := bootstrap.BootstrapWorkspaceIdentity(t.Context(), request, identitysdk.EmbeddedTransaction{Executor: tx})
+	if err != nil {
+		_ = tx.Rollback()
+		t.Fatal(err)
+	}
+	if receipt.RoleCatalogSHA256 == "" || receipt.InitialWorkspaceAdministratorRoleKey != "crm_acceptance_admin" {
+		_ = tx.Rollback()
+		t.Fatalf("receipt role policy=%#v", receipt)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bootstrap.ClaimWorkspaceIdentityBootstrapCredential(t.Context(), identitysdk.WorkspaceIdentityBootstrapCredentialClaim{WorkspaceID: request.WorkspaceID, ReceiptID: receipt.ReceiptID}); err == nil {
+		t.Fatal("M1 credential was released before commit completion")
+	}
+	completeWorkspaceIdentityBootstrap(t, bootstrap, receipt, identitysdk.WorkspaceIdentityBootstrapTransactionCommitted)
+	credential, err := bootstrap.ClaimWorkspaceIdentityBootstrapCredential(t.Context(), identitysdk.WorkspaceIdentityBootstrapCredentialClaim{WorkspaceID: request.WorkspaceID, ReceiptID: receipt.ReceiptID})
+	if err != nil || credential.InitialPassword == "" {
+		t.Fatalf("credential=%#v error=%v", credential, err)
+	}
+	assertIdentityRowCount(t, db, "_identity_roles", request.WorkspaceID, 3)
+	rows, err := db.QueryContext(t.Context(), `SELECT role_key FROM _identity_roles WHERE workspace_id=? ORDER BY role_key`, request.WorkspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var keys []string
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			t.Fatal(err)
+		}
+		keys = append(keys, key)
+	}
+	if got := strings.Join(keys, ","); got != "crm_acceptance_admin,sales_director,sales_rep" {
+		t.Fatalf("M1 materialized roles=%q", got)
+	}
+	var assigned, persistedDigest, persistedAdministrator string
+	if err := db.QueryRowContext(t.Context(), `SELECT role.role_key FROM _identity_user_role_assignments assignment JOIN _identity_roles role ON role.workspace_id=assignment.workspace_id AND role.id=assignment.role_id WHERE assignment.workspace_id=? AND assignment.user_id=?`, request.WorkspaceID, request.InitialAdminUserID).Scan(&assigned); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRowContext(t.Context(), `SELECT role_catalog_sha256, initial_workspace_administrator_role_key FROM _identity_workspace_bootstrap_receipts WHERE workspace_id=?`, request.WorkspaceID).Scan(&persistedDigest, &persistedAdministrator); err != nil {
+		t.Fatal(err)
+	}
+	if assigned != "crm_acceptance_admin" || persistedDigest != receipt.RoleCatalogSHA256 || persistedAdministrator != "crm_acceptance_admin" {
+		t.Fatalf("assigned=%q persisted digest=%q administrator=%q", assigned, persistedDigest, persistedAdministrator)
+	}
+}
+
+func TestWorkspaceIdentityBootstrapMaterializesProvisionedBusinessProfileRoleWithoutAssigningIt(t *testing.T) {
+	catalog := identitysdk.ProjectRoleCatalog{
+		InitialWorkspaceAdministratorRoleKey: "admin",
+		Roles: []identitysdk.ProjectRoleDefinition{
+			{Key: "admin", Name: "Admin", Audience: "user", AssignmentMode: "manual", ProvisionToWorkspaces: true},
+			{Key: "profile_member", Name: "Profile member", Audience: "business_profile", AssignmentMode: "request_only", RequiredBindingKey: "member", ProvisionToWorkspaces: true},
+			{Key: "internal_service", Name: "Internal service", Audience: "service", AssignmentMode: "system_managed"},
+		},
+	}
+	bootstrap, db := openWorkspaceIdentityBootstrapCatalog(t, catalog)
+	request := workspaceIdentityBootstrapRequest("workspace-profile-role", "invocation-profile-role")
+	tx := beginBootstrapTx(t, db)
+	receipt, err := bootstrap.BootstrapWorkspaceIdentity(t.Context(), request, identitysdk.EmbeddedTransaction{Executor: tx})
+	if err != nil {
+		_ = tx.Rollback()
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	completeWorkspaceIdentityBootstrap(t, bootstrap, receipt, identitysdk.WorkspaceIdentityBootstrapTransactionCommitted)
+	assertIdentityRowCount(t, db, "_identity_roles", request.WorkspaceID, 2)
+	var assigned string
+	if err := db.QueryRowContext(t.Context(), `SELECT role.role_key FROM _identity_user_role_assignments assignment JOIN _identity_roles role ON role.workspace_id=assignment.workspace_id AND role.id=assignment.role_id WHERE assignment.workspace_id=?`, request.WorkspaceID).Scan(&assigned); err != nil {
+		t.Fatal(err)
+	}
+	if assigned != "admin" {
+		t.Fatalf("business-profile request role was assigned to initial admin: %q", assigned)
+	}
+}
+
+func TestWorkspaceIdentityBootstrapRolePolicyFailsClosed(t *testing.T) {
+	tests := []struct {
+		name    string
+		catalog identitysdk.ProjectRoleCatalog
+		code    string
+	}{
+		{name: "explicit administrator missing", catalog: identitysdk.ProjectRoleCatalog{InitialWorkspaceAdministratorRoleKey: "missing", Roles: m1WorkspaceBootstrapRoleCatalog().Roles}, code: "identity.workspace_bootstrap_initial_administrator_role_missing"},
+		{name: "request-only administrator", catalog: identitysdk.ProjectRoleCatalog{InitialWorkspaceAdministratorRoleKey: "request_admin", Roles: []identitysdk.ProjectRoleDefinition{{Key: "request_admin", Name: "Request admin", Audience: "user", AssignmentMode: "request_only", ProvisionToWorkspaces: true}}}, code: "identity.workspace_bootstrap_initial_administrator_role_invalid"},
+		{name: "business-profile administrator", catalog: identitysdk.ProjectRoleCatalog{InitialWorkspaceAdministratorRoleKey: "profile_admin", Roles: []identitysdk.ProjectRoleDefinition{{Key: "profile_admin", Name: "Profile admin", Audience: "business_profile", AssignmentMode: "manual", ProvisionToWorkspaces: true}}}, code: "identity.workspace_bootstrap_initial_administrator_role_invalid"},
+		{name: "service role marked provisionable", catalog: identitysdk.ProjectRoleCatalog{InitialWorkspaceAdministratorRoleKey: "admin", Roles: []identitysdk.ProjectRoleDefinition{{Key: "admin", Name: "Admin", Audience: "user", AssignmentMode: "manual", ProvisionToWorkspaces: true}, {Key: "service", Name: "Service", Audience: "service", AssignmentMode: "system_managed", ProvisionToWorkspaces: true}}}, code: "identity.workspace_bootstrap_role_catalog_invalid"},
+		{name: "system-managed role marked provisionable", catalog: identitysdk.ProjectRoleCatalog{InitialWorkspaceAdministratorRoleKey: "admin", Roles: []identitysdk.ProjectRoleDefinition{{Key: "admin", Name: "Admin", Audience: "user", AssignmentMode: "manual", ProvisionToWorkspaces: true}, {Key: "profile", Name: "Profile", Audience: "business_profile", AssignmentMode: "system_managed", ProvisionToWorkspaces: true}}}, code: "identity.workspace_bootstrap_role_catalog_invalid"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			bootstrap, _ := openWorkspaceIdentityBootstrapUnbound(t)
+			test.catalog.Application = identitysdk.ApplicationRef{ApplicationKey: "runtime"}
+			err := bootstrap.BindBootstrapProjectRoleCatalog(t.Context(), test.catalog)
+			var sdkErr *identitysdk.Error
+			if !errors.As(err, &sdkErr) || sdkErr.Code != test.code {
+				t.Fatalf("BindBootstrapProjectRoleCatalog() error=%v, want %s", err, test.code)
+			}
+		})
+	}
+
+	bootstrap, _ := openWorkspaceIdentityBootstrapUnbound(t)
+	err := bootstrap.BindBootstrapProjectRoleCatalog(t.Context(), identitysdk.ProjectRoleCatalog{
+		Application: identitysdk.ApplicationRef{ApplicationKey: "runtime"},
+		Roles:       m1WorkspaceBootstrapRoleCatalog().Roles,
+	})
+	var sdkErr *identitysdk.Error
+	if !errors.As(err, &sdkErr) || sdkErr.Code != "identity.workspace_bootstrap_initial_administrator_role_required" {
+		t.Fatalf("missing explicit M1 administrator error=%v", err)
+	}
+}
+
+func TestWorkspaceIdentityBootstrapDetectsRoleCatalogDriftOnReplay(t *testing.T) {
+	catalog := m1WorkspaceBootstrapRoleCatalog()
+	bootstrap, db := openWorkspaceIdentityBootstrapCatalog(t, catalog)
+	request := workspaceIdentityBootstrapRequest("workspace-catalog-drift", "invocation-catalog-drift")
+	tx := beginBootstrapTx(t, db)
+	receipt, err := bootstrap.BootstrapWorkspaceIdentity(t.Context(), request, identitysdk.EmbeddedTransaction{Executor: tx})
+	if err != nil {
+		_ = tx.Rollback()
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	completeWorkspaceIdentityBootstrap(t, bootstrap, receipt, identitysdk.WorkspaceIdentityBootstrapTransactionCommitted)
+	catalog.Roles[2].Name = "Sales representative changed"
+	catalog.Application = identitysdk.ApplicationRef{ApplicationKey: "runtime"}
+	if err := bootstrap.BindBootstrapProjectRoleCatalog(t.Context(), catalog); err != nil {
+		t.Fatal(err)
+	}
+	replayTx := beginBootstrapTx(t, db)
+	_, err = bootstrap.BootstrapWorkspaceIdentity(t.Context(), request, identitysdk.EmbeddedTransaction{Executor: replayTx})
+	_ = replayTx.Rollback()
+	var sdkErr *identitysdk.Error
+	if !errors.As(err, &sdkErr) || sdkErr.Code != "identity.workspace_bootstrap_idempotency_conflict" {
+		t.Fatalf("catalog drift replay error=%v", err)
+	}
+}
+
+func TestWorkspaceIdentityBootstrapReplayAndDuplicateAreDeterministic(t *testing.T) {
+	bootstrap, db := openWorkspaceIdentityBootstrapCatalog(t, m1WorkspaceBootstrapRoleCatalog())
+	request := workspaceIdentityBootstrapRequest("workspace-replay", "invocation-replay")
 	firstTx := beginBootstrapTx(t, db)
-	first, err := bootstrap.BootstrapWorkspaceIdentityV2(t.Context(), request, identitysdk.EmbeddedTransaction{Executor: firstTx})
+	first, err := bootstrap.BootstrapWorkspaceIdentity(t.Context(), request, identitysdk.EmbeddedTransaction{Executor: firstTx})
 	if err != nil {
 		_ = firstTx.Rollback()
 		t.Fatal(err)
@@ -199,10 +346,10 @@ func TestWorkspaceIdentityBootstrapV2ReplayAndDuplicateAreDeterministic(t *testi
 	if err := firstTx.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	completeWorkspaceIdentityBootstrapV2(t, bootstrap, first, identitysdk.WorkspaceIdentityBootstrapTransactionCommitted)
+	completeWorkspaceIdentityBootstrap(t, bootstrap, first, identitysdk.WorkspaceIdentityBootstrapTransactionCommitted)
 
 	replayTx := beginBootstrapTx(t, db)
-	replay, err := bootstrap.BootstrapWorkspaceIdentityV2(t.Context(), request, identitysdk.EmbeddedTransaction{Executor: replayTx})
+	replay, err := bootstrap.BootstrapWorkspaceIdentity(t.Context(), request, identitysdk.EmbeddedTransaction{Executor: replayTx})
 	if err != nil || !replay.Replayed || replay.ReceiptID != first.ReceiptID {
 		_ = replayTx.Rollback()
 		t.Fatalf("replay=%#v error=%v", replay, err)
@@ -211,7 +358,7 @@ func TestWorkspaceIdentityBootstrapV2ReplayAndDuplicateAreDeterministic(t *testi
 		t.Fatal(err)
 	}
 	for table, want := range map[string]int{
-		"_identity_organization_units": 2, "_identity_users": 1, "_identity_roles": 4,
+		"_identity_organization_units": 2, "_identity_users": 1, "_identity_roles": 3,
 		"_identity_user_role_assignments": 1, "_identity_credentials": 1,
 		"_identity_workspace_bootstrap_receipts": 1,
 	} {
@@ -221,7 +368,7 @@ func TestWorkspaceIdentityBootstrapV2ReplayAndDuplicateAreDeterministic(t *testi
 	conflict := request
 	conflict.FirstStoreName = "Changed Store"
 	conflictTx := beginBootstrapTx(t, db)
-	if _, err := bootstrap.BootstrapWorkspaceIdentityV2(t.Context(), conflict, identitysdk.EmbeddedTransaction{Executor: conflictTx}); err == nil {
+	if _, err := bootstrap.BootstrapWorkspaceIdentity(t.Context(), conflict, identitysdk.EmbeddedTransaction{Executor: conflictTx}); err == nil {
 		_ = conflictTx.Rollback()
 		t.Fatal("same invocation with a different graph was accepted")
 	}
@@ -230,18 +377,18 @@ func TestWorkspaceIdentityBootstrapV2ReplayAndDuplicateAreDeterministic(t *testi
 	duplicate := request
 	duplicate.InvocationID = "another-invocation"
 	duplicateTx := beginBootstrapTx(t, db)
-	if _, err := bootstrap.BootstrapWorkspaceIdentityV2(t.Context(), duplicate, identitysdk.EmbeddedTransaction{Executor: duplicateTx}); err == nil {
+	if _, err := bootstrap.BootstrapWorkspaceIdentity(t.Context(), duplicate, identitysdk.EmbeddedTransaction{Executor: duplicateTx}); err == nil {
 		_ = duplicateTx.Rollback()
 		t.Fatal("second bootstrap invocation for one Workspace was accepted")
 	}
 	_ = duplicateTx.Rollback()
 }
 
-func TestWorkspaceIdentityBootstrapV2RollbackCompletionDestroysVolatileCredential(t *testing.T) {
-	bootstrap, db := openWorkspaceIdentityBootstrapV2(t, workspaceBootstrapRoleDefinitions())
-	request := workspaceIdentityBootstrapV2Request("workspace-host-rollback", "host-rollback")
+func TestWorkspaceIdentityBootstrapRollbackCompletionDestroysVolatileCredential(t *testing.T) {
+	bootstrap, db := openWorkspaceIdentityBootstrapCatalog(t, m1WorkspaceBootstrapRoleCatalog())
+	request := workspaceIdentityBootstrapRequest("workspace-host-rollback", "host-rollback")
 	tx := beginBootstrapTx(t, db)
-	receipt, err := bootstrap.BootstrapWorkspaceIdentityV2(t.Context(), request, identitysdk.EmbeddedTransaction{Executor: tx})
+	receipt, err := bootstrap.BootstrapWorkspaceIdentity(t.Context(), request, identitysdk.EmbeddedTransaction{Executor: tx})
 	if err != nil {
 		_ = tx.Rollback()
 		t.Fatal(err)
@@ -249,14 +396,14 @@ func TestWorkspaceIdentityBootstrapV2RollbackCompletionDestroysVolatileCredentia
 	if err := tx.Rollback(); err != nil {
 		t.Fatal(err)
 	}
-	completeWorkspaceIdentityBootstrapV2(t, bootstrap, receipt, identitysdk.WorkspaceIdentityBootstrapTransactionRolledBack)
-	if _, err := bootstrap.ClaimWorkspaceIdentityBootstrapCredentialV2(t.Context(), identitysdk.WorkspaceIdentityBootstrapCredentialClaim{WorkspaceID: request.WorkspaceID, ReceiptID: receipt.ReceiptID}); err == nil {
+	completeWorkspaceIdentityBootstrap(t, bootstrap, receipt, identitysdk.WorkspaceIdentityBootstrapTransactionRolledBack)
+	if _, err := bootstrap.ClaimWorkspaceIdentityBootstrapCredential(t.Context(), identitysdk.WorkspaceIdentityBootstrapCredentialClaim{WorkspaceID: request.WorkspaceID, ReceiptID: receipt.ReceiptID}); err == nil {
 		t.Fatal("rolled-back bootstrap credential remained claimable")
 	}
 	assertWorkspaceBootstrapZero(t, db, request.WorkspaceID)
 
 	retryTx := beginBootstrapTx(t, db)
-	retry, err := bootstrap.BootstrapWorkspaceIdentityV2(t.Context(), request, identitysdk.EmbeddedTransaction{Executor: retryTx})
+	retry, err := bootstrap.BootstrapWorkspaceIdentity(t.Context(), request, identitysdk.EmbeddedTransaction{Executor: retryTx})
 	if err != nil {
 		_ = retryTx.Rollback()
 		t.Fatal(err)
@@ -264,32 +411,29 @@ func TestWorkspaceIdentityBootstrapV2RollbackCompletionDestroysVolatileCredentia
 	if err := retryTx.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	completeWorkspaceIdentityBootstrapV2(t, bootstrap, retry, identitysdk.WorkspaceIdentityBootstrapTransactionCommitted)
-	if _, err := bootstrap.ClaimWorkspaceIdentityBootstrapCredentialV2(t.Context(), identitysdk.WorkspaceIdentityBootstrapCredentialClaim{WorkspaceID: request.WorkspaceID, ReceiptID: retry.ReceiptID}); err != nil {
+	completeWorkspaceIdentityBootstrap(t, bootstrap, retry, identitysdk.WorkspaceIdentityBootstrapTransactionCommitted)
+	if _, err := bootstrap.ClaimWorkspaceIdentityBootstrapCredential(t.Context(), identitysdk.WorkspaceIdentityBootstrapCredentialClaim{WorkspaceID: request.WorkspaceID, ReceiptID: retry.ReceiptID}); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestWorkspaceIdentityBootstrapV2FailsClosedForMissingRoleAndPreexistingCrossWorkspaceParent(t *testing.T) {
-	missingRoles := workspaceBootstrapRoleDefinitions()[:3]
-	bootstrap, db := openWorkspaceIdentityBootstrapV2(t, missingRoles)
-	request := workspaceIdentityBootstrapV2Request("workspace-missing-role", "missing-role")
-	tx := beginBootstrapTx(t, db)
-	if _, err := bootstrap.BootstrapWorkspaceIdentityV2(t.Context(), request, identitysdk.EmbeddedTransaction{Executor: tx}); err == nil {
-		_ = tx.Rollback()
-		t.Fatal("bootstrap without the complete four-role catalog succeeded")
+func TestWorkspaceIdentityBootstrapFailsClosedForMissingRoleAndPreexistingCrossWorkspaceParent(t *testing.T) {
+	missingRoles := m1WorkspaceBootstrapRoleCatalog().Roles[:3]
+	bootstrap, db := openWorkspaceIdentityBootstrapUnbound(t)
+	if err := bootstrap.BindBootstrapProjectRoleCatalog(t.Context(), identitysdk.ProjectRoleCatalog{Application: identitysdk.ApplicationRef{ApplicationKey: "runtime"}, Roles: missingRoles}); err == nil {
+		t.Fatal("bootstrap binder accepted a catalog without an explicit administrator")
 	}
-	_ = tx.Rollback()
+	request := workspaceIdentityBootstrapRequest("workspace-missing-role", "missing-role")
 	assertWorkspaceBootstrapZero(t, db, request.WorkspaceID)
 
-	complete, completeDB := openWorkspaceIdentityBootstrapV2(t, workspaceBootstrapRoleDefinitions())
-	cross := workspaceIdentityBootstrapV2Request("workspace-cross-parent", "cross-parent")
+	complete, completeDB := openWorkspaceIdentityBootstrapCatalog(t, m1WorkspaceBootstrapRoleCatalog())
+	cross := workspaceIdentityBootstrapRequest("workspace-cross-parent", "cross-parent")
 	if _, err := completeDB.ExecContext(t.Context(), `INSERT INTO _identity_organization_units (id, workspace_id, code, name, node_type, parent_id, path, ancestor_ids, depth, sort_order, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		"orphan-store", cross.WorkspaceID, "ORPHAN", "Orphan", "store", "company-from-another-workspace", "/company-from-another-workspace/orphan-store", `["company-from-another-workspace"]`, 1, 0, "active", "now", "now"); err != nil {
 		t.Fatal(err)
 	}
 	crossTx := beginBootstrapTx(t, completeDB)
-	if _, err := complete.BootstrapWorkspaceIdentityV2(t.Context(), cross, identitysdk.EmbeddedTransaction{Executor: crossTx}); err == nil {
+	if _, err := complete.BootstrapWorkspaceIdentity(t.Context(), cross, identitysdk.EmbeddedTransaction{Executor: crossTx}); err == nil {
 		_ = crossTx.Rollback()
 		t.Fatal("bootstrap adopted a preexisting cross-Workspace parent graph")
 	}
@@ -300,12 +444,12 @@ func TestWorkspaceIdentityBootstrapV2FailsClosedForMissingRoleAndPreexistingCros
 	}
 }
 
-func TestWorkspaceIdentityBootstrapV2RejectsUnpinnedContract(t *testing.T) {
-	bootstrap, db := openWorkspaceIdentityBootstrapV2(t, workspaceBootstrapRoleDefinitions())
-	request := workspaceIdentityBootstrapV2Request("workspace-contract", "contract")
+func TestWorkspaceIdentityBootstrapRejectsUnpinnedContract(t *testing.T) {
+	bootstrap, db := openWorkspaceIdentityBootstrapCatalog(t, m1WorkspaceBootstrapRoleCatalog())
+	request := workspaceIdentityBootstrapRequest("workspace-contract", "contract")
 	request.ContractHash = strings.Repeat("0", 64)
 	tx := beginBootstrapTx(t, db)
-	if _, err := bootstrap.BootstrapWorkspaceIdentityV2(t.Context(), request, identitysdk.EmbeddedTransaction{Executor: tx}); err == nil {
+	if _, err := bootstrap.BootstrapWorkspaceIdentity(t.Context(), request, identitysdk.EmbeddedTransaction{Executor: tx}); err == nil {
 		_ = tx.Rollback()
 		t.Fatal("unpinned Workspace bootstrap contract was accepted")
 	}
@@ -313,7 +457,7 @@ func TestWorkspaceIdentityBootstrapV2RejectsUnpinnedContract(t *testing.T) {
 	assertWorkspaceBootstrapZero(t, db, request.WorkspaceID)
 }
 
-func TestWorkspaceIdentityBootstrapV2RollsBackEveryBoundaryAndRetriesCleanly(t *testing.T) {
+func TestWorkspaceIdentityBootstrapRollsBackEveryBoundaryAndRetriesCleanly(t *testing.T) {
 	points := []string{
 		identitysdk.WorkspaceProvisionFailureAfterCompany,
 		identitysdk.WorkspaceProvisionFailureAfterFirstStore,
@@ -325,13 +469,13 @@ func TestWorkspaceIdentityBootstrapV2RollsBackEveryBoundaryAndRetriesCleanly(t *
 	}
 	for _, point := range points {
 		t.Run(point, func(t *testing.T) {
-			bootstrap, db := openWorkspaceIdentityBootstrapV2(t, workspaceBootstrapRoleDefinitions())
-			request := workspaceIdentityBootstrapV2Request("workspace-rollback", "rollback-"+point)
+			bootstrap, db := openWorkspaceIdentityBootstrapCatalog(t, m1WorkspaceBootstrapRoleCatalog())
+			request := workspaceIdentityBootstrapRequest("workspace-rollback", "rollback-"+point)
 			failedTx := beginBootstrapTx(t, db)
-			result, err := bootstrap.BootstrapWorkspaceIdentityV2(t.Context(), request, identitysdk.EmbeddedTransaction{
+			result, err := bootstrap.BootstrapWorkspaceIdentity(t.Context(), request, identitysdk.EmbeddedTransaction{
 				Executor: failedTx, WorkspaceProvisionFailures: exactWorkspaceProvisionFailureInjector{target: point},
 			})
-			if !errors.Is(err, errInjectedWorkspaceProvisionFailure) || result != (identitysdk.WorkspaceIdentityBootstrapV2Receipt{}) {
+			if !errors.Is(err, errInjectedWorkspaceProvisionFailure) || result != (identitysdk.WorkspaceIdentityBootstrapReceipt{}) {
 				_ = failedTx.Rollback()
 				t.Fatalf("result=%#v error=%v", result, err)
 			}
@@ -341,7 +485,7 @@ func TestWorkspaceIdentityBootstrapV2RollsBackEveryBoundaryAndRetriesCleanly(t *
 			assertWorkspaceBootstrapZero(t, db, request.WorkspaceID)
 
 			retryTx := beginBootstrapTx(t, db)
-			retried, err := bootstrap.BootstrapWorkspaceIdentityV2(t.Context(), request, identitysdk.EmbeddedTransaction{Executor: retryTx})
+			retried, err := bootstrap.BootstrapWorkspaceIdentity(t.Context(), request, identitysdk.EmbeddedTransaction{Executor: retryTx})
 			if err != nil || retried.Replayed || retried.ReceiptID == "" {
 				_ = retryTx.Rollback()
 				t.Fatalf("retry=%#v error=%v", retried, err)
@@ -349,17 +493,27 @@ func TestWorkspaceIdentityBootstrapV2RollsBackEveryBoundaryAndRetriesCleanly(t *
 			if err := retryTx.Commit(); err != nil {
 				t.Fatal(err)
 			}
-			completeWorkspaceIdentityBootstrapV2(t, bootstrap, retried, identitysdk.WorkspaceIdentityBootstrapTransactionCommitted)
-			if _, err := bootstrap.ClaimWorkspaceIdentityBootstrapCredentialV2(t.Context(), identitysdk.WorkspaceIdentityBootstrapCredentialClaim{WorkspaceID: request.WorkspaceID, ReceiptID: retried.ReceiptID}); err != nil {
+			completeWorkspaceIdentityBootstrap(t, bootstrap, retried, identitysdk.WorkspaceIdentityBootstrapTransactionCommitted)
+			if _, err := bootstrap.ClaimWorkspaceIdentityBootstrapCredential(t.Context(), identitysdk.WorkspaceIdentityBootstrapCredentialClaim{WorkspaceID: request.WorkspaceID, ReceiptID: retried.ReceiptID}); err != nil {
 				t.Fatal(err)
 			}
 		})
 	}
 }
 
-func openWorkspaceIdentityBootstrapV2(t *testing.T, roles []identitysdk.ProjectRoleDefinition) (identitysdk.BootstrapBinding, *sql.DB) {
+func openWorkspaceIdentityBootstrapCatalog(t *testing.T, catalog identitysdk.ProjectRoleCatalog) (identitysdk.BootstrapBinding, *sql.DB) {
 	t.Helper()
-	databasePath := filepath.Join(t.TempDir(), "identity-bootstrap-v2.db")
+	bootstrap, db := openWorkspaceIdentityBootstrapUnbound(t)
+	catalog.Application = identitysdk.ApplicationRef{ApplicationKey: "runtime"}
+	if err := bootstrap.BindBootstrapProjectRoleCatalog(t.Context(), catalog); err != nil {
+		t.Fatal(err)
+	}
+	return bootstrap, db
+}
+
+func openWorkspaceIdentityBootstrapUnbound(t *testing.T) (identitysdk.BootstrapBinding, *sql.DB) {
+	t.Helper()
+	databasePath := filepath.Join(t.TempDir(), "identity-bootstrap.db")
 	db, err := sql.Open("sqlite", databasePath)
 	if err != nil {
 		t.Fatal(err)
@@ -372,36 +526,45 @@ func openWorkspaceIdentityBootstrapV2(t *testing.T, roles []identitysdk.ProjectR
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = bootstrap.Close(t.Context()) })
-	if err := bootstrap.BindBootstrapProjectRoleCatalog(t.Context(), identitysdk.ProjectRoleCatalog{
-		Application: identitysdk.ApplicationRef{ApplicationKey: "runtime"}, Roles: roles,
-	}); err != nil {
-		t.Fatal(err)
-	}
 	return bootstrap, db
 }
 
-func workspaceBootstrapRoleDefinitions() []identitysdk.ProjectRoleDefinition {
-	return []identitysdk.ProjectRoleDefinition{
-		{Key: identitysdk.WorkspaceBootstrapRoleTenantAdmin, Name: "Platform administrator"},
-		{Key: identitysdk.WorkspaceBootstrapRoleHeadquartersAdmin, Name: "Headquarters admin"},
-		{Key: identitysdk.WorkspaceBootstrapRoleStoreManager, Name: "Store manager"},
-		{Key: identitysdk.WorkspaceBootstrapRoleStaff, Name: "Staff"},
+func m1WorkspaceBootstrapRoleCatalog() identitysdk.ProjectRoleCatalog {
+	return identitysdk.ProjectRoleCatalog{
+		InitialWorkspaceAdministratorRoleKey: "crm_acceptance_admin",
+		Roles: []identitysdk.ProjectRoleDefinition{
+			{Key: "crm_acceptance_admin", Name: "CRM acceptance administrator", Audience: "any", AssignmentMode: "manual", ProvisionToWorkspaces: true},
+			{Key: "sales_director", Name: "Sales director", Audience: "any", AssignmentMode: "manual", ProvisionToWorkspaces: true},
+			{Key: "sales_rep", Name: "Sales representative", Audience: "any", AssignmentMode: "manual", ProvisionToWorkspaces: true},
+			{Key: "crm_internal_service", Name: "CRM internal service", Audience: "service", AssignmentMode: "system_managed"},
+			{Key: "crm_sync_service", Name: "CRM sync service", Audience: "service", AssignmentMode: "system_managed"},
+		},
 	}
 }
 
-func completeWorkspaceIdentityBootstrapV2(t *testing.T, bootstrap identitysdk.BootstrapBinding, receipt identitysdk.WorkspaceIdentityBootstrapV2Receipt, outcome identitysdk.WorkspaceIdentityBootstrapTransactionOutcome) {
+func installationBootstrapRoleCatalog() identitysdk.ProjectRoleCatalog {
+	return identitysdk.ProjectRoleCatalog{
+		InitialWorkspaceAdministratorRoleKey: "workspace_admin",
+		Roles: []identitysdk.ProjectRoleDefinition{
+			{Key: "workspace_admin", Name: "Workspace administrator", Audience: "user", AssignmentMode: "manual", ProvisionToWorkspaces: true},
+			{Key: identitymodulehost.InstallationAdministratorRoleKey, Name: "Installation administrator", Audience: "user", AssignmentMode: "manual", ProvisionToWorkspaces: true},
+		},
+	}
+}
+
+func completeWorkspaceIdentityBootstrap(t *testing.T, bootstrap identitysdk.BootstrapBinding, receipt identitysdk.WorkspaceIdentityBootstrapReceipt, outcome identitysdk.WorkspaceIdentityBootstrapTransactionOutcome) {
 	t.Helper()
-	if err := bootstrap.CompleteWorkspaceIdentityBootstrapV2(t.Context(), identitysdk.WorkspaceIdentityBootstrapCompletion{
+	if err := bootstrap.CompleteWorkspaceIdentityBootstrap(t.Context(), identitysdk.WorkspaceIdentityBootstrapCompletion{
 		WorkspaceID: receipt.WorkspaceID, ReceiptID: receipt.ReceiptID, Outcome: outcome,
 	}); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func workspaceIdentityBootstrapV2Request(workspaceID, invocationID string) identitysdk.WorkspaceIdentityBootstrapV2Request {
-	return identitysdk.WorkspaceIdentityBootstrapV2Request{
-		ContractVersion: identitysdk.CurrentWorkspaceIdentityBootstrapContractVersion,
-		ContractHash:    identitysdk.CurrentWorkspaceIdentityBootstrapContractHash,
+func workspaceIdentityBootstrapRequest(workspaceID, invocationID string) identitysdk.WorkspaceIdentityBootstrapRequest {
+	return identitysdk.WorkspaceIdentityBootstrapRequest{
+		ContractVersion: identitysdk.WorkspaceIdentityBootstrapContractVersion,
+		ContractHash:    identitysdk.WorkspaceIdentityBootstrapContractHash,
 		InvocationID:    invocationID, WorkspaceID: workspaceID,
 		CompanyID: workspaceID + "-company", CompanyCode: "COMPANY", CompanyName: "Example Company",
 		FirstStoreID: workspaceID + "-store", FirstStoreCode: "STORE-001", FirstStoreName: "First Store",
@@ -418,7 +581,7 @@ func beginBootstrapTx(t *testing.T, db *sql.DB) *sql.Tx {
 	return tx
 }
 
-func assertBootstrapOrganizationGraph(t *testing.T, db *sql.DB, request identitysdk.WorkspaceIdentityBootstrapV2Request) {
+func assertBootstrapOrganizationGraph(t *testing.T, db *sql.DB, request identitysdk.WorkspaceIdentityBootstrapRequest) {
 	t.Helper()
 	rows, err := db.QueryContext(t.Context(), `SELECT id, node_type, COALESCE(parent_id, ''), path, ancestor_ids, depth, status FROM _identity_organization_units WHERE workspace_id = ? ORDER BY depth, id`, request.WorkspaceID)
 	if err != nil {
@@ -446,40 +609,6 @@ func assertBootstrapOrganizationGraph(t *testing.T, db *sql.DB, request identity
 	}
 	if orgID != request.CompanyID || accountType != "human" || status != "active" {
 		t.Fatalf("initial admin org=%q type=%q status=%q", orgID, accountType, status)
-	}
-}
-
-func assertBootstrapRolesAndAssignment(t *testing.T, db *sql.DB, request identitysdk.WorkspaceIdentityBootstrapV2Request) {
-	t.Helper()
-	rows, err := db.QueryContext(t.Context(), `SELECT role_key FROM _identity_roles WHERE workspace_id = ? ORDER BY role_key`, request.WorkspaceID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
-	var keys []string
-	for rows.Next() {
-		var key string
-		if err := rows.Scan(&key); err != nil {
-			t.Fatal(err)
-		}
-		keys = append(keys, key)
-	}
-	if strings.Join(keys, ",") != "headquarters_admin,staff,store_manager,tenant_admin" {
-		t.Fatalf("role keys=%v", keys)
-	}
-	var platformLabel string
-	if err := db.QueryRowContext(t.Context(), `SELECT label FROM _identity_roles WHERE workspace_id = ? AND role_key = ?`, request.WorkspaceID, identitysdk.WorkspaceBootstrapRoleTenantAdmin).Scan(&platformLabel); err != nil {
-		t.Fatal(err)
-	}
-	if platformLabel != "Platform administrator" {
-		t.Fatalf("tenant_admin display label=%q", platformLabel)
-	}
-	var roleKey, source string
-	if err := db.QueryRowContext(t.Context(), `SELECT r.role_key, a.source FROM _identity_user_role_assignments a JOIN _identity_roles r ON r.workspace_id = a.workspace_id AND r.id = a.role_id WHERE a.workspace_id = ? AND a.user_id = ?`, request.WorkspaceID, request.InitialAdminUserID).Scan(&roleKey, &source); err != nil {
-		t.Fatal(err)
-	}
-	if roleKey != identitysdk.WorkspaceBootstrapRoleHeadquartersAdmin || source != "workspace_bootstrap_v2" {
-		t.Fatalf("assigned role=%q source=%q", roleKey, source)
 	}
 }
 

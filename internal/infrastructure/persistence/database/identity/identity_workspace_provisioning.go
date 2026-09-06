@@ -87,7 +87,7 @@ func (s *SQLIdentityStore) ProvisionWorkspaceIdentityWithExecutor(
 }
 
 // ProvisionWorkspaceAcceptanceFixturesWithExecutor appends only explicitly
-// gated verification identities. The fixed V2 company, store, administrator,
+// gated verification identities. The trusted company, store, administrator,
 // administrator assignment, and administrator credential are never touched.
 func (s *SQLIdentityStore) ProvisionWorkspaceAcceptanceFixturesWithExecutor(
 	ctx context.Context,
@@ -132,22 +132,24 @@ type WorkspaceIdentityBootstrapGraph struct {
 }
 
 type WorkspaceIdentityBootstrapReceipt struct {
-	ID                  string
-	WorkspaceID         string
-	InvocationID        string
-	RequestFingerprint  string
-	ContractVersion     string
-	ContractHash        string
-	CompanyID           string
-	FirstStoreID        string
-	InitialAdminUserID  string
-	InitialAdminLoginID string
-	CredentialClaimedAt string
-	CreatedAt           string
+	ID                                   string
+	WorkspaceID                          string
+	InvocationID                         string
+	RequestFingerprint                   string
+	ContractVersion                      string
+	ContractHash                         string
+	CompanyID                            string
+	FirstStoreID                         string
+	InitialAdminUserID                   string
+	InitialAdminLoginID                  string
+	RoleCatalogSHA256                    string
+	InitialWorkspaceAdministratorRoleKey string
+	CredentialClaimedAt                  string
+	CreatedAt                            string
 }
 
 func WorkspaceIdentityBootstrapReceiptID(workspaceID, invocationID string) string {
-	digest := sha256.Sum256([]byte(strings.TrimSpace(workspaceID) + "\x00workspace_identity_bootstrap_v2\x00" + strings.TrimSpace(invocationID)))
+	digest := sha256.Sum256([]byte(strings.TrimSpace(workspaceID) + "\x00workspace_identity_bootstrap_v1\x00" + strings.TrimSpace(invocationID)))
 	return "workspace_bootstrap_" + hex.EncodeToString(digest[:16])
 }
 
@@ -179,9 +181,10 @@ func (s *SQLIdentityStore) WorkspaceIdentityBootstrapStateExistsWithExecutor(ctx
 	return false, nil
 }
 
-// WriteWorkspaceIdentityBootstrapGraphWithExecutor writes only the fixed V2
-// Identity graph. Parentage and the sole initial role assignment are supplied
-// as already validated, purpose-specific values by the module assembly.
+// WriteWorkspaceIdentityBootstrapGraphWithExecutor writes only the trusted
+// Workspace Identity graph. Parentage, the normalized provisioned-role
+// directory, and the sole initial role assignment are supplied as already
+// validated, purpose-specific values by the module assembly.
 func (s *SQLIdentityStore) WriteWorkspaceIdentityBootstrapGraphWithExecutor(ctx context.Context, execer identityUserExecer, workspaceID string, graph WorkspaceIdentityBootstrapGraph, after func(WorkspaceIdentityProvisionStage) error) error {
 	workspaceID, err := identityWorkspaceID(workspaceID)
 	if err != nil {
@@ -220,9 +223,9 @@ func (s *SQLIdentityStore) WriteWorkspaceIdentityBootstrapGraphWithExecutor(ctx 
 		}
 	}
 	if err := s.writeIdentityUserRoleAssignment(ctx, execer, workspaceID, identitymodel.IdentityUserRoleAssignment{
-		UserID: graph.InitialAdmin.ID, RoleID: strings.TrimSpace(graph.AdminRoleID), Source: "workspace_bootstrap_v2", Status: "active",
+		UserID: graph.InitialAdmin.ID, RoleID: strings.TrimSpace(graph.AdminRoleID), Source: "workspace_bootstrap_v1", Status: "active",
 	}); err != nil {
-		return fmt.Errorf("assign workspace headquarters administrator role: %w", err)
+		return fmt.Errorf("assign workspace initial administrator role: %w", err)
 	}
 	if after != nil {
 		if err := after(WorkspaceIdentityProvisionStageRoleAssignment); err != nil {
@@ -238,7 +241,7 @@ func (s *SQLIdentityStore) GetWorkspaceIdentityBootstrapReceiptWithExecutor(ctx 
 		return WorkspaceIdentityBootstrapReceipt{}, false, err
 	}
 	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.sqlRenderer(), "_identity_workspace_bootstrap_receipts", workspaceID).
-		Columns("id", "invocation_id", "request_fingerprint", "contract_version", "contract_hash", "company_id", "first_store_id", "initial_admin_user_id", "initial_admin_login_id", "credential_claimed_at", "created_at").
+		Columns("id", "invocation_id", "request_fingerprint", "contract_version", "contract_hash", "company_id", "first_store_id", "initial_admin_user_id", "initial_admin_login_id", "role_catalog_sha256", "initial_workspace_administrator_role_key", "credential_claimed_at", "created_at").
 		Where(query.Equal("invocation_id", strings.TrimSpace(invocationID))).Limit(1).Build()
 	if err != nil {
 		return WorkspaceIdentityBootstrapReceipt{}, false, fmt.Errorf("build workspace bootstrap receipt query: %w", err)
@@ -281,8 +284,8 @@ func (s *SQLIdentityStore) InsertWorkspaceIdentityBootstrapReceiptWithExecutor(c
 		receipt.CreatedAt = nowString()
 	}
 	statement, arguments, err := query.NewWorkspaceInsertBuilder(s.sqlRenderer(), "_identity_workspace_bootstrap_receipts", receipt.WorkspaceID).
-		Columns("id", "invocation_id", "request_fingerprint", "contract_version", "contract_hash", "company_id", "first_store_id", "initial_admin_user_id", "initial_admin_login_id", "created_at").
-		Values(receipt.ID, receipt.InvocationID, receipt.RequestFingerprint, receipt.ContractVersion, receipt.ContractHash, receipt.CompanyID, receipt.FirstStoreID, receipt.InitialAdminUserID, receipt.InitialAdminLoginID, receipt.CreatedAt).Build()
+		Columns("id", "invocation_id", "request_fingerprint", "contract_version", "contract_hash", "company_id", "first_store_id", "initial_admin_user_id", "initial_admin_login_id", "role_catalog_sha256", "initial_workspace_administrator_role_key", "created_at").
+		Values(receipt.ID, receipt.InvocationID, receipt.RequestFingerprint, receipt.ContractVersion, receipt.ContractHash, receipt.CompanyID, receipt.FirstStoreID, receipt.InitialAdminUserID, receipt.InitialAdminLoginID, receipt.RoleCatalogSHA256, receipt.InitialWorkspaceAdministratorRoleKey, receipt.CreatedAt).Build()
 	if err != nil {
 		return fmt.Errorf("build workspace bootstrap receipt insert: %w", err)
 	}
@@ -298,7 +301,7 @@ func (s *SQLIdentityStore) GetCommittedWorkspaceIdentityBootstrapReceipt(ctx con
 		return WorkspaceIdentityBootstrapReceipt{}, false, err
 	}
 	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.sqlRenderer(), "_identity_workspace_bootstrap_receipts", workspaceID).
-		Columns("id", "invocation_id", "request_fingerprint", "contract_version", "contract_hash", "company_id", "first_store_id", "initial_admin_user_id", "initial_admin_login_id", "credential_claimed_at", "created_at").
+		Columns("id", "invocation_id", "request_fingerprint", "contract_version", "contract_hash", "company_id", "first_store_id", "initial_admin_user_id", "initial_admin_login_id", "role_catalog_sha256", "initial_workspace_administrator_role_key", "credential_claimed_at", "created_at").
 		Where(query.Equal("id", strings.TrimSpace(receiptID))).Limit(1).Build()
 	if err != nil {
 		return WorkspaceIdentityBootstrapReceipt{}, false, err
@@ -336,7 +339,7 @@ func (s *SQLIdentityStore) MarkWorkspaceIdentityBootstrapCredentialClaimed(ctx c
 func scanWorkspaceIdentityBootstrapReceipt(row *sql.Row) (WorkspaceIdentityBootstrapReceipt, error) {
 	var receipt WorkspaceIdentityBootstrapReceipt
 	var claimed sql.NullString
-	err := row.Scan(&receipt.ID, &receipt.InvocationID, &receipt.RequestFingerprint, &receipt.ContractVersion, &receipt.ContractHash, &receipt.CompanyID, &receipt.FirstStoreID, &receipt.InitialAdminUserID, &receipt.InitialAdminLoginID, &claimed, &receipt.CreatedAt)
+	err := row.Scan(&receipt.ID, &receipt.InvocationID, &receipt.RequestFingerprint, &receipt.ContractVersion, &receipt.ContractHash, &receipt.CompanyID, &receipt.FirstStoreID, &receipt.InitialAdminUserID, &receipt.InitialAdminLoginID, &receipt.RoleCatalogSHA256, &receipt.InitialWorkspaceAdministratorRoleKey, &claimed, &receipt.CreatedAt)
 	if claimed.Valid {
 		receipt.CredentialClaimedAt = claimed.String
 	}
