@@ -66,6 +66,7 @@ type Core struct {
 	ProfileBindings       *identityapplication.IdentityProfileBindingApplicationService
 	HandlerDelivery       *identityapplication.IdentityHandlerDeliveryApplicationService
 	StoreOrganizations    *identityapplication.IdentityStoreOrganizationDeliveryApplicationService
+	OrganizationUnits     *identityapplication.IdentityOrganizationUnitDeliveryApplicationService
 	Binding               identitysdk.Binding
 }
 
@@ -245,11 +246,15 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 		WorkspaceID: workspaceID, Authentication: authApp, Applications: applicationRegistrations, Identity: identityApp,
 		Transactions: identityStore, Repository: identityStore, Audit: auditApp,
 	})
+	organizationUnits := identityapplication.NewIdentityOrganizationUnitDeliveryApplicationService(identityapplication.IdentityOrganizationUnitDeliveryDependencies{
+		WorkspaceID: workspaceID, Authentication: authApp, Applications: applicationRegistrations, Identity: identityApp,
+		Transactions: identityStore, Repository: identityStore, Audit: auditApp,
+	})
 	binding, err := identitysdkadapter.NewBinding(identitysdkadapter.BindingDependencies{
 		Config: cfg, Authentication: authApp, ProviderConfiguration: providerConfiguration,
 		ProviderFlows: providerFlows, ProviderCallback: identityprovider.CallbackAdapter{},
 		EffectiveAccess: effectiveAccess, Identity: identityApp,
-		Applications: applicationRegistrations, Permissions: permissionCatalog, HandlerDelivery: handlerDelivery, StoreOrganizations: storeOrganizations,
+		Applications: applicationRegistrations, Permissions: permissionCatalog, HandlerDelivery: handlerDelivery, StoreOrganizations: storeOrganizations, OrganizationUnits: organizationUnits,
 		Clock: options.Clock, MutationFence: store, LoginTransactions: authStore,
 	})
 	if err != nil {
@@ -262,7 +267,7 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 		MetadataRuntime: metadataRuntime, Metadata: metadataApp, MetadataSchema: metadataSchemaApp,
 		ProviderConfiguration: providerConfiguration, ProviderFlows: providerFlows,
 		EffectiveAccess: effectiveAccess, IdentityActions: identityActions, PermissionCatalog: permissionCatalog,
-		ProfileBindings: profileBindings, HandlerDelivery: handlerDelivery, StoreOrganizations: storeOrganizations, Binding: binding,
+		ProfileBindings: profileBindings, HandlerDelivery: handlerDelivery, StoreOrganizations: storeOrganizations, OrganizationUnits: organizationUnits, Binding: binding,
 	}, nil
 }
 

@@ -19,7 +19,7 @@ var portableDatasetSpecs = []datasetSpec{
 	},
 	{
 		name: "organization_units", table: "_identity_organization_units", workspace: "workspace_id", orderBy: []string{"path", "id"},
-		columns: []string{"id", "workspace_id", "code", "name", "node_type", "parent_id", "path", "ancestor_ids", "depth", "sort_order", "status", "created_at", "updated_at"},
+		columns: []string{"id", "workspace_id", "code", "name", "sibling_key", "node_type", "parent_id", "path", "ancestor_ids", "depth", "sort_order", "status", "created_at", "updated_at"},
 	},
 	{
 		name: "external_accounts", table: "_identity_external_accounts", workspace: "workspace_id", orderBy: []string{"provider", "provider_subject", "id"},

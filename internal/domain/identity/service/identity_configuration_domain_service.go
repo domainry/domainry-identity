@@ -210,12 +210,7 @@ func validateOrganizationUnitParent(organizationUnit identitymodel.IdentityOrgan
 }
 
 func validOrganizationUnitType(value identitymodel.IdentityOrganizationUnitType) bool {
-	switch value {
-	case identitymodel.IdentityOrganizationUnitCompany, identitymodel.IdentityOrganizationUnitRegion, identitymodel.IdentityOrganizationUnitStore, identitymodel.IdentityOrganizationUnitDepartment, identitymodel.IdentityOrganizationUnitTeam, identitymodel.IdentityOrganizationUnitWarehouse:
-		return true
-	default:
-		return false
-	}
+	return value.Valid()
 }
 
 func (s *IdentityConfigurationDomainService) ValidateRoleAssignmentConfiguration(ctx context.Context, assignment identitymodel.IdentityUserRoleAssignment) ([]identitycontract.IdentityGovernanceValidationIssue, error) {

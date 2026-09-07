@@ -43,6 +43,15 @@ const (
 	IdentityOrganizationUnitWarehouse  IdentityOrganizationUnitType = "warehouse"
 )
 
+func (value IdentityOrganizationUnitType) Valid() bool {
+	switch value {
+	case IdentityOrganizationUnitCompany, IdentityOrganizationUnitRegion, IdentityOrganizationUnitStore, IdentityOrganizationUnitDepartment, IdentityOrganizationUnitTeam, IdentityOrganizationUnitWarehouse:
+		return true
+	default:
+		return false
+	}
+}
+
 const (
 	IdentityAccountHuman      IdentityAccountType = "human"
 	IdentityAccountService    IdentityAccountType = "service"

@@ -270,8 +270,8 @@ func (s *SQLIdentityStore) ExecuteIdentityStoreOrganizationDelivery(ctx context.
 func (s *SQLIdentityStore) insertStoreOrganization(ctx context.Context, executor identitytransaction.Executor, workspaceID string, organization identitymodel.IdentityOrganizationUnit) error {
 	ancestors, _ := json.Marshal(organization.AncestorIDs)
 	statement, arguments, err := query.NewWorkspaceInsertBuilder(s.sqlRenderer(), "_identity_organization_units", workspaceID).
-		Columns("id", "code", "name", "node_type", "parent_id", "path", "ancestor_ids", "depth", "sort_order", "status", "created_at", "updated_at").
-		Values(organization.ID, organization.Code, organization.Name, string(identitymodel.IdentityOrganizationUnitStore), identityStoreOrganizationParentID(organization), organization.Path, string(ancestors), organization.Depth, organization.SortOrder, string(organization.Status), nowString(), nowString()).Build()
+		Columns("id", "code", "name", "sibling_key", "node_type", "parent_id", "path", "ancestor_ids", "depth", "sort_order", "status", "created_at", "updated_at").
+		Values(organization.ID, organization.Code, organization.Name, identitymodel.IdentityOrganizationUnitSiblingKey(organization.ParentID, organization.Name), string(identitymodel.IdentityOrganizationUnitStore), identityStoreOrganizationParentID(organization), organization.Path, string(ancestors), organization.Depth, organization.SortOrder, string(organization.Status), nowString(), nowString()).Build()
 	if err != nil {
 		return fmt.Errorf("build Identity store organization insert: %w", err)
 	}
@@ -290,7 +290,7 @@ func (s *SQLIdentityStore) updateStoreOrganizationCAS(ctx context.Context, execu
 	update := query.NewWorkspaceUpdateBuilder(s.sqlRenderer(), "_identity_organization_units", workspaceID).Set("updated_at", nowString())
 	switch operation {
 	case identitymodel.IdentityStoreOrganizationRename:
-		update.Set("name", desired.Name)
+		update.Set("name", desired.Name).Set("sibling_key", identitymodel.IdentityOrganizationUnitSiblingKey(desired.ParentID, desired.Name))
 	case identitymodel.IdentityStoreOrganizationDisable:
 		update.Set("status", string(identitymodel.IdentityStatusDisabled))
 	default:

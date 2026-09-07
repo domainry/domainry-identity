@@ -62,7 +62,7 @@ func TestStandalonePermissionAPIProjectsDatabaseStateAndActionBindingsWithRoleEn
 		t.Fatal(err)
 	}
 	expectedPermissions := registry.OwnedPermissionDefinitions(identityapplication.IdentityBuiltinAuthorizationOwner)
-	if len(expectedPermissions) != 95 || len(permissions) != 102 {
+	if len(expectedPermissions) != 97 || len(permissions) != 104 {
 		t.Fatalf("database permission count=%d Identity owner registry count=%d", len(permissions), len(expectedPermissions))
 	}
 	ownerCounts := map[string]int{}
@@ -83,7 +83,7 @@ func TestStandalonePermissionAPIProjectsDatabaseStateAndActionBindingsWithRoleEn
 			}
 		}
 	}
-	if ownerCounts[identityapplication.IdentityBuiltinAuthorizationOwner] != 95 || ownerCounts["module:audit"] != 7 {
+	if ownerCounts[identityapplication.IdentityBuiltinAuthorizationOwner] != 97 || ownerCounts["module:audit"] != 7 {
 		t.Fatalf("permission owner counts=%v", ownerCounts)
 	}
 

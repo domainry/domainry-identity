@@ -22,6 +22,7 @@ import (
 	identityhttpapi "github.com/domainry/domainry-identity-sdk/httpapi"
 	identitymodulehost "github.com/domainry/domainry-identity-sdk/modulehost"
 	identitymodule "github.com/domainry/domainry-identity/module"
+	ormsqlite "github.com/domainry/domainry-orm/sqlite"
 )
 
 type testClock struct{ now time.Time }
@@ -650,8 +651,126 @@ func TestFactoryBorrowsProjectPoolWithoutClosingOrColliding(t *testing.T) {
 	if err := db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name LIKE '%schema_migrations'`).Scan(&migrationLedgers); err != nil || migrationLedgers != 1 {
 		t.Fatalf("migration ledgers=%d err=%v", migrationLedgers, err)
 	}
-	if len(registrar.calls) != 1 || registrar.calls[0] != (testEmbeddedMigrationCall{owner: "identity", version: 9, name: "workspace_bootstrap_navigation_policy"}) {
+	if len(registrar.calls) != 1 || registrar.calls[0] != (testEmbeddedMigrationCall{owner: "identity", version: 10, name: "organization_unit_delivery"}) {
 		t.Fatalf("host migration calls=%#v", registrar.calls)
+	}
+}
+
+func TestFactoryEmbeddedOrganizationUnitDeliveryRollsBackWithHostTransaction(t *testing.T) {
+	t.Setenv("APP_ENV", "development")
+	t.Setenv("AUTH_JWT_SECRET", "module-organization-unit-secret")
+	t.Setenv("AUTH_DEFAULT_PASSWORD", "Domainry@2026")
+	databasePath := filepath.Join(t.TempDir(), "organization-unit-project.db")
+	db, err := sql.Open("sqlite", databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	db.SetMaxOpenConns(4)
+	handle := identitysdk.DatabaseHandle{Pool: db, Driver: "sqlite", FilePath: databasePath, Migrations: &testEmbeddedMigrationRegistrar{}}
+	application := identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "runtime-a"}
+	factory := identitymodule.NewFactory(identitymodule.Options{DatabaseDriver: "sqlite", DatabasePath: databasePath})
+	binding, err := factory.OpenWithDatabase(t.Context(), application, handle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = binding.Close(t.Context()) })
+	if _, err := binding.Applications().Register(t.Context(), identitysdk.ApplicationRegistration{Application: application}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(t.Context(), `INSERT INTO _identity_organization_units (id, workspace_id, code, name, sibling_key, node_type, parent_id, path, ancestor_ids, depth, sort_order, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"company-a", "workspace-primary", "COMPANY-A", "Company A", "company-a-sibling-key", "company", nil, "/company-a", "[]", 0, 0, "active", "now", "now"); err != nil {
+		t.Fatal(err)
+	}
+
+	otherApplication := identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "runtime-b"}
+	otherBinding, err := factory.OpenWithDatabase(t.Context(), otherApplication, handle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = otherBinding.Close(t.Context()) })
+	if _, err := otherBinding.Applications().Register(t.Context(), identitysdk.ApplicationRegistration{Application: otherApplication}); err != nil {
+		t.Fatal(err)
+	}
+	otherSession, err := otherBinding.Authentication().LoginWithPassword(t.Context(), identitysdk.PasswordLoginRequest{
+		WorkspaceID: otherApplication.WorkspaceID, ApplicationKey: otherApplication.ApplicationKey, Login: "admin@example.com", Password: "Domainry@2026",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	embedded, ok := binding.(identitymodule.EmbeddedOrganizationUnitDeliveryBinding)
+	if !ok {
+		t.Fatal("Factory binding omitted EmbeddedOrganizationUnitDeliveryBinding")
+	}
+	mismatchTransaction, err := ormsqlite.NewProfile().BeginWrite(t.Context(), db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mismatchDelivery, err := embedded.OrganizationUnitDeliveryUnitOfWorkBinder().BindOrganizationUnitDeliveryUnitOfWork(identitysdk.EmbeddedTransaction{Executor: mismatchTransaction})
+	if err != nil {
+		_ = mismatchTransaction.Rollback(t.Context())
+		t.Fatal(err)
+	}
+	if _, err := mismatchDelivery.ResolveOrganizationUnit(t.Context(), identitymodule.OrganizationUnitResolveRequest{
+		ContractVersion: identitymodule.OrganizationUnitDeliveryContractVersionV1, AccessToken: otherSession.AccessToken,
+		OrganizationID: "company-a", NodeType: identitymodule.OrganizationUnitDepartment,
+	}); err == nil {
+		_ = mismatchTransaction.Rollback(t.Context())
+		t.Fatal("cross-application token was accepted")
+	} else {
+		var sdkErr *identitysdk.Error
+		if !errors.As(err, &sdkErr) || sdkErr.Code != "identity.organization_unit_delivery_application_scope_mismatch" {
+			_ = mismatchTransaction.Rollback(t.Context())
+			t.Fatalf("cross-application token error=%v", err)
+		}
+	}
+	if err := mismatchTransaction.Rollback(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+
+	session, err := binding.Authentication().LoginWithPassword(t.Context(), identitysdk.PasswordLoginRequest{
+		WorkspaceID: application.WorkspaceID, ApplicationKey: application.ApplicationKey, Login: "admin@example.com", Password: "Domainry@2026",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hostTransaction, err := ormsqlite.NewProfile().BeginWrite(t.Context(), db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	delivery, err := embedded.OrganizationUnitDeliveryUnitOfWorkBinder().BindOrganizationUnitDeliveryUnitOfWork(identitysdk.EmbeddedTransaction{Executor: hostTransaction})
+	if err != nil {
+		_ = hostTransaction.Rollback(t.Context())
+		t.Fatal(err)
+	}
+	created, err := delivery.CreateOrganizationUnit(t.Context(), identitymodule.OrganizationUnitDeliveryRequest{
+		ContractVersion: identitymodule.OrganizationUnitDeliveryContractVersionV1,
+		AccessToken:     session.AccessToken,
+		IdempotencyKey:  "factory-department-rollback",
+		Organization: identitymodule.OrganizationUnitCreateCandidate{
+			OrganizationID: "factory-department", Code: "FACTORY-DEPARTMENT", Name: "Factory Department",
+			NodeType: identitymodule.OrganizationUnitDepartment, ParentOrganizationID: "company-a", ExpectedVersion: 0,
+		},
+	})
+	if err != nil || created.Organization.Path != "/company-a/factory-department" {
+		_ = hostTransaction.Rollback(t.Context())
+		t.Fatalf("Factory embedded delivery=%+v err=%v", created, err)
+	}
+	if err := hostTransaction.Rollback(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	for _, check := range []struct {
+		table, column, value string
+	}{
+		{table: "_identity_organization_units", column: "id", value: "factory-department"},
+		{table: "_identity_organization_unit_delivery_states", column: "organization_id", value: "factory-department"},
+		{table: "_identity_organization_unit_deliveries", column: "idempotency_key", value: "factory-department-rollback"},
+		{table: "_audit_events", column: "record_id", value: "factory-department"},
+	} {
+		var count int
+		if err := db.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM "+check.table+" WHERE workspace_id = ? AND "+check.column+" = ?", "workspace-primary", check.value).Scan(&count); err != nil || count != 0 {
+			t.Fatalf("rollback %s count=%d err=%v", check.table, count, err)
+		}
 	}
 }
 

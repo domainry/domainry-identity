@@ -146,15 +146,23 @@ func IdentityBuiltinAuthorizationActions() []identitymodel.IdentityActionDefinit
 		permissionAction("identity.platform_capabilities.get", "平台能力", "读取", "GET", "/identity/platform-capabilities", "读取 Identity 平台能力目录", nil),
 	}
 
-	out := make([]identitymodel.IdentityActionDefinition, 0, len(specs)+19)
+	out := make([]identitymodel.IdentityActionDefinition, 0, len(specs)+21)
 	out = append(out, identityMetadataNonHTTPActions(metadata)...)
 	out = append(out, identityHandlerDeliveryNonHTTPActions()...)
 	out = append(out, identityStoreOrganizationDeliveryNonHTTPActions()...)
+	out = append(out, identityOrganizationUnitDeliveryNonHTTPActions()...)
 	out = append(out, identityWorkspaceUsageNonHTTPActions()...)
 	for _, spec := range specs {
 		out = append(out, buildIdentityBuiltinAction(spec))
 	}
 	return out
+}
+
+func identityOrganizationUnitDeliveryNonHTTPActions() []identitymodel.IdentityActionDefinition {
+	return []identitymodel.IdentityActionDefinition{
+		nonHTTPPermissionAction(identitycontract.IdentityOrganizationUnitDeliveryCreatePermission, "identity.organization_unit_delivery", "Handler 组织节点交付", "create", "创建", "在已授权父节点下原子创建通用组织节点", actioncontract.EffectWrite, actioncontract.RiskHigh),
+		nonHTTPPermissionAction(identitycontract.IdentityOrganizationUnitDeliveryResolvePermission, "identity.organization_unit_delivery", "Handler 组织节点交付", "resolve", "解析", "按持久化父节点权限解析最小组织节点投影", actioncontract.EffectRead, actioncontract.RiskLow),
+	}
 }
 
 func identityWorkspaceUsageNonHTTPActions() []identitymodel.IdentityActionDefinition {

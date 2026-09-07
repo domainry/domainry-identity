@@ -130,7 +130,7 @@ func TestPermissionReconcileEmitsStableReceiptLogWithGeneratedRequestID(t *testi
 	zap.ReplaceGlobals(zap.New(core))
 	t.Cleanup(func() { zap.ReplaceGlobals(previous) })
 	receipt, err := service.ReconcileOwner(t.Context(), IdentityBuiltinAuthorizationOwner)
-	if err != nil || receipt.Inserted != 95 {
+	if err != nil || receipt.Inserted != 97 {
 		t.Fatalf("reconcile receipt=%+v error=%v", receipt, err)
 	}
 	entries := observed.FilterMessage("identity_permission_reconcile_applied").All()
@@ -138,7 +138,7 @@ func TestPermissionReconcileEmitsStableReceiptLogWithGeneratedRequestID(t *testi
 		t.Fatalf("reconcile log entries=%v", observed.All())
 	}
 	fields := entries[0].ContextMap()
-	if fields["workspace_id"] != "workspace-primary" || fields["source_owner"] != IdentityBuiltinAuthorizationOwner || fields["snapshot_hash"] != receipt.SnapshotHash || fields["inserted"] != int64(95) {
+	if fields["workspace_id"] != "workspace-primary" || fields["source_owner"] != IdentityBuiltinAuthorizationOwner || fields["snapshot_hash"] != receipt.SnapshotHash || fields["inserted"] != int64(97) {
 		t.Fatalf("reconcile log fields=%v", fields)
 	}
 	requestID, _ := fields["request_id"].(string)

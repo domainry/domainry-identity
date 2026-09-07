@@ -57,6 +57,8 @@ var identityTableOwnership = []TableOwnership{
 	{Name: "_identity_installation_administrator_bootstrap_receipts", Boundary: TableBoundaryIdentityCore, MigrationDisposition: MigrationEvidenceOnly},
 	{Name: "_identity_store_organization_states", Boundary: TableBoundaryAuthorization, MigrationDisposition: MigrationEvidenceOnly},
 	{Name: "_identity_store_organization_deliveries", Boundary: TableBoundaryAuthorization, MigrationDisposition: MigrationEvidenceOnly},
+	{Name: "_identity_organization_unit_delivery_states", Boundary: TableBoundaryAuthorization, MigrationDisposition: MigrationEvidenceOnly},
+	{Name: "_identity_organization_unit_deliveries", Boundary: TableBoundaryAuthorization, MigrationDisposition: MigrationEvidenceOnly},
 	{Name: "_identity_external_accounts", Boundary: TableBoundaryAuthentication, MigrationDisposition: MigrationPortable},
 	{Name: "_identity_localized_texts", Boundary: TableBoundaryMetadata, MigrationDisposition: MigrationPortable},
 	{Name: "_identity_menus", Boundary: TableBoundaryAuthorization, MigrationDisposition: MigrationPortable},

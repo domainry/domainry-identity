@@ -182,6 +182,18 @@ type IdentityStoreOrganizationDeliveryRepository interface {
 	ExecuteIdentityStoreOrganizationDelivery(context.Context, identitymodel.IdentityStoreOrganizationDeliveryMutation) (identitymodel.IdentityStoreOrganizationDeliveryReceipt, error)
 }
 
+// IdentityOrganizationUnitDeliveryRepository persists only create receipts
+// and concurrency evidence. Canonical organization facts remain in
+// _identity_organization_units and every operation is bound to a persisted
+// parent in the same Workspace.
+type IdentityOrganizationUnitDeliveryRepository interface {
+	LockIdentityOrganizationUnitDeliveryParent(context.Context, string, string) (identitymodel.IdentityOrganizationUnit, bool, error)
+	GetIdentityOrganizationUnitDeliveryReceipt(context.Context, string, string) (identitymodel.IdentityOrganizationUnitDeliveryReceipt, bool, error)
+	GetIdentityOrganizationUnitDeliveryState(context.Context, string, string) (identitymodel.IdentityOrganizationUnitDeliveryState, bool, error)
+	ResolveIdentityDeliveredOrganizationUnit(context.Context, string, string, identitymodel.IdentityOrganizationUnitType, identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityDeliveredOrganizationUnit, bool, error)
+	ExecuteIdentityOrganizationUnitDelivery(context.Context, identitymodel.IdentityOrganizationUnitDeliveryMutation) (identitymodel.IdentityOrganizationUnitDeliveryReceipt, error)
+}
+
 // IdentityWorkspaceUsageRepository returns grouped account dimensions for a
 // bounded, authority-selected Workspace page in one query. It never loads
 // user projections or performs per-Workspace reads.

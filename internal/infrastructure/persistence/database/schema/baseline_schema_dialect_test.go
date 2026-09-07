@@ -35,6 +35,8 @@ func TestBaselinePhysicalSchemaDDLHasThreeDialectCoverage(t *testing.T) {
 			rendered := strings.Join(state.execQueries, "\n")
 			if !strings.Contains(rendered, "CREATE TABLE IF NOT EXISTS") ||
 				!strings.Contains(rendered, store.TableIdentifier("_identity_users")) ||
+				!strings.Contains(rendered, store.TableIdentifier("_identity_organization_unit_delivery_states")) ||
+				!strings.Contains(rendered, store.TableIdentifier("_identity_organization_unit_deliveries")) ||
 				!strings.Contains(rendered, store.TableIdentifier("_identity_metadata_refresh_intents")) ||
 				!strings.Contains(rendered, "ALTER TABLE "+store.TableIdentifier("_identity_workspace_bootstrap_receipts")) ||
 				!strings.Contains(rendered, "role_catalog_sha256") ||

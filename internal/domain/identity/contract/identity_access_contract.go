@@ -44,6 +44,8 @@ const (
 	IdentityStoreOrganizationDeliveryDisablePermission   = "identity.store_organization_delivery.disable"
 	IdentityStoreOrganizationDeliveryResolvePermission   = "identity.store_organization_delivery.resolve"
 	IdentityStoreOrganizationDeliveryListPermission      = "identity.store_organization_delivery.list"
+	IdentityOrganizationUnitDeliveryCreatePermission     = "identity.organization_unit_delivery.create"
+	IdentityOrganizationUnitDeliveryResolvePermission    = "identity.organization_unit_delivery.resolve"
 	IdentityOrganizationUnitsVersionsPermission          = "identity.organization_units.versions"
 	IdentityEntitlementsBatchPermission                  = "identity.entitlements.batch"
 )

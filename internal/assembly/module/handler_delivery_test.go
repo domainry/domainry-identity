@@ -8,6 +8,7 @@ import (
 
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
+	organizationunit "github.com/domainry/domainry-identity/organizationunit"
 	ormsqlite "github.com/domainry/domainry-orm/sqlite"
 	_ "modernc.org/sqlite"
 )
@@ -50,6 +51,29 @@ func TestStoreOrganizationModuleExposesOnlyTransactionBoundNarrowCapability(t *t
 	}
 	if _, leaked := any(capability).(identitysdk.StoreOrganizationDeliveryUnitOfWorkBinder); leaked {
 		t.Fatal("project capability leaked the StoreOrganization transaction binder")
+	}
+}
+
+func TestOrganizationUnitModuleExposesOnlyTransactionBoundNarrowCapability(t *testing.T) {
+	binding := &moduleBinding{}
+	if _, exposed := any(binding).(organizationunit.Binding); exposed {
+		t.Fatal("embedded module exposed an unbound OrganizationUnitDelivery")
+	}
+	binder := binding.OrganizationUnitDeliveryUnitOfWorkBinder()
+	if _, err := binder.BindOrganizationUnitDeliveryUnitOfWork(identitysdk.EmbeddedTransaction{Executor: &sql.DB{}}); err == nil {
+		t.Fatal("plain database handle was accepted as a transaction")
+	} else {
+		var sdkErr *identitysdk.Error
+		if !errors.As(err, &sdkErr) || sdkErr.Code != "identity.organization_unit_delivery_transaction_required" {
+			t.Fatalf("plain database transaction error=%v", err)
+		}
+	}
+	capability, err := binder.BindOrganizationUnitDeliveryUnitOfWork(identitysdk.EmbeddedTransaction{Executor: &sql.Tx{}})
+	if err != nil || capability == nil {
+		t.Fatalf("bound capability=%v err=%v", capability, err)
+	}
+	if _, leaked := any(capability).(organizationunit.UnitOfWorkBinder); leaked {
+		t.Fatal("project capability leaked the OrganizationUnit transaction binder")
 	}
 }
 
@@ -99,6 +123,9 @@ func TestDeliveryBindersAcceptDomainryORMSQLiteImmediateTransaction(t *testing.T
 	}
 	if capability, err := binding.StoreOrganizationDeliveryUnitOfWorkBinder().BindStoreOrganizationDeliveryUnitOfWork(carrier); err != nil || capability == nil {
 		t.Fatalf("bind StoreOrganizationDelivery to SQLite immediate transaction: capability=%v err=%v", capability, err)
+	}
+	if capability, err := binding.OrganizationUnitDeliveryUnitOfWorkBinder().BindOrganizationUnitDeliveryUnitOfWork(carrier); err != nil || capability == nil {
+		t.Fatalf("bind OrganizationUnitDelivery to SQLite immediate transaction: capability=%v err=%v", capability, err)
 	}
 	binding.workspaceUsage = identityapplication.NewIdentityWorkspaceUsageApplicationService(identityapplication.IdentityWorkspaceUsageDependencies{})
 	if capability, err := binding.WorkspaceIdentityUsageUnitOfWorkBinder().BindWorkspaceIdentityUsageUnitOfWork(carrier); err != nil || capability == nil {

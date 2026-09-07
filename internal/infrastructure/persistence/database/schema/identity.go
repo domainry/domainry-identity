@@ -2,8 +2,11 @@ package schema
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 
+	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	"github.com/domainry/domainry-orm/query"
 	ormschema "github.com/domainry/domainry-orm/schema"
 )
 
@@ -64,6 +67,7 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"workspace_id " + text + " NOT NULL",
 			"code " + text + " NOT NULL",
 			"name TEXT NOT NULL",
+			"sibling_key " + identityIndexText + " NOT NULL DEFAULT ''",
 			"node_type " + text + " NOT NULL",
 			"parent_id " + text,
 			"path TEXT NOT NULL",
@@ -233,6 +237,23 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"updated_at " + identityIndexText + " NOT NULL",
 		},
 		"_identity_store_organization_deliveries": {
+			"id " + identityIndexText + " PRIMARY KEY",
+			"workspace_id " + identityIndexText + " NOT NULL",
+			"actor_id " + identityIndexText + " NOT NULL",
+			"idempotency_key " + identityIndexText + " NOT NULL",
+			"request_fingerprint " + identityIndexText + " NOT NULL",
+			"result_json TEXT NOT NULL",
+			"created_at " + identityIndexText + " NOT NULL",
+		},
+		"_identity_organization_unit_delivery_states": {
+			"id " + identityIndexText + " PRIMARY KEY",
+			"workspace_id " + identityIndexText + " NOT NULL",
+			"organization_id " + identityIndexText + " NOT NULL",
+			"version BIGINT NOT NULL",
+			"state_fingerprint " + identityIndexText + " NOT NULL",
+			"updated_at " + identityIndexText + " NOT NULL",
+		},
+		"_identity_organization_unit_deliveries": {
 			"id " + identityIndexText + " PRIMARY KEY",
 			"workspace_id " + identityIndexText + " NOT NULL",
 			"actor_id " + identityIndexText + " NOT NULL",
@@ -488,6 +509,9 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 	if err := ensureWorkspaceBootstrapRolePolicyEvidence(ctx, s); err != nil {
 		return err
 	}
+	if err := ensureIdentityOrganizationUnitSiblingKeys(ctx, s); err != nil {
+		return err
+	}
 	if err := s.EnsureCompositePrimaryKey(ctx, "_identity_auth_provider_credentials", "workspace_id", "provider_key"); err != nil {
 		return fmt.Errorf("ensure workspace auth provider credential identity: %w", err)
 	}
@@ -526,6 +550,12 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 	}
 	if err := s.CreateIndexIfMissing(ctx, "_identity_store_organization_deliveries", "uniq_identity_store_organization_delivery_key", true, "workspace_id", "idempotency_key"); err != nil {
 		return fmt.Errorf("create Identity store organization delivery unique index: %w", err)
+	}
+	if err := s.CreateIndexIfMissing(ctx, "_identity_organization_unit_delivery_states", "uniq_identity_organization_unit_delivery_state", true, "workspace_id", "organization_id"); err != nil {
+		return fmt.Errorf("create Identity organization unit delivery state unique index: %w", err)
+	}
+	if err := s.CreateIndexIfMissing(ctx, "_identity_organization_unit_deliveries", "uniq_identity_organization_unit_delivery_key", true, "workspace_id", "idempotency_key"); err != nil {
+		return fmt.Errorf("create Identity organization unit delivery unique index: %w", err)
 	}
 	if err := s.CreateIndexIfMissing(ctx, "_identity_users", "idx_identity_users_workspace_usage", false, "workspace_id", "account_type", "status"); err != nil {
 		return fmt.Errorf("create Identity Workspace usage index: %w", err)
@@ -586,6 +616,7 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 		{table: "_identity_profile_binding_definitions", name: "uniq_identity_profile_binding_definition_key", columns: []string{"resource_key"}},
 		{table: "_identity_profile_binding_definition_versions", name: "uniq_identity_profile_binding_definition_version", columns: []string{"resource_type", "resource_key", "schema_version", "schema_hash"}},
 		{table: "_identity_organization_units", name: "uniq_identity_organization_unit_code", columns: []string{"workspace_id", "code"}},
+		{table: "_identity_organization_units", name: "uniq_identity_organization_unit_sibling_name", columns: []string{"workspace_id", "sibling_key"}},
 		{table: "_identity_profile_bindings", name: "uniq_identity_profile_binding_profile", columns: []string{"workspace_id", "object_key", "profile_id"}},
 		{table: "_identity_profile_bindings", name: "uniq_identity_profile_binding_user", columns: []string{"workspace_id", "binding_key", "identity_user_id"}},
 		{table: "_identity_profile_binding_receipts", name: "uniq_identity_profile_binding_receipt", columns: []string{"workspace_id", "object_key", "profile_id", "operation", "idempotency_key"}},
@@ -600,6 +631,74 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 	}
 	if err := ensureIdentityApplicationsSchema(ctx, s); err != nil {
 		return err
+	}
+	return nil
+}
+
+func ensureIdentityOrganizationUnitSiblingKeys(ctx context.Context, s Store) error {
+	const table = "_identity_organization_units"
+	columns, err := s.TableColumns(ctx, table)
+	if err != nil {
+		return fmt.Errorf("inspect Identity organization-unit sibling key: %w", err)
+	}
+	if !columns["sibling_key"] {
+		definition := ormschema.Column("sibling_key", ormschema.TextKey(64)).NotNull().DefaultValue("")
+		statement, arguments, buildErr := ormschema.NewAddColumn(s.SchemaRenderer(), table, definition).Build()
+		if buildErr != nil {
+			return fmt.Errorf("build Identity organization-unit sibling key column: %w", buildErr)
+		}
+		if _, execErr := s.SchemaDB().ExecContext(ctx, statement, arguments...); execErr != nil {
+			return fmt.Errorf("add Identity organization-unit sibling key column: %w", execErr)
+		}
+	}
+
+	statement, arguments, err := query.NewSelectBuilder(s.SchemaRenderer(), table).
+		Columns("id", "workspace_id", "parent_id", "name", "sibling_key").Build()
+	if err != nil {
+		return fmt.Errorf("build Identity organization-unit sibling key backfill query: %w", err)
+	}
+	rows, err := s.SchemaDB().QueryContext(ctx, statement, arguments...)
+	if err != nil {
+		return fmt.Errorf("query Identity organization-unit sibling key backfill: %w", err)
+	}
+	type organizationUnitSibling struct {
+		id, workspaceID, name, currentKey string
+		parentID                          sql.NullString
+	}
+	items := []organizationUnitSibling{}
+	for rows.Next() {
+		var item organizationUnitSibling
+		if scanErr := rows.Scan(&item.id, &item.workspaceID, &item.parentID, &item.name, &item.currentKey); scanErr != nil {
+			_ = rows.Close()
+			return fmt.Errorf("scan Identity organization-unit sibling key backfill: %w", scanErr)
+		}
+		items = append(items, item)
+	}
+	if rowsErr := rows.Err(); rowsErr != nil {
+		_ = rows.Close()
+		return fmt.Errorf("iterate Identity organization-unit sibling key backfill: %w", rowsErr)
+	}
+	if closeErr := rows.Close(); closeErr != nil {
+		return fmt.Errorf("close Identity organization-unit sibling key backfill: %w", closeErr)
+	}
+	for _, item := range items {
+		var parentID *string
+		if item.parentID.Valid {
+			value := item.parentID.String
+			parentID = &value
+		}
+		expected := identitymodel.IdentityOrganizationUnitSiblingKey(parentID, item.name)
+		if item.currentKey == expected {
+			continue
+		}
+		update, updateArguments, buildErr := query.NewWorkspaceUpdateBuilder(s.SchemaRenderer(), table, item.workspaceID).
+			Set("sibling_key", expected).Where(query.Equal("id", item.id)).Build()
+		if buildErr != nil {
+			return fmt.Errorf("build Identity organization-unit sibling key backfill update: %w", buildErr)
+		}
+		if _, execErr := s.SchemaDB().ExecContext(ctx, update, updateArguments...); execErr != nil {
+			return fmt.Errorf("backfill Identity organization-unit sibling key: %w", execErr)
+		}
 	}
 	return nil
 }

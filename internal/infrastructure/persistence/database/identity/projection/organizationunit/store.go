@@ -44,9 +44,9 @@ func (s *Store) Upsert(ctx context.Context, execer Execer, workspaceID string, i
 	}
 	ancestors, _ := json.Marshal(item.AncestorIDs)
 	insert := query.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_organization_units", workspace.String()).
-		Columns("id", "code", "name", "node_type", "parent_id", "path", "ancestor_ids", "depth", "sort_order", "status", "created_at", "updated_at").
-		Values(item.ID, item.Code, item.Name, string(item.NodeType), nullablePointer(item.ParentID), item.Path, string(ancestors), item.Depth, item.SortOrder, string(item.Status), s.now(), s.now())
-	s.backend.ApplyUpsert(insert, []string{"workspace_id", "id"}, "code", "name", "node_type", "parent_id", "path", "ancestor_ids", "depth", "sort_order", "status", "updated_at")
+		Columns("id", "code", "name", "sibling_key", "node_type", "parent_id", "path", "ancestor_ids", "depth", "sort_order", "status", "created_at", "updated_at").
+		Values(item.ID, item.Code, item.Name, identitymodel.IdentityOrganizationUnitSiblingKey(item.ParentID, item.Name), string(item.NodeType), nullablePointer(item.ParentID), item.Path, string(ancestors), item.Depth, item.SortOrder, string(item.Status), s.now(), s.now())
+	s.backend.ApplyUpsert(insert, []string{"workspace_id", "id"}, "code", "name", "sibling_key", "node_type", "parent_id", "path", "ancestor_ids", "depth", "sort_order", "status", "updated_at")
 	statement, arguments, err := insert.Build()
 	if err != nil {
 		return fmt.Errorf("build identity organization unit upsert: %w", err)
@@ -130,7 +130,7 @@ func (s *Store) updateWithinDataScope(ctx context.Context, tx *sql.Tx, workspace
 		predicates = append(predicates, organizationUnitDataScopePredicate(scope))
 	}
 	statement, arguments, err := query.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_organization_units", workspaceID).
-		Set("code", item.Code).Set("name", item.Name).Set("node_type", string(item.NodeType)).
+		Set("code", item.Code).Set("name", item.Name).Set("sibling_key", identitymodel.IdentityOrganizationUnitSiblingKey(item.ParentID, item.Name)).Set("node_type", string(item.NodeType)).
 		Set("parent_id", nullablePointer(item.ParentID)).Set("path", item.Path).Set("ancestor_ids", string(ancestors)).
 		Set("depth", item.Depth).Set("sort_order", item.SortOrder).Set("status", string(item.Status)).Set("updated_at", s.now()).
 		Where(query.And(predicates...)).Build()
@@ -154,8 +154,8 @@ func (s *Store) updateWithinDataScope(ctx context.Context, tx *sql.Tx, workspace
 func (s *Store) insert(ctx context.Context, tx *sql.Tx, workspaceID string, item identitymodel.IdentityOrganizationUnit) error {
 	ancestors, _ := json.Marshal(item.AncestorIDs)
 	statement, arguments, err := query.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_organization_units", workspaceID).
-		Columns("id", "code", "name", "node_type", "parent_id", "path", "ancestor_ids", "depth", "sort_order", "status", "created_at", "updated_at").
-		Values(item.ID, item.Code, item.Name, string(item.NodeType), nullablePointer(item.ParentID), item.Path, string(ancestors), item.Depth, item.SortOrder, string(item.Status), s.now(), s.now()).
+		Columns("id", "code", "name", "sibling_key", "node_type", "parent_id", "path", "ancestor_ids", "depth", "sort_order", "status", "created_at", "updated_at").
+		Values(item.ID, item.Code, item.Name, identitymodel.IdentityOrganizationUnitSiblingKey(item.ParentID, item.Name), string(item.NodeType), nullablePointer(item.ParentID), item.Path, string(ancestors), item.Depth, item.SortOrder, string(item.Status), s.now(), s.now()).
 		Build()
 	if err != nil {
 		return fmt.Errorf("build scoped identity organization unit insert: %w", err)
