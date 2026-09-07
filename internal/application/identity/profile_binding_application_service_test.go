@@ -260,7 +260,7 @@ func TestProfileBindingAtomicDeliveryAcceptsOnlyExactEmbeddedStagedProfile(t *te
 	prospective := identitymodel.IdentityUser{ID: request.IdentityUserID, Status: identitymodel.IdentityStatusActive}
 	ctx := WithEmbeddedHandlerProfileRecord(t.Context(), request.ObjectKey, request.ProfileID, map[string]any{"identity_user": nil, "status": "active"})
 	mutation, _, err := service.PrepareMutationForAtomicDelivery(ctx, request, principal, prospective, identitycontract.IdentityHandlerDeliveryCreatePermission)
-	if err != nil || mutation.ProfileID != request.ProfileID || mutation.IdentityUserID != prospective.ID {
+	if err != nil || mutation.ProfileID != request.ProfileID || mutation.IdentityUserID != prospective.ID || !mutation.ProfileRecordStaged {
 		t.Fatalf("mutation=%#v err=%v", mutation, err)
 	}
 	wrong := WithEmbeddedHandlerProfileRecord(t.Context(), request.ObjectKey, "other-profile", map[string]any{"identity_user": nil})

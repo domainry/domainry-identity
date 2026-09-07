@@ -258,9 +258,11 @@ func (s *IdentityProfileBindingApplicationService) prepareMutation(ctx context.C
 	if err != nil {
 		return identitymodel.IdentityProfileBindingMutation{}, "", err
 	}
+	profileRecordStaged := false
 	if !recordFound {
 		if embedded, ok := embeddedHandlerProfileRecordFromContext(ctx, request.ObjectKey, request.ProfileID); ok {
 			record, recordFound = embedded, true
+			profileRecordStaged = true
 		}
 	}
 	if !recordFound {
@@ -272,6 +274,7 @@ func (s *IdentityProfileBindingApplicationService) prepareMutation(ctx context.C
 		return identitymodel.IdentityProfileBindingMutation{}, "", err
 	}
 	mutation.IdentityUserID = targetUserID
+	mutation.ProfileRecordStaged = profileRecordStaged
 	mutation.RequestFingerprint = identityProfileBindingFingerprint(mutation)
 	return mutation, currentUserID, nil
 }

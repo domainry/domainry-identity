@@ -115,7 +115,11 @@ func (s *Store) ExecuteIdentityProfileBindingMutation(ctx context.Context, mutat
 	if err := validateIdentityProfileBindingMutation(mutation); err != nil {
 		return identitymodel.IdentityProfileBindingReceipt{}, err
 	}
-	if executor := identitytransaction.ExecutorFromContext(ctx); executor != nil {
+	executor := identitytransaction.ExecutorFromContext(ctx)
+	if mutation.ProfileRecordStaged && executor == nil {
+		return identitymodel.IdentityProfileBindingReceipt{}, profileBindingStoreError(apperror.KindInternal, "backend.identity.profile_binding_transaction_required")
+	}
+	if executor != nil {
 		return s.executeIdentityProfileBindingMutation(ctx, executor, mutation)
 	}
 	tx, err := s.store.DB().BeginTx(ctx, nil)
@@ -143,12 +147,16 @@ func (s *Store) executeIdentityProfileBindingMutation(ctx context.Context, execu
 		receipt.Replayed = true
 		return receipt, nil
 	}
-	currentUserID, err := s.loadProfileIdentityUser(ctx, executor, mutation)
-	if errors.Is(err, sql.ErrNoRows) {
-		return identitymodel.IdentityProfileBindingReceipt{}, profileBindingStoreError(apperror.KindNotFound, "backend.identity.profile_not_found")
-	}
-	if err != nil {
-		return identitymodel.IdentityProfileBindingReceipt{}, err
+	currentUserID := ""
+	if !mutation.ProfileRecordStaged {
+		var err error
+		currentUserID, err = s.loadProfileIdentityUser(ctx, executor, mutation)
+		if errors.Is(err, sql.ErrNoRows) {
+			return identitymodel.IdentityProfileBindingReceipt{}, profileBindingStoreError(apperror.KindNotFound, "backend.identity.profile_not_found")
+		}
+		if err != nil {
+			return identitymodel.IdentityProfileBindingReceipt{}, err
+		}
 	}
 	current, found, err := s.loadBinding(ctx, executor, mutation.WorkspaceID, mutation.ObjectKey, mutation.ProfileID)
 	if err != nil {
@@ -182,7 +190,7 @@ func (s *Store) executeIdentityProfileBindingMutation(ctx context.Context, execu
 		IdentityUserID: desiredUserID, Status: status, InvitationChannel: mutation.InvitationChannel, ClaimProofType: mutation.ClaimProofType,
 		Version: currentVersion + 1, CreatedAt: createdAt, UpdatedAt: now,
 	}
-	if mutation.Operation != identitymodel.IdentityProfileBindingInvite {
+	if mutation.Operation != identitymodel.IdentityProfileBindingInvite && !mutation.ProfileRecordStaged {
 		if err := s.updateProfileIdentityUser(ctx, executor, mutation, currentUserID, desiredUserID, now); err != nil {
 			return identitymodel.IdentityProfileBindingReceipt{}, err
 		}
@@ -494,6 +502,9 @@ func validateIdentityProfileBindingMutation(mutation identitymodel.IdentityProfi
 		strings.TrimSpace(mutation.ProfileID) == "" || strings.TrimSpace(mutation.IdentityField) == "" || strings.TrimSpace(mutation.IdempotencyKey) == "" ||
 		strings.TrimSpace(mutation.RequestFingerprint) == "" || mutation.ExpectedVersion < 0 {
 		return profileBindingStoreError(apperror.KindBadRequest, "backend.identity.profile_binding_command_invalid")
+	}
+	if mutation.ProfileRecordStaged && (mutation.Operation != identitymodel.IdentityProfileBindingBind || mutation.ExpectedVersion != 0 || strings.TrimSpace(mutation.IdentityUserID) == "") {
+		return profileBindingStoreError(apperror.KindBadRequest, "backend.identity.profile_binding_staged_create_invalid")
 	}
 	return nil
 }

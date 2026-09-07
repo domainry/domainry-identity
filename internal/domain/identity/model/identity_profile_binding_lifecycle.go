@@ -52,6 +52,10 @@ type IdentityProfileBindingMutation struct {
 	IdempotencyKey       string                          `json:"idempotency_key"`
 	RequestFingerprint   string                          `json:"request_fingerprint"`
 	ActorID              string                          `json:"actor_id"`
+	// ProfileRecordStaged is an internal host-transaction fact. Runtime sets it
+	// only after validating a new business Profile whose insert is staged in the
+	// same Unit of Work; Identity must not issue a second read/update for it.
+	ProfileRecordStaged bool `json:"profile_record_staged,omitempty"`
 }
 
 type IdentityProfileBindingReceipt struct {
