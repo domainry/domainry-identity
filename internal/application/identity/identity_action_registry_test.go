@@ -13,8 +13,8 @@ func TestStandaloneAuthorizationSliceRegistryOwnsCompleteRouteAndPermissionMatri
 		t.Fatal(err)
 	}
 	definitions := registry.Definitions()
-	if len(definitions) != 128 {
-		t.Fatalf("Identity Action count=%d want=128", len(definitions))
+	if len(definitions) != 129 {
+		t.Fatalf("Identity Action count=%d want=129", len(definitions))
 	}
 	seenHTTP := map[string]string{}
 	pageBindings := 0

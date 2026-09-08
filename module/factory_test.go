@@ -271,6 +271,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		"GET /.well-known/jwks.json":                            identityhttpapi.ExposurePublic,
 		"GET /.well-known/openid-configuration":                 identityhttpapi.ExposurePublic,
 		"POST /auth/login":                                      identityhttpapi.ExposurePublic,
+		"POST /auth/totp":                                       identityhttpapi.ExposurePublic,
 		"POST /auth/guest":                                      identityhttpapi.ExposurePublic,
 		"POST /auth/providers/{provider}/exchange":              identityhttpapi.ExposurePublic,
 		"GET /auth/providers/{provider}/setup-check":            identityhttpapi.ExposureManagement,
@@ -370,6 +371,17 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	})
 	if err != nil || adminSession.AccessToken == "" {
 		t.Fatalf("workspace admin login session=%#v err=%v", adminSession, err)
+	}
+	if mountedPatterns["POST /auth/totp"] != "browser_authentication" {
+		t.Fatalf("TOTP route has unexpected owner %q", mountedPatterns["POST /auth/totp"])
+	}
+	totpStatus := httptest.NewRecorder()
+	totpRequest := httptest.NewRequest(http.MethodPost, "/auth/totp", strings.NewReader(`{"operation":"status"}`))
+	totpRequest.Header.Set("Content-Type", "application/json")
+	totpRequest.Header.Set("Authorization", "Bearer "+adminSession.AccessToken)
+	mounted.ServeHTTP(totpStatus, totpRequest)
+	if totpStatus.Code != http.StatusOK || !strings.Contains(totpStatus.Body.String(), `"enabled":false`) {
+		t.Fatalf("mounted TOTP status=%d body=%s", totpStatus.Code, totpStatus.Body.String())
 	}
 	embeddedRegistry := actioncontract.NewRegistry()
 	if err := embeddedRegistry.Register(actioncontract.ActionDefinition{
@@ -651,7 +663,7 @@ func TestFactoryBorrowsProjectPoolWithoutClosingOrColliding(t *testing.T) {
 	if err := db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name LIKE '%schema_migrations'`).Scan(&migrationLedgers); err != nil || migrationLedgers != 1 {
 		t.Fatalf("migration ledgers=%d err=%v", migrationLedgers, err)
 	}
-	if len(registrar.calls) != 1 || registrar.calls[0] != (testEmbeddedMigrationCall{owner: "identity", version: 10, name: "organization_unit_delivery"}) {
+	if len(registrar.calls) != 1 || registrar.calls[0] != (testEmbeddedMigrationCall{owner: "identity", version: 11, name: "totp_authentication"}) {
 		t.Fatalf("host migration calls=%#v", registrar.calls)
 	}
 }

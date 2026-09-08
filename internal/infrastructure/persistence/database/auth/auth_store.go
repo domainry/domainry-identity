@@ -28,6 +28,7 @@ type AuthStore struct {
 	secrets      secrets.Cipher
 	loginSecrets secrets.Cipher
 	codeSecrets  secrets.Cipher
+	totpSecrets  secrets.Cipher
 }
 
 // Ready reports whether the value-backed store has its required persistence
@@ -68,6 +69,7 @@ func NewAuthStoreWithKeyProvider(store *identitypersistence.SQLIdentityStore, ke
 	result := NewAuthStore(store, metrics...)
 	result.secrets = secrets.Cipher{Keys: keys, Purpose: "identity.auth-provider-credential"}
 	result.loginSecrets = secrets.Cipher{Keys: keys, Purpose: "identity.auth-login-transaction"}
+	result.totpSecrets = secrets.Cipher{Keys: keys, Purpose: "identity.auth-totp-factor"}
 	result.codeSecrets = secrets.Cipher{Keys: keys, Purpose: "identity.auth-authorization-code"}
 	return result
 }

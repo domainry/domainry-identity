@@ -629,6 +629,9 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 	if err := ensureIdentityPermissionsSchema(ctx, s); err != nil {
 		return err
 	}
+	if err := ensureIdentityTOTPSchema(ctx, s); err != nil {
+		return err
+	}
 	if err := ensureIdentityApplicationsSchema(ctx, s); err != nil {
 		return err
 	}
@@ -720,6 +723,34 @@ func ensureWorkspaceBootstrapRolePolicyEvidence(ctx context.Context, s Store) er
 		}
 		if _, err := s.SchemaDB().ExecContext(ctx, statement, arguments...); err != nil {
 			return fmt.Errorf("add Workspace bootstrap receipt column %s: %w", column, err)
+		}
+	}
+	return nil
+}
+
+func ensureIdentityTOTPSchema(ctx context.Context, s Store) error {
+	const table = "_identity_mfa_factors"
+	columns, err := s.TableColumns(ctx, table)
+	if err != nil {
+		return err
+	}
+	for _, name := range []string{"totp_secret", "totp_step", "totp_failures", "totp_locked_until"} {
+		if columns[name] {
+			continue
+		}
+		definition := ormschema.Column(name, ormschema.Text())
+		if name == "totp_step" {
+			definition = ormschema.Column(name, ormschema.BigInt()).NotNull().DefaultValue(-1)
+		}
+		if name == "totp_failures" {
+			definition = ormschema.Column(name, ormschema.Integer()).NotNull().DefaultValue(0)
+		}
+		statement, args, err := ormschema.NewAddColumn(s.SchemaRenderer(), table, definition).Build()
+		if err != nil {
+			return err
+		}
+		if _, err := s.SchemaDB().ExecContext(ctx, statement, args...); err != nil {
+			return err
 		}
 	}
 	return nil

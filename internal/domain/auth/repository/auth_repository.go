@@ -132,3 +132,10 @@ type AuthRefreshTokenDataScopeRepository interface {
 type AuthMFADataScopeRepository interface {
 	RevokeIdentityMFAFactorWithinDataScope(context.Context, string, string, string, identitymodel.IdentityDataScopeFilter) (bool, bool, error)
 }
+
+// AuthTOTPRepository uses the Identity-owned encrypted MFA store. Enrollment
+// and activation share the same transaction authority as OTP verification.
+type AuthTOTPRepository interface {
+	TOTPFactorState(context.Context, string, string) (authmodel.TOTPFactorState, error)
+	CreateTOTPEnrollment(context.Context, authmodel.AuthProviderChallenge, authmodel.TOTPSecret) error
+}

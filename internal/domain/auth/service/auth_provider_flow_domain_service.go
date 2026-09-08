@@ -78,6 +78,10 @@ func (s *AuthProviderFlowDomainService) LoginWithPasswordOutcome(ctx context.Con
 	if err != nil {
 		return authmodel.AuthenticationOutcome{}, err
 	}
+	totp, err := s.auth.totpState(ctx, workspaceID, user.ID)
+	if err != nil {
+		return authmodel.AuthenticationOutcome{}, err
+	}
 	repository, mfaAvailable := s.auth.identityStore.(authrepository.AuthMFARepository)
 	if !mfaAvailable {
 		session, err := s.auth.issueSessionForAudienceWithAuthentication(ctx, workspaceID, user, applicationKey, passwordAuthenticationContext())
@@ -102,6 +106,14 @@ func (s *AuthProviderFlowDomainService) LoginWithPasswordOutcome(ctx context.Con
 		session, err := s.auth.issueSessionForAudienceWithAuthentication(ctx, workspaceID, user, applicationKey, passwordAuthenticationContext())
 		return authenticatedOutcome(session), err
 	}
+	if totp.Enabled {
+		result, err := s.auth.beginTOTPChallenge(ctx, workspaceID, user.ID, applicationKey, authmodel.AuthChallengePurposeLoginMFA, totp.Generation, []string{"pwd"})
+		if err != nil {
+			return authmodel.AuthenticationOutcome{}, err
+		}
+		challenge := authProviderChallengeFromProjection(result)
+		return authmodel.AuthenticationOutcome{Status: authmodel.AuthenticationStatusChallengeRequired, Challenge: &challenge}, nil
+	}
 	if !available || strings.TrimSpace(user.Phone) == "" {
 		return authmodel.AuthenticationOutcome{}, forbidden("auth.mfa_factor_unavailable")
 	}
@@ -118,6 +130,21 @@ func (s *AuthProviderFlowDomainService) LoginWithPasswordOutcome(ctx context.Con
 }
 
 func (s *AuthProviderFlowDomainService) VerifyOTPOutcome(ctx context.Context, workspaceID, provider, state, code string) (authmodel.AuthenticationOutcome, error) {
+	if provider == authmodel.TOTPProvider {
+		_, challenge, err := s.auth.consumeOTPChallenge(ctx, workspaceID, provider, state, code, []string{authmodel.AuthChallengePurposeLoginMFA}, "")
+		if err != nil {
+			return authmodel.AuthenticationOutcome{}, err
+		}
+		user, found, err := s.auth.identity.UserByID(requestcontext.WithWorkspaceID(ctx, workspaceID), challenge.UserID)
+		if err != nil {
+			return authmodel.AuthenticationOutcome{}, err
+		}
+		if !found || user.Status != identitymodel.IdentityStatusActive {
+			return authmodel.AuthenticationOutcome{}, forbidden("auth.user_disabled")
+		}
+		session, err := s.auth.issueSessionForAudienceWithAuthentication(ctx, workspaceID, user, challenge.ApplicationKey, authmodel.AuthenticationContext{Methods: []string{"pwd", "otp", "totp"}, AssuranceLevel: "urn:domainry:acr:2"})
+		return authenticatedOutcome(session), err
+	}
 	config, ok := s.providers.Enabled(ctx, provider)
 	if !ok {
 		return authmodel.AuthenticationOutcome{}, forbidden("auth.provider_not_configured")
@@ -156,6 +183,13 @@ func (s *AuthProviderFlowDomainService) BeginActionAssurance(ctx context.Context
 	}
 	if !found || user.Status != identitymodel.IdentityStatusActive {
 		return authprojection.AuthProviderStartResponse{}, forbidden("auth.user_disabled")
+	}
+	totp, err := s.auth.totpState(ctx, workspaceID, user.ID)
+	if err != nil {
+		return authprojection.AuthProviderStartResponse{}, err
+	}
+	if totp.Enabled {
+		return s.auth.beginTOTPChallenge(ctx, workspaceID, user.ID, "", authmodel.AuthChallengePurposeAction, totp.Generation, nil)
 	}
 	if strings.TrimSpace(user.Phone) == "" {
 		return authprojection.AuthProviderStartResponse{}, forbidden("auth.mfa_factor_unavailable")
@@ -214,6 +248,13 @@ func (s *AuthProviderFlowDomainService) verifiedOTPProviderForPurpose(ctx contex
 }
 
 func (s *AuthProviderFlowDomainService) VerifyActionAssurance(ctx context.Context, workspaceID, userID, provider, state, code string) (authmodel.AuthActionAssuranceReceipt, error) {
+	if provider == authmodel.TOTPProvider {
+		_, challenge, err := s.auth.consumeOTPChallenge(ctx, workspaceID, provider, state, code, []string{authmodel.AuthChallengePurposeAction}, strings.TrimSpace(userID))
+		if err != nil {
+			return authmodel.AuthActionAssuranceReceipt{}, err
+		}
+		return s.auth.IssueActionAssuranceReceipt(ctx, challenge)
+	}
 	config, ok := s.providers.Enabled(ctx, provider)
 	if !ok || !strings.EqualFold(config.Type, "otp") {
 		return authmodel.AuthActionAssuranceReceipt{}, forbidden("auth.provider_not_configured")

@@ -31,6 +31,7 @@ func IdentityBuiltinAuthorizationActions() []identitymodel.IdentityActionDefinit
 	metadata := page("/admin/system/metadata", "元数据")
 
 	specs := []identityBuiltinActionSpec{
+		authPrincipalAction("auth.totp.manage", "认证安全", "管理验证码应用", "POST", "/auth/totp", "管理当前用户验证码应用"),
 		anonymousAction("auth.discovery.jwks", "认证发现", "读取 JWKS", "GET", "/.well-known/jwks.json", "读取 JSON Web Key Set"),
 		anonymousAction("auth.discovery.openid_configuration", "认证发现", "读取 OpenID 配置", "GET", "/.well-known/openid-configuration", "读取 OpenID Connect 配置"),
 		anonymousAction("auth.login", "认证", "登录", "POST", "/auth/login", "密码登录"),

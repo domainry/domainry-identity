@@ -13,6 +13,7 @@ type routeRegistrar interface {
 }
 
 func (h *AuthHandler) RegisterRoutes(mux routeRegistrar) {
+	h.registerAuthAction(mux, "auth.totp.manage", h.authTOTP)
 	h.registerAuthAction(mux, "auth.discovery.jwks", h.authJSONWebKeySet)
 	h.registerAuthAction(mux, "auth.discovery.openid_configuration", h.authOpenIDConfiguration)
 	h.registerAuthAction(mux, "auth.login", h.authLogin)

@@ -26,6 +26,8 @@ github.com/domainry/domainry-identity
 
 ## 集成方式
 
+验证码应用的绑定、接口和 PIN 规则见 [TOTP 接入说明](docs/totp-authentication.md)。
+
 Identity 通过 [`github.com/domainry/domainry-identity-sdk`](https://github.com/domainry/domainry-identity-sdk) 向 Runtime 提供统一契约。两种部署方式最终都向 Plane 暴露同一个 `identitysdk.Binding`。
 
 ### 单体模式

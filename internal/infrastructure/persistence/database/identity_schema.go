@@ -22,9 +22,9 @@ import (
 )
 
 const (
-	CurrentIdentitySchemaVersion           = "010_organization_unit_delivery"
-	EmbeddedIdentitySchemaMigrationVersion = uint(10)
-	EmbeddedIdentitySchemaMigrationName    = "organization_unit_delivery"
+	CurrentIdentitySchemaVersion           = "011_totp_authentication"
+	EmbeddedIdentitySchemaMigrationVersion = uint(11)
+	EmbeddedIdentitySchemaMigrationName    = "totp_authentication"
 )
 
 const (

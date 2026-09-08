@@ -325,7 +325,15 @@ func (s AuthStore) ConsumeAuthOTPTransaction(ctx context.Context, workspaceID, p
 	if !authOTPChallengeMatchesPurposeAndUser(challenge, allowedPurposes, expectedUserID) {
 		return authmodel.AuthProviderChallenge{}, false, nil
 	}
-	valid := subtle.ConstantTimeCompare([]byte(strings.TrimSpace(challenge.Code)), []byte(strings.TrimSpace(code))) == 1
+	valid := false
+	if challenge.Type == "totp" && challenge.Provider == authmodel.TOTPProvider {
+		valid, err = s.verifyTOTPFactor(ctx, tx, challenge, code, now, maxAttempts)
+		if err != nil {
+			return authmodel.AuthProviderChallenge{}, false, err
+		}
+	} else {
+		valid = challenge.Code != "" && subtle.ConstantTimeCompare([]byte(strings.TrimSpace(challenge.Code)), []byte(strings.TrimSpace(code))) == 1
+	}
 	updateBuilder := query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_auth_login_transactions", workspaceID).
 		Set("attempts", attempts).Set("updated_at", nowText)
 	if valid || attempts+1 >= maxAttempts {

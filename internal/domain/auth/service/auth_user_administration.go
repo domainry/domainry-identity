@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	authmodel "github.com/domainry/domainry-identity/internal/domain/auth/model"
 	authrepository "github.com/domainry/domainry-identity/internal/domain/auth/repository"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
@@ -149,12 +150,15 @@ func (s *AuthDomainService) userSecurityProfile(ctx context.Context, workspaceID
 }
 
 // RegisterVerifiedMFAFactor accepts only provider-verified factor metadata.
-// TOTP/WebAuthn secrets and challenge verification stay inside the configured
-// authentication provider rather than crossing into Runtime persistence.
+// External TOTP/WebAuthn verification remains with its configured provider.
+// Identity-owned TOTP keys use ManageTOTP and its encrypted enrollment store.
 func (s *AuthDomainService) RegisterVerifiedMFAFactor(ctx context.Context, workspaceID, userID string, factor identitymodel.IdentityMFAFactor) error {
 	userID = strings.TrimSpace(userID)
 	factor.ID, factor.Type = strings.TrimSpace(factor.ID), strings.TrimSpace(factor.Type)
 	factor.VerifiedAt = strings.TrimSpace(factor.VerifiedAt)
+	if factor.Provider == authmodel.TOTPProvider {
+		return badRequest("auth.totp_enrollment_required")
+	}
 	if userID == "" {
 		return badRequest("auth.user_required")
 	}

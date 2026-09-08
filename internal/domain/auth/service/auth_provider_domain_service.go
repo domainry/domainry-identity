@@ -21,7 +21,7 @@ func NewAuthProviderDomainService(configs []map[string]any, defaultAutoCreate bo
 	for _, raw := range configs {
 		config := authmodel.AuthProviderConfigFromMap(raw)
 		key := strings.ToLower(config.Key)
-		if key == "" {
+		if key == "" || key == authmodel.TOTPProvider {
 			continue
 		}
 		s.configs[key] = config
@@ -87,7 +87,7 @@ func (s *AuthProviderDomainService) ReplaceConfig(value authmodel.AuthProviderCo
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_, ok := s.configs[key]
-	if !ok {
+	if !ok || key == authmodel.TOTPProvider {
 		return authmodel.AuthProviderConfig{}, false
 	}
 	value.Key = key
@@ -96,7 +96,7 @@ func (s *AuthProviderDomainService) ReplaceConfig(value authmodel.AuthProviderCo
 }
 func (s *AuthProviderDomainService) AddConfig(value authmodel.AuthProviderConfig) (authmodel.AuthProviderConfig, bool) {
 	key := strings.ToLower(strings.TrimSpace(value.Key))
-	if key == "" {
+	if key == "" || key == authmodel.TOTPProvider {
 		return authmodel.AuthProviderConfig{}, false
 	}
 	s.mu.Lock()
