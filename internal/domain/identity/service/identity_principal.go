@@ -376,6 +376,19 @@ func identityCanonicalizeEffectiveRole(role *identitymodel.RoleSchema) {
 	sort.Slice(role.ReferencePermissions, func(left, right int) bool {
 		return identityCanonicalJSON(role.ReferencePermissions[left]) < identityCanonicalJSON(role.ReferencePermissions[right])
 	})
+	// Overlapping roles may publish the same reference policy. The SDK requires
+	// one policy per reference; repeated identical restrictions add no authority.
+	// Keep different policies intact so validation still rejects conflicts.
+	references := make([]identitymodel.ReferencePermission, 0, len(role.ReferencePermissions))
+	lastReference := ""
+	for _, reference := range role.ReferencePermissions {
+		canonical := identityCanonicalJSON(reference)
+		if canonical != lastReference {
+			references = append(references, reference)
+			lastReference = canonical
+		}
+	}
+	role.ReferencePermissions = references
 	sort.Slice(role.ExportRules, func(left, right int) bool {
 		return identityCanonicalJSON(role.ExportRules[left]) < identityCanonicalJSON(role.ExportRules[right])
 	})
