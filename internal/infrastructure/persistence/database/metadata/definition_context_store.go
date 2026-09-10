@@ -113,11 +113,11 @@ func (r MetadataStore) publishDefinition(ctx context.Context, scope identitymode
 
 func (r MetadataStore) insertDefinitionRefreshIntentTx(ctx context.Context, tx *sql.Tx, definition metadatamodel.MetadataDefinition, now string) error {
 	payload, _ := json.Marshal(map[string]any{"resource_type": definition.ResourceType, "resource_key": definition.ResourceKey, "schema_version": definition.SchemaVersion, "schema_hash": definition.SchemaHash})
-	id := metadataDefinitionRefreshIntentID(definition.ResourceType, definition.ResourceKey, definition.SchemaHash)
+	id := metadataDefinitionRefreshIntentID(definition.ResourceType, definition.ResourceKey, definition.SchemaVersion, definition.SchemaHash)
 	leaseExpires := time.Now().UTC().Add(90 * time.Second).Format(time.RFC3339Nano)
 	statement, arguments, err := query.NewWorkspaceInsertBuilder(r.store.SQLRenderer, metadataRefreshIntentTable, r.tenantWorkspaceID(ctx)).
 		Columns("id", "owner", "operation", "resource_id", "idempotency_key", "status", "payload_json", "compensation_payload_json", "attempt_count", "next_attempt_at", "lease_owner", "lease_expires_at", "fencing_token", "last_error", "created_at", "updated_at").
-		Values(id, "metadata", "catalog_refresh", definition.ResourceType+":"+definition.ResourceKey, definition.SchemaHash, "executing", string(payload), "{}", 0, "", "metadata-inline", leaseExpires, 1, "", now, now).Build()
+		Values(id, "metadata", "catalog_refresh", definition.ResourceType+":"+definition.ResourceKey, definition.SchemaVersion+":"+definition.SchemaHash, "executing", string(payload), "{}", 0, "", "metadata-inline", leaseExpires, 1, "", now, now).Build()
 	if err != nil {
 		return fmt.Errorf("build metadata refresh intent insert: %w", err)
 	}
@@ -127,11 +127,11 @@ func (r MetadataStore) insertDefinitionRefreshIntentTx(ctx context.Context, tx *
 	return nil
 }
 
-func (r MetadataStore) CompleteDefinitionRefresh(ctx context.Context, scope identitymodel.SystemScope, resourceType, resourceKey, schemaHash, errorText string) error {
+func (r MetadataStore) CompleteDefinitionRefresh(ctx context.Context, scope identitymodel.SystemScope, resourceType, resourceKey, schemaVersion, schemaHash, errorText string) error {
 	if err := requireMetadataInstallationScope(scope); err != nil {
 		return err
 	}
-	id := metadataDefinitionRefreshIntentID(strings.TrimSpace(resourceType), strings.TrimSpace(resourceKey), strings.TrimSpace(schemaHash))
+	id := metadataDefinitionRefreshIntentID(strings.TrimSpace(resourceType), strings.TrimSpace(resourceKey), strings.TrimSpace(schemaVersion), strings.TrimSpace(schemaHash))
 	status, nextAttemptAt, attemptIncrement := "succeeded", "", 0
 	if strings.TrimSpace(errorText) != "" {
 		status = "reconciliation_required"

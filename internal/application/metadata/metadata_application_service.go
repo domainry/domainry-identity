@@ -274,7 +274,7 @@ func (s *MetadataApplicationService) upsertMetadataDefinition(ctx context.Contex
 		if reloadErr != nil {
 			errorText = reloadErr.Error()
 		}
-		if completeErr := s.repository.CompleteDefinitionRefresh(ctx, metadataInstallationScope("complete metadata definition refresh"), resourceType, resourceKey, definition.SchemaHash, errorText); completeErr != nil {
+		if completeErr := s.repository.CompleteDefinitionRefresh(ctx, metadataInstallationScope("complete metadata definition refresh"), resourceType, resourceKey, definition.SchemaVersion, definition.SchemaHash, errorText); completeErr != nil {
 			return definition, metadatamodel.MetadataSchemaSnapshot{}, metadataInternalErrorWithCause("complete metadata refresh intent", completeErr)
 		}
 	}
