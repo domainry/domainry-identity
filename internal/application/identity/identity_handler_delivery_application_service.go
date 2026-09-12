@@ -554,3 +554,12 @@ func handlerDeliveryUserAuditMap(user identitymodel.IdentityUser) map[string]any
 func handlerDeliveryError(kind apperror.ErrorKind, code string) error {
 	return &apperror.AppError{Kind: kind, Code: code}
 }
+
+// ForWorkspace returns an immutable host-authorized view; callers supply the
+// matching source-owned application registry after token verification.
+func (s *IdentityHandlerDeliveryApplicationService) ForWorkspace(workspaceID string, applications IdentityHandlerDeliveryApplicationRegistry) *IdentityHandlerDeliveryApplicationService {
+	clone := *s
+	clone.dependencies.WorkspaceID = workspaceID
+	clone.dependencies.Applications = applications
+	return &clone
+}

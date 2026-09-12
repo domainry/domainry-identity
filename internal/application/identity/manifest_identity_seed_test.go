@@ -1,9 +1,12 @@
 package identity
 
 import (
+	"context"
+	"strings"
 	"testing"
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	identityrepository "github.com/domainry/domainry-identity/internal/domain/identity/repository"
 	manifestmodel "github.com/domainry/domainry-identity/internal/domain/manifest/model"
 )
 
@@ -162,4 +165,44 @@ func TestGeneratedIdentityMenusDeclareValidParentChains(t *testing.T) {
 
 func stringPointerForManifestIdentitySeedTest(value string) *string {
 	return &value
+}
+
+// The real repository's global index protects the write; this verifies seed
+// selection preserves existing credentials and explicit administrator input.
+type loginSeedStore struct {
+	identityrepository.IdentitySeedRepository
+	existing map[string]identitymodel.IdentityUser
+	occupied map[string]bool
+}
+
+func (s loginSeedStore) GetIdentityUser(_ context.Context, workspace, id string) (identitymodel.IdentityUser, bool, error) {
+	u, ok := s.existing[workspace+"/"+id]
+	return u, ok, nil
+}
+func (s loginSeedStore) GlobalLoginNameAvailable(_ context.Context, _, _, login string) (bool, error) {
+	return !s.occupied[strings.ToLower(strings.TrimSpace(login))], nil
+}
+func TestGeneratedSeedLoginNamesAvoidGlobalDuplicatesAndSurviveResync(t *testing.T) {
+	seed := Seed{Users: []identitymodel.IdentityUser{{ID: "admin", Email: "admin@example.com"}}}
+	store := loginSeedStore{existing: map[string]identitymodel.IdentityUser{}, occupied: map[string]bool{}}
+	a, err := scopeGeneratedSeedLoginNames(t.Context(), store, manifestmodel.ManifestSchema{}, seed, "a")
+	if err != nil || a.Users[0].Email != "admin@example.com" {
+		t.Fatal("first seed login changed", err)
+	}
+	store.occupied[a.Users[0].Email] = true
+	b, err := scopeGeneratedSeedLoginNames(t.Context(), store, manifestmodel.ManifestSchema{}, seed, "b")
+	if err != nil || b.Users[0].Email == a.Users[0].Email {
+		t.Fatal("B reused A login", err)
+	}
+	store.existing["b/admin"] = b.Users[0]
+	store.occupied[b.Users[0].Email] = true
+	again, err := scopeGeneratedSeedLoginNames(t.Context(), store, manifestmodel.ManifestSchema{}, seed, "b")
+	if err != nil || again.Users[0].Email != b.Users[0].Email {
+		t.Fatal("resync changed B login", err)
+	}
+	explicit := manifestmodel.ManifestSchema{Users: []identitymodel.ManifestIdentityUserSchema{{ID: "admin", Email: "admin@example.com"}}}
+	requested, err := scopeGeneratedSeedLoginNames(t.Context(), store, explicit, seed, "c")
+	if err != nil || requested.Users[0].Email != "admin@example.com" {
+		t.Fatal("explicit input was silently renamed", err)
+	}
 }

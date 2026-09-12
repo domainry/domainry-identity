@@ -283,6 +283,23 @@ func (s *IdentityDomainService) PermissionDefinitions() map[string]identitymodel
 	return s.permissionSource.PermissionDefinitions()
 }
 
+// withWorkspacePermissions pins the catalog for a complete principal resolution.
+func (s *IdentityDomainService) withWorkspacePermissions(ctx context.Context) (*IdentityDomainService, error) {
+	source, ok := s.permissionSource.(interface {
+		WorkspacePermissionDefinitions(context.Context, string) (map[string]identitymodel.IdentityPermissionDefinition, error)
+	})
+	if !ok {
+		return s, nil
+	}
+	definitions, err := source.WorkspacePermissionDefinitions(ctx, s.workspace)
+	if err != nil {
+		return nil, err
+	}
+	clone := *s
+	clone.permissionSource = &identityMutablePermissionDefinitionSource{byKey: definitions}
+	return &clone, nil
+}
+
 // ReplacePermissionDefinitions refreshes the owner validation catalog in
 // place so already-scoped service views observe the same immutable snapshot.
 func (s *IdentityDomainService) ReplacePermissionDefinitions(permissions []identitymodel.IdentityPermissionDefinition) {
@@ -291,7 +308,12 @@ func (s *IdentityDomainService) ReplacePermissionDefinitions(permissions []ident
 	}
 }
 
-func (s *IdentityDomainService) ListPermissions(_ context.Context) []identitymodel.IdentityPermissionDefinition {
+func (s *IdentityDomainService) ListPermissions(ctx context.Context) []identitymodel.IdentityPermissionDefinition {
+	scoped, err := s.withWorkspacePermissions(ctx)
+	if err != nil {
+		return nil
+	}
+	s = scoped
 	definitions := s.PermissionDefinitions()
 	values := make([]identitymodel.IdentityPermissionDefinition, 0, len(definitions))
 	for _, permission := range definitions {

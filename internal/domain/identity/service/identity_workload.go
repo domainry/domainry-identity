@@ -88,6 +88,12 @@ func (s *IdentityDomainService) WorkflowWorkloadBinding(ctx context.Context, app
 }
 
 func (s *IdentityDomainService) BuildWorkflowWorkloadPrincipal(ctx context.Context, binding identitymodel.IdentityWorkflowWorkloadBinding) (identitymodel.Principal, error) {
+	scoped, scopeErr := s.withWorkspacePermissions(ctx)
+	if scopeErr != nil {
+		return identitymodel.Principal{}, scopeErr
+	}
+	s = scoped
+
 	if binding.WorkspaceID != s.workspace || binding.Status != "active" || binding.SubjectID != "workflow:"+binding.WorkflowKey {
 		return identitymodel.Principal{UserID: binding.SubjectID, Known: false}, nil
 	}

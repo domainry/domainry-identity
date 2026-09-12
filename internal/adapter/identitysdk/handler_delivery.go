@@ -21,6 +21,12 @@ func (adapter sdkHandlerDelivery) DeliverIdentity(ctx context.Context, request i
 	if adapter.binding == nil || adapter.binding.handlerDelivery == nil {
 		return identitysdk.HandlerDeliveryResult{}, &identitysdk.Error{Code: "identity.handler_delivery_unavailable"}
 	}
+	scoped, scopeErr := adapter.binding.forToken(ctx, request.AccessToken)
+	if scopeErr != nil {
+		return identitysdk.HandlerDeliveryResult{}, scopeErr
+	}
+	adapter.binding = scoped
+
 	claims, err := adapter.binding.auth.VerifyAccessToken(ctx, strings.TrimSpace(request.AccessToken))
 	if err != nil {
 		return identitysdk.HandlerDeliveryResult{}, sdkBoundaryError(err)
@@ -41,6 +47,12 @@ func (adapter sdkHandlerDelivery) ResolveBoundIdentity(ctx context.Context, requ
 	if adapter.binding == nil || adapter.binding.handlerDelivery == nil {
 		return identitysdk.HandlerBoundIdentity{}, &identitysdk.Error{Code: "identity.handler_delivery_unavailable"}
 	}
+	scoped, scopeErr := adapter.binding.forToken(ctx, request.AccessToken)
+	if scopeErr != nil {
+		return identitysdk.HandlerBoundIdentity{}, scopeErr
+	}
+	adapter.binding = scoped
+
 	result, err := adapter.binding.handlerDelivery.ResolveBoundIdentity(ctx, identityapplication.IdentityHandlerBoundIdentityRequest{
 		ContractVersion: request.ContractVersion, AccessToken: request.AccessToken, UserID: request.UserID,
 		ProfileBinding: internalHandlerProfileBindingSelector(request.ProfileBinding),

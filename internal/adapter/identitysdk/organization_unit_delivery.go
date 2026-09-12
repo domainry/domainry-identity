@@ -22,6 +22,12 @@ func (adapter sdkOrganizationUnitDelivery) CreateOrganizationUnit(ctx context.Co
 	if adapter.binding == nil || adapter.binding.organizationUnits == nil {
 		return organizationunit.DeliveryResult{}, organizationUnitDeliveryUnavailableError()
 	}
+	scoped, scopeErr := adapter.binding.forToken(ctx, request.AccessToken)
+	if scopeErr != nil {
+		return organizationunit.DeliveryResult{}, scopeErr
+	}
+	adapter.binding = scoped
+
 	result, err := adapter.binding.organizationUnits.Create(ctx, identityapplication.IdentityOrganizationUnitDeliveryRequest{
 		ContractVersion: request.ContractVersion, AccessToken: request.AccessToken, IdempotencyKey: request.IdempotencyKey,
 		OrganizationID: request.Organization.OrganizationID, Code: request.Organization.Code, Name: request.Organization.Name,
@@ -35,6 +41,12 @@ func (adapter sdkOrganizationUnitDelivery) ResolveOrganizationUnit(ctx context.C
 	if adapter.binding == nil || adapter.binding.organizationUnits == nil {
 		return organizationunit.DeliveredOrganizationUnit{}, organizationUnitDeliveryUnavailableError()
 	}
+	scoped, scopeErr := adapter.binding.forToken(ctx, request.AccessToken)
+	if scopeErr != nil {
+		return organizationunit.DeliveredOrganizationUnit{}, scopeErr
+	}
+	adapter.binding = scoped
+
 	result, err := adapter.binding.organizationUnits.Resolve(ctx, identityapplication.IdentityOrganizationUnitResolveRequest{
 		ContractVersion: request.ContractVersion, AccessToken: request.AccessToken, OrganizationID: request.OrganizationID,
 		NodeType: identitymodel.IdentityOrganizationUnitType(request.NodeType),

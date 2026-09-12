@@ -30,7 +30,7 @@ func (adapter moduleHandlerDelivery) DeliverIdentity(ctx context.Context, reques
 	if err != nil {
 		return identitysdk.HandlerDeliveryResult{}, err
 	}
-	if claims.WorkspaceID != string(adapter.binding.application.WorkspaceID) || claims.Audience != string(adapter.binding.application.ApplicationKey) {
+	if !adapter.binding.acceptsWorkspace(ctx, claims.WorkspaceID) || claims.Audience != string(adapter.binding.application.ApplicationKey) {
 		return identitysdk.HandlerDeliveryResult{}, &identitysdk.Error{Code: "identity.handler_delivery_application_scope_mismatch"}
 	}
 	provider, ok := adapter.binding.runtime.Binding.(identitysdk.HandlerDeliveryBinding)
@@ -62,7 +62,7 @@ func (adapter moduleHandlerDelivery) ResolveBoundIdentity(ctx context.Context, r
 	if err != nil {
 		return identitysdk.HandlerBoundIdentity{}, err
 	}
-	if claims.WorkspaceID != string(adapter.binding.application.WorkspaceID) || claims.Audience != string(adapter.binding.application.ApplicationKey) {
+	if !adapter.binding.acceptsWorkspace(ctx, claims.WorkspaceID) || claims.Audience != string(adapter.binding.application.ApplicationKey) {
 		return identitysdk.HandlerBoundIdentity{}, &identitysdk.Error{Code: "identity.handler_delivery_application_scope_mismatch"}
 	}
 	provider, ok := adapter.binding.runtime.Binding.(identitysdk.HandlerDeliveryBinding)

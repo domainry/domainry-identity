@@ -208,6 +208,9 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 		OperationsRateLimitPerMinute: cfg.HTTPOpsRateLimitPerMinute,
 	})
 	httpSupport.initializedWorkspaceID = cfg.IdentityWorkspaceID
+	if core.WorkspaceResolver != nil {
+		httpSupport.hostTokenVerifier = core.Binding.Tokens()
+	}
 	httpSupport.writesFrozen = core.Store.IdentityWritesFrozen
 	actionDefinitions := core.IdentityActions.Definitions()
 	browserActionDefinitions, err := browsergateway.ActionDefinitions("/browser")
@@ -257,10 +260,21 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 		SecurityAuditForPrincipal: func(*http.Request, identitymodel.Principal, string, string, map[string]any) {},
 		WritesFrozen:              core.Store.IdentityWritesFrozen, FederatedLoginWorkspace: core.AuthStore.FederatedLoginWorkspace,
 		ApplicationRegistered: func(applicationCtx context.Context, workspaceID, applicationKey string) (bool, error) {
-			if strings.TrimSpace(workspaceID) != core.Applications.WorkspaceID() {
+			if core.WorkspaceResolver == nil {
+				if strings.TrimSpace(workspaceID) != core.Applications.WorkspaceID() {
+					return false, nil
+				}
+				return core.Applications.Registered(applicationCtx, applicationKey)
+			}
+			resolved, err := core.WorkspaceResolver.ResolveWorkspace(applicationCtx, identitysdk.WorkspaceID(workspaceID))
+			if err != nil || string(resolved) != workspaceID || applicationKey != cfg.AuthAudience {
 				return false, nil
 			}
-			return core.Applications.Registered(applicationCtx, applicationKey)
+			applications, err := core.Applications.ForWorkspace(workspaceID)
+			if err != nil {
+				return false, err
+			}
+			return applications.Registered(applicationCtx, applicationKey)
 		},
 	})
 	authRoutes := newRecordingRouteRegistrar(mux, standaloneActions)

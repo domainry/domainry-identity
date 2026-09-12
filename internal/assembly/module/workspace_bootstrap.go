@@ -11,6 +11,7 @@ import (
 	"time"
 
 	identitysdk "github.com/domainry/domainry-identity-sdk"
+	authapplication "github.com/domainry/domainry-identity/internal/application/auth"
 	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	identitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity"
@@ -112,6 +113,23 @@ func (binding *moduleBinding) BootstrapWorkspaceIdentity(ctx context.Context, re
 		},
 		Roles: roles, AdminRoleID: adminRoleID, Menus: menus, RoleMenus: roleMenus,
 	}
+	applications, err := authapplication.NewAuthApplicationRegistrationService(binding.runtime.AuthStore, request.WorkspaceID)
+	if err != nil {
+		return identitysdk.WorkspaceIdentityBootstrapReceipt{}, err
+	}
+	var redirects []string
+	if binding.application.WorkspaceID.Valid() {
+		registered, found, err := binding.runtime.AuthStore.GetAuthApplication(identitytransaction.WithExecutor(ctx, tx), string(binding.application.WorkspaceID), string(binding.application.ApplicationKey))
+		if err != nil {
+			return identitysdk.WorkspaceIdentityBootstrapReceipt{}, err
+		}
+		if found {
+			redirects = registered.RedirectURLs
+		}
+	}
+	if _, err := applications.Register(identitytransaction.WithExecutor(ctx, tx), string(binding.application.ApplicationKey), redirects); err != nil {
+		return identitysdk.WorkspaceIdentityBootstrapReceipt{}, fmt.Errorf("register workspace bootstrap application: %w", err)
+	}
 	if err := binding.runtime.IdentityStore.WriteWorkspaceIdentityBootstrapGraphWithExecutor(ctx, tx, request.WorkspaceID, graph, func(stage identitypersistence.WorkspaceIdentityProvisionStage) error {
 		return injectWorkspaceBootstrapFailure(transaction.WorkspaceProvisionFailures, stage)
 	}); err != nil {
@@ -123,6 +141,14 @@ func (binding *moduleBinding) BootstrapWorkspaceIdentity(ctx context.Context, re
 	}
 	if _, err := permissionCatalog.ReconcileOwner(identitytransaction.WithExecutor(ctx, tx), identityapplication.IdentityBuiltinAuthorizationOwner); err != nil {
 		return identitysdk.WorkspaceIdentityBootstrapReceipt{}, fmt.Errorf("provision workspace bootstrap permissions: %w", err)
+	}
+	// Runtime-owned definitions come from the already published installation
+	// application, never from roles or client input. Administrator enablement is
+	// local to the destination workspace and is preserved by reconciliation.
+	if binding.application.WorkspaceID.Valid() {
+		if err := permissionCatalog.ReconcileApplicationSourcesFromWorkspace(identitytransaction.WithExecutor(ctx, tx), string(binding.application.WorkspaceID)); err != nil {
+			return identitysdk.WorkspaceIdentityBootstrapReceipt{}, err
+		}
 	}
 	if err := binding.runtime.AuthStore.UpsertIdentityCredentialWithExecutor(ctx, tx, request.WorkspaceID, identitymodel.IdentityCredential{
 		UserID: request.InitialAdminUserID, PasswordHash: string(passwordHash), MustChangePassword: true,

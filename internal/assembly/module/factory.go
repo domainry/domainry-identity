@@ -184,7 +184,14 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 		_ = store.CloseContext(context.Background())
 		return nil, err
 	}
-	identityRuntime, err := assembly.NewWithManifest(ctx, cfg, store, manifest, assembly.Options{Clock: factory.Options.Clock, WorkspaceID: string(application.WorkspaceID)})
+	var workspaceResolver identitysdk.WorkspaceResolver
+	if handle != nil {
+		workspaceResolver = handle.WorkspaceResolver
+		if workspaceResolver != nil {
+			cfg.IdentityBrowserApplicationKey = string(application.ApplicationKey)
+		}
+	}
+	identityRuntime, err := assembly.NewWithManifest(ctx, cfg, store, manifest, assembly.Options{WorkspaceResolver: workspaceResolver, Clock: factory.Options.Clock, WorkspaceID: string(application.WorkspaceID)})
 	if err != nil {
 		_ = store.CloseContext(context.Background())
 		return nil, err
@@ -211,7 +218,12 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 		_ = identityRuntime.CloseContext(ctx)
 		return nil, &identitysdk.Error{Code: "identity.module_binding_unavailable"}
 	}
-	scopedBinding, err := identityapplication.Bind(binding, application)
+	var scopedBinding identitysdk.Binding
+	if workspaceResolver != nil {
+		scopedBinding, err = identityapplication.BindWithWorkspaceResolver(binding, application, workspaceResolver)
+	} else {
+		scopedBinding, err = identityapplication.Bind(binding, application)
+	}
 	if err != nil {
 		_ = identityRuntime.CloseContext(ctx)
 		return nil, err
@@ -235,10 +247,15 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 		return nil, err
 	}
 	managementAdapter := modulehttptransport.NewAdapter("identity_management", managementServer.Routes(), managementRoutes)
+	defaultWorkspaceID := application.WorkspaceID
+	if workspaceResolver != nil {
+		defaultWorkspaceID = ""
+	}
 	browserGateway, err := browsergateway.New(scopedBinding, browsergateway.Config{
-		ApplicationKey:     application.ApplicationKey,
-		DefaultWorkspaceID: application.WorkspaceID,
-		MaxRequestBodySize: int64(cfg.HTTPPublicMaxJSONBodyBytes),
+		ApplicationKey:           application.ApplicationKey,
+		DefaultWorkspaceID:       defaultWorkspaceID,
+		RequireExplicitWorkspace: workspaceResolver != nil,
+		MaxRequestBodySize:       int64(cfg.HTTPPublicMaxJSONBodyBytes),
 		Cookie: browsergateway.CookieConfig{
 			Path: "/auth", Secure: cfg.IsProduction(), SameSite: http.SameSiteLaxMode, MaxAge: cfg.AuthRefreshTTL,
 		},

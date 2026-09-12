@@ -57,7 +57,7 @@ func TestUnboundProfileCanBeClaimedAfterAccountRegistrationWithoutTrustingClient
 	ctx := requestcontext.WithWorkspaceID(t.Context(), "workspace-primary")
 	for _, user := range []identitymodel.IdentityUser{
 		{ID: "registered-user", Email: "member@example.com", Status: identitymodel.IdentityStatusActive},
-		{ID: "competing-user", Email: "member@example.com", Status: identitymodel.IdentityStatusActive},
+		{ID: "competing-user", Email: "competitor@example.com", Status: identitymodel.IdentityStatusActive},
 	} {
 		if err := identityStore.UpsertIdentityUser(ctx, "workspace-primary", user); err != nil {
 			t.Fatal(err)

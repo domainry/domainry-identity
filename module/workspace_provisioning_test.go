@@ -630,13 +630,17 @@ func completeWorkspaceIdentityBootstrap(t *testing.T, bootstrap identitysdk.Boot
 }
 
 func workspaceIdentityBootstrapRequest(workspaceID, invocationID string) identitysdk.WorkspaceIdentityBootstrapRequest {
+	login := "ADMIN@EXAMPLE.TEST"
+	if workspaceID != "workspace-primary" {
+		login = workspaceID + "-admin@example.test"
+	}
 	return identitysdk.WorkspaceIdentityBootstrapRequest{
 		ContractVersion: identitysdk.WorkspaceIdentityBootstrapContractVersion,
 		ContractHash:    identitysdk.WorkspaceIdentityBootstrapContractHash,
 		InvocationID:    invocationID, WorkspaceID: workspaceID,
 		CompanyID: workspaceID + "-company", CompanyCode: "COMPANY", CompanyName: "Example Company",
 		FirstStoreID: workspaceID + "-store", FirstStoreCode: "STORE-001", FirstStoreName: "First Store",
-		InitialAdminUserID: workspaceID + "-admin", InitialAdminLoginID: "ADMIN@EXAMPLE.TEST", InitialAdminName: "Initial Admin",
+		InitialAdminUserID: workspaceID + "-admin", InitialAdminLoginID: login, InitialAdminName: "Initial Admin",
 	}
 }
 
@@ -707,7 +711,7 @@ func assertWorkspaceBootstrapZero(t *testing.T, db *sql.DB, workspaceID string) 
 	t.Helper()
 	for _, table := range []string{
 		"_identity_organization_units", "_identity_users", "_identity_roles", "_identity_user_role_assignments",
-		"_identity_credentials", "_identity_permissions", "_identity_workspace_bootstrap_receipts",
+		"_identity_credentials", "_identity_permissions", "_identity_workspace_bootstrap_receipts", "_identity_applications",
 	} {
 		assertIdentityRowCount(t, db, table, workspaceID, 0)
 	}

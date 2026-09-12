@@ -28,6 +28,7 @@ type httpSupport struct {
 	controls               *httpListenerControls
 	exposures              *routeExposureResolver
 	initializedWorkspaceID string
+	hostTokenVerifier      identitysdk.TokenVerifier
 	actionAuthorization    *identityapplication.IdentityActionAuthorizationService
 }
 
@@ -198,6 +199,23 @@ func (h *httpSupport) middleware(next http.Handler) http.Handler {
 			requestID = "identity-" + time.Now().UTC().Format("20060102T150405.000000000")
 		}
 		workspaceID := strings.TrimSpace(r.Header.Get("X-Workspace-ID"))
+		if h.hostTokenVerifier != nil {
+			token := authpolicy.AuthBearerToken(r.Header.Get("Authorization"))
+			if token != "" {
+				verified, err := h.hostTokenVerifier.Verify(r.Context(), identitysdk.VerifyTokenRequest{AccessToken: token})
+				if err != nil {
+					h.writeServiceError(w, r, err)
+					return
+				}
+				for _, reference := range []string{workspaceID, strings.TrimSpace(r.URL.Query().Get("workspace_id"))} {
+					if reference != "" && reference != string(verified.WorkspaceID) {
+						h.writeError(w, r, http.StatusForbidden, "auth.workspace_mismatch")
+						return
+					}
+				}
+				workspaceID = string(verified.WorkspaceID)
+			}
+		}
 		if workspaceID == "" {
 			workspaceID = strings.TrimSpace(h.initializedWorkspaceID)
 		}

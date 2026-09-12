@@ -35,6 +35,11 @@ func NewAuthApplicationRegistrationService(repository authrepository.AuthApplica
 	return &AuthApplicationRegistrationService{repository: repository, workspace: workspace.String()}, nil
 }
 
+// ForWorkspace returns an independent scope over the shared repository.
+func (service *AuthApplicationRegistrationService) ForWorkspace(workspaceID string) (*AuthApplicationRegistrationService, error) {
+	return NewAuthApplicationRegistrationService(service.repository, workspaceID)
+}
+
 func (service *AuthApplicationRegistrationService) Register(ctx context.Context, applicationKey string, redirectURLs []string) (authmodel.AuthApplicationRegistration, error) {
 	applicationKey = strings.TrimSpace(applicationKey)
 	redirectURLs, err := normalizeAuthApplicationRedirectURLs(redirectURLs)

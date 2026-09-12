@@ -19,11 +19,12 @@ import (
 )
 
 type IdentityPermissionCatalogApplicationService struct {
-	repository identityrepository.IdentityPermissionDefinitionRepository
-	registry   *IdentityActionRegistry
-	workspace  string
-	snapshot   atomic.Pointer[identityPermissionRuntimeSnapshot]
-	usage      atomic.Pointer[identityActionUsageProvider]
+	repository          identityrepository.IdentityPermissionDefinitionRepository
+	registry            *IdentityActionRegistry
+	workspace           string
+	hostWorkspaceScopes bool
+	snapshot            atomic.Pointer[identityPermissionRuntimeSnapshot]
+	usage               atomic.Pointer[identityActionUsageProvider]
 }
 
 type identityActionUsageProvider struct {
@@ -59,6 +60,46 @@ func NewIdentityPermissionCatalogApplicationService(repository identityrepositor
 		return nil, err
 	}
 	return &IdentityPermissionCatalogApplicationService{repository: repository, registry: registry, workspace: workspace.String()}, nil
+}
+
+// ForWorkspace creates an independent catalog; cached state is never shared
+// across workspace scopes. Only the host's immutable usage provider is shared.
+func (service *IdentityPermissionCatalogApplicationService) ForWorkspace(workspaceID string) (*IdentityPermissionCatalogApplicationService, error) {
+	if workspaceID == service.workspace {
+		return service, nil
+	}
+	scoped, err := NewIdentityPermissionCatalogApplicationService(service.repository, service.registry, workspaceID)
+	if err == nil {
+		scoped.usage.Store(service.usage.Load())
+		scoped.hostWorkspaceScopes = service.hostWorkspaceScopes
+	}
+	return scoped, err
+}
+
+// EnableHostWorkspaceScopes is called only during embedded assembly.
+func (service *IdentityPermissionCatalogApplicationService) EnableHostWorkspaceScopes() {
+	service.hostWorkspaceScopes = true
+}
+
+// WorkspacePermissionDefinitions returns a request-local snapshot, including
+// this workspace's own administrator switches. No mutable scope is shared.
+func (service *IdentityPermissionCatalogApplicationService) WorkspacePermissionDefinitions(ctx context.Context, workspaceID string) (map[string]identitymodel.IdentityPermissionDefinition, error) {
+	if !service.hostWorkspaceScopes {
+		return service.PermissionDefinitions(), nil
+	}
+	scoped, err := service.ForWorkspace(workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	records, err := service.repository.ListIdentityPermissionDefinitions(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	definitions := make(map[string]identitymodel.IdentityPermissionDefinition, len(records))
+	for _, record := range records {
+		definitions[record.PermissionKey] = scoped.projectDefinition(record)
+	}
+	return definitions, nil
 }
 
 // UseActionUsageProvider binds the host-owned live registry query. Embedded
@@ -230,6 +271,20 @@ type IdentityPermissionEnablementResult struct {
 // atomic snapshot before returning. Source metadata and lifecycle remain under
 // reconcile ownership.
 func (service *IdentityPermissionCatalogApplicationService) SetEnabled(ctx context.Context, permissionKey string, enabled bool) (IdentityPermissionEnablementResult, error) {
+	if service != nil && service.hostWorkspaceScopes {
+		workspaceID := requestcontext.WorkspaceID(ctx)
+		if workspaceID == "" {
+			return IdentityPermissionEnablementResult{}, &apperror.AppError{Kind: apperror.KindForbidden, Code: "backend.workspace_scope_required"}
+		}
+		if workspaceID != service.workspace {
+			scoped, err := service.ForWorkspace(workspaceID)
+			if err != nil {
+				return IdentityPermissionEnablementResult{}, err
+			}
+			return scoped.SetEnabled(ctx, permissionKey, enabled)
+		}
+	}
+
 	if service == nil || service.repository == nil {
 		return IdentityPermissionEnablementResult{}, &apperror.AppError{Kind: apperror.KindUnavailable, Code: "backend.identity.permission_catalog_unavailable"}
 	}
@@ -352,6 +407,20 @@ func (service *IdentityPermissionCatalogApplicationService) refreshRuntimeSnapsh
 }
 
 func (service *IdentityPermissionCatalogApplicationService) List(ctx context.Context) ([]identitymodel.IdentityPermissionDefinition, error) {
+	if service != nil && service.hostWorkspaceScopes {
+		workspaceID := requestcontext.WorkspaceID(ctx)
+		if workspaceID == "" {
+			return nil, &apperror.AppError{Kind: apperror.KindForbidden, Code: "backend.workspace_scope_required"}
+		}
+		if workspaceID != service.workspace {
+			scoped, err := service.ForWorkspace(workspaceID)
+			if err != nil {
+				return nil, err
+			}
+			return scoped.List(ctx)
+		}
+	}
+
 	records, err := service.repository.ListIdentityPermissionDefinitions(ctx, service.workspace)
 	if err != nil {
 		return nil, err
@@ -523,4 +592,44 @@ func IdentityPermissionSourceSnapshotHash(definitions []identitymodel.IdentityPe
 	}
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:]), nil
+}
+
+// ReconcileApplicationSourcesFromWorkspace seeds published source metadata;
+// it does not copy grants or administrator-owned enablement.
+func (service *IdentityPermissionCatalogApplicationService) ReconcileApplicationSourcesFromWorkspace(ctx context.Context, sourceWorkspaceID string) error {
+	records, err := service.repository.ListIdentityPermissionDefinitions(ctx, sourceWorkspaceID)
+	if err != nil {
+		return err
+	}
+	owners := map[string][]identitymodel.IdentityPermissionDefinitionRecord{}
+	for _, record := range records {
+		if record.SourceOwner == IdentityBuiltinAuthorizationOwner {
+			continue
+		}
+		if _, ok := owners[record.SourceOwner]; !ok {
+			owners[record.SourceOwner] = nil
+		}
+		if record.DefinitionStatus == identitymodel.IdentityPermissionDefinitionActive {
+			owners[record.SourceOwner] = append(owners[record.SourceOwner], record)
+		}
+	}
+	keys := make([]string, 0, len(owners))
+	for key := range owners {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, owner := range keys {
+		previous, err := service.CurrentSourceSnapshotHash(ctx, owner)
+		if err != nil {
+			return err
+		}
+		hash, err := identityPermissionSnapshotHash(owner, owners[owner])
+		if err != nil {
+			return err
+		}
+		if _, err := service.ReconcileDefinitions(ctx, owner, previous, hash, owners[owner]); err != nil {
+			return err
+		}
+	}
+	return nil
 }

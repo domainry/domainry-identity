@@ -28,6 +28,12 @@ func (binding *sdkBinding) requireMutableWorkspace(ctx context.Context, workspac
 	if !identitysdk.WorkspaceID(workspace).Valid() {
 		return &identitysdk.Error{StatusCode: http.StatusBadRequest, Code: "backend.workspace_scope_required"}
 	}
+	if binding.workspaceResolver != nil {
+		resolved, err := binding.workspaceResolver.ResolveWorkspace(ctx, workspaceID)
+		if err != nil || resolved != workspaceID {
+			return &identitysdk.Error{StatusCode: http.StatusForbidden, Code: "auth.invalid_credentials"}
+		}
+	}
 	frozen, err := binding.mutationFence.IdentityWritesFrozen(ctx, workspace)
 	if err != nil {
 		return &identitysdk.Error{StatusCode: http.StatusServiceUnavailable, Code: "identity.write_fence_unavailable", Cause: err}

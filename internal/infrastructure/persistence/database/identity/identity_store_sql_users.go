@@ -229,3 +229,7 @@ func (s *SQLIdentityStore) loadOrganizationUnits(ctx context.Context, workspaceI
 func (s *SQLIdentityStore) loadUsers(ctx context.Context, workspaceID string) ([]identitymodel.IdentityUser, error) {
 	return s.userStore().List(ctx, workspaceID)
 }
+
+func (s *SQLIdentityStore) GlobalLoginNameAvailable(ctx context.Context, workspaceID, userID, login string) (bool, error) {
+	return s.userStore().GlobalLoginNameAvailable(ctx, workspaceID, userID, login)
+}

@@ -14,6 +14,12 @@ import (
 )
 
 func (s *IdentityDomainService) BuildPrincipal(ctx context.Context, userID string) (identitymodel.Principal, error) {
+	scoped, scopeErr := s.withWorkspacePermissions(ctx)
+	if scopeErr != nil {
+		return identitymodel.Principal{}, scopeErr
+	}
+	s = scoped
+
 	userID = strings.TrimSpace(userID)
 	if userID == "" {
 		return identitymodel.Principal{Known: false}, nil
@@ -111,6 +117,12 @@ func (s *IdentityDomainService) BuildPrincipal(ctx context.Context, userID strin
 }
 
 func (s *IdentityDomainService) BuildPrincipalForRole(ctx context.Context, userID string, roleKey string) (identitymodel.Principal, error) {
+	scoped, scopeErr := s.withWorkspacePermissions(ctx)
+	if scopeErr != nil {
+		return identitymodel.Principal{}, scopeErr
+	}
+	s = scoped
+
 	userID = strings.TrimSpace(userID)
 	roleKey = strings.TrimSpace(roleKey)
 	if userID == "" {

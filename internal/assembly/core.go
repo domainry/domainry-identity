@@ -35,14 +35,16 @@ import (
 )
 
 type Options struct {
-	Clock           identitysdk.Clock
-	WorkspaceID     string
-	ModuleProviders []actioncontract.Provider
+	WorkspaceResolver identitysdk.WorkspaceResolver
+	Clock             identitysdk.Clock
+	WorkspaceID       string
+	ModuleProviders   []actioncontract.Provider
 }
 
 // Core is the deployment-neutral Identity application graph shared by the
 // in-process module and the standalone HTTP service.
 type Core struct {
+	WorkspaceResolver     identitysdk.WorkspaceResolver
 	Store                 *database.IdentityStore
 	Manifest              manifestmodel.ManifestSchema
 	MetadataStore         metadatapersistence.MetadataStore
@@ -157,6 +159,9 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 			return fail(fmt.Errorf("reconcile permissions for %s: %w", owner, err))
 		}
 	}
+	if options.WorkspaceResolver != nil {
+		permissionCatalog.EnableHostWorkspaceScopes()
+	}
 	identityApp := identityapplication.NewIdentityApplicationServiceWithPermissionSource(identityStore, permissionCatalog, identityActions)
 	identityApp.ReplaceRoleDefinitions(manifest.Roles)
 	identityApp.ReplaceAuthorizationPolicies(manifest.PermissionSets, manifest.PermissionSetGroups, manifest.Guardrails)
@@ -251,7 +256,7 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 		Transactions: identityStore, Repository: identityStore, Audit: auditApp,
 	})
 	binding, err := identitysdkadapter.NewBinding(identitysdkadapter.BindingDependencies{
-		Config: cfg, Authentication: authApp, ProviderConfiguration: providerConfiguration,
+		WorkspaceResolver: options.WorkspaceResolver, Config: cfg, Authentication: authApp, ProviderConfiguration: providerConfiguration,
 		ProviderFlows: providerFlows, ProviderCallback: identityprovider.CallbackAdapter{},
 		EffectiveAccess: effectiveAccess, Identity: identityApp,
 		Applications: applicationRegistrations, Permissions: permissionCatalog, HandlerDelivery: handlerDelivery, StoreOrganizations: storeOrganizations, OrganizationUnits: organizationUnits,
@@ -261,7 +266,8 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 		return fail(fmt.Errorf("assemble Identity SDK binding: %w", err))
 	}
 	return &Core{
-		Store: store, Manifest: manifest, MetadataStore: metadataStore, IdentityStore: identityStore,
+		WorkspaceResolver: options.WorkspaceResolver,
+		Store:             store, Manifest: manifest, MetadataStore: metadataStore, IdentityStore: identityStore,
 		AuditBinding: auditBinding, ModuleHTTPProviders: append([]modulehttp.Provider(nil), moduleHTTPProviders...), AuditStore: auditStore, AuthStore: authStore, Identity: identityApp, Audit: auditApp, Auth: authApp,
 		Applications:    applicationRegistrations,
 		MetadataRuntime: metadataRuntime, Metadata: metadataApp, MetadataSchema: metadataSchemaApp,

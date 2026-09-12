@@ -21,6 +21,12 @@ func (adapter sdkStoreOrganizationDelivery) DeliverStoreOrganization(ctx context
 	if adapter.binding == nil || adapter.binding.storeOrganizations == nil {
 		return identitysdk.StoreOrganizationDeliveryResult{}, &identitysdk.Error{Code: "identity.store_organization_delivery_unavailable"}
 	}
+	scoped, scopeErr := adapter.binding.forToken(ctx, request.AccessToken)
+	if scopeErr != nil {
+		return identitysdk.StoreOrganizationDeliveryResult{}, scopeErr
+	}
+	adapter.binding = scoped
+
 	claims, err := adapter.binding.auth.VerifyAccessToken(ctx, strings.TrimSpace(request.AccessToken))
 	if err != nil {
 		return identitysdk.StoreOrganizationDeliveryResult{}, sdkBoundaryError(err)
@@ -42,6 +48,12 @@ func (adapter sdkStoreOrganizationDelivery) ResolveStoreOrganization(ctx context
 	if adapter.binding == nil || adapter.binding.storeOrganizations == nil {
 		return identitysdk.StoreOrganization{}, &identitysdk.Error{Code: "identity.store_organization_delivery_unavailable"}
 	}
+	scoped, scopeErr := adapter.binding.forToken(ctx, request.AccessToken)
+	if scopeErr != nil {
+		return identitysdk.StoreOrganization{}, scopeErr
+	}
+	adapter.binding = scoped
+
 	result, err := adapter.binding.storeOrganizations.Resolve(ctx, identityapplication.IdentityStoreOrganizationResolveRequest{
 		ContractVersion: request.ContractVersion, AccessToken: request.AccessToken, OrganizationID: request.OrganizationID,
 	})
@@ -52,6 +64,12 @@ func (adapter sdkStoreOrganizationDelivery) ListStoreOrganizations(ctx context.C
 	if adapter.binding == nil || adapter.binding.storeOrganizations == nil {
 		return identitysdk.StoreOrganizationPage{}, &identitysdk.Error{Code: "identity.store_organization_delivery_unavailable"}
 	}
+	scoped, scopeErr := adapter.binding.forToken(ctx, request.AccessToken)
+	if scopeErr != nil {
+		return identitysdk.StoreOrganizationPage{}, scopeErr
+	}
+	adapter.binding = scoped
+
 	result, err := adapter.binding.storeOrganizations.List(ctx, identityapplication.IdentityStoreOrganizationListRequest{
 		ContractVersion: request.ContractVersion, AccessToken: request.AccessToken, PageSize: request.PageSize, Cursor: request.Cursor,
 	})

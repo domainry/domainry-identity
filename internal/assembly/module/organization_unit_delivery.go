@@ -54,7 +54,7 @@ func (adapter moduleOrganizationUnitDelivery) provider(ctx context.Context, acce
 	if err != nil {
 		return nil, err
 	}
-	if claims.WorkspaceID != string(adapter.binding.application.WorkspaceID) || claims.Audience != string(adapter.binding.application.ApplicationKey) {
+	if !adapter.binding.acceptsWorkspace(ctx, claims.WorkspaceID) || claims.Audience != string(adapter.binding.application.ApplicationKey) {
 		return nil, &identitysdk.Error{Code: "identity.organization_unit_delivery_application_scope_mismatch"}
 	}
 	binding, ok := adapter.binding.runtime.Binding.(organizationunit.Binding)

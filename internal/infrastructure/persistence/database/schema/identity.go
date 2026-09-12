@@ -90,6 +90,7 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"native_name TEXT NOT NULL DEFAULT ''",
 			"name_locale " + defaultText + " NOT NULL DEFAULT ''",
 			"email TEXT NOT NULL",
+			"login_name_key " + text,
 			"phone " + defaultText + " NOT NULL DEFAULT ''",
 			"account_type " + text + " NOT NULL DEFAULT 'human'",
 			"locale " + defaultText + " NOT NULL DEFAULT ''",
@@ -526,6 +527,9 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 		}
 	}
 	if err := ensureWorkspaceBootstrapRolePolicyEvidence(ctx, s); err != nil {
+		return err
+	}
+	if err := ensureIdentityGlobalLoginNames(ctx, s); err != nil {
 		return err
 	}
 	if err := ensureIdentityOrganizationUnitSiblingKeys(ctx, s); err != nil {

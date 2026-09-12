@@ -24,6 +24,7 @@ import (
 )
 
 type BindingDependencies struct {
+	WorkspaceResolver     identitysdk.WorkspaceResolver
 	Config                config.Config
 	Authentication        *authapplication.AuthApplicationService
 	ProviderConfiguration *authapplication.AuthProviderApplicationService
@@ -42,6 +43,7 @@ type BindingDependencies struct {
 }
 
 type sdkBinding struct {
+	workspaceResolver  identitysdk.WorkspaceResolver
 	descriptor         identitysdk.Descriptor
 	auth               *authapplication.AuthApplicationService
 	providers          *authapplication.AuthProviderApplicationService
@@ -75,7 +77,7 @@ func NewBinding(dependencies BindingDependencies) (identitysdk.Binding, error) {
 		Capabilities: []string{"authentication", "challenge_authentication", "action_assurance", "token_verification", "authorization", "principal_resolution", "workflow_workload_identity", "identity_projection", "handler_delivery", "store_organization_delivery", "organization_unit_delivery", "application_registration", "permission_reconciliation", "credentials", "oidc", "saml"},
 	}, auth: dependencies.Authentication, providers: dependencies.ProviderConfiguration, flows: dependencies.ProviderFlows,
 		providerCallback: dependencies.ProviderCallback, access: dependencies.EffectiveAccess, identity: dependencies.Identity,
-		applications: dependencies.Applications, permissions: dependencies.Permissions, handlerDelivery: dependencies.HandlerDelivery, storeOrganizations: dependencies.StoreOrganizations, organizationUnits: dependencies.OrganizationUnits, clock: dependencies.Clock,
+		workspaceResolver: dependencies.WorkspaceResolver, applications: dependencies.Applications, permissions: dependencies.Permissions, handlerDelivery: dependencies.HandlerDelivery, storeOrganizations: dependencies.StoreOrganizations, organizationUnits: dependencies.OrganizationUnits, clock: dependencies.Clock,
 		mutationFence: dependencies.MutationFence, loginTransactions: dependencies.LoginTransactions}
 	capabilities, err := NewCapabilityBinding()
 	if err != nil {
@@ -355,6 +357,15 @@ func (adapter sdkTokenVerifier) Verify(ctx context.Context, request identitysdk.
 	if expectedIssuer == "" || expectedAudience == "" || expectedIssuer != claims.Issuer || expectedAudience != claims.Audience {
 		return identitysdk.VerifiedToken{}, &identitysdk.Error{Code: "identity.token_invalid"}
 	}
+	if adapter.binding.workspaceResolver != nil {
+		registered, err := adapter.binding.applicationRegistered(ctx, identitysdk.ApplicationRef{WorkspaceID: identitysdk.WorkspaceID(claims.WorkspaceID), ApplicationKey: identitysdk.ApplicationKey(claims.Audience)})
+		if err != nil {
+			return identitysdk.VerifiedToken{}, err
+		}
+		if !registered {
+			return identitysdk.VerifiedToken{}, &identitysdk.Error{StatusCode: http.StatusForbidden, Code: "identity.application_not_registered"}
+		}
+	}
 	return identitysdk.VerifiedToken{Issuer: claims.Issuer, Audience: identitysdk.ApplicationKey(claims.Audience), SubjectID: identitysdk.SubjectID(claims.Subject), TenantID: identitysdk.TenantID(claims.TenantID), WorkspaceID: identitysdk.WorkspaceID(claims.WorkspaceID), SessionID: identitysdk.SessionID(claims.SessionID), AuthorizationRevision: identitysdk.AuthorizationRevision(claims.AuthorizationRevision), AuthenticationTime: claims.AuthenticationTime, AuthenticationMethods: append([]string(nil), claims.AuthenticationMethods...), AssuranceLevel: claims.AssuranceLevel, IssuedAt: claims.IssuedAt, ExpiresAt: claims.ExpiresAt, TokenID: claims.JTI}, nil
 }
 
@@ -439,7 +450,11 @@ func (binding *sdkBinding) validateApplicationRedirect(ctx context.Context, appl
 	if !application.WorkspaceID.Valid() || !application.ApplicationKey.Valid() {
 		return &identitysdk.Error{Code: "identity.application_scope_invalid"}
 	}
-	ok, err := binding.applications.RedirectAllowed(ctx, string(application.ApplicationKey), returnURL)
+	applications, err := binding.scopedApplications(ctx, application)
+	if err != nil {
+		return err
+	}
+	ok, err := applications.RedirectAllowed(ctx, string(application.ApplicationKey), returnURL)
 	if err != nil {
 		return err
 	}
@@ -449,14 +464,32 @@ func (binding *sdkBinding) validateApplicationRedirect(ctx context.Context, appl
 	return nil
 }
 
+func (binding *sdkBinding) scopedApplications(ctx context.Context, application identitysdk.ApplicationRef) (*authapplication.AuthApplicationRegistrationService, error) {
+	if binding == nil || binding.applications == nil || !application.WorkspaceID.Valid() || !application.ApplicationKey.Valid() {
+		return nil, &identitysdk.Error{Code: "identity.application_scope_invalid"}
+	}
+	if binding.workspaceResolver == nil {
+		if string(application.WorkspaceID) != binding.applications.WorkspaceID() {
+			return nil, &identitysdk.Error{Code: "identity.application_scope_mismatch"}
+		}
+		return binding.applications, nil
+	}
+	if string(application.ApplicationKey) != binding.descriptor.Audience {
+		return nil, &identitysdk.Error{Code: "identity.application_scope_mismatch"}
+	}
+	resolved, err := binding.workspaceResolver.ResolveWorkspace(ctx, application.WorkspaceID)
+	if err != nil || resolved != application.WorkspaceID {
+		return nil, &identitysdk.Error{StatusCode: http.StatusForbidden, Code: "auth.invalid_credentials"}
+	}
+	return binding.applications.ForWorkspace(string(resolved))
+}
+
 func (binding *sdkBinding) applicationRegistered(ctx context.Context, application identitysdk.ApplicationRef) (bool, error) {
-	if !application.WorkspaceID.Valid() || !application.ApplicationKey.Valid() {
-		return false, &identitysdk.Error{Code: "identity.application_scope_invalid"}
+	applications, err := binding.scopedApplications(ctx, application)
+	if err != nil {
+		return false, err
 	}
-	if binding == nil || binding.applications == nil || string(application.WorkspaceID) != binding.applications.WorkspaceID() {
-		return false, &identitysdk.Error{Code: "identity.application_scope_mismatch"}
-	}
-	return binding.applications.Registered(ctx, string(application.ApplicationKey))
+	return applications.Registered(ctx, string(application.ApplicationKey))
 }
 
 type sdkCredentials struct{ binding *sdkBinding }

@@ -248,6 +248,6 @@ func (service *IdentityActionAuthorizationService) Allows(action identitymodel.I
 
 func (service *IdentityActionAuthorizationService) allowsExactPermission(action identitymodel.IdentityActionDefinition, principal identitymodel.Principal) bool {
 	return principal.Known && action.Permission != nil && action.Permission.Key == action.Key &&
-		service.catalog != nil && service.catalog.PermissionIsExecutable(action.Key) &&
+		service.catalog != nil && (service.catalog.hostWorkspaceScopes && principal.WorkspaceID != service.catalog.WorkspaceID() || service.catalog.PermissionIsExecutable(action.Key)) &&
 		identitycontract.IdentityRoleHasPermissionKey(principal.Role, action.Key)
 }

@@ -250,6 +250,10 @@ func SyncIdentitySeeds(ctx context.Context, checkpoint manifestrepository.Identi
 	if err != nil {
 		return err
 	}
+	seed, err = scopeGeneratedSeedLoginNames(ctx, identityStore, manifest, seed, manifestIdentityWorkspaceID(ctx))
+	if err != nil {
+		return err
+	}
 	seedSignature := seedSyncSignature(manifest, seed)
 	if syncedVersion == seedSignature {
 		workspaceID := manifestIdentityWorkspaceID(ctx)
@@ -404,4 +408,62 @@ func seedSyncSignature(manifest manifestmodel.ManifestSchema, seed Seed) string 
 	})
 	sum := sha256.Sum256(raw)
 	return strings.TrimSpace(manifest.Version) + ":" + hex.EncodeToString(sum[:])
+}
+
+// Generated seed accounts use a stable workspace namespace. Explicit login
+// names are preserved and must pass the same user-table uniqueness constraint
+// as public account creation. Existing implicit seed users remain unchanged.
+func scopeGeneratedSeedLoginNames(ctx context.Context, store identityrepository.IdentitySeedRepository, manifest manifestmodel.ManifestSchema, seed Seed, workspaceID string) (Seed, error) {
+	availability, ok := store.(interface {
+		GlobalLoginNameAvailable(context.Context, string, string, string) (bool, error)
+	})
+	if !ok {
+		return seed, nil
+	}
+	reader, _ := store.(identitySeedUserReader)
+	explicit := map[string]bool{}
+	for _, user := range manifest.Users {
+		if strings.TrimSpace(user.Email) != "" {
+			explicit[strings.TrimSpace(user.ID)] = true
+		}
+	}
+	if manifest.IdentityBootstrap != nil {
+		for _, user := range manifest.IdentityBootstrap.Users {
+			if strings.TrimSpace(user.Email) != "" {
+				explicit[strings.TrimSpace(user.ID)] = true
+			}
+		}
+	}
+	digest := sha256.Sum256([]byte(workspaceID))
+	suffix := hex.EncodeToString(digest[:12])
+	users := append([]identitymodel.IdentityUser(nil), seed.Users...)
+	for index, user := range users {
+		if explicit[user.ID] {
+			continue
+		}
+		if reader != nil {
+			existing, found, err := reader.GetIdentityUser(ctx, workspaceID, user.ID)
+			if err != nil {
+				return Seed{}, err
+			}
+			if found {
+				users[index].Email = existing.Email
+				continue
+			}
+		}
+		available, err := availability.GlobalLoginNameAvailable(ctx, workspaceID, user.ID, user.Email)
+		if err != nil {
+			return Seed{}, err
+		}
+		if available {
+			continue
+		}
+		local, domain, ok := strings.Cut(user.Email, "@")
+		if !ok {
+			local, domain = user.ID, "example.com"
+		}
+		users[index].Email = local + "+" + suffix + "@" + domain
+	}
+	seed.Users = users
+	return seed, nil
 }
