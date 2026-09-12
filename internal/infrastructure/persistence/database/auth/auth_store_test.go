@@ -292,8 +292,14 @@ func TestAuthStoreWorkspaceIsolationContract(t *testing.T) {
 	if err := repository.CreateAuthRefreshToken(t.Context(), "workspace-a", tokenA); err != nil {
 		t.Fatalf("create workspace A token: %v", err)
 	}
+	if workspaceID, found, err := repository.GlobalRefreshTokenWorkspace(t.Context(), tokenA.TokenHash); err != nil || !found || workspaceID != "workspace-a" {
+		t.Fatalf("global refresh workspace=%q found=%v err=%v", workspaceID, found, err)
+	}
 	if err := repository.CreateAuthRefreshToken(t.Context(), "workspace-b", tokenB); err != nil {
 		t.Fatalf("create workspace B token: %v", err)
+	}
+	if workspaceID, found, err := repository.GlobalRefreshTokenWorkspace(t.Context(), tokenA.TokenHash); err != nil || found || workspaceID != "" {
+		t.Fatalf("ambiguous global refresh workspace=%q found=%v err=%v", workspaceID, found, err)
 	}
 	loadedA, found, err := repository.GetAuthRefreshTokenByHash(t.Context(), "workspace-a", tokenA.TokenHash)
 	if err != nil || !found || loadedA.ID != tokenA.ID {

@@ -326,6 +326,52 @@ func (s AuthStore) GetAuthRefreshTokenByHash(ctx context.Context, workspaceID, t
 	return token, err == nil, err
 }
 
+// GlobalRefreshTokenWorkspace resolves an opaque browser refresh credential to
+// its owning Workspace before a scoped authentication request is constructed.
+// Token hashes are not globally unique by schema, so ambiguous matches fail
+// closed instead of selecting an arbitrary Workspace.
+func (s AuthStore) GlobalRefreshTokenWorkspace(ctx context.Context, tokenHash string) (string, bool, error) {
+	tokenHash = strings.TrimSpace(tokenHash)
+	if tokenHash == "" {
+		return "", false, nil
+	}
+	statement, arguments, err := query.NewSelectBuilder(s.store.SQLRenderer(), "_identity_auth_refresh_tokens").
+		Columns("workspace_id").
+		Where(query.Equal("token_hash", tokenHash)).
+		OrderBy(query.Ascending("workspace_id")).
+		Build()
+	if err != nil {
+		return "", false, fmt.Errorf("build global auth refresh workspace query: %w", err)
+	}
+	rows, err := s.db.QueryContext(ctx, statement, arguments...)
+	if err != nil {
+		return "", false, err
+	}
+	defer rows.Close()
+	workspaceID := ""
+	for rows.Next() {
+		var candidate string
+		if err := rows.Scan(&candidate); err != nil {
+			return "", false, err
+		}
+		candidate = strings.TrimSpace(candidate)
+		if workspaceID != "" && workspaceID != candidate {
+			return "", false, nil
+		}
+		workspaceID = candidate
+	}
+	if err := rows.Err(); err != nil {
+		return "", false, err
+	}
+	if workspaceID == "" {
+		return "", false, nil
+	}
+	if _, err := authWorkspaceID(workspaceID); err != nil {
+		return "", false, err
+	}
+	return workspaceID, true, nil
+}
+
 func (s AuthStore) RevokeAuthRefreshToken(ctx context.Context, workspaceID, tokenID, revokedAt, replacedByID string) error {
 	workspaceID, err := authWorkspaceID(workspaceID)
 	if err != nil {

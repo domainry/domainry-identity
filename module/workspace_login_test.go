@@ -113,6 +113,23 @@ func TestEmbeddedHostWorkspaceLoginAfterAtomicBootstrap(t *testing.T) {
 			mounted.Handle(route.Pattern(), adapter.Handler())
 		}
 	}
+	unscopedLogin := httptest.NewRecorder()
+	unscopedRequest := httptest.NewRequest(http.MethodPost, "/auth/login", strings.NewReader(`{"login":"`+b.InitialAdminLoginID+`","password":"Workspace-B-Test-Password!29"}`))
+	mounted.ServeHTTP(unscopedLogin, unscopedRequest)
+	if unscopedLogin.Code != http.StatusOK || !strings.Contains(unscopedLogin.Body.String(), `"workspace_id":"workspace-b"`) {
+		t.Fatalf("unscoped login did not resolve its unique Workspace: status=%d body=%s", unscopedLogin.Code, unscopedLogin.Body.String())
+	}
+	cookies := unscopedLogin.Result().Cookies()
+	if len(cookies) != 1 || cookies[0].Value == "" {
+		t.Fatalf("unscoped login refresh cookie=%#v", cookies)
+	}
+	unscopedRefreshRequest := httptest.NewRequest(http.MethodPost, "/auth/refresh", strings.NewReader(`{}`))
+	unscopedRefreshRequest.AddCookie(cookies[0])
+	unscopedRefresh := httptest.NewRecorder()
+	mounted.ServeHTTP(unscopedRefresh, unscopedRefreshRequest)
+	if unscopedRefresh.Code != http.StatusOK || !strings.Contains(unscopedRefresh.Body.String(), `"workspace_id":"workspace-b"`) {
+		t.Fatalf("unscoped refresh did not recover its Workspace: status=%d body=%s", unscopedRefresh.Code, unscopedRefresh.Body.String())
+	}
 	for _, header := range []string{"", "workspace-primary"} {
 		request := httptest.NewRequest(http.MethodGet, "/identity/users", nil)
 		request.Header.Set("Authorization", "Bearer "+session.AccessToken)

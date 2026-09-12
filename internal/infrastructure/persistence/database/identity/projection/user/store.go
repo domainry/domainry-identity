@@ -707,3 +707,43 @@ func (s *Store) GlobalLoginNameAvailable(ctx context.Context, workspaceID, userI
 	}
 	return foundWorkspace == workspaceID && foundUser == userID, nil
 }
+
+// GlobalLoginWorkspace resolves the sole Workspace owning a login name before
+// authentication. Login names are installation-unique; the user ID fallback is
+// accepted only when it also identifies exactly one account.
+func (s *Store) GlobalLoginWorkspace(ctx context.Context, login string) (string, bool, error) {
+	key := identitymodel.IdentityLoginNameKey(login)
+	if key == nil {
+		return "", false, nil
+	}
+	statement, args, err := query.NewSelectBuilder(s.backend.SQLRenderer(), "_identity_users").
+		Columns("workspace_id").
+		Where(query.Or(query.Equal("login_name_key", key), query.Equal("id", strings.TrimSpace(login)))).
+		OrderBy(query.Ascending("workspace_id")).
+		Limit(2).
+		Build()
+	if err != nil {
+		return "", false, err
+	}
+	rows, err := s.backend.QueryIdentityContext(ctx, statement, args...)
+	if err != nil {
+		return "", false, err
+	}
+	defer rows.Close()
+	workspaceID := ""
+	for rows.Next() {
+		var candidate string
+		if err := rows.Scan(&candidate); err != nil {
+			return "", false, err
+		}
+		candidate = strings.TrimSpace(candidate)
+		if workspaceID != "" && workspaceID != candidate {
+			return "", false, nil
+		}
+		workspaceID = candidate
+	}
+	if err := rows.Err(); err != nil {
+		return "", false, err
+	}
+	return workspaceID, workspaceID != "", nil
+}

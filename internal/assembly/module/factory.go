@@ -17,6 +17,7 @@ import (
 	identityapplicationinternal "github.com/domainry/domainry-identity/internal/application/identity"
 	portabilityapplication "github.com/domainry/domainry-identity/internal/application/portability"
 	"github.com/domainry/domainry-identity/internal/assembly"
+	authpolicy "github.com/domainry/domainry-identity/internal/domain/auth/policy"
 	identityservice "github.com/domainry/domainry-identity/internal/domain/identity/service"
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
 	authpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/auth"
@@ -255,7 +256,15 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 		ApplicationKey:           application.ApplicationKey,
 		DefaultWorkspaceID:       defaultWorkspaceID,
 		RequireExplicitWorkspace: workspaceResolver != nil,
-		MaxRequestBodySize:       int64(cfg.HTTPPublicMaxJSONBodyBytes),
+		ResolvePasswordLoginWorkspace: func(ctx context.Context, login string) (identitysdk.WorkspaceID, bool, error) {
+			workspaceID, found, err := identityRuntime.IdentityStore.GlobalLoginWorkspace(ctx, login)
+			return identitysdk.WorkspaceID(workspaceID), found, err
+		},
+		ResolveRefreshSessionWorkspace: func(ctx context.Context, refreshToken string) (identitysdk.WorkspaceID, bool, error) {
+			workspaceID, found, err := identityRuntime.AuthStore.GlobalRefreshTokenWorkspace(ctx, authpolicy.AuthHashRefreshToken(refreshToken))
+			return identitysdk.WorkspaceID(workspaceID), found, err
+		},
+		MaxRequestBodySize: int64(cfg.HTTPPublicMaxJSONBodyBytes),
 		Cookie: browsergateway.CookieConfig{
 			Path: "/auth", Secure: cfg.IsProduction(), SameSite: http.SameSiteLaxMode, MaxAge: cfg.AuthRefreshTTL,
 		},
