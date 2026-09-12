@@ -205,7 +205,7 @@ func (h *IdentityHandler) assignIdentityUserRole(w http.ResponseWriter, r *http.
 			if executeErr := h.roles.AssignUserRoleGoverned(ctx, assignment, principal); executeErr != nil {
 				return nil, executeErr
 			}
-			h.appendIdentityMutationAudit(r, "identity_user_role_assigned", "identity_user", assignment.UserID, "Assigned identity role to user", map[string]any{"role_id": assignment.RoleID})
+			h.appendIdentityMutationAudit(r, "identity_user_role_assigned", "identity_user", assignment.UserID, "Assigned identity role to user", map[string]any{"role_id": assignment.RoleID, "reason": assignment.GrantReason, "result": "success"})
 			return assignment, nil
 		})
 	h.writeIdentityAuthoringResult(w, r, http.StatusCreated, result, err)
@@ -223,7 +223,7 @@ func (h *IdentityHandler) removeIdentityUserRole(w http.ResponseWriter, r *http.
 		h.writeServiceError(w, r, err)
 		return
 	}
-	h.appendIdentityMutationAudit(r, "identity_user_role_removed", "identity_user", userID, "Removed identity role from user", map[string]any{"role_id": roleID, "reason": valueOrDefault(reason, "manual_removal")})
+	h.appendIdentityMutationAudit(r, "identity_user_role_removed", "identity_user", userID, "Removed identity role from user", map[string]any{"role_id": roleID, "reason": valueOrDefault(reason, "manual_removal"), "result": "success"})
 	w.WriteHeader(http.StatusNoContent)
 }
 

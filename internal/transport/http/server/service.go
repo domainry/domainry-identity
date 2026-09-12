@@ -11,8 +11,10 @@ import (
 	"time"
 
 	actioncontract "github.com/domainry/domainry-foundation/action"
+	"github.com/domainry/domainry-foundation/requestcontext"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	"github.com/domainry/domainry-identity-sdk/browsergateway"
+	auditapplication "github.com/domainry/domainry-identity/internal/application/auditbinding"
 	identityauthoring "github.com/domainry/domainry-identity/internal/application/authoring"
 	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
 	portabilityapplication "github.com/domainry/domainry-identity/internal/application/portability"
@@ -250,15 +252,53 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 
 	actionAuthorization := identityapplication.NewIdentityActionAuthorizationService(standaloneActions, core.PermissionCatalog)
 	httpSupport.actionAuthorization = actionAuthorization
+	securityAudit := func(r *http.Request, principal identitymodel.Principal, event, summary string, metadata map[string]any) {
+		if r == nil {
+			return
+		}
+		if principal.WorkspaceID == "" {
+			principal.WorkspaceID = requestcontext.WorkspaceID(r.Context())
+		}
+		if principal.WorkspaceID == "" {
+			principal.WorkspaceID = strings.TrimSpace(cfg.IdentityWorkspaceID)
+		}
+		if principal.RequestID == "" {
+			principal.RequestID = requestcontext.RequestID(r.Context())
+		}
+		if principal.CorrelationID == "" {
+			principal.CorrelationID = requestcontext.CorrelationID(r.Context())
+		}
+		if !principal.Known && principal.UserID == "" {
+			principal.UserID = "anonymous"
+		}
+		idempotencyKey := ""
+		if principal.RequestID != "" {
+			idempotencyKey = strings.TrimSpace(event) + ":" + principal.RequestID
+		}
+		core.Audit.AppendAuditTelemetry(r.Context(), auditapplication.AuditAppendRequest{
+			IdempotencyKey: idempotencyKey, Event: event, ObjectKey: "identity_security", Principal: principal,
+			Summary: summary, Metadata: metadata,
+		})
+	}
+	anonymousSecurityAudit := func(r *http.Request, event, summary string, metadata map[string]any) {
+		securityAudit(r, identitymodel.Principal{}, event, summary, metadata)
+	}
+	principalSecurityAudit := func(r *http.Request, principal identitymodel.Principal, event, summary string, metadata map[string]any) {
+		securityAudit(r, principal, event, summary, metadata)
+	}
 	authHandler := authhttp.NewAuthHandler(authhttp.AuthDependencies{
 		Passwords: core.Auth, ExternalAccounts: core.Auth, RoleRequests: core.Identity,
 		ProviderConfiguration: core.ProviderConfiguration, ProviderFlows: core.ProviderFlows, ProviderCallback: identityprovider.CallbackAdapter{},
 		Principal: httpSupport.principal, WriteJSON: httpSupport.writeJSON, WriteError: httpSupport.writeError,
 		WriteServiceError: httpSupport.writeServiceError, DecodeJSON: httpSupport.decodeJSON,
-		ActionAuthorization:  actionAuthorization,
-		ProviderFailureAudit: func(*http.Request, string, string) {}, SecurityAudit: func(*http.Request, string, string, map[string]any) {},
-		SecurityAuditForPrincipal: func(*http.Request, identitymodel.Principal, string, string, map[string]any) {},
-		WritesFrozen:              core.Store.IdentityWritesFrozen, FederatedLoginWorkspace: core.AuthStore.FederatedLoginWorkspace,
+		ActionAuthorization: actionAuthorization,
+		ProviderFailureAudit: func(r *http.Request, provider, stage string) {
+			anonymousSecurityAudit(r, "auth_provider_failed", "Authentication provider failed", map[string]any{
+				"provider": provider, "reason": stage, "result": "failed", "error_code": "auth.provider_failed",
+			})
+		},
+		SecurityAudit: anonymousSecurityAudit, SecurityAuditForPrincipal: principalSecurityAudit,
+		WritesFrozen: core.Store.IdentityWritesFrozen, FederatedLoginWorkspace: core.AuthStore.FederatedLoginWorkspace,
 		ApplicationRegistered: func(applicationCtx context.Context, workspaceID, applicationKey string) (bool, error) {
 			if core.WorkspaceResolver == nil {
 				if strings.TrimSpace(workspaceID) != core.Applications.WorkspaceID() {
@@ -301,7 +341,7 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 		Localization: core.Metadata, UserSecurity: core.Auth, Audit: core.Audit,
 		Principal: httpSupport.principal, WriteJSON: httpSupport.writeJSON, WriteError: httpSupport.writeError,
 		WriteServiceError: httpSupport.writeServiceError, DecodeJSON: httpSupport.decodeJSON,
-		SecurityAudit: func(*http.Request, string, string, map[string]any) {}, SecurityPrincipal: func(*http.Request, identitymodel.Principal, string, string, map[string]any) {},
+		SecurityAudit: anonymousSecurityAudit, SecurityPrincipal: principalSecurityAudit,
 		Authoring: identityauthoring.NewService(identitypersistence.NewIdentityAuthoringRepository(core.IdentityStore), nil, nil),
 		Actions:   standaloneActions, PermissionCatalog: core.PermissionCatalog, ActionAuthorization: actionAuthorization, RoleDefinitions: roleDefinitionPublication,
 	})

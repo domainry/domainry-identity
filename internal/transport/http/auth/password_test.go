@@ -495,8 +495,11 @@ func TestPasswordSessionHandlersRejectInvalidInputsAndAuditLoginFailure(t *testi
 
 	failedLogin := httptest.NewRecorder()
 	handler.authLogin(failedLogin, httptest.NewRequest(http.MethodPost, "/auth/login", strings.NewReader(`{"workspace_id":"workspace-a","user_id":"user-1","password":"wrong"}`)))
-	if failedLogin.Code != http.StatusUnprocessableEntity || capture.serviceErr == nil || capture.securityEvent != "auth_login_failed" || capture.securityData["login"] != "user-1" || repository.credential.FailedLoginCount != 1 {
+	if failedLogin.Code != http.StatusUnprocessableEntity || capture.serviceErr == nil || capture.securityEvent != "auth_login_failed" || capture.securityData["reason"] != "invalid_credentials" || capture.securityData["result"] != "failed" || repository.credential.FailedLoginCount != 1 {
 		t.Fatalf("failed login status=%d error=%v event=%q data=%#v credential=%#v", failedLogin.Code, capture.serviceErr, capture.securityEvent, capture.securityData, repository.credential)
+	}
+	if _, leaked := capture.securityData["login"]; leaked {
+		t.Fatalf("failed login audit leaked raw login: %#v", capture.securityData)
 	}
 
 	identities.roles = identities.roles[:1]

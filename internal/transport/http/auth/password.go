@@ -46,7 +46,6 @@ func (h *AuthHandler) authLogin(w http.ResponseWriter, r *http.Request) {
 	if challengeAware, ok := h.providerFlows.(authChallengeAwareProviderFlow); ok {
 		outcome, err := challengeAware.LoginWithPasswordOutcome(flowContext, workspaceID, login, req.Password, applicationKey)
 		if err != nil {
-			h.securityAudit(r, "auth_login_failed", "Password login failed", map[string]any{"reason": "invalid_credentials", "login": login})
 			h.writeServiceError(w, r, err)
 			return
 		}
@@ -55,7 +54,9 @@ func (h *AuthHandler) authLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := h.passwords.LoginForApplication(flowContext, workspaceID, login, req.Password, applicationKey)
 	if err != nil {
-		h.securityAudit(r, "auth_login_failed", "Password login failed", map[string]any{"reason": "invalid_credentials", "login": login})
+		if h.securityAudit != nil {
+			h.securityAudit(r, "auth_login_failed", "Password login failed", map[string]any{"reason": "invalid_credentials", "error_code": "auth.invalid_credentials", "result": "failed", "authentication_method": "password"})
+		}
 		h.writeServiceError(w, r, err)
 		return
 	}

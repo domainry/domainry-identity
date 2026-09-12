@@ -19,6 +19,7 @@ func TestIdentityAuthorizationMiddlewareMatrix(t *testing.T) {
 			w.WriteHeader(status)
 		},
 		SecurityAudit:     func(*http.Request, string, string, map[string]any) { denials++ },
+		SecurityPrincipal: func(*http.Request, identitymodel.Principal, string, string, map[string]any) { denials++ },
 		PermissionCatalog: permissionCatalog,
 	})
 	next := func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }

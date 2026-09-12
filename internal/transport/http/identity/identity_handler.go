@@ -134,10 +134,19 @@ func (h *IdentityHandler) identityAction(action identitymodel.IdentityActionDefi
 	return func(w http.ResponseWriter, r *http.Request) {
 		principal := h.principal(r)
 		if !h.identityActionAllowed(r, principal, action) {
-			h.securityAudit(r, "auth_api_denied", "Identity API action denied", map[string]any{
+			metadata := map[string]any{
 				"action_key": action.Key, "path": r.URL.Path, "method": r.Method, "strategy": action.Authorization.Strategy,
-			})
-			if !principal.Known {
+				"result": "denied", "reason": "permission_denied", "error_code": "auth.permission_denied",
+			}
+			if principal.Known {
+				if h.securityPrincipal != nil {
+					h.securityPrincipal(r, principal, "auth_api_denied", "Identity API action denied", metadata)
+				}
+			} else {
+				metadata["reason"], metadata["error_code"] = "token_required", "auth.token_required"
+				if h.securityAudit != nil {
+					h.securityAudit(r, "auth_api_denied", "Identity API action denied", metadata)
+				}
 				h.writeError(w, r, http.StatusUnauthorized, "auth.token_required")
 				return
 			}

@@ -230,6 +230,12 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 	}
 	providerConfiguration := authapplication.NewAuthProviderApplicationService(authapplication.MergeTypedAuthProviderCredentials(cfg.AuthProviders(), providerCredentials), cfg.AuthExternalAutoCreateUsers, authStore)
 	providerFlows := authapplication.NewAuthProviderFlowApplicationService(authApp, providerConfiguration)
+	providerFlows.ConfigureAuthenticationAudit(func(ctx context.Context, request authapplication.AuthenticationAuditRequest) error {
+		return auditApp.AppendAudit(ctx, auditapplication.AuditAppendRequest{
+			IdempotencyKey: request.IdempotencyKey, Event: request.Event, ObjectKey: request.ObjectKey, RecordID: request.RecordID,
+			Principal: request.Principal, Summary: request.Summary, Metadata: request.Metadata,
+		})
+	})
 	objects := metadataRuntime.EffectiveAccessObjects
 	actions := func() []definitionmodel.ActionSchema { return metadataRuntime.Schema().Actions }
 	effectiveAccess := identityapplication.NewIdentityEffectiveAccessApplicationService(identityapplication.IdentityEffectiveAccessDependencies{

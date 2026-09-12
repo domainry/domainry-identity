@@ -31,7 +31,10 @@ func identityPolicy() auditapplication.Policy[identitymodel.Principal, identitym
 	return auditapplication.Policy[identitymodel.Principal, identitymodel.SystemScope]{
 		Actor: func(principal identitymodel.Principal) auditcontract.Actor {
 			kind := "user"
-			if !principal.Known || principal.SystemScope.Valid() {
+			if !principal.Known {
+				kind = "anonymous"
+			}
+			if principal.SystemScope.Valid() {
 				kind = "system"
 			}
 			return auditcontract.Actor{WorkspaceID: principal.WorkspaceID, SubjectID: principal.UserID, RoleKey: principal.Role.Key, Kind: kind, RequestID: principal.RequestID, CorrelationID: principal.CorrelationID, AuthorizationRevision: principal.AuthorizationRevision}
