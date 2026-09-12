@@ -6,18 +6,23 @@ import (
 	"strings"
 
 	identitysdk "github.com/domainry/domainry-identity-sdk"
+	identityscope "github.com/domainry/domainry-identity-sdk/application"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
 type sdkPrincipalResolver struct{ binding *sdkBinding }
 
 func (adapter sdkPrincipalResolver) Resolve(ctx context.Context, request identitysdk.PrincipalResolutionRequest) (identitysdk.PrincipalResolution, error) {
-	identity, workspaceContext, err := (sdkProjection{binding: adapter.binding}).scoped(ctx, request.Application)
+	scope, ok := identityscope.ScopeFromContext(ctx)
+	if !ok {
+		return identitysdk.PrincipalResolution{}, &identitysdk.Error{Code: "identity.application_scope_required"}
+	}
+	identity, workspaceContext, err := (sdkProjection{binding: adapter.binding}).scoped(ctx)
 	if err != nil {
 		return identitysdk.PrincipalResolution{}, err
 	}
 	if request.Workload != nil {
-		return adapter.resolveWorkflowWorkload(workspaceContext, request, identity)
+		return adapter.resolveWorkflowWorkload(identityscope.WithScope(workspaceContext, scope), request, identity)
 	}
 	var principal identitymodel.Principal
 	if roleKey := strings.TrimSpace(request.RoleKey); roleKey != "" {
@@ -28,7 +33,7 @@ func (adapter sdkPrincipalResolver) Resolve(ctx context.Context, request identit
 	if err != nil {
 		return identitysdk.PrincipalResolution{}, sdkBoundaryError(err)
 	}
-	principal.TenantID = string(request.Application.TenantID)
+	principal.TenantID = string(scope.TenantID)
 	user, found, err := identity.FindUser(workspaceContext, principal.UserID)
 	if err != nil {
 		return identitysdk.PrincipalResolution{}, sdkBoundaryError(err)
@@ -64,13 +69,17 @@ func (adapter sdkPrincipalResolver) resolveWorkflowWorkload(ctx context.Context,
 	WorkflowWorkloadBinding(context.Context, string, string) (identitymodel.IdentityWorkflowWorkloadBinding, bool, error)
 	BuildWorkflowWorkloadPrincipal(context.Context, identitymodel.IdentityWorkflowWorkloadBinding) (identitymodel.Principal, error)
 }) (identitysdk.PrincipalResolution, error) {
+	scope, ok := identityscope.ScopeFromContext(ctx)
+	if !ok {
+		return identitysdk.PrincipalResolution{}, &identitysdk.Error{Code: "identity.application_scope_required"}
+	}
 	workload := request.Workload
 	workflowKey := strings.TrimSpace(workload.WorkflowKey)
 	subjectID := identitysdk.WorkflowWorkloadSubjectID(workflowKey)
 	if subjectID == "" || request.SubjectID != subjectID || strings.TrimSpace(request.RoleKey) == "" || strings.TrimSpace(workload.DefinitionVersionID) == "" || workload.DefinitionVersion <= 0 || strings.TrimSpace(workload.ReleaseDigest) == "" {
 		return identitysdk.PrincipalResolution{}, &identitysdk.Error{StatusCode: http.StatusBadRequest, Code: "identity.workflow_workload_resolution_invalid"}
 	}
-	binding, found, err := identity.WorkflowWorkloadBinding(ctx, string(request.Application.ApplicationKey), workflowKey)
+	binding, found, err := identity.WorkflowWorkloadBinding(ctx, string(scope.ApplicationKey), workflowKey)
 	if err != nil {
 		return identitysdk.PrincipalResolution{}, sdkBoundaryError(err)
 	}
@@ -90,7 +99,7 @@ func (adapter sdkPrincipalResolver) resolveWorkflowWorkload(ctx context.Context,
 	if err != nil {
 		return identitysdk.PrincipalResolution{}, sdkBoundaryError(err)
 	}
-	principal.TenantID = string(request.Application.TenantID)
+	principal.TenantID = string(scope.TenantID)
 	if !principal.Known {
 		return identitysdk.PrincipalResolution{}, &identitysdk.Error{StatusCode: http.StatusForbidden, Code: "identity.workflow_workload_role_unavailable"}
 	}

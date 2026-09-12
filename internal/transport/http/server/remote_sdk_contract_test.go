@@ -55,11 +55,13 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 	if testServer.URL != issuer {
 		t.Fatalf("test issuer=%q server URL=%q", issuer, testServer.URL)
 	}
-	unauthorizedRequest, err := http.NewRequestWithContext(t.Context(), http.MethodPost, testServer.URL+"/identity/users/query", bytes.NewBufferString(`{"application":{"workspace_id":"workspace-primary","application_key":"orders-runtime"}}`))
+	unauthorizedRequest, err := http.NewRequestWithContext(t.Context(), http.MethodPost, testServer.URL+"/identity/users/query", bytes.NewBufferString(`{}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	unauthorizedRequest.Header.Set("Content-Type", "application/json")
+	unauthorizedRequest.Header.Set("X-Workspace-ID", "workspace-primary")
+	unauthorizedRequest.Header.Set("X-Domainry-Application-Key", "orders-runtime")
 	unauthorizedResponse, err := testServer.Client().Do(unauthorizedRequest)
 	if err != nil {
 		t.Fatal(err)
@@ -68,12 +70,14 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 	if unauthorizedResponse.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("projection endpoint without service credential status=%d", unauthorizedResponse.StatusCode)
 	}
-	wrongScopeRequest, err := http.NewRequestWithContext(t.Context(), http.MethodPost, testServer.URL+"/identity/users/query", bytes.NewBufferString(`{"application":{"workspace_id":"workspace-primary","application_key":"notify-runtime"}}`))
+	wrongScopeRequest, err := http.NewRequestWithContext(t.Context(), http.MethodPost, testServer.URL+"/identity/users/query", bytes.NewBufferString(`{}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	wrongScopeRequest.Header.Set("Content-Type", "application/json")
 	wrongScopeRequest.Header.Set("Authorization", "Bearer "+serviceCredential)
+	wrongScopeRequest.Header.Set("X-Workspace-ID", "workspace-primary")
+	wrongScopeRequest.Header.Set("X-Domainry-Application-Key", "notify-runtime")
 	wrongScopeResponse, err := testServer.Client().Do(wrongScopeRequest)
 	if err != nil {
 		t.Fatal(err)

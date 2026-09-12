@@ -1,9 +1,13 @@
 package remotesdk
 
 import (
+	"context"
 	"net/http"
+	"strings"
 
+	"github.com/domainry/domainry-foundation/requestcontext"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
+	identityscope "github.com/domainry/domainry-identity-sdk/application"
 )
 
 // registerRuntimeProjectionRoutes exposes the read-only projection and trusted
@@ -22,10 +26,11 @@ func registerRuntimeProjectionRoutes(registrar RouteRegistrar, binding identitys
 		if !support.decodeJSON(w, r, &request) {
 			return
 		}
-		if !authorizeApplicationCredential(w, r, support, credentials, request.Application) {
+		scope := runtimeApplicationScope(r)
+		if !authorizeApplicationCredential(w, r, support, credentials, scope) {
 			return
 		}
-		user, found, err := binding.Projection().FindUser(r.Context(), request)
+		user, found, err := binding.Projection().FindUser(runtimeApplicationContext(r, scope), request)
 		if err != nil {
 			support.writeServiceError(w, r, err)
 			return
@@ -40,10 +45,11 @@ func registerRuntimeProjectionRoutes(registrar RouteRegistrar, binding identitys
 		if !support.decodeJSON(w, r, &request) {
 			return
 		}
-		if !authorizeApplicationCredential(w, r, support, credentials, request.Application) {
+		scope := runtimeApplicationScope(r)
+		if !authorizeApplicationCredential(w, r, support, credentials, scope) {
 			return
 		}
-		organizationUnit, found, err := binding.Projection().FindOrganizationUnit(r.Context(), request)
+		organizationUnit, found, err := binding.Projection().FindOrganizationUnit(runtimeApplicationContext(r, scope), request)
 		if err != nil {
 			support.writeServiceError(w, r, err)
 			return
@@ -58,7 +64,8 @@ func registerRuntimeProjectionRoutes(registrar RouteRegistrar, binding identitys
 		if !support.decodeJSON(w, r, &request) {
 			return
 		}
-		if !authorizeApplicationCredential(w, r, support, credentials, request.Application) {
+		scope := runtimeApplicationScope(r)
+		if !authorizeApplicationCredential(w, r, support, credentials, scope) {
 			return
 		}
 		resolver, ok := binding.Projection().(identitysdk.DisplayNameProjection)
@@ -66,7 +73,7 @@ func registerRuntimeProjectionRoutes(registrar RouteRegistrar, binding identitys
 			support.writeServiceError(w, r, &identitysdk.Error{Code: "identity.display_name_projection_unavailable"})
 			return
 		}
-		result, err := resolver.ResolveDisplayNames(r.Context(), request)
+		result, err := resolver.ResolveDisplayNames(runtimeApplicationContext(r, scope), request)
 		writeRuntimeProjection(w, r, result, err, support)
 	})
 	registrar.HandleFunc("POST /identity/users/query", func(w http.ResponseWriter, r *http.Request) {
@@ -74,10 +81,11 @@ func registerRuntimeProjectionRoutes(registrar RouteRegistrar, binding identitys
 		if !ok {
 			return
 		}
-		if !authorizeApplicationCredential(w, r, support, credentials, request.Application) {
+		scope := runtimeApplicationScope(r)
+		if !authorizeApplicationCredential(w, r, support, credentials, scope) {
 			return
 		}
-		values, err := binding.Projection().ListUsers(r.Context(), request)
+		values, err := binding.Projection().ListUsers(runtimeApplicationContext(r, scope), request)
 		writeRuntimeProjection(w, r, values, err, support)
 	})
 	registrar.HandleFunc("POST /identity/roles/query", func(w http.ResponseWriter, r *http.Request) {
@@ -85,10 +93,11 @@ func registerRuntimeProjectionRoutes(registrar RouteRegistrar, binding identitys
 		if !ok {
 			return
 		}
-		if !authorizeApplicationCredential(w, r, support, credentials, request.Application) {
+		scope := runtimeApplicationScope(r)
+		if !authorizeApplicationCredential(w, r, support, credentials, scope) {
 			return
 		}
-		values, err := binding.Projection().ListRoles(r.Context(), request)
+		values, err := binding.Projection().ListRoles(runtimeApplicationContext(r, scope), request)
 		writeRuntimeProjection(w, r, values, err, support)
 	})
 	registrar.HandleFunc("POST /identity/user-role-assignments/query", func(w http.ResponseWriter, r *http.Request) {
@@ -96,10 +105,11 @@ func registerRuntimeProjectionRoutes(registrar RouteRegistrar, binding identitys
 		if !support.decodeJSON(w, r, &request) {
 			return
 		}
-		if !authorizeApplicationCredential(w, r, support, credentials, request.Application) {
+		scope := runtimeApplicationScope(r)
+		if !authorizeApplicationCredential(w, r, support, credentials, scope) {
 			return
 		}
-		values, err := binding.Projection().ListUserRoleAssignments(r.Context(), request)
+		values, err := binding.Projection().ListUserRoleAssignments(runtimeApplicationContext(r, scope), request)
 		writeRuntimeProjection(w, r, values, err, support)
 	})
 	registrar.HandleFunc("POST /identity/principal/resolve", func(w http.ResponseWriter, r *http.Request) {
@@ -107,16 +117,34 @@ func registerRuntimeProjectionRoutes(registrar RouteRegistrar, binding identitys
 		if !support.decodeJSON(w, r, &request) {
 			return
 		}
-		if !authorizeApplicationCredential(w, r, support, credentials, request.Application) {
+		scope := runtimeApplicationScope(r)
+		if !authorizeApplicationCredential(w, r, support, credentials, scope) {
 			return
 		}
-		resolution, err := binding.Principals().Resolve(r.Context(), request)
+		resolution, err := binding.Principals().Resolve(runtimeApplicationContext(r, scope), request)
 		if err != nil {
 			support.writeServiceError(w, r, err)
 			return
 		}
 		support.writeJSON(w, http.StatusOK, resolution)
 	})
+}
+
+func runtimeApplicationScope(r *http.Request) identitysdk.ApplicationScope {
+	workspaceID := strings.TrimSpace(r.Header.Get("X-Domainry-Workspace-ID"))
+	if workspaceID == "" {
+		workspaceID = strings.TrimSpace(r.Header.Get("X-Workspace-ID"))
+	}
+	return identitysdk.ApplicationScope{
+		TenantID:       identitysdk.TenantID(strings.TrimSpace(r.Header.Get("X-Domainry-Tenant-ID"))),
+		WorkspaceID:    identitysdk.WorkspaceID(workspaceID),
+		ApplicationKey: identitysdk.ApplicationKey(strings.TrimSpace(r.Header.Get("X-Domainry-Application-Key"))),
+	}
+}
+
+func runtimeApplicationContext(r *http.Request, scope identitysdk.ApplicationScope) context.Context {
+	ctx := requestcontext.WithWorkspaceID(r.Context(), string(scope.WorkspaceID))
+	return identityscope.WithScope(ctx, scope)
 }
 
 func writeRuntimeProjection[T any](w http.ResponseWriter, r *http.Request, value T, err error, support Support) {

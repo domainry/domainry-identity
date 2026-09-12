@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	identitysdk "github.com/domainry/domainry-identity-sdk"
+	identityscope "github.com/domainry/domainry-identity-sdk/application"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
@@ -25,7 +26,7 @@ func (adapter sdkWorkflowWorkloads) ApplyWorkflowWorkloadBindings(ctx context.Co
 	if !registered {
 		return identitysdk.ApplyWorkflowWorkloadBindingsResult{}, &identitysdk.Error{StatusCode: http.StatusForbidden, Code: "identity.application_not_registered"}
 	}
-	scoped, workspaceContext, err := (sdkProjection{binding: adapter.binding}).scoped(ctx, request.Application)
+	scoped, workspaceContext, err := (sdkProjection{binding: adapter.binding}).scoped(identityscope.WithScope(ctx, request.Application))
 	if err != nil {
 		return identitysdk.ApplyWorkflowWorkloadBindingsResult{}, err
 	}
@@ -52,7 +53,7 @@ func (adapter sdkWorkflowWorkloads) GetWorkflowWorkloadBinding(ctx context.Conte
 	if err := request.Validate(); err != nil {
 		return identitysdk.WorkflowWorkloadBinding{}, err
 	}
-	scoped, workspaceContext, err := (sdkProjection{binding: adapter.binding}).scoped(ctx, request.Application)
+	scoped, workspaceContext, err := (sdkProjection{binding: adapter.binding}).scoped(identityscope.WithScope(ctx, request.Application))
 	if err != nil {
 		return identitysdk.WorkflowWorkloadBinding{}, err
 	}

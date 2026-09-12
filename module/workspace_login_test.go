@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/domainry/domainry-foundation/requestcontext"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	identityhttpapi "github.com/domainry/domainry-identity-sdk/httpapi"
 	identitymodule "github.com/domainry/domainry-identity/module"
@@ -98,7 +99,7 @@ func TestEmbeddedHostWorkspaceLoginAfterAtomicBootstrap(t *testing.T) {
 	if err != nil {
 		t.Fatal("token", err)
 	}
-	principal, err := binding.Principals().Resolve(t.Context(), identitysdk.PrincipalResolutionRequest{Application: identitysdk.ApplicationScope{WorkspaceID: verified.WorkspaceID}, SubjectID: verified.SubjectID})
+	principal, err := binding.Principals().Resolve(requestcontext.WithWorkspaceID(t.Context(), string(verified.WorkspaceID)), identitysdk.PrincipalResolutionRequest{SubjectID: verified.SubjectID})
 	if err != nil {
 		t.Fatal("principal", err)
 	}

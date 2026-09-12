@@ -346,7 +346,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	if _, err := rolePublisher.PublishProjectRoles(t.Context(), identitysdk.ProjectRoleCatalog{Application: identitysdk.ApplicationRef{WorkspaceID: "other", ApplicationKey: application.ApplicationKey}}); err == nil {
 		t.Fatal("cross-workspace project role publication accepted")
 	}
-	roles, err := binding.Projection().ListRoles(t.Context(), identitysdk.ProjectionQuery{Application: identitysdk.ApplicationScope{WorkspaceID: application.WorkspaceID, ApplicationKey: application.ApplicationKey}})
+	roles, err := binding.Projection().ListRoles(t.Context(), identitysdk.ProjectionQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -375,14 +375,14 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		t.Fatalf("workflow workload apply=%+v err=%v", applied, err)
 	}
 	resolution, err := binding.Principals().Resolve(t.Context(), identitysdk.PrincipalResolutionRequest{
-		Application: workloadRequest.Application, SubjectID: "workflow:customer_sync", RoleKey: "customer_sync_service",
+		SubjectID: "workflow:customer_sync", RoleKey: "customer_sync_service",
 		Workload: &identitysdk.WorkflowWorkloadResolution{WorkflowKey: "customer_sync", DefinitionVersionID: "workflow-version-1", DefinitionVersion: 1, ReleaseID: workloadRequest.ReleaseID, ReleaseDigest: digest, TaskID: "task-1", SourceEventID: "event-1", InitiatorSubjectID: "member-1"},
 	})
 	if err != nil || !resolution.Principal.Known || resolution.Principal.Workload == nil || resolution.Principal.Workload.TaskID != "task-1" || resolution.Principal.Workload.InitiatorSubjectID != "member-1" || !slices.Contains(resolution.Principal.Permissions, "customer.read") {
 		t.Fatalf("workflow workload resolution=%+v err=%v", resolution, err)
 	}
 	staleResolution := identitysdk.PrincipalResolutionRequest{
-		Application: workloadRequest.Application, SubjectID: "workflow:customer_sync", RoleKey: "customer_sync_service",
+		SubjectID: "workflow:customer_sync", RoleKey: "customer_sync_service",
 		Workload: &identitysdk.WorkflowWorkloadResolution{WorkflowKey: "customer_sync", DefinitionVersionID: "workflow-version-0", DefinitionVersion: 1, ReleaseID: workloadRequest.ReleaseID, ReleaseDigest: digest},
 	}
 	if _, err := binding.Principals().Resolve(t.Context(), staleResolution); err == nil || !strings.Contains(err.Error(), "version_mismatch") {
@@ -402,7 +402,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		t.Fatalf("workflow release with an unauthorized action was accepted: %v", err)
 	}
 	if unchanged, err := binding.Principals().Resolve(t.Context(), identitysdk.PrincipalResolutionRequest{
-		Application: workloadRequest.Application, SubjectID: "workflow:customer_sync", RoleKey: "customer_sync_service",
+		SubjectID: "workflow:customer_sync", RoleKey: "customer_sync_service",
 		Workload: &identitysdk.WorkflowWorkloadResolution{WorkflowKey: "customer_sync", DefinitionVersionID: "workflow-version-1", DefinitionVersion: 1, ReleaseID: workloadRequest.ReleaseID, ReleaseDigest: digest},
 	}); err != nil || !unchanged.Principal.Known {
 		t.Fatalf("rejected workload release changed the active binding: resolution=%+v err=%v", unchanged, err)
@@ -432,7 +432,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := binding.Principals().Resolve(t.Context(), identitysdk.PrincipalResolutionRequest{
-		Application: workloadRequest.Application, SubjectID: "workflow:customer_sync", RoleKey: "customer_sync_service",
+		SubjectID: "workflow:customer_sync", RoleKey: "customer_sync_service",
 		Workload: &identitysdk.WorkflowWorkloadResolution{WorkflowKey: "customer_sync", DefinitionVersionID: "workflow-version-1", DefinitionVersion: 1, ReleaseID: workloadRequest.ReleaseID, ReleaseDigest: digest},
 	}); err == nil || !strings.Contains(err.Error(), "role_unavailable") {
 		t.Fatalf("workflow workload resolved through a disabled role: %v", err)
@@ -444,7 +444,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := binding.Principals().Resolve(t.Context(), identitysdk.PrincipalResolutionRequest{
-		Application: workloadRequest.Application, SubjectID: "workflow:customer_sync", RoleKey: "customer_sync_service",
+		SubjectID: "workflow:customer_sync", RoleKey: "customer_sync_service",
 		Workload: &identitysdk.WorkflowWorkloadResolution{WorkflowKey: "customer_sync", DefinitionVersionID: "workflow-version-1", DefinitionVersion: 1, ReleaseID: workloadRequest.ReleaseID, ReleaseDigest: digest},
 	}); err == nil || !strings.Contains(err.Error(), "role_mismatch") {
 		t.Fatalf("workflow workload resolved through a changed binding role: %v", err)
@@ -453,7 +453,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := binding.Principals().Resolve(t.Context(), identitysdk.PrincipalResolutionRequest{
-		Application: workloadRequest.Application, SubjectID: "workflow:customer_sync", RoleKey: "customer_sync_service",
+		SubjectID: "workflow:customer_sync", RoleKey: "customer_sync_service",
 		Workload: &identitysdk.WorkflowWorkloadResolution{WorkflowKey: "customer_sync", DefinitionVersionID: "workflow-version-1", DefinitionVersion: 1, ReleaseID: workloadRequest.ReleaseID, ReleaseDigest: digest},
 	}); err == nil || !strings.Contains(err.Error(), "not_found") {
 		t.Fatalf("deleted workflow workload binding still resolved: %v", err)

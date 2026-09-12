@@ -7,6 +7,7 @@ import (
 
 	"github.com/domainry/domainry-foundation/requestcontext"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
+	identityscope "github.com/domainry/domainry-identity-sdk/application"
 	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
@@ -16,7 +17,7 @@ import (
 type sdkProjection struct{ binding *sdkBinding }
 
 func (adapter sdkProjection) FindUser(ctx context.Context, request identitysdk.UserLookup) (identitysdk.User, bool, error) {
-	identity, workspaceContext, err := adapter.scoped(ctx, request.Application)
+	identity, workspaceContext, err := adapter.scoped(ctx)
 	if err != nil {
 		return identitysdk.User{}, false, err
 	}
@@ -25,7 +26,7 @@ func (adapter sdkProjection) FindUser(ctx context.Context, request identitysdk.U
 }
 
 func (adapter sdkProjection) FindOrganizationUnit(ctx context.Context, request identitysdk.OrganizationUnitLookup) (identitysdk.OrganizationUnit, bool, error) {
-	identity, workspaceContext, err := adapter.scoped(ctx, request.Application)
+	identity, workspaceContext, err := adapter.scoped(ctx)
 	if err != nil {
 		return identitysdk.OrganizationUnit{}, false, err
 	}
@@ -34,7 +35,7 @@ func (adapter sdkProjection) FindOrganizationUnit(ctx context.Context, request i
 }
 
 func (adapter sdkProjection) ResolveDisplayNames(ctx context.Context, request identitysdk.DisplayNameQuery) (identitysdk.DisplayNameResult, error) {
-	identity, workspaceContext, err := adapter.scoped(ctx, request.Application)
+	identity, workspaceContext, err := adapter.scoped(ctx)
 	if err != nil {
 		return identitysdk.DisplayNameResult{}, err
 	}
@@ -92,7 +93,7 @@ func sdkDisplayName(id, name string) identitysdk.DisplayName {
 }
 
 func (adapter sdkProjection) ListUsers(ctx context.Context, request identitysdk.ProjectionQuery) ([]identitysdk.User, error) {
-	identity, workspaceContext, err := adapter.scoped(ctx, request.Application)
+	identity, workspaceContext, err := adapter.scoped(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +109,7 @@ func (adapter sdkProjection) ListUsers(ctx context.Context, request identitysdk.
 }
 
 func (adapter sdkProjection) ListRoles(ctx context.Context, request identitysdk.ProjectionQuery) ([]identitysdk.Role, error) {
-	identity, workspaceContext, err := adapter.scoped(ctx, request.Application)
+	identity, workspaceContext, err := adapter.scoped(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +125,7 @@ func (adapter sdkProjection) ListRoles(ctx context.Context, request identitysdk.
 }
 
 func (adapter sdkProjection) ListUserRoleAssignments(ctx context.Context, request identitysdk.UserRoleAssignmentQuery) ([]identitysdk.UserRoleAssignment, error) {
-	identity, workspaceContext, err := adapter.scoped(ctx, request.Application)
+	identity, workspaceContext, err := adapter.scoped(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -139,9 +140,13 @@ func (adapter sdkProjection) ListUserRoleAssignments(ctx context.Context, reques
 	return result, nil
 }
 
-func (adapter sdkProjection) scoped(ctx context.Context, scope identitysdk.ApplicationScope) (*identityapplication.IdentityApplicationService, context.Context, error) {
+func (adapter sdkProjection) scoped(ctx context.Context) (*identityapplication.IdentityApplicationService, context.Context, error) {
 	if adapter.binding == nil || adapter.binding.identity == nil {
 		return nil, ctx, &identitysdk.Error{Code: "identity.projection_unavailable"}
+	}
+	scope, ok := identityscope.ScopeFromContext(ctx)
+	if !ok {
+		return nil, ctx, &identitysdk.Error{Code: "identity.application_scope_required"}
 	}
 	application := identitysdk.ApplicationRef{TenantID: scope.TenantID, WorkspaceID: scope.WorkspaceID, ApplicationKey: scope.ApplicationKey}
 	if found, err := adapter.binding.applicationRegistered(ctx, application); err != nil {
