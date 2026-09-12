@@ -82,13 +82,74 @@ func TestIdentityCapabilityValidatorUsesOwnerSchema(t *testing.T) {
 	}
 }
 
+func TestIdentityCapabilityValidatorAcceptsProtectedInstallationAdministratorExtension(t *testing.T) {
+	binding, err := NewCapabilityBinding()
+	if err != nil {
+		t.Fatal(err)
+	}
+	summary, _ := binding.CapabilitySummary(t.Context())
+	result, err := binding.ValidateCapabilityCandidate(t.Context(), identityValidationRequestForKey(summary, "tenant_admin", `{
+		"key":"tenant_admin",
+		"name":"Installation administrator",
+		"permissions":[{"permission_key":"order.read","data_scope":"all"}],
+		"audience":"user",
+		"assignment_mode":"system_managed",
+		"risk_level":"privileged",
+		"platform_role_extension":true
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Diagnostics) != 0 {
+		t.Fatalf("diagnostics=%+v", result.Diagnostics)
+	}
+}
+
+func TestIdentityCapabilityValidatorRejectsInvalidPlatformRoleExtensions(t *testing.T) {
+	binding, err := NewCapabilityBinding()
+	if err != nil {
+		t.Fatal(err)
+	}
+	summary, _ := binding.CapabilitySummary(t.Context())
+	for _, test := range []struct {
+		name      string
+		sourceKey string
+		candidate string
+	}{
+		{name: "marker must be true", sourceKey: "tenant_admin", candidate: `{"key":"tenant_admin","name":"Installation administrator","permissions":[{"permission_key":"order.read","data_scope":"all"}],"audience":"user","assignment_mode":"system_managed","risk_level":"privileged","platform_role_extension":false}`},
+		{name: "only installation administrator", sourceKey: "sales", candidate: `{"key":"sales","name":"Installation administrator","permissions":[{"permission_key":"order.read","data_scope":"all"}],"audience":"user","assignment_mode":"system_managed","risk_level":"privileged","platform_role_extension":true}`},
+		{name: "identity policy is immutable", sourceKey: "tenant_admin", candidate: `{"key":"tenant_admin","name":"Project administrator","permissions":[],"audience":"user","assignment_mode":"manual","provision_to_workspaces":true,"risk_level":"privileged","permission_set_keys":["project_owned"],"platform_role_extension":true}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := binding.ValidateCapabilityCandidate(t.Context(), identityValidationRequestForKey(summary, test.sourceKey, test.candidate))
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, diagnostic := range result.Diagnostics {
+				if diagnostic.RuleKey == "identity.validation.platform_role_extension" {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("diagnostics=%+v", result.Diagnostics)
+			}
+		})
+	}
+}
+
 func identityValidationRequest(summary modulecapability.ModuleSummary, candidate string) modulecapability.ValidationRequest {
+	return identityValidationRequestForKey(summary, "sales", candidate)
+}
+
+func identityValidationRequestForKey(summary modulecapability.ModuleSummary, sourceKey, candidate string) modulecapability.ValidationRequest {
 	return modulecapability.ValidationRequest{
 		ContractVersion: modulecapability.ValidationContractVersion,
 		ModuleKey:       "identity",
 		CategoryKey:     identityCapabilityCategory("identity.role"),
 		ContractSHA256:  summary.Identity.ContractSHA256,
 		Kind:            "identity.role",
-		Candidate:       modulecapability.AuthoringFragment{Collection: "roles", Key: "sales", Value: json.RawMessage(candidate)},
+		Candidate:       modulecapability.AuthoringFragment{Collection: "roles", Key: sourceKey, Value: json.RawMessage(candidate)},
 	}
 }

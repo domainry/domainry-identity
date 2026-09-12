@@ -82,6 +82,9 @@ func TestIdentityRoleAuthoringContractsPublishExactHTTPShapes(t *testing.T) {
 		t.Fatalf("role=%#v", role)
 	}
 	rolePayload := role.InputSchema.Properties["payload"]
+	if _, exposed := rolePayload.Properties["platform_role_extension"]; exposed {
+		t.Fatal("role authoring contract exposes internal platform_role_extension")
+	}
 	for _, field := range []string{"permission_set_keys", "permission_set_group_keys", "guardrail_keys", "provision_to_workspaces"} {
 		if _, ok := rolePayload.Properties[field]; !ok {
 			t.Fatalf("role authoring contract missing %s", field)

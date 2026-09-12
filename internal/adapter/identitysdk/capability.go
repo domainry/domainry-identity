@@ -22,6 +22,14 @@ import (
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
+const (
+	identityPlatformRoleExtensionField          = "platform_role_extension"
+	identityInstallationAdministratorRoleKey    = "tenant_admin"
+	identityInstallationAdministratorRoleName   = "Installation administrator"
+	identityInstallationAdministratorAssignment = "system_managed"
+	identityInstallationAdministratorRisk       = "privileged"
+)
+
 // NewCapabilityBinding builds Identity's immutable, topology-neutral
 // capability contract without opening the operational SDK binding.
 func NewCapabilityBinding() (*modulecapability.StaticBinding, error) {
@@ -147,7 +155,7 @@ func NewCapabilityBinding() (*modulecapability.StaticBinding, error) {
 	summary := modulecapability.ModuleSummary{
 		Identity: modulecapability.ModuleIdentity{
 			Key: "identity", SourceOwner: "identity", ModuleVersion: identitysdk.CurrentProtocolVersion,
-			ValidationRevision:       "identity-authoring-validation-v1",
+			ValidationRevision:       "identity-authoring-validation-v2",
 			SupportedDeploymentModes: []modulecapability.DeploymentMode{modulecapability.DeploymentModeModule, modulecapability.DeploymentModeSaaS},
 		},
 		Name:        "Identity",
@@ -409,6 +417,9 @@ func identityCandidateValidator(definitions []authoringcontract.CapabilityAuthor
 		} else if !declared {
 			candidate["key"] = request.Candidate.Key
 		}
+		if request.Kind == "identity.role" {
+			validateIdentityPlatformRoleExtension(candidate, request.Candidate.Key, &diagnostics)
+		}
 		validateIdentitySchema(schema, schema, candidate, "$.candidate.value", &diagnostics)
 		sort.Slice(diagnostics, func(i, j int) bool {
 			if diagnostics[i].FieldPath == diagnostics[j].FieldPath {
@@ -417,6 +428,72 @@ func identityCandidateValidator(definitions []authoringcontract.CapabilityAuthor
 			return diagnostics[i].FieldPath < diagnostics[j].FieldPath
 		})
 		return modulecapability.ValidationResult{Diagnostics: diagnostics}, nil
+	}
+}
+
+// validateIdentityPlatformRoleExtension validates Plane's protected extension
+// of Runtime's installation administrator role. The discriminator is removed
+// before ordinary role-schema validation so it remains an internal compiler
+// contract and is not exposed as project-owned Identity authoring surface.
+func validateIdentityPlatformRoleExtension(candidate map[string]any, sourceKey string, diagnostics *[]modulecapability.Diagnostic) {
+	marker, declared := candidate[identityPlatformRoleExtensionField]
+	if !declared {
+		return
+	}
+	delete(candidate, identityPlatformRoleExtensionField)
+
+	enabled, valid := marker.(bool)
+	if !valid || !enabled {
+		addIdentityDiagnostic(diagnostics, "identity.validation.platform_role_extension", "$.candidate.value."+identityPlatformRoleExtensionField, "Platform role extension marker must be true", nil)
+		return
+	}
+	if sourceKey != identityInstallationAdministratorRoleKey {
+		addIdentityDiagnostic(diagnostics, "identity.validation.platform_role_extension", "$.candidate.value.key", "Only the installation administrator role may receive platform business grants", map[string]string{"expected": identityInstallationAdministratorRoleKey})
+	}
+
+	validateIdentityPlatformRoleFixedString(candidate, "name", identityInstallationAdministratorRoleName, diagnostics)
+	validateIdentityPlatformRoleFixedString(candidate, "audience", "user", diagnostics)
+	validateIdentityPlatformRoleFixedString(candidate, "assignment_mode", identityInstallationAdministratorAssignment, diagnostics)
+	validateIdentityPlatformRoleFixedString(candidate, "risk_level", identityInstallationAdministratorRisk, diagnostics)
+
+	permissions, valid := candidate["permissions"].([]any)
+	if !valid || len(permissions) == 0 {
+		addIdentityDiagnostic(diagnostics, "identity.validation.platform_role_extension", "$.candidate.value.permissions", "Platform role extension must declare explicit business grants", nil)
+	}
+	if value, declared := candidate["provision_to_workspaces"]; declared {
+		provision, valid := value.(bool)
+		if !valid || provision {
+			addIdentityDiagnostic(diagnostics, "identity.validation.platform_role_extension", "$.candidate.value.provision_to_workspaces", "Platform role extension cannot change workspace provisioning", nil)
+		}
+	}
+	if value, declared := candidate["required_binding_key"]; declared {
+		binding, valid := value.(string)
+		if !valid || binding != "" {
+			addIdentityDiagnostic(diagnostics, "identity.validation.platform_role_extension", "$.candidate.value.required_binding_key", "Platform role extension cannot require a project-owned binding", nil)
+		}
+	}
+	for _, field := range []string{"i18n", "conflict_role_keys", "grantable_role_keys", "permission_set_keys", "permission_set_group_keys", "guardrail_keys"} {
+		if value, declared := candidate[field]; declared && !identityEmptyCollection(value) {
+			addIdentityDiagnostic(diagnostics, "identity.validation.platform_role_extension", "$.candidate.value."+field, "Platform role extension cannot change platform-owned identity or assignment policy", nil)
+		}
+	}
+}
+
+func validateIdentityPlatformRoleFixedString(candidate map[string]any, field, expected string, diagnostics *[]modulecapability.Diagnostic) {
+	actual, valid := candidate[field].(string)
+	if !valid || actual != expected {
+		addIdentityDiagnostic(diagnostics, "identity.validation.platform_role_extension", "$.candidate.value."+field, "Platform role extension must preserve platform-owned identity policy", map[string]string{"expected": expected})
+	}
+}
+
+func identityEmptyCollection(value any) bool {
+	switch typed := value.(type) {
+	case []any:
+		return len(typed) == 0
+	case map[string]any:
+		return len(typed) == 0
+	default:
+		return false
 	}
 }
 
