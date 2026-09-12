@@ -22,22 +22,25 @@ type ApplicationCredentialRegistry struct {
 }
 
 type applicationCredential struct {
-	credentialID   string
-	tenantID       identitysdk.TenantID
-	workspaceID    identitysdk.WorkspaceID
-	applicationKey identitysdk.ApplicationKey
-	sourceOwners   map[string]struct{}
-	digest         [sha256.Size]byte
-	limiter        *applicationRateLimiter
+	credentialID     string
+	tenantID         identitysdk.TenantID
+	workspaceID      identitysdk.WorkspaceID
+	applicationKey   identitysdk.ApplicationKey
+	sourceOwners     map[string]struct{}
+	serviceAudiences map[string]struct{}
+	serviceGrants    map[string]struct{}
+	digest           [sha256.Size]byte
+	limiter          *applicationRateLimiter
 }
 
 type ApplicationCredentialDecision struct {
-	Authenticated      bool
-	SourceOwnerAllowed bool
-	RateLimited        bool
-	Remaining          int
-	ResetAt            time.Time
-	CredentialID       string
+	Authenticated        bool
+	SourceOwnerAllowed   bool
+	RateLimited          bool
+	Remaining            int
+	ResetAt              time.Time
+	CredentialID         string
+	ServicePolicyAllowed bool
 }
 
 // NewApplicationCredentialRegistry builds a registry from configuration keys
@@ -46,7 +49,7 @@ type ApplicationCredentialDecision struct {
 // omitted credential ID means "default". Each path segment is URL
 // path-escaped so identifiers containing '/' remain unambiguous. Multiple IDs
 // for the same scope support overlap during credential rotation.
-func NewApplicationCredentialRegistry(values map[string]string, permissionOwners map[string][]string, requestsPerMinute int) (*ApplicationCredentialRegistry, error) {
+func NewApplicationCredentialRegistry(values map[string]string, permissionOwners map[string][]string, requestsPerMinute int, configuredServicePolicies ...map[string][]string) (*ApplicationCredentialRegistry, error) {
 	if requestsPerMinute <= 0 {
 		return nil, fmt.Errorf("Identity application rate limit must be greater than zero")
 	}
@@ -55,6 +58,10 @@ func NewApplicationCredentialRegistry(values map[string]string, permissionOwners
 	limiters := map[string]*applicationRateLimiter{}
 	applicationScopes := map[string]struct{}{}
 	configuredScopes := make([]string, 0, len(values))
+	servicePolicies := map[string][]string{}
+	if len(configuredServicePolicies) > 0 && configuredServicePolicies[0] != nil {
+		servicePolicies = configuredServicePolicies[0]
+	}
 	for configuredScope := range values {
 		configuredScopes = append(configuredScopes, configuredScope)
 	}
@@ -80,6 +87,10 @@ func NewApplicationCredentialRegistry(values map[string]string, permissionOwners
 		if err != nil {
 			return nil, err
 		}
+		audiences, grants, err := applicationServicePolicy(servicePolicies, tenantID, workspaceID, applicationKey)
+		if err != nil {
+			return nil, err
+		}
 		limiter := limiters[scopeKey]
 		if limiter == nil {
 			limiter = newApplicationRateLimiter(requestsPerMinute)
@@ -87,7 +98,7 @@ func NewApplicationCredentialRegistry(values map[string]string, permissionOwners
 		}
 		registry.credentials = append(registry.credentials, applicationCredential{
 			credentialID: credentialID, tenantID: tenantID, workspaceID: workspaceID, applicationKey: applicationKey, digest: digest,
-			sourceOwners: owners, limiter: limiter,
+			sourceOwners: owners, serviceAudiences: audiences, serviceGrants: grants, limiter: limiter,
 		})
 	}
 	for configuredScope, owners := range permissionOwners {
@@ -103,7 +114,44 @@ func NewApplicationCredentialRegistry(values map[string]string, permissionOwners
 			return nil, fmt.Errorf("Identity application permission owner scope %q is empty", configuredScope)
 		}
 	}
+	for configuredScope, policy := range servicePolicies {
+		_, tenantID, workspaceID, applicationKey, err := parseApplicationCredentialScope(configuredScope)
+		if err != nil {
+			return nil, fmt.Errorf("invalid Identity application service policy scope: %w", err)
+		}
+		scopeKey := string(tenantID) + "\x00" + string(workspaceID) + "\x00" + string(applicationKey)
+		if _, registered := applicationScopes[scopeKey]; !registered {
+			return nil, fmt.Errorf("Identity application service policy scope %q has no service credential", configuredScope)
+		}
+		if len(policy) == 0 {
+			return nil, fmt.Errorf("Identity application service policy scope %q is empty", configuredScope)
+		}
+	}
 	return registry, nil
+}
+
+func (registry *ApplicationCredentialRegistry) AuthorizeApplicationServiceRequest(authorization string, request identitysdk.ExchangeApplicationServiceTokenRequest) ApplicationCredentialDecision {
+	decision := registry.authorize(authorization, applicationScope(request.Application), "", false)
+	if !decision.Authenticated || decision.RateLimited {
+		return decision
+	}
+	digest := sha256.Sum256([]byte(sdkBearerToken(authorization)))
+	for _, registered := range registry.credentials {
+		if subtle.ConstantTimeCompare(digest[:], registered.digest[:]) != 1 || registered.credentialID != decision.CredentialID {
+			continue
+		}
+		if _, allowed := registered.serviceAudiences[string(request.Audience)]; !allowed {
+			return decision
+		}
+		for _, grant := range request.Grants {
+			if _, allowed := registered.serviceGrants[string(grant.Resource)+"."+string(grant.Action)]; !allowed {
+				return decision
+			}
+		}
+		decision.ServicePolicyAllowed = true
+		return decision
+	}
+	return decision
 }
 
 func (registry *ApplicationCredentialRegistry) Authorize(authorization string, scope identitysdk.ApplicationScope) ApplicationCredentialDecision {
@@ -154,6 +202,36 @@ func applicationPermissionOwners(configured map[string][]string, tenantID identi
 		}
 	}
 	return result, nil
+}
+
+func applicationServicePolicy(configured map[string][]string, tenantID identitysdk.TenantID, workspaceID identitysdk.WorkspaceID, applicationKey identitysdk.ApplicationKey) (map[string]struct{}, map[string]struct{}, error) {
+	audiences, grants := map[string]struct{}{}, map[string]struct{}{}
+	for configuredScope, values := range configured {
+		_, configuredTenantID, configuredWorkspaceID, configuredApplicationKey, err := parseApplicationCredentialScope(configuredScope)
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid Identity application service policy scope: %w", err)
+		}
+		if configuredTenantID != tenantID || configuredWorkspaceID != workspaceID || configuredApplicationKey != applicationKey {
+			continue
+		}
+		for _, value := range values {
+			kind, item, found := strings.Cut(strings.TrimSpace(value), ":")
+			item = strings.TrimSpace(item)
+			switch {
+			case found && kind == "audience" && identitysdk.ApplicationKey(item).Valid():
+				audiences[item] = struct{}{}
+			case found && kind == "grant":
+				resource, action, valid := strings.Cut(item, ".")
+				if !valid || !identitysdk.ResourceType(resource).Valid() || !identitysdk.Action(action).Valid() {
+					return nil, nil, fmt.Errorf("Identity application service grant policy %q is invalid", value)
+				}
+				grants[item] = struct{}{}
+			default:
+				return nil, nil, fmt.Errorf("Identity application service policy %q must be audience:<application> or grant:<resource>.<action>", value)
+			}
+		}
+	}
+	return audiences, grants, nil
 }
 
 // Active reports whether a credential rotation ID remains registered for the

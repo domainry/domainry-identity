@@ -154,6 +154,25 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"created_at " + text + " NOT NULL",
 			"updated_at " + text + " NOT NULL",
 		},
+		"_identity_workflow_workload_bindings": {
+			"id " + text + " PRIMARY KEY",
+			"workspace_id " + text + " NOT NULL",
+			"application_key " + text + " NOT NULL",
+			"subject_id " + text + " NOT NULL",
+			"workflow_key " + text + " NOT NULL",
+			"definition_version_id " + text + " NOT NULL",
+			"definition_version INTEGER NOT NULL",
+			"role_key " + text + " NOT NULL",
+			"action_keys_json TEXT NOT NULL",
+			"release_id " + text + " NOT NULL",
+			"release_digest " + text + " NOT NULL",
+			"source_kind " + text + " NOT NULL",
+			"source_id " + text + " NOT NULL",
+			"status " + text + " NOT NULL",
+			"created_at " + text + " NOT NULL",
+			"updated_at " + text + " NOT NULL",
+			"deactivated_at " + text,
+		},
 		"_identity_authoring_receipts": {
 			"id " + text + " PRIMARY KEY",
 			"workspace_id " + text + " NOT NULL",
@@ -565,6 +584,12 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 	}
 	if err := s.CreateIndexIfMissing(ctx, "_identity_user_role_assignments", "idx_identity_user_roles_workspace_active_usage", false, "workspace_id", "status", "user_id"); err != nil {
 		return fmt.Errorf("create active human Identity Workspace role usage assignment index: %w", err)
+	}
+	if err := s.CreateIndexIfMissing(ctx, "_identity_workflow_workload_bindings", "uniq_identity_workflow_workload", true, "workspace_id", "application_key", "workflow_key"); err != nil {
+		return fmt.Errorf("create Identity workflow workload uniqueness index: %w", err)
+	}
+	if err := s.CreateIndexIfMissing(ctx, "_identity_workflow_workload_bindings", "idx_identity_workflow_workload_release", false, "workspace_id", "application_key", "release_digest", "status"); err != nil {
+		return fmt.Errorf("create Identity workflow workload release index: %w", err)
 	}
 	if err := s.CreateIndexIfMissing(ctx, "_identity_authoring_receipts", "uniq_identity_authoring_receipt_key", true, "workspace_id", "idempotency_key"); err != nil {
 		return fmt.Errorf("create identity authoring receipt unique index: %w", err)

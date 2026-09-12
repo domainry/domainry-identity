@@ -184,7 +184,7 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 	if core == nil || core.IdentityActions == nil {
 		return nil, fmt.Errorf("Identity core and Action registry are required")
 	}
-	applicationCredentials, err := remotesdkhttp.NewApplicationCredentialRegistry(cfg.IdentityApplicationServiceCredentials, cfg.IdentityApplicationPermissionOwners, cfg.IdentityApplicationRateLimitPerMinute)
+	applicationCredentials, err := remotesdkhttp.NewApplicationCredentialRegistry(cfg.IdentityApplicationServiceCredentials, cfg.IdentityApplicationPermissionOwners, cfg.IdentityApplicationRateLimitPerMinute, cfg.IdentityApplicationServicePolicies)
 	if err != nil {
 		return nil, fmt.Errorf("configure Identity application service credentials: %w", err)
 	}

@@ -325,20 +325,20 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	}
 	roleReceipt, err := rolePublisher.PublishProjectRoles(t.Context(), identitysdk.ProjectRoleCatalog{
 		Application: application,
-		Roles: []identitysdk.ProjectRoleDefinition{{
-			Key: "project_viewer", Name: "Project Viewer", Permissions: []identitysdk.ProjectRolePermission{{PermissionKey: "customer.read", DataScope: identitysdk.DataScopeAll}},
-			Audience: "any", AssignmentMode: "manual", RiskLevel: "normal", SchemaHash: strings.Repeat("a", 64),
-		}},
+		Roles: []identitysdk.ProjectRoleDefinition{
+			{Key: "project_viewer", Name: "Project Viewer", Permissions: []identitysdk.ProjectRolePermission{{PermissionKey: "customer.read", DataScope: identitysdk.DataScopeAll}}, Audience: "any", AssignmentMode: "manual", RiskLevel: "normal", SchemaHash: strings.Repeat("a", 64)},
+			{Key: "customer_sync_service", Name: "Customer sync service", Permissions: []identitysdk.ProjectRolePermission{{PermissionKey: "customer.read", DataScope: identitysdk.DataScopeAll}}, Audience: "service", AssignmentMode: "system_managed", RiskLevel: "normal", SchemaHash: strings.Repeat("b", 64)},
+		},
 	})
-	if err != nil || roleReceipt.Published != 1 || len(roleReceipt.SHA256) != 64 {
+	if err != nil || roleReceipt.Published != 2 || len(roleReceipt.SHA256) != 64 {
 		t.Fatalf("project role receipt=%#v err=%v", roleReceipt, err)
 	}
 	repeatedRoleReceipt, err := rolePublisher.PublishProjectRoles(t.Context(), identitysdk.ProjectRoleCatalog{
 		Application: application,
-		Roles: []identitysdk.ProjectRoleDefinition{{
-			Key: "project_viewer", Name: "Project Viewer", Permissions: []identitysdk.ProjectRolePermission{{PermissionKey: "customer.read", DataScope: identitysdk.DataScopeAll}},
-			Audience: "any", AssignmentMode: "manual", RiskLevel: "normal", SchemaHash: strings.Repeat("a", 64),
-		}},
+		Roles: []identitysdk.ProjectRoleDefinition{
+			{Key: "project_viewer", Name: "Project Viewer", Permissions: []identitysdk.ProjectRolePermission{{PermissionKey: "customer.read", DataScope: identitysdk.DataScopeAll}}, Audience: "any", AssignmentMode: "manual", RiskLevel: "normal", SchemaHash: strings.Repeat("a", 64)},
+			{Key: "customer_sync_service", Name: "Customer sync service", Permissions: []identitysdk.ProjectRolePermission{{PermissionKey: "customer.read", DataScope: identitysdk.DataScopeAll}}, Audience: "service", AssignmentMode: "system_managed", RiskLevel: "normal", SchemaHash: strings.Repeat("b", 64)},
+		},
 	})
 	if err != nil || repeatedRoleReceipt != roleReceipt {
 		t.Fatalf("idempotent project role receipt=%#v want=%#v err=%v", repeatedRoleReceipt, roleReceipt, err)
@@ -356,6 +356,107 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	}
 	if !foundProjectRole {
 		t.Fatalf("project role missing from projection: %#v", roles)
+	}
+	workloadBinding, ok := binding.(identitysdk.WorkflowWorkloadIdentityBinding)
+	if !ok || workloadBinding.WorkflowWorkloads() == nil {
+		t.Fatal("module Binding does not expose Workflow workload identity")
+	}
+	workloadSpec := identitysdk.WorkflowWorkloadBindingSpec{WorkflowKey: "customer_sync", DefinitionVersionID: "workflow-version-1", DefinitionVersion: 1, RoleKey: "customer_sync_service", ActionKeys: []string{"customer.read"}}
+	digest, err := identitysdk.WorkflowWorkloadReleaseDigest([]identitysdk.WorkflowWorkloadBindingSpec{workloadSpec})
+	if err != nil {
+		t.Fatal(err)
+	}
+	workloadRequest := identitysdk.ApplyWorkflowWorkloadBindingsRequest{
+		Application: identitysdk.ApplicationScope{TenantID: "workspace-primary", WorkspaceID: application.WorkspaceID, ApplicationKey: application.ApplicationKey},
+		ReleaseID:   identitysdk.WorkflowWorkloadReleaseID(digest), ReleaseDigest: digest, Bindings: []identitysdk.WorkflowWorkloadBindingSpec{workloadSpec},
+	}
+	applied, err := workloadBinding.WorkflowWorkloads().ApplyWorkflowWorkloadBindings(t.Context(), workloadRequest)
+	if err != nil || len(applied.Bindings) != 1 || applied.Bindings[0].SubjectID != "workflow:customer_sync" || applied.Bindings[0].SourceKind != "deployment_control_plane" || applied.Bindings[0].SourceID != "orders-runtime" {
+		t.Fatalf("workflow workload apply=%+v err=%v", applied, err)
+	}
+	resolution, err := binding.Principals().Resolve(t.Context(), identitysdk.PrincipalResolutionRequest{
+		Application: workloadRequest.Application, SubjectID: "workflow:customer_sync", RoleKey: "customer_sync_service",
+		Workload: &identitysdk.WorkflowWorkloadResolution{WorkflowKey: "customer_sync", DefinitionVersionID: "workflow-version-1", DefinitionVersion: 1, ReleaseID: workloadRequest.ReleaseID, ReleaseDigest: digest, TaskID: "task-1", SourceEventID: "event-1", InitiatorSubjectID: "member-1"},
+	})
+	if err != nil || !resolution.Principal.Known || resolution.Principal.Workload == nil || resolution.Principal.Workload.TaskID != "task-1" || resolution.Principal.Workload.InitiatorSubjectID != "member-1" || !slices.Contains(resolution.Principal.Permissions, "customer.read") {
+		t.Fatalf("workflow workload resolution=%+v err=%v", resolution, err)
+	}
+	staleResolution := identitysdk.PrincipalResolutionRequest{
+		Application: workloadRequest.Application, SubjectID: "workflow:customer_sync", RoleKey: "customer_sync_service",
+		Workload: &identitysdk.WorkflowWorkloadResolution{WorkflowKey: "customer_sync", DefinitionVersionID: "workflow-version-0", DefinitionVersion: 1, ReleaseID: workloadRequest.ReleaseID, ReleaseDigest: digest},
+	}
+	if _, err := binding.Principals().Resolve(t.Context(), staleResolution); err == nil || !strings.Contains(err.Error(), "version_mismatch") {
+		t.Fatalf("replaced workflow version resolved: %v", err)
+	}
+	deniedSpec := workloadSpec
+	deniedSpec.ActionKeys = []string{"customer.delete"}
+	deniedDigest, err := identitysdk.WorkflowWorkloadReleaseDigest([]identitysdk.WorkflowWorkloadBindingSpec{deniedSpec})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deniedRequest := workloadRequest
+	deniedRequest.ReleaseDigest = deniedDigest
+	deniedRequest.ReleaseID = identitysdk.WorkflowWorkloadReleaseID(deniedDigest)
+	deniedRequest.Bindings = []identitysdk.WorkflowWorkloadBindingSpec{deniedSpec}
+	if _, err := workloadBinding.WorkflowWorkloads().ApplyWorkflowWorkloadBindings(t.Context(), deniedRequest); err == nil || !strings.Contains(err.Error(), "action_denied") {
+		t.Fatalf("workflow release with an unauthorized action was accepted: %v", err)
+	}
+	if unchanged, err := binding.Principals().Resolve(t.Context(), identitysdk.PrincipalResolutionRequest{
+		Application: workloadRequest.Application, SubjectID: "workflow:customer_sync", RoleKey: "customer_sync_service",
+		Workload: &identitysdk.WorkflowWorkloadResolution{WorkflowKey: "customer_sync", DefinitionVersionID: "workflow-version-1", DefinitionVersion: 1, ReleaseID: workloadRequest.ReleaseID, ReleaseDigest: digest},
+	}); err != nil || !unchanged.Principal.Known {
+		t.Fatalf("rejected workload release changed the active binding: resolution=%+v err=%v", unchanged, err)
+	}
+	crossWorkspace := workloadRequest
+	crossWorkspace.Application.WorkspaceID = "workspace-other"
+	if _, err := workloadBinding.WorkflowWorkloads().ApplyWorkflowWorkloadBindings(t.Context(), crossWorkspace); err == nil || !strings.Contains(err.Error(), "mismatch") {
+		t.Fatalf("cross-workspace workflow workload release was accepted: %v", err)
+	}
+	probeDB, err := sql.Open("sqlite", moduleDBPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer probeDB.Close()
+	for _, table := range []string{"_identity_users", "_identity_user_role_assignments"} {
+		var count int
+		if err := probeDB.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM "+table+" WHERE workspace_id=? AND "+map[string]string{"_identity_users": "id", "_identity_user_role_assignments": "user_id"}[table]+"=?", "workspace-primary", "workflow:customer_sync").Scan(&count); err != nil || count != 0 {
+			t.Fatalf("workflow workload leaked into %s: count=%d err=%v", table, count, err)
+		}
+	}
+	tampered := workloadRequest
+	tampered.ReleaseDigest = strings.Repeat("f", 64)
+	if _, err := workloadBinding.WorkflowWorkloads().ApplyWorkflowWorkloadBindings(t.Context(), tampered); err == nil || !strings.Contains(err.Error(), "release_digest_mismatch") {
+		t.Fatalf("tampered workload release accepted: %v", err)
+	}
+	if _, err := probeDB.ExecContext(t.Context(), `UPDATE _identity_roles SET status='disabled' WHERE workspace_id=? AND role_key=?`, "workspace-primary", "customer_sync_service"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := binding.Principals().Resolve(t.Context(), identitysdk.PrincipalResolutionRequest{
+		Application: workloadRequest.Application, SubjectID: "workflow:customer_sync", RoleKey: "customer_sync_service",
+		Workload: &identitysdk.WorkflowWorkloadResolution{WorkflowKey: "customer_sync", DefinitionVersionID: "workflow-version-1", DefinitionVersion: 1, ReleaseID: workloadRequest.ReleaseID, ReleaseDigest: digest},
+	}); err == nil || !strings.Contains(err.Error(), "role_unavailable") {
+		t.Fatalf("workflow workload resolved through a disabled role: %v", err)
+	}
+	if _, err := probeDB.ExecContext(t.Context(), `UPDATE _identity_roles SET status='active' WHERE workspace_id=? AND role_key=?`, "workspace-primary", "customer_sync_service"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := probeDB.ExecContext(t.Context(), `UPDATE _identity_workflow_workload_bindings SET role_key='project_viewer' WHERE workspace_id=? AND application_key=? AND workflow_key=?`, "workspace-primary", "orders-runtime", "customer_sync"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := binding.Principals().Resolve(t.Context(), identitysdk.PrincipalResolutionRequest{
+		Application: workloadRequest.Application, SubjectID: "workflow:customer_sync", RoleKey: "customer_sync_service",
+		Workload: &identitysdk.WorkflowWorkloadResolution{WorkflowKey: "customer_sync", DefinitionVersionID: "workflow-version-1", DefinitionVersion: 1, ReleaseID: workloadRequest.ReleaseID, ReleaseDigest: digest},
+	}); err == nil || !strings.Contains(err.Error(), "role_mismatch") {
+		t.Fatalf("workflow workload resolved through a changed binding role: %v", err)
+	}
+	if _, err := probeDB.ExecContext(t.Context(), `DELETE FROM _identity_workflow_workload_bindings WHERE workspace_id=? AND application_key=? AND workflow_key=?`, "workspace-primary", "orders-runtime", "customer_sync"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := binding.Principals().Resolve(t.Context(), identitysdk.PrincipalResolutionRequest{
+		Application: workloadRequest.Application, SubjectID: "workflow:customer_sync", RoleKey: "customer_sync_service",
+		Workload: &identitysdk.WorkflowWorkloadResolution{WorkflowKey: "customer_sync", DefinitionVersionID: "workflow-version-1", DefinitionVersion: 1, ReleaseID: workloadRequest.ReleaseID, ReleaseDigest: digest},
+	}); err == nil || !strings.Contains(err.Error(), "not_found") {
+		t.Fatalf("deleted workflow workload binding still resolved: %v", err)
 	}
 
 	unauthenticatedSetup := httptest.NewRecorder()
@@ -663,7 +764,7 @@ func TestFactoryBorrowsProjectPoolWithoutClosingOrColliding(t *testing.T) {
 	if err := db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name LIKE '%schema_migrations'`).Scan(&migrationLedgers); err != nil || migrationLedgers != 1 {
 		t.Fatalf("migration ledgers=%d err=%v", migrationLedgers, err)
 	}
-	if len(registrar.calls) != 1 || registrar.calls[0] != (testEmbeddedMigrationCall{owner: "identity", version: 11, name: "totp_authentication"}) {
+	if len(registrar.calls) != 1 || registrar.calls[0] != (testEmbeddedMigrationCall{owner: "identity", version: 12, name: "workflow_workload_identity"}) {
 		t.Fatalf("host migration calls=%#v", registrar.calls)
 	}
 }

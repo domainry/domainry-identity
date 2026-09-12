@@ -37,6 +37,7 @@ type MemoryIdentityStore struct {
 	credentials         map[string]identitymodel.IdentityCredential
 	refreshTokens       map[string]identitymodel.AuthRefreshToken
 	externalAccounts    map[string]identitymodel.IdentityExternalAccount
+	workflowWorkloads   map[string]identitymodel.IdentityWorkflowWorkloadBinding
 }
 
 func NewMemoryIdentityStore() *MemoryIdentityStore {
@@ -52,5 +53,6 @@ func NewMemoryIdentityStore() *MemoryIdentityStore {
 		credentials:         map[string]identitymodel.IdentityCredential{},
 		refreshTokens:       map[string]identitymodel.AuthRefreshToken{},
 		externalAccounts:    map[string]identitymodel.IdentityExternalAccount{},
+		workflowWorkloads:   map[string]identitymodel.IdentityWorkflowWorkloadBinding{},
 	}
 }

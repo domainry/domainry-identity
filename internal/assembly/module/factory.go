@@ -285,9 +285,14 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 		_ = identityRuntime.CloseContext(ctx)
 		return nil, fmt.Errorf("assemble Identity portability service: %w", err)
 	}
+	var workflowWorkloads identitysdk.WorkflowWorkloadIdentity
+	if workloadBinding, ok := scopedBinding.(identitysdk.WorkflowWorkloadIdentityBinding); ok {
+		workflowWorkloads = workloadBinding.WorkflowWorkloads()
+	}
 	return &moduleBinding{
 		Binding: scopedBinding, runtime: identityRuntime, application: application, adapters: []identityhttpapi.Adapter{browserAdapter, managementAdapter},
 		portability: &identityPortabilityDataExchangeProvider{service: portabilityService}, workspaceUsage: workspaceUsage,
+		workflowWorkloads:          workflowWorkloads,
 		bootstrapNavigationCatalog: emptyWorkspaceBootstrapNavigationCatalog(),
 	}, nil
 }
@@ -346,6 +351,7 @@ type moduleBinding struct {
 	adapters                   []identityhttpapi.Adapter
 	portability                *identityPortabilityDataExchangeProvider
 	workspaceUsage             *identityapplicationinternal.IdentityWorkspaceUsageApplicationService
+	workflowWorkloads          identitysdk.WorkflowWorkloadIdentity
 	bootstrapMu                sync.Mutex
 	bootstrapCredentials       map[string]*workspaceBootstrapPendingCredential
 	bootstrapRoleCatalog       workspaceBootstrapRoleCatalog
@@ -414,6 +420,13 @@ func (binding *moduleBinding) ChallengeAuthentication() identitysdk.ChallengeAut
 	return challenge.ChallengeAuthentication()
 }
 
+func (binding *moduleBinding) WorkflowWorkloads() identitysdk.WorkflowWorkloadIdentity {
+	if binding == nil {
+		return nil
+	}
+	return binding.workflowWorkloads
+}
+
 func (binding *moduleBinding) Close(ctx context.Context) error {
 	if binding == nil || binding.runtime == nil {
 		return nil
@@ -440,6 +453,7 @@ var _ identitysdk.SecurityChallengeDeliveryBinder = (*moduleBinding)(nil)
 var _ identitysdk.ApplicationServiceVerificationBinding = (*moduleBinding)(nil)
 var _ identitysdk.ChallengeAuthenticationBinding = (*moduleBinding)(nil)
 var _ identitysdk.ActionAssuranceBinding = (*moduleBinding)(nil)
+var _ identitysdk.WorkflowWorkloadIdentityBinding = (*moduleBinding)(nil)
 var _ identitysdk.ProjectRoleCatalogPublisher = (*moduleBinding)(nil)
 var _ identitysdk.EmbeddedWorkspaceIdentityUsageBinding = (*moduleBinding)(nil)
 var _ identityhttpapi.Provider = (*moduleBinding)(nil)

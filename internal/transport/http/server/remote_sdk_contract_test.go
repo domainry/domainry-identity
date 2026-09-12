@@ -42,6 +42,7 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 	notificationCredential := "notification-service-token"
 	cfg.IdentityApplicationServiceCredentials = map[string]string{"workspace-primary/orders-runtime": serviceCredential, "tenant-primary/workspace-primary/domainry-notification": notificationCredential}
 	cfg.IdentityApplicationPermissionOwners = map[string][]string{"workspace-primary/orders-runtime": {"application:orders-runtime", "application:other-runtime"}}
+	cfg.IdentityApplicationServicePolicies = map[string][]string{"workspace-primary/orders-runtime": {"audience:domainry-notification", "grant:notification_event.publish"}}
 
 	identityServer, err := httpserver.New(t.Context(), cfg)
 	if err != nil {

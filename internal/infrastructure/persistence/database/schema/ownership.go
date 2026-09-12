@@ -75,6 +75,7 @@ var identityTableOwnership = []TableOwnership{
 	{Name: "_identity_role_requests", Boundary: TableBoundaryAuthorization, MigrationDisposition: MigrationPortable},
 	{Name: "_identity_roles", Boundary: TableBoundaryAuthorization, MigrationDisposition: MigrationPortable},
 	{Name: "_identity_user_role_assignments", Boundary: TableBoundaryAuthorization, MigrationDisposition: MigrationPortable},
+	{Name: "_identity_workflow_workload_bindings", Boundary: TableBoundaryAuthorization, MigrationDisposition: MigrationPortable},
 	{Name: "_identity_users", Boundary: TableBoundaryIdentityCore, MigrationDisposition: MigrationPortable},
 	{Name: "_identity_workspace_write_fences", Boundary: TableBoundarySchemaControl, MigrationDisposition: MigrationEvidenceOnly},
 	{Name: "_identity_manifest_catalog", Boundary: TableBoundaryMetadata, MigrationDisposition: MigrationPortable},

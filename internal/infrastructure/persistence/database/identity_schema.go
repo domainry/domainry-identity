@@ -22,9 +22,9 @@ import (
 )
 
 const (
-	CurrentIdentitySchemaVersion           = "011_totp_authentication"
-	EmbeddedIdentitySchemaMigrationVersion = uint(11)
-	EmbeddedIdentitySchemaMigrationName    = "totp_authentication"
+	CurrentIdentitySchemaVersion           = "012_workflow_workload_identity"
+	EmbeddedIdentitySchemaMigrationVersion = uint(12)
+	EmbeddedIdentitySchemaMigrationName    = "workflow_workload_identity"
 )
 
 const (
@@ -341,7 +341,7 @@ func (s *IdentityStore) SchemaTableExists(ctx context.Context, table string) (bo
 }
 
 func currentIdentitySchemaChecksum() string {
-	sum := sha256.Sum256([]byte(CurrentIdentitySchemaVersion + ":metadata,identity,audit,authentication,applications,permissions,workspace_write_fences,handler_delivery,store_organization_delivery,organization_unit_delivery,organization_unit_sibling_identity,workspace_identity_usage_active_roles,workspace_identity_bootstrap_v1,installation_administrator_bootstrap,managed_database"))
+	sum := sha256.Sum256([]byte(CurrentIdentitySchemaVersion + ":metadata,identity,audit,authentication,applications,permissions,workflow_workload_identity,workspace_write_fences,handler_delivery,store_organization_delivery,organization_unit_delivery,organization_unit_sibling_identity,workspace_identity_usage_active_roles,workspace_identity_bootstrap_v1,installation_administrator_bootstrap,managed_database"))
 	return hex.EncodeToString(sum[:])
 }
 

@@ -33,7 +33,7 @@ func TestEmbeddedWorkspaceExportImportIsDeterministicAndSecretFree(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if dryRun.Bundle != nil || dryRun.Inventory.DatasetCounts["users"] != 1 || dryRun.Inventory.DatasetCounts["applications"] != 2 || dryRun.Inventory.DatasetCounts["permissions"] != 2 || dryRun.Inventory.ExcludedCounts["credentials"] != 1 || dryRun.Inventory.ExcludedCounts["provider_secrets"] != 1 {
+	if dryRun.Bundle != nil || dryRun.Inventory.DatasetCounts["users"] != 1 || dryRun.Inventory.DatasetCounts["applications"] != 2 || dryRun.Inventory.DatasetCounts["permissions"] != 2 || dryRun.Inventory.DatasetCounts["workflow_workload_bindings"] != 1 || dryRun.Inventory.ExcludedCounts["credentials"] != 1 || dryRun.Inventory.ExcludedCounts["provider_secrets"] != 1 {
 		t.Fatalf("unexpected dry-run inventory: %+v", dryRun)
 	}
 	if _, err := sourceService.Export(t.Context(), portabilityapplication.ExportRequest{WorkspaceID: "workspace-a", SourceMode: "module"}); err == nil || !strings.Contains(err.Error(), "write_freeze_not_active") {
@@ -101,24 +101,25 @@ func TestEmbeddedWorkspaceExportImportIsDeterministicAndSecretFree(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Receipt == nil || result.Receipt.ImportedCounts["users"] != 1 || result.Receipt.ImportedCounts["applications"] != 2 || result.Receipt.ImportedCounts["permissions"] != 2 || !result.Receipt.AuthorizationOK || !result.Receipt.SessionsRevoked || !result.Receipt.CredentialsReset || !result.Receipt.MFAReenrollment {
+	if result.Receipt == nil || result.Receipt.ImportedCounts["users"] != 1 || result.Receipt.ImportedCounts["applications"] != 2 || result.Receipt.ImportedCounts["permissions"] != 2 || result.Receipt.ImportedCounts["workflow_workload_bindings"] != 1 || !result.Receipt.AuthorizationOK || !result.Receipt.SessionsRevoked || !result.Receipt.CredentialsReset || !result.Receipt.MFAReenrollment {
 		t.Fatalf("import receipt=%+v", result.Receipt)
 	}
-	var users, applications, permissions, credentials, sessions, providerCredentials int
+	var users, applications, permissions, workloads, credentials, sessions, providerCredentials int
 	for query, countDestination := range map[string]*int{
-		`SELECT COUNT(*) FROM _identity_users WHERE workspace_id='workspace-a'`:                     &users,
-		`SELECT COUNT(*) FROM _identity_applications WHERE workspace_id='workspace-a'`:              &applications,
-		`SELECT COUNT(*) FROM _identity_permissions WHERE workspace_id='workspace-a'`:               &permissions,
-		`SELECT COUNT(*) FROM _identity_credentials WHERE workspace_id='workspace-a'`:               &credentials,
-		`SELECT COUNT(*) FROM _identity_auth_refresh_tokens WHERE workspace_id='workspace-a'`:       &sessions,
-		`SELECT COUNT(*) FROM _identity_auth_provider_credentials WHERE workspace_id='workspace-a'`: &providerCredentials,
+		`SELECT COUNT(*) FROM _identity_users WHERE workspace_id='workspace-a'`:                      &users,
+		`SELECT COUNT(*) FROM _identity_applications WHERE workspace_id='workspace-a'`:               &applications,
+		`SELECT COUNT(*) FROM _identity_permissions WHERE workspace_id='workspace-a'`:                &permissions,
+		`SELECT COUNT(*) FROM _identity_workflow_workload_bindings WHERE workspace_id='workspace-a'`: &workloads,
+		`SELECT COUNT(*) FROM _identity_credentials WHERE workspace_id='workspace-a'`:                &credentials,
+		`SELECT COUNT(*) FROM _identity_auth_refresh_tokens WHERE workspace_id='workspace-a'`:        &sessions,
+		`SELECT COUNT(*) FROM _identity_auth_provider_credentials WHERE workspace_id='workspace-a'`:  &providerCredentials,
 	} {
 		if err := target.DB().QueryRowContext(t.Context(), query).Scan(countDestination); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if users != 1 || applications != 2 || permissions != 2 || credentials != 0 || sessions != 0 || providerCredentials != 1 {
-		t.Fatalf("imported users=%d applications=%d permissions=%d credentials=%d sessions=%d provider_credentials=%d", users, applications, permissions, credentials, sessions, providerCredentials)
+	if users != 1 || applications != 2 || permissions != 2 || workloads != 1 || credentials != 0 || sessions != 0 || providerCredentials != 1 {
+		t.Fatalf("imported users=%d applications=%d permissions=%d workloads=%d credentials=%d sessions=%d provider_credentials=%d", users, applications, permissions, workloads, credentials, sessions, providerCredentials)
 	}
 	var disabled int
 	if err := target.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _identity_permissions WHERE workspace_id='workspace-a' AND permission_key='customer.export' AND enabled=FALSE`).Scan(&disabled); err != nil || disabled != 1 {
@@ -200,6 +201,11 @@ func seedPortableWorkspace(t *testing.T, store *database.IdentityStore, now time
 			VALUES (?, 'workspace-a', ?, ?, 'active', ?, ?)`, application.id, application.key, application.redirects, timestamp, timestamp); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO _identity_workflow_workload_bindings
+		(id, workspace_id, application_key, subject_id, workflow_key, definition_version_id, definition_version, role_key, action_keys_json, release_id, release_digest, source_kind, source_id, status, created_at, updated_at)
+		VALUES ('workload-1', 'workspace-a', 'orders-runtime', 'workflow:customer_sync', 'customer_sync', 'workflow-version-1', 1, 'project_viewer', '["customer.read"]', 'workflow-release:release-1', 'release-1', 'deployment_control_plane', 'orders-runtime', 'active', ?, ?)`, timestamp, timestamp); err != nil {
+		t.Fatal(err)
 	}
 	for _, permission := range []struct {
 		id, key, action, status string

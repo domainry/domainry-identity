@@ -37,6 +37,14 @@ type IdentityUserLookupRepository interface {
 	GetIdentityUser(context.Context, string, string) (identitymodel.IdentityUser, bool, error)
 }
 
+// IdentityWorkflowWorkloadRepository is the dedicated non-human execution
+// identity store. It never writes ordinary users, credentials, external
+// accounts, sessions, or user-role assignments.
+type IdentityWorkflowWorkloadRepository interface {
+	ApplyIdentityWorkflowWorkloadRelease(context.Context, identitymodel.IdentityWorkflowWorkloadRelease) ([]identitymodel.IdentityWorkflowWorkloadBinding, error)
+	GetIdentityWorkflowWorkloadBinding(context.Context, string, string, string) (identitymodel.IdentityWorkflowWorkloadBinding, bool, error)
+}
+
 // IdentityUserDataScopeRepository is the storage-bound user projection
 // capability. Implementations apply the compiled filter in the database (or
 // in the in-memory repository itself for tests); callers must not load an

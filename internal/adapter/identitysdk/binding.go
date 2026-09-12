@@ -72,7 +72,7 @@ func NewBinding(dependencies BindingDependencies) (identitysdk.Binding, error) {
 	binding := &sdkBinding{descriptor: identitysdk.Descriptor{
 		ProtocolVersion: identitysdk.CurrentProtocolVersion, BundleVersion: identitysdk.CurrentPolicyBundleVersion, AuthorizationVersion: identitysdk.CurrentAuthorizationContractVersion,
 		Mode: identitysdk.DeploymentModeModule, Issuer: defaultString(dependencies.Config.AuthIssuer, "http://localhost:8081"), Audience: defaultString(dependencies.Config.AuthAudience, "domainry-runtime"),
-		Capabilities: []string{"authentication", "challenge_authentication", "action_assurance", "token_verification", "authorization", "principal_resolution", "identity_projection", "handler_delivery", "store_organization_delivery", "organization_unit_delivery", "application_registration", "permission_reconciliation", "credentials", "oidc", "saml"},
+		Capabilities: []string{"authentication", "challenge_authentication", "action_assurance", "token_verification", "authorization", "principal_resolution", "workflow_workload_identity", "identity_projection", "handler_delivery", "store_organization_delivery", "organization_unit_delivery", "application_registration", "permission_reconciliation", "credentials", "oidc", "saml"},
 	}, auth: dependencies.Authentication, providers: dependencies.ProviderConfiguration, flows: dependencies.ProviderFlows,
 		providerCallback: dependencies.ProviderCallback, access: dependencies.EffectiveAccess, identity: dependencies.Identity,
 		applications: dependencies.Applications, permissions: dependencies.Permissions, handlerDelivery: dependencies.HandlerDelivery, storeOrganizations: dependencies.StoreOrganizations, organizationUnits: dependencies.OrganizationUnits, clock: dependencies.Clock,
@@ -111,6 +111,9 @@ func (binding *sdkBinding) Authorization() identitysdk.Authorization {
 func (binding *sdkBinding) Principals() identitysdk.PrincipalResolver {
 	return sdkPrincipalResolver{binding: binding}
 }
+func (binding *sdkBinding) WorkflowWorkloads() identitysdk.WorkflowWorkloadIdentity {
+	return sdkWorkflowWorkloads{binding: binding}
+}
 func (binding *sdkBinding) Projection() identitysdk.Projection {
 	return sdkProjection{binding: binding}
 }
@@ -129,6 +132,8 @@ func (binding *sdkBinding) ApplicationServiceVerifier() identitysdk.ApplicationS
 }
 
 func (binding *sdkBinding) Close(context.Context) error { return nil }
+
+var _ identitysdk.WorkflowWorkloadIdentityBinding = (*sdkBinding)(nil)
 
 type sdkAuthentication struct{ binding *sdkBinding }
 

@@ -107,6 +107,7 @@ type Config struct {
 	AuthExternalAutoCreateUsers           bool
 	IdentityApplicationServiceCredentials map[string]string
 	IdentityApplicationPermissionOwners   map[string][]string
+	IdentityApplicationServicePolicies    map[string][]string
 	IdentityApplicationRateLimitPerMinute int
 	IdentityOperationsAccessToken         string
 	IdentityWorkspaceID                   string
@@ -213,6 +214,7 @@ func FromEnv() Config {
 		AuthExternalAutoCreateUsers:           boolEnv("AUTH_EXTERNAL_AUTO_CREATE_USERS", false),
 		IdentityApplicationServiceCredentials: keyMapEnv("IDENTITY_APPLICATION_SERVICE_CREDENTIALS"),
 		IdentityApplicationPermissionOwners:   keyListMapEnv("IDENTITY_APPLICATION_PERMISSION_OWNERS"),
+		IdentityApplicationServicePolicies:    keyListMapEnv("IDENTITY_APPLICATION_SERVICE_POLICIES"),
 		IdentityApplicationRateLimitPerMinute: intEnv("IDENTITY_APPLICATION_RATE_LIMIT_PER_MINUTE", 1200),
 		IdentityOperationsAccessToken:         strings.TrimSpace(os.Getenv("IDENTITY_OPERATIONS_ACCESS_TOKEN")),
 		IdentityWorkspaceID:                   strings.TrimSpace(os.Getenv("IDENTITY_WORKSPACE_ID")),

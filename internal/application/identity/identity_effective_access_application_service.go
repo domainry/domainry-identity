@@ -124,6 +124,25 @@ func (s *IdentityEffectiveAccessApplicationService) Snapshot(ctx context.Context
 	return s.snapshot(ctx, userID, actor, "identity.users.effective_access")
 }
 
+// SnapshotWorkflowWorkload projects a governed non-human principal directly
+// from its published service Role. It deliberately avoids every user,
+// credential, external-account and session repository.
+func (s *IdentityEffectiveAccessApplicationService) SnapshotWorkflowWorkload(_ context.Context, principal identitymodel.Principal) (identitymodel.IdentityEffectiveAccessSnapshot, error) {
+	if s == nil || s.dependencies.Objects == nil || !principal.Known || principal.UserID == "" || principal.WorkspaceID == "" ||
+		principal.Role.Audience != identitymodel.IdentityRoleAudienceService || principal.Role.AssignmentMode != identitymodel.IdentityRoleAssignmentSystemManaged {
+		return identitymodel.IdentityEffectiveAccessSnapshot{}, internalError("build workflow workload access snapshot", nil)
+	}
+	role := identitymodel.IdentityRole{ID: principal.Role.Key, Key: principal.Role.Key, Label: principal.Role.Name, Status: identitymodel.IdentityStatusActive}
+	assignment := identitymodel.IdentityUserRoleAssignment{UserID: principal.UserID, RoleID: role.ID, Source: "workflow_release", Status: "active"}
+	return identityprojection.IdentityBuildEffectiveAccessSnapshot(identityprojection.IdentityEffectiveAccessProjectionInput{
+		Principal: principal, Assignments: []identitymodel.IdentityUserRoleAssignment{assignment}, ProjectionRoles: []identitymodel.IdentityRole{role}, RoleDefinitions: []identitymodel.RoleSchema{principal.Role},
+		Objects: scopedEffectiveAccessObjects(s.dependencies.Objects),
+		FieldDecision: func(role identitymodel.RoleSchema, object definitionmodel.ObjectSchema, field definitionmodel.FieldSchema) (bool, bool, bool, bool) {
+			return identitycontract.IdentityCanReadObjectField(role, object, field), identitycontract.IdentityCanWriteObjectField(role, object, field), identitycontract.IdentityCanExportObjectField(role, object, field), identitycontract.IdentityFieldExportMasked(role, object.Key, field.Key)
+		},
+	}), nil
+}
+
 func (s *IdentityEffectiveAccessApplicationService) snapshot(ctx context.Context, userID string, actor identitymodel.Principal, permission string) (identitymodel.IdentityEffectiveAccessSnapshot, error) {
 	if err := identityAuthorizeEffectiveAccess(actor, userID, permission); err != nil {
 		return identitymodel.IdentityEffectiveAccessSnapshot{}, err

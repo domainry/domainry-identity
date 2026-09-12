@@ -66,7 +66,7 @@ func RegisterRoutes(registrar RouteRegistrar, binding identitysdk.Binding, suppo
 			support.writeError(w, r, http.StatusUnauthorized, "identity.application_service_credential_invalid")
 			return
 		}
-		decision := credentials.Authorize(r.Header.Get("Authorization"), applicationScope(request.Application))
+		decision := credentials.AuthorizeApplicationServiceRequest(r.Header.Get("Authorization"), request)
 		writeApplicationCredentialRateLimit(w, decision)
 		if !decision.Authenticated {
 			support.writeError(w, r, http.StatusUnauthorized, "identity.application_service_credential_invalid")
@@ -74,6 +74,10 @@ func RegisterRoutes(registrar RouteRegistrar, binding identitysdk.Binding, suppo
 		}
 		if decision.RateLimited {
 			support.writeError(w, r, http.StatusTooManyRequests, "identity.application_rate_limited")
+			return
+		}
+		if !decision.ServicePolicyAllowed {
+			support.writeError(w, r, http.StatusForbidden, "identity.application_service_policy_denied")
 			return
 		}
 		authority, ok := binding.(applicationServiceTokenAuthority)
@@ -272,6 +276,46 @@ func RegisterRoutes(registrar RouteRegistrar, binding identitysdk.Binding, suppo
 			return
 		}
 		support.writeJSON(w, http.StatusOK, receipt)
+	})
+	registrar.HandleFunc("PUT /identity/workflow-workloads", func(w http.ResponseWriter, r *http.Request) {
+		var request identitysdk.ApplyWorkflowWorkloadBindingsRequest
+		if !support.decodeJSON(w, r, &request) {
+			return
+		}
+		if !authorizeApplicationCredential(w, r, support, credentials, request.Application) {
+			return
+		}
+		workloads, ok := binding.(identitysdk.WorkflowWorkloadIdentityBinding)
+		if !ok || workloads.WorkflowWorkloads() == nil {
+			support.writeError(w, r, http.StatusNotImplemented, "identity.workflow_workload_unavailable")
+			return
+		}
+		result, err := workloads.WorkflowWorkloads().ApplyWorkflowWorkloadBindings(r.Context(), request)
+		if err != nil {
+			support.writeServiceError(w, r, err)
+			return
+		}
+		support.writeJSON(w, http.StatusOK, result)
+	})
+	registrar.HandleFunc("POST /identity/workflow-workloads/resolve", func(w http.ResponseWriter, r *http.Request) {
+		var request identitysdk.GetWorkflowWorkloadBindingRequest
+		if !support.decodeJSON(w, r, &request) {
+			return
+		}
+		if !authorizeApplicationCredential(w, r, support, credentials, request.Application) {
+			return
+		}
+		workloads, ok := binding.(identitysdk.WorkflowWorkloadIdentityBinding)
+		if !ok || workloads.WorkflowWorkloads() == nil {
+			support.writeError(w, r, http.StatusNotImplemented, "identity.workflow_workload_unavailable")
+			return
+		}
+		result, err := workloads.WorkflowWorkloads().GetWorkflowWorkloadBinding(r.Context(), request)
+		if err != nil {
+			support.writeServiceError(w, r, err)
+			return
+		}
+		support.writeJSON(w, http.StatusOK, result)
 	})
 	registrar.HandleFunc("PUT /identity/permissions/reconcile", func(w http.ResponseWriter, r *http.Request) {
 		var request identitysdk.PermissionReconcileRequest

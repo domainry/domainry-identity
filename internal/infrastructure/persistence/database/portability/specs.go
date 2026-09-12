@@ -49,6 +49,10 @@ var portableDatasetSpecs = []datasetSpec{
 		name: "users", table: "_identity_users", workspace: "workspace_id", orderBy: []string{"id"},
 		columns: []string{"id", "workspace_id", "name", "given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale", "email", "phone", "account_type", "locale", "timezone", "org_id", "support_org_id", "manager_user_id", "reporting_path", "worker_no", "worker_type", "work_status", "start_date", "end_date", "status", "version", "created_at", "updated_at"},
 	},
+	{
+		name: "workflow_workload_bindings", table: "_identity_workflow_workload_bindings", workspace: "workspace_id", orderBy: []string{"application_key", "workflow_key", "id"},
+		columns: []string{"id", "workspace_id", "application_key", "subject_id", "workflow_key", "definition_version_id", "definition_version", "role_key", "action_keys_json", "release_id", "release_digest", "source_kind", "source_id", "status", "created_at", "updated_at", "deactivated_at"},
+	},
 }
 
 var excludedWorkspaceTables = map[string]string{

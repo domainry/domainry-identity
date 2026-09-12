@@ -97,6 +97,51 @@ func TestApplicationCredentialRegistryRejectsInvalidPermissionOwnerScopes(t *tes
 	}
 }
 
+func TestApplicationCredentialRegistryCapsServiceTokenAudienceAndGrants(t *testing.T) {
+	application := identitysdk.ApplicationRef{TenantID: "tenant-primary", WorkspaceID: "workspace-primary", ApplicationKey: "orders-runtime"}
+	registry, err := NewApplicationCredentialRegistry(
+		map[string]string{"tenant-primary/workspace-primary/orders-runtime": "service-secret"}, nil, 100,
+		map[string][]string{"tenant-primary/workspace-primary/orders-runtime": {"audience:notification-runtime", "grant:notification_event.publish", "grant:notification_event.read"}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	allowed := identitysdk.ExchangeApplicationServiceTokenRequest{
+		Application: application, Audience: "notification-runtime",
+		Grants: []identitysdk.ApplicationServiceGrant{{Resource: "notification_event", Action: "publish"}},
+	}
+	if decision := registry.AuthorizeApplicationServiceRequest("Bearer service-secret", allowed); !decision.Authenticated || !decision.ServicePolicyAllowed || decision.RateLimited {
+		t.Fatalf("allowed service request = %+v", decision)
+	}
+	wrongAudience := allowed
+	wrongAudience.Audience = "report-runtime"
+	if decision := registry.AuthorizeApplicationServiceRequest("Bearer service-secret", wrongAudience); !decision.Authenticated || decision.ServicePolicyAllowed {
+		t.Fatalf("unregistered audience escaped policy = %+v", decision)
+	}
+	wrongGrant := allowed
+	wrongGrant.Grants = []identitysdk.ApplicationServiceGrant{{Resource: "notification_event", Action: "delete"}}
+	if decision := registry.AuthorizeApplicationServiceRequest("Bearer service-secret", wrongGrant); !decision.Authenticated || decision.ServicePolicyAllowed {
+		t.Fatalf("unregistered grant escaped policy = %+v", decision)
+	}
+}
+
+func TestApplicationCredentialRegistryRejectsInvalidServicePolicies(t *testing.T) {
+	credentials := map[string]string{"workspace-primary/orders-runtime": "service-secret"}
+	for name, policies := range map[string]map[string][]string{
+		"orphan scope": {"workspace-primary/other-runtime": {"audience:notification-runtime"}},
+		"empty policy": {"workspace-primary/orders-runtime": nil},
+		"bad audience": {"workspace-primary/orders-runtime": {"audience:Notification Runtime"}},
+		"bad grant":    {"workspace-primary/orders-runtime": {"grant:notification_event"}},
+		"bad kind":     {"workspace-primary/orders-runtime": {"role:administrator"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := NewApplicationCredentialRegistry(credentials, nil, 100, policies); err == nil {
+				t.Fatal("invalid application service policy configuration was accepted")
+			}
+		})
+	}
+}
+
 func TestApplicationCredentialRotationSharesOneApplicationRateBucket(t *testing.T) {
 	registry, err := NewApplicationCredentialRegistry(map[string]string{
 		"workspace-primary/orders-runtime#old": "old-service-secret",
