@@ -14,10 +14,12 @@ import (
 	identityapplication "github.com/domainry/domainry-identity-sdk/application"
 	"github.com/domainry/domainry-identity-sdk/browsergateway"
 	identityhttpapi "github.com/domainry/domainry-identity-sdk/httpapi"
+	auditapplication "github.com/domainry/domainry-identity/internal/application/auditbinding"
 	identityapplicationinternal "github.com/domainry/domainry-identity/internal/application/identity"
 	portabilityapplication "github.com/domainry/domainry-identity/internal/application/portability"
 	"github.com/domainry/domainry-identity/internal/assembly"
 	authpolicy "github.com/domainry/domainry-identity/internal/domain/auth/policy"
+	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	identityservice "github.com/domainry/domainry-identity/internal/domain/identity/service"
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
 	authpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/auth"
@@ -247,7 +249,8 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 		_ = identityRuntime.CloseContext(ctx)
 		return nil, err
 	}
-	managementAdapter := modulehttptransport.NewAdapter("identity_management", managementServer.Routes(), managementRoutes)
+	auditRecorder := moduleAuditRecorder{append: identityRuntime.Audit.AppendAudit}
+	managementAdapter := modulehttptransport.NewAdapter("identity_management", managementServer.Routes(), managementRoutes, auditRecorder)
 	defaultWorkspaceID := application.WorkspaceID
 	if workspaceResolver != nil {
 		defaultWorkspaceID = ""
@@ -300,7 +303,7 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 		_ = identityRuntime.CloseContext(ctx)
 		return nil, err
 	}
-	browserAdapter := modulehttptransport.NewAdapter("browser_authentication", browserMux, browserRoutes)
+	browserAdapter := modulehttptransport.NewAdapter("browser_authentication", browserMux, browserRoutes, auditRecorder)
 	portabilityRepository, err := portabilitypersistence.NewSQLRepository(store)
 	if err != nil {
 		_ = identityRuntime.CloseContext(ctx)
@@ -321,6 +324,38 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 		workflowWorkloads:          workflowWorkloads,
 		bootstrapNavigationCatalog: emptyWorkspaceBootstrapNavigationCatalog(),
 	}, nil
+}
+
+type moduleAuditRecorder struct {
+	append func(context.Context, auditapplication.AuditAppendRequest) error
+}
+
+func (recorder moduleAuditRecorder) Record(ctx context.Context, event modulehttp.AuditEvent) error {
+	metadata := make(map[string]any, len(event.Metadata))
+	for key, value := range event.Metadata {
+		metadata[key] = value
+	}
+	principal := identitymodel.Principal{
+		Known: true, WorkspaceID: event.WorkspaceID, UserID: event.ActorID,
+		Role: identitymodel.RoleSchema{Key: event.RoleKey},
+	}
+	if value, ok := metadata["request_id"].(string); ok {
+		principal.RequestID = value
+	}
+	if value, ok := metadata["correlation_id"].(string); ok {
+		principal.CorrelationID = value
+	}
+	idempotencyKey := ""
+	if principal.RequestID != "" {
+		idempotencyKey = event.Event + ":" + principal.RequestID
+	}
+	if recorder.append == nil {
+		return fmt.Errorf("identity module audit appender is unavailable")
+	}
+	return recorder.append(ctx, auditapplication.AuditAppendRequest{
+		IdempotencyKey: idempotencyKey, Event: event.Event, ObjectKey: event.ObjectKey, RecordID: event.RecordID,
+		Principal: principal, Summary: event.Summary, Metadata: metadata,
+	})
 }
 
 func identityModuleActionRoutes() (map[string]identityhttpapi.Route, error) {

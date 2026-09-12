@@ -96,7 +96,7 @@ func TestSDKAccessBundlePreservesCompleteV4PolicySemantics(t *testing.T) {
 		AuthorizationRevision: "revision-2",
 		DataAccess:            []identitymodel.IdentityEffectiveDataAccess{{PermissionKey: "invoice.read", Resource: "invoice", Action: "read", Allowed: true, Scopes: []identitymodel.IdentityDataScope{identitymodel.IdentityDataScopeTargetOrg}, AuditDenial: true}},
 		FieldAccess: []identitymodel.IdentityEffectiveFieldAccess{{
-			ObjectKey: "invoice", FieldKey: "phone", Read: true, Masked: true, Reason: "personal data",
+			ObjectKey: "invoice", FieldKey: "phone", Read: true, Masked: true, Reason: "personal data", AuditDenial: true,
 			Policies: []identitymodel.ContextualFieldPolicyRule{{Key: "owner-clear", Priority: 100, Actions: []string{"read"}, Effect: "allow", Predicate: relation}},
 		}},
 		ReferencePermissions: []identitymodel.ReferencePermission{{SourceObjectKey: "invoice", RelationFieldKey: "account_id", TargetObjectKey: "account", Mode: "deny", Reason: "restricted"}},
@@ -108,7 +108,7 @@ func TestSDKAccessBundlePreservesCompleteV4PolicySemantics(t *testing.T) {
 	if bundle.ContractVersion != identitysdk.CurrentPolicyBundleVersion || len(bundle.DataPolicies) != 1 || !bundle.DataPolicies[0].AuditDenial || bundle.DataPolicies[0].Predicate.Value != "$subject.support_org_scope_ids" || len(bundle.DataPolicies[0].DataScopes) != 1 || bundle.DataPolicies[0].DataScopes[0] != identitysdk.DataScopeTargetOrg {
 		t.Fatalf("data policy lost canonical scope semantics: %#v", bundle.DataPolicies)
 	}
-	if len(bundle.FieldPolicies) != 1 || bundle.FieldPolicies[0].Reason != "personal data" || len(bundle.FieldPolicies[0].Rules) != 1 || len(bundle.FieldPolicies[0].Rules[0].Predicate.Path) != 1 {
+	if len(bundle.FieldPolicies) != 1 || bundle.FieldPolicies[0].Reason != "personal data" || !bundle.FieldPolicies[0].AuditDenial || len(bundle.FieldPolicies[0].Rules) != 1 || len(bundle.FieldPolicies[0].Rules[0].Predicate.Path) != 1 {
 		t.Fatalf("field policy lost contextual semantics: %#v", bundle.FieldPolicies)
 	}
 	if len(bundle.ReferencePolicies) != 1 || bundle.ReferencePolicies[0].Allowed || bundle.ReferencePolicies[0].Reason != "restricted" {

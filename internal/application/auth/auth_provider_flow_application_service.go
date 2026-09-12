@@ -145,7 +145,7 @@ func (s *AuthProviderFlowApplicationService) appendAuthenticationSuccess(ctx con
 		IdempotencyKey: authenticationAuditIdempotencyKey("auth_login_succeeded", requestID),
 		Event:          "auth_login_succeeded", ObjectKey: "identity_login", RecordID: session.User.ID,
 		Principal: principal, Summary: "Authentication succeeded",
-		Metadata: authenticationMetadata(method, provider, applicationKey, "success", "", ""),
+		Metadata: authenticationMetadata(method, provider, applicationKey, "success", "authentication_completed", ""),
 	})
 }
 

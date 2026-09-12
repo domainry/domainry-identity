@@ -32,7 +32,7 @@ func TestProviderAuthenticationAuditUsesStableTraceAndSafeFields(t *testing.T) {
 		t.Fatalf("audit requests=%d", len(requests))
 	}
 	succeeded, failed := requests[0], requests[1]
-	if succeeded.Event != "auth_login_succeeded" || succeeded.IdempotencyKey != "auth_login_succeeded:provider-success-request" || succeeded.Principal.UserID != "user-1" || succeeded.Principal.Role.Key != "member" || succeeded.Metadata["authentication_method"] != "provider" || succeeded.Metadata["provider"] != "oidc" || succeeded.Metadata["application_key"] != "member-app" || succeeded.Metadata["result"] != "success" {
+	if succeeded.Event != "auth_login_succeeded" || succeeded.IdempotencyKey != "auth_login_succeeded:provider-success-request" || succeeded.Principal.UserID != "user-1" || succeeded.Principal.Role.Key != "member" || succeeded.Metadata["authentication_method"] != "provider" || succeeded.Metadata["provider"] != "oidc" || succeeded.Metadata["application_key"] != "member-app" || succeeded.Metadata["result"] != "success" || succeeded.Metadata["reason"] != "authentication_completed" {
 		t.Fatalf("provider success audit=%#v", succeeded)
 	}
 	if failed.Event != "auth_login_failed" || failed.IdempotencyKey != "auth_login_failed:provider-failure-request" || failed.Principal.Known || failed.Principal.UserID != "anonymous" || failed.Principal.Role.Key != "anonymous" || failed.Metadata["result"] != "failed" || failed.Metadata["reason"] != "authentication_failed" || failed.Metadata["error_code"] != "auth.provider_state_invalid" {

@@ -641,7 +641,7 @@ func sdkAccessBundle(snapshot identitymodel.IdentityEffectiveAccessSnapshot, pri
 		dataPolicyIndex++
 	}
 	for _, field := range snapshot.FieldAccess {
-		bundle.FieldPolicies = append(bundle.FieldPolicies, identitysdk.FieldPolicy{Resource: identitysdk.ResourceType(field.ObjectKey), Field: field.FieldKey, Read: field.Read, Write: field.Write, Export: field.Export, Masked: field.Masked, Reason: field.Reason, Rules: sdkFieldRules(field.Policies, principal)})
+		bundle.FieldPolicies = append(bundle.FieldPolicies, identitysdk.FieldPolicy{Resource: identitysdk.ResourceType(field.ObjectKey), Field: field.FieldKey, Read: field.Read, Write: field.Write, Export: field.Export, Masked: field.Masked, Reason: field.Reason, AuditDenial: field.AuditDenial, Rules: sdkFieldRules(field.Policies, principal)})
 	}
 	for _, reference := range snapshot.ReferencePermissions {
 		bundle.ReferencePolicies = append(bundle.ReferencePolicies, identitysdk.ReferencePolicy{SourceResource: identitysdk.ResourceType(reference.SourceObjectKey), Reference: reference.RelationFieldKey, TargetResource: identitysdk.ResourceType(reference.TargetObjectKey), DisplayFields: append([]string(nil), reference.DisplayFields...), Allowed: reference.Mode != "deny", Reason: reference.Reason})

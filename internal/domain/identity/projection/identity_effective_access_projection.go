@@ -216,10 +216,10 @@ func identityProjectionFieldAccess(role identitymodel.RoleSchema, objects []defi
 				fieldSources = append(fieldSources, roleSources...)
 			}
 			read, write, export, masked := decision(role, object, field)
-			reason, rules := identityProjectionContextualFieldRules(role, object.Key, field.Key)
+			reason, auditDenial, rules := identityProjectionContextualFieldRules(role, object.Key, field.Key)
 			out = append(out, identitymodel.IdentityEffectiveFieldAccess{
 				ObjectKey: object.Key, FieldKey: field.Key,
-				Read: read, Write: write, Export: export, Masked: masked, Reason: reason, Policies: rules,
+				Read: read, Write: write, Export: export, Masked: masked, Reason: reason, AuditDenial: auditDenial, Policies: rules,
 				Sensitive: identityProjectionSensitiveField(object, field), Sources: identityProjectionUniqueSources(fieldSources),
 			})
 		}
@@ -230,8 +230,9 @@ func identityProjectionFieldAccess(role identitymodel.RoleSchema, objects []defi
 	return out
 }
 
-func identityProjectionContextualFieldRules(role identitymodel.RoleSchema, objectKey, fieldKey string) (string, []identitymodel.ContextualFieldPolicyRule) {
+func identityProjectionContextualFieldRules(role identitymodel.RoleSchema, objectKey, fieldKey string) (string, bool, []identitymodel.ContextualFieldPolicyRule) {
 	reason := ""
+	auditDenial := false
 	rules := []identitymodel.ContextualFieldPolicyRule{}
 	for _, permission := range role.FieldPermissions {
 		if permission.ObjectKey != objectKey || permission.FieldKey != fieldKey && permission.FieldKey != "*" {
@@ -240,9 +241,10 @@ func identityProjectionContextualFieldRules(role identitymodel.RoleSchema, objec
 		if reason == "" {
 			reason = permission.Reason
 		}
+		auditDenial = auditDenial || permission.AuditDenial
 		rules = append(rules, cloneIdentityProjectionFieldRules(permission.Policies)...)
 	}
-	return reason, rules
+	return reason, auditDenial, rules
 }
 
 func cloneIdentityProjectionFieldRules(values []identitymodel.ContextualFieldPolicyRule) []identitymodel.ContextualFieldPolicyRule {

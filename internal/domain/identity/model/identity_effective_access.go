@@ -38,16 +38,17 @@ type IdentityEffectiveDataAccess struct {
 }
 
 type IdentityEffectiveFieldAccess struct {
-	ObjectKey string                      `json:"object_key"`
-	FieldKey  string                      `json:"field_key"`
-	Read      bool                        `json:"read"`
-	Write     bool                        `json:"write"`
-	Export    bool                        `json:"export"`
-	Masked    bool                        `json:"masked,omitempty"`
-	Reason    string                      `json:"reason,omitempty"`
-	Policies  []ContextualFieldPolicyRule `json:"policies,omitempty"`
-	Sensitive bool                        `json:"sensitive,omitempty"`
-	Sources   []IdentityGrantSource       `json:"sources"`
+	ObjectKey   string                      `json:"object_key"`
+	FieldKey    string                      `json:"field_key"`
+	Read        bool                        `json:"read"`
+	Write       bool                        `json:"write"`
+	Export      bool                        `json:"export"`
+	Masked      bool                        `json:"masked,omitempty"`
+	Reason      string                      `json:"reason,omitempty"`
+	AuditDenial bool                        `json:"audit_denial,omitempty"`
+	Policies    []ContextualFieldPolicyRule `json:"policies,omitempty"`
+	Sensitive   bool                        `json:"sensitive,omitempty"`
+	Sources     []IdentityGrantSource       `json:"sources"`
 }
 
 type IdentityEffectiveAccessSnapshot struct {
