@@ -117,8 +117,12 @@ func keyMapEnv(key string) map[string]string {
 }
 
 func keyListMapEnv(key string) map[string][]string {
+	return parseKeyListMap(os.Getenv(key))
+}
+
+func parseKeyListMap(raw string) map[string][]string {
 	out := map[string][]string{}
-	for _, item := range strings.Split(strings.TrimSpace(os.Getenv(key)), ",") {
+	for _, item := range strings.Split(strings.TrimSpace(raw), ",") {
 		id, rawValues, ok := strings.Cut(item, "=")
 		id, rawValues = strings.TrimSpace(id), strings.TrimSpace(rawValues)
 		if !ok || id == "" || rawValues == "" {

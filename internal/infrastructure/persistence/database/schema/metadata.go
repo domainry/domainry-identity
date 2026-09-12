@@ -3,6 +3,7 @@ package schema
 import (
 	"context"
 	"fmt"
+	ormschema "github.com/domainry/domainry-orm/schema"
 )
 
 // EnsureMetadataSchema creates only the definition storage used by the
@@ -18,25 +19,32 @@ func EnsureMetadataSchema(ctx context.Context, s Store) error {
 		s.Identifier("updated_at")+" "+s.MetadataIDColumnType()+" NOT NULL)"); err != nil {
 		return fmt.Errorf("create _identity_manifest_catalog: %w", err)
 	}
-	if _, err := s.SchemaDB().ExecContext(ctx, "CREATE TABLE IF NOT EXISTS "+s.TableIdentifier("_identity_metadata_refresh_intents")+" ("+
-		s.Identifier("id")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-		s.Identifier("workspace_id")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-		s.Identifier("owner")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-		s.Identifier("operation")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-		s.Identifier("resource_id")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-		s.Identifier("idempotency_key")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-		s.Identifier("status")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-		s.Identifier("payload_json")+" "+documentText+" NOT NULL, "+
-		s.Identifier("compensation_payload_json")+" "+documentText+" NOT NULL, "+
-		s.Identifier("attempt_count")+" INTEGER NOT NULL DEFAULT 0, "+
-		s.Identifier("next_attempt_at")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-		s.Identifier("lease_owner")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-		s.Identifier("lease_expires_at")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-		s.Identifier("fencing_token")+" BIGINT NOT NULL DEFAULT 0, "+
-		s.Identifier("last_error")+" "+documentText+" NOT NULL, "+
-		s.Identifier("created_at")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-		s.Identifier("updated_at")+" "+s.MetadataIDColumnType()+" NOT NULL, "+
-		"PRIMARY KEY ("+s.Identifier("workspace_id")+", "+s.Identifier("id")+"))"); err != nil {
+	// The five-column receipt index must fit MySQL's 3072-byte limit under
+	// utf8mb4. Owner/operation are internal vocabulary; the idempotency key is
+	// a numeric schema version plus a SHA-256 digest. Existing tables are kept.
+	statement, arguments, err := ormschema.NewTable(s.SchemaRenderer(), "_identity_metadata_refresh_intents").IfNotExists().Columns(
+		ormschema.Column("id", ormschema.TextKey(255)).NotNull(),
+		ormschema.Column("workspace_id", ormschema.TextKey(255)).NotNull(),
+		ormschema.Column("owner", ormschema.TextKey(32)).NotNull(),
+		ormschema.Column("operation", ormschema.TextKey(32)).NotNull(),
+		ormschema.Column("resource_id", ormschema.TextKey(255)).NotNull(),
+		ormschema.Column("idempotency_key", ormschema.TextKey(128)).NotNull(),
+		ormschema.Column("status", ormschema.TextKey(255)).NotNull(),
+		ormschema.Column("payload_json", ormschema.LongText()).NotNull(),
+		ormschema.Column("compensation_payload_json", ormschema.LongText()).NotNull(),
+		ormschema.Column("attempt_count", ormschema.Integer()).NotNull().DefaultValue(0),
+		ormschema.Column("next_attempt_at", ormschema.TextKey(255)).NotNull(),
+		ormschema.Column("lease_owner", ormschema.TextKey(255)).NotNull(),
+		ormschema.Column("lease_expires_at", ormschema.TextKey(255)).NotNull(),
+		ormschema.Column("fencing_token", ormschema.BigInt()).NotNull().DefaultValue(0),
+		ormschema.Column("last_error", ormschema.LongText()).NotNull(),
+		ormschema.Column("created_at", ormschema.TextKey(255)).NotNull(),
+		ormschema.Column("updated_at", ormschema.TextKey(255)).NotNull(),
+	).PrimaryKey("workspace_id", "id").Build()
+	if err != nil {
+		return fmt.Errorf("build metadata refresh intent table: %w", err)
+	}
+	if _, err = s.SchemaDB().ExecContext(ctx, statement, arguments...); err != nil {
 		return fmt.Errorf("create _identity_metadata_refresh_intents: %w", err)
 	}
 	if err := s.CreateIndexIfMissing(ctx, "_identity_metadata_refresh_intents", "uniq_identity_metadata_refresh_intent_key", true, "workspace_id", "owner", "operation", "resource_id", "idempotency_key"); err != nil {

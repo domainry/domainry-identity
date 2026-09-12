@@ -19,13 +19,14 @@ import (
 type ValueType string
 
 const (
-	TypeString   ValueType = "string"
-	TypeBool     ValueType = "bool"
-	TypeInt      ValueType = "int"
-	TypeFloat    ValueType = "float"
-	TypeDuration ValueType = "duration"
-	TypeCSV      ValueType = "csv"
-	TypeKeyMap   ValueType = "key-map"
+	TypeString     ValueType = "string"
+	TypeBool       ValueType = "bool"
+	TypeInt        ValueType = "int"
+	TypeFloat      ValueType = "float"
+	TypeDuration   ValueType = "duration"
+	TypeCSV        ValueType = "csv"
+	TypeKeyMap     ValueType = "key-map"
+	TypeKeyListMap ValueType = "key-list-map"
 )
 
 type Definition struct {
@@ -295,6 +296,8 @@ func setConfigField(cfg *Config, definition Definition, raw string) error {
 		field.Set(reflect.ValueOf(splitCSV(raw)))
 	case TypeKeyMap:
 		field.Set(reflect.ValueOf(parseKeyMap(raw)))
+	case TypeKeyListMap:
+		field.Set(reflect.ValueOf(parseKeyListMap(raw)))
 	default:
 		return fmt.Errorf("unsupported type %s", definition.Type)
 	}
@@ -344,6 +347,9 @@ func reflectValueType(value reflect.Type) ValueType {
 	case reflect.Slice:
 		return TypeCSV
 	case reflect.Map:
+		if value == reflect.TypeOf(map[string][]string{}) {
+			return TypeKeyListMap
+		}
 		return TypeKeyMap
 	default:
 		return TypeString

@@ -2,6 +2,7 @@ package schema
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"strings"
 )
@@ -47,7 +48,14 @@ func ensureWorkspaceScopedIdentities(ctx context.Context, s Store, identities ma
 }
 
 func workspaceIdentityIndexName(table string) string {
-	return "uniq_" + strings.TrimPrefix(table, "_") + "_workspace_identity"
+	name := "uniq_" + strings.TrimPrefix(table, "_") + "_workspace_identity"
+	if len(name) <= 63 {
+		return name
+	}
+	// Preserve existing short names. Long names must fit PostgreSQL and MySQL
+	// without truncation collisions between similarly named receipt tables.
+	sum := sha256.Sum256([]byte(name))
+	return name[:50] + "_" + fmt.Sprintf("%x", sum[:6])
 }
 
 func hasWorkspaceColumn(definitions []string) bool {

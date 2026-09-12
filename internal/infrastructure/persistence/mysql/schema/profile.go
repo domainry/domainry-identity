@@ -52,6 +52,42 @@ func (profile Profile) CreateIndexIfMissing(ctx context.Context, database driver
 	if buildErr != nil {
 		return fmt.Errorf("build MySQL index %s: %w", index, buildErr)
 	}
+	if !unique {
+		// ORM does not expose MySQL prefix indexes. TEXT search columns (such
+		// as reporting paths) must retain their full values while the index
+		// stores a bounded prefix. Never shorten a unique constraint.
+		rows, err := database.QueryContext(ctx, "SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?", relationPrefix+table)
+		if err != nil {
+			return fmt.Errorf("inspect MySQL index columns: %w", err)
+		}
+		types := map[string]string{}
+		for rows.Next() {
+			var name, columnType string
+			if err := rows.Scan(&name, &columnType); err != nil {
+				rows.Close()
+				return err
+			}
+			types[name] = strings.ToLower(columnType)
+		}
+		rowErr := rows.Err()
+		rows.Close()
+		if rowErr != nil {
+			return rowErr
+		}
+		indexed := make([]string, len(columns))
+		prefix := false
+		for i, column := range columns {
+			indexed[i] = renderer.Identifier(column)
+			if strings.HasSuffix(types[column], "text") || strings.HasSuffix(types[column], "blob") {
+				indexed[i] += "(191)"
+				prefix = true
+			}
+		}
+		if prefix {
+			statement = "CREATE INDEX " + renderer.Identifier(index) + " ON " + renderer.Table(table) + " (" + strings.Join(indexed, ", ") + ")"
+			arguments = nil
+		}
+	}
 	if _, err := database.ExecContext(ctx, statement, arguments...); err != nil {
 		return fmt.Errorf("create MySQL index %s: %w", index, err)
 	}

@@ -28,7 +28,9 @@ func ensureIdentityPermissionsSchema(ctx context.Context, store Store) error {
 	if err != nil {
 		return fmt.Errorf("build Identity permission table: %w", err)
 	}
-	if _, err := store.SchemaDB().ExecContext(ctx, statement, arguments...); err != nil {
+	// ORM's typed literal default does not yet parenthesize MySQL TEXT
+	// defaults. Reuse the engine's existing physical-definition normalization.
+	if _, err := store.SchemaDB().ExecContext(ctx, store.ColumnDefinition(statement), arguments...); err != nil {
 		return fmt.Errorf("create Identity permission table: %w", err)
 	}
 	for _, index := range identityPermissionIndexSpecs {

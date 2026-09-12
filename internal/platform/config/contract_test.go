@@ -26,6 +26,28 @@ func TestDefinitionsCoverEveryConfigField(t *testing.T) {
 	}
 }
 
+func TestLoadPermissionOwnerListsThroughConfigContract(t *testing.T) {
+	const name = "IDENTITY_APPLICATION_PERMISSION_OWNERS"
+	const raw = " workspace/app = application:app | module:agent , workspace/other=module:report "
+	t.Setenv(name, raw)
+	want := FromEnv().IdentityApplicationPermissionOwners
+	loaded, _, err := LoadContract(Source{Name: "environment", Values: map[string]string{name: raw}})
+	if err != nil || !reflect.DeepEqual(loaded.IdentityApplicationPermissionOwners, want) {
+		t.Fatalf("permission owner list differs from environment parser: %v %v", loaded.IdentityApplicationPermissionOwners, err)
+	}
+	loaded, snapshot, err := LoadContract(
+		Source{Name: "file", Priority: 100, Values: map[string]string{name: raw}},
+		Source{Name: "operator", Priority: 300, Values: map[string]string{name: "workspace/app=module:report"}},
+	)
+	if err != nil || !reflect.DeepEqual(loaded.IdentityApplicationPermissionOwners, map[string][]string{"workspace/app": {"module:report"}}) || snapshot.Entries[name].Source != "operator" {
+		t.Fatalf("permission owner override merged stale grants: %v %v", loaded.IdentityApplicationPermissionOwners, err)
+	}
+	loaded, _, err = LoadContract(Source{Name: "operator", Values: map[string]string{name: ""}})
+	if err != nil || len(loaded.IdentityApplicationPermissionOwners) != 0 {
+		t.Fatalf("empty owner configuration retained grants: %v", err)
+	}
+}
+
 func TestFromEnvUsesLongLivedAuthSessionDefaults(t *testing.T) {
 	t.Setenv("AUTH_ACCESS_TTL", "")
 	t.Setenv("AUTH_REFRESH_TTL", "")
