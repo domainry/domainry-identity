@@ -24,17 +24,17 @@ func (adapter sdkApplicationServiceVerifier) Verify(ctx context.Context, request
 // transport and by trusted same-process infrastructure after the registered
 // source application and exact credential rotation have both been validated.
 func (binding *sdkBinding) IssueApplicationServiceToken(ctx context.Context, request identitysdk.ExchangeApplicationServiceTokenRequest, credentialID string) (identitysdk.ApplicationServiceToken, error) {
-	if binding == nil || binding.auth == nil || !request.Application.TenantID.Valid() || !request.Application.WorkspaceID.Valid() || !request.Application.ApplicationKey.Valid() || !request.Audience.Valid() || strings.TrimSpace(credentialID) == "" || len(request.Grants) == 0 {
+	if binding == nil || binding.auth == nil || !request.Application.WorkspaceID.Valid() || !request.Application.ApplicationKey.Valid() || !request.Audience.Valid() || strings.TrimSpace(credentialID) == "" || len(request.Grants) == 0 {
 		return identitysdk.ApplicationServiceToken{}, &identitysdk.Error{StatusCode: http.StatusBadRequest, Code: "identity.application_service_exchange_invalid"}
 	}
-	registered, err := binding.applicationRegistered(ctx, identitysdk.ApplicationRef{TenantID: request.Application.TenantID, WorkspaceID: request.Application.WorkspaceID, ApplicationKey: request.Application.ApplicationKey})
+	registered, err := binding.applicationRegistered(ctx, identitysdk.ApplicationRef{WorkspaceID: request.Application.WorkspaceID, ApplicationKey: request.Application.ApplicationKey})
 	if err != nil {
 		return identitysdk.ApplicationServiceToken{}, sdkBoundaryError(err)
 	}
 	if !registered {
 		return identitysdk.ApplicationServiceToken{}, &identitysdk.Error{StatusCode: http.StatusForbidden, Code: "identity.application_service_source_not_registered"}
 	}
-	registered, err = binding.applicationRegistered(ctx, identitysdk.ApplicationRef{TenantID: request.Application.TenantID, WorkspaceID: request.Application.WorkspaceID, ApplicationKey: request.Audience})
+	registered, err = binding.applicationRegistered(ctx, identitysdk.ApplicationRef{WorkspaceID: request.Application.WorkspaceID, ApplicationKey: request.Audience})
 	if err != nil {
 		return identitysdk.ApplicationServiceToken{}, sdkBoundaryError(err)
 	}
@@ -54,7 +54,7 @@ func (binding *sdkBinding) IssueApplicationServiceToken(ctx context.Context, req
 		seen[key] = struct{}{}
 		grants = append(grants, authmodel.AuthServiceGrant{Resource: string(grant.Resource), Action: string(grant.Action)})
 	}
-	accessToken, expiresAt, _, err := binding.auth.IssueApplicationServiceToken(ctx, string(request.Application.TenantID), string(request.Application.WorkspaceID), string(request.Application.ApplicationKey), string(request.Audience), credentialID, grants)
+	accessToken, expiresAt, _, err := binding.auth.IssueApplicationServiceToken(ctx, string(request.Application.WorkspaceID), string(request.Application.ApplicationKey), string(request.Audience), credentialID, grants)
 	if err != nil {
 		return identitysdk.ApplicationServiceToken{}, sdkBoundaryError(err)
 	}
@@ -75,7 +75,7 @@ func (binding *sdkBinding) VerifyApplicationServiceToken(ctx context.Context, re
 	}
 	return identitysdk.ApplicationServicePrincipal{
 		SubjectID:   identitysdk.SubjectID(claims.Subject),
-		Application: identitysdk.ApplicationRef{TenantID: identitysdk.TenantID(claims.TenantID), WorkspaceID: identitysdk.WorkspaceID(claims.WorkspaceID), ApplicationKey: identitysdk.ApplicationKey(claims.ServiceApplicationKey)},
+		Application: identitysdk.ApplicationRef{WorkspaceID: identitysdk.WorkspaceID(claims.WorkspaceID), ApplicationKey: identitysdk.ApplicationKey(claims.ServiceApplicationKey)},
 		Audience:    request.Audience, CredentialID: claims.ServiceCredentialID,
 		AuthorizationRevision: identitysdk.AuthorizationRevision(claims.AuthorizationRevision), ExpiresAt: timeFromUnix(claims.ExpiresAt),
 	}, nil

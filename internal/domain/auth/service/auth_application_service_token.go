@@ -13,20 +13,20 @@ import (
 
 const applicationServiceTokenTTL = 5 * time.Minute
 
-func (s *AuthDomainService) IssueApplicationServiceToken(ctx context.Context, tenantID, workspaceID, applicationKey, audience, credentialID string, grants []authmodel.AuthServiceGrant) (string, time.Time, string, error) {
+func (s *AuthDomainService) IssueApplicationServiceToken(ctx context.Context, workspaceID, applicationKey, audience, credentialID string, grants []authmodel.AuthServiceGrant) (string, time.Time, string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", time.Time{}, "", err
 	}
-	tenantID, workspaceID, applicationKey = strings.TrimSpace(tenantID), strings.TrimSpace(workspaceID), strings.TrimSpace(applicationKey)
+	workspaceID, applicationKey = strings.TrimSpace(workspaceID), strings.TrimSpace(applicationKey)
 	audience, credentialID = strings.TrimSpace(audience), strings.TrimSpace(credentialID)
-	if tenantID == "" || workspaceID == "" || applicationKey == "" || audience == "" || credentialID == "" || len(grants) == 0 {
+	if workspaceID == "" || applicationKey == "" || audience == "" || credentialID == "" || len(grants) == 0 {
 		return "", time.Time{}, "", forbidden("identity.application_service_exchange_invalid")
 	}
 	grants = append([]authmodel.AuthServiceGrant(nil), grants...)
 	sort.Slice(grants, func(left, right int) bool {
 		return grants[left].Resource+"\x00"+grants[left].Action < grants[right].Resource+"\x00"+grants[right].Action
 	})
-	fingerprint := tenantID + "\x00" + workspaceID + "\x00" + applicationKey + "\x00" + audience + "\x00" + credentialID
+	fingerprint := workspaceID + "\x00" + applicationKey + "\x00" + audience + "\x00" + credentialID
 	for _, grant := range grants {
 		if strings.TrimSpace(grant.Resource) == "" || strings.TrimSpace(grant.Action) == "" {
 			return "", time.Time{}, "", forbidden("identity.application_service_grant_invalid")
@@ -43,7 +43,7 @@ func (s *AuthDomainService) IssueApplicationServiceToken(ctx context.Context, te
 	}
 	claims := authmodel.AuthClaims{
 		Issuer: s.issuer, Audience: audience, Subject: "service:" + applicationKey,
-		TenantID: tenantID, WorkspaceID: workspaceID, SessionID: "service:" + credentialID,
+		WorkspaceID: workspaceID, SessionID: "service:" + credentialID,
 		AuthorizationRevision: revision, AuthenticationTime: now.Unix(),
 		AuthenticationMethods: []string{"application_credential"}, AssuranceLevel: "urn:domainry:acr:service",
 		IssuedAt: now.Unix(), ExpiresAt: expiresAt.Unix(), JTI: jti,

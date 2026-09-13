@@ -36,7 +36,7 @@ type ApplicationServiceTokenSource struct {
 }
 
 func NewApplicationServiceTokenSource(issuer ApplicationServiceTokenIssuer, options ServiceTokenOptions) (*ApplicationServiceTokenSource, error) {
-	if issuer == nil || !options.Application.TenantID.Valid() || !options.Application.WorkspaceID.Valid() || !options.Application.ApplicationKey.Valid() ||
+	if issuer == nil || !options.Application.WorkspaceID.Valid() || !options.Application.ApplicationKey.Valid() ||
 		!options.Audience.Valid() || !options.Grant.Valid() || strings.TrimSpace(options.CredentialID) == "" {
 		return nil, fmt.Errorf("Runtime Action usage service identity is invalid")
 	}

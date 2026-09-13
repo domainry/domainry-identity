@@ -13,7 +13,7 @@ func TestApplicationServiceTokenIsShortLivedScopedAndNotAUserSession(t *testing.
 	if err := auth.ConfigureTokenMetadata("https://identity.example", "unused-default"); err != nil {
 		t.Fatal(err)
 	}
-	token, expiresAt, revision, err := auth.IssueApplicationServiceToken(t.Context(), "tenant-a", "workspace-a", "orders-runtime", "domainry-notification", "blue", []authmodel.AuthServiceGrant{{Resource: "notification_event", Action: "publish"}})
+	token, expiresAt, revision, err := auth.IssueApplicationServiceToken(t.Context(), "workspace-a", "orders-runtime", "domainry-notification", "blue", []authmodel.AuthServiceGrant{{Resource: "notification_event", Action: "publish"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -21,7 +21,7 @@ func TestApplicationServiceTokenIsShortLivedScopedAndNotAUserSession(t *testing.
 		t.Fatalf("token=%q expires=%v revision=%q", token, expiresAt, revision)
 	}
 	claims, err := auth.VerifyApplicationServiceToken(t.Context(), token, "domainry-notification", "notification_event", "publish")
-	if err != nil || claims.Subject != "service:orders-runtime" || claims.ServiceCredentialID != "blue" || claims.TenantID != "tenant-a" || claims.WorkspaceID != "workspace-a" {
+	if err != nil || claims.Subject != "service:orders-runtime" || claims.ServiceCredentialID != "blue" || claims.WorkspaceID != "workspace-a" {
 		t.Fatalf("claims=%+v err=%v", claims, err)
 	}
 	if _, err := auth.VerifyApplicationServiceToken(t.Context(), token, "other-service", "notification_event", "publish"); apperror.CodeOf(err) != "identity.application_service_token_invalid" {

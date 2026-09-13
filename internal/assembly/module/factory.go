@@ -519,3 +519,11 @@ var _ identitysdk.ProjectRoleCatalogPublisher = (*moduleBinding)(nil)
 var _ identitysdk.EmbeddedWorkspaceIdentityUsageBinding = (*moduleBinding)(nil)
 var _ identityhttpapi.Provider = (*moduleBinding)(nil)
 var _ actioncontract.Provider = (*moduleBinding)(nil)
+
+func (binding *moduleBinding) SystemSubjects() identitysdk.SystemSubjects {
+	subjects, ok := binding.Binding.(identitysdk.SystemSubjectBinding)
+	if !ok {
+		return nil
+	}
+	return subjects.SystemSubjects()
+}

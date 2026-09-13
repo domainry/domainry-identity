@@ -6,6 +6,7 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
+	authpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/auth"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -56,7 +57,7 @@ func TestIdentitySubjectLifecycleContract(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	lifecycle := identitypersistence.NewIdentitySubjectLifecycleStore(identity)
+	lifecycle := identitypersistence.NewIdentitySubjectLifecycleStore(identity, authpersistence.NewAuthStore(identity).EraseSubjectLoginArtifacts)
 	if lifecycle.Owner(t.Context()) != "identity" {
 		t.Fatal("owner mismatch")
 	}
@@ -100,6 +101,36 @@ func TestIdentitySubjectLifecycleContract(t *testing.T) {
 	}
 	if _, err := lifecycle.EraseSubject(t.Context(), "workspace-primary", "missing", nil); err == nil {
 		t.Fatal("missing erase succeeded")
+	}
+	// Ordinary management must never turn the erased marker into a disabled or
+	// absent row: either would allow the stable account ID to be reused.
+	marker := loaded
+	for name, mutate := range map[string]func(){
+		"activate": func() {
+			_ = identity.SetIdentityUserStatus(t.Context(), "workspace-primary", "user", identitymodel.IdentityStatusActive)
+		},
+		"scoped activate": func() {
+			_, _ = identity.SetIdentityUserStatusWithinDataScope(t.Context(), "workspace-primary", "user", identitymodel.IdentityStatusActive, identitymodel.IdentityDataScopeFilter{Unrestricted: true})
+		},
+		"disable": func() {
+			_, _, _ = identity.DisableIdentityAccountWithinDataScope(t.Context(), "workspace-primary", "user", identitymodel.IdentityDataScopeFilter{Unrestricted: true})
+		},
+		"delete": func() { _ = identity.RemoveIdentityUser(t.Context(), "workspace-primary", "user") },
+		"scoped delete": func() {
+			_, _ = identity.RemoveIdentityUserWithinDataScope(t.Context(), "workspace-primary", "user", identitymodel.IdentityDataScopeFilter{Unrestricted: true})
+		},
+		"restore PII": func() { _ = identity.UpsertIdentityUser(t.Context(), "workspace-primary", user) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			mutate()
+			after, found, err := identity.GetIdentityUser(t.Context(), "workspace-primary", "user")
+			if err != nil || !found || after != marker {
+				t.Fatalf("erased marker changed: %+v err=%v", after, err)
+			}
+		})
+	}
+	if err := identity.CreateIdentityUser(t.Context(), "workspace-primary", user); err == nil {
+		t.Fatal("erased account ID reused")
 	}
 
 	cancelled, cancel := context.WithCancel(t.Context())
@@ -176,7 +207,7 @@ func TestIdentitySubjectEraseRollsBackAtEveryOwnedFactStage(t *testing.T) {
 			if _, err := store.DB().ExecContext(t.Context(), trigger); err != nil {
 				t.Fatal(err)
 			}
-			lifecycle := identitypersistence.NewIdentitySubjectLifecycleStore(identity)
+			lifecycle := identitypersistence.NewIdentitySubjectLifecycleStore(identity, authpersistence.NewAuthStore(identity).EraseSubjectLoginArtifacts)
 			if _, err := lifecycle.EraseSubject(t.Context(), "workspace-primary", "user", nil); err == nil {
 				t.Fatal("injected erase failure was ignored")
 			}

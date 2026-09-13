@@ -136,7 +136,7 @@ func runtimeApplicationScope(r *http.Request) identitysdk.ApplicationScope {
 		workspaceID = strings.TrimSpace(r.Header.Get("X-Workspace-ID"))
 	}
 	return identitysdk.ApplicationScope{
-		TenantID:       identitysdk.TenantID(strings.TrimSpace(r.Header.Get("X-Domainry-Tenant-ID"))),
+
 		WorkspaceID:    identitysdk.WorkspaceID(workspaceID),
 		ApplicationKey: identitysdk.ApplicationKey(strings.TrimSpace(r.Header.Get("X-Domainry-Application-Key"))),
 	}

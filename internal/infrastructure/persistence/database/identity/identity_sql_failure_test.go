@@ -1,6 +1,7 @@
 package identity
 
 import (
+	"context"
 	"database/sql"
 	"database/sql/driver"
 	"errors"
@@ -484,7 +485,7 @@ func TestIdentitySubjectLifecycleSQLStages(t *testing.T) {
 	wantErr := errors.New("subject lifecycle stage")
 	for _, state := range []*identitySQLState{{beginErr: wantErr}, {execFailAt: 1, failure: wantErr}, {execFailAt: 6, failure: wantErr}, {rowsFailAt: 6, failure: wantErr}, {commitErr: wantErr}} {
 		store, closeDB := scriptedSQLIdentity(state)
-		lifecycle := NewIdentitySubjectLifecycleStore(store)
+		lifecycle := NewIdentitySubjectLifecycleStore(store, func(context.Context, *sql.Tx, string, string, string) error { return nil })
 		if _, err := lifecycle.EraseSubject(t.Context(), "workspace-primary", "user", nil); err == nil {
 			t.Fatal("erase stage failure ignored")
 		}
@@ -496,7 +497,7 @@ func TestIdentitySubjectLifecycleSQLStages(t *testing.T) {
 		userColumns[index], userRow[index] = "c", "v"
 	}
 	store, closeDB := scriptedSQLIdentity(&identitySQLState{queryFailAt: 2, failure: wantErr, querySteps: []identitySQLQueryStep{{columns: userColumns, rows: [][]driver.Value{userRow}}}})
-	lifecycle := NewIdentitySubjectLifecycleStore(store)
+	lifecycle := NewIdentitySubjectLifecycleStore(store, func(context.Context, *sql.Tx, string, string, string) error { return nil })
 	if _, err := lifecycle.ExportSubject(t.Context(), "workspace-primary", "user"); err == nil {
 		t.Fatal("export preview failure ignored")
 	}

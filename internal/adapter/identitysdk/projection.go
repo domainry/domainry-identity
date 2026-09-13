@@ -148,7 +148,7 @@ func (adapter sdkProjection) scoped(ctx context.Context) (*identityapplication.I
 	if !ok {
 		return nil, ctx, &identitysdk.Error{Code: "identity.application_scope_required"}
 	}
-	application := identitysdk.ApplicationRef{TenantID: scope.TenantID, WorkspaceID: scope.WorkspaceID, ApplicationKey: scope.ApplicationKey}
+	application := identitysdk.ApplicationRef{WorkspaceID: scope.WorkspaceID, ApplicationKey: scope.ApplicationKey}
 	if found, err := adapter.binding.applicationRegistered(ctx, application); err != nil {
 		return nil, ctx, sdkBoundaryError(err)
 	} else if !found {

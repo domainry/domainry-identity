@@ -14,7 +14,7 @@ import (
 )
 
 // ApplicationCredentialRegistry authenticates one Runtime application within
-// one tenant and workspace. A credential is never a global Identity service
+// one workspace. A credential is never a global Identity service
 // password: changing the request scope cannot expand the credential's access.
 type ApplicationCredentialRegistry struct {
 	credentials []applicationCredential
@@ -23,7 +23,6 @@ type ApplicationCredentialRegistry struct {
 
 type applicationCredential struct {
 	credentialID     string
-	tenantID         identitysdk.TenantID
 	workspaceID      identitysdk.WorkspaceID
 	applicationKey   identitysdk.ApplicationKey
 	sourceOwners     map[string]struct{}
@@ -44,9 +43,8 @@ type ApplicationCredentialDecision struct {
 }
 
 // NewApplicationCredentialRegistry builds a registry from configuration keys
-// formatted as tenant/workspace/application#credential-id. The
-// workspace/application short form means tenant equals workspace, and an
-// omitted credential ID means "default". Each path segment is URL
+// formatted as workspace/application#credential-id. An omitted credential ID
+// means "default". Each path segment is URL
 // path-escaped so identifiers containing '/' remain unambiguous. Multiple IDs
 // for the same scope support overlap during credential rotation.
 func NewApplicationCredentialRegistry(values map[string]string, permissionOwners map[string][]string, requestsPerMinute int, configuredServicePolicies ...map[string][]string) (*ApplicationCredentialRegistry, error) {
@@ -55,6 +53,7 @@ func NewApplicationCredentialRegistry(values map[string]string, permissionOwners
 	}
 	registry := &ApplicationCredentialRegistry{credentials: make([]applicationCredential, 0, len(values)), clock: func() time.Time { return time.Now().UTC() }}
 	seenDigests := map[[sha256.Size]byte]string{}
+	seenCredentialScopes := map[string]string{}
 	limiters := map[string]*applicationRateLimiter{}
 	applicationScopes := map[string]struct{}{}
 	configuredScopes := make([]string, 0, len(values))
@@ -68,7 +67,7 @@ func NewApplicationCredentialRegistry(values map[string]string, permissionOwners
 	sort.Strings(configuredScopes)
 	for _, configuredScope := range configuredScopes {
 		rawCredential := values[configuredScope]
-		credentialID, tenantID, workspaceID, applicationKey, err := parseApplicationCredentialScope(configuredScope)
+		credentialID, workspaceID, applicationKey, err := parseApplicationCredentialScope(configuredScope)
 		if err != nil {
 			return nil, err
 		}
@@ -81,13 +80,18 @@ func NewApplicationCredentialRegistry(values map[string]string, permissionOwners
 			return nil, fmt.Errorf("Identity application service credential is reused by %s and %s", previousScope, configuredScope)
 		}
 		seenDigests[digest] = configuredScope
-		scopeKey := string(tenantID) + "\x00" + string(workspaceID) + "\x00" + string(applicationKey)
+		scopeKey := string(workspaceID) + "\x00" + string(applicationKey)
+		credentialScope := scopeKey + "\x00" + credentialID
+		if previous, duplicate := seenCredentialScopes[credentialScope]; duplicate {
+			return nil, fmt.Errorf("Identity credential scopes %q and %q identify the same workspace/application/credential", previous, configuredScope)
+		}
+		seenCredentialScopes[credentialScope] = configuredScope
 		applicationScopes[scopeKey] = struct{}{}
-		owners, err := applicationPermissionOwners(permissionOwners, tenantID, workspaceID, applicationKey)
+		owners, err := applicationPermissionOwners(permissionOwners, workspaceID, applicationKey)
 		if err != nil {
 			return nil, err
 		}
-		audiences, grants, err := applicationServicePolicy(servicePolicies, tenantID, workspaceID, applicationKey)
+		audiences, grants, err := applicationServicePolicy(servicePolicies, workspaceID, applicationKey)
 		if err != nil {
 			return nil, err
 		}
@@ -97,16 +101,16 @@ func NewApplicationCredentialRegistry(values map[string]string, permissionOwners
 			limiters[scopeKey] = limiter
 		}
 		registry.credentials = append(registry.credentials, applicationCredential{
-			credentialID: credentialID, tenantID: tenantID, workspaceID: workspaceID, applicationKey: applicationKey, digest: digest,
+			credentialID: credentialID, workspaceID: workspaceID, applicationKey: applicationKey, digest: digest,
 			sourceOwners: owners, serviceAudiences: audiences, serviceGrants: grants, limiter: limiter,
 		})
 	}
 	for configuredScope, owners := range permissionOwners {
-		_, tenantID, workspaceID, applicationKey, err := parseApplicationCredentialScope(configuredScope)
+		_, workspaceID, applicationKey, err := parseApplicationCredentialScope(configuredScope)
 		if err != nil {
 			return nil, fmt.Errorf("invalid Identity application permission owner scope: %w", err)
 		}
-		scopeKey := string(tenantID) + "\x00" + string(workspaceID) + "\x00" + string(applicationKey)
+		scopeKey := string(workspaceID) + "\x00" + string(applicationKey)
 		if _, registered := applicationScopes[scopeKey]; !registered {
 			return nil, fmt.Errorf("Identity application permission owner scope %q has no service credential", configuredScope)
 		}
@@ -115,11 +119,11 @@ func NewApplicationCredentialRegistry(values map[string]string, permissionOwners
 		}
 	}
 	for configuredScope, policy := range servicePolicies {
-		_, tenantID, workspaceID, applicationKey, err := parseApplicationCredentialScope(configuredScope)
+		_, workspaceID, applicationKey, err := parseApplicationCredentialScope(configuredScope)
 		if err != nil {
 			return nil, fmt.Errorf("invalid Identity application service policy scope: %w", err)
 		}
-		scopeKey := string(tenantID) + "\x00" + string(workspaceID) + "\x00" + string(applicationKey)
+		scopeKey := string(workspaceID) + "\x00" + string(applicationKey)
 		if _, registered := applicationScopes[scopeKey]; !registered {
 			return nil, fmt.Errorf("Identity application service policy scope %q has no service credential", configuredScope)
 		}
@@ -167,15 +171,11 @@ func (registry *ApplicationCredentialRegistry) authorize(authorization string, s
 	if registry == nil || credential == "" || !scope.WorkspaceID.Valid() || !scope.ApplicationKey.Valid() || requireSourceOwner && sourceOwner == "" {
 		return ApplicationCredentialDecision{}
 	}
-	tenantID := scope.TenantID
-	if !tenantID.Valid() {
-		tenantID = identitysdk.TenantID(scope.WorkspaceID)
-	}
 	digest := sha256.Sum256([]byte(credential))
 	for _, registered := range registry.credentials {
 		tokenMatches := subtle.ConstantTimeCompare(digest[:], registered.digest[:]) == 1
 		_, ownerAllowed := registered.sourceOwners[sourceOwner]
-		if tokenMatches && registered.tenantID == tenantID && registered.workspaceID == scope.WorkspaceID && registered.applicationKey == scope.ApplicationKey {
+		if tokenMatches && registered.workspaceID == scope.WorkspaceID && registered.applicationKey == scope.ApplicationKey {
 			allowed, remaining, resetAt := registered.limiter.Allow(registry.clock())
 			return ApplicationCredentialDecision{Authenticated: true, SourceOwnerAllowed: !requireSourceOwner || ownerAllowed, RateLimited: !allowed, Remaining: remaining, ResetAt: resetAt, CredentialID: registered.credentialID}
 		}
@@ -183,14 +183,14 @@ func (registry *ApplicationCredentialRegistry) authorize(authorization string, s
 	return ApplicationCredentialDecision{}
 }
 
-func applicationPermissionOwners(configured map[string][]string, tenantID identitysdk.TenantID, workspaceID identitysdk.WorkspaceID, applicationKey identitysdk.ApplicationKey) (map[string]struct{}, error) {
+func applicationPermissionOwners(configured map[string][]string, workspaceID identitysdk.WorkspaceID, applicationKey identitysdk.ApplicationKey) (map[string]struct{}, error) {
 	result := map[string]struct{}{}
 	for configuredScope, owners := range configured {
-		_, configuredTenantID, configuredWorkspaceID, configuredApplicationKey, err := parseApplicationCredentialScope(configuredScope)
+		_, configuredWorkspaceID, configuredApplicationKey, err := parseApplicationCredentialScope(configuredScope)
 		if err != nil {
 			return nil, fmt.Errorf("invalid Identity application permission owner scope: %w", err)
 		}
-		if configuredTenantID != tenantID || configuredWorkspaceID != workspaceID || configuredApplicationKey != applicationKey {
+		if configuredWorkspaceID != workspaceID || configuredApplicationKey != applicationKey {
 			continue
 		}
 		for _, owner := range owners {
@@ -204,14 +204,14 @@ func applicationPermissionOwners(configured map[string][]string, tenantID identi
 	return result, nil
 }
 
-func applicationServicePolicy(configured map[string][]string, tenantID identitysdk.TenantID, workspaceID identitysdk.WorkspaceID, applicationKey identitysdk.ApplicationKey) (map[string]struct{}, map[string]struct{}, error) {
+func applicationServicePolicy(configured map[string][]string, workspaceID identitysdk.WorkspaceID, applicationKey identitysdk.ApplicationKey) (map[string]struct{}, map[string]struct{}, error) {
 	audiences, grants := map[string]struct{}{}, map[string]struct{}{}
 	for configuredScope, values := range configured {
-		_, configuredTenantID, configuredWorkspaceID, configuredApplicationKey, err := parseApplicationCredentialScope(configuredScope)
+		_, configuredWorkspaceID, configuredApplicationKey, err := parseApplicationCredentialScope(configuredScope)
 		if err != nil {
 			return nil, nil, fmt.Errorf("invalid Identity application service policy scope: %w", err)
 		}
-		if configuredTenantID != tenantID || configuredWorkspaceID != workspaceID || configuredApplicationKey != applicationKey {
+		if configuredWorkspaceID != workspaceID || configuredApplicationKey != applicationKey {
 			continue
 		}
 		for _, value := range values {
@@ -242,12 +242,8 @@ func (registry *ApplicationCredentialRegistry) Active(scope identitysdk.Applicat
 	if registry == nil || !scope.WorkspaceID.Valid() || !scope.ApplicationKey.Valid() || strings.TrimSpace(credentialID) == "" {
 		return false
 	}
-	tenantID := scope.TenantID
-	if !tenantID.Valid() {
-		tenantID = identitysdk.TenantID(scope.WorkspaceID)
-	}
 	for _, registered := range registry.credentials {
-		if registered.tenantID == tenantID && registered.workspaceID == scope.WorkspaceID && registered.applicationKey == scope.ApplicationKey && registered.credentialID == credentialID {
+		if registered.workspaceID == scope.WorkspaceID && registered.applicationKey == scope.ApplicationKey && registered.credentialID == credentialID {
 			return true
 		}
 	}
@@ -280,39 +276,37 @@ func (limiter *applicationRateLimiter) Allow(now time.Time) (bool, int, time.Tim
 	return true, limiter.limit - limiter.used, limiter.windowEnd
 }
 
-func parseApplicationCredentialScope(value string) (string, identitysdk.TenantID, identitysdk.WorkspaceID, identitysdk.ApplicationKey, error) {
+// parseApplicationCredentialScope accepts workspace/application#credential-id.
+func parseApplicationCredentialScope(value string) (string, identitysdk.WorkspaceID, identitysdk.ApplicationKey, error) {
 	scopeValue, credentialID, hasCredentialID := strings.Cut(strings.TrimSpace(value), "#")
 	if !hasCredentialID {
 		credentialID = "default"
 	}
 	credentialID, err := url.PathUnescape(credentialID)
 	if err != nil || identitysdk.ValidateIdentifier("credential_id", credentialID) != nil {
-		return "", "", "", "", fmt.Errorf("Identity application service credential scope %q contains an invalid credential ID", value)
+		return "", "", "", fmt.Errorf("Identity application service credential scope %q contains an invalid credential ID", value)
 	}
 	rawParts := strings.Split(scopeValue, "/")
-	if len(rawParts) != 2 && len(rawParts) != 3 {
-		return "", "", "", "", fmt.Errorf("Identity application service credential scope %q must be workspace/application or tenant/workspace/application", value)
+	if len(rawParts) != 2 {
+		return "", "", "", fmt.Errorf("Identity application service credential scope %q must be workspace/application", value)
 	}
 	parts := make([]string, len(rawParts))
 	for index, rawPart := range rawParts {
 		part, err := url.PathUnescape(rawPart)
 		if err != nil || strings.TrimSpace(part) == "" {
-			return "", "", "", "", fmt.Errorf("Identity application service credential scope %q contains an invalid escaped identifier", value)
+			return "", "", "", fmt.Errorf("Identity application service credential scope %q contains an invalid escaped identifier", value)
 		}
 		parts[index] = part
 	}
-	if len(parts) == 2 {
-		parts = []string{parts[0], parts[0], parts[1]}
+	workspaceID, applicationKey := identitysdk.WorkspaceID(parts[0]), identitysdk.ApplicationKey(parts[1])
+	if !workspaceID.Valid() || !applicationKey.Valid() {
+		return "", "", "", fmt.Errorf("Identity application service credential scope %q contains an invalid identifier", value)
 	}
-	tenantID, workspaceID, applicationKey := identitysdk.TenantID(parts[0]), identitysdk.WorkspaceID(parts[1]), identitysdk.ApplicationKey(parts[2])
-	if !tenantID.Valid() || !workspaceID.Valid() || !applicationKey.Valid() {
-		return "", "", "", "", fmt.Errorf("Identity application service credential scope %q contains an invalid identifier", value)
-	}
-	return credentialID, tenantID, workspaceID, applicationKey, nil
+	return credentialID, workspaceID, applicationKey, nil
 }
 
 func applicationScope(application identitysdk.ApplicationRef) identitysdk.ApplicationScope {
 	return identitysdk.ApplicationScope{
-		TenantID: application.TenantID, WorkspaceID: application.WorkspaceID, ApplicationKey: application.ApplicationKey,
+		WorkspaceID: application.WorkspaceID, ApplicationKey: application.ApplicationKey,
 	}
 }

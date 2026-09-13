@@ -21,7 +21,7 @@ func (s *AuthDomainService) IssueActionAssuranceReceipt(ctx context.Context, cha
 	expiresAt := now.Add(2 * time.Minute)
 	methods := []string{"otp"}
 	token, err := s.signClaims(authmodel.AuthClaims{
-		Audience: actionAssuranceAudience, Subject: challenge.UserID, TenantID: challenge.WorkspaceID, WorkspaceID: challenge.WorkspaceID,
+		Audience: actionAssuranceAudience, Subject: challenge.UserID, WorkspaceID: challenge.WorkspaceID,
 		SessionID: challenge.State, AuthenticationTime: now.Unix(), AuthenticationMethods: methods, AssuranceLevel: "urn:domainry:acr:2",
 		IssuedAt: now.Unix(), ExpiresAt: expiresAt.Unix(), TokenPurpose: authmodel.AuthChallengePurposeAction,
 	})

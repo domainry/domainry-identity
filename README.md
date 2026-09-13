@@ -125,12 +125,11 @@ CORS_ALLOWED_ORIGINS
 ```
 
 `IDENTITY_APPLICATION_SERVICE_CREDENTIALS` 为 Runtime 应用服务凭证映射，格式为
-`tenant/workspace/application#credential-id=token`；当 tenant 与 workspace 相同时可写成
 `workspace/application#credential-id=token`，省略 `credential-id` 时默认为 `default`。
 多个条目以逗号分隔；同一应用可在轮换窗口配置两个不同 ID 的凭证。每个凭证只能访问
 绑定的应用作用域，不同作用域不得复用同一凭证。
 `IDENTITY_APPLICATION_PERMISSION_OWNERS` 使用
-`tenant/workspace/application=source_owner|source_owner` 格式（tenant 与 workspace 相同时同样可省略 tenant），
+`workspace/application=source_owner|source_owner` 格式，
 显式限制该应用凭证可以 reconcile 的 Permission source owner；多个应用条目以逗号分隔。未列入该集合的
 owner 即使使用有效应用凭证也返回 `identity.permission_source_owner_forbidden`。
 `IDENTITY_APPLICATION_RATE_LIMIT_PER_MINUTE` 为每个已注册应用独立计算的分钟请求上限，

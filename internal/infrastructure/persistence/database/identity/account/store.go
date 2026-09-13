@@ -31,7 +31,7 @@ func (s Store) Disable(ctx context.Context, workspaceID, userID string) (int, er
 		Set("status", "disabled").
 		SetExpression("version", query.Add(query.Column("version"), query.Value(1))).
 		Set("updated_at", s.now()).
-		Where(query.Equal("id", userID)).
+		Where(query.And(query.Equal("id", userID), query.NotEqual("status", "erased"))).
 		Build()
 	if err != nil {
 		return 0, fmt.Errorf("build identity account disable: %w", err)

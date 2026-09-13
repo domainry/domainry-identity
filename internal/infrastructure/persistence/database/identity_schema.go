@@ -22,9 +22,9 @@ import (
 )
 
 const (
-	CurrentIdentitySchemaVersion           = "013_global_user_login_name"
-	EmbeddedIdentitySchemaMigrationVersion = uint(13)
-	EmbeddedIdentitySchemaMigrationName    = "global_user_login_name"
+	CurrentIdentitySchemaVersion           = "014_subject_erasure"
+	EmbeddedIdentitySchemaMigrationVersion = uint(14)
+	EmbeddedIdentitySchemaMigrationName    = "subject_erasure"
 )
 
 const (

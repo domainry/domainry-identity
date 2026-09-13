@@ -13,8 +13,8 @@ type BusinessProfileReference struct {
 }
 
 type Principal struct {
-	UserID                string
-	TenantID              string
+	UserID string
+
 	WorkspaceID           string
 	SystemScope           SystemScope
 	OrgID                 string

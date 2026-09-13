@@ -130,7 +130,7 @@ func NewWithStore(ctx context.Context, cfg config.Config, store *database.Identi
 			return nil, credentialErr
 		}
 		usageApplication := identitysdk.ApplicationRef{
-			TenantID: identitysdk.TenantID(cfg.IdentityWorkspaceID), WorkspaceID: identitysdk.WorkspaceID(cfg.IdentityWorkspaceID),
+			WorkspaceID:    identitysdk.WorkspaceID(cfg.IdentityWorkspaceID),
 			ApplicationKey: identitysdk.ApplicationKey(strings.TrimSpace(cfg.IdentityActionUsageApplicationKey)),
 		}
 		if _, registerErr := core.Binding.Applications().Register(ctx, identitysdk.ApplicationRegistration{Application: usageApplication}); registerErr != nil {

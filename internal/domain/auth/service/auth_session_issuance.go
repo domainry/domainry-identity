@@ -10,6 +10,7 @@ import (
 
 	authcontract "github.com/domainry/domainry-identity/internal/domain/auth/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	identitypolicy "github.com/domainry/domainry-identity/internal/domain/identity/policy"
 )
 
 func (s *AuthDomainService) issueSession(ctx context.Context, workspaceID string, user identitymodel.IdentityUser) (authmodel.AuthSession, error) {
@@ -100,7 +101,7 @@ func (s *AuthDomainService) prepareSessionForAudienceWithIDAndAuthentication(ctx
 	}
 	claims := authmodel.AuthClaims{
 		Issuer: s.issuer, Audience: audience, Subject: user.ID,
-		TenantID: workspaceID, WorkspaceID: workspaceID, SessionID: sessionID,
+		WorkspaceID: workspaceID, SessionID: sessionID,
 		AuthorizationRevision: principal.AuthorizationRevision,
 		AuthenticationTime:    authentication.AuthenticationTime, AuthenticationMethods: authentication.Methods, AssuranceLevel: authentication.AssuranceLevel,
 		IssuedAt: now.Unix(), ExpiresAt: expiresAt.Unix(), JTI: jti,
@@ -130,8 +131,8 @@ func (s *AuthDomainService) prepareSessionForAudienceWithIDAndAuthentication(ctx
 		CreatedAt:             now.Format(time.RFC3339),
 	}
 	return authmodel.AuthSession{
-		SessionID:             sessionID,
-		TenantID:              claims.TenantID,
+		SessionID: sessionID,
+
 		WorkspaceID:           claims.WorkspaceID,
 		AccessToken:           accessToken,
 		RefreshToken:          refreshToken,
@@ -139,7 +140,7 @@ func (s *AuthDomainService) prepareSessionForAudienceWithIDAndAuthentication(ctx
 		ExpiresAt:             expiresAt.Format(time.RFC3339),
 		User:                  s.authUser(user),
 		Roles:                 authRoles(roles),
-		DefaultRole:           defaultAuthRole(roles),
+		DefaultRole:           identitypolicy.SelectDefaultRole(roles),
 		Permissions:           permissions,
 		MustChangePassword:    mustChangePassword,
 		AuthenticationTime:    claims.AuthenticationTime,

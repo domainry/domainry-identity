@@ -23,7 +23,7 @@ func RegisterCapabilityRoutes(registrar RouteRegistrar, binding identitysdk.Bind
 			workspaceID = strings.TrimSpace(request.Header.Get("X-Workspace-ID"))
 		}
 		scope := identitysdk.ApplicationScope{
-			TenantID:       identitysdk.TenantID(strings.TrimSpace(request.Header.Get("X-Domainry-Tenant-ID"))),
+
 			WorkspaceID:    identitysdk.WorkspaceID(workspaceID),
 			ApplicationKey: identitysdk.ApplicationKey(strings.TrimSpace(request.Header.Get("X-Domainry-Application-Key"))),
 		}

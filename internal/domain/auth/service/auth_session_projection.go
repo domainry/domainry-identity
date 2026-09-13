@@ -37,29 +37,3 @@ func authRoles(roles []identitymodel.IdentityRole) []authmodel.AuthRole {
 	}
 	return out
 }
-
-func defaultAuthRole(roles []identitymodel.IdentityRole) string {
-	if len(roles) == 0 {
-		return ""
-	}
-	for _, preferredKey := range []string{"admin", "platform_admin", "erp_admin", "sales_admin", "menu_admin", "owner", "manager"} {
-		for _, role := range roles {
-			if role.Key == preferredKey || role.ID == preferredKey {
-				return role.Key
-			}
-		}
-	}
-	for _, role := range roles {
-		if !systemManagementRole(role.Key) {
-			return role.Key
-		}
-	}
-	return roles[0].Key
-}
-
-func systemManagementRole(roleKey string) bool {
-	roleKey = strings.ToLower(strings.TrimSpace(roleKey))
-	return strings.HasPrefix(roleKey, "identity_") ||
-		strings.HasPrefix(roleKey, "platform_") ||
-		strings.HasPrefix(roleKey, "pipeline_")
-}

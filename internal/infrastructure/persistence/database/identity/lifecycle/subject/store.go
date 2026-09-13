@@ -6,10 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
-
-	identitypolicy "github.com/domainry/domainry-identity/internal/domain/identity/policy"
-	privacy "github.com/domainry/domainry-identity/internal/domain/privacy"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 	"github.com/domainry/domainry-orm/query"
 )
@@ -20,10 +16,15 @@ type Backend interface {
 	ApplyUpsert(*query.InsertBuilder, []string, ...string) *query.InsertBuilder
 }
 
-type Store struct{ store Backend }
+type AuthenticationEraser func(context.Context, *sql.Tx, string, string, string) error
 
-func New(store Backend) *Store {
-	return &Store{store: store}
+type Store struct {
+	store               Backend
+	eraseAuthentication AuthenticationEraser
+}
+
+func New(store Backend, eraseAuthentication AuthenticationEraser) *Store {
+	return &Store{store: store, eraseAuthentication: eraseAuthentication}
 }
 func (s *Store) Owner(context.Context) string { return "identity" }
 
@@ -171,47 +172,4 @@ func coalescedIdentityProjections(columns ...string) []query.Projection {
 		projections[index] = query.Project(query.Coalesce(query.Column(column), query.Value("")))
 	}
 	return projections
-}
-
-func (s *Store) EraseSubject(ctx context.Context, workspaceID, userID string, _ []privacy.LegalHold) (json.RawMessage, error) {
-	tx, err := s.store.DB().BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-	for _, table := range []string{"_identity_auth_refresh_tokens", "_identity_credentials", "_identity_external_accounts", "_identity_mfa_factors", "_identity_user_role_assignments"} {
-		statement, arguments, buildErr := query.NewWorkspaceDeleteBuilder(s.store.SQLRenderer(), table, workspaceID).Where(query.Equal("user_id", userID)).Build()
-		if buildErr != nil {
-			return nil, fmt.Errorf("build identity subject relation erase: %w", buildErr)
-		}
-		if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
-			return nil, err
-		}
-	}
-	anonymized := identitypolicy.IdentityAnonymizedSubject(workspaceID, userID)
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	statement, arguments, err := query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_users", workspaceID).
-		Set("name", anonymized.Name).Set("given_name", "").Set("middle_name", "").Set("family_name", "").
-		Set("name_prefix", "").Set("name_suffix", "").Set("native_name", "").Set("name_locale", "").
-		Set("email", anonymized.Email).Set("phone", "").Set("locale", "").Set("timezone", "").Set("support_org_id", nil).Set("status", "erased").
-		SetExpression("version", query.Add(query.Column("version"), query.Value(1))).Set("updated_at", now).
-		Where(query.Equal("id", userID)).Build()
-	if err != nil {
-		return nil, fmt.Errorf("build identity subject anonymization: %w", err)
-	}
-	result, err := tx.ExecContext(ctx, statement, arguments...)
-	if err != nil {
-		return nil, err
-	}
-	changed, err := result.RowsAffected()
-	if err != nil {
-		return nil, err
-	}
-	if changed != 1 {
-		return nil, fmt.Errorf("subject identity not found")
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-	return json.RawMessage(`{"anonymized":1,"credentials_deleted":true}`), nil
 }

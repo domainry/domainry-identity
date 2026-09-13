@@ -11,13 +11,13 @@ import (
 
 func TestApplicationCredentialRegistryAuthorizesOnlyItsBoundScope(t *testing.T) {
 	registry, err := NewApplicationCredentialRegistry(map[string]string{
-		"tenant-a/workspace-a/orders-runtime": "orders-service-secret",
-		"workspace-b/notify-runtime":          "notify-service-secret",
-	}, map[string][]string{"tenant-a/workspace-a/orders-runtime": {"application:orders-runtime"}}, 100)
+		"workspace-a/orders-runtime": "orders-service-secret",
+		"workspace-b/notify-runtime": "notify-service-secret",
+	}, map[string][]string{"workspace-a/orders-runtime": {"application:orders-runtime"}}, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
-	orders := identitysdk.ApplicationScope{TenantID: "tenant-a", WorkspaceID: "workspace-a", ApplicationKey: "orders-runtime"}
+	orders := identitysdk.ApplicationScope{WorkspaceID: "workspace-a", ApplicationKey: "orders-runtime"}
 	if decision := registry.Authorize("Bearer orders-service-secret", orders); !decision.Authenticated || decision.RateLimited {
 		t.Fatal("matching application credential was rejected")
 	}
@@ -28,9 +28,9 @@ func TestApplicationCredentialRegistryAuthorizesOnlyItsBoundScope(t *testing.T) 
 		t.Fatalf("credential escaped its permission owner scope: %+v", decision)
 	}
 	for name, scope := range map[string]identitysdk.ApplicationScope{
-		"wrong tenant":      {TenantID: "tenant-b", WorkspaceID: "workspace-a", ApplicationKey: "orders-runtime"},
-		"wrong workspace":   {TenantID: "tenant-a", WorkspaceID: "workspace-b", ApplicationKey: "orders-runtime"},
-		"wrong application": {TenantID: "tenant-a", WorkspaceID: "workspace-a", ApplicationKey: "notify-runtime"},
+		"missing workspace": {ApplicationKey: "orders-runtime"},
+		"wrong workspace":   {WorkspaceID: "workspace-b", ApplicationKey: "orders-runtime"},
+		"wrong application": {WorkspaceID: "workspace-a", ApplicationKey: "notify-runtime"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if registry.Authorize("Bearer orders-service-secret", scope).Authenticated {
@@ -48,31 +48,33 @@ func TestApplicationCredentialRegistryAuthorizesOnlyItsBoundScope(t *testing.T) 
 	}
 }
 
-func TestApplicationCredentialRegistryDefaultsTenantToWorkspace(t *testing.T) {
+func TestApplicationCredentialRegistryUsesWorkspaceAndApplication(t *testing.T) {
 	registry, err := NewApplicationCredentialRegistry(map[string]string{"workspace-primary/orders-runtime": "service-secret"}, nil, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
 	scope := identitysdk.ApplicationScope{WorkspaceID: "workspace-primary", ApplicationKey: "orders-runtime"}
 	if decision := registry.Authorize("Bearer service-secret", scope); !decision.Authenticated || decision.RateLimited {
-		t.Fatal("workspace shorthand did not bind tenant to workspace")
+		t.Fatal("explicit workspace application scope was rejected")
 	}
 }
 
 func TestApplicationCredentialRegistryParsesEscapedIdentifiersAndRejectsInvalidConfiguration(t *testing.T) {
-	registry, err := NewApplicationCredentialRegistry(map[string]string{"tenant%2Fone/workspace%2Fone/app%2Fone": "service-secret"}, nil, 100)
+	registry, err := NewApplicationCredentialRegistry(map[string]string{"workspace%2Fone/app%2Fone": "service-secret"}, nil, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if decision := registry.Authorize("Bearer service-secret", identitysdk.ApplicationScope{TenantID: "tenant/one", WorkspaceID: "workspace/one", ApplicationKey: "app/one"}); !decision.Authenticated || decision.RateLimited {
+	if decision := registry.Authorize("Bearer service-secret", identitysdk.ApplicationScope{WorkspaceID: "workspace/one", ApplicationKey: "app/one"}); !decision.Authenticated || decision.RateLimited {
 		t.Fatal("escaped scope identifiers were not decoded")
 	}
 	for name, values := range map[string]map[string]string{
-		"missing segment":      {"workspace-only": "secret"},
-		"too many segments":    {"tenant/workspace/application/extra": "secret"},
-		"empty credential ID":  {"workspace-primary/orders-runtime#": "secret"},
-		"empty credential":     {"workspace-primary/orders-runtime": " "},
-		"duplicate credential": {"workspace-primary/orders-runtime": "same", "workspace-primary/notify-runtime": "same"},
+		"three segments":          {"tenant-a/workspace-a/orders-runtime": "secret"},
+		"duplicate decoded scope": {"workspace-a/orders-runtime#blue": "secret-1", "workspace-a/orders-runtime#%62lue": "secret-2"},
+		"missing segment":         {"workspace-only": "secret"},
+		"too many segments":       {"tenant/workspace/application/extra": "secret"},
+		"empty credential ID":     {"workspace-primary/orders-runtime#": "secret"},
+		"empty credential":        {"workspace-primary/orders-runtime": " "},
+		"duplicate credential":    {"workspace-primary/orders-runtime": "same", "workspace-primary/notify-runtime": "same"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := NewApplicationCredentialRegistry(values, nil, 100); err == nil {
@@ -98,10 +100,10 @@ func TestApplicationCredentialRegistryRejectsInvalidPermissionOwnerScopes(t *tes
 }
 
 func TestApplicationCredentialRegistryCapsServiceTokenAudienceAndGrants(t *testing.T) {
-	application := identitysdk.ApplicationRef{TenantID: "tenant-primary", WorkspaceID: "workspace-primary", ApplicationKey: "orders-runtime"}
+	application := identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "orders-runtime"}
 	registry, err := NewApplicationCredentialRegistry(
-		map[string]string{"tenant-primary/workspace-primary/orders-runtime": "service-secret"}, nil, 100,
-		map[string][]string{"tenant-primary/workspace-primary/orders-runtime": {"audience:notification-runtime", "grant:notification_event.publish", "grant:notification_event.read"}},
+		map[string]string{"workspace-primary/orders-runtime": "service-secret"}, nil, 100,
+		map[string][]string{"workspace-primary/orders-runtime": {"audience:notification-runtime", "grant:notification_event.publish", "grant:notification_event.read"}},
 	)
 	if err != nil {
 		t.Fatal(err)

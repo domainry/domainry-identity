@@ -70,32 +70,9 @@ func (s *IdentityDomainService) SearchRoles(ctx context.Context, query identitym
 }
 
 func (s *IdentityDomainService) ActiveRolesForUser(ctx context.Context, userID string) ([]identitymodel.IdentityRole, error) {
-	assignments, err := s.repo.ListIdentityUserRoleAssignments(ctx, s.workspace, userID)
-	if err != nil {
-		return nil, err
-	}
-	roles, err := s.repo.ListIdentityRoles(ctx, s.workspace)
-	if err != nil {
-		return nil, err
-	}
-	activeRoleIDs := map[string]struct{}{}
-	now := time.Now()
-	for _, assignment := range assignments {
-		if identityAssignmentActive(assignment, now) {
-			activeRoleIDs[assignment.RoleID] = struct{}{}
-		}
-	}
-	out := []identitymodel.IdentityRole{}
-	for _, role := range roles {
-		if _, published := s.publishedRoleDefinition(role); !published {
-			continue
-		}
-		if _, assigned := activeRoleIDs[role.ID]; assigned {
-			out = append(out, role)
-		}
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
-	return out, nil
+	// Session presentation uses the same eligibility and ordering as effective
+	// authorization, including profile-backed assignment qualification.
+	return s.ResolveEffectiveRoles(ctx, userID)
 }
 
 func (s *IdentityDomainService) AssignUserRole(ctx context.Context, assignment identitymodel.IdentityUserRoleAssignment) error {

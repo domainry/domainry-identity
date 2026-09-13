@@ -129,7 +129,7 @@ func TestPrincipalFromBearerToken(t *testing.T) {
 	authorization.principalErr = nil
 
 	principal, err := auth.PrincipalFromBearer(t.Context(), "Bearer "+validIdentityAccessToken(t, auth, "user", "workspace-a"), "request-a")
-	if err != nil || principal.TenantID != "workspace-a" || principal.WorkspaceID != "workspace-a" || principal.RequestID != "request-a" {
+	if err != nil || principal.WorkspaceID != "workspace-a" || principal.RequestID != "request-a" {
 		t.Fatalf("resolve principal with workspace: principal=%#v err=%v", principal, err)
 	}
 	principal, err = auth.PrincipalFromBearer(t.Context(), "Bearer "+validIdentityAccessToken(t, auth, "user", ""), "request-b")

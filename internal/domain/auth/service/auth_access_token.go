@@ -87,7 +87,7 @@ func (s *AuthDomainService) VerifySignedAccessToken(ctx context.Context, token s
 	// and resource servers compare it with their expected ApplicationKey. The
 	// Identity issuer therefore validates presence here instead of incorrectly
 	// forcing every application token to the process-wide default audience.
-	if claims.Issuer != s.issuer || strings.TrimSpace(claims.Audience) == "" || claims.Subject == "" || claims.TenantID == "" || claims.SessionID == "" || claims.AuthorizationRevision == "" || claims.JTI == "" || claims.IssuedAt > now.Add(time.Minute).Unix() || claims.ExpiresAt <= now.Unix() {
+	if claims.Issuer != s.issuer || strings.TrimSpace(claims.Audience) == "" || claims.Subject == "" || claims.SessionID == "" || claims.AuthorizationRevision == "" || claims.JTI == "" || claims.IssuedAt > now.Add(time.Minute).Unix() || claims.ExpiresAt <= now.Unix() {
 		return claims, forbidden("auth.session_expired")
 	}
 	return claims, nil

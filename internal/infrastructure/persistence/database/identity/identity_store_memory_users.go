@@ -95,6 +95,9 @@ func (s *MemoryIdentityStore) UpsertIdentityUser(ctx context.Context, workspaceI
 	defer s.mu.Unlock()
 	now := nowString()
 	if existing, ok := s.users[key]; ok {
+		if existing.Status == "erased" {
+			return fmt.Errorf("identity subject is erased")
+		}
 		user.Version = existing.Version + 1
 		user.CreatedAt = existing.CreatedAt
 	} else {
@@ -139,7 +142,7 @@ func (s *MemoryIdentityStore) UpdateIdentityUserLocale(_ context.Context, worksp
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	user, ok := s.users[key]
-	if !ok || user.Version != expectedVersion {
+	if !ok || user.Status == "erased" || user.Version != expectedVersion {
 		return identitymodel.IdentityUser{}, false, nil
 	}
 	user.Locale = locale
@@ -160,6 +163,11 @@ func (s *MemoryIdentityStore) UpsertIdentityUsersAtomically(ctx context.Context,
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	for _, user := range users {
+		if existing, ok := s.users[prefix+user.ID]; ok && existing.Status == "erased" {
+			return fmt.Errorf("identity subject is erased")
+		}
+	}
 	now := nowString()
 	for _, user := range users {
 		if user.Status == "" {
@@ -170,6 +178,9 @@ func (s *MemoryIdentityStore) UpsertIdentityUsersAtomically(ctx context.Context,
 		}
 		key := prefix + user.ID
 		if existing, ok := s.users[key]; ok {
+			if existing.Status == "erased" {
+				return fmt.Errorf("identity subject is erased")
+			}
 			user.Version = existing.Version + 1
 			user.CreatedAt = existing.CreatedAt
 		} else {
@@ -196,7 +207,7 @@ func (s *MemoryIdentityStore) UpdateIdentityUsersWithinDataScopeAtomically(_ con
 	defer s.mu.Unlock()
 	for _, user := range users {
 		existing, ok := s.users[prefix+user.ID]
-		if !ok || !identityUserMatchesDataScope(existing, scope) {
+		if !ok || existing.Status == "erased" || !identityUserMatchesDataScope(existing, scope) {
 			return false, nil
 		}
 	}
@@ -246,6 +257,9 @@ func (s *MemoryIdentityStore) UpsertIdentityUserWithRoleAssignmentsAtomically(
 	now := nowString()
 	key := prefix + user.ID
 	if existing, ok := s.users[key]; ok {
+		if existing.Status == "erased" {
+			return fmt.Errorf("identity subject is erased")
+		}
 		user.Version = existing.Version + 1
 		user.CreatedAt = existing.CreatedAt
 	} else {
@@ -294,7 +308,7 @@ func (s *MemoryIdentityStore) UpsertIdentityUserWithRoleAssignmentsWithinDataSco
 	defer s.mu.Unlock()
 	key := prefix + user.ID
 	existing, found := s.users[key]
-	if !found || !identityUserMatchesDataScope(existing, scope) {
+	if !found || existing.Status == "erased" || !identityUserMatchesDataScope(existing, scope) {
 		return false, nil
 	}
 	if user.Status == "" {
@@ -347,7 +361,7 @@ func (s *MemoryIdentityStore) RemoveIdentityUserWithinDataScope(_ context.Contex
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	user, ok := s.users[key]
-	if !ok || !identityUserMatchesDataScope(user, scope) {
+	if !ok || user.Status == "erased" || !identityUserMatchesDataScope(user, scope) {
 		return false, nil
 	}
 	delete(s.users, key)
@@ -389,7 +403,7 @@ func (s *MemoryIdentityStore) SetIdentityUserStatusWithinDataScope(_ context.Con
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	user, ok := s.users[key]
-	if !ok || !identityUserMatchesDataScope(user, scope) {
+	if !ok || user.Status == "erased" || !identityUserMatchesDataScope(user, scope) {
 		return false, nil
 	}
 	user.Status = status

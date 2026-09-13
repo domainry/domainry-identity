@@ -35,6 +35,7 @@ type TableOwnership struct {
 }
 
 var identityTableOwnership = []TableOwnership{
+	{Name: "_identity_subject_erasure_receipts", Boundary: TableBoundaryEvidence, MigrationDisposition: MigrationEvidenceOnly},
 	{Name: "_identity_managed_database", Boundary: TableBoundarySchemaControl, MigrationDisposition: MigrationExcluded},
 	{Name: "_identity_auth_assertion_replays", Boundary: TableBoundaryAuthentication, MigrationDisposition: MigrationExcluded, ContainsSecret: true},
 	{Name: "_identity_auth_authorization_codes", Boundary: TableBoundaryAuthentication, MigrationDisposition: MigrationExcluded, ContainsSecret: true},

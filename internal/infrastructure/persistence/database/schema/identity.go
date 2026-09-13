@@ -11,6 +11,9 @@ import (
 )
 
 func EnsureIdentitySchema(ctx context.Context, s Store) error {
+	if err := ensureSubjectErasureSchema(ctx, s); err != nil {
+		return err
+	}
 	text := s.MetadataIDColumnType()
 	types := s.SchemaTypes()
 	boolType, boolFalse := types.Boolean, types.FalseLiteral

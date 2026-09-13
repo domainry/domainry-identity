@@ -8,11 +8,16 @@ import (
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	identityscope "github.com/domainry/domainry-identity-sdk/application"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	identitypolicy "github.com/domainry/domainry-identity/internal/domain/identity/policy"
 )
 
 type sdkPrincipalResolver struct{ binding *sdkBinding }
 
 func (adapter sdkPrincipalResolver) Resolve(ctx context.Context, request identitysdk.PrincipalResolutionRequest) (identitysdk.PrincipalResolution, error) {
+	request.RoleKey, request.SessionRoleKey = strings.TrimSpace(request.RoleKey), strings.TrimSpace(request.SessionRoleKey)
+	if request.SessionRoleKey != "" && (request.RoleKey != "" || request.Workload != nil) {
+		return identitysdk.PrincipalResolution{}, &identitysdk.Error{StatusCode: http.StatusBadRequest, Code: "identity.principal_role_selection_invalid"}
+	}
 	scope, ok := identityscope.ScopeFromContext(ctx)
 	if !ok {
 		return identitysdk.PrincipalResolution{}, &identitysdk.Error{Code: "identity.application_scope_required"}
@@ -33,7 +38,9 @@ func (adapter sdkPrincipalResolver) Resolve(ctx context.Context, request identit
 	if err != nil {
 		return identitysdk.PrincipalResolution{}, sdkBoundaryError(err)
 	}
-	principal.TenantID = string(scope.TenantID)
+	if !principal.Known {
+		return identitysdk.PrincipalResolution{}, &identitysdk.Error{StatusCode: http.StatusForbidden, Code: "identity.principal_unavailable"}
+	}
 	user, found, err := identity.FindUser(workspaceContext, principal.UserID)
 	if err != nil {
 		return identitysdk.PrincipalResolution{}, sdkBoundaryError(err)
@@ -45,15 +52,38 @@ func (adapter sdkPrincipalResolver) Resolve(ctx context.Context, request identit
 	if err != nil {
 		return identitysdk.PrincipalResolution{}, sdkBoundaryError(err)
 	}
-	snapshot, err := adapter.binding.access.Snapshot(workspaceContext, principal.UserID, principal)
+	roleKey := principal.Role.Key
+	var snapshot identitymodel.IdentityEffectiveAccessSnapshot
+	if request.RoleKey != "" {
+		snapshot, err = adapter.binding.access.SnapshotForRole(workspaceContext, principal.UserID, request.RoleKey, principal)
+	} else {
+		roleKey = identitypolicy.SelectDefaultRole(roles)
+		if request.SessionRoleKey != "" {
+			assigned := false
+			for _, role := range roles {
+				assigned = assigned || role.Key == request.SessionRoleKey
+			}
+			if !assigned {
+				return identitysdk.PrincipalResolution{}, &identitysdk.Error{StatusCode: http.StatusForbidden, Code: "identity.session_role_unavailable"}
+			}
+			roleKey = request.SessionRoleKey
+		}
+		snapshot, err = adapter.binding.access.Snapshot(workspaceContext, principal.UserID, principal)
+	}
 	if err != nil {
 		return identitysdk.PrincipalResolution{}, sdkBoundaryError(err)
 	}
+	if !snapshot.Known || snapshot.AuthorizationRevision != principal.AuthorizationRevision {
+		return identitysdk.PrincipalResolution{}, &identitysdk.Error{StatusCode: http.StatusConflict, Code: "identity.authorization_revision_stale"}
+	}
 	bundle := sdkAccessBundle(snapshot, principal, adapter.binding.clock.Now().UTC())
+	if err := bundle.Validate(adapter.binding.clock.Now().UTC()); err != nil {
+		return identitysdk.PrincipalResolution{}, err
+	}
 	result := identitysdk.Principal{
 		ContractVersion: identitysdk.PrincipalContextContractVersion, Known: principal.Known,
-		WorkspaceID: principal.WorkspaceID, UserID: principal.UserID, RoleKey: principal.Role.Key,
-		AuthorizationRevision: principal.AuthorizationRevision,
+		WorkspaceID: principal.WorkspaceID, UserID: principal.UserID, RoleKey: roleKey,
+		AuthorizationRevision: string(bundle.AuthorizationRevision),
 		OrgID:                 principal.OrgID, OrgScopeIDs: append([]string(nil), principal.OrgScopeIDs...),
 		SupportOrgID: principal.SupportOrgID, SupportOrgScopeIDs: append([]string(nil), principal.SupportOrgScopeIDs...),
 		ReportingScopeUserIDs: append([]string(nil), principal.ReportingScopeUserIDs...),
@@ -99,7 +129,6 @@ func (adapter sdkPrincipalResolver) resolveWorkflowWorkload(ctx context.Context,
 	if err != nil {
 		return identitysdk.PrincipalResolution{}, sdkBoundaryError(err)
 	}
-	principal.TenantID = string(scope.TenantID)
 	if !principal.Known {
 		return identitysdk.PrincipalResolution{}, &identitysdk.Error{StatusCode: http.StatusForbidden, Code: "identity.workflow_workload_role_unavailable"}
 	}

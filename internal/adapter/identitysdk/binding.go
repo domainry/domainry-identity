@@ -24,6 +24,7 @@ import (
 )
 
 type BindingDependencies struct {
+	Subjects              SubjectLifecycle
 	WorkspaceResolver     identitysdk.WorkspaceResolver
 	Config                config.Config
 	Authentication        *authapplication.AuthApplicationService
@@ -43,6 +44,7 @@ type BindingDependencies struct {
 }
 
 type sdkBinding struct {
+	subjects           SubjectLifecycle
 	workspaceResolver  identitysdk.WorkspaceResolver
 	descriptor         identitysdk.Descriptor
 	auth               *authapplication.AuthApplicationService
@@ -78,7 +80,7 @@ func NewBinding(dependencies BindingDependencies) (identitysdk.Binding, error) {
 	}, auth: dependencies.Authentication, providers: dependencies.ProviderConfiguration, flows: dependencies.ProviderFlows,
 		providerCallback: dependencies.ProviderCallback, access: dependencies.EffectiveAccess, identity: dependencies.Identity,
 		workspaceResolver: dependencies.WorkspaceResolver, applications: dependencies.Applications, permissions: dependencies.Permissions, handlerDelivery: dependencies.HandlerDelivery, storeOrganizations: dependencies.StoreOrganizations, organizationUnits: dependencies.OrganizationUnits, clock: dependencies.Clock,
-		mutationFence: dependencies.MutationFence, loginTransactions: dependencies.LoginTransactions}
+		subjects: dependencies.Subjects, mutationFence: dependencies.MutationFence, loginTransactions: dependencies.LoginTransactions}
 	capabilities, err := NewCapabilityBinding()
 	if err != nil {
 		return nil, fmt.Errorf("assemble Identity capability binding: %w", err)
@@ -336,7 +338,7 @@ func (adapter sdkAuthentication) CurrentSession(ctx context.Context, request ide
 	for _, role := range me.Roles {
 		roles = append(roles, identitysdk.Role{ID: role.ID, Key: role.Key, Label: role.Label})
 	}
-	return identitysdk.SessionView{SessionID: identitysdk.SessionID(claims.SessionID), TenantID: identitysdk.TenantID(claims.TenantID), WorkspaceID: identitysdk.WorkspaceID(claims.WorkspaceID), SubjectID: identitysdk.SubjectID(claims.Subject), AuthorizationRevision: identitysdk.AuthorizationRevision(claims.AuthorizationRevision), User: identitysdk.User{ID: me.User.ID, Name: me.User.Name, Email: me.User.Email, Locale: me.User.Locale, Version: me.User.Version, Status: string(me.User.Status)}, Roles: roles, DefaultRole: me.DefaultRole, Permissions: append([]string(nil), me.Permissions...), MustChangePassword: me.MustChangePassword}, nil
+	return identitysdk.SessionView{SessionID: identitysdk.SessionID(claims.SessionID), WorkspaceID: identitysdk.WorkspaceID(claims.WorkspaceID), SubjectID: identitysdk.SubjectID(claims.Subject), AuthorizationRevision: identitysdk.AuthorizationRevision(claims.AuthorizationRevision), User: identitysdk.User{ID: me.User.ID, Name: me.User.Name, Email: me.User.Email, Locale: me.User.Locale, Version: me.User.Version, Status: string(me.User.Status)}, Roles: roles, DefaultRole: me.DefaultRole, Permissions: append([]string(nil), me.Permissions...), MustChangePassword: me.MustChangePassword}, nil
 }
 
 type sdkTokenVerifier struct{ binding *sdkBinding }
@@ -366,7 +368,7 @@ func (adapter sdkTokenVerifier) Verify(ctx context.Context, request identitysdk.
 			return identitysdk.VerifiedToken{}, &identitysdk.Error{StatusCode: http.StatusForbidden, Code: "identity.application_not_registered"}
 		}
 	}
-	return identitysdk.VerifiedToken{Issuer: claims.Issuer, Audience: identitysdk.ApplicationKey(claims.Audience), SubjectID: identitysdk.SubjectID(claims.Subject), TenantID: identitysdk.TenantID(claims.TenantID), WorkspaceID: identitysdk.WorkspaceID(claims.WorkspaceID), SessionID: identitysdk.SessionID(claims.SessionID), AuthorizationRevision: identitysdk.AuthorizationRevision(claims.AuthorizationRevision), AuthenticationTime: claims.AuthenticationTime, AuthenticationMethods: append([]string(nil), claims.AuthenticationMethods...), AssuranceLevel: claims.AssuranceLevel, IssuedAt: claims.IssuedAt, ExpiresAt: claims.ExpiresAt, TokenID: claims.JTI}, nil
+	return identitysdk.VerifiedToken{Issuer: claims.Issuer, Audience: identitysdk.ApplicationKey(claims.Audience), SubjectID: identitysdk.SubjectID(claims.Subject), WorkspaceID: identitysdk.WorkspaceID(claims.WorkspaceID), SessionID: identitysdk.SessionID(claims.SessionID), AuthorizationRevision: identitysdk.AuthorizationRevision(claims.AuthorizationRevision), AuthenticationTime: claims.AuthenticationTime, AuthenticationMethods: append([]string(nil), claims.AuthenticationMethods...), AssuranceLevel: claims.AssuranceLevel, IssuedAt: claims.IssuedAt, ExpiresAt: claims.ExpiresAt, TokenID: claims.JTI}, nil
 }
 
 type sdkAuthorization struct{ binding *sdkBinding }
@@ -580,7 +582,7 @@ func sdkAuthSession(session authmodel.AuthSession) identitysdk.AuthSession {
 	for _, role := range session.Roles {
 		roles = append(roles, identitysdk.Role{ID: role.ID, Key: role.Key, Label: role.Label})
 	}
-	return identitysdk.AuthSession{SessionID: identitysdk.SessionID(session.SessionID), TenantID: identitysdk.TenantID(session.TenantID), WorkspaceID: session.WorkspaceID, AccessToken: session.AccessToken, RefreshToken: session.RefreshToken, TokenType: session.TokenType, ExpiresAt: session.ExpiresAt, User: identitysdk.User{ID: session.User.ID, Name: session.User.Name, Email: session.User.Email, Locale: session.User.Locale, Version: session.User.Version, Status: string(session.User.Status)}, Roles: roles, DefaultRole: session.DefaultRole, Permissions: append([]string(nil), session.Permissions...), MustChangePassword: session.MustChangePassword, AuthenticationTime: session.AuthenticationTime, AuthenticationMethods: append([]string(nil), session.AuthenticationMethods...), AssuranceLevel: session.AssuranceLevel}
+	return identitysdk.AuthSession{SessionID: identitysdk.SessionID(session.SessionID), WorkspaceID: session.WorkspaceID, AccessToken: session.AccessToken, RefreshToken: session.RefreshToken, TokenType: session.TokenType, ExpiresAt: session.ExpiresAt, User: identitysdk.User{ID: session.User.ID, Name: session.User.Name, Email: session.User.Email, Locale: session.User.Locale, Version: session.User.Version, Status: string(session.User.Status)}, Roles: roles, DefaultRole: session.DefaultRole, Permissions: append([]string(nil), session.Permissions...), MustChangePassword: session.MustChangePassword, AuthenticationTime: session.AuthenticationTime, AuthenticationMethods: append([]string(nil), session.AuthenticationMethods...), AssuranceLevel: session.AssuranceLevel}
 }
 
 func sdkAuthenticationOutcome(outcome authmodel.AuthenticationOutcome) identitysdk.AuthenticationOutcome {
@@ -614,12 +616,21 @@ func sdkAuthenticatedSession(outcome identitysdk.AuthenticationOutcome, err erro
 }
 
 func sdkAccessBundle(snapshot identitymodel.IdentityEffectiveAccessSnapshot, principal identitymodel.Principal, now time.Time) identitysdk.AccessBundle {
-	bundle := identitysdk.AccessBundle{ContractVersion: identitysdk.CurrentPolicyBundleVersion, AuthorizationRevision: identitysdk.AuthorizationRevision(snapshot.AuthorizationRevision), ExpiresAt: now.UTC().Add(5 * time.Minute), Subject: identitysdk.Subject{TenantID: identitysdk.TenantID(principal.TenantID), WorkspaceID: identitysdk.WorkspaceID(principal.WorkspaceID), SubjectID: identitysdk.SubjectID(principal.UserID), OrgID: principal.OrgID, OrgScopeIDs: append([]string(nil), principal.OrgScopeIDs...), SupportOrgID: principal.SupportOrgID, SupportOrgScopeIDs: append([]string(nil), principal.SupportOrgScopeIDs...)}}
+	bundle := identitysdk.AccessBundle{ContractVersion: identitysdk.CurrentPolicyBundleVersion, AuthorizationRevision: identitysdk.AuthorizationRevision(snapshot.AuthorizationRevision), ExpiresAt: now.UTC().Add(5 * time.Minute), Subject: identitysdk.Subject{WorkspaceID: identitysdk.WorkspaceID(principal.WorkspaceID), SubjectID: identitysdk.SubjectID(principal.UserID), OrgID: principal.OrgID, OrgScopeIDs: append([]string(nil), principal.OrgScopeIDs...), SupportOrgID: principal.SupportOrgID, SupportOrgScopeIDs: append([]string(nil), principal.SupportOrgScopeIDs...)}}
 	for _, id := range principal.ReportingScopeUserIDs {
 		bundle.Subject.ReportingScopeUserIDs = append(bundle.Subject.ReportingScopeUserIDs, identitysdk.SubjectID(id))
 	}
+	functionGrants := map[[2]string]bool{}
 	for _, permission := range snapshot.Permissions {
 		if permission.ObjectKey != "" && permission.Action != "" {
+			// Effective permissions retain distinct data scopes and audit
+			// sources. Function grants carry only the operation, so emitting
+			// it once per scoped entry would invalidate a multi-role bundle.
+			key := [2]string{permission.ObjectKey, permission.Action}
+			if functionGrants[key] {
+				continue
+			}
+			functionGrants[key] = true
 			bundle.FunctionGrants = append(bundle.FunctionGrants, identitysdk.FunctionGrant{Resource: identitysdk.ResourceType(permission.ObjectKey), Action: identitysdk.Action(permission.Action), Effect: identitysdk.EffectAllow})
 		}
 	}

@@ -3,10 +3,10 @@ package authmodel
 import identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 
 type AuthClaims struct {
-	Issuer                string             `json:"iss"`
-	Audience              string             `json:"aud"`
-	Subject               string             `json:"sub"`
-	TenantID              string             `json:"tenant_id"`
+	Issuer   string `json:"iss"`
+	Audience string `json:"aud"`
+	Subject  string `json:"sub"`
+
 	WorkspaceID           string             `json:"workspace_id"`
 	SessionID             string             `json:"sid"`
 	AuthorizationRevision string             `json:"authz_revision"`

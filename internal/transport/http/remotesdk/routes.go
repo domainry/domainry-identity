@@ -102,7 +102,6 @@ func RegisterRoutes(registrar RouteRegistrar, binding identitysdk.Binding, suppo
 		// short-lived token remains in the JSON body and is never confused with
 		// the verifier credential.
 		scope := identitysdk.ApplicationScope{WorkspaceID: identitysdk.WorkspaceID(strings.TrimSpace(r.Header.Get("X-Domainry-Workspace-ID"))), ApplicationKey: request.Audience}
-		scope.TenantID = identitysdk.TenantID(strings.TrimSpace(r.Header.Get("X-Domainry-Tenant-ID")))
 		if scope.WorkspaceID == "" {
 			scope.WorkspaceID = identitysdk.WorkspaceID(strings.TrimSpace(r.Header.Get("X-Domainry-Identity-Workspace-ID")))
 		}
@@ -130,7 +129,7 @@ func RegisterRoutes(registrar RouteRegistrar, binding identitysdk.Binding, suppo
 			support.writeServiceError(w, r, err)
 			return
 		}
-		if !credentials.Active(identitysdk.ApplicationScope{TenantID: principal.Application.TenantID, WorkspaceID: principal.Application.WorkspaceID, ApplicationKey: principal.Application.ApplicationKey}, principal.CredentialID) {
+		if !credentials.Active(identitysdk.ApplicationScope{WorkspaceID: principal.Application.WorkspaceID, ApplicationKey: principal.Application.ApplicationKey}, principal.CredentialID) {
 			support.writeError(w, r, http.StatusUnauthorized, "identity.application_service_credential_rotated")
 			return
 		}
@@ -357,6 +356,7 @@ func RegisterRoutes(registrar RouteRegistrar, binding identitysdk.Binding, suppo
 		support.writeJSON(w, http.StatusOK, snapshot)
 	})
 	registerRuntimeProjectionRoutes(registrar, binding, support, credentials)
+	registerSubjectLifecycleRoutes(registrar, binding, support, credentials)
 }
 
 func authorizeApplicationCredentialSourceOwner(w http.ResponseWriter, r *http.Request, support Support, credentials *ApplicationCredentialRegistry, scope identitysdk.ApplicationScope, sourceOwner string) bool {

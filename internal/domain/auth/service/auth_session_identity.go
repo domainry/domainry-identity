@@ -7,6 +7,7 @@ import (
 
 	"github.com/domainry/domainry-foundation/requestcontext"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	identitypolicy "github.com/domainry/domainry-identity/internal/domain/identity/policy"
 )
 
 func (s *AuthDomainService) Me(ctx context.Context, accessToken string) (authprojection.AuthMeResponse, error) {
@@ -36,7 +37,7 @@ func (s *AuthDomainService) Me(ctx context.Context, accessToken string) (authpro
 	return authprojection.AuthMeResponse{
 		User:               s.authUser(user),
 		Roles:              authRoles(roles),
-		DefaultRole:        defaultAuthRole(roles),
+		DefaultRole:        identitypolicy.SelectDefaultRole(roles),
 		Permissions:        permissions,
 		MustChangePassword: mustChangePassword,
 	}, nil
@@ -61,7 +62,6 @@ func (s *AuthDomainService) PrincipalFromBearer(ctx context.Context, authorizati
 	if err != nil {
 		return identitymodel.Principal{}, err
 	}
-	principal.TenantID = claims.TenantID
 	principal.WorkspaceID = workspaceID
 	principal.RequestID = requestID
 	return principal, nil

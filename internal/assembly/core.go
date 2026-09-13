@@ -262,6 +262,7 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 		Transactions: identityStore, Repository: identityStore, Audit: auditApp,
 	})
 	binding, err := identitysdkadapter.NewBinding(identitysdkadapter.BindingDependencies{
+		Subjects:          identitypersistence.NewIdentitySubjectLifecycleStore(identityStore, authStore.EraseSubjectLoginArtifacts),
 		WorkspaceResolver: options.WorkspaceResolver, Config: cfg, Authentication: authApp, ProviderConfiguration: providerConfiguration,
 		ProviderFlows: providerFlows, ProviderCallback: identityprovider.CallbackAdapter{},
 		EffectiveAccess: effectiveAccess, Identity: identityApp,

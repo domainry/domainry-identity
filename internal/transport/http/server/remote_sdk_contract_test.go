@@ -40,7 +40,7 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 	cfg.IdentityWorkspaceID = "workspace-primary"
 	serviceCredential := "runtime-service-token"
 	notificationCredential := "notification-service-token"
-	cfg.IdentityApplicationServiceCredentials = map[string]string{"workspace-primary/orders-runtime": serviceCredential, "tenant-primary/workspace-primary/domainry-notification": notificationCredential}
+	cfg.IdentityApplicationServiceCredentials = map[string]string{"workspace-primary/orders-runtime": serviceCredential, "workspace-primary/domainry-notification": notificationCredential}
 	cfg.IdentityApplicationPermissionOwners = map[string][]string{"workspace-primary/orders-runtime": {"application:orders-runtime", "application:other-runtime"}}
 	cfg.IdentityApplicationServicePolicies = map[string][]string{"workspace-primary/orders-runtime": {"audience:domainry-notification", "grant:notification_event.publish"}}
 
@@ -222,7 +222,7 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 		t.Fatal("Identity Remote accepted a stale capability digest")
 	}
 	notificationFactory := identityremote.NewFactory(identityremote.Config{
-		Endpoint: testServer.URL, TenantID: "tenant-primary", WorkspaceID: "workspace-primary", Issuer: issuer,
+		Endpoint: testServer.URL, WorkspaceID: "workspace-primary", Issuer: issuer,
 		Audience: "domainry-notification", ServiceAccessToken: notificationCredential,
 		CapabilityContractSHA256: sourceSummary.Identity.ContractSHA256,
 		HTTPClient:               testServer.Client(),
@@ -232,7 +232,7 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = notificationBinding.Close(t.Context()) })
-	notificationApplication := identity.ApplicationRef{TenantID: "tenant-primary", WorkspaceID: "workspace-primary", ApplicationKey: "domainry-notification"}
+	notificationApplication := identity.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "domainry-notification"}
 	if _, err := notificationBinding.Applications().Register(t.Context(), identity.ApplicationRegistration{Application: notificationApplication}); err != nil {
 		t.Fatalf("register notification application: %v", err)
 	}
@@ -255,4 +255,59 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 		Binding: binding, WorkspaceID: "workspace-primary", ApplicationKey: "orders-runtime", Login: "admin@example.com", Password: "Domainry@2026",
 		Resource: "identity.users", Action: "list", DataAllowed: true,
 	})
+	login, err := binding.Authentication().LoginWithPassword(t.Context(), identity.PasswordLoginRequest{WorkspaceID: "workspace-primary", Login: "admin@example.com", Password: "Domainry@2026"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := binding.Authentication().CurrentSession(t.Context(), identity.CurrentSessionRequest{AccessToken: login.AccessToken})
+	if err != nil {
+		t.Fatal(err)
+	}
+	subjects, ok := binding.(identity.SystemSubjectBinding)
+	if !ok {
+		t.Fatal("remote subject lifecycle unavailable")
+	}
+	erase := identity.SubjectErasureRequest{WorkspaceID: "workspace-primary", SubjectID: session.User.ID, RequestID: "erase-http-admin"}
+	raw, err := json.Marshal(erase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	userRequest, err := http.NewRequestWithContext(t.Context(), http.MethodPost, testServer.URL+"/identity/system/subjects/erase", bytes.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	userRequest.Header.Set("Content-Type", "application/json")
+	userRequest.Header.Set("X-Domainry-Workspace-ID", "workspace-primary")
+	userRequest.Header.Set("X-Domainry-Application-Key", "orders-runtime")
+	userRequest.Header.Set("Authorization", "Bearer "+login.AccessToken)
+	userResponse, err := testServer.Client().Do(userRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	userResponse.Body.Close()
+	if userResponse.StatusCode != http.StatusUnauthorized && userResponse.StatusCode != http.StatusForbidden {
+		t.Fatalf("user bearer reached subject erasure: %d", userResponse.StatusCode)
+	}
+	wrong := erase
+	wrong.WorkspaceID = "other-workspace"
+	if _, err = subjects.SystemSubjects().EraseSubjectForRequest(t.Context(), wrong); err == nil {
+		t.Fatal("remote cross-workspace erasure accepted")
+	}
+	held := erase
+	held.LegalHolds = json.RawMessage(`[{}]`)
+	if _, err = subjects.SystemSubjects().EraseSubjectForRequest(t.Context(), held); err == nil {
+		t.Fatal("remote legal hold ignored")
+	}
+	first, err := subjects.SystemSubjects().EraseSubjectForRequest(t.Context(), erase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replay, err := subjects.SystemSubjects().EraseSubjectForRequest(t.Context(), erase)
+	if err != nil || string(first) != string(replay) {
+		t.Fatalf("remote erasure receipt changed: %s %s %v", first, replay, err)
+	}
+	if _, err = binding.Authentication().CurrentSession(t.Context(), identity.CurrentSessionRequest{AccessToken: login.AccessToken}); err == nil {
+		t.Fatal("remote erased session remains active")
+	}
+
 }

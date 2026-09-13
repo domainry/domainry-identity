@@ -367,7 +367,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		t.Fatal(err)
 	}
 	workloadRequest := identitysdk.ApplyWorkflowWorkloadBindingsRequest{
-		Application: identitysdk.ApplicationScope{TenantID: "workspace-primary", WorkspaceID: application.WorkspaceID, ApplicationKey: application.ApplicationKey},
+		Application: identitysdk.ApplicationScope{WorkspaceID: application.WorkspaceID, ApplicationKey: application.ApplicationKey},
 		ReleaseID:   identitysdk.WorkflowWorkloadReleaseID(digest), ReleaseDigest: digest, Bindings: []identitysdk.WorkflowWorkloadBindingSpec{workloadSpec},
 	}
 	applied, err := workloadBinding.WorkflowWorkloads().ApplyWorkflowWorkloadBindings(t.Context(), workloadRequest)
@@ -764,7 +764,7 @@ func TestFactoryBorrowsProjectPoolWithoutClosingOrColliding(t *testing.T) {
 	if err := db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name LIKE '%schema_migrations'`).Scan(&migrationLedgers); err != nil || migrationLedgers != 1 {
 		t.Fatalf("migration ledgers=%d err=%v", migrationLedgers, err)
 	}
-	if len(registrar.calls) != 1 || registrar.calls[0] != (testEmbeddedMigrationCall{owner: "identity", version: 13, name: "global_user_login_name"}) {
+	if len(registrar.calls) != 1 || registrar.calls[0] != (testEmbeddedMigrationCall{owner: "identity", version: 14, name: "subject_erasure"}) {
 		t.Fatalf("host migration calls=%#v", registrar.calls)
 	}
 }

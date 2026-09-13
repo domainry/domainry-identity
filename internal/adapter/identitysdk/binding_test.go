@@ -75,14 +75,44 @@ func TestSDKAccessBundleDoesNotInventDataAccessFromFunctionGrant(t *testing.T) {
 	}
 }
 
+func TestSDKAccessBundleDeduplicatesScopedFunctionGrantsAndPreservesDataPolicies(t *testing.T) {
+	now := time.Now().UTC()
+	bundle := sdkAccessBundle(identitymodel.IdentityEffectiveAccessSnapshot{
+		AuthorizationRevision: "revision-multi-role",
+		Permissions: []identitymodel.IdentityEffectivePermissionGrant{
+			{Key: "order.read", ObjectKey: "order", Action: "read", DataScope: identitymodel.IdentityDataScopeOwner},
+			{Key: "order.read", ObjectKey: "order", Action: "read", DataScope: identitymodel.IdentityDataScopeAll, AuditDenial: true},
+			{Key: "order.update", ObjectKey: "order", Action: "update", DataScope: identitymodel.IdentityDataScopeOwner},
+		},
+		DataAccess: []identitymodel.IdentityEffectiveDataAccess{
+			{PermissionKey: "order.read", Resource: "order", Action: "read", Allowed: true, Scopes: []identitymodel.IdentityDataScope{identitymodel.IdentityDataScopeOwner}},
+			{PermissionKey: "order.read", Resource: "order", Action: "read", Allowed: true, Scopes: []identitymodel.IdentityDataScope{identitymodel.IdentityDataScopeAll}, AuditDenial: true},
+		},
+	}, identitymodel.Principal{WorkspaceID: "workspace-primary", UserID: "user-1"}, now)
+	if err := bundle.Validate(now); err != nil {
+		t.Fatal("multi-role bundle was not valid", err)
+	}
+	if len(bundle.FunctionGrants) != 2 || len(bundle.DataPolicies) != 2 || bundle.DataPolicies[0].DataScopes[0] != identitysdk.DataScopeOwner || bundle.DataPolicies[1].DataScopes[0] != identitysdk.DataScopeAll || !bundle.DataPolicies[1].AuditDenial {
+		t.Fatal("function deduplication changed data-scope or audit semantics", bundle)
+	}
+	decision, err := identityevaluator.Evaluate(bundle, identitysdk.AccessRequest{ObjectKey: "order", Action: "read"}, identitysdk.ResourceFacts{"owner_user_id": "another-user"}, now)
+	if err != nil || !decision.Allowed {
+		t.Fatal("existing all-data scope was lost", decision, err)
+	}
+	decision, err = identityevaluator.Evaluate(bundle, identitysdk.AccessRequest{ObjectKey: "order", Action: "update"}, identitysdk.ResourceFacts{"owner_user_id": "another-user"}, now)
+	if err != nil || decision.Allowed {
+		t.Fatal("function grant invented missing update data access", decision, err)
+	}
+}
+
 func TestSDKAccessBundlePreservesTenantScope(t *testing.T) {
 	now := time.Now().UTC()
 	bundle := sdkAccessBundle(identitymodel.IdentityEffectiveAccessSnapshot{
 		AuthorizationRevision: "revision-tenant",
 	}, identitymodel.Principal{
-		TenantID: "tenant-primary", WorkspaceID: "workspace-primary", UserID: "user-1",
+		WorkspaceID: "workspace-primary", UserID: "user-1",
 	}, now)
-	if bundle.Subject.TenantID != "tenant-primary" || bundle.Subject.WorkspaceID != "workspace-primary" {
+	if bundle.Subject.WorkspaceID != "workspace-primary" {
 		t.Fatalf("bundle subject scope=%#v", bundle.Subject)
 	}
 }

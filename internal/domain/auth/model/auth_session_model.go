@@ -1,8 +1,8 @@
 package authmodel
 
 type AuthSession struct {
-	SessionID             string     `json:"session_id"`
-	TenantID              string     `json:"tenant_id"`
+	SessionID string `json:"session_id"`
+
 	WorkspaceID           string     `json:"workspace_id"`
 	AccessToken           string     `json:"access_token"`
 	RefreshToken          string     `json:"refresh_token,omitempty"`

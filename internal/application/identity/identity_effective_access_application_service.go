@@ -121,7 +121,16 @@ func NewIdentityEffectiveAccessApplicationService(dependencies IdentityEffective
 }
 
 func (s *IdentityEffectiveAccessApplicationService) Snapshot(ctx context.Context, userID string, actor identitymodel.Principal) (identitymodel.IdentityEffectiveAccessSnapshot, error) {
-	return s.snapshot(ctx, userID, actor, "identity.users.effective_access")
+	return s.snapshot(ctx, userID, actor, "identity.users.effective_access", "")
+}
+
+// SnapshotForRole returns exactly the current assigned role's policies. A
+// role-restricted worker must never receive the user's effective union bundle.
+func (s *IdentityEffectiveAccessApplicationService) SnapshotForRole(ctx context.Context, userID, roleKey string, actor identitymodel.Principal) (identitymodel.IdentityEffectiveAccessSnapshot, error) {
+	if strings.TrimSpace(roleKey) == "" {
+		return identitymodel.IdentityEffectiveAccessSnapshot{}, &apperror.AppError{Kind: apperror.KindBadRequest, Code: "identity.role_required"}
+	}
+	return s.snapshot(ctx, userID, actor, "identity.users.effective_access", strings.TrimSpace(roleKey))
 }
 
 // SnapshotWorkflowWorkload projects a governed non-human principal directly
@@ -143,7 +152,7 @@ func (s *IdentityEffectiveAccessApplicationService) SnapshotWorkflowWorkload(_ c
 	}), nil
 }
 
-func (s *IdentityEffectiveAccessApplicationService) snapshot(ctx context.Context, userID string, actor identitymodel.Principal, permission string) (identitymodel.IdentityEffectiveAccessSnapshot, error) {
+func (s *IdentityEffectiveAccessApplicationService) snapshot(ctx context.Context, userID string, actor identitymodel.Principal, permission, roleKey string) (identitymodel.IdentityEffectiveAccessSnapshot, error) {
 	if err := identityAuthorizeEffectiveAccess(actor, userID, permission); err != nil {
 		return identitymodel.IdentityEffectiveAccessSnapshot{}, err
 	}
@@ -164,6 +173,9 @@ func (s *IdentityEffectiveAccessApplicationService) snapshot(ctx context.Context
 		}
 	}
 	principal, err := scoped.ResolvePrincipal(workspaceContext, userID)
+	if roleKey != "" {
+		principal, err = scoped.ResolvePrincipalForRole(workspaceContext, userID, roleKey)
+	}
 	if err != nil {
 		return identitymodel.IdentityEffectiveAccessSnapshot{}, err
 	}
@@ -174,6 +186,21 @@ func (s *IdentityEffectiveAccessApplicationService) snapshot(ctx context.Context
 	roles, err := scoped.ListRoles(workspaceContext)
 	if err != nil {
 		return identitymodel.IdentityEffectiveAccessSnapshot{}, err
+	}
+	if roleKey != "" {
+		selected := make(map[string]bool)
+		for _, role := range roles {
+			if role.Key == principal.Role.Key {
+				selected[role.ID] = true
+			}
+		}
+		filtered := assignments[:0]
+		for _, assignment := range assignments {
+			if selected[assignment.RoleID] {
+				filtered = append(filtered, assignment)
+			}
+		}
+		assignments = filtered
 	}
 	menus, err := scoped.ListMenus(workspaceContext)
 	if err != nil {
@@ -198,7 +225,7 @@ func (s *IdentityEffectiveAccessApplicationService) snapshot(ctx context.Context
 }
 
 func (s *IdentityEffectiveAccessApplicationService) Explain(ctx context.Context, request identitymodel.IdentityAccessExplainRequest, actor identitymodel.Principal) (identitymodel.IdentityAccessExplainResult, error) {
-	snapshot, err := s.snapshot(ctx, request.UserID, actor, "identity.access.explain")
+	snapshot, err := s.snapshot(ctx, request.UserID, actor, "identity.access.explain", "")
 	if err != nil {
 		return identitymodel.IdentityAccessExplainResult{}, err
 	}

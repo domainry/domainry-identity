@@ -19,7 +19,7 @@ func (adapter sdkWorkflowWorkloads) ApplyWorkflowWorkloadBindings(ctx context.Co
 	if err := request.Validate(); err != nil {
 		return identitysdk.ApplyWorkflowWorkloadBindingsResult{}, err
 	}
-	registered, err := adapter.binding.applicationRegistered(ctx, identitysdk.ApplicationRef{TenantID: request.Application.TenantID, WorkspaceID: request.Application.WorkspaceID, ApplicationKey: request.Application.ApplicationKey})
+	registered, err := adapter.binding.applicationRegistered(ctx, identitysdk.ApplicationRef{WorkspaceID: request.Application.WorkspaceID, ApplicationKey: request.Application.ApplicationKey})
 	if err != nil {
 		return identitysdk.ApplyWorkflowWorkloadBindingsResult{}, sdkBoundaryError(err)
 	}

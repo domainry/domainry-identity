@@ -17,14 +17,17 @@ type lifecycleSQLStore interface {
 	ApplyUpsert(*query.InsertBuilder, []string, ...string) *query.InsertBuilder
 }
 
-type IdentitySubjectLifecycleStore struct{ store lifecycleSQLStore }
+type IdentitySubjectLifecycleStore struct {
+	store               lifecycleSQLStore
+	eraseAuthentication subjectpersistence.AuthenticationEraser
+}
 
-func NewIdentitySubjectLifecycleStore(store lifecycleSQLStore) *IdentitySubjectLifecycleStore {
-	return &IdentitySubjectLifecycleStore{store: store}
+func NewIdentitySubjectLifecycleStore(store lifecycleSQLStore, eraseAuthentication func(context.Context, *sql.Tx, string, string, string) error) *IdentitySubjectLifecycleStore {
+	return &IdentitySubjectLifecycleStore{store: store, eraseAuthentication: eraseAuthentication}
 }
 
 func (s *IdentitySubjectLifecycleStore) owner() *subjectpersistence.Store {
-	return subjectpersistence.New(s.store)
+	return subjectpersistence.New(s.store, s.eraseAuthentication)
 }
 
 func (s *IdentitySubjectLifecycleStore) Owner(ctx context.Context) string {
@@ -49,4 +52,8 @@ func (s *IdentitySubjectLifecycleStore) exportSubjectRelationships(ctx context.C
 
 func (s *IdentitySubjectLifecycleStore) EraseSubject(ctx context.Context, workspaceID, userID string, holds []privacy.LegalHold) (json.RawMessage, error) {
 	return s.owner().EraseSubject(ctx, workspaceID, userID, holds)
+}
+
+func (s *IdentitySubjectLifecycleStore) EraseSubjectForRequest(ctx context.Context, requestID, workspaceID, userID string, holds []privacy.LegalHold) (json.RawMessage, error) {
+	return s.owner().EraseSubjectForRequest(ctx, requestID, workspaceID, userID, holds)
 }

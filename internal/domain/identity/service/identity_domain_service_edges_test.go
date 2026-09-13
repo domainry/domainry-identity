@@ -84,9 +84,9 @@ func TestIdentityListAndEffectiveMenuFailureWindows(t *testing.T) {
 		repository *identityPermissionMenuRepository
 	}{
 		{name: "role assignments", repository: &identityPermissionMenuRepository{roleAssignmentErr: errIdentityOrganizationUnitUserEdge}},
-		{name: "roles", repository: &identityPermissionMenuRepository{roleAssignments: []identitymodel.IdentityUserRoleAssignment{{RoleID: role.ID}}, roleErr: errIdentityOrganizationUnitUserEdge}},
-		{name: "menus", repository: &identityPermissionMenuRepository{roleAssignments: []identitymodel.IdentityUserRoleAssignment{{RoleID: role.ID}}, roles: []identitymodel.IdentityRole{role}, menuErr: errIdentityOrganizationUnitUserEdge}},
-		{name: "menu assignments", repository: &identityPermissionMenuRepository{roleAssignments: []identitymodel.IdentityUserRoleAssignment{{RoleID: role.ID}}, roles: []identitymodel.IdentityRole{role}, menuAssignmentErr: errIdentityOrganizationUnitUserEdge}},
+		{name: "roles", repository: &identityPermissionMenuRepository{roleAssignments: []identitymodel.IdentityUserRoleAssignment{{UserID: "user", RoleID: role.ID}}, roleErr: errIdentityOrganizationUnitUserEdge}},
+		{name: "menus", repository: &identityPermissionMenuRepository{roleAssignments: []identitymodel.IdentityUserRoleAssignment{{UserID: "user", RoleID: role.ID}}, roles: []identitymodel.IdentityRole{role}, menuErr: errIdentityOrganizationUnitUserEdge}},
+		{name: "menu assignments", repository: &identityPermissionMenuRepository{roleAssignments: []identitymodel.IdentityUserRoleAssignment{{UserID: "user", RoleID: role.ID}}, roles: []identitymodel.IdentityRole{role}, menuAssignmentErr: errIdentityOrganizationUnitUserEdge}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if _, err := identityPermissionMenuService(test.repository).EffectiveMenus(t.Context(), "user"); !errors.Is(err, errIdentityOrganizationUnitUserEdge) {
