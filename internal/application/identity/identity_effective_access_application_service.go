@@ -172,9 +172,11 @@ func (s *IdentityEffectiveAccessApplicationService) snapshot(ctx context.Context
 			return identitymodel.IdentityEffectiveAccessSnapshot{}, &apperror.AppError{Kind: apperror.KindNotFound, Code: "backend.identity.user_not_found"}
 		}
 	}
-	principal, err := scoped.ResolvePrincipal(workspaceContext, userID)
+	var principal identitymodel.Principal
 	if roleKey != "" {
 		principal, err = scoped.ResolvePrincipalForRole(workspaceContext, userID, roleKey)
+	} else {
+		principal, err = scoped.ResolvePrincipal(workspaceContext, userID)
 	}
 	if err != nil {
 		return identitymodel.IdentityEffectiveAccessSnapshot{}, err
@@ -187,6 +189,10 @@ func (s *IdentityEffectiveAccessApplicationService) snapshot(ctx context.Context
 	if err != nil {
 		return identitymodel.IdentityEffectiveAccessSnapshot{}, err
 	}
+	return s.snapshotFromPrincipalContext(workspaceContext, scoped, principal, assignments, roles, roleKey)
+}
+
+func (s *IdentityEffectiveAccessApplicationService) snapshotFromPrincipalContext(workspaceContext context.Context, scoped *IdentityApplicationService, principal identitymodel.Principal, assignments []identitymodel.IdentityUserRoleAssignment, roles []identitymodel.IdentityRole, roleKey string) (identitymodel.IdentityEffectiveAccessSnapshot, error) {
 	if roleKey != "" {
 		selected := make(map[string]bool)
 		for _, role := range roles {
@@ -194,7 +200,7 @@ func (s *IdentityEffectiveAccessApplicationService) snapshot(ctx context.Context
 				selected[role.ID] = true
 			}
 		}
-		filtered := assignments[:0]
+		filtered := make([]identitymodel.IdentityUserRoleAssignment, 0, len(assignments))
 		for _, assignment := range assignments {
 			if selected[assignment.RoleID] {
 				filtered = append(filtered, assignment)

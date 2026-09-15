@@ -29,34 +29,13 @@ func (adapter sdkPrincipalResolver) Resolve(ctx context.Context, request identit
 	if request.Workload != nil {
 		return adapter.resolveWorkflowWorkload(identityscope.WithScope(workspaceContext, scope), request, identity)
 	}
-	var principal identitymodel.Principal
-	if roleKey := strings.TrimSpace(request.RoleKey); roleKey != "" {
-		principal, err = identity.ResolvePrincipalForRole(workspaceContext, string(request.SubjectID), roleKey)
-	} else {
-		principal, err = identity.ResolvePrincipal(workspaceContext, string(request.SubjectID))
-	}
+	resolved, err := adapter.binding.access.ResolvePrincipalAccess(workspaceContext, identity.WorkspaceID(), string(request.SubjectID), request.RoleKey)
 	if err != nil {
 		return identitysdk.PrincipalResolution{}, sdkBoundaryError(err)
 	}
-	if !principal.Known {
-		return identitysdk.PrincipalResolution{}, &identitysdk.Error{StatusCode: http.StatusForbidden, Code: "identity.principal_unavailable"}
-	}
-	user, found, err := identity.FindUser(workspaceContext, principal.UserID)
-	if err != nil {
-		return identitysdk.PrincipalResolution{}, sdkBoundaryError(err)
-	}
-	if !found {
-		return identitysdk.PrincipalResolution{}, &identitysdk.Error{Code: "identity.subject_not_found"}
-	}
-	roles, err := identity.ResolveEffectiveRoles(workspaceContext, principal.UserID)
-	if err != nil {
-		return identitysdk.PrincipalResolution{}, sdkBoundaryError(err)
-	}
+	principal, user, roles := resolved.Principal, resolved.User, resolved.Roles
 	roleKey := principal.Role.Key
-	var snapshot identitymodel.IdentityEffectiveAccessSnapshot
-	if request.RoleKey != "" {
-		snapshot, err = adapter.binding.access.SnapshotForRole(workspaceContext, principal.UserID, request.RoleKey, principal)
-	} else {
+	if request.RoleKey == "" {
 		roleKey = identitypolicy.SelectDefaultRole(roles)
 		if request.SessionRoleKey != "" {
 			assigned := false
@@ -68,15 +47,8 @@ func (adapter sdkPrincipalResolver) Resolve(ctx context.Context, request identit
 			}
 			roleKey = request.SessionRoleKey
 		}
-		snapshot, err = adapter.binding.access.Snapshot(workspaceContext, principal.UserID, principal)
 	}
-	if err != nil {
-		return identitysdk.PrincipalResolution{}, sdkBoundaryError(err)
-	}
-	if !snapshot.Known || snapshot.AuthorizationRevision != principal.AuthorizationRevision {
-		return identitysdk.PrincipalResolution{}, &identitysdk.Error{StatusCode: http.StatusConflict, Code: "identity.authorization_revision_stale"}
-	}
-	bundle := sdkAccessBundle(snapshot, principal, adapter.binding.clock.Now().UTC())
+	bundle := sdkAccessBundle(resolved.Snapshot, principal, adapter.binding.clock.Now().UTC())
 	if err := bundle.Validate(adapter.binding.clock.Now().UTC()); err != nil {
 		return identitysdk.PrincipalResolution{}, err
 	}

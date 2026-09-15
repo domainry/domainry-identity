@@ -14,6 +14,10 @@ import (
 )
 
 func (s *IdentityDomainService) BuildPrincipal(ctx context.Context, userID string) (identitymodel.Principal, error) {
+	return s.buildPrincipal(ctx, userID, nil)
+}
+
+func (s *IdentityDomainService) buildPrincipal(ctx context.Context, userID string, facts *IdentityPrincipalContext) (identitymodel.Principal, error) {
 	scoped, scopeErr := s.withWorkspacePermissions(ctx)
 	if scopeErr != nil {
 		return identitymodel.Principal{}, scopeErr
@@ -24,12 +28,15 @@ func (s *IdentityDomainService) BuildPrincipal(ctx context.Context, userID strin
 	if userID == "" {
 		return identitymodel.Principal{Known: false}, nil
 	}
-	user, ok, err := s.userByID(ctx, userID)
+	user, ok, err := s.repo.GetIdentityUser(ctx, s.workspace, userID)
 	if err != nil {
 		return identitymodel.Principal{}, err
 	}
 	if !ok || user.Status != identitymodel.IdentityStatusActive {
 		return identitymodel.Principal{UserID: userID, Known: false}, nil
+	}
+	if facts != nil {
+		facts.User = user
 	}
 	now := time.Now()
 	organizationUnitID, organizationPath, err := s.resolveUserOrganization(ctx, user)
@@ -65,6 +72,7 @@ func (s *IdentityDomainService) BuildPrincipal(ctx context.Context, userID strin
 		activeRoleIDs[assignment.RoleID] = struct{}{}
 		activeAssignments = append(activeAssignments, assignment)
 	}
+	s.capturePrincipalContext(facts, user.ID, activeAssignments, roles)
 	role := identitymodel.RoleSchema{
 		Key:  "identity_effective",
 		Name: "Identity Effective",
@@ -72,6 +80,9 @@ func (s *IdentityDomainService) BuildPrincipal(ctx context.Context, userID strin
 	activeIdentityRoles := []identitymodel.IdentityRole{}
 	activePublishedRoles := []identitymodel.RoleSchema{}
 	for _, identityRole := range roles {
+		if identityRole.Status != "" && identityRole.Status != identitymodel.IdentityStatusActive {
+			continue
+		}
 		if _, ok := activeRoleIDs[identityRole.ID]; !ok {
 			continue
 		}
@@ -117,6 +128,10 @@ func (s *IdentityDomainService) BuildPrincipal(ctx context.Context, userID strin
 }
 
 func (s *IdentityDomainService) BuildPrincipalForRole(ctx context.Context, userID string, roleKey string) (identitymodel.Principal, error) {
+	return s.buildPrincipalForRole(ctx, userID, roleKey, nil)
+}
+
+func (s *IdentityDomainService) buildPrincipalForRole(ctx context.Context, userID string, roleKey string, facts *IdentityPrincipalContext) (identitymodel.Principal, error) {
 	scoped, scopeErr := s.withWorkspacePermissions(ctx)
 	if scopeErr != nil {
 		return identitymodel.Principal{}, scopeErr
@@ -128,12 +143,15 @@ func (s *IdentityDomainService) BuildPrincipalForRole(ctx context.Context, userI
 	if userID == "" {
 		return identitymodel.Principal{Known: false}, nil
 	}
-	user, ok, err := s.userByID(ctx, userID)
+	user, ok, err := s.repo.GetIdentityUser(ctx, s.workspace, userID)
 	if err != nil {
 		return identitymodel.Principal{}, err
 	}
 	if !ok || user.Status != identitymodel.IdentityStatusActive || roleKey == "" {
 		return identitymodel.Principal{UserID: userID, Known: false}, nil
+	}
+	if facts != nil {
+		facts.User = user
 	}
 	now := time.Now()
 	organizationUnitID, organizationPath, err := s.resolveUserOrganization(ctx, user)
@@ -170,17 +188,24 @@ func (s *IdentityDomainService) BuildPrincipalForRole(ctx context.Context, userI
 	}
 	assigned := false
 	var activeAssignment identitymodel.IdentityUserRoleAssignment
+	var activeAssignments []identitymodel.IdentityUserRoleAssignment
 	for _, assignment := range userAssignments {
 		active, activeErr := s.identityRoleAssignmentActive(ctx, assignment, now)
 		if activeErr != nil {
 			return identitymodel.Principal{}, activeErr
 		}
-		if assignment.RoleID == identityRole.ID && active {
+		if facts != nil && active {
+			activeAssignments = append(activeAssignments, assignment)
+		}
+		if !assigned && assignment.RoleID == identityRole.ID && active {
 			assigned = true
 			activeAssignment = assignment
-			break
+			if facts == nil {
+				break
+			}
 		}
 	}
+	s.capturePrincipalContext(facts, user.ID, activeAssignments, roles)
 	if !assigned {
 		return identitymodel.Principal{UserID: user.ID, Known: false}, nil
 	}

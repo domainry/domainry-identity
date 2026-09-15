@@ -32,13 +32,17 @@ func (s *IdentityDomainService) ResolveEffectiveRoles(ctx context.Context, userI
 	if err != nil {
 		return nil, err
 	}
-	activeRoleIDs := make(map[string]struct{}, len(assignments))
-	for _, assignment := range assignments {
-		activeRoleIDs[assignment.RoleID] = struct{}{}
-	}
 	roles, err := s.repo.ListIdentityRoles(ctx, s.workspace)
 	if err != nil {
 		return nil, err
+	}
+	return s.effectiveRolesFromAssignments(assignments, roles), nil
+}
+
+func (s *IdentityDomainService) effectiveRolesFromAssignments(assignments []identitymodel.IdentityUserRoleAssignment, roles []identitymodel.IdentityRole) []identitymodel.IdentityRole {
+	activeRoleIDs := make(map[string]struct{}, len(assignments))
+	for _, assignment := range assignments {
+		activeRoleIDs[assignment.RoleID] = struct{}{}
 	}
 	effective := make([]identitymodel.IdentityRole, 0, len(activeRoleIDs))
 	for _, role := range roles {
@@ -56,7 +60,7 @@ func (s *IdentityDomainService) ResolveEffectiveRoles(ctx context.Context, userI
 	sort.Slice(effective, func(left, right int) bool {
 		return effective[left].Key+effective[left].ID < effective[right].Key+effective[right].ID
 	})
-	return effective, nil
+	return effective
 }
 
 func (s *IdentityDomainService) ResolvePrincipalForRole(ctx context.Context, userID, roleKey string) (identitymodel.Principal, error) {
