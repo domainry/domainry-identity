@@ -591,17 +591,30 @@ func (s AuthStore) revokeLogicalSessions(ctx context.Context, workspaceID, userI
 	if revokedAt == "" {
 		revokedAt = identitypersistence.NowString()
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, err
-	}
-	defer func() { _ = tx.Rollback() }()
 	var sessionPredicate query.Predicate = query.Equal("session_id", sessionID)
 	if exclude {
 		sessionPredicate = query.NotEqual("session_id", sessionID)
 	}
 	predicate := query.And(query.Equal("user_id", userID), sessionPredicate, query.IsNull("revoked_at"))
-	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_auth_refresh_tokens", workspaceID).
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	// Acquire the write slot before reading the candidate sessions. SQLite starts
+	// deferred transactions as readers; two concurrent callers that both read
+	// first cannot safely upgrade the older snapshot to a writer. The no-op
+	// update serializes that transition while retaining the same predicate and
+	// transaction semantics on every supported database.
+	statement, arguments, err := query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_auth_refresh_tokens", workspaceID).
+		SetExpression("updated_at", query.Column("updated_at")).Where(predicate).Build()
+	if err != nil {
+		return 0, fmt.Errorf("build logical auth sessions write fence: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
+		return 0, err
+	}
+	statement, arguments, err = query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_auth_refresh_tokens", workspaceID).
 		Columns("session_id", "expires_at").Where(predicate).Build()
 	if err != nil {
 		return 0, fmt.Errorf("build logical auth sessions query: %w", err)
