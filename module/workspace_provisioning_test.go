@@ -177,13 +177,26 @@ func TestWorkspaceIdentityBootstrapCreatesGraphAndReleasesCredentialAfterCommit(
 
 	assertBootstrapOrganizationGraph(t, db, request)
 	credential, err := bootstrap.ClaimWorkspaceIdentityBootstrapCredential(t.Context(), identitysdk.WorkspaceIdentityBootstrapCredentialClaim{WorkspaceID: request.WorkspaceID, ReceiptID: receipt.ReceiptID})
-	if err != nil || credential.LoginID != "admin@example.test" || credential.InitialPassword == "" || !credential.MustChangePassword {
+	if err != nil || credential.LoginID != "admin@example.test" || credential.InitialPassword != request.InitialAdminPassword || !credential.MustChangePassword {
 		t.Fatalf("credential=%#v error=%v", credential, err)
 	}
 	if _, err := bootstrap.ClaimWorkspaceIdentityBootstrapCredential(t.Context(), identitysdk.WorkspaceIdentityBootstrapCredentialClaim{WorkspaceID: request.WorkspaceID, ReceiptID: receipt.ReceiptID}); err == nil {
 		t.Fatal("one-time bootstrap credential was replayed")
 	}
 	assertBootstrapPasswordNotPersisted(t, db, credential.InitialPassword)
+}
+
+func TestWorkspaceIdentityBootstrapRequiresTheCompilerOwnedManifestPassword(t *testing.T) {
+	bootstrap, db := openWorkspaceIdentityBootstrapCatalog(t, m1WorkspaceBootstrapRoleCatalog())
+	request := workspaceIdentityBootstrapRequest("workspace-password", "invocation-password")
+	request.InitialAdminPassword = ""
+	tx := beginBootstrapTx(t, db)
+	_, err := bootstrap.BootstrapWorkspaceIdentity(t.Context(), request, identitysdk.EmbeddedTransaction{Executor: tx})
+	_ = tx.Rollback()
+	var identityErr *identitysdk.Error
+	if !errors.As(err, &identityErr) || identityErr.Params["field"] != "initial_admin_password" {
+		t.Fatalf("missing manifest password error=%v", err)
+	}
 }
 
 func TestWorkspaceIdentityBootstrapCopiesNavigationTemplatePerWorkspace(t *testing.T) {
@@ -641,6 +654,7 @@ func workspaceIdentityBootstrapRequest(workspaceID, invocationID string) identit
 		CompanyID: workspaceID + "-company", CompanyCode: "COMPANY", CompanyName: "Example Company",
 		FirstStoreID: workspaceID + "-store", FirstStoreCode: "STORE-001", FirstStoreName: "First Store",
 		InitialAdminUserID: workspaceID + "-admin", InitialAdminLoginID: login, InitialAdminName: "Initial Admin",
+		InitialAdminPassword: "domainry!123",
 	}
 }
 

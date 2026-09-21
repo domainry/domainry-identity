@@ -36,7 +36,8 @@ type workspaceBootstrapRoleCatalog struct {
 }
 
 // BootstrapWorkspaceIdentity implements the trusted bootstrap boundary.
-// The caller supplies graph identity but cannot choose roles or credentials.
+// The caller supplies graph identity and the compiler-owned manifest initial
+// administrator password, but cannot choose roles.
 // Every durable write joins the host-owned transaction and the transaction-
 // phase response contains only a non-secret receipt.
 func (binding *moduleBinding) BootstrapWorkspaceIdentity(ctx context.Context, request identitysdk.WorkspaceIdentityBootstrapRequest, transaction identitysdk.EmbeddedTransaction) (identitysdk.WorkspaceIdentityBootstrapReceipt, error) {
@@ -76,10 +77,7 @@ func (binding *moduleBinding) BootstrapWorkspaceIdentity(ctx context.Context, re
 		return identitysdk.WorkspaceIdentityBootstrapReceipt{}, bootstrapError("identity.workspace_bootstrap_state_conflict", nil)
 	}
 
-	password, err := workspaceInitialPassword()
-	if err != nil {
-		return identitysdk.WorkspaceIdentityBootstrapReceipt{}, err
-	}
+	password := request.InitialAdminPassword
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return identitysdk.WorkspaceIdentityBootstrapReceipt{}, fmt.Errorf("hash workspace bootstrap credential: %w", err)
@@ -359,6 +357,9 @@ func validateWorkspaceBootstrapRequest(request identitysdk.WorkspaceIdentityBoot
 	if request.CompanyID == request.FirstStoreID || strings.EqualFold(request.CompanyCode, request.FirstStoreCode) {
 		return bootstrapError("identity.workspace_bootstrap_invalid", nil)
 	}
+	if request.InitialAdminPassword == "" || len(request.InitialAdminPassword) > 72 {
+		return &identitysdk.Error{Code: "identity.workspace_bootstrap_invalid", Params: map[string]string{"field": "initial_admin_password"}}
+	}
 	return nil
 }
 
@@ -367,7 +368,7 @@ func workspaceBootstrapFingerprint(request identitysdk.WorkspaceIdentityBootstra
 		request.ContractVersion, request.ContractHash, request.InvocationID, request.WorkspaceID,
 		request.CompanyID, request.CompanyCode, request.CompanyName,
 		request.FirstStoreID, request.FirstStoreCode, request.FirstStoreName,
-		request.InitialAdminUserID, request.InitialAdminLoginID, request.InitialAdminName,
+		request.InitialAdminUserID, request.InitialAdminLoginID, request.InitialAdminName, request.InitialAdminPassword,
 	}
 	values = append(values, roleCatalog.sha256, navigationCatalog.sha256, roleCatalog.initialWorkspaceAdministratorRoleKey)
 	canonical, _ := json.Marshal(values)
