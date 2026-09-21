@@ -14,6 +14,7 @@ import (
 	"github.com/domainry/domainry-foundation/requestcontext"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	identityevaluator "github.com/domainry/domainry-identity-sdk/authorization/evaluator"
+	identitycapability "github.com/domainry/domainry-identity/capability"
 	authapplication "github.com/domainry/domainry-identity/internal/application/auth"
 	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
 	authcontract "github.com/domainry/domainry-identity/internal/domain/auth/contract"
@@ -81,7 +82,7 @@ func NewBinding(dependencies BindingDependencies) (identitysdk.Binding, error) {
 		providerCallback: dependencies.ProviderCallback, access: dependencies.EffectiveAccess, identity: dependencies.Identity,
 		workspaceResolver: dependencies.WorkspaceResolver, applications: dependencies.Applications, permissions: dependencies.Permissions, handlerDelivery: dependencies.HandlerDelivery, storeOrganizations: dependencies.StoreOrganizations, organizationUnits: dependencies.OrganizationUnits, clock: dependencies.Clock,
 		subjects: dependencies.Subjects, mutationFence: dependencies.MutationFence, loginTransactions: dependencies.LoginTransactions}
-	capabilities, err := NewCapabilityBinding()
+	capabilities, err := identitycapability.Open(identitycapability.Inputs{})
 	if err != nil {
 		return nil, fmt.Errorf("assemble Identity capability binding: %w", err)
 	}
@@ -683,6 +684,13 @@ func sdkAccessBundle(snapshot identitymodel.IdentityEffectiveAccessSnapshot, pri
 }
 
 func sdkEffectiveDataPredicate(policy identitymodel.IdentityEffectiveDataAccess) identitysdk.Predicate {
+	if policy.DataPolicy != nil {
+		predicate, err := policy.DataPolicy.Predicate()
+		if err == nil {
+			return predicate
+		}
+		return identitysdk.Predicate{Fact: "__identity_project_policy_invalid__", Operator: identitysdk.OperatorEqual, Value: true}
+	}
 	predicates := make([]identitysdk.Predicate, 0, len(policy.Scopes))
 	for _, scope := range policy.Scopes {
 		if scope == identitymodel.IdentityDataScopeAll {

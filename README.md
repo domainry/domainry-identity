@@ -1,5 +1,7 @@
 # Domainry Identity
 
+Agent-facing question index and source-owned guides: [`capability/agent/index.json`](capability/agent/index.json).
+
 Domainry Identity 是 Domainry 的基础登录与权限模块，负责用户与组织身份、密码及外部身份源登录、会话与 Token、角色与权限、数据访问策略、权限目录和审计能力。
 
 ## 代码结构

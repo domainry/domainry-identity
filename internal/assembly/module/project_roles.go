@@ -152,10 +152,10 @@ func projectRoleDefinition(input identitysdk.ProjectRoleDefinition) (identitymod
 	}
 	for _, permission := range input.Permissions {
 		key := strings.TrimSpace(permission.PermissionKey)
-		if key == "" || !permission.DataScope.Valid() {
+		if err := permission.Validate(); key == "" || err != nil {
 			return identitymodel.RoleSchema{}, &identitysdk.Error{Code: "identity.project_role_permission_invalid"}
 		}
-		definition.Permissions = append(definition.Permissions, identitymodel.RolePermission{PermissionKey: key, DataScope: permission.DataScope, AuditDenial: permission.AuditDenial})
+		definition.Permissions = append(definition.Permissions, identitymodel.RolePermission{PermissionKey: key, DataScope: permission.DataScope, DataPolicy: permission.DataPolicy, AuditDenial: permission.AuditDenial})
 	}
 	if normalized, valid := identitymodel.NormalizeRolePermissions(definition.Permissions); valid {
 		definition.Permissions = normalized

@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	identitysdk "github.com/domainry/domainry-identity-sdk"
 	definitionmodel "github.com/domainry/domainry-identity/internal/domain/definition/model"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	manifestmodel "github.com/domainry/domainry-identity/internal/domain/manifest/model"
@@ -58,5 +59,27 @@ func TestMetadataIdentityAuthorizationValidatesStructureWithoutMirroringRuntimeO
 				t.Fatalf("error=%v want substring %q", err, test.want)
 			}
 		})
+	}
+}
+
+func TestMetadataIdentityAuthorizationValidatesRelationalPolicyAgainstObjectGraph(t *testing.T) {
+	policy := identitysdk.ProjectDataPolicy{
+		Operator: identitysdk.ProjectDataPolicyIn,
+		Path:     []identitysdk.ProjectDataPolicyRelationSegment{{Direction: identitysdk.RelationForward, RelationFieldKey: "customer_id", TargetObjectKey: "customer"}},
+		FieldKey: "organization_id", SubjectClaim: identitysdk.ProjectSubjectClaimOrgScopeIDs,
+	}
+	schema := manifestmodel.ManifestSchema{
+		Objects: []definitionmodel.ObjectSchema{
+			{Key: "order", Fields: []definitionmodel.FieldSchema{{Key: "customer_id", Type: "relation", Validation: definitionmodel.FieldValidation{Target: "customer"}}}},
+			{Key: "customer", Fields: []definitionmodel.FieldSchema{{Key: "organization_id", Type: "text"}}},
+		},
+		Roles: []identitymodel.RoleSchema{{Key: "operator", Permissions: []identitymodel.RolePermission{{PermissionKey: "order.read", DataPolicy: &policy}}}},
+	}
+	if err := MetadataValidateIdentitySchema(schema); err != nil {
+		t.Fatalf("valid relational data policy rejected: %v", err)
+	}
+	policy.Path[0].RelationFieldKey = "missing"
+	if err := MetadataValidateIdentitySchema(schema); err == nil || !strings.Contains(err.Error(), "must reference a relation field") {
+		t.Fatalf("invalid relation path error=%v", err)
 	}
 }

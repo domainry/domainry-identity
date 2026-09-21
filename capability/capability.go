@@ -5,15 +5,18 @@ package capability
 
 import (
 	"github.com/domainry/domainry-foundation/modulecapability"
-	identitysdkadapter "github.com/domainry/domainry-identity/internal/adapter/identitysdk"
 )
 
-// Inputs is intentionally empty because Identity's capability contract and
-// owner validation rules are source-owned and deterministic.
-type Inputs struct{}
+// Inputs carries source-owned alternative implementation categories selected by
+// the release composition root. Identity still owns the logical authoring and
+// validation contract; an adapter owns the facts about when and how it can
+// replace the canonical module or SaaS implementation.
+type Inputs struct {
+	AdapterCategories []modulecapability.CategoryDocument
+}
 
 // Open returns the exact capability binding used by the operational Identity
 // SDK binding.
-func Open(Inputs) (*modulecapability.StaticBinding, error) {
-	return identitysdkadapter.NewCapabilityBinding()
+func Open(inputs Inputs) (*modulecapability.StaticBinding, error) {
+	return openContract(inputs)
 }

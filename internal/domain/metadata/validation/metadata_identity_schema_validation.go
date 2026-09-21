@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	identitysdk "github.com/domainry/domainry-identity-sdk"
 	definitionmodel "github.com/domainry/domainry-identity/internal/domain/definition/model"
 	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
@@ -178,8 +179,21 @@ func (validator *identitySchemaValidator) validateAuthorization() {
 			if strings.TrimSpace(permission.PermissionKey) == "" {
 				validator.add(permissionPath+".permission_key", "is required")
 			}
-			if _, ok := identitymodel.CanonicalIdentityDataScope(strings.TrimSpace(string(permission.DataScope))); !ok {
-				validator.add(permissionPath+".data_scope", "unsupported scope %q", permission.DataScope)
+			if !permission.Valid() {
+				if permission.DataPolicy == nil && permission.DataScope != "" {
+					validator.add(permissionPath+".data_scope", "unsupported scope %q", permission.DataScope)
+				} else {
+					validator.add(permissionPath, "must define exactly one valid data_scope or data_policy")
+				}
+				continue
+			}
+			if permission.DataPolicy != nil {
+				objectKey := identitymodel.RolePermissionResource(permission.PermissionKey)
+				if _, exists := validator.objects[objectKey]; !exists {
+					validator.add(permissionPath+".data_policy", "permission resource %q is not a business object", objectKey)
+					continue
+				}
+				validator.validateProjectDataPolicy(permissionPath+".data_policy", objectKey, *permission.DataPolicy, map[string]bool{objectKey: true})
 			}
 		}
 		for index, permission := range role.FieldPermissions {
@@ -211,6 +225,55 @@ func (validator *identitySchemaValidator) validateAuthorization() {
 					validator.add(rulePath+".fields", "references unknown field %s.%s", objectKey, fieldKey)
 				}
 			}
+		}
+	}
+}
+
+func (validator *identitySchemaValidator) validateProjectDataPolicy(path, objectKey string, policy identitysdk.ProjectDataPolicy, visited map[string]bool) {
+	switch strings.ToLower(strings.TrimSpace(policy.Operator)) {
+	case identitysdk.ProjectDataPolicyAnd, identitysdk.ProjectDataPolicyOr, identitysdk.ProjectDataPolicyNot:
+		for index, child := range policy.Children {
+			validator.validateProjectDataPolicy(fmt.Sprintf("%s.children[%d]", path, index), objectKey, child, visited)
+		}
+		return
+	}
+	current := objectKey
+	seen := make(map[string]bool, len(visited))
+	for key, value := range visited {
+		seen[key] = value
+	}
+	for index, segment := range policy.Path {
+		segmentPath := fmt.Sprintf("%s.path[%d]", path, index)
+		target := strings.TrimSpace(segment.TargetObjectKey)
+		if _, exists := validator.objects[target]; !exists {
+			validator.add(segmentPath+".target_object_key", "references unknown object %q", target)
+			return
+		}
+		if seen[target] {
+			validator.add(segmentPath+".target_object_key", "creates a cyclic relation path through %q", target)
+			return
+		}
+		relationOwner, relationTarget := current, target
+		if segment.Direction == identitysdk.RelationReverse {
+			relationOwner, relationTarget = target, current
+		}
+		field := validator.fields[relationOwner][strings.TrimSpace(segment.RelationFieldKey)]
+		if field.Key == "" || strings.TrimSpace(field.Type) != "relation" {
+			validator.add(segmentPath+".relation_field_key", "must reference a relation field on object %q", relationOwner)
+			return
+		}
+		if actual := identityRelationTarget(field); actual != relationTarget {
+			validator.add(segmentPath+".target_object_key", "relation %s.%s targets %q, not %q", relationOwner, field.Key, actual, relationTarget)
+			return
+		}
+		seen[target] = true
+		current = target
+	}
+	fieldKey := strings.TrimSpace(policy.FieldKey)
+	if fieldKey != "id" {
+		field := validator.fields[current][fieldKey]
+		if field.Key == "" || field.DisabledAt != "" {
+			validator.add(path+".field_key", "references unknown or disabled field %s.%s", current, fieldKey)
 		}
 	}
 }

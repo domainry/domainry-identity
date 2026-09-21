@@ -281,7 +281,7 @@ func rolePermissionConfiguration(role identitymodel.IdentityRole, permissions []
 	assignments := make([]identitymodel.IdentityRolePermissionAssignment, 0, len(permissions))
 	normalized, _ := identitymodel.NormalizeRolePermissions(permissions)
 	for _, permission := range normalized {
-		assignments = append(assignments, identitymodel.IdentityRolePermissionAssignment{RoleID: role.ID, PermissionKey: permission.PermissionKey, DataScope: permission.DataScope, AuditDenial: permission.AuditDenial})
+		assignments = append(assignments, identitymodel.IdentityRolePermissionAssignment{RoleID: role.ID, PermissionKey: permission.PermissionKey, DataScope: permission.DataScope, DataPolicy: permission.DataPolicy, AuditDenial: permission.AuditDenial})
 	}
 	return identitymodel.IdentityRolePermissionConfiguration{RoleID: role.ID, RoleKey: role.Key, Permissions: assignments, SchemaVersion: revision.SchemaVersion, SchemaHash: revision.SchemaHash}
 }

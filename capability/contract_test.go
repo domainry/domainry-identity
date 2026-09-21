@@ -1,4 +1,4 @@
-package identitysdkadapter
+package capability
 
 import (
 	"encoding/json"
@@ -11,7 +11,7 @@ import (
 )
 
 func TestIdentityCapabilityBindingTracksOwnerAuthoringDomain(t *testing.T) {
-	binding, err := NewCapabilityBinding()
+	binding, err := Open(Inputs{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,6 +35,12 @@ func TestIdentityCapabilityBindingTracksOwnerAuthoringDomain(t *testing.T) {
 			operations[route] = true
 		}
 	}
+	nonHTTPCapabilities := map[string]bool{}
+	for _, definition := range registry.Definitions() {
+		if len(definition.NonHTTP) != 0 {
+			nonHTTPCapabilities[definition.CapabilityKey] = true
+		}
+	}
 	totalOperations, totalScopes := 0, 0
 	for _, category := range summary.Categories {
 		totalOperations += category.OperationCount
@@ -43,13 +49,57 @@ func TestIdentityCapabilityBindingTracksOwnerAuthoringDomain(t *testing.T) {
 			t.Fatalf("category %q exceeds the bounded 20-operation batch: %d", category.Key, category.OperationCount)
 		}
 	}
-	if len(summary.Categories) != 3 || totalOperations != len(operations) || totalScopes != 1 {
+	if len(summary.Categories) != 3+len(nonHTTPCapabilities) || totalOperations != len(operations) || totalScopes != 1 {
 		t.Fatalf("summary=%+v owner capabilities=%d routes=%d", summary.Categories, len(domain.Capabilities), len(operations))
 	}
 }
 
+func TestIdentityCapabilityBindingDisclosesNonHTTPDeliveryAndUsageActions(t *testing.T) {
+	binding, err := Open(Inputs{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	summary, err := binding.CapabilitySummary(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	provided := map[string]bool{}
+	for _, key := range summary.Composition.ProvidedCapabilities {
+		provided[key] = true
+	}
+	for capabilityKey, actionKeys := range map[string][]string{
+		"identity.handler_delivery":            {"identity.handler_delivery.create", "identity.handler_delivery.update", "identity.handler_delivery.disable", "identity.handler_delivery.resolve"},
+		"identity.store_organization_delivery": {"identity.store_organization_delivery.create", "identity.store_organization_delivery.rename", "identity.store_organization_delivery.disable", "identity.store_organization_delivery.resolve", "identity.store_organization_delivery.list"},
+		"identity.organization_unit_delivery":  {"identity.organization_unit_delivery.create", "identity.organization_unit_delivery.resolve"},
+		"identity.workspace_identity_usage":    {"identity.workspace_identity_usage.aggregate"},
+	} {
+		if !provided[capabilityKey] {
+			t.Fatalf("provided capabilities do not contain %q: %v", capabilityKey, summary.Composition.ProvidedCapabilities)
+		}
+		document, err := binding.CapabilityCategory(t.Context(), capabilityKey)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if document.Category.OperationCount != 0 || len(document.Projections) != len(actionKeys) {
+			t.Fatalf("category %q=%+v projections=%+v", capabilityKey, document.Category, document.Projections)
+		}
+		seen := map[string]bool{}
+		for _, projection := range document.Projections {
+			if projection.Kind != "identity.non_http_action" {
+				t.Fatalf("category %q projection %q has kind %q", capabilityKey, projection.Key, projection.Kind)
+			}
+			seen[projection.Key] = true
+		}
+		for _, actionKey := range actionKeys {
+			if !seen[actionKey] {
+				t.Fatalf("category %q does not project Action %q: %v", capabilityKey, actionKey, seen)
+			}
+		}
+	}
+}
+
 func TestIdentityCapabilityModuleAndHTTPParity(t *testing.T) {
-	binding, err := NewCapabilityBinding()
+	binding, err := Open(Inputs{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +114,7 @@ func TestIdentityCapabilityModuleAndHTTPParity(t *testing.T) {
 }
 
 func TestIdentityCapabilityValidatorUsesOwnerSchema(t *testing.T) {
-	binding, err := NewCapabilityBinding()
+	binding, err := Open(Inputs{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +133,7 @@ func TestIdentityCapabilityValidatorUsesOwnerSchema(t *testing.T) {
 }
 
 func TestIdentityCapabilityValidatorAcceptsProtectedInstallationAdministratorExtension(t *testing.T) {
-	binding, err := NewCapabilityBinding()
+	binding, err := Open(Inputs{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +156,7 @@ func TestIdentityCapabilityValidatorAcceptsProtectedInstallationAdministratorExt
 }
 
 func TestIdentityCapabilityValidatorRejectsInvalidPlatformRoleExtensions(t *testing.T) {
-	binding, err := NewCapabilityBinding()
+	binding, err := Open(Inputs{})
 	if err != nil {
 		t.Fatal(err)
 	}

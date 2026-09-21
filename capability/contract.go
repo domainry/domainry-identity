@@ -1,4 +1,4 @@
-package identitysdkadapter
+package capability
 
 import (
 	"context"
@@ -30,9 +30,11 @@ const (
 	identityInstallationAdministratorRisk       = "privileged"
 )
 
-// NewCapabilityBinding builds Identity's immutable, topology-neutral
-// capability contract without opening the operational SDK binding.
-func NewCapabilityBinding() (*modulecapability.StaticBinding, error) {
+// openContract builds Identity's immutable, topology-neutral
+// capability contract without opening the operational SDK binding. Optional
+// adapter profiles are source-owned by alternative Identity implementations
+// and are attached only by the release composition root that ships them.
+func openContract(inputs Inputs) (*modulecapability.StaticBinding, error) {
 	registry, err := identityapplication.NewStandaloneIdentityAuthorizationSliceRegistry()
 	if err != nil {
 		return nil, fmt.Errorf("build Identity Action registry for capability projection: %w", err)
@@ -85,7 +87,7 @@ func NewCapabilityBinding() (*modulecapability.StaticBinding, error) {
 		categoryKey := identityCapabilityCategory(selected.definition.Key)
 		routesByCategory[categoryKey] = append(routesByCategory[categoryKey], selected)
 	}
-	documents := make([]modulecapability.CategoryDocument, 0, len(definitionsByCategory))
+	documents := make([]modulecapability.CategoryDocument, 0, len(definitionsByCategory)+1)
 	categoryKeys := make([]string, 0, len(definitionsByCategory))
 	for key := range definitionsByCategory {
 		categoryKeys = append(categoryKeys, key)
@@ -152,6 +154,25 @@ func NewCapabilityBinding() (*modulecapability.StaticBinding, error) {
 		}
 		documents = append(documents, modulecapability.CategoryDocument{Category: category, OpenAPI: modulecapability.OpenAPIFragment{OpenAPI: "3.1.0", Paths: paths, Components: components}, ValidationContracts: validationContracts})
 	}
+	nonHTTPDocuments, nonHTTPCapabilities, err := identityNonHTTPActionCategories(registry)
+	if err != nil {
+		return nil, err
+	}
+	documents = append(documents, nonHTTPDocuments...)
+	providedCapabilities = append(providedCapabilities, nonHTTPCapabilities...)
+	adapters, err := identityAdapterCategories(inputs.AdapterCategories)
+	if err != nil {
+		return nil, err
+	}
+	if len(adapters) != 0 {
+		documents = append(documents, adapters...)
+		for _, adapter := range adapters {
+			for _, profile := range adapter.Projections {
+				providedCapabilities = append(providedCapabilities, profile.Key)
+			}
+		}
+	}
+	providedCapabilities = sortedUniqueIdentityStrings(providedCapabilities)
 	summary := modulecapability.ModuleSummary{
 		Identity: modulecapability.ModuleIdentity{
 			Key: "identity", SourceOwner: "identity", ModuleVersion: identitysdk.CurrentProtocolVersion,
@@ -160,25 +181,126 @@ func NewCapabilityBinding() (*modulecapability.StaticBinding, error) {
 		},
 		Name:        "Identity",
 		Description: "Authentication, principals, users, organizational identity, roles, permissions, and access-policy configuration.",
-		Scenarios: modulecapability.AdaptationScenarios{
-			UseWhen: []string{
-				"The product has authenticated users, service identities, roles, permissions, or organization units",
-				"The product requires login, external identity providers, application profile binding, or governed access",
-			},
-			DoNotUseWhen: []string{
-				"The requirement only stores a business contact or organization without authentication or access control",
-				"The requirement only sends a user-facing message; notification delivery is owned by Notification",
-			},
-			RequirementSignals:   []string{"login and session", "user or service identity", "role and permission", "organization unit", "OIDC or SAML provider"},
+		Composition: modulecapability.ModuleComposition{
 			ProvidedCapabilities: append([]string(nil), providedCapabilities...),
 			RequiredModules:      []string{}, OptionalModules: []string{}, ConflictingModules: []string{},
-			AssemblyChains:    []string{"identity_before_authorization_and_application_publication"},
-			ValidationScopes:  []string{"identity.role"},
-			SelectionExamples: []modulecapability.ScenarioExample{{Requirement: "Employees sign in and receive organization-scoped permissions", Reason: "Identity owns authentication, users, organization units, roles, and access policy"}},
-			RejectionExamples: []modulecapability.ScenarioExample{{Requirement: "Store customer companies and contacts without login", Reason: "This does not require an Identity principal"}},
+			AssemblyChains:   []string{"identity_before_authorization_and_application_publication"},
+			ValidationScopes: []string{"identity.role"},
 		},
 	}
 	return modulecapability.NewStaticBinding(summary, documents, identityCandidateValidator(definitions))
+}
+
+// identityNonHTTPActionCategories projects deployment-neutral application-use-
+// case Actions that have no HTTP route. Without this projection, Handler
+// delivery, organization delivery, and installation-level usage aggregation
+// exist in the SDK and authorization registry but disappear from capability
+// discovery entirely.
+func identityNonHTTPActionCategories(registry *identityapplication.IdentityActionRegistry) ([]modulecapability.CategoryDocument, []string, error) {
+	type actionGroup struct {
+		label   string
+		actions []identitymodel.IdentityActionDefinition
+	}
+	groups := map[string]actionGroup{}
+	for _, action := range registry.Definitions() {
+		if len(action.NonHTTP) == 0 {
+			continue
+		}
+		capabilityKey := strings.TrimSpace(action.CapabilityKey)
+		if capabilityKey == "" {
+			return nil, nil, fmt.Errorf("Identity non-HTTP Action %q has no capability key", action.Key)
+		}
+		group := groups[capabilityKey]
+		label := strings.TrimSpace(action.CapabilityLabel)
+		if group.label != "" && label != "" && group.label != label {
+			return nil, nil, fmt.Errorf("Identity non-HTTP capability %q has conflicting labels %q and %q", capabilityKey, group.label, label)
+		}
+		if group.label == "" {
+			group.label = label
+		}
+		group.actions = append(group.actions, action)
+		groups[capabilityKey] = group
+	}
+
+	keys := make([]string, 0, len(groups))
+	for key := range groups {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	documents := make([]modulecapability.CategoryDocument, 0, len(keys))
+	for _, key := range keys {
+		group := groups[key]
+		sort.Slice(group.actions, func(i, j int) bool { return group.actions[i].Key < group.actions[j].Key })
+		projections := make([]modulecapability.SourceProjection, 0, len(group.actions))
+		for _, action := range group.actions {
+			payload, err := json.Marshal(action)
+			if err != nil {
+				return nil, nil, fmt.Errorf("project Identity non-HTTP Action %q: %w", action.Key, err)
+			}
+			projections = append(projections, modulecapability.SourceProjection{
+				Kind: "identity.non_http_action", Key: action.Key, Payload: payload,
+			})
+		}
+		name := group.label
+		if name == "" {
+			name = key
+		}
+		documents = append(documents, modulecapability.CategoryDocument{
+			Category: modulecapability.CategorySummary{
+				Key: key, Name: name,
+				Description:    "Source-owned non-HTTP Action contracts for " + name + ".",
+				AssemblyChains: []string{"identity_before_authorization_and_application_publication"},
+			},
+			OpenAPI:     modulecapability.OpenAPIFragment{OpenAPI: "3.1.0", Paths: map[string]map[string]json.RawMessage{}},
+			Projections: projections,
+		})
+	}
+	return documents, keys, nil
+}
+
+func sortedUniqueIdentityStrings(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	sort.Strings(result)
+	return result
+}
+
+func identityAdapterCategories(values []modulecapability.CategoryDocument) ([]modulecapability.CategoryDocument, error) {
+	categories := append([]modulecapability.CategoryDocument(nil), values...)
+	sort.Slice(categories, func(i, j int) bool {
+		return categories[i].Category.Key < categories[j].Category.Key
+	})
+	previous := ""
+	for _, category := range categories {
+		key := strings.TrimSpace(category.Category.Key)
+		if key == "" || !strings.HasPrefix(key, "identity.") {
+			return nil, fmt.Errorf("Identity adapter category %q is invalid", category.Category.Key)
+		}
+		if key == previous {
+			return nil, fmt.Errorf("Identity adapter category %q is duplicated", key)
+		}
+		if len(category.Projections) == 0 {
+			return nil, fmt.Errorf("Identity adapter category %q has no source-owned profile", key)
+		}
+		for _, profile := range category.Projections {
+			if profile.Kind != "identity.adapter_profile" || strings.TrimSpace(profile.Key) == "" {
+				return nil, fmt.Errorf("Identity adapter category %q has invalid profile %q/%q", key, profile.Kind, profile.Key)
+			}
+		}
+		previous = key
+	}
+	return categories, nil
 }
 
 func identityCapabilityCategory(capabilityKey string) string {

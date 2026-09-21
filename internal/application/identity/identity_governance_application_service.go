@@ -202,8 +202,12 @@ func (validator *IdentityGovernanceApplicationService) validatePermissions(value
 		} else if !permission.Enabled {
 			issues = append(issues, identityGovernanceIssue("permissions", path+".permission_key", "backend.identity.permission_disabled", "identity.role_permission", map[string]string{"permission": key, "actual": key, "allowed": strings.Join(allowed, ",")}))
 		}
-		if _, valid := identitymodel.CanonicalIdentityDataScope(string(grant.DataScope)); !valid {
-			issues = append(issues, identityGovernanceIssue("permissions", path+".data_scope", "backend.identity.data_scope_invalid", "identity.role_permission", map[string]string{"actual": string(grant.DataScope), "allowed": strings.Join(identitymodel.AuthoringDataScopeValues(), ",")}))
+		if !grant.Valid() {
+			fieldPath, code := path+".data_scope", "backend.identity.data_scope_invalid"
+			if grant.DataPolicy != nil {
+				fieldPath, code = path+".data_policy", "backend.identity.data_policy_invalid"
+			}
+			issues = append(issues, identityGovernanceIssue("permissions", fieldPath, code, "identity.role_permission", map[string]string{"actual": string(grant.DataScope), "allowed": strings.Join(identitymodel.AuthoringDataScopeValues(), ",")}))
 		}
 		seen[key] = true
 	}

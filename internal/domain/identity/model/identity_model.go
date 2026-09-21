@@ -274,10 +274,11 @@ type IdentityRoleRequest struct {
 }
 
 type IdentityRolePermissionAssignment struct {
-	RoleID        string            `json:"role_id"`
-	PermissionKey string            `json:"permission_key"`
-	DataScope     IdentityDataScope `json:"data_scope"`
-	AuditDenial   bool              `json:"audit_denial,omitempty"`
+	RoleID        string                         `json:"role_id"`
+	PermissionKey string                         `json:"permission_key"`
+	DataScope     IdentityDataScope              `json:"data_scope,omitempty"`
+	DataPolicy    *identitysdk.ProjectDataPolicy `json:"data_policy,omitempty"`
+	AuditDenial   bool                           `json:"audit_denial,omitempty"`
 }
 
 type IdentityCredential struct {

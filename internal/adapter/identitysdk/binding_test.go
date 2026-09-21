@@ -105,6 +105,26 @@ func TestSDKAccessBundleDeduplicatesScopedFunctionGrantsAndPreservesDataPolicies
 	}
 }
 
+func TestSDKAccessBundlePublishesProjectRelationalDataPolicy(t *testing.T) {
+	policy := identitysdk.ProjectDataPolicy{
+		Operator: identitysdk.ProjectDataPolicyIn,
+		Path:     []identitysdk.ProjectDataPolicyRelationSegment{{Direction: identitysdk.RelationForward, RelationFieldKey: "customer_id", TargetObjectKey: "customer"}},
+		FieldKey: "organization_id", SubjectClaim: identitysdk.ProjectSubjectClaimOrgScopeIDs,
+	}
+	now := time.Now().UTC()
+	bundle := sdkAccessBundle(identitymodel.IdentityEffectiveAccessSnapshot{
+		AuthorizationRevision: "relational-policy",
+		Permissions:           []identitymodel.IdentityEffectivePermissionGrant{{Key: "order.read", ObjectKey: "order", Action: "read", DataPolicy: &policy}},
+		DataAccess:            []identitymodel.IdentityEffectiveDataAccess{{PermissionKey: "order.read", Resource: "order", Action: "read", Allowed: true, DataPolicy: &policy}},
+	}, identitymodel.Principal{WorkspaceID: "workspace-primary", UserID: "manager", OrgScopeIDs: []string{"region", "store"}}, now)
+	if err := bundle.Validate(now); err != nil {
+		t.Fatalf("relational AccessBundle is invalid: %v", err)
+	}
+	if len(bundle.DataPolicies) != 1 || len(bundle.DataPolicies[0].DataScopes) != 0 || bundle.DataPolicies[0].Predicate.Fact != "organization_id" || bundle.DataPolicies[0].Predicate.Operator != identitysdk.OperatorIn || bundle.DataPolicies[0].Predicate.Value != "$subject.org_scope_ids" || len(bundle.DataPolicies[0].Predicate.Path) != 1 {
+		t.Fatalf("project relational policy changed in AccessBundle: %#v", bundle.DataPolicies)
+	}
+}
+
 func TestSDKAccessBundlePreservesTenantScope(t *testing.T) {
 	now := time.Now().UTC()
 	bundle := sdkAccessBundle(identitymodel.IdentityEffectiveAccessSnapshot{

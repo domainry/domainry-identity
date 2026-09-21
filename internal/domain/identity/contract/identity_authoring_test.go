@@ -78,7 +78,7 @@ func TestIdentityRoleAuthoringContractsPublishExactHTTPShapes(t *testing.T) {
 		}
 	}
 	role := IdentityRoleAuthoringCapability()
-	if role.InputSchema == nil || role.InputSchema.AdditionalProperties == nil || *role.InputSchema.AdditionalProperties || len(role.Examples) != 3 || role.ResourceOperations == nil || role.Execution.ChangeControl != "direct_audited_versioned_metadata" {
+	if role.InputSchema == nil || role.InputSchema.AdditionalProperties == nil || *role.InputSchema.AdditionalProperties || len(role.Examples) != 4 || role.ResourceOperations == nil || role.Execution.ChangeControl != "direct_audited_versioned_metadata" {
 		t.Fatalf("role=%#v", role)
 	}
 	rolePayload := role.InputSchema.Properties["payload"]

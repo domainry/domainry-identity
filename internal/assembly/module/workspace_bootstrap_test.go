@@ -81,3 +81,21 @@ func TestWorkspaceBootstrapRoleCatalogDigestIsCanonicalAndAuthorizationComplete(
 		t.Fatal("administrator role drift was absent from role catalog digest")
 	}
 }
+
+func TestProjectRoleDefinitionPreservesRelationalDataPolicy(t *testing.T) {
+	policy := identitysdk.ProjectDataPolicy{
+		Operator: identitysdk.ProjectDataPolicyIn,
+		Path:     []identitysdk.ProjectDataPolicyRelationSegment{{Direction: identitysdk.RelationForward, RelationFieldKey: "customer_id", TargetObjectKey: "customer"}},
+		FieldKey: "organization_id", SubjectClaim: identitysdk.ProjectSubjectClaimOrgScopeIDs,
+	}
+	role, err := projectRoleDefinition(identitysdk.ProjectRoleDefinition{
+		Key: "operator", Name: "Operator",
+		Permissions: []identitysdk.ProjectRolePermission{{PermissionKey: "order.read", DataPolicy: &policy, AuditDenial: true}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(role.Permissions) != 1 || role.Permissions[0].DataPolicy == nil || role.Permissions[0].DataScope != "" || role.Permissions[0].DataPolicy.FieldKey != "organization_id" || !role.Permissions[0].AuditDenial {
+		t.Fatalf("project role policy changed at SDK-to-Identity boundary: %#v", role.Permissions)
+	}
+}

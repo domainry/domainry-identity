@@ -76,6 +76,17 @@ func CanonicalIdentityDataScope(value string) (IdentityDataScope, bool) {
 	return scope, true
 }
 
+// Valid reports whether the grant carries exactly one executable row policy:
+// either a built-in data scope or the closed SDK-owned relational policy AST.
+func (value RolePermission) Valid() bool {
+	return (identitysdk.ProjectRolePermission{
+		PermissionKey: value.PermissionKey,
+		DataScope:     value.DataScope,
+		DataPolicy:    value.DataPolicy,
+		AuditDenial:   value.AuditDenial,
+	}).Validate() == nil
+}
+
 // RolePermissionsWithScope builds exact grants for trusted code and tests.
 // Authoring boundaries still validate every supplied scope explicitly.
 func RolePermissionsWithScope(scope IdentityDataScope, keys ...string) []RolePermission {
@@ -102,15 +113,27 @@ func NormalizeRolePermissions(values []RolePermission) ([]RolePermission, bool) 
 	byKey := make(map[string]RolePermission, len(values))
 	for _, value := range values {
 		key := strings.TrimSpace(value.PermissionKey)
-		scope, valid := CanonicalIdentityDataScope(strings.TrimSpace(string(value.DataScope)))
-		if key == "" || !valid {
+		value.PermissionKey = key
+		if key == "" || !value.Valid() {
 			return nil, false
 		}
 		if _, duplicate := byKey[key]; duplicate {
 			return nil, false
 		}
-		value.PermissionKey = key
-		value.DataScope = scope
+		if value.DataPolicy != nil {
+			policy, err := identitysdk.NormalizeProjectDataPolicy(*value.DataPolicy)
+			if err != nil {
+				return nil, false
+			}
+			value.DataScope = ""
+			value.DataPolicy = &policy
+		} else {
+			scope, valid := CanonicalIdentityDataScope(strings.TrimSpace(string(value.DataScope)))
+			if !valid {
+				return nil, false
+			}
+			value.DataScope = scope
+		}
 		byKey[key] = value
 	}
 	keys := make([]string, 0, len(byKey))
@@ -128,7 +151,7 @@ func NormalizeRolePermissions(values []RolePermission) ([]RolePermission, bool) 
 func RolePermissionForKey(values []RolePermission, key string) (RolePermission, bool) {
 	key = strings.TrimSpace(key)
 	for _, value := range values {
-		if strings.TrimSpace(value.PermissionKey) == key && value.DataScope.Valid() {
+		if strings.TrimSpace(value.PermissionKey) == key && value.Valid() {
 			return value, true
 		}
 	}
@@ -143,7 +166,7 @@ func RolePermissionsForKey(values []RolePermission, key string) []RolePermission
 	key = strings.TrimSpace(key)
 	result := make([]RolePermission, 0, 1)
 	for _, value := range values {
-		if strings.TrimSpace(value.PermissionKey) == key && value.DataScope.Valid() {
+		if strings.TrimSpace(value.PermissionKey) == key && value.Valid() {
 			result = append(result, value)
 		}
 	}

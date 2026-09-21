@@ -18,7 +18,7 @@ func IdentityRoleHasPermissionKey(role identitymodel.RoleSchema, key string) boo
 		return false
 	}
 	for _, permission := range role.Permissions {
-		if strings.TrimSpace(permission.PermissionKey) == key && permission.DataScope.Valid() {
+		if strings.TrimSpace(permission.PermissionKey) == key && permission.Valid() {
 			return true
 		}
 	}

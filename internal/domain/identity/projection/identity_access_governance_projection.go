@@ -35,7 +35,7 @@ func IdentityBuildAccessReverseIndex(roles []identitymodel.IdentityRole, definit
 		roleKey := strings.TrimSpace(role.Key)
 		for _, grant := range role.Permissions {
 			permission := strings.TrimSpace(grant.PermissionKey)
-			if permission == "" || !grant.DataScope.Valid() {
+			if permission == "" || !grant.Valid() {
 				continue
 			}
 			index.RolePermissions[roleKey] = append(index.RolePermissions[roleKey], permission)

@@ -15,8 +15,8 @@ func (s *IdentityDomainService) ListRolePermissionAssignments(ctx context.Contex
 	} else if published {
 		assignments := make([]identitymodel.IdentityRolePermissionAssignment, 0, len(role.Permissions))
 		for _, permission := range role.Permissions {
-			if key := strings.TrimSpace(permission.PermissionKey); key != "" && permission.DataScope.Valid() {
-				assignments = append(assignments, identitymodel.IdentityRolePermissionAssignment{RoleID: roleID, PermissionKey: key, DataScope: permission.DataScope, AuditDenial: permission.AuditDenial})
+			if key := strings.TrimSpace(permission.PermissionKey); key != "" && permission.Valid() {
+				assignments = append(assignments, identitymodel.IdentityRolePermissionAssignment{RoleID: roleID, PermissionKey: key, DataScope: permission.DataScope, DataPolicy: permission.DataPolicy, AuditDenial: permission.AuditDenial})
 			}
 		}
 		return assignments, nil

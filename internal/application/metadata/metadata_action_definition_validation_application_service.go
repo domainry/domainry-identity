@@ -139,7 +139,7 @@ func validateInstalledActionAuthorization(installed, persisted manifestmodel.Man
 
 func roleHasExactPermission(role identitymodel.RoleSchema, permission string) bool {
 	for _, candidate := range role.Permissions {
-		if strings.TrimSpace(candidate.PermissionKey) == permission && candidate.DataScope.Valid() {
+		if strings.TrimSpace(candidate.PermissionKey) == permission && candidate.Valid() {
 			return true
 		}
 	}

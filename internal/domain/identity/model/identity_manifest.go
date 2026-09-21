@@ -1,6 +1,9 @@
 package identitymodel
 
-import localizationmodel "github.com/domainry/domainry-identity/internal/domain/localization/model"
+import (
+	identitysdk "github.com/domainry/domainry-identity-sdk"
+	localizationmodel "github.com/domainry/domainry-identity/internal/domain/localization/model"
+)
 
 type RoleSchema struct {
 	Key                   string                             `json:"key"`
@@ -118,9 +121,10 @@ type ManifestIdentityRoleMenuSetSchema struct {
 // RolePermission is one exact Action Permission grant. DataScope belongs to
 // the grant, so two actions on the same resource can use different scopes.
 type RolePermission struct {
-	PermissionKey string            `json:"permission_key"`
-	DataScope     IdentityDataScope `json:"data_scope"`
-	AuditDenial   bool              `json:"audit_denial,omitempty"`
+	PermissionKey string                         `json:"permission_key"`
+	DataScope     IdentityDataScope              `json:"data_scope,omitempty"`
+	DataPolicy    *identitysdk.ProjectDataPolicy `json:"data_policy,omitempty"`
+	AuditDenial   bool                           `json:"audit_denial,omitempty"`
 }
 type FieldPermission struct {
 	ObjectKey   string                      `json:"object_key"`

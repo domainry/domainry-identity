@@ -90,7 +90,7 @@ func IdentityBuildEffectiveAccessSnapshot(input IdentityEffectiveAccessProjectio
 		key := strings.TrimSpace(grant.PermissionKey)
 		objectKey, action := identityProjectionPermissionParts(key)
 		sources := identityProjectionSourcesForGrant(key, roleSources, definitionByKey)
-		snapshot.Permissions = append(snapshot.Permissions, identitymodel.IdentityEffectivePermissionGrant{Key: key, ObjectKey: objectKey, Action: action, DataScope: grant.DataScope, AuditDenial: grant.AuditDenial, Sources: sources})
+		snapshot.Permissions = append(snapshot.Permissions, identitymodel.IdentityEffectivePermissionGrant{Key: key, ObjectKey: objectKey, Action: action, DataScope: grant.DataScope, DataPolicy: grant.DataPolicy, AuditDenial: grant.AuditDenial, Sources: sources})
 	}
 	snapshot.DataAccess = identityProjectionDataAccess(input.Principal.Role, roleSources)
 	snapshot.FieldAccess = identityProjectionFieldAccess(input.Principal.Role, input.Objects, roleSources, input.FieldDecision)
@@ -186,14 +186,18 @@ func identityProjectionDataAccess(role identitymodel.RoleSchema, sources map[str
 	for _, permission := range role.Permissions {
 		permissionKey := strings.TrimSpace(permission.PermissionKey)
 		resource, action := identityProjectionPermissionParts(permissionKey)
-		if permissionKey == "" || resource == "" || action == "" || !permission.DataScope.Valid() {
+		if permissionKey == "" || resource == "" || action == "" || !permission.Valid() {
 			continue
 		}
 		grantSources := []identitymodel.IdentityGrantSource{}
 		for _, roleSources := range sources {
 			grantSources = append(grantSources, roleSources...)
 		}
-		out = append(out, identitymodel.IdentityEffectiveDataAccess{PermissionKey: permissionKey, Resource: resource, Action: action, Allowed: true, Scopes: []identitymodel.IdentityDataScope{permission.DataScope}, AuditDenial: permission.AuditDenial, Sources: identityProjectionUniqueSources(grantSources)})
+		dataAccess := identitymodel.IdentityEffectiveDataAccess{PermissionKey: permissionKey, Resource: resource, Action: action, Allowed: true, DataPolicy: permission.DataPolicy, AuditDenial: permission.AuditDenial, Sources: identityProjectionUniqueSources(grantSources)}
+		if permission.DataPolicy == nil {
+			dataAccess.Scopes = []identitymodel.IdentityDataScope{permission.DataScope}
+		}
+		out = append(out, dataAccess)
 	}
 	sort.Slice(out, func(left, right int) bool {
 		return out[left].PermissionKey < out[right].PermissionKey

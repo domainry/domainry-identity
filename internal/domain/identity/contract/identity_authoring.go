@@ -1,6 +1,7 @@
 package contract
 
 import (
+	identitysdk "github.com/domainry/domainry-identity-sdk"
 	authoringcontract "github.com/domainry/domainry-identity/internal/domain/authoring"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	metadatacontract "github.com/domainry/domainry-identity/internal/domain/metadata/contract"
@@ -28,6 +29,8 @@ func IdentityRoleAuthoringCapability() authoringcontract.CapabilityAuthoringDefi
 	}
 	input := metadatacontract.VersionedMetadataDefinitionRequestSchema(payload, false)
 	output := metadatacontract.VersionedMetadataDefinitionOutputSchema(payload)
+	input.Definitions = identityProjectDataPolicyDefinitions()
+	output.Definitions = identityProjectDataPolicyDefinitions()
 	execution := metadatacontract.VersionedMetadataDefinitionExecution("identity.role")
 	return authoringcontract.CapabilityAuthoringDefinition{
 		Key: "identity.role", Status: "supported", Lifecycle: "versioned_metadata",
@@ -52,9 +55,11 @@ func IdentityRoleAuthoringCapability() authoringcontract.CapabilityAuthoringDefi
 			{Code: "backend.identity.role_id_key_required", FieldPath: "payload.key", MessageKey: "backend.identity.role_id_key_required"},
 			{Code: "backend.identity.permission_not_found", FieldPath: "payload.permissions[].permission_key", ParameterKeys: []string{"actual"}, MessageKey: "backend.identity.permission_not_found"},
 			{Code: "backend.identity.data_scope_invalid", FieldPath: "payload.permissions[].data_scope", ParameterKeys: []string{"allowed", "actual"}, MessageKey: "backend.identity.data_scope_invalid"},
+			{Code: "backend.identity.data_policy_invalid", FieldPath: "payload.permissions[].data_policy", MessageKey: "backend.identity.data_policy_invalid"},
 		},
 		Examples: []authoringcontract.CapabilityAuthoringExample{
 			{Name: "minimal_valid", Value: map[string]any{"expected_schema_hash": "$instance.schema_hash", "payload": map[string]any{"key": "sales_manager", "name": "Sales Manager", "permissions": []any{map[string]any{"permission_key": "order.read", "data_scope": "org_child"}}}}},
+			{Name: "relational_data_policy", Value: map[string]any{"expected_schema_hash": "$instance.schema_hash", "payload": map[string]any{"key": "account_manager", "name": "Account Manager", "permissions": []any{map[string]any{"permission_key": "order.read", "data_policy": map[string]any{"operator": "in", "path": []any{map[string]any{"direction": "forward", "relation_field_key": "customer_id", "target_object_key": "customer"}}, "field_key": "organization_id", "subject_claim": "org_scope_ids"}}}}}},
 			{Name: "representative", Value: map[string]any{"expected_schema_hash": "$instance.schema_hash", "payload": map[string]any{"key": "sales_manager", "name": "Sales Manager", "permissions": []any{}, "audience": "user", "assignment_mode": "manual", "provision_to_workspaces": true, "permission_set_group_keys": []any{"sales_operations"}, "guardrail_keys": []any{"protect_security_raw"}}}},
 			{Name: "invalid_with_repair", Value: map[string]any{"expected_schema_hash": "$instance.schema_hash", "payload": map[string]any{"key": "", "name": "Sales Manager", "permissions": []any{}}}, ExpectedErrorCodes: []string{"backend.identity.role_id_key_required"}},
 		},
@@ -67,10 +72,10 @@ func IdentityRolePermissionAuthoringCapability() authoringcontract.CapabilityAut
 	permission := identityRolePermissionGrantSchema(false)
 	input := &authoringcontract.CapabilityAuthoringSchema{
 		Schema: "https://json-schema.org/draft/2020-12/schema", Type: "object", AdditionalProperties: closed, Required: []string{"permissions"},
-		Properties: map[string]authoringcontract.CapabilityAuthoringSchema{"permissions": {Type: "array", Items: &permission}},
+		Definitions: identityProjectDataPolicyDefinitions(), Properties: map[string]authoringcontract.CapabilityAuthoringSchema{"permissions": {Type: "array", Items: &permission}},
 	}
 	assignment := identityRolePermissionGrantSchema(true)
-	output := &authoringcontract.CapabilityAuthoringSchema{Schema: "https://json-schema.org/draft/2020-12/schema", Type: "array", Items: &assignment}
+	output := &authoringcontract.CapabilityAuthoringSchema{Schema: "https://json-schema.org/draft/2020-12/schema", Type: "array", Items: &assignment, Definitions: identityProjectDataPolicyDefinitions()}
 	return authoringcontract.CapabilityAuthoringDefinition{
 		Key: "identity.role_permission", Status: "supported", Lifecycle: "versioned_metadata", Requires: []string{"identity.role"},
 		Parameters:         []authoringcontract.CapabilityAuthoringParameter{{Key: "permissions", Type: "array", Required: true, ItemSchema: "role_permission"}},
@@ -92,10 +97,11 @@ func IdentityRolePermissionAuthoringCapability() authoringcontract.CapabilityAut
 			{Code: "backend.identity.permission_disabled", FieldPath: "permissions[].permission_key", ParameterKeys: []string{"allowed", "actual"}, MessageKey: "backend.identity.permission_disabled"},
 			{Code: "backend.identity.permission_duplicate", FieldPath: "permissions[].permission_key", ParameterKeys: []string{"actual"}, MessageKey: "backend.identity.permission_duplicate"},
 			{Code: "backend.identity.data_scope_invalid", FieldPath: "permissions[].data_scope", ParameterKeys: []string{"allowed", "actual"}, MessageKey: "backend.identity.data_scope_invalid"},
+			{Code: "backend.identity.data_policy_invalid", FieldPath: "permissions[].data_policy", MessageKey: "backend.identity.data_policy_invalid"},
 		},
 		Examples: []authoringcontract.CapabilityAuthoringExample{
 			{Name: "minimal_valid", Value: map[string]any{"permissions": []any{map[string]any{"permission_key": "order.complete", "data_scope": "org"}}}},
-			{Name: "representative", Value: map[string]any{"permissions": []any{map[string]any{"permission_key": "order.complete", "data_scope": "org"}, map[string]any{"permission_key": "order.read", "data_scope": "org_child"}}}},
+			{Name: "representative", Value: map[string]any{"permissions": []any{map[string]any{"permission_key": "order.complete", "data_scope": "org"}, map[string]any{"permission_key": "order.read", "data_policy": map[string]any{"operator": "eq", "field_key": "owner_id", "subject_claim": "id"}}}}},
 			{Name: "invalid_with_repair", Value: map[string]any{"permissions": []any{map[string]any{"permission_key": "order.complete", "data_scope": "all_records"}}}, ExpectedErrorCodes: []string{"backend.identity.data_scope_invalid"}},
 		},
 		Sources: identityAuthoringSources("IdentityPermissionDefinition", "ValidateRolePermissions"),
@@ -104,17 +110,72 @@ func IdentityRolePermissionAuthoringCapability() authoringcontract.CapabilityAut
 
 func identityRolePermissionGrantSchema(includeRoleID bool) authoringcontract.CapabilityAuthoringSchema {
 	closed := identityBoolPointer(false)
-	required := []string{"permission_key", "data_scope"}
-	properties := map[string]authoringcontract.CapabilityAuthoringSchema{
+	required := []string{"permission_key"}
+	common := map[string]authoringcontract.CapabilityAuthoringSchema{
 		"permission_key": {Type: "string", MinLength: identityIntPointer(1)},
-		"data_scope":     {Type: "string", Enum: identityStringsToAny(identitymodel.AuthoringDataScopeValues())},
 		"audit_denial":   {Type: "boolean", Default: false},
 	}
 	if includeRoleID {
 		required = append(required, "role_id")
-		properties["role_id"] = authoringcontract.CapabilityAuthoringSchema{Type: "string", MinLength: identityIntPointer(1)}
+		common["role_id"] = authoringcontract.CapabilityAuthoringSchema{Type: "string", MinLength: identityIntPointer(1)}
 	}
-	return authoringcontract.CapabilityAuthoringSchema{Type: "object", AdditionalProperties: closed, Required: required, Properties: properties}
+	scopeProperties := identityAuthoringSchemaProperties(common)
+	scopeProperties["data_scope"] = authoringcontract.CapabilityAuthoringSchema{Type: "string", Enum: identityStringsToAny(identitymodel.AuthoringDataScopeValues())}
+	policyProperties := identityAuthoringSchemaProperties(common)
+	policyProperties["data_policy"] = authoringcontract.CapabilityAuthoringSchema{Ref: "#/$defs/project_data_policy"}
+	return authoringcontract.CapabilityAuthoringSchema{
+		OneOf: []authoringcontract.CapabilityAuthoringSchema{
+			{Type: "object", AdditionalProperties: closed, Required: append(append([]string(nil), required...), "data_scope"), Properties: scopeProperties},
+			{Type: "object", AdditionalProperties: closed, Required: append(append([]string(nil), required...), "data_policy"), Properties: policyProperties},
+		},
+	}
+}
+
+func identityAuthoringSchemaProperties(input map[string]authoringcontract.CapabilityAuthoringSchema) map[string]authoringcontract.CapabilityAuthoringSchema {
+	result := make(map[string]authoringcontract.CapabilityAuthoringSchema, len(input))
+	for key, value := range input {
+		result[key] = value
+	}
+	return result
+}
+
+func identityProjectDataPolicyDefinitions() map[string]authoringcontract.CapabilityAuthoringSchema {
+	closed := identityBoolPointer(false)
+	relation := authoringcontract.CapabilityAuthoringSchema{
+		Type: "object", AdditionalProperties: closed,
+		Required: []string{"direction", "relation_field_key", "target_object_key"},
+		Properties: map[string]authoringcontract.CapabilityAuthoringSchema{
+			"direction":          {Type: "string", Enum: []any{identitysdk.RelationForward, identitysdk.RelationReverse}},
+			"relation_field_key": {Type: "string", MinLength: identityIntPointer(1)},
+			"target_object_key":  {Type: "string", MinLength: identityIntPointer(1)},
+		},
+	}
+	booleanNode := func(operator string, minItems, maxItems int) authoringcontract.CapabilityAuthoringSchema {
+		return authoringcontract.CapabilityAuthoringSchema{
+			Type: "object", AdditionalProperties: closed, Required: []string{"operator", "children"},
+			Properties: map[string]authoringcontract.CapabilityAuthoringSchema{
+				"operator": {Const: operator},
+				"children": {Type: "array", MinItems: identityIntPointer(minItems), MaxItems: identityIntPointer(maxItems), Items: &authoringcontract.CapabilityAuthoringSchema{Ref: "#/$defs/project_data_policy"}},
+			},
+		}
+	}
+	leafNode := func(operator string, claims []any) authoringcontract.CapabilityAuthoringSchema {
+		return authoringcontract.CapabilityAuthoringSchema{
+			Type: "object", AdditionalProperties: closed, Required: []string{"operator", "field_key", "subject_claim"},
+			Properties: map[string]authoringcontract.CapabilityAuthoringSchema{
+				"operator": {Const: operator}, "field_key": {Type: "string", MinLength: identityIntPointer(1)},
+				"subject_claim": {Type: "string", Enum: claims},
+				"path":          {Type: "array", MaxItems: identityIntPointer(3), Items: &relation},
+			},
+		}
+	}
+	return map[string]authoringcontract.CapabilityAuthoringSchema{
+		"project_data_policy": {OneOf: []authoringcontract.CapabilityAuthoringSchema{
+			booleanNode(identitysdk.ProjectDataPolicyAnd, 2, 64), booleanNode(identitysdk.ProjectDataPolicyOr, 2, 64), booleanNode(identitysdk.ProjectDataPolicyNot, 1, 1),
+			leafNode(identitysdk.ProjectDataPolicyEq, []any{identitysdk.ProjectSubjectClaimID, identitysdk.ProjectSubjectClaimWorkspaceID, identitysdk.ProjectSubjectClaimOrgID, identitysdk.ProjectSubjectClaimSupportOrgID}),
+			leafNode(identitysdk.ProjectDataPolicyIn, []any{identitysdk.ProjectSubjectClaimOrgScopeIDs, identitysdk.ProjectSubjectClaimSupportOrgScopeIDs, identitysdk.ProjectSubjectClaimReportingScopeUserIDs}),
+		}},
+	}
 }
 
 func identityRoleMetadataRoutes(readRoutes ...string) []string {

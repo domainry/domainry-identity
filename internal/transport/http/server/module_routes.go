@@ -55,9 +55,19 @@ func identityModuleSDKPrincipal(principal identitymodel.Principal, actionKey str
 		resource, action := actionKey[:separator], actionKey[separator+1:]
 		grants = append(grants, identitysdk.FunctionGrant{Resource: identitysdk.ResourceType(resource), Action: identitysdk.Action(action), Effect: identitysdk.EffectAllow})
 		for index, permission := range identitymodel.RolePermissionsForKey(principal.Role.Permissions, actionKey) {
+			predicate := identityModuleDataScopePredicate(permission.DataScope)
+			dataScopes := []identitysdk.DataScope{identitysdk.DataScope(permission.DataScope)}
+			if permission.DataPolicy != nil {
+				compiled, err := permission.DataPolicy.Predicate()
+				if err != nil {
+					continue
+				}
+				predicate = compiled
+				dataScopes = nil
+			}
 			dataPolicies = append(dataPolicies, identitysdk.DataPolicy{
 				Key: "module-" + actionKey + "-" + strconv.Itoa(index), Resource: identitysdk.ResourceType(resource), Action: identitysdk.Action(action), Effect: identitysdk.EffectAllow,
-				DataScopes: []identitysdk.DataScope{identitysdk.DataScope(permission.DataScope)}, Predicate: identityModuleDataScopePredicate(permission.DataScope),
+				DataScopes: dataScopes, Predicate: predicate,
 			})
 		}
 		permissions = append(permissions, actionKey)

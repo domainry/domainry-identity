@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	identitysdk "github.com/domainry/domainry-identity-sdk"
 	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
@@ -248,7 +249,7 @@ func (s *IdentityDomainService) identityFilterExecutablePermissions(grants []ide
 	for _, grant := range grants {
 		key := strings.TrimSpace(grant.PermissionKey)
 		definition, found := definitions[key]
-		if !found || definition.DefinitionStatus != identitymodel.IdentityPermissionDefinitionActive || !definition.Enabled || !grant.DataScope.Valid() {
+		if !found || definition.DefinitionStatus != identitymodel.IdentityPermissionDefinitionActive || !definition.Enabled || !grant.Valid() {
 			continue
 		}
 		grant.PermissionKey = key
@@ -447,16 +448,24 @@ func identityFilterGuardrailDeniedPermissions(role identitymodel.RoleSchema) []i
 
 func identityCanonicalRolePermissions(values []identitymodel.RolePermission) []identitymodel.RolePermission {
 	type permissionKey struct {
-		key   string
-		scope identitymodel.IdentityDataScope
+		key    string
+		scope  identitymodel.IdentityDataScope
+		policy string
 	}
 	byKey := map[permissionKey]identitymodel.RolePermission{}
 	for _, value := range values {
 		value.PermissionKey = strings.TrimSpace(value.PermissionKey)
-		if value.PermissionKey == "" || !value.DataScope.Valid() {
+		if value.PermissionKey == "" || !value.Valid() {
 			continue
 		}
-		key := permissionKey{key: value.PermissionKey, scope: value.DataScope}
+		if value.DataPolicy != nil {
+			normalized, err := identitysdk.NormalizeProjectDataPolicy(*value.DataPolicy)
+			if err != nil {
+				continue
+			}
+			value.DataPolicy = &normalized
+		}
+		key := permissionKey{key: value.PermissionKey, scope: value.DataScope, policy: identityCanonicalJSON(value.DataPolicy)}
 		current := byKey[key]
 		value.AuditDenial = value.AuditDenial || current.AuditDenial
 		byKey[key] = value
@@ -467,7 +476,10 @@ func identityCanonicalRolePermissions(values []identitymodel.RolePermission) []i
 	}
 	sort.Slice(result, func(left, right int) bool {
 		if result[left].PermissionKey == result[right].PermissionKey {
-			return result[left].DataScope < result[right].DataScope
+			if result[left].DataScope != result[right].DataScope {
+				return result[left].DataScope < result[right].DataScope
+			}
+			return identityCanonicalJSON(result[left].DataPolicy) < identityCanonicalJSON(result[right].DataPolicy)
 		}
 		return result[left].PermissionKey < result[right].PermissionKey
 	})

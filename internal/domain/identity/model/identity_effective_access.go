@@ -1,5 +1,7 @@
 package identitymodel
 
+import identitysdk "github.com/domainry/domainry-identity-sdk"
+
 // IdentityGrantSource explains one stable path that contributes to effective
 // access. It contains identifiers and lifecycle facts only; it never contains
 // record values or business-profile claims.
@@ -19,22 +21,24 @@ type IdentityGrantSource struct {
 }
 
 type IdentityEffectivePermissionGrant struct {
-	Key         string                `json:"key"`
-	ObjectKey   string                `json:"object_key,omitempty"`
-	Action      string                `json:"action,omitempty"`
-	DataScope   IdentityDataScope     `json:"data_scope"`
-	AuditDenial bool                  `json:"audit_denial,omitempty"`
-	Sources     []IdentityGrantSource `json:"sources"`
+	Key         string                         `json:"key"`
+	ObjectKey   string                         `json:"object_key,omitempty"`
+	Action      string                         `json:"action,omitempty"`
+	DataScope   IdentityDataScope              `json:"data_scope,omitempty"`
+	DataPolicy  *identitysdk.ProjectDataPolicy `json:"data_policy,omitempty"`
+	AuditDenial bool                           `json:"audit_denial,omitempty"`
+	Sources     []IdentityGrantSource          `json:"sources"`
 }
 
 type IdentityEffectiveDataAccess struct {
-	PermissionKey string                `json:"permission_key"`
-	Resource      string                `json:"resource"`
-	Action        string                `json:"action"`
-	Allowed       bool                  `json:"allowed"`
-	Scopes        []IdentityDataScope   `json:"scopes"`
-	AuditDenial   bool                  `json:"audit_denial,omitempty"`
-	Sources       []IdentityGrantSource `json:"sources"`
+	PermissionKey string                         `json:"permission_key"`
+	Resource      string                         `json:"resource"`
+	Action        string                         `json:"action"`
+	Allowed       bool                           `json:"allowed"`
+	Scopes        []IdentityDataScope            `json:"scopes,omitempty"`
+	DataPolicy    *identitysdk.ProjectDataPolicy `json:"data_policy,omitempty"`
+	AuditDenial   bool                           `json:"audit_denial,omitempty"`
+	Sources       []IdentityGrantSource          `json:"sources"`
 }
 
 type IdentityEffectiveFieldAccess struct {

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	identitysdk "github.com/domainry/domainry-identity-sdk"
 )
 
 func TestCanonicalIdentityDataScope(t *testing.T) {
@@ -17,6 +19,21 @@ func TestCanonicalIdentityDataScope(t *testing.T) {
 		if _, ok := CanonicalIdentityDataScope(rejected); ok {
 			t.Fatalf("legacy or unknown scope %q accepted", rejected)
 		}
+	}
+}
+
+func TestNormalizeRolePermissionsAcceptsExactlyOneClosedRelationalPolicy(t *testing.T) {
+	policy := identitysdk.ProjectDataPolicy{Operator: identitysdk.ProjectDataPolicyEq, FieldKey: "owner_id", SubjectClaim: identitysdk.ProjectSubjectClaimID}
+	permissions, valid := NormalizeRolePermissions([]RolePermission{{PermissionKey: " order.read ", DataPolicy: &policy}})
+	if !valid || len(permissions) != 1 || permissions[0].PermissionKey != "order.read" || permissions[0].DataScope != "" || permissions[0].DataPolicy == nil {
+		t.Fatalf("normalized permissions=%#v valid=%t", permissions, valid)
+	}
+	policy.FieldKey = "mutated"
+	if permissions[0].DataPolicy.FieldKey != "owner_id" {
+		t.Fatal("normalized role permission retained an alias to the authoring request")
+	}
+	if _, valid := NormalizeRolePermissions([]RolePermission{{PermissionKey: "order.read", DataScope: IdentityDataScopeAll, DataPolicy: permissions[0].DataPolicy}}); valid {
+		t.Fatal("data_scope plus data_policy was accepted")
 	}
 }
 
