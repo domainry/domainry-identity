@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	sharedsubject "github.com/domainry/domainry-foundation/subjectlifecycle"
 	identitypolicy "github.com/domainry/domainry-identity/internal/domain/identity/policy"
 	privacy "github.com/domainry/domainry-identity/internal/domain/privacy"
 	lifecyclemodel "github.com/domainry/domainry-lifecycle-sdk/model"
@@ -17,8 +18,8 @@ import (
 )
 
 const (
-	sharedSubjectRequestsTable       = "_subject_requests"
-	sharedSubjectExecutionStepsTable = "_subject_steps"
+	sharedSubjectRequestsTable       = sharedsubject.RequestTableName
+	sharedSubjectExecutionStepsTable = sharedsubject.StepTableName
 	lifecycleSubjectOwner            = "lifecycle"
 	subjectEraseFenceOperation       = "erase_fence"
 	identitySubjectOwner             = "identity"

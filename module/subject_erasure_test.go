@@ -2,28 +2,20 @@ package module_test
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
-	"github.com/domainry/domainry-foundation/requestcontext"
-	identitysdk "github.com/domainry/domainry-identity-sdk"
-	principalresolver "github.com/domainry/domainry-identity-sdk/authorization/principal"
-	identitymodule "github.com/domainry/domainry-identity/module"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/domainry/domainry-foundation/requestcontext"
+	identitysdk "github.com/domainry/domainry-identity-sdk"
+	principalresolver "github.com/domainry/domainry-identity-sdk/authorization/principal"
+	identitymodule "github.com/domainry/domainry-identity/module"
 )
 
-func bindSharedSubjectLifecycle(t *testing.T, binding identitysdk.Binding, db *sql.DB) {
+func bindSharedSubjectLifecycle(t *testing.T, binding identitysdk.Binding) {
 	t.Helper()
-	for _, statement := range []string{
-		`CREATE TABLE _subject_requests (id TEXT NOT NULL, workspace_id TEXT NOT NULL, request_type TEXT NOT NULL, kind TEXT NOT NULL, resolved_identity TEXT NOT NULL, PRIMARY KEY(workspace_id,id))`,
-		`CREATE TABLE _subject_steps (workspace_id TEXT NOT NULL, request_id TEXT NOT NULL, owner TEXT NOT NULL, operation TEXT NOT NULL, payload_json TEXT NOT NULL, completed_at TEXT NOT NULL, PRIMARY KEY(workspace_id,request_id,owner,operation))`,
-	} {
-		if _, err := db.ExecContext(t.Context(), statement); err != nil {
-			t.Fatal(err)
-		}
-	}
 	binder, ok := binding.(identitysdk.SubjectLifecyclePersistenceBinding)
 	if !ok {
 		t.Fatal("module shared subject lifecycle persistence binder missing")
@@ -89,8 +81,8 @@ func TestSubjectErasureThroughModuleRevokesSessionsAndPreservesReceipt(t *testin
 	if _, err = subjects.SystemSubjects().PreviewSubject(ctx, erase.WorkspaceID, erase.SubjectID); err == nil || !strings.Contains(err.Error(), "unbound") {
 		t.Fatalf("unbound shared Lifecycle persistence error=%v", err)
 	}
-	bindSharedSubjectLifecycle(t, binding, db)
-	if _, err = db.ExecContext(ctx, `INSERT INTO _subject_requests(id,workspace_id,request_type,kind,resolved_identity) VALUES(?,?,'subject_request','erase',?)`, erase.RequestID, erase.WorkspaceID, erase.SubjectID); err != nil {
+	bindSharedSubjectLifecycle(t, binding)
+	if _, err = db.ExecContext(ctx, `INSERT INTO _subject_requests(id,workspace_id,request_type,kind,status,subject_id,resolved_identity,updated_at,payload_json) VALUES(?,?,'subject_request','erase','executing',?,?,?,'{}')`, erase.RequestID, erase.WorkspaceID, erase.SubjectID, erase.SubjectID, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = db.ExecContext(ctx, `INSERT INTO _subject_steps(workspace_id,request_id,owner,operation,payload_json,completed_at) VALUES(?,?,'lifecycle','erase_fence','{}',?)`, erase.WorkspaceID, erase.RequestID, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {

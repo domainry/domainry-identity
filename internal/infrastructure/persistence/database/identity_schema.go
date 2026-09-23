@@ -15,6 +15,7 @@ import (
 	auditmodule "github.com/domainry/domainry-audit/module"
 	shareddefinition "github.com/domainry/domainry-foundation/definition"
 	sharedoperation "github.com/domainry/domainry-foundation/operation"
+	sharedsubject "github.com/domainry/domainry-foundation/subjectlifecycle"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/base"
 	migrationcontract "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/migration"
 	identityschema "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/schema"
@@ -91,6 +92,9 @@ func (s *IdentityStore) EnsureSchema(ctx context.Context) error {
 		return err
 	}
 	if err := s.ensureOperationsKernelLocked(ctx); err != nil {
+		return err
+	}
+	if err := s.ensureSubjectLifecycleKernelLocked(ctx); err != nil {
 		return err
 	}
 	if err := s.EnsureEvidenceSchema(ctx); err != nil {
@@ -235,6 +239,17 @@ func (s *IdentityStore) EnsureDefinitionsSchema(ctx context.Context) error {
 	return s.ApplyOwnedMigrations(ctx, shareddefinition.MigrationOwner, migrations)
 }
 
+func (s *IdentityStore) EnsureSubjectLifecycleSchema(ctx context.Context) error {
+	migrations, err := sharedsubject.SchemaMigrationsForDialect(s.SchemaRenderer())
+	if err != nil {
+		return err
+	}
+	if s.hostModuleMigrations != nil {
+		return s.hostModuleMigrations.ApplyOwnedMigrations(ctx, sharedsubject.MigrationOwner, migrations)
+	}
+	return s.ApplyOwnedMigrations(ctx, sharedsubject.MigrationOwner, migrations)
+}
+
 func (s *IdentityStore) ensureDefinitionsKernelLocked(ctx context.Context) error {
 	migrations, err := shareddefinition.SchemaMigrationsForDialect(s.SchemaRenderer())
 	if err != nil {
@@ -252,6 +267,14 @@ func (s *IdentityStore) ensureOperationsKernelLocked(ctx context.Context) error 
 		return err
 	}
 	return s.ApplyOwnedMigrationsLocked(ctx, sharedoperation.MigrationOwner, migrations)
+}
+
+func (s *IdentityStore) ensureSubjectLifecycleKernelLocked(ctx context.Context) error {
+	migrations, err := sharedsubject.SchemaMigrationsForDialect(s.SchemaRenderer())
+	if err != nil {
+		return err
+	}
+	return s.ApplyOwnedMigrationsLocked(ctx, sharedsubject.MigrationOwner, migrations)
 }
 
 func (s *IdentityStore) EnsureEvidenceSchema(ctx context.Context) error {

@@ -133,6 +133,15 @@ func NewWithStore(ctx context.Context, cfg config.Config, store *database.Identi
 		_ = core.CloseContext(context.Background())
 		return nil, fmt.Errorf("bind Identity SaaS shared Operations persistence: %w", err)
 	}
+	subjectLifecycleBinder, ok := core.Binding.(identitysdk.SubjectLifecyclePersistenceBinding)
+	if !ok {
+		_ = core.CloseContext(context.Background())
+		return nil, fmt.Errorf("Identity SaaS binding does not expose shared Subject Lifecycle persistence")
+	}
+	if err := subjectLifecycleBinder.BindSubjectLifecyclePersistence(); err != nil {
+		_ = core.CloseContext(context.Background())
+		return nil, fmt.Errorf("bind Identity SaaS shared Subject Lifecycle persistence: %w", err)
+	}
 	if runtimeURL := strings.TrimSpace(cfg.IdentityActionUsageRuntimeURL); runtimeURL != "" {
 		credentialID, credentialErr := runtimeActionUsageCredentialID(cfg)
 		if credentialErr != nil {

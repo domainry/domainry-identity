@@ -52,21 +52,6 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = ownerDB.Close() })
-	for _, statement := range []string{
-		`CREATE TABLE _subject_requests (id TEXT NOT NULL, workspace_id TEXT NOT NULL, request_type TEXT NOT NULL, kind TEXT NOT NULL, resolved_identity TEXT NOT NULL, PRIMARY KEY(workspace_id,id))`,
-		`CREATE TABLE _subject_steps (workspace_id TEXT NOT NULL, request_id TEXT NOT NULL, owner TEXT NOT NULL, operation TEXT NOT NULL, payload_json TEXT NOT NULL, completed_at TEXT NOT NULL, PRIMARY KEY(workspace_id,request_id,owner,operation))`,
-	} {
-		if _, err = ownerDB.ExecContext(t.Context(), statement); err != nil {
-			t.Fatal(err)
-		}
-	}
-	ownerLifecycle, ok := identityServer.SDKBinding().(identity.SubjectLifecyclePersistenceBinding)
-	if !ok {
-		t.Fatal("Identity server shared subject lifecycle persistence binder missing")
-	}
-	if err = ownerLifecycle.BindSubjectLifecyclePersistence(); err != nil {
-		t.Fatal(err)
-	}
 	testServer.Config.Handler = identityServer.Routes()
 	testServer.Start()
 	t.Cleanup(testServer.Close)
@@ -254,7 +239,7 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 		t.Fatal("remote subject lifecycle unavailable")
 	}
 	erase := identity.SubjectErasureRequest{WorkspaceID: "workspace-primary", SubjectID: session.User.ID, RequestID: "erase-http-admin"}
-	if _, err = ownerDB.ExecContext(t.Context(), `INSERT INTO _subject_requests(id,workspace_id,request_type,kind,resolved_identity) VALUES(?,?,'subject_request','erase',?)`, erase.RequestID, erase.WorkspaceID, erase.SubjectID); err != nil {
+	if _, err = ownerDB.ExecContext(t.Context(), `INSERT INTO _subject_requests(id,workspace_id,request_type,kind,status,subject_id,resolved_identity,updated_at,payload_json) VALUES(?,?,'subject_request','erase','executing',?,?,?,'{}')`, erase.RequestID, erase.WorkspaceID, erase.SubjectID, erase.SubjectID, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = ownerDB.ExecContext(t.Context(), `INSERT INTO _subject_steps(workspace_id,request_id,owner,operation,payload_json,completed_at) VALUES(?,?,'lifecycle','erase_fence','{}',?)`, erase.WorkspaceID, erase.RequestID, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {

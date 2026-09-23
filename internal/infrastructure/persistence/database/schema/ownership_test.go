@@ -8,6 +8,7 @@ import (
 
 	auditmodule "github.com/domainry/domainry-audit/module"
 	shareddefinition "github.com/domainry/domainry-foundation/definition"
+	sharedsubject "github.com/domainry/domainry-foundation/subjectlifecycle"
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
 	identityschema "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/schema"
 	"github.com/domainry/domainry-identity/internal/platform/config"
@@ -37,6 +38,9 @@ func TestEveryStandaloneIdentityTableHasOneOwnerAndMigrationDisposition(t *testi
 		moduleOwned[table] = true
 	}
 	for _, table := range shareddefinition.OwnedTables() {
+		moduleOwned[table] = true
+	}
+	for _, table := range sharedsubject.OwnedTables() {
 		moduleOwned[table] = true
 	}
 	for _, table := range metadatamodule.OwnedTables() {

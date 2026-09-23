@@ -188,6 +188,10 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 			_ = store.CloseContext(context.Background())
 			return nil, fmt.Errorf("open Identity Module Operations persistence: %w", err)
 		}
+		if err := store.EnsureSubjectLifecycleSchema(ctx); err != nil {
+			_ = store.CloseContext(context.Background())
+			return nil, fmt.Errorf("open Identity Module Subject Lifecycle persistence: %w", err)
+		}
 		if err := store.EnsureEmbeddedModuleBindings(ctx); err != nil {
 			_ = store.CloseContext(context.Background())
 			return nil, fmt.Errorf("open Identity embedded module bindings: %w", err)

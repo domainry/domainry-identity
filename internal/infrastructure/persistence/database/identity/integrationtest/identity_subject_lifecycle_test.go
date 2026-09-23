@@ -20,20 +20,12 @@ import (
 
 func bindSharedSubjectLifecycle(t *testing.T, db *sql.DB, store *identitypersistence.SQLIdentityStore) {
 	t.Helper()
-	for _, statement := range []string{
-		`CREATE TABLE _subject_requests (id TEXT NOT NULL, workspace_id TEXT NOT NULL, request_type TEXT NOT NULL, kind TEXT NOT NULL, resolved_identity TEXT NOT NULL, PRIMARY KEY(workspace_id,id))`,
-		`CREATE TABLE _subject_steps (workspace_id TEXT NOT NULL, request_id TEXT NOT NULL, owner TEXT NOT NULL, operation TEXT NOT NULL, payload_json TEXT NOT NULL, completed_at TEXT NOT NULL, PRIMARY KEY(workspace_id,request_id,owner,operation))`,
-	} {
-		if _, err := db.ExecContext(t.Context(), statement); err != nil {
-			t.Fatal(err)
-		}
-	}
 	store.BindSubjectLifecyclePersistence()
 }
 
 func beginSharedSubjectErasure(t *testing.T, db *sql.DB, workspaceID, subjectID, requestID string) {
 	t.Helper()
-	if _, err := db.ExecContext(t.Context(), `INSERT INTO _subject_requests(id,workspace_id,request_type,kind,resolved_identity) VALUES(?,?,'subject_request','erase',?)`, requestID, workspaceID, subjectID); err != nil {
+	if _, err := db.ExecContext(t.Context(), `INSERT INTO _subject_requests(id,workspace_id,request_type,kind,status,subject_id,resolved_identity,updated_at,payload_json) VALUES(?,?,'subject_request','erase','executing',?,?,?,'{}')`, requestID, workspaceID, subjectID, subjectID, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.ExecContext(t.Context(), `INSERT INTO _subject_steps(workspace_id,request_id,owner,operation,payload_json,completed_at) VALUES(?,?,'lifecycle','erase_fence','{}',?)`, workspaceID, requestID, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
