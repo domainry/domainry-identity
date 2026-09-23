@@ -2,7 +2,6 @@ package database
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -21,20 +20,17 @@ import (
 	identityschema "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/schema"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 	"github.com/domainry/domainry-orm/query"
-	ormschema "github.com/domainry/domainry-orm/schema"
 )
 
 const (
-	CurrentIdentitySchemaVersion           = "016_shared_manifest_catalog"
-	EmbeddedIdentitySchemaMigrationVersion = uint(16)
-	EmbeddedIdentitySchemaMigrationName    = "shared_manifest_catalog"
+	CurrentIdentitySchemaVersion           = "001_identity_schema"
+	EmbeddedIdentitySchemaMigrationVersion = uint(1)
+	EmbeddedIdentitySchemaMigrationName    = "create_identity_schema"
 )
 
 const (
-	managedIdentityDatabaseTable           = "_identity_managed_database"
-	managedIdentityDatabaseContractVersion = "domainry-managed-identity-database-v1"
-	identitySchemaMigrationKind            = "identity_schema"
-	identitySchemaMigrationName            = "identity_schema"
+	identitySchemaMigrationKind = "identity_schema"
+	identitySchemaMigrationName = "identity_schema"
 )
 
 func SupportedIdentitySchemaVersions() []string {
@@ -43,13 +39,7 @@ func SupportedIdentitySchemaVersions() []string {
 
 func (s *IdentityStore) EnsureSchema(ctx context.Context) error {
 	if s.config.EffectiveDatabaseMigrationMode() == "verify" {
-		if err := s.verifyIdentitySchema(ctx); err != nil {
-			return err
-		}
-		if err := s.verifyManagedIdentityDatabaseMarker(ctx); err != nil {
-			return err
-		}
-		return nil
+		return s.verifyIdentitySchema(ctx)
 	}
 	if s.migrationDB != nil {
 		migrationStore := s.identityMigrationStore()
@@ -75,9 +65,6 @@ func (s *IdentityStore) EnsureSchema(ctx context.Context) error {
 		if err := s.startIdentitySchemaMigration(ctx, CurrentIdentitySchemaVersion); err != nil {
 			return err
 		}
-	}
-	if err := s.ensureManagedIdentityDatabaseMarker(ctx); err != nil {
-		return err
 	}
 	if err := s.ensureMetadataModuleSchema(ctx); err != nil {
 		return err
@@ -107,9 +94,6 @@ func (s *IdentityStore) EnsureSchema(ctx context.Context) error {
 }
 
 func (s *IdentityStore) EnsureEmbeddedSchema(ctx context.Context) error {
-	if err := s.ensureManagedIdentityDatabaseMarker(ctx); err != nil {
-		return err
-	}
 	if err := s.EnsureMetadataSchema(ctx); err != nil {
 		return err
 	}
@@ -417,72 +401,8 @@ func (s *IdentityStore) SchemaTableExists(ctx context.Context, table string) (bo
 }
 
 func currentIdentitySchemaChecksum() string {
-	sum := sha256.Sum256([]byte(CurrentIdentitySchemaVersion + ":metadata,identity,audit,authentication,applications,permissions,global_user_login_name,workflow_workload_identity,shared_operations_saas,workspace_write_fences,handler_delivery,store_organization_delivery,organization_unit_delivery,organization_unit_sibling_identity,workspace_identity_usage_active_roles,workspace_identity_bootstrap_v1,installation_administrator_bootstrap,managed_database"))
+	sum := sha256.Sum256([]byte(CurrentIdentitySchemaVersion + ":final_identity_schema"))
 	return hex.EncodeToString(sum[:])
-}
-
-func (s *IdentityStore) ensureManagedIdentityDatabaseMarker(ctx context.Context) error {
-	if !s.sqlBase().Engine.ManagedDatabaseMarkerEnabled() {
-		return nil
-	}
-	database := s.schemaDatabase()
-	statement, arguments, err := ormschema.NewTable(s.BuilderRenderer(), managedIdentityDatabaseTable).
-		IfNotExists().
-		Columns(
-			ormschema.Column("marker_id", ormschema.SmallInt()).NotNull(),
-			ormschema.Column("contract_version", ormschema.Varchar(128)).NotNull(),
-			ormschema.Column("database_identity_sha256", ormschema.Varchar(64)).NotNull(),
-		).
-		PrimaryKey("marker_id").Build()
-	if err != nil {
-		return fmt.Errorf("build managed database cohort marker schema: %w", err)
-	}
-	if _, err := database.ExecContext(ctx, statement, arguments...); err != nil {
-		return fmt.Errorf("prepare managed database cohort marker: %w", err)
-	}
-	seed := make([]byte, 32)
-	if _, err := rand.Read(seed); err != nil {
-		return fmt.Errorf("generate managed database cohort marker: %w", err)
-	}
-	identity := sha256.Sum256(seed)
-	insert, arguments, err := query.NewInsertBuilder(s.sqlBase().SQLRenderer, managedIdentityDatabaseTable).
-		Columns("marker_id", "contract_version", "database_identity_sha256").
-		Values(1, managedIdentityDatabaseContractVersion, hex.EncodeToString(identity[:])).
-		OnConflictDoNothing("marker_id").
-		Build()
-	if err != nil {
-		return fmt.Errorf("build managed database cohort marker: %w", err)
-	}
-	if _, err := database.ExecContext(ctx, insert, arguments...); err != nil {
-		return fmt.Errorf("initialize managed database cohort marker: %w", err)
-	}
-	return s.verifyManagedIdentityDatabaseMarkerWith(ctx, database)
-}
-
-func (s *IdentityStore) verifyManagedIdentityDatabaseMarker(ctx context.Context) error {
-	if !s.sqlBase().Engine.ManagedDatabaseMarkerEnabled() {
-		return nil
-	}
-	return s.verifyManagedIdentityDatabaseMarkerWith(ctx, s.db)
-}
-
-func (s *IdentityStore) verifyManagedIdentityDatabaseMarkerWith(ctx context.Context, database schemaDatabase) error {
-	var contractVersion, identity string
-	queryValue, arguments, err := query.NewSelectBuilder(s.BuilderRenderer(), managedIdentityDatabaseTable).
-		Columns("contract_version", "database_identity_sha256").Where(query.Equal("marker_id", 1)).Limit(1).Build()
-	if err != nil {
-		return fmt.Errorf("build managed database cohort marker verification: %w", err)
-	}
-	if err := database.QueryRowContext(ctx, queryValue, arguments...).Scan(&contractVersion, &identity); err != nil {
-		return fmt.Errorf("verify managed database cohort marker: %w", err)
-	}
-	if contractVersion != managedIdentityDatabaseContractVersion || len(identity) != 64 {
-		return fmt.Errorf("verify managed database cohort marker: invalid marker identity")
-	}
-	if _, err := hex.DecodeString(identity); err != nil {
-		return fmt.Errorf("verify managed database cohort marker: invalid marker identity")
-	}
-	return nil
 }
 
 func (s *IdentityStore) columnDefinition(definition string) string {

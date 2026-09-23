@@ -61,3 +61,33 @@ func quotedColumnDefinitions(store Store, definitions []string) string {
 	}
 	return strings.Join(quoted, ", ")
 }
+
+// workspaceScopedColumnDefinitions renders a fresh-schema table with its real
+// Workspace-scoped primary key. Identity is not deployed yet, so its canonical
+// schema must not create an installation-global key and repair the shape with a
+// compatibility index afterwards.
+func workspaceScopedColumnDefinitions(store Store, definitions []string) string {
+	primaryKey := ""
+	workspaceScoped := false
+	columns := make([]string, 0, len(definitions)+1)
+	for _, definition := range definitions {
+		parts := strings.SplitN(definition, " ", 2)
+		if len(parts) == 0 {
+			continue
+		}
+		column := parts[0]
+		workspaceScoped = workspaceScoped || column == "workspace_id"
+		if strings.Contains(definition, " PRIMARY KEY") {
+			primaryKey = column
+			definition = strings.Replace(definition, " PRIMARY KEY", "", 1)
+			if !strings.Contains(definition, " NOT NULL") {
+				definition += " NOT NULL"
+			}
+		}
+		columns = append(columns, quotedColumnDefinitions(store, []string{definition}))
+	}
+	if workspaceScoped && primaryKey != "" {
+		columns = append(columns, "PRIMARY KEY ("+store.Identifier("workspace_id")+", "+store.Identifier(primaryKey)+")")
+	}
+	return strings.Join(columns, ", ")
+}

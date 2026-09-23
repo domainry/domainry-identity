@@ -8,6 +8,7 @@ import (
 
 	auditmodule "github.com/domainry/domainry-audit/module"
 	shareddefinition "github.com/domainry/domainry-foundation/definition"
+	"github.com/domainry/domainry-foundation/schemaownership"
 	sharedsubject "github.com/domainry/domainry-foundation/subjectlifecycle"
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
 	identityschema "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/schema"
@@ -102,9 +103,6 @@ func TestEveryStandaloneIdentityTableHasOneOwnerAndMigrationDisposition(t *testi
 		}
 	}
 	for table := range ownership {
-		if table == "_identity_managed_database" {
-			continue // SQLite does not need the managed-database cohort marker.
-		}
 		if !actualSet[table] {
 			t.Errorf("owned Identity table %q is absent from the fresh schema", table)
 		}
@@ -136,6 +134,48 @@ func TestEveryStandaloneIdentityTableHasOneOwnerAndMigrationDisposition(t *testi
 		}
 		if err := columnRows.Close(); err != nil {
 			t.Fatal(err)
+		}
+	}
+}
+
+func TestIdentitySchemaOwnershipMatchesFreshPhysicalPrimaryKeys(t *testing.T) {
+	tables := identityschema.SchemaOwnership()
+	if err := schemaownership.ValidateAll(tables); err != nil {
+		t.Fatal(err)
+	}
+	if len(tables) != 22 {
+		t.Fatalf("Identity owned table count=%d, want 22", len(tables))
+	}
+	store, err := database.OpenContext(t.Context(), config.Config{
+		DatabaseDriver: "sqlite",
+		DBPath:         filepath.Join(t.TempDir(), "identity.db"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	if err := store.EnsureIdentitySchema(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	for _, table := range tables {
+		rows, err := store.DB().QueryContext(t.Context(), `SELECT name FROM pragma_table_info(?) WHERE pk > 0 ORDER BY pk`, table.Name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		actual := []string{}
+		for rows.Next() {
+			var column string
+			if err := rows.Scan(&column); err != nil {
+				_ = rows.Close()
+				t.Fatal(err)
+			}
+			actual = append(actual, column)
+		}
+		if err := rows.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Join(actual, ",") != strings.Join(table.PrimaryKey, ",") {
+			t.Errorf("table %s physical primary key=%v, ownership=%v", table.Name, actual, table.PrimaryKey)
 		}
 	}
 }

@@ -46,12 +46,10 @@ func TestAuthenticationProtocolsKeepDedicatedStoresAndSecurityIndexes(t *testing
 	}
 
 	for index, expectedColumns := range map[string][]string{
-		"idx_auth_refresh_tokens_hash":                              {"token_hash", "workspace_id"},
-		"idx_auth_refresh_tokens_replaced_by":                       {"workspace_id", "replaced_by_id"},
-		"idx_auth_login_transactions_state":                         {"state_hash", "provider_key", "workspace_id"},
-		"idx_auth_assertion_replays_expiry":                         {"workspace_id", "expires_at"},
-		"uniq_identity_auth_authorization_codes_workspace_identity": {"workspace_id", "code_hash"},
-		"uniq_identity_auth_assertion_replays_workspace_identity":   {"workspace_id", "replay_hash"},
+		"idx_auth_refresh_tokens_hash":        {"token_hash", "workspace_id"},
+		"idx_auth_refresh_tokens_replaced_by": {"workspace_id", "replaced_by_id"},
+		"idx_auth_login_transactions_state":   {"state_hash", "provider_key", "workspace_id"},
+		"idx_auth_assertion_replays_expiry":   {"workspace_id", "expires_at"},
 	} {
 		actualColumns, err := authProtocolSQLiteIndexColumns(store.DB(), index)
 		if err != nil {
@@ -61,6 +59,35 @@ func TestAuthenticationProtocolsKeepDedicatedStoresAndSecurityIndexes(t *testing
 			t.Errorf("index %s columns=%v, want %v", index, actualColumns, expectedColumns)
 		}
 	}
+	for table, expectedColumns := range map[string][]string{
+		"_identity_auth_authorization_codes": {"workspace_id", "code_hash"},
+		"_identity_auth_assertion_replays":   {"workspace_id", "replay_hash"},
+	} {
+		actualColumns, err := authProtocolSQLitePrimaryKeyColumns(store.DB(), table)
+		if err != nil {
+			t.Fatalf("inspect %s primary key: %v", table, err)
+		}
+		if !reflect.DeepEqual(actualColumns, expectedColumns) {
+			t.Errorf("table %s primary key=%v, want %v", table, actualColumns, expectedColumns)
+		}
+	}
+}
+
+func authProtocolSQLitePrimaryKeyColumns(db *sql.DB, table string) ([]string, error) {
+	rows, err := db.Query(`SELECT name FROM pragma_table_info(?) WHERE pk > 0 ORDER BY pk`, table)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	columns := []string{}
+	for rows.Next() {
+		var column string
+		if err := rows.Scan(&column); err != nil {
+			return nil, err
+		}
+		columns = append(columns, column)
+	}
+	return columns, rows.Err()
 }
 
 func authProtocolSQLiteTableColumns(db *sql.DB, table string) (map[string]bool, error) {

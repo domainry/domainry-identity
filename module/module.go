@@ -2,13 +2,22 @@
 // Implementation details remain under internal/assembly/module.
 package module
 
-import moduleassembly "github.com/domainry/domainry-identity/internal/assembly/module"
-import organizationunit "github.com/domainry/domainry-identity/organizationunit"
+import (
+	"github.com/domainry/domainry-foundation/schemaownership"
+	moduleassembly "github.com/domainry/domainry-identity/internal/assembly/module"
+	databaseschema "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/schema"
+	organizationunit "github.com/domainry/domainry-identity/organizationunit"
+)
 
 const IdentityPortabilityProviderKey = moduleassembly.IdentityPortabilityProviderKey
 
 type Options = moduleassembly.Options
 type Factory = moduleassembly.Factory
+
+const MigrationOwner = databaseschema.MigrationOwner
+
+func SchemaOwnership() []schemaownership.Table { return databaseschema.SchemaOwnership() }
+func OwnedTables() []string                    { return schemaownership.Names(SchemaOwnership()) }
 
 // Organization-unit delivery aliases keep the public module facade thin while
 // exposing the optional in-process capability to embedding Runtime versions.

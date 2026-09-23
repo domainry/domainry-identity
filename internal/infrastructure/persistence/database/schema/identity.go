@@ -2,12 +2,7 @@ package schema
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
-
-	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
-	"github.com/domainry/domainry-orm/query"
-	ormschema "github.com/domainry/domainry-orm/schema"
 )
 
 func EnsureIdentitySchema(ctx context.Context, s Store) error {
@@ -219,7 +214,7 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 		},
 		"_identity_auth_provider_credentials": {
 			"workspace_id " + text + " NOT NULL",
-			"provider_key " + text + " NOT NULL",
+			"provider_key " + text + " PRIMARY KEY",
 			"configuration_json TEXT NOT NULL",
 			"secret_envelope TEXT NOT NULL",
 			"updated_by " + text + " NOT NULL",
@@ -293,6 +288,10 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"status " + text + " NOT NULL",
 			"verified_at " + text,
 			"last_used_at " + text,
+			"totp_secret TEXT",
+			"totp_step BIGINT NOT NULL DEFAULT -1",
+			"totp_failures INTEGER NOT NULL DEFAULT 0",
+			"totp_locked_until " + text,
 			"created_at " + text + " NOT NULL",
 			"updated_at " + text + " NOT NULL",
 		},
@@ -311,24 +310,14 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"updated_at " + identityIndexText + " NOT NULL",
 		},
 	}
-	workspaceIdentities := prepareWorkspaceScopedIdentities(tables)
-	// These baseline tables use engine-provided physical types that
+	// These final-schema tables use engine-provided physical types that
 	// domainry-orm cannot yet express as a custom ColumnType.
 	for _, table := range sortedSchemaTables(tables) {
-		if _, err := s.SchemaDB().ExecContext(ctx, "CREATE TABLE IF NOT EXISTS "+s.TableIdentifier(table)+" ("+quotedColumnDefinitions(s, tables[table])+")"); err != nil {
+		if _, err := s.SchemaDB().ExecContext(ctx, "CREATE TABLE IF NOT EXISTS "+s.TableIdentifier(table)+" ("+workspaceScopedColumnDefinitions(s, tables[table])+")"); err != nil {
 			return fmt.Errorf("create %s: %w", table, err)
 		}
 	}
 	if err := ensureIdentityGlobalLoginNames(ctx, s); err != nil {
-		return err
-	}
-	if err := ensureIdentityOrganizationUnitSiblingKeys(ctx, s); err != nil {
-		return err
-	}
-	if err := s.EnsureCompositePrimaryKey(ctx, "_identity_auth_provider_credentials", "workspace_id", "provider_key"); err != nil {
-		return fmt.Errorf("ensure workspace auth provider credential identity: %w", err)
-	}
-	if err := ensureWorkspaceScopedIdentities(ctx, s, workspaceIdentities); err != nil {
 		return err
 	}
 	if err := s.CreateIndexIfMissing(ctx, "_identity_organization_units", "idx_identity_organization_unit_type_page", false, "workspace_id", "node_type", "id"); err != nil {
@@ -398,107 +387,8 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 	if err := ensureIdentityPermissionsSchema(ctx, s); err != nil {
 		return err
 	}
-	if err := ensureIdentityTOTPSchema(ctx, s); err != nil {
-		return err
-	}
 	if err := ensureIdentityApplicationsSchema(ctx, s); err != nil {
 		return err
-	}
-	return nil
-}
-
-func ensureIdentityOrganizationUnitSiblingKeys(ctx context.Context, s Store) error {
-	const table = "_identity_organization_units"
-	columns, err := s.TableColumns(ctx, table)
-	if err != nil {
-		return fmt.Errorf("inspect Identity organization-unit sibling key: %w", err)
-	}
-	if !columns["sibling_key"] {
-		definition := ormschema.Column("sibling_key", ormschema.TextKey(64)).NotNull().DefaultValue("")
-		statement, arguments, buildErr := ormschema.NewAddColumn(s.SchemaRenderer(), table, definition).Build()
-		if buildErr != nil {
-			return fmt.Errorf("build Identity organization-unit sibling key column: %w", buildErr)
-		}
-		if _, execErr := s.SchemaDB().ExecContext(ctx, statement, arguments...); execErr != nil {
-			return fmt.Errorf("add Identity organization-unit sibling key column: %w", execErr)
-		}
-	}
-
-	statement, arguments, err := query.NewSelectBuilder(s.SchemaRenderer(), table).
-		Columns("id", "workspace_id", "parent_id", "name", "sibling_key").Build()
-	if err != nil {
-		return fmt.Errorf("build Identity organization-unit sibling key backfill query: %w", err)
-	}
-	rows, err := s.SchemaDB().QueryContext(ctx, statement, arguments...)
-	if err != nil {
-		return fmt.Errorf("query Identity organization-unit sibling key backfill: %w", err)
-	}
-	type organizationUnitSibling struct {
-		id, workspaceID, name, currentKey string
-		parentID                          sql.NullString
-	}
-	items := []organizationUnitSibling{}
-	for rows.Next() {
-		var item organizationUnitSibling
-		if scanErr := rows.Scan(&item.id, &item.workspaceID, &item.parentID, &item.name, &item.currentKey); scanErr != nil {
-			_ = rows.Close()
-			return fmt.Errorf("scan Identity organization-unit sibling key backfill: %w", scanErr)
-		}
-		items = append(items, item)
-	}
-	if rowsErr := rows.Err(); rowsErr != nil {
-		_ = rows.Close()
-		return fmt.Errorf("iterate Identity organization-unit sibling key backfill: %w", rowsErr)
-	}
-	if closeErr := rows.Close(); closeErr != nil {
-		return fmt.Errorf("close Identity organization-unit sibling key backfill: %w", closeErr)
-	}
-	for _, item := range items {
-		var parentID *string
-		if item.parentID.Valid {
-			value := item.parentID.String
-			parentID = &value
-		}
-		expected := identitymodel.IdentityOrganizationUnitSiblingKey(parentID, item.name)
-		if item.currentKey == expected {
-			continue
-		}
-		update, updateArguments, buildErr := query.NewWorkspaceUpdateBuilder(s.SchemaRenderer(), table, item.workspaceID).
-			Set("sibling_key", expected).Where(query.Equal("id", item.id)).Build()
-		if buildErr != nil {
-			return fmt.Errorf("build Identity organization-unit sibling key backfill update: %w", buildErr)
-		}
-		if _, execErr := s.SchemaDB().ExecContext(ctx, update, updateArguments...); execErr != nil {
-			return fmt.Errorf("backfill Identity organization-unit sibling key: %w", execErr)
-		}
-	}
-	return nil
-}
-
-func ensureIdentityTOTPSchema(ctx context.Context, s Store) error {
-	const table = "_identity_mfa_factors"
-	columns, err := s.TableColumns(ctx, table)
-	if err != nil {
-		return err
-	}
-	for _, name := range []string{"totp_secret", "totp_step", "totp_failures", "totp_locked_until"} {
-		if columns[name] {
-			continue
-		}
-		definition := ormschema.Column(name, ormschema.Text())
-		if name == "totp_step" {
-			definition = ormschema.Column(name, ormschema.BigInt()).NotNull().DefaultValue(-1)
-		}
-		if name == "totp_failures" {
-			definition = ormschema.Column(name, ormschema.Integer()).NotNull().DefaultValue(0)
-		}
-		statement, args, err := ormschema.NewAddColumn(s.SchemaRenderer(), table, definition).Build()
-		if err != nil {
-			return err
-		}
-		if _, err := s.SchemaDB().ExecContext(ctx, statement, args...); err != nil {
-			return err
-		}
 	}
 	return nil
 }

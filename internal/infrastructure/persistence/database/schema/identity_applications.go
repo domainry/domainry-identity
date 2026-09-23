@@ -33,6 +33,6 @@ func identityApplicationsTableDefinition(renderer ormdialect.Renderer) *ormschem
 			ormschema.Column("created_at", ormschema.Text()).NotNull(),
 			ormschema.Column("updated_at", ormschema.Text()).NotNull(),
 		).
-		PrimaryKey("id").
+		PrimaryKey("workspace_id", "id").
 		Unique("workspace_id", "application_key")
 }
