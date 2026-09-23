@@ -94,8 +94,10 @@ revokes active refresh sessions in the same transaction.
 `RoleKeys` is the complete desired set of manual roles, not an incremental
 patch. Profile binding metadata chooses the trusted relation field and lifecycle
 policy; project code cannot submit a SQL column. User, roles, profile relation,
-session revocation, audit event, and `_identity_handler_deliveries` receipt share
-the same executor.
+session revocation, audit event, and the owner `identity` / kind
+`identity.handler_delivery` shared Operations receipt use the same executor.
+The capability fails closed until the host installs and explicitly binds shared
+Operations persistence.
 
 The idempotency key is scoped by Workspace. Identity fingerprints the canonical
 payload together with the server-derived actor and application audience. An

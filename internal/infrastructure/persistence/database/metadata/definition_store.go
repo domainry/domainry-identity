@@ -199,7 +199,7 @@ func (s MetadataStore) ListMetadataDefinitions(ctx context.Context, resourceType
 		if err != nil {
 			return nil, err
 		}
-		values, err := definitions.List(ctx, metadatasdk.DefinitionQuery{ResourceType: resourceType, SourceID: workspaceID})
+		values, err := definitions.List(ctx, metadatasdk.DefinitionQuery{Owner: metadatasdk.DefinitionOwnerMetadata, ResourceType: resourceType, SourceID: workspaceID})
 		if err != nil {
 			return nil, fmt.Errorf("list %s definitions: %w", resourceType, err)
 		}
@@ -251,7 +251,7 @@ func (s MetadataStore) GetMetadataDefinition(ctx context.Context, resourceType s
 		if err != nil {
 			return metadatamodel.MetadataDefinition{}, false, err
 		}
-		value, found, err := definitions.Get(ctx, resourceType, resourceKey)
+		value, found, err := definitions.Get(ctx, metadatasdk.DefinitionOwnerMetadata, resourceType, resourceKey)
 		if err != nil {
 			return metadatamodel.MetadataDefinition{}, false, fmt.Errorf("get %s definition: %w", resourceType, err)
 		}

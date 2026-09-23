@@ -19,7 +19,7 @@ func TestAuthMutationStagedFailures(t *testing.T) {
 	base := authFailureBase(t)
 	wantErr := errors.New("injected auth mutation failure")
 	now := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
-	request := authmodel.AuthMutationClaimRequest{Receipt: authmodel.AuthMutationReceipt{WorkspaceID: "workspace-primary", UseCase: "reset", TargetID: "user", IdempotencyKey: "key"}, RequestFingerprint: "fp", LeaseOwner: "worker", Now: now, LeaseTTL: time.Second}
+	request := authmodel.AuthMutationClaimRequest{Receipt: authmodel.AuthMutationReceipt{WorkspaceID: "workspace-primary", UseCase: "reset", TargetID: "user", ActorID: "actor", IdempotencyKey: "key"}, RequestFingerprint: "fp", LeaseOwner: "worker", Now: now, LeaseTTL: time.Second}
 	expired := authMutationQueryStep{columns: authMutationReceiptColumns(), rows: [][]driver.Value{authMutationRow("processing", "fp", now.Add(-time.Second), 1)}}
 	live := authMutationQueryStep{columns: authMutationReceiptColumns(), rows: [][]driver.Value{authMutationRow("processing", "fp", now.Add(time.Minute), 2)}}
 
@@ -218,6 +218,7 @@ func authFailureBase(t *testing.T) AuthStore {
 	if err != nil {
 		t.Fatal(err)
 	}
+	identity.BindOperationsPersistence()
 	return NewAuthStore(identity)
 }
 
@@ -228,7 +229,10 @@ func scriptedAuthStore(base AuthStore, state *authDBState) (AuthStore, func()) {
 }
 
 func authMutationRow(status, fingerprint string, expires time.Time, token int64) []driver.Value {
-	return []driver.Value{"receipt", "workspace-primary", "reset", "user", "key", fingerprint, status, "{}", "worker", expires.Format(time.RFC3339Nano), token, "", "", "actor", "created", "updated"}
+	if status == "processing" {
+		status = "started"
+	}
+	return []driver.Value{"receipt", "workspace-primary", "reset", "identity_user", "user", "key", fingerprint, "actor", status, "{}", "worker", expires.Format(time.RFC3339Nano), token, "", "", "created", "updated"}
 }
 
 type authMutationQueryStep struct {

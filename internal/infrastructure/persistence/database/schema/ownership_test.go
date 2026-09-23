@@ -29,6 +29,9 @@ func TestEveryStandaloneIdentityTableHasOneOwnerAndMigrationDisposition(t *testi
 	ownership := map[string]identityschema.TableOwnership{}
 	moduleOwned := map[string]bool{}
 	hostOwned := map[string]bool{"_schema_migrations": true}
+	for _, table := range identityschema.OperationsKernelTables() {
+		hostOwned[table] = true
+	}
 	for _, table := range auditmodule.OwnedTables() {
 		moduleOwned[table] = true
 	}

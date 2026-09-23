@@ -14,6 +14,9 @@ type Backend interface {
 	DB() *sql.DB
 	SQLRenderer() ormdialect.Renderer
 	ApplyUpsert(*query.InsertBuilder, []string, ...string) *query.InsertBuilder
+	BindSubjectLifecyclePersistence()
+	SubjectLifecyclePersistenceBound() bool
+	OperationsPersistenceBound() bool
 }
 
 type AuthenticationEraser func(context.Context, *sql.Tx, string, string, string) error
@@ -27,6 +30,14 @@ func New(store Backend, eraseAuthentication AuthenticationEraser) *Store {
 	return &Store{store: store, eraseAuthentication: eraseAuthentication}
 }
 func (s *Store) Owner(context.Context) string { return "identity" }
+
+func (s *Store) BindSubjectLifecyclePersistence() {
+	s.store.BindSubjectLifecyclePersistence()
+}
+
+func (s *Store) SubjectLifecyclePersistenceBound() bool {
+	return s.store.SubjectLifecyclePersistenceBound()
+}
 
 func (s *Store) ResolveSubject(ctx context.Context, workspaceID, subjectType, subjectID string) (string, error) {
 	if subjectType != "user" {

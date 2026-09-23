@@ -160,7 +160,7 @@ func (s *Service) executeManaged(ctx context.Context, principal identitymodel.Pr
 	leaseOwner := strings.TrimSpace(s.newID())
 	receipt := Receipt{
 		ID: authoringReceiptID(principal.WorkspaceID, key), WorkspaceID: strings.TrimSpace(principal.WorkspaceID), UseCase: useCase,
-		ResourceType: resourceType, TargetID: targetID, IdempotencyKey: key, RequestFingerprint: fingerprint,
+		ResourceType: resourceType, TargetID: targetID, ActorID: strings.TrimSpace(principal.UserID), IdempotencyKey: key, RequestFingerprint: fingerprint,
 		Status: idempotency.StatusProcessing, LeaseOwner: leaseOwner, LeaseExpiresAt: now.Add(defaultLeaseTTL), FencingToken: 1,
 		CreatedAt: now, UpdatedAt: now,
 	}

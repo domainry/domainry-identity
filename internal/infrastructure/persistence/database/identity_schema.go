@@ -22,9 +22,9 @@ import (
 )
 
 const (
-	CurrentIdentitySchemaVersion           = "014_subject_erasure"
+	CurrentIdentitySchemaVersion           = "014_shared_lifecycle_operations"
 	EmbeddedIdentitySchemaMigrationVersion = uint(14)
-	EmbeddedIdentitySchemaMigrationName    = "subject_erasure"
+	EmbeddedIdentitySchemaMigrationName    = "shared_lifecycle_operations"
 )
 
 const (
@@ -83,6 +83,9 @@ func (s *IdentityStore) EnsureSchema(ctx context.Context) error {
 		return err
 	}
 	if err := s.EnsureIdentitySchema(ctx); err != nil {
+		return err
+	}
+	if err := s.EnsureOperationsSchema(ctx); err != nil {
 		return err
 	}
 	if err := s.EnsureEvidenceSchema(ctx); err != nil {
@@ -170,6 +173,7 @@ type schemaDatabase = identityschema.SQLDatabase
 type identitySchemaAssembler interface {
 	EnsureMetadataSchema(context.Context, identityschema.Store) error
 	EnsureIdentitySchema(context.Context, identityschema.Store) error
+	EnsureOperationsSchema(context.Context, identityschema.Store) error
 	EnsureEvidenceSchema(context.Context, identityschema.Store) error
 }
 
@@ -199,6 +203,13 @@ func (s *IdentityStore) EnsureIdentitySchema(ctx context.Context) error {
 		return s.schemaAssembler.EnsureIdentitySchema(ctx, s)
 	}
 	return identityschema.EnsureIdentitySchema(ctx, s)
+}
+
+func (s *IdentityStore) EnsureOperationsSchema(ctx context.Context) error {
+	if s.schemaAssembler != nil {
+		return s.schemaAssembler.EnsureOperationsSchema(ctx, s)
+	}
+	return identityschema.EnsureOperationsSchema(ctx, s)
 }
 
 func (s *IdentityStore) EnsureEvidenceSchema(ctx context.Context) error {
@@ -341,7 +352,7 @@ func (s *IdentityStore) SchemaTableExists(ctx context.Context, table string) (bo
 }
 
 func currentIdentitySchemaChecksum() string {
-	sum := sha256.Sum256([]byte(CurrentIdentitySchemaVersion + ":metadata,identity,audit,authentication,applications,permissions,global_user_login_name,workflow_workload_identity,workspace_write_fences,handler_delivery,store_organization_delivery,organization_unit_delivery,organization_unit_sibling_identity,workspace_identity_usage_active_roles,workspace_identity_bootstrap_v1,installation_administrator_bootstrap,managed_database"))
+	sum := sha256.Sum256([]byte(CurrentIdentitySchemaVersion + ":metadata,identity,audit,authentication,applications,permissions,global_user_login_name,workflow_workload_identity,shared_operations_saas,workspace_write_fences,handler_delivery,store_organization_delivery,organization_unit_delivery,organization_unit_sibling_identity,workspace_identity_usage_active_roles,workspace_identity_bootstrap_v1,installation_administrator_bootstrap,managed_database"))
 	return hex.EncodeToString(sum[:])
 }
 

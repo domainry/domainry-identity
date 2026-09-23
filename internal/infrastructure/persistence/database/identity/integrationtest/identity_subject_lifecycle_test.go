@@ -18,6 +18,29 @@ import (
 	"github.com/domainry/domainry-identity/internal/platform/config"
 )
 
+func bindSharedSubjectLifecycle(t *testing.T, db *sql.DB, store *identitypersistence.SQLIdentityStore) {
+	t.Helper()
+	for _, statement := range []string{
+		`CREATE TABLE _subject_requests (id TEXT NOT NULL, workspace_id TEXT NOT NULL, request_type TEXT NOT NULL, kind TEXT NOT NULL, resolved_identity TEXT NOT NULL, PRIMARY KEY(workspace_id,id))`,
+		`CREATE TABLE _subject_steps (workspace_id TEXT NOT NULL, request_id TEXT NOT NULL, owner TEXT NOT NULL, operation TEXT NOT NULL, payload_json TEXT NOT NULL, completed_at TEXT NOT NULL, PRIMARY KEY(workspace_id,request_id,owner,operation))`,
+	} {
+		if _, err := db.ExecContext(t.Context(), statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	store.BindSubjectLifecyclePersistence()
+}
+
+func beginSharedSubjectErasure(t *testing.T, db *sql.DB, workspaceID, subjectID, requestID string) {
+	t.Helper()
+	if _, err := db.ExecContext(t.Context(), `INSERT INTO _subject_requests(id,workspace_id,request_type,kind,resolved_identity) VALUES(?,?,'subject_request','erase',?)`, requestID, workspaceID, subjectID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(t.Context(), `INSERT INTO _subject_steps(workspace_id,request_id,owner,operation,payload_json,completed_at) VALUES(?,?,'lifecycle','erase_fence','{}',?)`, workspaceID, requestID, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestIdentitySubjectLifecycleContract(t *testing.T) {
 	store, err := OpenContext(t.Context(), config.Config{DatabaseDriver: "sqlite", DBPath: filepath.Join(t.TempDir(), "identity-lifecycle.db")})
 	if err != nil {
@@ -70,6 +93,11 @@ func TestIdentitySubjectLifecycleContract(t *testing.T) {
 	if id, err := lifecycle.ResolveSubject(t.Context(), "workspace-primary", "user", "user@example.com"); err != nil || id != "user" {
 		t.Fatalf("id=%q err=%v", id, err)
 	}
+	if _, err := lifecycle.EraseSubject(t.Context(), "workspace-primary", "user", nil); err == nil || !strings.Contains(err.Error(), "not bound") {
+		t.Fatalf("unbound shared Lifecycle persistence error=%v", err)
+	}
+	bindSharedSubjectLifecycle(t, store.DB(), identity)
+	beginSharedSubjectErasure(t, store.DB(), "workspace-primary", "user", "subject:user")
 	preview, err := lifecycle.PreviewSubject(t.Context(), "workspace-primary", "user")
 	if err != nil || !strings.Contains(string(preview), `"credentials":1`) || !strings.Contains(string(preview), `"mfa_factors":1`) {
 		t.Fatalf("preview=%s err=%v", preview, err)
@@ -94,6 +122,10 @@ func TestIdentitySubjectLifecycleContract(t *testing.T) {
 		loaded.GivenName != "" || loaded.MiddleName != "" || loaded.FamilyName != "" || loaded.NamePrefix != "" ||
 		loaded.NameSuffix != "" || loaded.NativeName != "" || loaded.NameLocale != "" || loaded.SupportOrgID != "" {
 		t.Fatalf("loaded=%#v found=%v err=%v", loaded, found, err)
+	}
+	var legacyTableCount int
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='_identity_subject_erasure_receipts'`).Scan(&legacyTableCount); err != nil || legacyTableCount != 0 {
+		t.Fatalf("legacy Identity erasure receipt table count=%d err=%v", legacyTableCount, err)
 	}
 	var factorCount int
 	if err := store.DB().QueryRowContext(t.Context(), "SELECT COUNT(*) FROM _identity_mfa_factors WHERE workspace_id = ? AND user_id = ?", "workspace-primary", "user").Scan(&factorCount); err != nil || factorCount != 0 {
@@ -208,6 +240,8 @@ func TestIdentitySubjectEraseRollsBackAtEveryOwnedFactStage(t *testing.T) {
 				t.Fatal(err)
 			}
 			lifecycle := identitypersistence.NewIdentitySubjectLifecycleStore(identity, authpersistence.NewAuthStore(identity).EraseSubjectLoginArtifacts)
+			bindSharedSubjectLifecycle(t, store.DB(), identity)
+			beginSharedSubjectErasure(t, store.DB(), "workspace-primary", "user", "subject:user")
 			if _, err := lifecycle.EraseSubject(t.Context(), "workspace-primary", "user", nil); err == nil {
 				t.Fatal("injected erase failure was ignored")
 			}

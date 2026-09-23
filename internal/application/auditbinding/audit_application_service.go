@@ -37,7 +37,7 @@ func identityPolicy() auditapplication.Policy[identitymodel.Principal, identitym
 			if principal.SystemScope.Valid() {
 				kind = "system"
 			}
-			return auditcontract.Actor{WorkspaceID: principal.WorkspaceID, SubjectID: principal.UserID, RoleKey: principal.Role.Key, Kind: kind, RequestID: principal.RequestID, CorrelationID: principal.CorrelationID, AuthorizationRevision: principal.AuthorizationRevision}
+			return auditcontract.Actor{WorkspaceID: principal.WorkspaceID, SubjectID: principal.UserID, RoleKey: principal.Role.Key, Kind: kind, RequestID: principal.RequestID, CorrelationID: principal.CorrelationID, CausationID: principal.CausationID, AuthorizationRevision: principal.AuthorizationRevision}
 		},
 		WorkspaceID: func(principal identitymodel.Principal) string { return principal.WorkspaceID },
 		ValidateCommand: func(principal identitymodel.Principal) error {
@@ -60,7 +60,7 @@ func identityPolicy() auditapplication.Policy[identitymodel.Principal, identitym
 }
 
 func AuditBuildEvent(ctx context.Context, event, objectKey, recordID string, principal identitymodel.Principal, summary string, before, after, metadata map[string]any) auditcontract.AuditEvent {
-	return auditapplication.NewService[identitymodel.Principal, identitymodel.SystemScope](nil, identityPolicy()).NewAuditEvent(ctx, AuditAppendRequest{Event: event, ObjectKey: objectKey, RecordID: recordID, Principal: principal, Summary: summary, Before: before, After: after, Metadata: metadata})
+	return auditapplication.NewService[identitymodel.Principal, identitymodel.SystemScope](nil, identityPolicy()).NewAuditEvent(ctx, AuditAppendRequest{Family: auditcontract.EventFamilyIdentityGovernance, Event: event, ObjectKey: objectKey, RecordID: recordID, Principal: principal, Summary: summary, Before: before, After: after, Metadata: metadata})
 }
 func AuditRedactSensitiveMap(value map[string]any) map[string]any {
 	return auditapplication.RedactSensitiveMap(value)

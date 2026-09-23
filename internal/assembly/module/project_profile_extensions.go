@@ -41,7 +41,7 @@ func (publisher moduleProjectProfileExtensionPublisher) PublishProjectProfileExt
 			proofs = append(proofs, identitymodel.IdentityProfileClaimProof{Type: proof.Type, FieldKey: proof.FieldKey})
 		}
 		converted = append(converted, identitymodel.IdentityProfileExtension{
-			ContractVersion: extension.ContractVersion, MinReaderVersion: extension.MinReaderVersion, ObjectKey: objectKey,
+			ObjectKey:             objectKey,
 			IdentityRelationField: extension.IdentityRelationField, Cardinality: extension.Cardinality,
 			BusinessIdentity: identitymodel.BusinessIdentityBinding{
 				Key: extension.BusinessIdentity.Key, StatusField: extension.BusinessIdentity.StatusField,
@@ -51,36 +51,11 @@ func (publisher moduleProjectProfileExtensionPublisher) PublishProjectProfileExt
 				AllowUnbound: extension.BindingLifecycle.AllowUnbound, InvitationChannels: append([]string(nil), extension.BindingLifecycle.InvitationChannels...), ClaimProofs: proofs,
 				RebindRequiresApproval: extension.BindingLifecycle.RebindRequiresApproval, RebindRevokesSessions: extension.BindingLifecycle.RebindRevokesSessions,
 			},
-			SummaryFields: append([]string(nil), extension.SummaryFields...), ProfileTabs: append([]string(nil), extension.ProfileTabs...),
-			ProfileTabLabels: cloneStringMap(extension.ProfileTabLabels), ProfileTabFields: cloneStringSliceMap(extension.ProfileTabFields),
-			ProfileTabRelatedObjects: cloneStringSliceMap(extension.ProfileTabRelatedObjects), ProfileTabComponents: cloneStringSliceMap(extension.ProfileTabComponents),
-			DefaultVisibility: extension.DefaultVisibility, RequiredPermissions: append([]string(nil), extension.RequiredPermissions...), StandaloneWorkspace: extension.StandaloneWorkspace,
+			DefaultVisibility: extension.DefaultVisibility, RequiredPermissions: append([]string(nil), extension.RequiredPermissions...),
 		})
 	}
 	publisher.binding.runtime.MetadataRuntime.ReplaceProjectProfileExtensions(converted)
 	return nil
-}
-
-func cloneStringMap(source map[string]string) map[string]string {
-	if source == nil {
-		return nil
-	}
-	result := make(map[string]string, len(source))
-	for key, value := range source {
-		result[key] = value
-	}
-	return result
-}
-
-func cloneStringSliceMap(source map[string][]string) map[string][]string {
-	if source == nil {
-		return nil
-	}
-	result := make(map[string][]string, len(source))
-	for key, value := range source {
-		result[key] = append([]string(nil), value...)
-	}
-	return result
 }
 
 var _ identitysdk.ProjectProfileExtensionPublisher = moduleProjectProfileExtensionPublisher{}

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"sync"
 
+	auditcontract "github.com/domainry/domainry-audit-sdk/contract"
 	dataexchangemodulehost "github.com/domainry/domainry-data-exchange-sdk/modulehost"
 	actioncontract "github.com/domainry/domainry-foundation/action"
 	"github.com/domainry/domainry-foundation/modulehttp"
@@ -114,9 +115,8 @@ func (factory *Factory) OpenBootstrapWithDatabase(ctx context.Context, applicati
 	}
 	authStore := authpersistence.NewAuthStoreWithKeyProvider(identityStore, store.SecretKeyProvider(), store.IdempotencyMetrics(ctx))
 	inner := &moduleBinding{
-		runtime:                    &assembly.Core{Store: store, Manifest: manifest, IdentityStore: identityStore, Identity: identityApp, IdentityActions: identityActions, AuthStore: authStore},
-		application:                identitysdk.ApplicationRef{ApplicationKey: applicationKey},
-		bootstrapNavigationCatalog: emptyWorkspaceBootstrapNavigationCatalog(),
+		runtime:     &assembly.Core{Store: store, Manifest: manifest, IdentityStore: identityStore, Identity: identityApp, IdentityActions: identityActions, AuthStore: authStore},
+		application: identitysdk.ApplicationRef{ApplicationKey: applicationKey},
 	}
 	return newBootstrapBinding(inner), nil
 }
@@ -321,8 +321,7 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 	return &moduleBinding{
 		Binding: scopedBinding, runtime: identityRuntime, application: application, adapters: []identityhttpapi.Adapter{browserAdapter, managementAdapter},
 		portability: &identityPortabilityDataExchangeProvider{service: portabilityService}, workspaceUsage: workspaceUsage,
-		workflowWorkloads:          workflowWorkloads,
-		bootstrapNavigationCatalog: emptyWorkspaceBootstrapNavigationCatalog(),
+		workflowWorkloads: workflowWorkloads,
 	}, nil
 }
 
@@ -353,7 +352,7 @@ func (recorder moduleAuditRecorder) Record(ctx context.Context, event modulehttp
 		return fmt.Errorf("identity module audit appender is unavailable")
 	}
 	return recorder.append(ctx, auditapplication.AuditAppendRequest{
-		IdempotencyKey: idempotencyKey, Event: event.Event, ObjectKey: event.ObjectKey, RecordID: event.RecordID,
+		IdempotencyKey: idempotencyKey, Family: auditcontract.EventFamilyIdentitySecurity, Event: event.Event, ObjectKey: event.ObjectKey, RecordID: event.RecordID,
 		Principal: principal, Summary: event.Summary, Metadata: metadata,
 	})
 }
@@ -407,16 +406,15 @@ func (resolver moduleBusinessProfileResolver) ResolveIdentityBusinessProfiles(ct
 
 type moduleBinding struct {
 	identitysdk.Binding
-	runtime                    *assembly.Core
-	application                identitysdk.ApplicationRef
-	adapters                   []identityhttpapi.Adapter
-	portability                *identityPortabilityDataExchangeProvider
-	workspaceUsage             *identityapplicationinternal.IdentityWorkspaceUsageApplicationService
-	workflowWorkloads          identitysdk.WorkflowWorkloadIdentity
-	bootstrapMu                sync.Mutex
-	bootstrapCredentials       map[string]*workspaceBootstrapPendingCredential
-	bootstrapRoleCatalog       workspaceBootstrapRoleCatalog
-	bootstrapNavigationCatalog workspaceBootstrapNavigationCatalog
+	runtime              *assembly.Core
+	application          identitysdk.ApplicationRef
+	adapters             []identityhttpapi.Adapter
+	portability          *identityPortabilityDataExchangeProvider
+	workspaceUsage       *identityapplicationinternal.IdentityWorkspaceUsageApplicationService
+	workflowWorkloads    identitysdk.WorkflowWorkloadIdentity
+	bootstrapMu          sync.Mutex
+	bootstrapCredentials map[string]*workspaceBootstrapPendingCredential
+	bootstrapRoleCatalog workspaceBootstrapRoleCatalog
 }
 
 func (binding *moduleBinding) IdentityDataExchangeProviders() (string, dataexchangemodulehost.ImportProvider, dataexchangemodulehost.ExportProvider) {
@@ -446,6 +444,26 @@ func (binding *moduleBinding) BindPermissionUsageProvider(provider actioncontrac
 		return fmt.Errorf("Identity module Permission catalog is unavailable")
 	}
 	return binding.runtime.PermissionCatalog.UseActionUsageProvider(provider)
+}
+
+func (binding *moduleBinding) BindSubjectLifecyclePersistence() error {
+	if binding == nil || binding.Binding == nil {
+		return fmt.Errorf("Identity shared subject lifecycle persistence unavailable")
+	}
+	binder, ok := binding.Binding.(identitysdk.SubjectLifecyclePersistenceBinding)
+	if !ok {
+		return fmt.Errorf("Identity shared subject lifecycle persistence unavailable")
+	}
+	return binder.BindSubjectLifecyclePersistence()
+}
+
+func (binding *moduleBinding) BindOperationsPersistence() error {
+	if binding == nil || binding.runtime == nil || binding.runtime.Store == nil || binding.runtime.IdentityStore == nil {
+		return fmt.Errorf("Identity shared Operations persistence unavailable")
+	}
+	binding.runtime.Store.BindOperationsPersistence()
+	binding.runtime.IdentityStore.BindOperationsPersistence()
+	return nil
 }
 
 func (binding *moduleBinding) ApplicationServiceVerifier() identitysdk.ApplicationServiceTokenVerifier {
@@ -500,7 +518,6 @@ func (binding *moduleBinding) Close(ctx context.Context) error {
 	}
 	binding.bootstrapCredentials = nil
 	binding.bootstrapRoleCatalog = workspaceBootstrapRoleCatalog{}
-	binding.bootstrapNavigationCatalog = workspaceBootstrapNavigationCatalog{}
 	binding.bootstrapMu.Unlock()
 	return binding.runtime.CloseContext(ctx)
 }
@@ -510,6 +527,8 @@ var _ identitysdk.DatabaseFactory = (*Factory)(nil)
 var _ identitysdk.BootstrapDatabaseFactory = (*Factory)(nil)
 var _ identitysdk.Binding = (*moduleBinding)(nil)
 var _ identitysdk.PermissionUsageProviderBinder = (*moduleBinding)(nil)
+var _ identitysdk.SubjectLifecyclePersistenceBinding = (*moduleBinding)(nil)
+var _ identitysdk.OperationsPersistenceBinding = (*moduleBinding)(nil)
 var _ identitysdk.SecurityChallengeDeliveryBinder = (*moduleBinding)(nil)
 var _ identitysdk.ApplicationServiceVerificationBinding = (*moduleBinding)(nil)
 var _ identitysdk.ChallengeAuthenticationBinding = (*moduleBinding)(nil)

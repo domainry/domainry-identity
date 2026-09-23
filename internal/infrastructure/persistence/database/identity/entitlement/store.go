@@ -11,6 +11,7 @@ import (
 	"github.com/domainry/domainry-foundation/apperror"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	identitydatascope "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/datascope"
+	operationreceipt "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/operationreceipt"
 	roleassignmentpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/roleassignment"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 	"github.com/domainry/domainry-orm/query"
@@ -33,7 +34,13 @@ type Backend interface {
 	DB() *sql.DB
 	SQLRenderer() ormdialect.Renderer
 	ApplyUpsert(*query.InsertBuilder, []string, ...string) *query.InsertBuilder
+	OperationsPersistenceBound() bool
 }
+
+const (
+	entitlementOperationOwner = "identity"
+	entitlementOperationKind  = "identity.entitlement_batch"
+)
 
 type Store struct {
 	backend               Backend
@@ -54,6 +61,9 @@ func (s Store) GetReceipt(ctx context.Context, workspaceID, idempotencyKey strin
 	if err != nil {
 		return identitymodel.IdentityEntitlementBatchReceipt{}, false, err
 	}
+	if !s.backend.OperationsPersistenceBound() {
+		return identitymodel.IdentityEntitlementBatchReceipt{}, false, fmt.Errorf("identity shared Operations persistence is not bound")
+	}
 	return s.loadReceipt(ctx, s.backend.DB(), workspaceID, strings.TrimSpace(idempotencyKey))
 }
 
@@ -61,6 +71,9 @@ func (s Store) GetReceiptWithinDataScope(ctx context.Context, workspaceID, idemp
 	workspaceID, err := workspaceIdentifier(workspaceID)
 	if err != nil {
 		return identitymodel.IdentityEntitlementBatchReceipt{}, false, err
+	}
+	if !s.backend.OperationsPersistenceBound() {
+		return identitymodel.IdentityEntitlementBatchReceipt{}, false, fmt.Errorf("identity shared Operations persistence is not bound")
 	}
 	receipt, found, err := s.loadReceipt(ctx, s.backend.DB(), workspaceID, strings.TrimSpace(idempotencyKey))
 	if err != nil || !found {
@@ -93,6 +106,9 @@ func (s Store) apply(ctx context.Context, mutation identitymodel.IdentityEntitle
 	mutation.RequestFingerprint = strings.TrimSpace(mutation.RequestFingerprint)
 	if mutation.ActorID == "" || mutation.IdempotencyKey == "" || mutation.RequestFingerprint == "" || len(mutation.Items) == 0 || len(mutation.Items) != len(mutation.Assignments) {
 		return identitymodel.IdentityEntitlementBatchReceipt{}, false, fmt.Errorf("identity entitlement batch mutation is invalid")
+	}
+	if !s.backend.OperationsPersistenceBound() {
+		return identitymodel.IdentityEntitlementBatchReceipt{}, false, fmt.Errorf("identity shared Operations persistence is not bound")
 	}
 	tx, err := s.backend.DB().BeginTx(ctx, nil)
 	if err != nil {
@@ -138,13 +154,13 @@ func (s Store) apply(ctx context.Context, mutation identitymodel.IdentityEntitle
 	}
 
 	resultJSON, _ := json.Marshal(receipt)
-	statement, arguments, err := query.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_entitlement_batch_receipts", workspaceID).
-		Columns("id", "actor_id", "idempotency_key", "request_fingerprint", "result_json", "created_at").
-		Values(receipt.ID, receipt.ActorID, receipt.IdempotencyKey, receipt.RequestFingerprint, string(resultJSON), receipt.CreatedAt).Build()
-	if err != nil {
-		return identitymodel.IdentityEntitlementBatchReceipt{}, false, fmt.Errorf("build identity entitlement batch receipt: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
+	relatedIDsJSON, _ := json.Marshal(entitlementRelatedIDs(receipt.Items))
+	if err := operationreceipt.InsertSucceeded(ctx, tx, s.backend.SQLRenderer(), operationreceipt.Succeeded{
+		ID: receipt.ID, WorkspaceID: workspaceID, Owner: entitlementOperationOwner, Kind: entitlementOperationKind,
+		ActionKey: "identity.entitlements.batch", ResourceType: "identity_entitlement_batch", ResourceID: receipt.ID,
+		IdempotencyKey: receipt.IdempotencyKey, RequestFingerprint: receipt.RequestFingerprint, RequestedBy: receipt.ActorID,
+		Reason: "apply identity entitlement batch", ResultJSON: resultJSON, RelatedIDsJSON: relatedIDsJSON, CompletedAt: receipt.CreatedAt,
+	}); err != nil {
 		return identitymodel.IdentityEntitlementBatchReceipt{}, false, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -184,25 +200,37 @@ func (s Store) receiptTargetsWithinDataScope(ctx context.Context, queryer identi
 }
 
 func (s Store) loadReceipt(ctx context.Context, queryer identityEntitlementReceiptQueryer, workspaceID, idempotencyKey string) (identitymodel.IdentityEntitlementBatchReceipt, bool, error) {
-	statement, arguments, buildErr := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_entitlement_batch_receipts", workspaceID).
-		Columns("result_json", "request_fingerprint").Where(query.Equal("idempotency_key", idempotencyKey)).Build()
-	if buildErr != nil {
-		return identitymodel.IdentityEntitlementBatchReceipt{}, false, buildErr
-	}
-	var resultJSON, fingerprint string
-	err := queryer.QueryRowContext(ctx, statement, arguments...).Scan(&resultJSON, &fingerprint)
-	if errors.Is(err, sql.ErrNoRows) {
-		return identitymodel.IdentityEntitlementBatchReceipt{}, false, nil
-	}
-	if err != nil {
-		return identitymodel.IdentityEntitlementBatchReceipt{}, false, err
+	operation, found, err := operationreceipt.Load(ctx, queryer, s.backend.SQLRenderer(), workspaceID, entitlementOperationOwner, entitlementOperationKind, idempotencyKey)
+	if err != nil || !found {
+		return identitymodel.IdentityEntitlementBatchReceipt{}, found, err
 	}
 	var receipt identitymodel.IdentityEntitlementBatchReceipt
-	if err := json.Unmarshal([]byte(resultJSON), &receipt); err != nil {
+	if err := json.Unmarshal(operation.ResultJSON, &receipt); err != nil {
 		return identitymodel.IdentityEntitlementBatchReceipt{}, false, err
 	}
-	receipt.RequestFingerprint = fingerprint
+	if receipt.ID != operation.ID || receipt.WorkspaceID != workspaceID || receipt.IdempotencyKey != idempotencyKey || receipt.ActorID != operation.RequestedBy {
+		return identitymodel.IdentityEntitlementBatchReceipt{}, false, fmt.Errorf("identity shared entitlement operation scope mismatch")
+	}
+	receipt.RequestFingerprint = operation.RequestFingerprint
 	return receipt, true, nil
+}
+
+func entitlementRelatedIDs(items []identitymodel.IdentityEntitlementBatchItem) []string {
+	seen := make(map[string]struct{}, len(items)*2)
+	result := make([]string, 0, len(items)*2)
+	for _, item := range items {
+		for _, value := range []string{strings.TrimSpace(item.UserID), strings.TrimSpace(item.RoleID)} {
+			if value == "" {
+				continue
+			}
+			if _, found := seen[value]; found {
+				continue
+			}
+			seen[value] = struct{}{}
+			result = append(result, value)
+		}
+	}
+	return result
 }
 
 func workspaceIdentifier(value string) (string, error) {

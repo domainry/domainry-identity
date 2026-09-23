@@ -13,8 +13,6 @@ func TestDecodeManifestRejectsRetiredIdentityProfileDirectory(t *testing.T) {
 		"objects":[],
 		"roles":[],
 		"identity_profile_extensions":[{
-			"contract_version":"identity-profile-extension",
-			"min_reader_version":"identity-profile-extension-reader",
 			"object_key":"employee",
 			"identity_relation_field":"identity_user_id",
 			"cardinality":"one_to_one",

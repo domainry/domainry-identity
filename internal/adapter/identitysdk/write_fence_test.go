@@ -15,6 +15,9 @@ type mutationFenceStub struct {
 	err    error
 }
 
+func (mutationFenceStub) BindOperationsPersistence()       {}
+func (mutationFenceStub) OperationsPersistenceBound() bool { return true }
+
 func (stub mutationFenceStub) IdentityWritesFrozen(context.Context, string) (bool, error) {
 	return stub.frozen, stub.err
 }

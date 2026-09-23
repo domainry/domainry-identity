@@ -28,6 +28,10 @@ func TestEmbeddedWorkspaceExportImportIsDeterministicAndSecretFree(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := sourceService.FreezeWrites(t.Context(), "workspace-a", "freeze-ticket-42", "migration-operator"); err == nil || !strings.Contains(err.Error(), "not bound") {
+		t.Fatalf("unbound shared workspace operation control error=%v", err)
+	}
+	bindSharedWorkspaceOperationControls(t, source)
 
 	dryRun, err := sourceService.Export(t.Context(), portabilityapplication.ExportRequest{WorkspaceID: "workspace-a", SourceMode: "module", DryRun: true})
 	if err != nil {
@@ -47,6 +51,14 @@ func TestEmbeddedWorkspaceExportImportIsDeterministicAndSecretFree(t *testing.T)
 	}
 	if _, err := sourceService.FreezeWrites(t.Context(), "workspace-a", "different-ticket", "migration-operator"); err == nil || !strings.Contains(err.Error(), "write_fence_already_active") {
 		t.Fatalf("active fence was overwritten: %v", err)
+	}
+	var activeControls int
+	if err := source.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _operation_controls WHERE system_purpose='workspace_control' AND control_kind='write_fence' AND owner='workspace-a' AND state='active'`).Scan(&activeControls); err != nil || activeControls != 1 {
+		t.Fatalf("shared active workspace control count=%d err=%v", activeControls, err)
+	}
+	var legacyTables int
+	if err := source.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='_identity_workspace_write_fences'`).Scan(&legacyTables); err != nil || legacyTables != 0 {
+		t.Fatalf("legacy Identity workspace write-fence table count=%d err=%v", legacyTables, err)
 	}
 	assertWriteFenceEvents(t, source, 1, "frozen")
 
@@ -150,14 +162,14 @@ func TestEmbeddedWorkspaceExportImportIsDeterministicAndSecretFree(t *testing.T)
 func assertWriteFenceEvents(t *testing.T, store *database.IdentityStore, wantCount int, wantEvent string) {
 	t.Helper()
 	var count int
-	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _audit_events WHERE workspace_id='workspace-a' AND object_key='_identity_workspace_write_fences'`).Scan(&count); err != nil {
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _audit_events WHERE workspace_id='workspace-a' AND object_key='_operation_controls'`).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
 	if count != wantCount {
 		t.Fatalf("write-fence event count=%d want=%d", count, wantCount)
 	}
 	var matching int
-	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _audit_events WHERE workspace_id='workspace-a' AND object_key='_identity_workspace_write_fences' AND event=?`, "identity.portability_write_fence."+wantEvent).Scan(&matching); err != nil {
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _audit_events WHERE workspace_id='workspace-a' AND object_key='_operation_controls' AND event=?`, "identity.portability_write_fence."+wantEvent).Scan(&matching); err != nil {
 		t.Fatal(err)
 	}
 	if matching != 1 {
@@ -186,6 +198,25 @@ func openIdentityStore(t *testing.T, name string) *database.IdentityStore {
 		t.Fatal(err)
 	}
 	return store
+}
+
+func bindSharedWorkspaceOperationControls(t *testing.T, store *database.IdentityStore) {
+	t.Helper()
+	if _, err := store.DB().ExecContext(t.Context(), `CREATE TABLE IF NOT EXISTS _operation_controls (
+		system_purpose TEXT NOT NULL,
+		control_kind TEXT NOT NULL,
+		owner TEXT NOT NULL,
+		state TEXT NOT NULL,
+		reason TEXT NOT NULL,
+		reference TEXT NOT NULL DEFAULT '',
+		updated_by TEXT NOT NULL,
+		revision BIGINT NOT NULL,
+		updated_at TEXT NOT NULL,
+		PRIMARY KEY(system_purpose,control_kind,owner)
+	)`); err != nil {
+		t.Fatal(err)
+	}
+	store.BindOperationsPersistence()
 }
 
 func seedPortableWorkspace(t *testing.T, store *database.IdentityStore, now time.Time) {

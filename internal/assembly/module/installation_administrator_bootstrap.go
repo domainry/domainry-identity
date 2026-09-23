@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 
+	auditcontract "github.com/domainry/domainry-audit-sdk/contract"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	identitymodulehost "github.com/domainry/domainry-identity-sdk/modulehost"
 	auditapplication "github.com/domainry/domainry-identity/internal/application/auditbinding"
@@ -48,6 +49,11 @@ func (binding *moduleBinding) BootstrapInstallationAdministratorV1(ctx context.C
 		}
 		return installationAdministratorReceipt(stored, true), nil
 	}
+	if exists, err := binding.runtime.IdentityStore.InstallationAdministratorBootstrapReceiptExistsWithExecutor(ctx, tx, request.WorkspaceID); err != nil {
+		return identitymodulehost.InstallationAdministratorBootstrapReceipt{}, fmt.Errorf("inspect installation administrator receipt: %w", err)
+	} else if exists {
+		return identitymodulehost.InstallationAdministratorBootstrapReceipt{}, installationAdministratorError("identity.installation_administrator_already_exists", nil)
+	}
 	companyID, occupied, err := binding.runtime.IdentityStore.InstallationAdministratorBootstrapStateWithExecutor(ctx, tx, request.WorkspaceID, request.LoginID)
 	if err != nil {
 		return identitymodulehost.InstallationAdministratorBootstrapReceipt{}, fmt.Errorf("inspect installation administrator state: %w", err)
@@ -86,7 +92,7 @@ func (binding *moduleBinding) BootstrapInstallationAdministratorV1(ctx context.C
 	principal := identitymodel.NewSystemPrincipal("installation_administrator_bootstrap", identitymodel.NewSystemScope(identitymodel.SystemScopeInstallation, "first installation administrator issuance"), identitymodel.RoleSchema{})
 	principal.WorkspaceID, principal.RequestID = request.WorkspaceID, request.InvocationID
 	if err := binding.runtime.Audit.AppendAudit(identitytransaction.WithExecutor(ctx, tx), auditapplication.AuditAppendRequest{
-		IdempotencyKey: request.InvocationID, Event: "identity.installation_administrator.bootstrap",
+		IdempotencyKey: request.InvocationID, Family: auditcontract.EventFamilyIdentityGovernance, Event: "identity.installation_administrator.bootstrap",
 		ObjectKey: "identity.installation_administrator", RecordID: userID, Principal: principal,
 		Summary:  "Issued first installation administrator",
 		Metadata: map[string]any{"contract_version": request.ContractVersion, "contract_hash": request.ContractHash, "role_key": identitymodulehost.InstallationAdministratorRoleKey},

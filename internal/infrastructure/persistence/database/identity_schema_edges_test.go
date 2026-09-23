@@ -187,12 +187,15 @@ func (stub identitySchemaAssemblerStub) EnsureMetadataSchema(context.Context, id
 func (stub identitySchemaAssemblerStub) EnsureIdentitySchema(context.Context, identityschema.Store) error {
 	return stub.result("identity")
 }
+func (stub identitySchemaAssemblerStub) EnsureOperationsSchema(context.Context, identityschema.Store) error {
+	return stub.result("operations")
+}
 func (stub identitySchemaAssemblerStub) EnsureEvidenceSchema(context.Context, identityschema.Store) error {
 	return stub.result("evidence")
 }
 
 func TestEnsureIdentitySchemaAssemblerFailures(t *testing.T) {
-	for _, stage := range []string{"metadata", "identity", "evidence"} {
+	for _, stage := range []string{"metadata", "identity", "operations", "evidence"} {
 		t.Run(stage, func(t *testing.T) {
 			state := &databaseSQLState{querySteps: identitySchemaLedgerQueries(1, currentIdentitySchemaChecksum(), false)}
 			store := identitySchemaStore(t, state)

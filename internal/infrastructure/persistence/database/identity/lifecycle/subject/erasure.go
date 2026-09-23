@@ -1,10 +1,9 @@
 package subject
 
 import (
+	"bytes"
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,8 +12,127 @@ import (
 
 	identitypolicy "github.com/domainry/domainry-identity/internal/domain/identity/policy"
 	privacy "github.com/domainry/domainry-identity/internal/domain/privacy"
+	lifecyclemodel "github.com/domainry/domainry-lifecycle-sdk/model"
 	"github.com/domainry/domainry-orm/query"
 )
+
+const (
+	sharedSubjectRequestsTable       = "_subject_requests"
+	sharedSubjectExecutionStepsTable = "_subject_steps"
+	lifecycleSubjectOwner            = "lifecycle"
+	subjectEraseFenceOperation       = "erase_fence"
+	identitySubjectOwner             = "identity"
+	subjectEraseOperation            = "erase"
+)
+
+func (s *Store) sharedSubjectFenceRequests(workspaceID, requestID, subjectID string) *query.SelectBuilder {
+	requestIDs := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), sharedSubjectRequestsTable, workspaceID).Columns("id").Where(query.And(
+		query.NotEqual("request_type", "external_erasure"),
+		query.Equal("kind", "erase"),
+		query.Equal("resolved_identity", subjectID),
+	))
+	return query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), sharedSubjectExecutionStepsTable, workspaceID).
+		Columns("request_id").Where(query.And(
+		query.Equal("request_id", requestID),
+		query.Equal("owner", lifecycleSubjectOwner),
+		query.Equal("operation", subjectEraseFenceOperation),
+		query.InSubquery("request_id", requestIDs),
+	))
+}
+
+type subjectErasureResult struct {
+	SubjectID string `json:"subject_id"`
+	RequestID string `json:"request_id"`
+}
+
+type subjectStepReader interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+type subjectStepWriter interface {
+	subjectStepReader
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func (s *Store) sharedSubjectStep(ctx context.Context, reader subjectStepReader, workspaceID, requestID, operation string) (json.RawMessage, bool, error) {
+	statement, args, err := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), sharedSubjectExecutionStepsTable, workspaceID).
+		Columns("payload_json").Where(query.And(
+		query.Equal("request_id", requestID),
+		query.Equal("owner", identitySubjectOwner),
+		query.Equal("operation", operation),
+	)).Build()
+	if err != nil {
+		return nil, false, err
+	}
+	var raw string
+	if err = reader.QueryRowContext(ctx, statement, args...).Scan(&raw); errors.Is(err, sql.ErrNoRows) {
+		return nil, false, nil
+	} else if err != nil {
+		return nil, false, err
+	}
+	var step lifecyclemodel.SubjectExecutionStep
+	if json.Unmarshal([]byte(raw), &step) != nil || step.WorkspaceID != workspaceID || step.RequestID != requestID || step.Owner != identitySubjectOwner || step.Operation != operation || !json.Valid(step.Payload) {
+		return nil, false, fmt.Errorf("identity shared subject execution step invalid")
+	}
+	return append(json.RawMessage(nil), step.Payload...), true, nil
+}
+
+func (s *Store) saveSharedSubjectStep(ctx context.Context, writer subjectStepWriter, workspaceID, requestID, operation string, payload json.RawMessage) error {
+	if !json.Valid(payload) {
+		return fmt.Errorf("identity shared subject execution payload invalid")
+	}
+	if previous, found, err := s.sharedSubjectStep(ctx, writer, workspaceID, requestID, operation); err != nil {
+		return err
+	} else if found {
+		if !bytes.Equal(previous, payload) {
+			return fmt.Errorf("identity shared subject execution step payload conflict")
+		}
+		return nil
+	}
+	completedAt := time.Now().UTC()
+	step := lifecyclemodel.SubjectExecutionStep{
+		WorkspaceID: workspaceID,
+		RequestID:   requestID,
+		Owner:       identitySubjectOwner,
+		Operation:   operation,
+		Payload:     append(json.RawMessage(nil), payload...),
+		CompletedAt: completedAt,
+	}
+	raw, err := json.Marshal(step)
+	if err != nil {
+		return err
+	}
+	statement, args, err := query.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), sharedSubjectExecutionStepsTable, workspaceID).
+		Columns("request_id", "owner", "operation", "payload_json", "completed_at").
+		Values(requestID, identitySubjectOwner, operation, string(raw), completedAt.Format(time.RFC3339Nano)).Build()
+	if err != nil {
+		return err
+	}
+	_, err = writer.ExecContext(ctx, statement, args...)
+	return err
+}
+
+func (s *Store) requireSharedSubjectFence(ctx context.Context, reader subjectStepReader, workspaceID, requestID, subjectID string) error {
+	statement, args, err := s.sharedSubjectFenceRequests(workspaceID, requestID, subjectID).Build()
+	if err != nil {
+		return err
+	}
+	var fencedRequest string
+	if err = reader.QueryRowContext(ctx, statement, args...).Scan(&fencedRequest); errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("identity subject erasure requires Lifecycle fence")
+	} else if err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateSubjectErasureResult(payload json.RawMessage, requestID, subjectID string) error {
+	var result subjectErasureResult
+	if json.Unmarshal(payload, &result) != nil || result.RequestID != requestID || result.SubjectID != subjectID {
+		return fmt.Errorf("identity shared subject erasure result scope mismatch")
+	}
+	return nil
+}
 
 // EraseSubject has one stable request identity even when called without a
 // Lifecycle request. All destructive entry points use the same transaction.
@@ -32,28 +150,26 @@ func (s *Store) EraseSubjectForRequest(ctx context.Context, requestID, workspace
 	if s.eraseAuthentication == nil {
 		return nil, fmt.Errorf("identity authentication erasure is unavailable")
 	}
+	if !s.store.SubjectLifecyclePersistenceBound() {
+		return nil, fmt.Errorf("identity shared subject lifecycle persistence is not bound")
+	}
 	tx, err := s.store.DB().BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
-	statement, args, err := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_subject_erasure_receipts", workspaceID).
-		Columns("subject_id", "result_json").Where(query.Equal("request_id", requestID)).Build()
-	if err != nil {
+	if saved, found, err := s.sharedSubjectStep(ctx, tx, workspaceID, requestID, subjectEraseOperation); err != nil {
 		return nil, err
-	}
-	var savedSubject, savedResult string
-	err = tx.QueryRowContext(ctx, statement, args...).Scan(&savedSubject, &savedResult)
-	if err == nil {
-		if savedSubject != userID {
-			return nil, fmt.Errorf("identity subject erasure request conflict")
+	} else if found {
+		if err := validateSubjectErasureResult(saved, requestID, userID); err != nil {
+			return nil, err
 		}
-		return json.RawMessage(savedResult), nil
+		return saved, nil
 	}
-	if !errors.Is(err, sql.ErrNoRows) {
+	if err = s.requireSharedSubjectFence(ctx, tx, workspaceID, requestID, userID); err != nil {
 		return nil, err
 	}
-	statement, args, err = query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_users", workspaceID).
+	statement, args, err := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_users", workspaceID).
 		Projections(coalescedIdentityProjections("phone", "status")...).Where(query.Equal("id", userID)).Build()
 	if err != nil {
 		return nil, err
@@ -103,15 +219,12 @@ func (s *Store) EraseSubjectForRequest(ctx context.Context, requestID, workspace
 		query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_profile_bindings", workspaceID).
 			Set("status", "unlinked").Set("identity_user_id", nil).Set("invitation_channel", "").Set("claim_proof_type", "").Set("updated_at", now).
 			SetExpression("version", query.Add(query.Column("version"), query.Value(1))).Where(query.Equal("identity_user_id", userID)),
-		query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_profile_binding_events", workspaceID).
-			Set("reason", "").Where(query.Or(query.Equal("identity_user_id", userID), query.Equal("previous_user_id", userID))),
-		query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_auth_mutation_receipts", workspaceID).
-			Set("result_json", "{}").Set("status", "failed").Set("error_code", "identity.subject_erased").Set("updated_at", now).
-			Where(query.Equal("target_id", userID)),
-		query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_workspace_bootstrap_receipts", workspaceID).
-			Set("initial_admin_login_id", anonymized.Email).Where(query.Equal("initial_admin_user_id", userID)),
-		query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_installation_administrator_bootstrap_receipts", workspaceID).
-			Set("login_id", anonymized.Email).Where(query.Equal("user_id", userID)),
+	}
+	if s.store.OperationsPersistenceBound() {
+		updates = append(updates, query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_operations", workspaceID).
+			Set("result_json", "{}").Set("status", "failed").Set("failure_class", "terminal").
+			Set("error_code", "identity.subject_erased").Set("finished_at", now).Set("updated_at", now).
+			Where(query.And(query.Equal("owner", "identity"), query.Equal("kind", "identity.auth_mutation"), query.Equal("resource_id", userID))))
 	}
 	for _, update := range updates {
 		statement, args, err = update.Build()
@@ -126,14 +239,7 @@ func (s *Store) EraseSubjectForRequest(ctx context.Context, requestID, workspace
 	if err != nil {
 		return nil, err
 	}
-	digest := sha256.Sum256([]byte(workspaceID + "\x00" + requestID))
-	statement, args, err = query.NewInsertBuilder(s.store.SQLRenderer(), "_identity_subject_erasure_receipts").
-		Columns("id", "workspace_id", "request_id", "subject_id", "result_json", "created_at").
-		Values(hex.EncodeToString(digest[:]), workspaceID, requestID, userID, string(result), now).Build()
-	if err != nil {
-		return nil, err
-	}
-	if _, err = tx.ExecContext(ctx, statement, args...); err != nil {
+	if err = s.saveSharedSubjectStep(ctx, tx, workspaceID, requestID, subjectEraseOperation, result); err != nil {
 		return nil, err
 	}
 	if err = tx.Commit(); err != nil {
@@ -143,11 +249,33 @@ func (s *Store) EraseSubjectForRequest(ctx context.Context, requestID, workspace
 }
 
 func (s *Store) redactSubjectReceipts(ctx context.Context, tx *sql.Tx, workspaceID, userID string) error {
-	for _, definition := range []struct{ table, column string }{
-		{"_identity_handler_deliveries", "result_json"}, {"_identity_authoring_receipts", "result_json"},
-		{"_identity_entitlement_batch_receipts", "result_json"}, {"_identity_profile_binding_receipts", "binding_json"},
-	} {
-		statement, args, err := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), definition.table, workspaceID).Columns("id", definition.column).Build()
+	type definition struct {
+		table, column, owner string
+		predicate            query.Predicate
+	}
+	definitions := []definition{{
+		table: "_audit_events", column: "metadata_json",
+		predicate: query.InExpression(query.Column("event"),
+			"identity.profile_binding.invite", "identity.profile_binding.claim", "identity.profile_binding.bind",
+			"identity.profile_binding.rebind", "identity.profile_binding.unlink",
+		),
+	}}
+	if s.store.OperationsPersistenceBound() {
+		definitions = append(definitions, definition{table: "_operations", column: "result_json", owner: "identity"})
+	}
+	for _, definition := range definitions {
+		builder := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), definition.table, workspaceID).Columns("id", definition.column)
+		predicates := []query.Predicate{}
+		if definition.owner != "" {
+			predicates = append(predicates, query.Equal("owner", definition.owner))
+		}
+		if definition.predicate != nil {
+			predicates = append(predicates, definition.predicate)
+		}
+		if len(predicates) != 0 {
+			builder.Where(query.And(predicates...))
+		}
+		statement, args, err := builder.Build()
 		if err != nil {
 			return err
 		}
@@ -230,9 +358,35 @@ func redactSubjectResult(value any, workspaceID, userID string) bool {
 				}
 			}
 			if item["identity_user_id"] == userID {
-				item["identity_user_id"], item["status"] = nil, "unlinked"
+				item["identity_user_id"] = nil
+				if _, event := item["binding_version"]; !event {
+					item["status"] = "unlinked"
+				}
 				changed = true
 			}
+			if item["user_id"] == userID {
+				if _, exists := item["login_id"]; exists {
+					item["login_id"] = identitypolicy.IdentityAnonymizedSubject(workspaceID, userID).Email
+					changed = true
+				}
+			}
+		}
+		if item["initial_admin_user_id"] == userID {
+			if _, exists := item["initial_admin_login_id"]; exists {
+				item["initial_admin_login_id"] = identitypolicy.IdentityAnonymizedSubject(workspaceID, userID).Email
+				changed = true
+			}
+		}
+		if item["previous_user_id"] == userID {
+			item["previous_user_id"] = nil
+			if _, exists := item["reason"]; exists {
+				item["reason"] = ""
+			}
+			changed = true
+		}
+		if item["actor_id"] == userID {
+			item["actor_id"] = "erased-" + identitypolicy.IdentityAnonymizedSubject(workspaceID, userID).Token
+			changed = true
 		}
 		for _, child := range item {
 			if redactSubjectResult(child, workspaceID, userID) {

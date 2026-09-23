@@ -13,8 +13,15 @@ import (
 	"github.com/domainry/domainry-foundation/apperror"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	identityrepository "github.com/domainry/domainry-identity/internal/domain/identity/repository"
+	operationreceipt "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/operationreceipt"
 	identitytransaction "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/transaction"
 	"github.com/domainry/domainry-orm/query"
+)
+
+const (
+	storeOrganizationOperationOwner = "identity"
+	storeOrganizationOperationKind  = "identity.store_organization_delivery"
+	storeOrganizationStateOwner     = "store_organization"
 )
 
 func (s *SQLIdentityStore) GetIdentityStoreOrganizationDeliveryReceipt(ctx context.Context, workspaceID, idempotencyKey string) (identitymodel.IdentityStoreOrganizationDeliveryReceipt, bool, error) {
@@ -22,26 +29,24 @@ func (s *SQLIdentityStore) GetIdentityStoreOrganizationDeliveryReceipt(ctx conte
 	if err != nil {
 		return identitymodel.IdentityStoreOrganizationDeliveryReceipt{}, false, err
 	}
-	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.sqlRenderer(), "_identity_store_organization_deliveries", workspaceID).
-		Columns("actor_id", "idempotency_key", "request_fingerprint", "result_json", "created_at").
-		Where(query.Equal("idempotency_key", strings.TrimSpace(idempotencyKey))).Limit(1).Build()
-	if err != nil {
-		return identitymodel.IdentityStoreOrganizationDeliveryReceipt{}, false, fmt.Errorf("build Identity store organization receipt query: %w", err)
+	if !s.OperationsPersistenceBound() {
+		return identitymodel.IdentityStoreOrganizationDeliveryReceipt{}, false, fmt.Errorf("identity shared Operations persistence is not bound")
 	}
-	var receipt identitymodel.IdentityStoreOrganizationDeliveryReceipt
-	var resultJSON string
-	err = s.reader(ctx).QueryRowContext(ctx, statement, arguments...).Scan(&receipt.ActorID, &receipt.IdempotencyKey, &receipt.RequestFingerprint, &resultJSON, &receipt.CreatedAt)
-	if errors.Is(err, sql.ErrNoRows) {
-		return identitymodel.IdentityStoreOrganizationDeliveryReceipt{}, false, nil
+	operation, found, err := operationreceipt.Load(ctx, s.reader(ctx), s.sqlRenderer(), workspaceID, storeOrganizationOperationOwner, storeOrganizationOperationKind, idempotencyKey)
+	if err != nil || !found {
+		return identitymodel.IdentityStoreOrganizationDeliveryReceipt{}, found, err
 	}
-	if err != nil {
-		return identitymodel.IdentityStoreOrganizationDeliveryReceipt{}, false, err
-	}
-	receipt.WorkspaceID = workspaceID
-	if err := json.Unmarshal([]byte(resultJSON), &receipt.Result); err != nil {
+	var result identitymodel.IdentityStoreOrganizationDeliveryResult
+	if err := json.Unmarshal(operation.ResultJSON, &result); err != nil {
 		return identitymodel.IdentityStoreOrganizationDeliveryReceipt{}, false, fmt.Errorf("decode Identity store organization receipt: %w", err)
 	}
-	return receipt, true, nil
+	if result.DeliveryID != operation.ID || result.Organization.ID != operation.ResourceID {
+		return identitymodel.IdentityStoreOrganizationDeliveryReceipt{}, false, fmt.Errorf("identity shared store organization operation scope mismatch")
+	}
+	return identitymodel.IdentityStoreOrganizationDeliveryReceipt{
+		WorkspaceID: workspaceID, ActorID: operation.RequestedBy, IdempotencyKey: strings.TrimSpace(idempotencyKey),
+		RequestFingerprint: operation.RequestFingerprint, Result: result, CreatedAt: operation.CreatedAt,
+	}, true, nil
 }
 
 func (s *SQLIdentityStore) GetIdentityStoreOrganizationState(ctx context.Context, workspaceID, organizationID string) (identitymodel.IdentityStoreOrganizationState, bool, error) {
@@ -49,9 +54,9 @@ func (s *SQLIdentityStore) GetIdentityStoreOrganizationState(ctx context.Context
 	if err != nil {
 		return identitymodel.IdentityStoreOrganizationState{}, false, err
 	}
-	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.sqlRenderer(), "_identity_store_organization_states", workspaceID).
-		Columns("organization_id", "version", "state_fingerprint", "updated_at").
-		Where(query.Equal("organization_id", strings.TrimSpace(organizationID))).Limit(1).Build()
+	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.sqlRenderer(), "_identity_organization_units", workspaceID).
+		Columns("id", "delivery_version", "delivery_state_fingerprint", "updated_at").
+		Where(query.And(query.Equal("id", strings.TrimSpace(organizationID)), query.Equal("delivery_owner", storeOrganizationStateOwner))).Limit(1).Build()
 	if err != nil {
 		return identitymodel.IdentityStoreOrganizationState{}, false, fmt.Errorf("build Identity store organization state query: %w", err)
 	}
@@ -110,17 +115,13 @@ func (s *SQLIdentityStore) ListIdentityStoreOrganizationsPage(ctx context.Contex
 			query.Project(query.QualifiedColumn("store", "ancestor_ids")),
 			query.Project(query.QualifiedColumn("store", "depth")),
 			query.Project(query.QualifiedColumn("store", "sort_order")),
-			query.Project(query.Coalesce(query.QualifiedColumn("state", "version"), query.Value(int64(1)))),
+			query.Project(query.QualifiedColumn("store", "delivery_version")),
 		).
 		Join(
 			query.InnerJoin("_identity_organization_units", "parent", query.And(
 				query.EqualExpressions(query.QualifiedColumn("parent", "workspace_id"), query.QualifiedColumn("store", "workspace_id")),
 				query.EqualExpressions(query.QualifiedColumn("parent", "id"), query.QualifiedColumn("store", "parent_id")),
 				query.EqualValue(query.QualifiedColumn("parent", "node_type"), string(identitymodel.IdentityOrganizationUnitCompany)),
-			)),
-			query.LeftJoin("_identity_store_organization_states", "state", query.And(
-				query.EqualExpressions(query.QualifiedColumn("state", "workspace_id"), query.QualifiedColumn("store", "workspace_id")),
-				query.EqualExpressions(query.QualifiedColumn("state", "organization_id"), storeID),
 			)),
 		).
 		Where(query.And(predicates...)).
@@ -148,6 +149,9 @@ func (s *SQLIdentityStore) ListIdentityStoreOrganizationsPage(ctx context.Contex
 		if err := json.Unmarshal([]byte(ancestorsJSON), &item.AncestorIDs); err != nil {
 			return nil, fmt.Errorf("decode Identity store organization ancestors: %w", err)
 		}
+		if item.Version < 1 {
+			item.Version = 1
+		}
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
@@ -163,6 +167,9 @@ func (s *SQLIdentityStore) ExecuteIdentityStoreOrganizationDelivery(ctx context.
 	}
 	if strings.TrimSpace(mutation.WorkspaceID) == "" || strings.TrimSpace(mutation.ActorID) == "" || strings.TrimSpace(mutation.IdempotencyKey) == "" || strings.TrimSpace(mutation.RequestFingerprint) == "" || strings.TrimSpace(mutation.Organization.ID) == "" {
 		return identitymodel.IdentityStoreOrganizationDeliveryReceipt{}, storeOrganizationStoreError(apperror.KindBadRequest, "backend.identity.store_organization_delivery_invalid")
+	}
+	if !s.OperationsPersistenceBound() {
+		return identitymodel.IdentityStoreOrganizationDeliveryReceipt{}, fmt.Errorf("identity shared Operations persistence is not bound")
 	}
 	if receipt, found, err := s.GetIdentityStoreOrganizationDeliveryReceipt(ctx, mutation.WorkspaceID, mutation.IdempotencyKey); err != nil {
 		return identitymodel.IdentityStoreOrganizationDeliveryReceipt{}, err
@@ -190,13 +197,10 @@ func (s *SQLIdentityStore) ExecuteIdentityStoreOrganizationDelivery(ctx context.
 		if mutation.ExpectedVersion != 0 {
 			return identitymodel.IdentityStoreOrganizationDeliveryReceipt{}, storeOrganizationStoreError(apperror.KindConflict, "backend.identity.store_organization_version_conflict")
 		}
-		if err := s.insertStoreOrganization(ctx, executor, mutation.WorkspaceID, mutation.Organization); err != nil {
+		if err := s.insertStoreOrganization(ctx, executor, mutation.WorkspaceID, mutation.Organization, 1, storeOrganizationStateFingerprint(mutation.Organization)); err != nil {
 			return identitymodel.IdentityStoreOrganizationDeliveryReceipt{}, normalizeStoreOrganizationWriteError(err)
 		}
 		currentVersion = 1
-		if err := s.insertStoreOrganizationState(ctx, executor, mutation.WorkspaceID, mutation.Organization.ID, currentVersion, storeOrganizationStateFingerprint(mutation.Organization)); err != nil {
-			return identitymodel.IdentityStoreOrganizationDeliveryReceipt{}, normalizeStoreOrganizationWriteError(err)
-		}
 	case identitymodel.IdentityStoreOrganizationRename, identitymodel.IdentityStoreOrganizationDisable:
 		current, found, err := s.GetIdentityOrganizationUnitWithinDataScope(ctx, mutation.WorkspaceID, mutation.Organization.ID, identitymodel.IdentityDataScopeFilter{Unrestricted: true})
 		if err != nil {
@@ -219,25 +223,15 @@ func (s *SQLIdentityStore) ExecuteIdentityStoreOrganizationDelivery(ctx context.
 		if mutation.ExpectedVersion != currentVersion {
 			return identitymodel.IdentityStoreOrganizationDeliveryReceipt{}, storeOrganizationStoreError(apperror.KindConflict, "backend.identity.store_organization_version_conflict")
 		}
-		updated, err := s.updateStoreOrganizationCAS(ctx, executor, mutation.WorkspaceID, current, mutation.Organization, mutation.Operation)
+		nextVersion := currentVersion + 1
+		updated, err := s.updateStoreOrganizationCAS(ctx, executor, mutation.WorkspaceID, current, mutation.Organization, mutation.Operation, stateFound, currentVersion, mutation.CurrentFingerprint, nextVersion, storeOrganizationStateFingerprint(mutation.Organization))
 		if err != nil {
 			return identitymodel.IdentityStoreOrganizationDeliveryReceipt{}, err
 		}
 		if !updated {
 			return identitymodel.IdentityStoreOrganizationDeliveryReceipt{}, storeOrganizationStoreError(apperror.KindConflict, "backend.identity.store_organization_version_conflict")
 		}
-		currentVersion++
-		if stateFound {
-			updated, err := s.updateStoreOrganizationStateCAS(ctx, executor, mutation.WorkspaceID, mutation.Organization.ID, mutation.ExpectedVersion, mutation.CurrentFingerprint, currentVersion, storeOrganizationStateFingerprint(mutation.Organization))
-			if err != nil {
-				return identitymodel.IdentityStoreOrganizationDeliveryReceipt{}, err
-			}
-			if !updated {
-				return identitymodel.IdentityStoreOrganizationDeliveryReceipt{}, storeOrganizationStoreError(apperror.KindConflict, "backend.identity.store_organization_version_conflict")
-			}
-		} else if err := s.insertStoreOrganizationState(ctx, executor, mutation.WorkspaceID, mutation.Organization.ID, currentVersion, storeOrganizationStateFingerprint(mutation.Organization)); err != nil {
-			return identitymodel.IdentityStoreOrganizationDeliveryReceipt{}, normalizeStoreOrganizationWriteError(err)
-		}
+		currentVersion = nextVersion
 	default:
 		return identitymodel.IdentityStoreOrganizationDeliveryReceipt{}, storeOrganizationStoreError(apperror.KindBadRequest, "backend.identity.store_organization_operation_invalid")
 	}
@@ -255,23 +249,23 @@ func (s *SQLIdentityStore) ExecuteIdentityStoreOrganizationDelivery(ctx context.
 	if err != nil {
 		return identitymodel.IdentityStoreOrganizationDeliveryReceipt{}, err
 	}
-	statement, arguments, err := query.NewWorkspaceInsertBuilder(s.sqlRenderer(), "_identity_store_organization_deliveries", mutation.WorkspaceID).
-		Columns("id", "actor_id", "idempotency_key", "request_fingerprint", "result_json", "created_at").
-		Values(result.DeliveryID, mutation.ActorID, mutation.IdempotencyKey, mutation.RequestFingerprint, string(resultJSON), now).Build()
-	if err != nil {
-		return identitymodel.IdentityStoreOrganizationDeliveryReceipt{}, fmt.Errorf("build Identity store organization receipt insert: %w", err)
-	}
-	if _, err := executor.ExecContext(ctx, statement, arguments...); err != nil {
+	relatedIDsJSON, _ := json.Marshal(uniqueHandlerDeliveryStrings([]string{mutation.Organization.ID, identityStoreOrganizationParentID(mutation.Organization)}))
+	if err := operationreceipt.InsertSucceeded(ctx, executor, s.sqlRenderer(), operationreceipt.Succeeded{
+		ID: result.DeliveryID, WorkspaceID: mutation.WorkspaceID, Owner: storeOrganizationOperationOwner, Kind: storeOrganizationOperationKind,
+		ActionKey: "identity.store_organization." + string(mutation.Operation), ResourceType: "identity_organization_unit", ResourceID: mutation.Organization.ID,
+		IdempotencyKey: mutation.IdempotencyKey, RequestFingerprint: mutation.RequestFingerprint, RequestedBy: mutation.ActorID,
+		Reason: "deliver store organization mutation", ResultJSON: resultJSON, RelatedIDsJSON: relatedIDsJSON, CompletedAt: now,
+	}); err != nil {
 		return identitymodel.IdentityStoreOrganizationDeliveryReceipt{}, normalizeStoreOrganizationWriteError(err)
 	}
 	return receipt, nil
 }
 
-func (s *SQLIdentityStore) insertStoreOrganization(ctx context.Context, executor identitytransaction.Executor, workspaceID string, organization identitymodel.IdentityOrganizationUnit) error {
+func (s *SQLIdentityStore) insertStoreOrganization(ctx context.Context, executor identitytransaction.Executor, workspaceID string, organization identitymodel.IdentityOrganizationUnit, version int64, fingerprint string) error {
 	ancestors, _ := json.Marshal(organization.AncestorIDs)
 	statement, arguments, err := query.NewWorkspaceInsertBuilder(s.sqlRenderer(), "_identity_organization_units", workspaceID).
-		Columns("id", "code", "name", "sibling_key", "node_type", "parent_id", "path", "ancestor_ids", "depth", "sort_order", "status", "created_at", "updated_at").
-		Values(organization.ID, organization.Code, organization.Name, identitymodel.IdentityOrganizationUnitSiblingKey(organization.ParentID, organization.Name), string(identitymodel.IdentityOrganizationUnitStore), identityStoreOrganizationParentID(organization), organization.Path, string(ancestors), organization.Depth, organization.SortOrder, string(organization.Status), nowString(), nowString()).Build()
+		Columns("id", "code", "name", "sibling_key", "node_type", "parent_id", "path", "ancestor_ids", "depth", "sort_order", "status", "delivery_owner", "delivery_version", "delivery_state_fingerprint", "created_at", "updated_at").
+		Values(organization.ID, organization.Code, organization.Name, identitymodel.IdentityOrganizationUnitSiblingKey(organization.ParentID, organization.Name), string(identitymodel.IdentityOrganizationUnitStore), identityStoreOrganizationParentID(organization), organization.Path, string(ancestors), organization.Depth, organization.SortOrder, string(organization.Status), storeOrganizationStateOwner, version, fingerprint, nowString(), nowString()).Build()
 	if err != nil {
 		return fmt.Errorf("build Identity store organization insert: %w", err)
 	}
@@ -279,7 +273,7 @@ func (s *SQLIdentityStore) insertStoreOrganization(ctx context.Context, executor
 	return err
 }
 
-func (s *SQLIdentityStore) updateStoreOrganizationCAS(ctx context.Context, executor identitytransaction.Executor, workspaceID string, current, desired identitymodel.IdentityOrganizationUnit, operation identitymodel.IdentityStoreOrganizationOperation) (bool, error) {
+func (s *SQLIdentityStore) updateStoreOrganizationCAS(ctx context.Context, executor identitytransaction.Executor, workspaceID string, current, desired identitymodel.IdentityOrganizationUnit, operation identitymodel.IdentityStoreOrganizationOperation, stateFound bool, expectedVersion int64, expectedFingerprint string, nextVersion int64, nextFingerprint string) (bool, error) {
 	currentAncestors, _ := json.Marshal(current.AncestorIDs)
 	predicates := []query.Predicate{
 		query.Equal("id", current.ID), query.Equal("code", current.Code), query.Equal("name", current.Name),
@@ -287,7 +281,13 @@ func (s *SQLIdentityStore) updateStoreOrganizationCAS(ctx context.Context, execu
 		query.Equal("path", current.Path), query.Equal("ancestor_ids", string(currentAncestors)), query.Equal("depth", current.Depth),
 		query.Equal("sort_order", current.SortOrder), query.Equal("status", string(current.Status)),
 	}
-	update := query.NewWorkspaceUpdateBuilder(s.sqlRenderer(), "_identity_organization_units", workspaceID).Set("updated_at", nowString())
+	if stateFound {
+		predicates = append(predicates, query.Equal("delivery_owner", storeOrganizationStateOwner), query.Equal("delivery_version", expectedVersion), query.Equal("delivery_state_fingerprint", expectedFingerprint))
+	} else {
+		predicates = append(predicates, query.Equal("delivery_owner", ""), query.Equal("delivery_version", int64(0)), query.Equal("delivery_state_fingerprint", ""))
+	}
+	update := query.NewWorkspaceUpdateBuilder(s.sqlRenderer(), "_identity_organization_units", workspaceID).
+		Set("delivery_owner", storeOrganizationStateOwner).Set("delivery_version", nextVersion).Set("delivery_state_fingerprint", nextFingerprint).Set("updated_at", nowString())
 	switch operation {
 	case identitymodel.IdentityStoreOrganizationRename:
 		update.Set("name", desired.Name).Set("sibling_key", identitymodel.IdentityOrganizationUnitSiblingKey(desired.ParentID, desired.Name))
@@ -299,32 +299,6 @@ func (s *SQLIdentityStore) updateStoreOrganizationCAS(ctx context.Context, execu
 	statement, arguments, err := update.Where(query.And(predicates...)).Build()
 	if err != nil {
 		return false, fmt.Errorf("build Identity store organization CAS update: %w", err)
-	}
-	result, err := executor.ExecContext(ctx, statement, arguments...)
-	if err != nil {
-		return false, err
-	}
-	count, err := result.RowsAffected()
-	return count == 1, err
-}
-
-func (s *SQLIdentityStore) insertStoreOrganizationState(ctx context.Context, executor identitytransaction.Executor, workspaceID, organizationID string, version int64, fingerprint string) error {
-	statement, arguments, err := query.NewWorkspaceInsertBuilder(s.sqlRenderer(), "_identity_store_organization_states", workspaceID).
-		Columns("id", "organization_id", "version", "state_fingerprint", "updated_at").
-		Values(handlerDeliveryStableID("store-organization-state", workspaceID, organizationID), organizationID, version, fingerprint, nowString()).Build()
-	if err != nil {
-		return fmt.Errorf("build Identity store organization state insert: %w", err)
-	}
-	_, err = executor.ExecContext(ctx, statement, arguments...)
-	return err
-}
-
-func (s *SQLIdentityStore) updateStoreOrganizationStateCAS(ctx context.Context, executor identitytransaction.Executor, workspaceID, organizationID string, expectedVersion int64, expectedFingerprint string, nextVersion int64, nextFingerprint string) (bool, error) {
-	statement, arguments, err := query.NewWorkspaceUpdateBuilder(s.sqlRenderer(), "_identity_store_organization_states", workspaceID).
-		Set("version", nextVersion).Set("state_fingerprint", nextFingerprint).Set("updated_at", nowString()).
-		Where(query.And(query.Equal("organization_id", organizationID), query.Equal("version", expectedVersion), query.Equal("state_fingerprint", expectedFingerprint))).Build()
-	if err != nil {
-		return false, fmt.Errorf("build Identity store organization state CAS update: %w", err)
 	}
 	result, err := executor.ExecContext(ctx, statement, arguments...)
 	if err != nil {

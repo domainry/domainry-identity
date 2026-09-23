@@ -25,6 +25,7 @@ func TestStoreOrganizationPageIsStableScopedAndBoundedInOneRepositoryQuery(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
+	store.BindOperationsPersistence()
 	companyA, companyB, division := "company-a", "company-b", "division-a"
 	units := []identitymodel.IdentityOrganizationUnit{
 		{ID: companyA, Code: "COMPANY-A", Name: "Company A", NodeType: identitymodel.IdentityOrganizationUnitCompany, Path: "/company-a", Status: identitymodel.IdentityStatusActive},
@@ -93,6 +94,7 @@ func TestStoreOrganizationCreateKeepsRuntimeOpaqueIDAndReplaysInsideSQLiteImmedi
 	if err != nil {
 		t.Fatal(err)
 	}
+	store.BindOperationsPersistence()
 	if err := store.UpsertIdentityOrganizationUnit(t.Context(), "workspace-primary", identitymodel.IdentityOrganizationUnit{
 		ID: "company", Code: "COMPANY", Name: "Company", NodeType: identitymodel.IdentityOrganizationUnitCompany,
 		Path: "/company", Status: identitymodel.IdentityStatusActive,
@@ -137,9 +139,8 @@ func TestStoreOrganizationCreateKeepsRuntimeOpaqueIDAndReplaysInsideSQLiteImmedi
 		t.Fatal(err)
 	}
 	for table, target := range map[string][2]string{
-		"_identity_organization_units":            {"id", opaqueID},
-		"_identity_store_organization_states":     {"organization_id", opaqueID},
-		"_identity_store_organization_deliveries": {"idempotency_key", mutation.IdempotencyKey},
+		"_identity_organization_units": {"id", opaqueID},
+		"_operations":                  {"idempotency_key", mutation.IdempotencyKey},
 	} {
 		var count int
 		if err := databaseStore.DB().QueryRowContext(t.Context(), "SELECT COUNT(*) FROM "+table+" WHERE workspace_id = ? AND "+target[0]+" = ?", "workspace-primary", target[1]).Scan(&count); err != nil || count != 0 {

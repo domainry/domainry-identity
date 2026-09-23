@@ -239,10 +239,8 @@ type ReconciliationAction struct {
 // deliberately excludes Runtime business workflows, records and outboxes.
 func IdentityRestoreReconciliationPlan() []ReconciliationAction {
 	return []ReconciliationAction{
-		{Table: "_identity_authoring_receipts", Action: "release_expired_processing_lease", Guard: "status = 'processing' AND lease_expires_at <= restored_at"},
-		{Table: "_identity_auth_mutation_receipts", Action: "release_expired_processing_lease", Guard: "status = 'processing' AND lease_expires_at <= restored_at"},
-		{Table: "_identity_metadata_refresh_intents", Action: "release_expired_processing_lease", Guard: "status = 'executing' AND lease_expires_at <= restored_at"},
-		{Table: "_identity_workspace_write_fences", Action: "preserve_active_cutover_fence", Guard: "state = 'frozen'"},
+		{Table: "_operations", Action: "release_expired_identity_operation_lease", Guard: "owner = 'identity' AND kind IN ('identity.authoring', 'identity.auth_mutation') AND status = 'started' AND lease_expires_at <= restored_at"},
+		{Table: "_operation_controls", Action: "preserve_active_cutover_fence", Guard: "system_purpose = 'workspace_control' AND control_kind = 'write_fence' AND state = 'active'"},
 		{Table: "_audit_events", Action: "preserve_append_only_cutover_evidence", Guard: "event = 'identity.portability_write_fence.frozen' OR event = 'identity.portability_write_fence.released'"},
 		{Table: "_identity_auth_login_transactions", Action: "expire_stale_unconsumed_login_transaction", Guard: "consumed_at IS NULL AND expires_at <= restored_at"},
 		{Table: "_identity_auth_authorization_codes", Action: "expire_stale_unconsumed_authorization_code", Guard: "consumed_at IS NULL AND expires_at <= restored_at"},

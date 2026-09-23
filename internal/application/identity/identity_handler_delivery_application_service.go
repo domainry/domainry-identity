@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 
+	auditcontract "github.com/domainry/domainry-audit-sdk/contract"
 	"github.com/domainry/domainry-foundation/apperror"
 	"github.com/domainry/domainry-foundation/requestcontext"
 	auditapplication "github.com/domainry/domainry-identity/internal/application/auditbinding"
@@ -334,6 +335,7 @@ func (s *IdentityHandlerDeliveryApplicationService) Deliver(ctx context.Context,
 		}
 		if err := s.dependencies.Audit.AppendAudit(transactionContext, auditapplication.AuditAppendRequest{
 			IdempotencyKey: "identity-handler-delivery:" + request.IdempotencyKey,
+			Family:         auditcontract.EventFamilyIdentityGovernance,
 			Event:          "identity.handler_delivery." + string(request.Operation), ObjectKey: identitycontract.IdentityUserObjectKey,
 			RecordID: request.User.ID, Principal: principal, Summary: "Runtime handler delivered Identity state",
 			Before: handlerDeliveryUserAuditMap(before), After: handlerDeliveryUserAuditMap(receipt.Result.User),

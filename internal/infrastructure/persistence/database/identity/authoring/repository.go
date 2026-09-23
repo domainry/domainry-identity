@@ -3,20 +3,28 @@ package authoring
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/domainry/domainry-foundation/idempotency"
 	identityauthoring "github.com/domainry/domainry-identity/internal/application/authoring"
+	operationreceipt "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/operationreceipt"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
-	"github.com/domainry/domainry-orm/query"
 )
 
 type Backend interface {
 	DB() *sql.DB
 	SQLRenderer() ormdialect.Renderer
+	OperationsPersistenceBound() bool
 }
+
+const (
+	authoringOperationOwner = "identity"
+	authoringOperationKind  = "identity.authoring"
+)
 
 type Repository struct {
 	store Backend
@@ -32,15 +40,20 @@ func (r *Repository) Claim(ctx context.Context, candidate identityauthoring.Rece
 	if r == nil || r.store == nil {
 		return identityauthoring.Claim{}, errors.New("identity authoring repository is unavailable")
 	}
-	columns := identityAuthoringReceiptColumns()
-	values := identityAuthoringReceiptValues(candidate)
-	statement, arguments, buildErr := query.NewWorkspaceInsertBuilder(r.store.SQLRenderer(), "_identity_authoring_receipts", candidate.WorkspaceID).
-		Columns(append([]string{columns[0]}, columns[2:]...)...).
-		Values(append([]any{values[0]}, values[2:]...)...).Build()
-	if buildErr != nil {
-		return identityauthoring.Claim{}, fmt.Errorf("build identity authoring receipt insert: %w", buildErr)
+	if !r.store.OperationsPersistenceBound() {
+		return identityauthoring.Claim{}, errors.New("identity shared Operations persistence is not bound")
 	}
-	_, insertErr := r.store.DB().ExecContext(ctx, statement, arguments...)
+	relatedIDsJSON, _ := json.Marshal([]string{strings.TrimSpace(candidate.TargetID)})
+	insertErr := operationreceipt.InsertStarted(ctx, r.store.DB(), r.store.SQLRenderer(), operationreceipt.Started{
+		Leased: operationreceipt.Leased{
+			ID: candidate.ID, WorkspaceID: candidate.WorkspaceID, ActionKey: candidate.UseCase,
+			ResourceType: candidate.ResourceType, ResourceID: candidate.TargetID, IdempotencyKey: candidate.IdempotencyKey,
+			RequestFingerprint: candidate.RequestFingerprint, RequestedBy: candidate.ActorID,
+			ResultJSON: candidate.Result, LeaseOwner: candidate.LeaseOwner, LeaseExpiresAt: formatAuthoringTime(candidate.LeaseExpiresAt),
+			FencingToken: candidate.FencingToken, CreatedAt: formatAuthoringTime(candidate.CreatedAt), UpdatedAt: formatAuthoringTime(candidate.UpdatedAt),
+		},
+		Owner: authoringOperationOwner, Kind: authoringOperationKind, Reason: "execute identity authoring mutation", RelatedIDsJSON: relatedIDsJSON,
+	})
 	if insertErr == nil {
 		return identityauthoring.Claim{Decision: idempotency.DecisionAcquired, Receipt: candidate}, nil
 	}
@@ -63,23 +76,15 @@ func (r *Repository) Claim(ctx context.Context, candidate identityauthoring.Rece
 	candidate.CreatedAt = current.CreatedAt
 	candidate.FencingToken = current.FencingToken + 1
 	candidate.LeaseExpiresAt = candidate.UpdatedAt.Add(leaseTTL)
-	statement, arguments, err = query.NewWorkspaceUpdateBuilder(r.store.SQLRenderer(), "_identity_authoring_receipts", candidate.WorkspaceID).
-		Set("status", string(idempotency.StatusProcessing)).Set("lease_owner", candidate.LeaseOwner).
-		Set("lease_expires_at", formatAuthoringTime(candidate.LeaseExpiresAt)).Set("fencing_token", candidate.FencingToken).
-		Set("updated_at", formatAuthoringTime(candidate.UpdatedAt)).
-		Where(query.And(query.Equal("id", candidate.ID), query.Equal("request_fingerprint", candidate.RequestFingerprint), query.Equal("status", string(current.Status)), query.Equal("fencing_token", current.FencingToken))).Build()
-	if err != nil {
-		return identityauthoring.Claim{}, fmt.Errorf("build identity authoring receipt claim: %w", err)
-	}
-	result, err := r.store.DB().ExecContext(ctx, statement, arguments...)
+	reclaimed, err := operationreceipt.ReclaimStarted(ctx, r.store.DB(), r.store.SQLRenderer(), operationreceipt.Reclaim{
+		WorkspaceID: candidate.WorkspaceID, ID: candidate.ID, RequestFingerprint: candidate.RequestFingerprint,
+		LeaseOwner: candidate.LeaseOwner, LeaseExpiresAt: formatAuthoringTime(candidate.LeaseExpiresAt),
+		ExpectedToken: current.FencingToken, ExpiredAt: formatAuthoringTime(candidate.UpdatedAt), UpdatedAt: formatAuthoringTime(candidate.UpdatedAt),
+	})
 	if err != nil {
 		return identityauthoring.Claim{}, err
 	}
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return identityauthoring.Claim{}, err
-	}
-	if rows == 1 {
+	if reclaimed {
 		return identityauthoring.Claim{Decision: idempotency.DecisionAcquired, Receipt: candidate}, nil
 	}
 	current, found, err = r.findByKey(ctx, candidate.WorkspaceID, candidate.IdempotencyKey)
@@ -93,68 +98,70 @@ func (r *Repository) Claim(ctx context.Context, candidate identityauthoring.Rece
 }
 
 func (r *Repository) Complete(ctx context.Context, completion identityauthoring.Completion) (identityauthoring.Receipt, error) {
-	statement, arguments, err := query.NewWorkspaceUpdateBuilder(r.store.SQLRenderer(), "_identity_authoring_receipts", completion.WorkspaceID).
-		Set("status", string(completion.Status)).Set("result_json", string(completion.Result)).Set("updated_at", formatAuthoringTime(completion.CompletedAt)).
-		Where(query.And(query.Equal("id", completion.ReceiptID), query.Equal("lease_owner", completion.LeaseOwner), query.Equal("fencing_token", completion.FencingToken), query.Equal("status", string(idempotency.StatusProcessing)))).Build()
-	if err != nil {
-		return identityauthoring.Receipt{}, fmt.Errorf("build identity authoring receipt completion: %w", err)
+	if r == nil || r.store == nil || !r.store.OperationsPersistenceBound() {
+		return identityauthoring.Receipt{}, errors.New("identity shared Operations persistence is not bound")
 	}
-	result, err := r.store.DB().ExecContext(ctx, statement, arguments...)
+	status, err := operationreceipt.OperationStatus(completion.Status)
 	if err != nil {
 		return identityauthoring.Receipt{}, err
 	}
-	rows, err := result.RowsAffected()
+	errorCode := ""
+	if status == operationreceipt.StatusFailed {
+		var result struct {
+			ErrorCode string `json:"error_code"`
+		}
+		_ = json.Unmarshal(completion.Result, &result)
+		errorCode = result.ErrorCode
+	}
+	completed, err := operationreceipt.CompleteLeased(ctx, r.store.DB(), r.store.SQLRenderer(), operationreceipt.Completion{
+		WorkspaceID: completion.WorkspaceID, ID: completion.ReceiptID, LeaseOwner: completion.LeaseOwner,
+		FencingToken: completion.FencingToken, Status: status, ResultJSON: completion.Result,
+		ErrorCode: errorCode, CompletedAt: formatAuthoringTime(completion.CompletedAt),
+	})
 	if err != nil {
 		return identityauthoring.Receipt{}, err
 	}
-	if rows != 1 {
+	if !completed {
 		return identityauthoring.Receipt{}, identityauthoring.ErrLeaseLost
 	}
 	return r.findByID(ctx, completion.WorkspaceID, completion.ReceiptID)
 }
 
 func (r *Repository) findByKey(ctx context.Context, workspaceID, key string) (identityauthoring.Receipt, bool, error) {
-	statement, arguments, buildErr := query.NewWorkspaceSelectBuilder(r.store.SQLRenderer(), "_identity_authoring_receipts", workspaceID).
-		Columns(identityAuthoringReceiptColumns()...).Where(query.Equal("idempotency_key", key)).Build()
-	if buildErr != nil {
-		return identityauthoring.Receipt{}, false, buildErr
+	operation, found, err := operationreceipt.LoadLeasedByKey(ctx, r.store.DB(), r.store.SQLRenderer(), workspaceID, authoringOperationOwner, authoringOperationKind, key)
+	if err != nil || !found {
+		return identityauthoring.Receipt{}, found, err
 	}
-	receipt, err := scanIdentityAuthoringReceipt(r.store.DB().QueryRowContext(ctx, statement, arguments...))
-	if errors.Is(err, sql.ErrNoRows) {
-		return identityauthoring.Receipt{}, false, nil
-	}
+	receipt, err := identityAuthoringReceipt(operation)
 	return receipt, err == nil, err
 }
 
 func (r *Repository) findByID(ctx context.Context, workspaceID, id string) (identityauthoring.Receipt, error) {
-	statement, arguments, err := query.NewWorkspaceSelectBuilder(r.store.SQLRenderer(), "_identity_authoring_receipts", workspaceID).
-		Columns(identityAuthoringReceiptColumns()...).Where(query.Equal("id", id)).Build()
+	operation, found, err := operationreceipt.LoadLeasedByID(ctx, r.store.DB(), r.store.SQLRenderer(), workspaceID, authoringOperationOwner, authoringOperationKind, id)
+	if err != nil || !found {
+		if err == nil {
+			err = sql.ErrNoRows
+		}
+		return identityauthoring.Receipt{}, err
+	}
+	return identityAuthoringReceipt(operation)
+}
+
+func identityAuthoringReceipt(operation operationreceipt.Leased) (identityauthoring.Receipt, error) {
+	status, err := operationreceipt.IdempotencyStatus(operation.Status)
 	if err != nil {
 		return identityauthoring.Receipt{}, err
 	}
-	return scanIdentityAuthoringReceipt(r.store.DB().QueryRowContext(ctx, statement, arguments...))
-}
-
-func identityAuthoringReceiptColumns() []string {
-	return []string{"id", "workspace_id", "use_case", "resource_type", "target_id", "idempotency_key", "request_fingerprint", "status", "result_json", "lease_owner", "lease_expires_at", "fencing_token", "created_at", "updated_at"}
-}
-
-func identityAuthoringReceiptValues(value identityauthoring.Receipt) []any {
-	return []any{value.ID, value.WorkspaceID, value.UseCase, value.ResourceType, value.TargetID, value.IdempotencyKey, value.RequestFingerprint, string(value.Status), string(value.Result), value.LeaseOwner, formatAuthoringTime(value.LeaseExpiresAt), value.FencingToken, formatAuthoringTime(value.CreatedAt), formatAuthoringTime(value.UpdatedAt)}
-}
-
-type identityAuthoringScanner interface{ Scan(...any) error }
-
-func scanIdentityAuthoringReceipt(row identityAuthoringScanner) (identityauthoring.Receipt, error) {
-	var value identityauthoring.Receipt
-	var status, resultJSON, leaseExpiresAt, createdAt, updatedAt string
-	err := row.Scan(&value.ID, &value.WorkspaceID, &value.UseCase, &value.ResourceType, &value.TargetID, &value.IdempotencyKey, &value.RequestFingerprint, &status, &resultJSON, &value.LeaseOwner, &leaseExpiresAt, &value.FencingToken, &createdAt, &updatedAt)
-	value.Status = idempotency.Status(status)
-	value.Result = []byte(resultJSON)
-	value.LeaseExpiresAt, _ = time.Parse(time.RFC3339Nano, leaseExpiresAt)
-	value.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
-	value.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedAt)
-	return value, err
+	value := identityauthoring.Receipt{
+		ID: operation.ID, WorkspaceID: operation.WorkspaceID, UseCase: operation.ActionKey,
+		ResourceType: operation.ResourceType, TargetID: operation.ResourceID, ActorID: operation.RequestedBy,
+		IdempotencyKey: operation.IdempotencyKey, RequestFingerprint: operation.RequestFingerprint, Status: status,
+		Result: operation.ResultJSON, LeaseOwner: operation.LeaseOwner, FencingToken: operation.FencingToken,
+	}
+	value.LeaseExpiresAt, _ = time.Parse(time.RFC3339Nano, operation.LeaseExpiresAt)
+	value.CreatedAt, _ = time.Parse(time.RFC3339Nano, operation.CreatedAt)
+	value.UpdatedAt, _ = time.Parse(time.RFC3339Nano, operation.UpdatedAt)
+	return value, nil
 }
 
 func formatAuthoringTime(value time.Time) string {

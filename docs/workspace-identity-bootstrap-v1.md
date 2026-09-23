@@ -20,8 +20,8 @@ binding. Service/system roles marked for Workspace provisioning fail closed.
 Identity and the SDK use the same canonical catalog digest helper. The digest
 covers the complete selected authorization definitions and the explicit
 administrator key. Both values enter the request fingerprint and are persisted
-on `_identity_workspace_bootstrap_receipts`; a replay with changed policy is an
-idempotency conflict.
+in the `identity.workspace_bootstrap` shared Operations result; a replay with
+changed policy is an idempotency conflict.
 
 The bootstrap graph contains the company, first store, initial human user,
 selected roles, the administrator assignment at company scope, the hashed
@@ -34,6 +34,6 @@ rolls back, it must call `CompleteWorkspaceIdentityBootstrap`. Only a verified
 commit makes the in-memory initial credential claimable, exactly once; rollback
 or expiry destroys it.
 
-Schema migration `008_workspace_bootstrap_role_policy` adds the receipt evidence
-columns. `008` is the Identity schema migration version, independent of the
-bootstrap protocol version, and uses the host-owned `_schema_migrations` ledger.
+Runtime installs the shared Operations kernel before opening the bootstrap
+binding. Embedded Identity binds to that owner table explicitly; standalone
+Identity installs and owns the same kernel in its own database.

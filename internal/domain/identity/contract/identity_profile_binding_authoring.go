@@ -6,7 +6,7 @@ import (
 )
 
 func IdentityProfileBindingAuthoringCapability() authoringcontract.CapabilityAuthoringDefinition {
-	closed, open := identityBoolPointer(false), identityBoolPointer(true)
+	closed := identityBoolPointer(false)
 	strings := authoringcontract.CapabilityAuthoringSchema{Type: "array", Items: &authoringcontract.CapabilityAuthoringSchema{Type: "string", MinLength: identityIntPointer(1)}}
 	claim := authoringcontract.CapabilityAuthoringSchema{Type: "object", AdditionalProperties: closed, Required: []string{"claim_key", "field_key"}, Properties: map[string]authoringcontract.CapabilityAuthoringSchema{
 		"claim_key": {Type: "string", MinLength: identityIntPointer(1)}, "field_key": {Type: "string", MinLength: identityIntPointer(1)},
@@ -18,10 +18,6 @@ func IdentityProfileBindingAuthoringCapability() authoringcontract.CapabilityAut
 		"allow_unbound": {Type: "boolean"}, "invitation_channels": {Type: "array", Items: &authoringcontract.CapabilityAuthoringSchema{Type: "string", Enum: []any{"email", "sms", "external_idp"}}},
 		"claim_proofs": {Type: "array", Items: &claimProof}, "rebind_requires_approval": {Type: "boolean"}, "rebind_revokes_sessions": {Type: "boolean"},
 	}}
-	projection := authoringcontract.CapabilityAuthoringSchema{Type: "object", AdditionalProperties: closed, Properties: map[string]authoringcontract.CapabilityAuthoringSchema{
-		"enabled": {Type: "boolean"}, "label": {Type: "string"}, "plural_label": {Type: "string"},
-		"summary_fields": strings, "filter_fields": strings, "status_field": {Type: "string"}, "action_keys": strings,
-	}}
 	businessIdentity := authoringcontract.CapabilityAuthoringSchema{Type: "object", AdditionalProperties: closed, Required: []string{"key"}, Properties: map[string]authoringcontract.CapabilityAuthoringSchema{
 		"key": {Type: "string", MinLength: identityIntPointer(1)}, "status_field": {Type: "string"}, "active_status_values": strings,
 		"blacklist_field": {Type: "string"}, "claims": {Type: "array", Items: &claim},
@@ -30,13 +26,10 @@ func IdentityProfileBindingAuthoringCapability() authoringcontract.CapabilityAut
 		Required: []string{"object_key", "identity_relation_field", "business_identity", "default_visibility"},
 		Properties: map[string]authoringcontract.CapabilityAuthoringSchema{
 			"object_key": {Type: "string", MinLength: identityIntPointer(1)}, "identity_relation_field": {Type: "string", MinLength: identityIntPointer(1)},
-			"business_identity": businessIdentity,
-			"binding_lifecycle": bindingLifecycle,
-			"projection":        projection,
-			"summary_fields":    strings, "profile_tabs": strings, "profile_tab_labels": {Type: "object", AdditionalProperties: open},
-			"profile_tab_fields": {Type: "object", AdditionalProperties: open}, "profile_tab_related_objects": {Type: "object", AdditionalProperties: open},
-			"profile_tab_components": {Type: "object", AdditionalProperties: open}, "default_visibility": {Type: "string", Enum: []any{"when_readable", "hidden"}},
-			"required_permissions": strings, "standalone_workspace": {Type: "boolean"}, "provenance": {Type: "object", AdditionalProperties: open},
+			"business_identity":    businessIdentity,
+			"binding_lifecycle":    bindingLifecycle,
+			"default_visibility":   {Type: "string", Enum: []any{"when_readable", "hidden"}},
+			"required_permissions": strings,
 		},
 	}
 	execution := metadatacontract.VersionedMetadataDefinitionExecution("identity.profile_binding")
@@ -53,7 +46,7 @@ func IdentityProfileBindingAuthoringCapability() authoringcontract.CapabilityAut
 		Errors:             []authoringcontract.CapabilityAuthoringError{{Code: "backend.identity.profile_binding_invalid", FieldPath: "payload", ParameterKeys: []string{"diagnostic"}, MessageKey: "backend.identity.profile_binding_invalid"}},
 		Examples: []authoringcontract.CapabilityAuthoringExample{
 			{Name: "minimal_valid", Value: map[string]any{"expected_schema_hash": "$instance.schema_hash", "payload": map[string]any{"object_key": "staff_profile", "identity_relation_field": "identity_user", "business_identity": map[string]any{"key": "staff"}, "default_visibility": "when_readable"}}},
-			{Name: "representative", Value: map[string]any{"expected_schema_hash": "$instance.schema_hash", "payload": map[string]any{"object_key": "staff_profile", "identity_relation_field": "identity_user", "business_identity": map[string]any{"key": "staff", "status_field": "status", "active_status_values": []any{"active"}, "claims": []any{map[string]any{"claim_key": "territory_id", "field_key": "territory_id"}}}, "summary_fields": []any{"display_name"}, "default_visibility": "when_readable"}}},
+			{Name: "representative", Value: map[string]any{"expected_schema_hash": "$instance.schema_hash", "payload": map[string]any{"object_key": "staff_profile", "identity_relation_field": "identity_user", "business_identity": map[string]any{"key": "staff", "status_field": "status", "active_status_values": []any{"active"}, "claims": []any{map[string]any{"claim_key": "territory_id", "field_key": "territory_id"}}}, "default_visibility": "when_readable"}}},
 			{Name: "invalid_with_repair", Value: map[string]any{"expected_schema_hash": "$instance.schema_hash", "payload": map[string]any{"object_key": "missing"}}, ExpectedErrorCodes: []string{"backend.identity.profile_binding_invalid"}},
 		},
 		Sources: []authoringcontract.CapabilityAuthoringSource{{Kind: "contract", Path: "internal/domain/identity/contract/identity_profile_binding_authoring.go", Symbol: "IdentityProfileBindingAuthoringCapability"}, {Kind: "model", Path: "internal/domain/identity/model/identity_profile_extension.go", Symbol: "IdentityProfileExtension"}, {Kind: "validation", Path: "internal/domain/manifest/validation/manifest_validator.go", Symbol: "ValidateIdentityProfileBindings"}, {Kind: "service", Path: "internal/application/metadata/metadata_definition_orchestration_application_service.go", Symbol: "MetadataApplicationService.UpsertMetadataDefinition"}},

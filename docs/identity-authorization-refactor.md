@@ -44,7 +44,7 @@ The following Identity capabilities remain in scope and retain their current bus
 | Effective-access explain, reverse index, reports and access reviews | Identity governance | Keep |
 | Audit binding and governance audit adapters | Audit owner embedded by Identity | Keep |
 | Embedded module and standalone SaaS deployment | Identity assembly | Keep |
-| Embedded-to-SaaS portability and write fences | Identity portability | Keep and update table ownership |
+| Embedded-to-SaaS portability and write fences | Identity portability plus shared Operations controls | Keep portability behavior; remove the Identity-only fence table |
 | Runtime application catalog publication | Obsolete boundary | Remove directly; the code has not shipped and no compatibility adapter is permitted |
 
 ## 3. Current problems to remove

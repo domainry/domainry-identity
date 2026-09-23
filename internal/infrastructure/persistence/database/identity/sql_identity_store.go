@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"sync/atomic"
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	identityrepository "github.com/domainry/domainry-identity/internal/domain/identity/repository"
@@ -33,14 +34,38 @@ func (s *SQLIdentityStore) reader(ctx context.Context) identityReadExecutor {
 }
 
 type SQLIdentityStore struct {
-	db       *sql.DB
-	schemaDB identityschema.SQLDatabase
-	engine   persistencedriver.EngineProfile
-	renderer ormdialect.Renderer
-	memory   *MemoryIdentityStore
+	db                          *sql.DB
+	schemaDB                    identityschema.SQLDatabase
+	engine                      persistencedriver.EngineProfile
+	renderer                    ormdialect.Renderer
+	memory                      *MemoryIdentityStore
+	subjectLifecyclePersistence atomic.Bool
+	operationsPersistence       atomic.Bool
 }
 
 var _ identityrepository.IdentityRepository = (*SQLIdentityStore)(nil)
+
+// BindSubjectLifecyclePersistence enables the owner-side subject lifecycle
+// path only after the host has installed the shared Lifecycle tables.
+func (s *SQLIdentityStore) BindSubjectLifecyclePersistence() {
+	if s != nil {
+		s.subjectLifecyclePersistence.Store(true)
+	}
+}
+
+func (s *SQLIdentityStore) SubjectLifecyclePersistenceBound() bool {
+	return s != nil && s.subjectLifecyclePersistence.Load()
+}
+
+func (s *SQLIdentityStore) BindOperationsPersistence() {
+	if s != nil {
+		s.operationsPersistence.Store(true)
+	}
+}
+
+func (s *SQLIdentityStore) OperationsPersistenceBound() bool {
+	return s != nil && s.operationsPersistence.Load()
+}
 
 func (s *SQLIdentityStore) sqlRenderer() ormdialect.Renderer {
 	return s.renderer

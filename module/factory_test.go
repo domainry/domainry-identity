@@ -190,6 +190,12 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	operationsDB, err := sql.Open("sqlite", moduleDBPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = operationsDB.Close() })
+	installAndBindModuleSharedOperations(t, operationsDB, binding)
 	if binding.Descriptor().Mode != identitysdk.DeploymentModeModule {
 		t.Fatalf("mode = %q", binding.Descriptor().Mode)
 	}
@@ -764,7 +770,7 @@ func TestFactoryBorrowsProjectPoolWithoutClosingOrColliding(t *testing.T) {
 	if err := db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name LIKE '%schema_migrations'`).Scan(&migrationLedgers); err != nil || migrationLedgers != 1 {
 		t.Fatalf("migration ledgers=%d err=%v", migrationLedgers, err)
 	}
-	if len(registrar.calls) != 1 || registrar.calls[0] != (testEmbeddedMigrationCall{owner: "identity", version: 14, name: "subject_erasure"}) {
+	if len(registrar.calls) != 1 || registrar.calls[0] != (testEmbeddedMigrationCall{owner: "identity", version: 14, name: "shared_lifecycle_operations"}) {
 		t.Fatalf("host migration calls=%#v", registrar.calls)
 	}
 }
@@ -788,6 +794,7 @@ func TestFactoryEmbeddedOrganizationUnitDeliveryRollsBackWithHostTransaction(t *
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = binding.Close(t.Context()) })
+	installAndBindModuleSharedOperations(t, db, binding)
 	if _, err := binding.Applications().Register(t.Context(), identitysdk.ApplicationRegistration{Application: application}); err != nil {
 		t.Fatal(err)
 	}
@@ -876,8 +883,7 @@ func TestFactoryEmbeddedOrganizationUnitDeliveryRollsBackWithHostTransaction(t *
 		table, column, value string
 	}{
 		{table: "_identity_organization_units", column: "id", value: "factory-department"},
-		{table: "_identity_organization_unit_delivery_states", column: "organization_id", value: "factory-department"},
-		{table: "_identity_organization_unit_deliveries", column: "idempotency_key", value: "factory-department-rollback"},
+		{table: "_operations", column: "idempotency_key", value: "factory-department-rollback"},
 		{table: "_audit_events", column: "record_id", value: "factory-department"},
 	} {
 		var count int

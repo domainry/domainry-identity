@@ -15,6 +15,9 @@ type lifecycleSQLStore interface {
 	DB() *sql.DB
 	SQLRenderer() ormdialect.Renderer
 	ApplyUpsert(*query.InsertBuilder, []string, ...string) *query.InsertBuilder
+	BindSubjectLifecyclePersistence()
+	SubjectLifecyclePersistenceBound() bool
+	OperationsPersistenceBound() bool
 }
 
 type IdentitySubjectLifecycleStore struct {
@@ -28,6 +31,14 @@ func NewIdentitySubjectLifecycleStore(store lifecycleSQLStore, eraseAuthenticati
 
 func (s *IdentitySubjectLifecycleStore) owner() *subjectpersistence.Store {
 	return subjectpersistence.New(s.store, s.eraseAuthentication)
+}
+
+func (s *IdentitySubjectLifecycleStore) BindSubjectLifecyclePersistence() {
+	s.owner().BindSubjectLifecyclePersistence()
+}
+
+func (s *IdentitySubjectLifecycleStore) SubjectLifecyclePersistenceBound() bool {
+	return s.owner().SubjectLifecyclePersistenceBound()
 }
 
 func (s *IdentitySubjectLifecycleStore) Owner(ctx context.Context) string {

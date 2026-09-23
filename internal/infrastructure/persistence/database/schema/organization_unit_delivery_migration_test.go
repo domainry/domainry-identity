@@ -101,9 +101,9 @@ func TestOrganizationUnitDeliveryV10UpgradeBackfillsSiblingIdentity(t *testing.T
 			t.Fatalf("%s sibling key=%q want=%q", item.id, key, expected)
 		}
 	}
-	for _, table := range []string{"_identity_organization_unit_delivery_states", "_identity_organization_unit_deliveries"} {
-		if exists, existsErr := store.SchemaTableExists(t.Context(), table); existsErr != nil || !exists {
-			t.Fatalf("v10 table %s exists=%v err=%v", table, exists, existsErr)
+	for _, table := range []string{"_identity_organization_unit_delivery_states", "_identity_organization_unit_deliveries", "_identity_store_organization_states", "_identity_store_organization_deliveries"} {
+		if exists, existsErr := store.SchemaTableExists(t.Context(), table); existsErr != nil || exists {
+			t.Fatalf("retired table %s exists=%v err=%v", table, exists, existsErr)
 		}
 	}
 	if err := EnsureIdentitySchema(t.Context(), store); err != nil {

@@ -8,6 +8,20 @@ import (
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
+var accessReviewOperationColumns = []string{"id", "resource_id", "request_fingerprint", "requested_by", "result_json", "created_at", "status"}
+
+const accessReviewReceiptJSON = `{"id":"receipt","workspace_id":"workspace","item_id":"item","idempotency_key":"key","request_fingerprint":"fingerprint","item":{"id":"item"},"created_at":"created"}`
+
+func accessReviewOperationRow(fingerprint, resultJSON string) []driver.Value {
+	return []driver.Value{"receipt", "item", fingerprint, "reviewer", resultJSON, "created", "succeeded"}
+}
+
+func scriptedAccessReviewOperations(state *identitySQLState) (*SQLIdentityStore, func()) {
+	store, closeDB := scriptedSQLIdentity(state)
+	store.BindOperationsPersistence()
+	return store, closeDB
+}
+
 func accessReviewItemColumns() []string {
 	return []string{
 		"id", "review_id", "user_id", "role_id", "role_key", "binding_key", "profile_id",
@@ -106,10 +120,9 @@ func TestIdentityAccessReviewLoaderEdges(t *testing.T) {
 		}
 	}
 
-	receiptColumns := []string{"result_json", "request_fingerprint"}
-	for _, resultJSON := range []string{"{", `{"id":"receipt","item_id":"item"}`} {
-		store, closeDB := scriptedSQLIdentity(&identitySQLState{querySteps: []identitySQLQueryStep{{
-			columns: receiptColumns, rows: [][]driver.Value{{resultJSON, "fingerprint"}},
+	for _, resultJSON := range []string{"{", accessReviewReceiptJSON} {
+		store, closeDB := scriptedAccessReviewOperations(&identitySQLState{querySteps: []identitySQLQueryStep{{
+			columns: accessReviewOperationColumns, rows: [][]driver.Value{accessReviewOperationRow("fingerprint", resultJSON)},
 		}}})
 		receipt, found, err := store.GetIdentityAccessReviewDecisionReceipt(t.Context(), "workspace", "item", "key")
 		if resultJSON == "{" && err == nil {
@@ -120,7 +133,7 @@ func TestIdentityAccessReviewLoaderEdges(t *testing.T) {
 		}
 		closeDB()
 	}
-	store, closeDB := scriptedSQLIdentity(&identitySQLState{})
+	store, closeDB := scriptedAccessReviewOperations(&identitySQLState{})
 	if _, found, err := store.GetIdentityAccessReviewDecisionReceipt(t.Context(), "workspace", "item", "key"); err != nil || found {
 		t.Fatalf("missing receipt found=%v err=%v", found, err)
 	}
@@ -186,7 +199,7 @@ func TestApplyIdentityAccessReviewDecisionPipelineFailures(t *testing.T) {
 		{execFailAt: 3, failure: errProfileBindingSQL, querySteps: accessReviewKeepQueries()},
 		{commitErr: errProfileBindingSQL, querySteps: accessReviewKeepQueries()},
 	} {
-		store, closeDB = scriptedSQLIdentity(state)
+		store, closeDB = scriptedAccessReviewOperations(state)
 		if _, err := store.ApplyIdentityAccessReviewDecision(t.Context(), mutation); err == nil {
 			t.Fatal("decision pipeline failure ignored")
 		}
@@ -196,10 +209,9 @@ func TestApplyIdentityAccessReviewDecisionPipelineFailures(t *testing.T) {
 
 func TestApplyIdentityAccessReviewDecisionReplayEdges(t *testing.T) {
 	mutation := validAccessReviewMutation(identitymodel.IdentityAccessReviewKeep)
-	receiptJSON := `{"id":"receipt","request_fingerprint":"fingerprint"}`
 	for _, fingerprint := range []string{"other", "fingerprint"} {
-		store, closeDB := scriptedSQLIdentity(&identitySQLState{querySteps: []identitySQLQueryStep{{
-			columns: []string{"result_json", "request_fingerprint"}, rows: [][]driver.Value{{receiptJSON, fingerprint}},
+		store, closeDB := scriptedAccessReviewOperations(&identitySQLState{querySteps: []identitySQLQueryStep{{
+			columns: accessReviewOperationColumns, rows: [][]driver.Value{accessReviewOperationRow(fingerprint, accessReviewReceiptJSON)},
 		}}})
 		receipt, err := store.ApplyIdentityAccessReviewDecision(t.Context(), mutation)
 		if fingerprint == "other" && apperror.CodeOf(err) != "backend.idempotency_key_reused" {
@@ -218,7 +230,7 @@ func TestApplyIdentityAccessReviewDecisionMutationSpecificFailures(t *testing.T)
 	roleStep := identitySQLQueryStep{columns: []string{"id", "role_key", "label", "description", "status"}, rows: [][]driver.Value{{"replacement", "replacement", "Replacement", "", "active"}}}
 
 	revoke := validAccessReviewMutation(identitymodel.IdentityAccessReviewRevoke)
-	store, closeDB := scriptedSQLIdentity(&identitySQLState{
+	store, closeDB := scriptedAccessReviewOperations(&identitySQLState{
 		querySteps: []identitySQLQueryStep{{}, itemStep, assignmentStep}, execFailAt: 1, failure: errProfileBindingSQL,
 	})
 	if _, err := store.ApplyIdentityAccessReviewDecision(t.Context(), revoke); err == nil {
@@ -235,7 +247,7 @@ func TestApplyIdentityAccessReviewDecisionMutationSpecificFailures(t *testing.T)
 		{querySteps: []identitySQLQueryStep{{}, itemStep, assignmentStep, roleStep}, execFailAt: 1, failure: errProfileBindingSQL},
 		{querySteps: []identitySQLQueryStep{{}, itemStep, assignmentStep, roleStep}, execFailAt: 2, failure: errProfileBindingSQL},
 	} {
-		store, closeDB = scriptedSQLIdentity(state)
+		store, closeDB = scriptedAccessReviewOperations(state)
 		if _, err := store.ApplyIdentityAccessReviewDecision(t.Context(), reduce); err == nil {
 			t.Fatal("reduce-scope failure ignored")
 		}
@@ -244,7 +256,7 @@ func TestApplyIdentityAccessReviewDecisionMutationSpecificFailures(t *testing.T)
 
 	expiry := validAccessReviewMutation(identitymodel.IdentityAccessReviewSetExpiry)
 	expiry.Request.ExpiresAt = "2030-01-01T00:00:00Z"
-	store, closeDB = scriptedSQLIdentity(&identitySQLState{
+	store, closeDB = scriptedAccessReviewOperations(&identitySQLState{
 		querySteps: []identitySQLQueryStep{{}, itemStep, assignmentStep}, execFailAt: 1, failure: errProfileBindingSQL,
 	})
 	if _, err := store.ApplyIdentityAccessReviewDecision(t.Context(), expiry); err == nil {

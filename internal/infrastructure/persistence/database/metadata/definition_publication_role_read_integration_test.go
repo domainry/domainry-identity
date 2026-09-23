@@ -9,6 +9,7 @@ import (
 
 	auditmodel "github.com/domainry/domainry-audit-sdk/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	localizationmodel "github.com/domainry/domainry-identity/internal/domain/localization/model"
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
 	"github.com/domainry/domainry-identity/internal/platform/config"
@@ -68,14 +69,22 @@ func TestDirectRolePublicationRollbackAndDisableAreAtomicWithProjectionAndAudit(
 	if err := store.EnsureSchema(t.Context()); err != nil {
 		t.Fatal(err)
 	}
+	var retiredLocalizedTextTable int
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='_identity_localized_texts'`).Scan(&retiredLocalizedTextTable); err != nil || retiredLocalizedTextTable != 0 {
+		t.Fatalf("retired Identity localized-text table count=%d err=%v", retiredLocalizedTextTable, err)
+	}
+	var retiredRefreshIntentTable int
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='_identity_metadata_refresh_intents'`).Scan(&retiredRefreshIntentTable); err != nil || retiredRefreshIntentTable != 0 {
+		t.Fatalf("retired Identity metadata refresh-intent table count=%d err=%v", retiredRefreshIntentTable, err)
+	}
 	repository := NewMetadataStore(store, "workspace-primary")
 	scope := identitymodel.NewSystemScope(identitymodel.SystemScopeInstallation, "test direct role publication")
 	publication := &metadatamodel.MetadataDefinitionPublication{WorkspaceID: "workspace-primary"}
 	audit := func(id, event string) auditmodel.AuditEvent {
-		return auditmodel.AuditEvent{ID: id, WorkspaceID: "workspace-primary", Event: event, ObjectKey: "role", RecordID: "reviewer", ActorID: "admin", RoleKey: "admin", CreatedAt: time.Now().UTC().Format(time.RFC3339Nano)}
+		return auditmodel.AuditEvent{ID: id, WorkspaceID: "workspace-primary", Family: auditmodel.EventFamilyIdentityGovernance, Event: event, ObjectKey: "role", RecordID: "reviewer", ActorID: "admin", RoleKey: "admin", CreatedAt: time.Now().UTC().Format(time.RFC3339Nano)}
 	}
 	payload := func(name string) json.RawMessage {
-		raw, marshalErr := json.Marshal(identitymodel.RoleSchema{Key: "reviewer", Name: name})
+		raw, marshalErr := json.Marshal(identitymodel.RoleSchema{Key: "reviewer", Name: name, I18n: localizationmodel.LocalizedTextMap{"zh-CN": {"name": name + " zh"}}})
 		if marshalErr != nil {
 			t.Fatal(marshalErr)
 		}
@@ -90,11 +99,13 @@ func TestDirectRolePublicationRollbackAndDisableAreAtomicWithProjectionAndAudit(
 	if err != nil {
 		t.Fatal(err)
 	}
+	assertSharedRoleLocalizedText(t, repository, "Senior Reviewer zh")
 	assertRoleProjectionState(t, store, "Senior Reviewer", "active", 2)
 	rolledBack, err := repository.RollbackDefinition(t.Context(), scope, "role", "reviewer", metadatamodel.MetadataDefinitionRollbackRequest{TargetVersion: "1", ExpectedSchemaHash: second.SchemaHash, BusinessReason: "restore"}, audit("audit-role-rollback", "metadata_definition.rolled_back"), publication)
 	if err != nil {
 		t.Fatal(err)
 	}
+	assertSharedRoleLocalizedText(t, repository, "Reviewer zh")
 	assertRoleProjectionState(t, store, "Reviewer", "active", 3)
 	if err := repository.DisableDefinition(t.Context(), scope, "role", "reviewer", strings.Repeat("0", 64), audit("audit-role-stale-disable", "metadata_definition.disabled"), publication); err == nil {
 		t.Fatal("stale role disable was accepted")
@@ -107,6 +118,16 @@ func TestDirectRolePublicationRollbackAndDisableAreAtomicWithProjectionAndAudit(
 	var disabled int
 	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _identity_role_definitions WHERE resource_key='reviewer' AND disabled_at IS NOT NULL`).Scan(&disabled); err != nil || disabled != 1 {
 		t.Fatalf("disabled role definitions=%d err=%v", disabled, err)
+	}
+}
+
+func assertSharedRoleLocalizedText(t *testing.T, repository MetadataStore, want string) {
+	t.Helper()
+	values, err := repository.ListLocalizedTexts(t.Context(), "workspace-primary", metadatamodel.LocalizedTextQuery{
+		WorkspaceID: "workspace-primary", EntityType: "role", EntityKey: "reviewer", Property: "name", Locale: "zh-CN",
+	})
+	if err != nil || len(values) != 1 || values[0].Text != want || values[0].SourceKind != "metadata_definition" {
+		t.Fatalf("shared role localized texts=%#v err=%v", values, err)
 	}
 }
 

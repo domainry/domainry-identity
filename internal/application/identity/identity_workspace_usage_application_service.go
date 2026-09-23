@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"strings"
 
+	auditcontract "github.com/domainry/domainry-audit-sdk/contract"
 	"github.com/domainry/domainry-foundation/apperror"
 	auditapplication "github.com/domainry/domainry-identity/internal/application/auditbinding"
 	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
@@ -148,6 +149,7 @@ func (s *IdentityWorkspaceUsageApplicationService) List(ctx context.Context, req
 	}
 	principal := identityWorkspaceUsageAuditPrincipal(grant)
 	if err := s.dependencies.Audit.AppendAudit(ctx, auditapplication.AuditAppendRequest{
+		Family:    auditcontract.EventFamilyIdentityGovernance,
 		Event:     "identity.workspace_identity_usage.aggregate",
 		ObjectKey: "identity.workspace_identity_usage",
 		RecordID:  grant.InstallationID,
@@ -198,6 +200,7 @@ func (s *IdentityWorkspaceUsageApplicationService) Resolve(ctx context.Context, 
 	}
 	principal := identityWorkspaceUsageAuditPrincipal(grant)
 	if err := s.dependencies.Audit.AppendAudit(ctx, auditapplication.AuditAppendRequest{
+		Family:    auditcontract.EventFamilyIdentityGovernance,
 		Event:     "identity.workspace_identity_usage.resolve",
 		ObjectKey: "identity.workspace_identity_usage",
 		RecordID:  grant.InstallationID,

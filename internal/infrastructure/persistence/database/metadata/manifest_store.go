@@ -66,9 +66,6 @@ func (s MetadataStore) EnsureManifestMetadata(ctx context.Context, seed manifest
 			return err
 		}
 	}
-	if err := s.syncManifestLocalizedTexts(ctx, tx, seed, now); err != nil {
-		return err
-	}
 	if err := s.refreshCatalogHashWithExecutorAt(ctx, tx, now); err != nil {
 		return fmt.Errorf("refresh Identity metadata catalog: %w", err)
 	}
@@ -109,9 +106,6 @@ func (s MetadataStore) SyncManifestMetadata(ctx context.Context, seed manifestmo
 		if err := s.syncMetadataResource(ctx, tx, seed, now); err != nil {
 			return err
 		}
-	}
-	if err := s.syncManifestLocalizedTexts(ctx, tx, seed, now); err != nil {
-		return err
 	}
 	if err := s.refreshCatalogHashWithExecutorAt(ctx, tx, now); err != nil {
 		return fmt.Errorf("refresh Identity metadata catalog: %w", err)

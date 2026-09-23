@@ -201,9 +201,10 @@ func TestAuthMutationCompletionMapsOwnerAndFencingMismatchToLeaseLost(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
+	installAndBindAuthTestSharedOperations(t, identity)
 	repository := NewAuthStore(identity, store.IdempotencyMetrics(t.Context()))
 	now := time.Date(2026, 7, 19, 18, 0, 0, 0, time.UTC)
-	claim, err := repository.TryBeginAuthMutation(t.Context(), "workspace-a", authmodel.AuthMutationClaimRequest{Receipt: authmodel.AuthMutationReceipt{WorkspaceID: "workspace-a", UseCase: "auth.password_reset", TargetID: "user-a", IdempotencyKey: "reset-a"}, RequestFingerprint: "fingerprint", LeaseOwner: "runtime-a", LeaseTTL: time.Minute, Now: now})
+	claim, err := repository.TryBeginAuthMutation(t.Context(), "workspace-a", authmodel.AuthMutationClaimRequest{Receipt: authmodel.AuthMutationReceipt{WorkspaceID: "workspace-a", UseCase: "auth.password_reset", TargetID: "user-a", ActorID: "actor-a", IdempotencyKey: "reset-a"}, RequestFingerprint: "fingerprint", LeaseOwner: "runtime-a", LeaseTTL: time.Minute, Now: now})
 	if err != nil || claim.Decision != idempotency.DecisionAcquired {
 		t.Fatalf("claim=%#v err=%v", claim, err)
 	}

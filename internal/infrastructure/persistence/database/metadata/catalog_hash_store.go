@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/transaction"
+	metadatasdk "github.com/domainry/domainry-metadata-sdk"
 	metadatamodulehost "github.com/domainry/domainry-metadata-sdk/modulehost"
 	"github.com/domainry/domainry-orm/query"
 )
@@ -39,13 +40,13 @@ func (r MetadataStore) refreshCatalogHashWithExecutorAt(
 	if binding == nil || binding.Definitions() == nil {
 		return fmt.Errorf("Metadata definitions are unavailable")
 	}
-	snapshot, err := binding.Definitions().Snapshot(metadatamodulehost.WithExecutor(ctx, executor))
+	snapshot, err := binding.Definitions().Snapshot(metadatamodulehost.WithExecutor(ctx, executor), metadatasdk.DefinitionQuery{CrossOwner: true})
 	if err != nil {
 		return err
 	}
 	hash.Write([]byte("metadata:"))
 	for _, definition := range snapshot.Definitions {
-		hash.Write([]byte(definition.ResourceType + ":" + definition.ResourceKey + ":" + definition.SchemaHash + "|"))
+		hash.Write([]byte(definition.Owner + ":" + definition.ResourceType + ":" + definition.ResourceKey + ":" + definition.SchemaHash + "|"))
 	}
 	for _, table := range tables {
 		queryValue, args, err := query.NewSelectBuilder(r.store.SQLRenderer, table).

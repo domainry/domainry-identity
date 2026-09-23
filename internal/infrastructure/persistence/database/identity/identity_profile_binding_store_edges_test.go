@@ -13,8 +13,17 @@ var errProfileBindingSQL = errors.New("profile binding SQL failure")
 
 func scriptedProfileBindingStore(state *identitySQLState) (*IdentityProfileBindingStore, func()) {
 	identityStore, closeDB := scriptedSQLIdentity(state)
+	identityStore.BindOperationsPersistence()
 	return NewIdentityProfileBindingStore(identityStore), closeDB
 }
+
+var profileBindingOperationColumns = []string{"id", "resource_id", "request_fingerprint", "requested_by", "result_json", "created_at", "status"}
+
+func profileBindingOperationRow(fingerprint, resultJSON string) []driver.Value {
+	return []driver.Value{"receipt", "profile", fingerprint, "actor", resultJSON, "created", "succeeded"}
+}
+
+const profileBindingReceiptJSON = `{"id":"receipt","workspace_id":"workspace","binding_key":"member","object_key":"member_profile","profile_id":"profile","operation":"invite","idempotency_key":"key","request_fingerprint":"fingerprint","binding":{"status":"invited"},"created_at":"created"}`
 
 func validProfileBindingMutation(operation identitymodel.IdentityProfileBindingOperation) identitymodel.IdentityProfileBindingMutation {
 	return identitymodel.IdentityProfileBindingMutation{
@@ -122,17 +131,16 @@ func TestIdentityProfileBindingReceiptLoadEdges(t *testing.T) {
 		t.Fatal("receipt query failure ignored")
 	}
 	closeDB()
-	columns := []string{"id", "workspace_id", "binding_key", "object_key", "profile_id", "operation", "idempotency_key", "request_fingerprint", "binding_json", "created_at"}
-	for _, bindingJSON := range []string{"{", `{"status":"invited"}`} {
+	for _, receiptJSON := range []string{"{", profileBindingReceiptJSON} {
 		store, closeDB = scriptedProfileBindingStore(&identitySQLState{querySteps: []identitySQLQueryStep{{
-			columns: columns,
-			rows:    [][]driver.Value{{"receipt", "workspace", "member", "member_profile", "profile", "invite", "key", "fingerprint", bindingJSON, "created"}},
+			columns: profileBindingOperationColumns,
+			rows:    [][]driver.Value{profileBindingOperationRow("fingerprint", receiptJSON)},
 		}}})
 		receipt, found, err := store.GetIdentityProfileBindingReceipt(t.Context(), mutation)
-		if bindingJSON == "{" && err == nil {
+		if receiptJSON == "{" && err == nil {
 			t.Fatal("invalid receipt JSON accepted")
 		}
-		if bindingJSON != "{" && (err != nil || !found || receipt.Binding.Status != identitymodel.IdentityProfileBindingInvited) {
+		if receiptJSON != "{" && (err != nil || !found || receipt.Binding.Status != identitymodel.IdentityProfileBindingInvited) {
 			t.Fatalf("receipt=%#v found=%v err=%v", receipt, found, err)
 		}
 		closeDB()
@@ -157,11 +165,10 @@ func TestExecuteIdentityProfileBindingMutationFailureStages(t *testing.T) {
 	}
 	closeDB()
 
-	receiptColumns := []string{"id", "workspace_id", "binding_key", "object_key", "profile_id", "operation", "idempotency_key", "request_fingerprint", "binding_json", "created_at"}
 	for _, fingerprint := range []string{"other", "fingerprint"} {
 		store, closeDB = scriptedProfileBindingStore(&identitySQLState{querySteps: []identitySQLQueryStep{{
-			columns: receiptColumns,
-			rows:    [][]driver.Value{{"receipt", "workspace", "member", "member_profile", "profile", "invite", "key", fingerprint, `{"status":"invited"}`, "created"}},
+			columns: profileBindingOperationColumns,
+			rows:    [][]driver.Value{profileBindingOperationRow(fingerprint, profileBindingReceiptJSON)},
 		}}})
 		receipt, err := store.ExecuteIdentityProfileBindingMutation(t.Context(), mutation)
 		if fingerprint == "other" && apperror.CodeOf(err) != "backend.idempotency_key_reused" {
@@ -285,6 +292,7 @@ func TestIdentityProfileBindingTransitionAndValidationEdges(t *testing.T) {
 		func() identitymodel.IdentityProfileBindingMutation { m := base; m.IdentityField = ""; return m }(),
 		func() identitymodel.IdentityProfileBindingMutation { m := base; m.IdempotencyKey = ""; return m }(),
 		func() identitymodel.IdentityProfileBindingMutation { m := base; m.RequestFingerprint = ""; return m }(),
+		func() identitymodel.IdentityProfileBindingMutation { m := base; m.ActorID = ""; return m }(),
 		func() identitymodel.IdentityProfileBindingMutation { m := base; m.ExpectedVersion = -1; return m }(),
 	}
 	for _, mutation := range invalid {

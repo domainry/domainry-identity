@@ -12,8 +12,8 @@ import (
 
 func (s MetadataStore) syncBusinessMetadataDefinitions(ctx context.Context, manifest manifestmodel.ManifestSchema) error {
 	binding := s.store.Metadata()
-	if binding == nil || binding.Projection() == nil {
-		return fmt.Errorf("Metadata projection is unavailable")
+	if binding == nil || binding.DefinitionStore() == nil {
+		return fmt.Errorf("Metadata Definition store is unavailable")
 	}
 	definitions := []metadatasdk.Definition{}
 	appendDefinition := func(resourceType, key, objectKey, name string, value any) error {
@@ -64,10 +64,19 @@ func (s MetadataStore) syncBusinessMetadataDefinitions(ctx context.Context, mani
 	if sourceID == "" {
 		sourceID = "generated-template"
 	}
-	return binding.Projection().Sync(ctx, metadatasdk.ProjectionSnapshot{
-		SchemaVersion: version, SourceKind: "generated", SourceID: sourceID,
+	localizedSeeds := manifestLocalizedTextSeeds(manifest, s.tenantWorkspaceID(ctx))
+	localizedTexts := make([]metadatasdk.LocalizedText, 0, len(localizedSeeds))
+	for _, value := range localizedSeeds {
+		localizedTexts = append(localizedTexts, metadatasdk.LocalizedText{
+			WorkspaceID: value.WorkspaceID, EntityType: value.EntityType, EntityKey: value.EntityKey,
+			Property: value.Property, Locale: value.Locale, Text: value.Text,
+			SourceKind: value.SourceKind, SourceID: value.SourceID,
+		})
+	}
+	return binding.DefinitionStore().ReplaceSourceSnapshot(ctx, metadatasdk.ProjectionSnapshot{
+		Owner: metadatasdk.DefinitionOwnerMetadata, SchemaVersion: version, SourceKind: "generated", SourceID: sourceID,
 		Name: strings.TrimSpace(manifest.Name), DefaultLocale: strings.TrimSpace(manifest.DefaultLocale),
-		Definitions: definitions,
+		Definitions: definitions, LocalizedText: localizedTexts,
 	})
 }
 

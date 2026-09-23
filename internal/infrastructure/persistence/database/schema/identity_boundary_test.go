@@ -38,10 +38,13 @@ func TestStandaloneIdentitySchemaDoesNotCreatePlaneTables(t *testing.T) {
 		}
 		tables[table] = true
 	}
-	for _, required := range []string{"_identity_users", "_identity_roles", "_identity_organization_units", "_identity_menus", "_identity_credentials", "_identity_metadata_refresh_intents"} {
+	for _, required := range []string{"_identity_users", "_identity_roles", "_identity_organization_units", "_identity_menus", "_identity_credentials"} {
 		if !tables[required] {
 			t.Errorf("required Identity table %q is missing", required)
 		}
+	}
+	if tables["_identity_metadata_refresh_intents"] {
+		t.Error("retired Identity metadata refresh-intent table still exists")
 	}
 	for _, moduleOwned := range []string{"_metadata_object_definitions", "_metadata_field_definitions", "_metadata_validation_definitions", "_metadata_action_definitions", "_metadata_dictionary_definitions"} {
 		if tables[moduleOwned] {

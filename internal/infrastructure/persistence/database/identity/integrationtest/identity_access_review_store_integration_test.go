@@ -2,6 +2,7 @@ package identity_test
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/domainry/domainry-foundation/apperror"
@@ -24,6 +25,10 @@ func TestAccessReviewDecisionIsAtomicAuditableAndIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, _, err := store.GetIdentityAccessReviewDecisionReceipt(t.Context(), "workspace-primary", "item-1", "decision-1"); err == nil || !strings.Contains(err.Error(), "not bound") {
+		t.Fatalf("unbound shared Operations error=%v", err)
+	}
+	bindSharedOperations(t, store)
 	if err := store.UpsertIdentityUser(t.Context(), "workspace-primary", identitymodel.IdentityUser{ID: "user-1", Name: "User", Status: identitymodel.IdentityStatusActive}); err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +59,8 @@ func TestAccessReviewDecisionIsAtomicAuditableAndIdempotent(t *testing.T) {
 			ExpectedVersion: 1, IdempotencyKey: "decision-1",
 		},
 	}
-	if _, err := identityStore.DB().ExecContext(t.Context(), `CREATE TRIGGER fail_access_review_receipt BEFORE INSERT ON _identity_access_review_receipts
+	if _, err := identityStore.DB().ExecContext(t.Context(), `CREATE TRIGGER fail_access_review_receipt BEFORE INSERT ON _operations
+		WHEN NEW.owner = 'identity' AND NEW.kind = 'identity.access_review_decision'
 		BEGIN SELECT RAISE(ABORT, 'injected receipt failure'); END`); err != nil {
 		t.Fatal(err)
 	}
@@ -93,6 +99,13 @@ func TestAccessReviewDecisionIsAtomicAuditableAndIdempotent(t *testing.T) {
 	if err != nil || len(reviews) != 1 || len(reviews[0].Items) != 1 || reviews[0].Items[0].Decision != identitymodel.IdentityAccessReviewRevoke {
 		t.Fatalf("completed review=%#v err=%v", reviews, err)
 	}
+	var operationCount, legacyTableCount int
+	if err := identityStore.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _operations WHERE workspace_id='workspace-primary' AND owner='identity' AND kind='identity.access_review_decision' AND status='succeeded'`).Scan(&operationCount); err != nil || operationCount != 1 {
+		t.Fatalf("shared access review operation count=%d err=%v", operationCount, err)
+	}
+	if err := identityStore.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='_identity_access_review_receipts'`).Scan(&legacyTableCount); err != nil || legacyTableCount != 0 {
+		t.Fatalf("legacy access review receipt table count=%d err=%v", legacyTableCount, err)
+	}
 }
 
 func TestAccessReviewStoreValidatesInputsAndSupportsEveryDecisionShape(t *testing.T) {
@@ -108,6 +121,7 @@ func TestAccessReviewStoreValidatesInputsAndSupportsEveryDecisionShape(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
+	bindSharedOperations(t, store)
 
 	for _, invalid := range []identitymodel.IdentityAccessReview{
 		{WorkspaceID: ""},

@@ -3,6 +3,7 @@ package identity_test
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/domainry/domainry-foundation/apperror"
@@ -34,6 +35,10 @@ func TestHandlerDeliveryStoreCommitsUserRolesProfileAndReceiptAsOneUnit(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, _, err := identityStore.GetIdentityHandlerDeliveryReceipt(t.Context(), "workspace-primary", "delivery-1"); err == nil || !strings.Contains(err.Error(), "not bound") {
+		t.Fatalf("unbound shared Operations error=%v", err)
+	}
+	bindSharedOperations(t, identityStore)
 	if err := identityStore.UpsertIdentityRole(t.Context(), "workspace-primary", identitymodel.IdentityRole{ID: "employee-role", Key: "employee", Label: "Employee", Status: identitymodel.IdentityStatusActive}); err != nil {
 		t.Fatal(err)
 	}
@@ -103,13 +108,17 @@ func TestHandlerDeliveryStoreCommitsUserRolesProfileAndReceiptAsOneUnit(t *testi
 		t.Fatalf("different replay error=%v", err)
 	}
 	assertHandlerDeliveryCounts(t, store, 1, 1, 1, 1, "employee-1")
+	var legacyTableCount int
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='_identity_handler_deliveries'`).Scan(&legacyTableCount); err != nil || legacyTableCount != 0 {
+		t.Fatalf("legacy handler delivery table count=%d err=%v", legacyTableCount, err)
+	}
 }
 
 func assertHandlerDeliveryCounts(t *testing.T, store *IdentityStore, users, assignments, credentials, receipts int, profileUser string) {
 	t.Helper()
 	for table, expected := range map[string]int{
 		"_identity_users": users, "_identity_user_role_assignments": assignments,
-		"_identity_credentials": credentials, "_identity_handler_deliveries": receipts,
+		"_identity_credentials": credentials,
 	} {
 		var actual int
 		if err := store.DB().QueryRowContext(t.Context(), "SELECT COUNT(*) FROM "+table+" WHERE workspace_id = 'workspace-primary'").Scan(&actual); err != nil {
@@ -118,6 +127,13 @@ func assertHandlerDeliveryCounts(t *testing.T, store *IdentityStore, users, assi
 		if actual != expected {
 			t.Fatalf("%s count=%d want=%d", table, actual, expected)
 		}
+	}
+	var actualReceipts int
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _operations WHERE workspace_id = 'workspace-primary' AND owner = 'identity' AND kind = 'identity.handler_delivery'`).Scan(&actualReceipts); err != nil {
+		t.Fatal(err)
+	}
+	if actualReceipts != receipts {
+		t.Fatalf("handler delivery operation count=%d want=%d", actualReceipts, receipts)
 	}
 	var actualProfileUser string
 	if err := store.DB().QueryRowContext(t.Context(), `SELECT COALESCE(identity_user_id, '') FROM employee_profile WHERE workspace_id = 'workspace-primary' AND id = 'employee-profile-1'`).Scan(&actualProfileUser); err != nil {

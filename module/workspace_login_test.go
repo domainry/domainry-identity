@@ -44,6 +44,7 @@ func TestEmbeddedHostWorkspaceLoginAfterAtomicBootstrap(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = binding.Close(context.Background()) })
+	installAndBindModuleSharedOperations(t, db, binding)
 	catalog := initialCatalog
 	catalog.Application = identitysdk.ApplicationRef{ApplicationKey: "runtime"}
 	if err := binding.(identitysdk.BootstrapProjectRoleCatalogBinder).BindBootstrapProjectRoleCatalog(t.Context(), catalog); err != nil {

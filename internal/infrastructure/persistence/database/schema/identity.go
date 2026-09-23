@@ -11,9 +11,6 @@ import (
 )
 
 func EnsureIdentitySchema(ctx context.Context, s Store) error {
-	if err := ensureSubjectErasureSchema(ctx, s); err != nil {
-		return err
-	}
 	text := s.MetadataIDColumnType()
 	types := s.SchemaTypes()
 	boolType, boolFalse := types.Boolean, types.FalseLiteral
@@ -78,6 +75,9 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"depth INTEGER NOT NULL",
 			"sort_order INTEGER NOT NULL DEFAULT 0",
 			"status " + text + " NOT NULL DEFAULT 'active'",
+			"delivery_owner " + identityIndexText + " NOT NULL DEFAULT ''",
+			"delivery_version BIGINT NOT NULL DEFAULT 0",
+			"delivery_state_fingerprint " + text + " NOT NULL DEFAULT ''",
 			"created_at " + text + " NOT NULL",
 			"updated_at " + text + " NOT NULL",
 		},
@@ -177,114 +177,6 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"updated_at " + text + " NOT NULL",
 			"deactivated_at " + text,
 		},
-		"_identity_authoring_receipts": {
-			"id " + text + " PRIMARY KEY",
-			"workspace_id " + text + " NOT NULL",
-			"use_case " + text + " NOT NULL",
-			"resource_type " + text + " NOT NULL",
-			"target_id " + text + " NOT NULL",
-			"idempotency_key " + text + " NOT NULL",
-			"request_fingerprint " + text + " NOT NULL",
-			"status " + text + " NOT NULL",
-			"result_json TEXT NOT NULL DEFAULT '{}'",
-			"lease_owner " + text + " NOT NULL",
-			"lease_expires_at " + text + " NOT NULL",
-			"fencing_token BIGINT NOT NULL",
-			"created_at " + text + " NOT NULL",
-			"updated_at " + text + " NOT NULL",
-		},
-		"_identity_workspace_write_fences": {
-			"workspace_id " + text + " PRIMARY KEY",
-			"state " + text + " NOT NULL",
-			"evidence_sha256 " + text + " NOT NULL",
-			"frozen_by " + text + " NOT NULL",
-			"frozen_at " + text + " NOT NULL",
-			"released_by " + text + " NOT NULL DEFAULT ''",
-			"released_at " + text,
-			"updated_at " + text + " NOT NULL",
-		},
-		"_identity_entitlement_batch_receipts": {
-			"id " + text + " PRIMARY KEY",
-			"workspace_id " + text + " NOT NULL",
-			"actor_id " + text + " NOT NULL",
-			"idempotency_key " + text + " NOT NULL",
-			"request_fingerprint " + text + " NOT NULL",
-			"result_json TEXT NOT NULL",
-			"created_at " + text + " NOT NULL",
-		},
-		"_identity_handler_deliveries": {
-			"id " + identityIndexText + " PRIMARY KEY",
-			"workspace_id " + identityIndexText + " NOT NULL",
-			"actor_id " + identityIndexText + " NOT NULL",
-			"idempotency_key " + identityIndexText + " NOT NULL",
-			"request_fingerprint " + identityIndexText + " NOT NULL",
-			"result_json TEXT NOT NULL",
-			"created_at " + identityIndexText + " NOT NULL",
-		},
-		"_identity_workspace_bootstrap_receipts": {
-			"id " + identityIndexText + " PRIMARY KEY",
-			"workspace_id " + identityIndexText + " NOT NULL",
-			"invocation_id " + identityIndexText + " NOT NULL",
-			"request_fingerprint " + identityIndexText + " NOT NULL",
-			"contract_version " + identityIndexText + " NOT NULL",
-			"contract_hash " + identityIndexText + " NOT NULL",
-			"company_id " + identityIndexText + " NOT NULL",
-			"first_store_id " + identityIndexText + " NOT NULL",
-			"initial_admin_user_id " + identityIndexText + " NOT NULL",
-			"initial_admin_login_id TEXT NOT NULL",
-			"role_catalog_sha256 " + identityIndexText + " NOT NULL DEFAULT ''",
-			"navigation_catalog_sha256 " + identityIndexText + " NOT NULL DEFAULT ''",
-			"initial_workspace_administrator_role_key " + identityIndexText + " NOT NULL DEFAULT ''",
-			"credential_claimed_at " + identityIndexText,
-			"created_at " + identityIndexText + " NOT NULL",
-		},
-		"_identity_installation_administrator_bootstrap_receipts": {
-			"id " + identityIndexText + " PRIMARY KEY",
-			"workspace_id " + identityIndexText + " NOT NULL",
-			"invocation_id " + identityIndexText + " NOT NULL",
-			"request_fingerprint " + identityIndexText + " NOT NULL",
-			"contract_version " + identityIndexText + " NOT NULL",
-			"contract_hash " + identityIndexText + " NOT NULL",
-			"user_id " + identityIndexText + " NOT NULL",
-			"login_id TEXT NOT NULL",
-			"credential_claimed_at " + identityIndexText,
-			"credential_delivered_at " + identityIndexText,
-			"created_at " + identityIndexText + " NOT NULL",
-		},
-		"_identity_store_organization_states": {
-			"id " + identityIndexText + " PRIMARY KEY",
-			"workspace_id " + identityIndexText + " NOT NULL",
-			"organization_id " + identityIndexText + " NOT NULL",
-			"version BIGINT NOT NULL",
-			"state_fingerprint " + identityIndexText + " NOT NULL",
-			"updated_at " + identityIndexText + " NOT NULL",
-		},
-		"_identity_store_organization_deliveries": {
-			"id " + identityIndexText + " PRIMARY KEY",
-			"workspace_id " + identityIndexText + " NOT NULL",
-			"actor_id " + identityIndexText + " NOT NULL",
-			"idempotency_key " + identityIndexText + " NOT NULL",
-			"request_fingerprint " + identityIndexText + " NOT NULL",
-			"result_json TEXT NOT NULL",
-			"created_at " + identityIndexText + " NOT NULL",
-		},
-		"_identity_organization_unit_delivery_states": {
-			"id " + identityIndexText + " PRIMARY KEY",
-			"workspace_id " + identityIndexText + " NOT NULL",
-			"organization_id " + identityIndexText + " NOT NULL",
-			"version BIGINT NOT NULL",
-			"state_fingerprint " + identityIndexText + " NOT NULL",
-			"updated_at " + identityIndexText + " NOT NULL",
-		},
-		"_identity_organization_unit_deliveries": {
-			"id " + identityIndexText + " PRIMARY KEY",
-			"workspace_id " + identityIndexText + " NOT NULL",
-			"actor_id " + identityIndexText + " NOT NULL",
-			"idempotency_key " + identityIndexText + " NOT NULL",
-			"request_fingerprint " + identityIndexText + " NOT NULL",
-			"result_json TEXT NOT NULL",
-			"created_at " + identityIndexText + " NOT NULL",
-		},
 		"_identity_access_reviews": {
 			"id " + text + " PRIMARY KEY",
 			"workspace_id " + text + " NOT NULL",
@@ -319,15 +211,6 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"version BIGINT NOT NULL DEFAULT 1",
 			"created_at " + text + " NOT NULL",
 			"updated_at " + text + " NOT NULL",
-		},
-		"_identity_access_review_receipts": {
-			"id " + text + " PRIMARY KEY",
-			"workspace_id " + text + " NOT NULL",
-			"item_id " + text + " NOT NULL",
-			"idempotency_key " + text + " NOT NULL",
-			"request_fingerprint " + text + " NOT NULL",
-			"result_json TEXT NOT NULL",
-			"created_at " + text + " NOT NULL",
 		},
 		"_identity_menus": {
 			"id " + text + " PRIMARY KEY",
@@ -430,24 +313,6 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"consumed_at " + text,
 			"created_at " + text + " NOT NULL",
 		},
-		"_identity_auth_mutation_receipts": {
-			"id " + text + " PRIMARY KEY",
-			"workspace_id " + text + " NOT NULL",
-			"use_case " + text + " NOT NULL",
-			"target_id " + text + " NOT NULL",
-			"idempotency_key " + text + " NOT NULL",
-			"request_fingerprint " + text + " NOT NULL",
-			"status " + text + " NOT NULL",
-			"result_json TEXT NOT NULL",
-			"lease_owner " + text + " NOT NULL",
-			"lease_expires_at " + text + " NOT NULL",
-			"fencing_token BIGINT NOT NULL",
-			"error_code " + text + " NOT NULL",
-			"expires_at " + text + " NOT NULL",
-			"actor_id " + text + " NOT NULL",
-			"created_at " + text + " NOT NULL",
-			"updated_at " + text + " NOT NULL",
-		},
 		"_identity_external_accounts": {
 			"id " + text + " PRIMARY KEY",
 			"workspace_id " + text + " NOT NULL",
@@ -491,35 +356,6 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"created_at " + identityIndexText + " NOT NULL",
 			"updated_at " + identityIndexText + " NOT NULL",
 		},
-		"_identity_profile_binding_receipts": {
-			"id " + identityIndexText + " PRIMARY KEY",
-			"workspace_id " + identityIndexText + " NOT NULL",
-			"binding_key " + identityIndexText + " NOT NULL",
-			"object_key " + identityIndexText + " NOT NULL",
-			"profile_id " + identityIndexText + " NOT NULL",
-			"operation " + identityIndexText + " NOT NULL",
-			"idempotency_key " + identityIndexText + " NOT NULL",
-			"request_fingerprint " + identityIndexText + " NOT NULL",
-			"binding_json TEXT NOT NULL",
-			"created_at " + identityIndexText + " NOT NULL",
-		},
-		"_identity_profile_binding_events": {
-			"id " + identityIndexText + " PRIMARY KEY",
-			"workspace_id " + identityIndexText + " NOT NULL",
-			"binding_key " + identityIndexText + " NOT NULL",
-			"object_key " + identityIndexText + " NOT NULL",
-			"profile_id " + identityIndexText + " NOT NULL",
-			"operation " + identityIndexText + " NOT NULL",
-			"previous_user_id " + identityIndexText,
-			"identity_user_id " + identityIndexText,
-			"binding_version BIGINT NOT NULL",
-			"idempotency_key " + identityIndexText + " NOT NULL",
-			"actor_id " + identityIndexText + " NOT NULL",
-			"reason TEXT",
-			"approval_id " + identityIndexText,
-			"status " + identityIndexText + " NOT NULL",
-			"created_at " + identityIndexText + " NOT NULL",
-		},
 	}
 	workspaceIdentities := prepareWorkspaceScopedIdentities(tables)
 	// These baseline tables use engine-provided physical types that
@@ -528,9 +364,6 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 		if _, err := s.SchemaDB().ExecContext(ctx, "CREATE TABLE IF NOT EXISTS "+s.TableIdentifier(table)+" ("+quotedColumnDefinitions(s, tables[table])+")"); err != nil {
 			return fmt.Errorf("create %s: %w", table, err)
 		}
-	}
-	if err := ensureWorkspaceBootstrapRolePolicyEvidence(ctx, s); err != nil {
-		return err
 	}
 	if err := ensureIdentityGlobalLoginNames(ctx, s); err != nil {
 		return err
@@ -544,44 +377,8 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 	if err := ensureWorkspaceScopedIdentities(ctx, s, workspaceIdentities); err != nil {
 		return err
 	}
-	if err := s.CreateIndexIfMissing(ctx, "_identity_auth_mutation_receipts", "uniq_auth_mutation_receipt_scope", true, "workspace_id", "use_case", "target_id", "idempotency_key"); err != nil {
-		return fmt.Errorf("create auth mutation receipt unique index: %w", err)
-	}
-	if err := s.CreateIndexIfMissing(ctx, "_identity_auth_mutation_receipts", "idx_auth_mutation_receipt_lease", false, "status", "lease_expires_at"); err != nil {
-		return fmt.Errorf("create auth mutation receipt lease index: %w", err)
-	}
-	if err := s.CreateIndexIfMissing(ctx, "_identity_entitlement_batch_receipts", "uniq_identity_entitlement_batch_receipt", true, "workspace_id", "idempotency_key"); err != nil {
-		return fmt.Errorf("create identity entitlement batch receipt unique index: %w", err)
-	}
-	if err := s.CreateIndexIfMissing(ctx, "_identity_handler_deliveries", "uniq_identity_handler_delivery_key", true, "workspace_id", "idempotency_key"); err != nil {
-		return fmt.Errorf("create identity handler delivery unique index: %w", err)
-	}
-	if err := s.CreateIndexIfMissing(ctx, "_identity_workspace_bootstrap_receipts", "uniq_identity_workspace_bootstrap_invocation", true, "workspace_id", "invocation_id"); err != nil {
-		return fmt.Errorf("create Identity Workspace bootstrap invocation index: %w", err)
-	}
-	if err := s.CreateIndexIfMissing(ctx, "_identity_workspace_bootstrap_receipts", "uniq_identity_workspace_bootstrap_once", true, "workspace_id"); err != nil {
-		return fmt.Errorf("create Identity Workspace bootstrap uniqueness index: %w", err)
-	}
-	if err := s.CreateIndexIfMissing(ctx, "_identity_installation_administrator_bootstrap_receipts", "uniq_identity_installation_administrator_bootstrap_invocation", true, "workspace_id", "invocation_id"); err != nil {
-		return fmt.Errorf("create installation administrator bootstrap invocation index: %w", err)
-	}
-	if err := s.CreateIndexIfMissing(ctx, "_identity_installation_administrator_bootstrap_receipts", "uniq_identity_installation_administrator_bootstrap_once", true, "workspace_id"); err != nil {
-		return fmt.Errorf("create installation administrator bootstrap uniqueness index: %w", err)
-	}
 	if err := s.CreateIndexIfMissing(ctx, "_identity_organization_units", "idx_identity_organization_unit_type_page", false, "workspace_id", "node_type", "id"); err != nil {
 		return fmt.Errorf("create Identity organization unit type page index: %w", err)
-	}
-	if err := s.CreateIndexIfMissing(ctx, "_identity_store_organization_states", "uniq_identity_store_organization_state", true, "workspace_id", "organization_id"); err != nil {
-		return fmt.Errorf("create Identity store organization state unique index: %w", err)
-	}
-	if err := s.CreateIndexIfMissing(ctx, "_identity_store_organization_deliveries", "uniq_identity_store_organization_delivery_key", true, "workspace_id", "idempotency_key"); err != nil {
-		return fmt.Errorf("create Identity store organization delivery unique index: %w", err)
-	}
-	if err := s.CreateIndexIfMissing(ctx, "_identity_organization_unit_delivery_states", "uniq_identity_organization_unit_delivery_state", true, "workspace_id", "organization_id"); err != nil {
-		return fmt.Errorf("create Identity organization unit delivery state unique index: %w", err)
-	}
-	if err := s.CreateIndexIfMissing(ctx, "_identity_organization_unit_deliveries", "uniq_identity_organization_unit_delivery_key", true, "workspace_id", "idempotency_key"); err != nil {
-		return fmt.Errorf("create Identity organization unit delivery unique index: %w", err)
 	}
 	if err := s.CreateIndexIfMissing(ctx, "_identity_users", "idx_identity_users_workspace_usage", false, "workspace_id", "account_type", "status"); err != nil {
 		return fmt.Errorf("create Identity Workspace usage index: %w", err)
@@ -598,17 +395,8 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 	if err := s.CreateIndexIfMissing(ctx, "_identity_workflow_workload_bindings", "idx_identity_workflow_workload_release", false, "workspace_id", "application_key", "release_digest", "status"); err != nil {
 		return fmt.Errorf("create Identity workflow workload release index: %w", err)
 	}
-	if err := s.CreateIndexIfMissing(ctx, "_identity_authoring_receipts", "uniq_identity_authoring_receipt_key", true, "workspace_id", "idempotency_key"); err != nil {
-		return fmt.Errorf("create identity authoring receipt unique index: %w", err)
-	}
-	if err := s.CreateIndexIfMissing(ctx, "_identity_authoring_receipts", "idx_identity_authoring_receipt_lease", false, "status", "lease_expires_at"); err != nil {
-		return fmt.Errorf("create identity authoring receipt lease index: %w", err)
-	}
 	if err := s.CreateIndexIfMissing(ctx, "_identity_access_review_items", "uniq_identity_access_review_assignment", true, "workspace_id", "review_id", "user_id", "role_id"); err != nil {
 		return fmt.Errorf("create identity access review item unique index: %w", err)
-	}
-	if err := s.CreateIndexIfMissing(ctx, "_identity_access_review_receipts", "uniq_identity_access_review_receipt", true, "workspace_id", "item_id", "idempotency_key"); err != nil {
-		return fmt.Errorf("create identity access review receipt unique index: %w", err)
 	}
 	for _, index := range []struct {
 		table   string
@@ -631,8 +419,6 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 		{table: "_identity_external_accounts", name: "idx_identity_external_accounts_user", columns: []string{"workspace_id", "user_id"}},
 		{table: "_identity_mfa_factors", name: "idx_identity_mfa_factors_user", columns: []string{"workspace_id", "user_id"}},
 		{table: "_identity_profile_bindings", name: "idx_identity_profile_bindings_user", columns: []string{"workspace_id", "binding_key", "identity_user_id"}},
-		{table: "_identity_profile_binding_events", name: "idx_identity_profile_binding_events_profile", columns: []string{"workspace_id", "object_key", "profile_id", "created_at"}},
-		{table: "_identity_profile_binding_events", name: "idx_identity_profile_binding_events_status", columns: []string{"status", "created_at"}},
 	} {
 		if err := s.CreateIndexIfMissing(ctx, index.table, index.name, false, index.columns...); err != nil {
 			return fmt.Errorf("create %s: %w", index.name, err)
@@ -651,8 +437,6 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 		{table: "_identity_organization_units", name: "uniq_identity_organization_unit_sibling_name", columns: []string{"workspace_id", "sibling_key"}},
 		{table: "_identity_profile_bindings", name: "uniq_identity_profile_binding_profile", columns: []string{"workspace_id", "object_key", "profile_id"}},
 		{table: "_identity_profile_bindings", name: "uniq_identity_profile_binding_user", columns: []string{"workspace_id", "binding_key", "identity_user_id"}},
-		{table: "_identity_profile_binding_receipts", name: "uniq_identity_profile_binding_receipt", columns: []string{"workspace_id", "object_key", "profile_id", "operation", "idempotency_key"}},
-		{table: "_identity_profile_binding_events", name: "uniq_identity_profile_binding_event", columns: []string{"workspace_id", "object_key", "profile_id", "operation", "idempotency_key"}},
 	} {
 		if err := s.CreateIndexIfMissing(ctx, index.table, index.name, true, index.columns...); err != nil {
 			return fmt.Errorf("create %s: %w", index.name, err)
@@ -733,28 +517,6 @@ func ensureIdentityOrganizationUnitSiblingKeys(ctx context.Context, s Store) err
 		}
 		if _, execErr := s.SchemaDB().ExecContext(ctx, update, updateArguments...); execErr != nil {
 			return fmt.Errorf("backfill Identity organization-unit sibling key: %w", execErr)
-		}
-	}
-	return nil
-}
-
-func ensureWorkspaceBootstrapRolePolicyEvidence(ctx context.Context, s Store) error {
-	const table = "_identity_workspace_bootstrap_receipts"
-	columns, err := s.TableColumns(ctx, table)
-	if err != nil {
-		return fmt.Errorf("inspect Workspace bootstrap receipt role-policy columns: %w", err)
-	}
-	for _, column := range []string{"role_catalog_sha256", "navigation_catalog_sha256", "initial_workspace_administrator_role_key"} {
-		if columns[column] {
-			continue
-		}
-		definition := ormschema.Column(column, ormschema.TextKey(191)).NotNull().DefaultValue("")
-		statement, arguments, err := ormschema.NewAddColumn(s.SchemaRenderer(), table, definition).Build()
-		if err != nil {
-			return fmt.Errorf("build Workspace bootstrap receipt column %s: %w", column, err)
-		}
-		if _, err := s.SchemaDB().ExecContext(ctx, statement, arguments...); err != nil {
-			return fmt.Errorf("add Workspace bootstrap receipt column %s: %w", column, err)
 		}
 	}
 	return nil

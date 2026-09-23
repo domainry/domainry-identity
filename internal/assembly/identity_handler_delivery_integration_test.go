@@ -75,6 +75,7 @@ func TestHandlerDeliveryIsAtomicIdempotentGovernedAndRestartSafe(t *testing.T) {
 			_ = store.Close()
 			t.Fatal(err)
 		}
+		installAndBindTestSharedOperations(t, core, store)
 		return core, store
 	}
 	core, store := open()
@@ -121,7 +122,7 @@ func TestHandlerDeliveryIsAtomicIdempotentGovernedAndRestartSafe(t *testing.T) {
 		t.Fatalf("replayed=%+v err=%v", replayed, err)
 	}
 	var persistedResult string
-	if err := store.DB().QueryRowContext(t.Context(), `SELECT result_json FROM _identity_handler_deliveries WHERE workspace_id = ? AND idempotency_key = ?`, cfg.IdentityWorkspaceID, create.IdempotencyKey).Scan(&persistedResult); err != nil {
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT result_json FROM _operations WHERE workspace_id = ? AND owner = 'identity' AND kind = 'identity.handler_delivery' AND idempotency_key = ?`, cfg.IdentityWorkspaceID, create.IdempotencyKey).Scan(&persistedResult); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(persistedResult, created.InitialCredential.InitialPassword) || strings.Contains(strings.ToLower(persistedResult), "password") || strings.Contains(persistedResult, "$2") {
@@ -234,7 +235,7 @@ func TestHandlerDeliveryIsAtomicIdempotentGovernedAndRestartSafe(t *testing.T) {
 		t.Fatalf("host rollback left user found=%v err=%v", found, err)
 	}
 	var rollbackReceipts, rollbackAudits int
-	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _identity_handler_deliveries WHERE workspace_id = ? AND idempotency_key = ?`, cfg.IdentityWorkspaceID, rolledBack.IdempotencyKey).Scan(&rollbackReceipts); err != nil {
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _operations WHERE workspace_id = ? AND owner = 'identity' AND kind = 'identity.handler_delivery' AND idempotency_key = ?`, cfg.IdentityWorkspaceID, rolledBack.IdempotencyKey).Scan(&rollbackReceipts); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _audit_events WHERE workspace_id = ? AND record_id = ?`, cfg.IdentityWorkspaceID, "employee-rollback").Scan(&rollbackAudits); err != nil {

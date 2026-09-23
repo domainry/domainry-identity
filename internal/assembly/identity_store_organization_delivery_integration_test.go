@@ -78,6 +78,7 @@ func TestStoreOrganizationDeliveryIsAtomicScopedIdempotentAndRestartSafe(t *test
 			_ = store.Close()
 			t.Fatal(err)
 		}
+		installAndBindTestSharedOperations(t, core, store)
 		return core, store
 	}
 	core, store := open()
@@ -375,11 +376,10 @@ func TestStoreOrganizationDeliveryIsAtomicScopedIdempotentAndRestartSafe(t *test
 		t.Fatal(err)
 	}
 	for table, column := range map[string]string{
-		"_identity_organization_units": "id", "_identity_store_organization_states": "organization_id",
-		"_identity_store_organization_deliveries": "idempotency_key", "_audit_events": "record_id",
+		"_identity_organization_units": "id", "_operations": "idempotency_key", "_audit_events": "record_id",
 	} {
 		value := "store-rollback"
-		if table == "_identity_store_organization_deliveries" {
+		if table == "_operations" {
 			value = rolledBack.IdempotencyKey
 		}
 		var count int
@@ -430,13 +430,11 @@ type storeOrganizationReplaySnapshot struct {
 func loadStoreOrganizationReplaySnapshot(t *testing.T, store *database.IdentityStore, workspaceID, organizationID, idempotencyKey string) storeOrganizationReplaySnapshot {
 	t.Helper()
 	var snapshot storeOrganizationReplaySnapshot
-	if err := store.DB().QueryRowContext(t.Context(), `SELECT updated_at FROM _identity_organization_units WHERE workspace_id = ? AND id = ?`, workspaceID, organizationID).Scan(&snapshot.OrganizationUpdatedAt); err != nil {
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT updated_at, delivery_version, delivery_state_fingerprint, updated_at FROM _identity_organization_units WHERE workspace_id = ? AND id = ?`, workspaceID, organizationID).
+		Scan(&snapshot.OrganizationUpdatedAt, &snapshot.StateVersion, &snapshot.StateFingerprint, &snapshot.StateUpdatedAt); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.DB().QueryRowContext(t.Context(), `SELECT version, state_fingerprint, updated_at FROM _identity_store_organization_states WHERE workspace_id = ? AND organization_id = ?`, workspaceID, organizationID).Scan(&snapshot.StateVersion, &snapshot.StateFingerprint, &snapshot.StateUpdatedAt); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _identity_store_organization_deliveries WHERE workspace_id = ? AND idempotency_key = ?`, workspaceID, idempotencyKey).Scan(&snapshot.DeliveryCount); err != nil {
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _operations WHERE workspace_id = ? AND owner='identity' AND kind='identity.store_organization_delivery' AND idempotency_key = ?`, workspaceID, idempotencyKey).Scan(&snapshot.DeliveryCount); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _audit_events WHERE workspace_id = ? AND event = ? AND record_id = ?`, workspaceID, "identity.store_organization_delivery.create", organizationID).Scan(&snapshot.AuditCount); err != nil {

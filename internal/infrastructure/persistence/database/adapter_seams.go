@@ -70,10 +70,7 @@ func (s *IdentityStore) DropIndex(ctx context.Context, table, index string) erro
 func (s *IdentityStore) MetadataIDColumnType() string        { return s.metadataIDColumnType() }
 func (s *IdentityStore) SchemaRenderer() ormdialect.Renderer { return s.sqlBase().SQLRenderer }
 func (s *IdentityStore) MaxParameters() int                  { return s.sqlBase().Engine.MaxParameters() }
-func (s *IdentityStore) LocalizedTextKeyColumnType() string {
-	return s.sqlBase().Engine.TextKeyColumnType(128)
-}
-func (s *IdentityStore) SchemaTypes() driver.SchemaTypes { return s.sqlBase().Engine.SchemaTypes() }
+func (s *IdentityStore) SchemaTypes() driver.SchemaTypes     { return s.sqlBase().Engine.SchemaTypes() }
 func (s *IdentityStore) ColumnDefinition(definition string) string {
 	return s.columnDefinition(definition)
 }

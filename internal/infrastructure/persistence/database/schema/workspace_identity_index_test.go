@@ -11,8 +11,8 @@ func TestWorkspaceIdentityIndexNamesFitPortableIdentifierLimit(t *testing.T) {
 			t.Fatalf("table=%s index=%s length=%d", table, name, len(name))
 		}
 	}
-	first := workspaceIdentityIndexName("_identity_installation_administrator_bootstrap_receipts")
-	second := workspaceIdentityIndexName("_identity_installation_administrator_bootstrap_deliveries")
+	first := workspaceIdentityIndexName("_identity_organization_unit_delivery_acknowledgments")
+	second := workspaceIdentityIndexName("_identity_organization_unit_delivery_subscriptions")
 	if len(first) > 63 || len(second) > 63 || first == second {
 		t.Fatalf("long bootstrap index names must be bounded and distinct: %s / %s", first, second)
 	}

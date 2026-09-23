@@ -77,17 +77,17 @@ only store ID and current version. Those operations cannot change code, parent,
 node type, sort order, path, or ancestors. Identity derives and preserves the
 canonical hierarchy.
 
-CAS versions and a canonical state fingerprint live in
-`_identity_store_organization_states`; the table contains concurrency evidence,
-not a duplicate organization projection. An existing store first adopted by
-the capability has logical version 1. A mutation whose expected version is
+CAS version, owner, and canonical state fingerprint live on the canonical
+`_identity_organization_units` aggregate; there is no duplicate delivery-state
+table. An existing store first adopted by the capability has logical version 1.
+A mutation whose expected version is
 stale fails with `backend.identity.store_organization_version_conflict`. If an
 administrator changes the canonical OrganizationUnit through another path after
 adoption, the fingerprint mismatch fails closed with
 `backend.identity.store_organization_external_change` instead of overwriting it.
 
-The idempotency receipt is stored in
-`_identity_store_organization_deliveries`, scoped by Workspace. The request
+The idempotency receipt is stored in shared Operations with owner `identity`
+and kind `identity.store_organization_delivery`, scoped by Workspace. The request
 fingerprint includes the server-derived actor and application audience. Exact
 replay returns the original result with `Replayed=true`; same-key/different-body
 reuse returns `backend.idempotency_key_reused`. Authorization is checked again on

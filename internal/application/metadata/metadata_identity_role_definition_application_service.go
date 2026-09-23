@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	auditmodel "github.com/domainry/domainry-audit-sdk/contract"
 	"github.com/domainry/domainry-foundation/idempotency"
 	auditcontract "github.com/domainry/domainry-identity/internal/application/auditbinding"
 	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
@@ -98,7 +99,7 @@ func (s *MetadataApplicationService) DisableIdentityRoleDefinition(ctx context.C
 		return metadataInternalError("build Identity role disable audit")
 	}
 	audit := s.audit.NewAuditEvent(ctx, auditcontract.AuditAppendRequest{
-		Event: "identity_role.deleted", ObjectKey: "role", RecordID: roleKey, Principal: principal,
+		Family: auditmodel.EventFamilyIdentityGovernance, Event: "identity_role.deleted", ObjectKey: "role", RecordID: roleKey, Principal: principal,
 		Summary: "Deleted role " + roleKey, Before: DefinitionAuditValue(before, true),
 		After: map[string]any{"role_key": roleKey, "disabled": true}, Metadata: map[string]any{"business_reason": businessReason, "operation_id": operationID},
 	})

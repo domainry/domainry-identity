@@ -7,12 +7,15 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"time"
 
+	auditcontract "github.com/domainry/domainry-audit-sdk/contract"
 	"github.com/domainry/domainry-foundation/apperror"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	operationreceipt "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/operationreceipt"
 	identitytransaction "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/transaction"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 	"github.com/domainry/domainry-orm/query"
@@ -22,7 +25,14 @@ type Backend interface {
 	DB() *sql.DB
 	SQLRenderer() ormdialect.Renderer
 	ApplyUpsert(*query.InsertBuilder, []string, ...string) *query.InsertBuilder
+	OperationsPersistenceBound() bool
 }
+
+const (
+	profileBindingOperationOwner = "identity"
+	profileBindingOperationKind  = "identity.profile_binding"
+	profileBindingAuditPrefix    = "identity.profile_binding."
+)
 
 func (s *Store) ListIdentityProfileBindingsByUser(ctx context.Context, workspaceID, userID string) ([]identitymodel.IdentityProfileBinding, error) {
 	statement, arguments, err := profileBindingSelect(s.store, workspaceID).
@@ -105,6 +115,9 @@ func (s *Store) GetIdentityProfileBindingReceipt(ctx context.Context, mutation i
 	if s == nil || s.store == nil {
 		return identitymodel.IdentityProfileBindingReceipt{}, false, profileBindingStoreError(apperror.KindInternal, "backend.identity.profile_binding_unavailable")
 	}
+	if !s.store.OperationsPersistenceBound() {
+		return identitymodel.IdentityProfileBindingReceipt{}, false, errors.New("identity shared Operations persistence is not bound")
+	}
 	return s.loadReceipt(ctx, s.queryer(ctx), mutation)
 }
 
@@ -114,6 +127,9 @@ func (s *Store) ExecuteIdentityProfileBindingMutation(ctx context.Context, mutat
 	}
 	if err := validateIdentityProfileBindingMutation(mutation); err != nil {
 		return identitymodel.IdentityProfileBindingReceipt{}, err
+	}
+	if !s.store.OperationsPersistenceBound() {
+		return identitymodel.IdentityProfileBindingReceipt{}, errors.New("identity shared Operations persistence is not bound")
 	}
 	executor := identitytransaction.ExecutorFromContext(ctx)
 	if mutation.ProfileRecordStaged && executor == nil {
@@ -207,11 +223,11 @@ func (s *Store) executeIdentityProfileBindingMutation(ctx context.Context, execu
 		Operation: mutation.Operation, IdempotencyKey: mutation.IdempotencyKey, RequestFingerprint: mutation.RequestFingerprint,
 		Binding: next, CreatedAt: now,
 	}
-	if err := s.writeReceipt(ctx, executor, receipt); err != nil {
+	if err := s.writeReceipt(ctx, executor, receipt, mutation); err != nil {
 		return identitymodel.IdentityProfileBindingReceipt{}, normalizeProfileBindingWriteError(err)
 	}
 	event := identitymodel.IdentityProfileBindingEvent{
-		ID: profileBindingStableID("event", receipt.ID), WorkspaceID: mutation.WorkspaceID, BindingKey: mutation.BindingKey,
+		ID: profileBindingStableID("event", receipt.ID), OperationID: receipt.ID, CausationID: mutation.CausationID, WorkspaceID: mutation.WorkspaceID, BindingKey: mutation.BindingKey,
 		ObjectKey: mutation.ObjectKey, ProfileID: mutation.ProfileID, Operation: mutation.Operation,
 		PreviousUserID: currentUserID, IdentityUserID: desiredUserID, BindingVersion: next.Version,
 		IdempotencyKey: mutation.IdempotencyKey, ActorID: mutation.ActorID, Reason: mutation.Reason, Status: "pending", CreatedAt: now,
@@ -279,9 +295,17 @@ func uniqueProfileBindingStrings(values []string) []string {
 }
 
 func (s *Store) ListIdentityProfileBindingEvents(ctx context.Context, workspaceID, objectKey, profileID string) ([]identitymodel.IdentityProfileBindingEvent, error) {
-	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_profile_binding_events", workspaceID).
-		Columns("id", "workspace_id", "binding_key", "object_key", "profile_id", "operation", "previous_user_id", "identity_user_id", "binding_version", "idempotency_key", "actor_id", "reason", "approval_id", "status", "created_at").
-		Where(query.And(query.Equal("object_key", objectKey), query.Equal("profile_id", profileID))).
+	eventValues := make([]any, 0, len(profileBindingAuditEventNames()))
+	for _, event := range profileBindingAuditEventNames() {
+		eventValues = append(eventValues, event)
+	}
+	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_audit_events", workspaceID).
+		Columns("id", "operation_id", "causation_id", "event", "metadata_json", "created_at").
+		Where(query.And(
+			query.Equal("object_key", strings.TrimSpace(objectKey)),
+			query.Equal("record_id", strings.TrimSpace(profileID)),
+			query.InExpression(query.Column("event"), eventValues...),
+		)).
 		OrderBy(query.Ascending("created_at"), query.Ascending("id")).Build()
 	if err != nil {
 		return nil, err
@@ -294,16 +318,19 @@ func (s *Store) ListIdentityProfileBindingEvents(ctx context.Context, workspaceI
 	out := []identitymodel.IdentityProfileBindingEvent{}
 	for rows.Next() {
 		var event identitymodel.IdentityProfileBindingEvent
-		var operation string
-		var previousUserID, identityUserID, reason, approvalID sql.NullString
-		if err := rows.Scan(&event.ID, &event.WorkspaceID, &event.BindingKey, &event.ObjectKey, &event.ProfileID, &operation, &previousUserID, &identityUserID, &event.BindingVersion, &event.IdempotencyKey, &event.ActorID, &reason, &approvalID, &event.Status, &event.CreatedAt); err != nil {
+		var id, eventName, metadataJSON, createdAt string
+		var operationID, causationID sql.NullString
+		if err := rows.Scan(&id, &operationID, &causationID, &eventName, &metadataJSON, &createdAt); err != nil {
 			return nil, err
 		}
-		event.Operation = identitymodel.IdentityProfileBindingOperation(operation)
-		event.PreviousUserID = previousUserID.String
-		event.IdentityUserID = identityUserID.String
-		event.Reason = reason.String
-		event.ApprovalID = approvalID.String
+		if err := json.Unmarshal([]byte(metadataJSON), &event); err != nil {
+			return nil, fmt.Errorf("decode Identity profile binding audit event: %w", err)
+		}
+		event.OperationID, event.CausationID = operationID.String, causationID.String
+		if event.ID != id || event.WorkspaceID != workspaceID || event.ObjectKey != strings.TrimSpace(objectKey) || event.ProfileID != strings.TrimSpace(profileID) ||
+			profileBindingAuditPrefix+string(event.Operation) != eventName || event.CreatedAt != createdAt {
+			return nil, fmt.Errorf("identity profile binding audit event scope mismatch")
+		}
 		out = append(out, event)
 	}
 	return out, rows.Err()
@@ -321,26 +348,21 @@ func (s *Store) queryer(ctx context.Context) identityProfileBindingQuerier {
 }
 
 func (s *Store) loadReceipt(ctx context.Context, queryer identityProfileBindingQuerier, mutation identitymodel.IdentityProfileBindingMutation) (identitymodel.IdentityProfileBindingReceipt, bool, error) {
-	statement, arguments, buildErr := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_profile_binding_receipts", mutation.WorkspaceID).
-		Columns("id", "workspace_id", "binding_key", "object_key", "profile_id", "operation", "idempotency_key", "request_fingerprint", "binding_json", "created_at").
-		Where(query.And(query.Equal("object_key", mutation.ObjectKey), query.Equal("profile_id", mutation.ProfileID), query.Equal("operation", string(mutation.Operation)), query.Equal("idempotency_key", mutation.IdempotencyKey))).Build()
-	if buildErr != nil {
-		return identitymodel.IdentityProfileBindingReceipt{}, false, buildErr
+	operation, found, err := operationreceipt.Load(ctx, queryer, s.store.SQLRenderer(), mutation.WorkspaceID, profileBindingOperationOwner, profileBindingOperationKind, mutation.IdempotencyKey)
+	if err != nil || !found {
+		return identitymodel.IdentityProfileBindingReceipt{}, found, err
 	}
 	var receipt identitymodel.IdentityProfileBindingReceipt
-	var operation, bindingJSON string
-	err := queryer.QueryRowContext(ctx, statement, arguments...).
-		Scan(&receipt.ID, &receipt.WorkspaceID, &receipt.BindingKey, &receipt.ObjectKey, &receipt.ProfileID, &operation, &receipt.IdempotencyKey, &receipt.RequestFingerprint, &bindingJSON, &receipt.CreatedAt)
-	if errors.Is(err, sql.ErrNoRows) {
-		return identitymodel.IdentityProfileBindingReceipt{}, false, nil
-	}
-	if err != nil {
+	if err := json.Unmarshal(operation.ResultJSON, &receipt); err != nil {
 		return identitymodel.IdentityProfileBindingReceipt{}, false, err
 	}
-	receipt.Operation = identitymodel.IdentityProfileBindingOperation(operation)
-	if err := json.Unmarshal([]byte(bindingJSON), &receipt.Binding); err != nil {
-		return identitymodel.IdentityProfileBindingReceipt{}, false, err
+	if receipt.ID != operation.ID || receipt.WorkspaceID != mutation.WorkspaceID || receipt.BindingKey != mutation.BindingKey ||
+		receipt.ObjectKey != mutation.ObjectKey || receipt.ProfileID != mutation.ProfileID || receipt.Operation != mutation.Operation ||
+		receipt.IdempotencyKey != mutation.IdempotencyKey || operation.ResourceID != mutation.ProfileID {
+		return identitymodel.IdentityProfileBindingReceipt{}, false, errors.New("identity shared profile binding operation scope mismatch")
 	}
+	receipt.RequestFingerprint = operation.RequestFingerprint
+	receipt.CreatedAt = operation.CreatedAt
 	return receipt, true, nil
 }
 
@@ -417,12 +439,45 @@ func (s *Store) writeBinding(ctx context.Context, executor identitytransaction.E
 	return err
 }
 
-func (s *Store) writeReceipt(ctx context.Context, executor identitytransaction.Executor, receipt identitymodel.IdentityProfileBindingReceipt) error {
+func (s *Store) writeReceipt(ctx context.Context, executor identitytransaction.Executor, receipt identitymodel.IdentityProfileBindingReceipt, mutation identitymodel.IdentityProfileBindingMutation) error {
+	resultJSON, _ := json.Marshal(receipt)
+	relatedIDsJSON, _ := json.Marshal(uniqueProfileBindingStrings(append(
+		[]string{receipt.ProfileID, receipt.Binding.IdentityUserID, mutation.ApprovalID}, mutation.SystemManagedRoleIDs...,
+	)))
+	reason := strings.TrimSpace(mutation.Reason)
+	if reason == "" {
+		reason = "execute identity profile binding " + string(receipt.Operation)
+	}
+	return operationreceipt.InsertSucceeded(ctx, executor, s.store.SQLRenderer(), operationreceipt.Succeeded{
+		ID: receipt.ID, WorkspaceID: receipt.WorkspaceID, Owner: profileBindingOperationOwner, Kind: profileBindingOperationKind,
+		ActionKey: "identity.profile_bindings.command", ResourceType: receipt.ObjectKey, ResourceID: receipt.ProfileID,
+		IdempotencyKey: receipt.IdempotencyKey, RequestFingerprint: receipt.RequestFingerprint, RequestedBy: mutation.ActorID,
+		Reason: reason, Reference: mutation.ApprovalID, ResultJSON: resultJSON, RelatedIDsJSON: relatedIDsJSON, CompletedAt: receipt.CreatedAt,
+	})
+}
 
-	bindingJSON, _ := json.Marshal(receipt.Binding)
-	statement, arguments, buildErr := query.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_profile_binding_receipts", receipt.WorkspaceID).
-		Columns("id", "binding_key", "object_key", "profile_id", "operation", "idempotency_key", "request_fingerprint", "binding_json", "created_at").
-		Values(receipt.ID, receipt.BindingKey, receipt.ObjectKey, receipt.ProfileID, string(receipt.Operation), receipt.IdempotencyKey, receipt.RequestFingerprint, string(bindingJSON), receipt.CreatedAt).Build()
+func (s *Store) writeEvent(ctx context.Context, executor identitytransaction.Executor, event identitymodel.IdentityProfileBindingEvent) error {
+	metadataJSON, buildErr := json.Marshal(event)
+	if buildErr != nil {
+		return buildErr
+	}
+	metadata := map[string]any{}
+	if buildErr = json.Unmarshal(metadataJSON, &metadata); buildErr != nil {
+		return buildErr
+	}
+	prepared := auditcontract.Event{
+		ID: event.ID, WorkspaceID: event.WorkspaceID, Family: auditcontract.EventFamilyIdentityProfileBinding,
+		OperationID: event.OperationID, CausationID: event.CausationID, Event: profileBindingAuditPrefix + string(event.Operation), Metadata: metadata, CreatedAt: event.CreatedAt,
+	}
+	if buildErr = auditcontract.ValidatePreparedEvent(prepared); buildErr != nil {
+		return buildErr
+	}
+	statement, arguments, buildErr := query.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_audit_events", event.WorkspaceID).
+		Columns("id", "operation_id", "causation_id", "family", "event", "object_key", "record_id", "actor_id", "role_key", "summary", "metadata_json", "before_json", "after_json", "created_at").
+		Values(
+			prepared.ID, prepared.OperationID, nullableProfileBindingText(prepared.CausationID), prepared.Family, prepared.Event, event.ObjectKey, event.ProfileID, event.ActorID, nil,
+			"Identity profile binding "+string(event.Operation), string(metadataJSON), "null", "null", event.CreatedAt,
+		).Build()
 	if buildErr != nil {
 		return buildErr
 	}
@@ -430,15 +485,14 @@ func (s *Store) writeReceipt(ctx context.Context, executor identitytransaction.E
 	return err
 }
 
-func (s *Store) writeEvent(ctx context.Context, executor identitytransaction.Executor, event identitymodel.IdentityProfileBindingEvent) error {
-	statement, arguments, buildErr := query.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_profile_binding_events", event.WorkspaceID).
-		Columns("id", "binding_key", "object_key", "profile_id", "operation", "previous_user_id", "identity_user_id", "binding_version", "idempotency_key", "actor_id", "reason", "approval_id", "status", "created_at").
-		Values(event.ID, event.BindingKey, event.ObjectKey, event.ProfileID, string(event.Operation), nullableProfileBindingText(event.PreviousUserID), nullableProfileBindingText(event.IdentityUserID), event.BindingVersion, event.IdempotencyKey, event.ActorID, nullableProfileBindingText(event.Reason), nullableProfileBindingText(event.ApprovalID), event.Status, event.CreatedAt).Build()
-	if buildErr != nil {
-		return buildErr
+func profileBindingAuditEventNames() []string {
+	return []string{
+		profileBindingAuditPrefix + string(identitymodel.IdentityProfileBindingInvite),
+		profileBindingAuditPrefix + string(identitymodel.IdentityProfileBindingClaim),
+		profileBindingAuditPrefix + string(identitymodel.IdentityProfileBindingBind),
+		profileBindingAuditPrefix + string(identitymodel.IdentityProfileBindingRebind),
+		profileBindingAuditPrefix + string(identitymodel.IdentityProfileBindingUnlink),
 	}
-	_, err := executor.ExecContext(ctx, statement, arguments...)
-	return err
 }
 
 func scanIdentityProfileBinding(row interface{ Scan(...any) error }) (identitymodel.IdentityProfileBinding, error) {
@@ -500,7 +554,7 @@ func validateIdentityProfileBindingMutation(mutation identitymodel.IdentityProfi
 	}
 	if strings.TrimSpace(mutation.BindingKey) == "" || strings.TrimSpace(mutation.ObjectKey) == "" ||
 		strings.TrimSpace(mutation.ProfileID) == "" || strings.TrimSpace(mutation.IdentityField) == "" || strings.TrimSpace(mutation.IdempotencyKey) == "" ||
-		strings.TrimSpace(mutation.RequestFingerprint) == "" || mutation.ExpectedVersion < 0 {
+		strings.TrimSpace(mutation.RequestFingerprint) == "" || strings.TrimSpace(mutation.ActorID) == "" || mutation.ExpectedVersion < 0 {
 		return profileBindingStoreError(apperror.KindBadRequest, "backend.identity.profile_binding_command_invalid")
 	}
 	if mutation.ProfileRecordStaged && (mutation.Operation != identitymodel.IdentityProfileBindingBind || mutation.ExpectedVersion != 0 || strings.TrimSpace(mutation.IdentityUserID) == "") {

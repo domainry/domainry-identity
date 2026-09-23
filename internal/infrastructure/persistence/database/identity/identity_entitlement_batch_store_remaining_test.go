@@ -25,6 +25,12 @@ func validIdentityEntitlementBatchMutation() identitymodel.IdentityEntitlementBa
 	}
 }
 
+func scriptedEntitlementOperations(state *identitySQLState) (*SQLIdentityStore, func()) {
+	store, closeDB := scriptedSQLIdentity(state)
+	store.BindOperationsPersistence()
+	return store, closeDB
+}
+
 func TestApplyIdentityEntitlementBatchUsesChunkedWrites(t *testing.T) {
 	mutation := validIdentityEntitlementBatchMutation()
 	mutation.Items = make([]identitymodel.IdentityEntitlementBatchItem, identityUserRoleAssignmentInsertBatchSize+1)
@@ -35,7 +41,7 @@ func TestApplyIdentityEntitlementBatchUsesChunkedWrites(t *testing.T) {
 		mutation.Assignments[index] = identitymodel.IdentityUserRoleAssignment{UserID: userID, RoleID: "role", Source: "manual", Status: "active"}
 	}
 	state := &identitySQLState{}
-	store, closeDB := scriptedSQLIdentity(state)
+	store, closeDB := scriptedEntitlementOperations(state)
 	defer closeDB()
 	if _, err := store.ApplyIdentityEntitlementBatch(t.Context(), mutation); err != nil {
 		t.Fatal(err)
@@ -76,7 +82,7 @@ func TestApplyIdentityEntitlementBatchValidationAndFailureStages(t *testing.T) {
 		}(),
 	}
 	for _, mutation := range invalid {
-		store, closeDB := scriptedSQLIdentity(&identitySQLState{})
+		store, closeDB := scriptedEntitlementOperations(&identitySQLState{})
 		if _, err := store.ApplyIdentityEntitlementBatch(t.Context(), mutation); err == nil {
 			t.Fatalf("invalid mutation accepted: %#v", mutation)
 		}
@@ -90,14 +96,14 @@ func TestApplyIdentityEntitlementBatchValidationAndFailureStages(t *testing.T) {
 		{execFailAt: 2, failure: errProfileBindingSQL},
 		{commitErr: errProfileBindingSQL},
 	} {
-		store, closeDB := scriptedSQLIdentity(state)
+		store, closeDB := scriptedEntitlementOperations(state)
 		if _, err := store.ApplyIdentityEntitlementBatch(t.Context(), base); err == nil {
 			t.Fatal("entitlement batch pipeline failure ignored")
 		}
 		closeDB()
 	}
 
-	store, closeDB := scriptedSQLIdentity(&identitySQLState{})
+	store, closeDB := scriptedEntitlementOperations(&identitySQLState{})
 	receipt, err := store.ApplyIdentityEntitlementBatch(t.Context(), base)
 	if err != nil || receipt.Replayed || receipt.ActorID != "actor" || receipt.IdempotencyKey != "batch-key" ||
 		receipt.RequestFingerprint != "fingerprint" || len(receipt.Items) != 1 {
@@ -107,7 +113,7 @@ func TestApplyIdentityEntitlementBatchValidationAndFailureStages(t *testing.T) {
 }
 
 func TestGetIdentityEntitlementBatchReceiptRemainingFailures(t *testing.T) {
-	store, closeDB := scriptedSQLIdentity(&identitySQLState{})
+	store, closeDB := scriptedEntitlementOperations(&identitySQLState{})
 	if _, _, err := store.GetIdentityEntitlementBatchReceipt(t.Context(), "", "key"); err == nil {
 		t.Fatal("blank workspace accepted")
 	}
@@ -116,26 +122,26 @@ func TestGetIdentityEntitlementBatchReceiptRemainingFailures(t *testing.T) {
 	for _, state := range []*identitySQLState{
 		{queryFailAt: 1, failure: errProfileBindingSQL},
 		{querySteps: []identitySQLQueryStep{{
-			columns: []string{"result_json", "request_fingerprint"},
-			rows:    [][]driver.Value{{"{", "fingerprint"}},
+			columns: []string{"id", "resource_id", "request_fingerprint", "requested_by", "result_json", "created_at", "status"},
+			rows:    [][]driver.Value{{"receipt", "receipt", "fingerprint", "actor", "{", "created", "succeeded"}},
 		}}},
 	} {
-		store, closeDB = scriptedSQLIdentity(state)
+		store, closeDB = scriptedEntitlementOperations(state)
 		if _, _, err := store.GetIdentityEntitlementBatchReceipt(t.Context(), "workspace", " key "); err == nil {
 			t.Fatal("receipt load failure ignored")
 		}
 		closeDB()
 	}
-	store, closeDB = scriptedSQLIdentity(&identitySQLState{})
+	store, closeDB = scriptedEntitlementOperations(&identitySQLState{})
 	if _, found, err := store.GetIdentityEntitlementBatchReceipt(t.Context(), "workspace", "missing"); err != nil || found {
 		t.Fatalf("missing receipt found=%v error=%v", found, err)
 	}
 	closeDB()
-	store, closeDB = scriptedSQLIdentity(&identitySQLState{querySteps: []identitySQLQueryStep{{
-		columns: []string{"result_json", "request_fingerprint"},
-		rows:    [][]driver.Value{{identityEntitlementBatchReceiptJSON(), "fingerprint"}},
+	store, closeDB = scriptedEntitlementOperations(&identitySQLState{querySteps: []identitySQLQueryStep{{
+		columns: []string{"id", "resource_id", "request_fingerprint", "requested_by", "result_json", "created_at", "status"},
+		rows:    [][]driver.Value{{"receipt", "receipt", "fingerprint", "actor", identityEntitlementBatchReceiptJSON(), "created", "succeeded"}},
 	}}})
-	receipt, found, err := store.GetIdentityEntitlementBatchReceipt(t.Context(), "workspace", "key")
+	receipt, found, err := store.GetIdentityEntitlementBatchReceipt(t.Context(), "workspace", "batch-key")
 	if err != nil || !found || receipt.RequestFingerprint != "fingerprint" {
 		t.Fatalf("receipt=%#v found=%v error=%v", receipt, found, err)
 	}

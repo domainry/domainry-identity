@@ -88,18 +88,17 @@ unique index, so concurrent writers cannot pass the read-time validator.
 
 ## Idempotency, concurrency, audit, and transaction
 
-The idempotency receipt is stored in
-`_identity_organization_unit_deliveries`, keyed by Workspace and idempotency
-key. Its request fingerprint includes the normalized request, actor, and
+The idempotency receipt is stored in shared Operations with owner `identity`
+and kind `identity.organization_unit_delivery`, keyed by Workspace and
+idempotency key. Its request fingerprint includes the normalized request, actor, and
 application audience but never the access token. Reusing a key with another
 payload fails. Replay re-authorizes the current actor and persisted parent and
 verifies the canonical node plus its state fingerprint; it cannot act as an
 authorization or stale-state oracle.
 
-`_identity_organization_unit_delivery_states` contains version and canonical
-state fingerprint only; it is concurrency evidence, not a duplicate
-organization projection. The real node remains in
-`_identity_organization_units`. Canonical node insert, state evidence,
+Delivery owner, version, and canonical state fingerprint live directly on the
+real `_identity_organization_units` aggregate; there is no duplicate state
+table. Canonical node insert, state evidence,
 idempotency receipt, and `identity.organization_unit_delivery.create` audit
 event share the Identity/host Action transaction. Host rollback removes all
 four effects. External management mutation of a delivery-owned node fails

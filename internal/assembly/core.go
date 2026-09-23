@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	auditsdk "github.com/domainry/domainry-audit-sdk"
+	auditcontract "github.com/domainry/domainry-audit-sdk/contract"
 	auditmoduleimpl "github.com/domainry/domainry-audit/module"
 	actioncontract "github.com/domainry/domainry-foundation/action"
 	"github.com/domainry/domainry-foundation/modulehttp"
@@ -178,7 +179,9 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 		cfg.AuthJWTSecret, cfg.AuthDefaultPassword, cfg.AuthAccessTTL, cfg.AuthRefreshTTL,
 		cfg.AuthMaxLoginFailures, cfg.AuthLoginLockDuration, cfg.AuthOTPResendCooldown, cfg.AuthOTPMaxAttempts,
 		authpolicy.AuthPasswordPolicy{MinLength: cfg.AuthPasswordMinLength, RequireUpper: cfg.AuthPasswordRequireUpper, RequireLower: cfg.AuthPasswordRequireLower, RequireNumber: cfg.AuthPasswordRequireNumber, RequireSymbol: cfg.AuthPasswordRequireSymbol},
-		auditApp.AppendWithMetadata,
+		func(ctx context.Context, event, objectKey, recordID string, principal identitymodel.Principal, summary string, before, after, metadata map[string]any) {
+			auditApp.AppendWithMetadata(ctx, auditcontract.EventFamilyIdentitySecurity, event, objectKey, recordID, principal, summary, before, after, metadata)
+		},
 	)
 	if err := authApp.ConfigureSigningKeys(defaultString(cfg.AuthJWTActiveKID, "dev-v1"), defaultString(cfg.AuthJWTSecret, config.DevJWTSecret), cfg.AuthJWTVerificationKeys); err != nil {
 		return fail(fmt.Errorf("configure signing keys: %w", err))
@@ -201,7 +204,9 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 	})
 	metadataApp := metadataapplication.NewMetadataApplicationService(metadataapplication.MetadataApplicationDependencies{
 		Repository: metadataStore, Permissions: permissionCatalog, Runtime: metadataRuntime, Audit: auditApp,
-		AuditAppender: auditApp.AppendWithMetadata, TemplateID: metadataRuntime.Schema().TemplateID,
+		AuditAppender: func(ctx context.Context, event, objectKey, recordID string, principal identitymodel.Principal, summary string, before, after, metadata map[string]any) {
+			auditApp.AppendWithMetadata(ctx, auditcontract.EventFamilyIdentityGovernance, event, objectKey, recordID, principal, summary, before, after, metadata)
+		}, TemplateID: metadataRuntime.Schema().TemplateID,
 		Version: metadataRuntime.Schema().TemplateVersion, Name: metadataRuntime.Schema().Name,
 	})
 	metadataSchemaApp := metadataapplication.NewMetadataSchemaApplicationService(metadataRuntime, metadataStore)
@@ -232,7 +237,7 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 	providerFlows := authapplication.NewAuthProviderFlowApplicationService(authApp, providerConfiguration)
 	providerFlows.ConfigureAuthenticationAudit(func(ctx context.Context, request authapplication.AuthenticationAuditRequest) error {
 		return auditApp.AppendAudit(ctx, auditapplication.AuditAppendRequest{
-			IdempotencyKey: request.IdempotencyKey, Event: request.Event, ObjectKey: request.ObjectKey, RecordID: request.RecordID,
+			IdempotencyKey: request.IdempotencyKey, Family: auditcontract.EventFamilyIdentitySecurity, Event: request.Event, ObjectKey: request.ObjectKey, RecordID: request.RecordID,
 			Principal: request.Principal, Summary: request.Summary, Metadata: request.Metadata,
 		})
 	})
@@ -267,7 +272,7 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 		ProviderFlows: providerFlows, ProviderCallback: identityprovider.CallbackAdapter{},
 		EffectiveAccess: effectiveAccess, Identity: identityApp,
 		Applications: applicationRegistrations, Permissions: permissionCatalog, HandlerDelivery: handlerDelivery, StoreOrganizations: storeOrganizations, OrganizationUnits: organizationUnits,
-		Clock: options.Clock, MutationFence: store, LoginTransactions: authStore,
+		Clock: options.Clock, MutationFence: store, OperationsPersistence: identityStore, LoginTransactions: authStore,
 	})
 	if err != nil {
 		return fail(fmt.Errorf("assemble Identity SDK binding: %w", err))

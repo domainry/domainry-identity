@@ -35,7 +35,6 @@ func TestHandlerDeliveryModuleAcceptsRuntimeStagedProfileWithinBoundTransaction(
 		},
 	})
 	manifest.IdentityProfileExtensions = append(manifest.IdentityProfileExtensions, identitymodel.IdentityProfileExtension{
-		ContractVersion: identitymodel.IdentityProfileExtensionContractVersion, MinReaderVersion: identitymodel.IdentityProfileExtensionMinReaderVersion,
 		ObjectKey: "employee_profile", IdentityRelationField: "identity_user_id", Cardinality: "one_to_one",
 		BusinessIdentity: identitymodel.BusinessIdentityBinding{Key: "employee_profile"}, DefaultVisibility: "when_readable",
 	})
@@ -65,6 +64,8 @@ func TestHandlerDeliveryModuleAcceptsRuntimeStagedProfileWithinBoundTransaction(
 	}
 	defer core.CloseContext(t.Context())
 	application := identitysdk.ApplicationRef{WorkspaceID: identitysdk.WorkspaceID(cfg.IdentityWorkspaceID), ApplicationKey: identitysdk.ApplicationKey(cfg.AuthAudience)}
+	binding := &moduleBinding{runtime: core, application: application}
+	installAndBindTestSharedOperations(t, binding, store)
 	if _, err := core.Binding.Applications().Register(t.Context(), identitysdk.ApplicationRegistration{Application: application}); err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +78,6 @@ func TestHandlerDeliveryModuleAcceptsRuntimeStagedProfileWithinBoundTransaction(
 		t.Fatal(err)
 	}
 	defer tx.Rollback()
-	binding := &moduleBinding{runtime: core, application: application}
 	delivery, err := binding.HandlerDeliveryUnitOfWorkBinder().BindHandlerDeliveryUnitOfWork(identitysdk.EmbeddedTransaction{Executor: tx})
 	if err != nil {
 		t.Fatal(err)

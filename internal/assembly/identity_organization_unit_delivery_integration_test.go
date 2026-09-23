@@ -68,6 +68,7 @@ func TestOrganizationUnitDeliveryCreatesRealDepartmentWithAtomicScopedReplay(t *
 			_ = store.Close()
 			t.Fatal(err)
 		}
+		installAndBindTestSharedOperations(t, core, store)
 		return core, store
 	}
 	core, store := open()
@@ -336,8 +337,7 @@ func assertOrganizationUnitDeliveryRowCounts(t *testing.T, db *sql.DB, workspace
 		table, column, value string
 	}{
 		{"_identity_organization_units", "id", organizationID},
-		{"_identity_organization_unit_delivery_states", "organization_id", organizationID},
-		{"_identity_organization_unit_deliveries", "idempotency_key", idempotencyKey},
+		{"_operations", "idempotency_key", idempotencyKey},
 		{"_audit_events", "record_id", organizationID},
 	}
 	for _, check := range checks {

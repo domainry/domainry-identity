@@ -40,8 +40,7 @@ func (schemaHelperStore) DropIndex(context.Context, string, string) error { retu
 func (schemaHelperStore) EnsureCompositePrimaryKey(context.Context, string, ...string) error {
 	return nil
 }
-func (schemaHelperStore) MetadataIDColumnType() string       { return "TEXT" }
-func (schemaHelperStore) LocalizedTextKeyColumnType() string { return "TEXT" }
+func (schemaHelperStore) MetadataIDColumnType() string { return "TEXT" }
 func (schemaHelperStore) SchemaTypes() persistencedriver.SchemaTypes {
 	return persistencedriver.SchemaTypes{Boolean: "INTEGER", FalseLiteral: "0", DefaultText: "TEXT", DocumentText: "TEXT", IndexedText: "TEXT", AuditCursorText: "TEXT"}
 }

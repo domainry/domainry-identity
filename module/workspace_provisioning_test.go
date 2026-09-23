@@ -3,6 +3,7 @@ package module_test
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -41,6 +42,7 @@ func TestInstallationAdministratorBootstrapIsEmbeddedAtomicAuditedAndFirstOnly(t
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = binding.Close(context.Background()) })
+	installAndBindModuleSharedOperations(t, db, binding)
 	provider, ok := binding.(identitysdk.EmbeddedInstallationAdministratorBootstrapBinding)
 	if !ok || provider.InstallationAdministratorBootstrap() == nil {
 		t.Fatalf("ordinary embedded binding does not expose startup capability: %T", binding)
@@ -71,7 +73,7 @@ func TestInstallationAdministratorBootstrapIsEmbeddedAtomicAuditedAndFirstOnly(t
 		args  []any
 	}{
 		{query: `SELECT COUNT(*) FROM _identity_users WHERE workspace_id=? AND email=?`, args: []any{request.WorkspaceID, request.LoginID}},
-		{query: `SELECT COUNT(*) FROM _identity_installation_administrator_bootstrap_receipts WHERE workspace_id=?`, args: []any{request.WorkspaceID}},
+		{query: `SELECT COUNT(*) FROM _operations WHERE workspace_id=? AND owner='identity' AND kind='identity.installation_administrator_bootstrap'`, args: []any{request.WorkspaceID}},
 		{query: `SELECT COUNT(*) FROM _audit_events WHERE workspace_id=? AND event=?`, args: []any{request.WorkspaceID, "identity.installation_administrator.bootstrap"}},
 	} {
 		var count int
@@ -103,6 +105,23 @@ func TestInstallationAdministratorBootstrapIsEmbeddedAtomicAuditedAndFirstOnly(t
 	}
 	if err := capability.AcknowledgeInstallationAdministratorCredentialDeliveryV1(t.Context(), identitymodulehost.InstallationAdministratorCredentialDeliveryAcknowledgment{WorkspaceID: request.WorkspaceID, ReceiptID: receipt.ReceiptID}); err != nil {
 		t.Fatal(err)
+	}
+	var operationResourceID, operationReference, operationStatus, operationResult string
+	if err := db.QueryRowContext(t.Context(), `SELECT resource_id, reference, status, result_json FROM _operations WHERE workspace_id=? AND owner='identity' AND kind='identity.installation_administrator_bootstrap'`, request.WorkspaceID).
+		Scan(&operationResourceID, &operationReference, &operationStatus, &operationResult); err != nil {
+		t.Fatal(err)
+	}
+	var persistedInstallation struct {
+		UserID                string `json:"user_id"`
+		CredentialClaimedAt   string `json:"credential_claimed_at"`
+		CredentialDeliveredAt string `json:"credential_delivered_at"`
+	}
+	if err := json.Unmarshal([]byte(operationResult), &persistedInstallation); err != nil {
+		t.Fatal(err)
+	}
+	if operationResourceID != receipt.UserID || operationReference != request.InvocationID || operationStatus != "succeeded" ||
+		persistedInstallation.UserID != receipt.UserID || persistedInstallation.CredentialClaimedAt == "" || persistedInstallation.CredentialDeliveredAt == "" {
+		t.Fatalf("installation administrator operation resource=%q reference=%q status=%q result=%s", operationResourceID, operationReference, operationStatus, operationResult)
 	}
 	var roleKey, orgID string
 	if err := db.QueryRowContext(t.Context(), `SELECT role.role_key, user.org_id FROM _identity_users user JOIN _identity_user_role_assignments assignment ON assignment.workspace_id=user.workspace_id AND assignment.user_id=user.id JOIN _identity_roles role ON role.workspace_id=assignment.workspace_id AND role.id=assignment.role_id WHERE user.workspace_id=? AND user.id=?`, request.WorkspaceID, receipt.UserID).Scan(&roleKey, &orgID); err != nil {
@@ -172,7 +191,7 @@ func TestWorkspaceIdentityBootstrapCreatesGraphAndReleasesCredentialAfterCommit(
 	assertIdentityRowCount(t, db, "_identity_roles", request.WorkspaceID, 3)
 	assertIdentityRowCount(t, db, "_identity_user_role_assignments", request.WorkspaceID, 1)
 	assertIdentityRowCount(t, db, "_identity_credentials", request.WorkspaceID, 1)
-	assertIdentityRowCount(t, db, "_identity_workspace_bootstrap_receipts", request.WorkspaceID, 1)
+	assertIdentityOperationCount(t, db, request.WorkspaceID, "identity.workspace_bootstrap", 1)
 	assertIdentityRowCount(t, db, "_identity_permissions", request.WorkspaceID, standaloneIdentityPermissionCount())
 
 	assertBootstrapOrganizationGraph(t, db, request)
@@ -196,74 +215,6 @@ func TestWorkspaceIdentityBootstrapRequiresTheCompilerOwnedManifestPassword(t *t
 	var identityErr *identitysdk.Error
 	if !errors.As(err, &identityErr) || identityErr.Params["field"] != "initial_admin_password" {
 		t.Fatalf("missing manifest password error=%v", err)
-	}
-}
-
-func TestWorkspaceIdentityBootstrapCopiesNavigationTemplatePerWorkspace(t *testing.T) {
-	bootstrap, db := openWorkspaceIdentityBootstrapCatalog(t, m1WorkspaceBootstrapRoleCatalog())
-	navigation := identitysdk.ProjectNavigationCatalog{
-		ContractVersion: identitysdk.ProjectNavigationContractVersion,
-		Menus: []identitysdk.ProjectMenuDefinition{
-			{Key: "business.crm", Label: map[string]string{"en": "CRM"}, Route: "/crm", SortOrder: 10},
-			{Key: "business.crm.leads", Label: map[string]string{"en": "Leads"}, Route: "/crm/leads", ParentKey: "business.crm", SortOrder: 20},
-		},
-		RoleMenuSets: []identitysdk.ProjectRoleMenuSet{{RoleKey: "sales_rep", MenuKeys: []string{"business.crm.leads"}}},
-	}
-	if err := bootstrap.BindBootstrapProjectNavigationCatalog(t.Context(), navigation); err != nil {
-		t.Fatal(err)
-	}
-	materialize := func(workspaceID string) identitysdk.WorkspaceIdentityBootstrapReceipt {
-		t.Helper()
-		request := workspaceIdentityBootstrapRequest(workspaceID, "navigation-"+workspaceID)
-		tx := beginBootstrapTx(t, db)
-		receipt, err := bootstrap.BootstrapWorkspaceIdentity(t.Context(), request, identitysdk.EmbeddedTransaction{Executor: tx})
-		if err != nil {
-			_ = tx.Rollback()
-			t.Fatal(err)
-		}
-		if receipt.NavigationCatalogSHA256 == "" {
-			_ = tx.Rollback()
-			t.Fatal("workspace bootstrap receipt omitted the navigation template digest")
-		}
-		if err := tx.Commit(); err != nil {
-			t.Fatal(err)
-		}
-		completeWorkspaceIdentityBootstrap(t, bootstrap, receipt, identitysdk.WorkspaceIdentityBootstrapTransactionCommitted)
-		return receipt
-	}
-	materialize("workspace-navigation-a")
-	if _, err := db.ExecContext(t.Context(), `UPDATE _identity_menus SET label=? WHERE workspace_id=? AND menu_key=?`, "Tenant A CRM", "workspace-navigation-a", "business.crm"); err != nil {
-		t.Fatal(err)
-	}
-	materialize("workspace-navigation-b")
-
-	type workspaceNavigation struct {
-		rootID, childID, parentID, rootLabel string
-		assignments                          int
-	}
-	load := func(workspaceID string) workspaceNavigation {
-		t.Helper()
-		var item workspaceNavigation
-		if err := db.QueryRowContext(t.Context(), `SELECT id,label FROM _identity_menus WHERE workspace_id=? AND menu_key=?`, workspaceID, "business.crm").Scan(&item.rootID, &item.rootLabel); err != nil {
-			t.Fatal(err)
-		}
-		if err := db.QueryRowContext(t.Context(), `SELECT id,parent_id FROM _identity_menus WHERE workspace_id=? AND menu_key=?`, workspaceID, "business.crm.leads").Scan(&item.childID, &item.parentID); err != nil {
-			t.Fatal(err)
-		}
-		if err := db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _identity_role_menu_assignments a JOIN _identity_roles r ON r.workspace_id=a.workspace_id AND r.id=a.role_id JOIN _identity_menus m ON m.workspace_id=a.workspace_id AND m.id=a.menu_id WHERE a.workspace_id=? AND r.role_key=? AND m.menu_key=?`, workspaceID, "sales_rep", "business.crm.leads").Scan(&item.assignments); err != nil {
-			t.Fatal(err)
-		}
-		return item
-	}
-	first, second := load("workspace-navigation-a"), load("workspace-navigation-b")
-	if first.rootID == second.rootID || first.childID == second.childID {
-		t.Fatalf("workspace menu copies share IDs: first=%+v second=%+v", first, second)
-	}
-	if first.parentID != first.rootID || second.parentID != second.rootID || first.assignments != 1 || second.assignments != 1 {
-		t.Fatalf("workspace navigation graph differs: first=%+v second=%+v", first, second)
-	}
-	if first.rootLabel != "Tenant A CRM" || second.rootLabel != "CRM" {
-		t.Fatalf("tenant customization leaked or was overwritten: first=%q second=%q", first.rootLabel, second.rootLabel)
 	}
 }
 
@@ -309,15 +260,22 @@ func TestWorkspaceIdentityBootstrapMaterializesM1RolesAndAssignsExplicitAdminist
 	if got := strings.Join(keys, ","); got != "crm_acceptance_admin,sales_director,sales_rep" {
 		t.Fatalf("M1 materialized roles=%q", got)
 	}
-	var assigned, persistedDigest, persistedAdministrator string
+	var assigned, persistedResult string
 	if err := db.QueryRowContext(t.Context(), `SELECT role.role_key FROM _identity_user_role_assignments assignment JOIN _identity_roles role ON role.workspace_id=assignment.workspace_id AND role.id=assignment.role_id WHERE assignment.workspace_id=? AND assignment.user_id=?`, request.WorkspaceID, request.InitialAdminUserID).Scan(&assigned); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.QueryRowContext(t.Context(), `SELECT role_catalog_sha256, initial_workspace_administrator_role_key FROM _identity_workspace_bootstrap_receipts WHERE workspace_id=?`, request.WorkspaceID).Scan(&persistedDigest, &persistedAdministrator); err != nil {
+	if err := db.QueryRowContext(t.Context(), `SELECT result_json FROM _operations WHERE workspace_id=? AND owner='identity' AND kind='identity.workspace_bootstrap'`, request.WorkspaceID).Scan(&persistedResult); err != nil {
 		t.Fatal(err)
 	}
-	if assigned != "crm_acceptance_admin" || persistedDigest != receipt.RoleCatalogSHA256 || persistedAdministrator != "crm_acceptance_admin" {
-		t.Fatalf("assigned=%q persisted digest=%q administrator=%q", assigned, persistedDigest, persistedAdministrator)
+	var persisted struct {
+		RoleCatalogSHA256                    string `json:"role_catalog_sha256"`
+		InitialWorkspaceAdministratorRoleKey string `json:"initial_workspace_administrator_role_key"`
+	}
+	if err := json.Unmarshal([]byte(persistedResult), &persisted); err != nil {
+		t.Fatal(err)
+	}
+	if assigned != "crm_acceptance_admin" || persisted.RoleCatalogSHA256 != receipt.RoleCatalogSHA256 || persisted.InitialWorkspaceAdministratorRoleKey != "crm_acceptance_admin" {
+		t.Fatalf("assigned=%q persisted digest=%q administrator=%q", assigned, persisted.RoleCatalogSHA256, persisted.InitialWorkspaceAdministratorRoleKey)
 	}
 }
 
@@ -441,10 +399,10 @@ func TestWorkspaceIdentityBootstrapReplayAndDuplicateAreDeterministic(t *testing
 	for table, want := range map[string]int{
 		"_identity_organization_units": 2, "_identity_users": 1, "_identity_roles": 3,
 		"_identity_user_role_assignments": 1, "_identity_credentials": 1,
-		"_identity_workspace_bootstrap_receipts": 1,
 	} {
 		assertIdentityRowCount(t, db, table, request.WorkspaceID, want)
 	}
+	assertIdentityOperationCount(t, db, request.WorkspaceID, "identity.workspace_bootstrap", 1)
 
 	conflict := request
 	conflict.FirstStoreName = "Changed Store"
@@ -520,9 +478,10 @@ func TestWorkspaceIdentityBootstrapFailsClosedForMissingRoleAndPreexistingCrossW
 	}
 	_ = crossTx.Rollback()
 	assertIdentityRowCount(t, completeDB, "_identity_organization_units", cross.WorkspaceID, 1)
-	for _, table := range []string{"_identity_users", "_identity_roles", "_identity_user_role_assignments", "_identity_credentials", "_identity_workspace_bootstrap_receipts"} {
+	for _, table := range []string{"_identity_users", "_identity_roles", "_identity_user_role_assignments", "_identity_credentials"} {
 		assertIdentityRowCount(t, completeDB, table, cross.WorkspaceID, 0)
 	}
+	assertIdentityOperationCount(t, completeDB, cross.WorkspaceID, "identity.workspace_bootstrap", 0)
 }
 
 func TestWorkspaceIdentityBootstrapRejectsUnpinnedContract(t *testing.T) {
@@ -607,6 +566,9 @@ func openWorkspaceIdentityBootstrapUnbound(t *testing.T) (identitysdk.BootstrapB
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = bootstrap.Close(t.Context()) })
+	installAndBindModuleSharedOperations(t, db, bootstrap)
+	assertTableAbsent(t, db, "_identity_workspace_bootstrap_receipts")
+	assertTableAbsent(t, db, "_identity_installation_administrator_bootstrap_receipts")
 	return bootstrap, db
 }
 
@@ -700,11 +662,11 @@ func assertBootstrapOrganizationGraph(t *testing.T, db *sql.DB, request identity
 
 func assertBootstrapPasswordNotPersisted(t *testing.T, db *sql.DB, password string) {
 	t.Helper()
-	var fingerprint, version, hash, login string
-	if err := db.QueryRowContext(t.Context(), `SELECT request_fingerprint, contract_version, contract_hash, initial_admin_login_id FROM _identity_workspace_bootstrap_receipts`).Scan(&fingerprint, &version, &hash, &login); err != nil {
+	var fingerprint, metadata, result string
+	if err := db.QueryRowContext(t.Context(), `SELECT request_fingerprint, metadata_json, result_json FROM _operations WHERE owner='identity' AND kind='identity.workspace_bootstrap'`).Scan(&fingerprint, &metadata, &result); err != nil {
 		t.Fatal(err)
 	}
-	for _, persisted := range []string{fingerprint, version, hash, login} {
+	for _, persisted := range []string{fingerprint, metadata, result} {
 		if strings.Contains(persisted, password) {
 			t.Fatal("bootstrap receipt persisted the initial password")
 		}
@@ -725,9 +687,32 @@ func assertWorkspaceBootstrapZero(t *testing.T, db *sql.DB, workspaceID string) 
 	t.Helper()
 	for _, table := range []string{
 		"_identity_organization_units", "_identity_users", "_identity_roles", "_identity_user_role_assignments",
-		"_identity_credentials", "_identity_permissions", "_identity_workspace_bootstrap_receipts", "_identity_applications",
+		"_identity_credentials", "_identity_permissions", "_identity_applications",
 	} {
 		assertIdentityRowCount(t, db, table, workspaceID, 0)
+	}
+	assertIdentityOperationCount(t, db, workspaceID, "identity.workspace_bootstrap", 0)
+}
+
+func assertIdentityOperationCount(t *testing.T, db *sql.DB, workspaceID, kind string, want int) {
+	t.Helper()
+	var count int
+	if err := db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _operations WHERE workspace_id=? AND owner='identity' AND kind=?`, workspaceID, kind).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != want {
+		t.Fatalf("operation kind %s workspace %s count=%d want=%d", kind, workspaceID, count, want)
+	}
+}
+
+func assertTableAbsent(t *testing.T, db *sql.DB, table string) {
+	t.Helper()
+	var count int
+	if err := db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("obsolete table %s is still installed", table)
 	}
 }
 

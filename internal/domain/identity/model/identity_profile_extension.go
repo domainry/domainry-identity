@@ -1,10 +1,5 @@
 package identitymodel
 
-const (
-	IdentityProfileExtensionContractVersion  = "identity-profile-extension"
-	IdentityProfileExtensionMinReaderVersion = "identity-profile-extension-reader"
-)
-
 type BusinessIdentityClaimBinding struct {
 	ClaimKey string `json:"claim_key"`
 	FieldKey string `json:"field_key"`
@@ -34,26 +29,11 @@ type IdentityProfileBindingLifecycle struct {
 // IdentityProfileExtension is the Runtime-native discovery contract that joins
 // one domain profile object to a global Identity user.
 type IdentityProfileExtension struct {
-	ContractVersion          string                          `json:"contract_version"`
-	MinReaderVersion         string                          `json:"min_reader_version"`
-	ObjectKey                string                          `json:"object_key"`
-	IdentityRelationField    string                          `json:"identity_relation_field"`
-	Cardinality              string                          `json:"cardinality"`
-	BusinessIdentity         BusinessIdentityBinding         `json:"business_identity"`
-	BindingLifecycle         IdentityProfileBindingLifecycle `json:"binding_lifecycle,omitempty"`
-	SummaryFields            []string                        `json:"summary_fields,omitempty"`
-	ProfileTabs              []string                        `json:"profile_tabs,omitempty"`
-	ProfileTabLabels         map[string]string               `json:"profile_tab_labels,omitempty"`
-	ProfileTabFields         map[string][]string             `json:"profile_tab_fields,omitempty"`
-	ProfileTabRelatedObjects map[string][]string             `json:"profile_tab_related_objects,omitempty"`
-	ProfileTabComponents     map[string][]string             `json:"profile_tab_components,omitempty"`
-	DefaultVisibility        string                          `json:"default_visibility"`
-	RequiredPermissions      []string                        `json:"required_permissions,omitempty"`
-	StandaloneWorkspace      bool                            `json:"standalone_workspace,omitempty"`
-	Provenance               *ManifestResourceProvenance     `json:"provenance,omitempty"`
-}
-
-type ManifestResourceProvenance struct {
-	Owner        string   `json:"owner,omitempty"`
-	Contributors []string `json:"contributors,omitempty"`
+	ObjectKey             string                          `json:"object_key"`
+	IdentityRelationField string                          `json:"identity_relation_field"`
+	Cardinality           string                          `json:"cardinality"`
+	BusinessIdentity      BusinessIdentityBinding         `json:"business_identity"`
+	BindingLifecycle      IdentityProfileBindingLifecycle `json:"binding_lifecycle,omitempty"`
+	DefaultVisibility     string                          `json:"default_visibility"`
+	RequiredPermissions   []string                        `json:"required_permissions,omitempty"`
 }

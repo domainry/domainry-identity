@@ -3,18 +3,15 @@ package identitysdkadapter
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/domainry/domainry-foundation/apperror"
-	"github.com/domainry/domainry-foundation/modulecapability"
 	"github.com/domainry/domainry-foundation/requestcontext"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	identityevaluator "github.com/domainry/domainry-identity-sdk/authorization/evaluator"
-	identitycapability "github.com/domainry/domainry-identity/capability"
 	authapplication "github.com/domainry/domainry-identity/internal/application/auth"
 	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
 	authcontract "github.com/domainry/domainry-identity/internal/domain/auth/contract"
@@ -41,34 +38,35 @@ type BindingDependencies struct {
 	OrganizationUnits     *identityapplication.IdentityOrganizationUnitDeliveryApplicationService
 	Clock                 identitysdk.Clock
 	MutationFence         IdentityMutationFence
+	OperationsPersistence OperationsPersistence
 	LoginTransactions     FederatedLoginTransactionReader
 }
 
 type sdkBinding struct {
-	subjects           SubjectLifecycle
-	workspaceResolver  identitysdk.WorkspaceResolver
-	descriptor         identitysdk.Descriptor
-	auth               *authapplication.AuthApplicationService
-	providers          *authapplication.AuthProviderApplicationService
-	flows              *authapplication.AuthProviderFlowApplicationService
-	providerCallback   authcontract.AuthProviderCallbackAdapter
-	access             *identityapplication.IdentityEffectiveAccessApplicationService
-	identity           *identityapplication.IdentityApplicationService
-	applications       *authapplication.AuthApplicationRegistrationService
-	permissions        *identityapplication.IdentityPermissionCatalogApplicationService
-	handlerDelivery    *identityapplication.IdentityHandlerDeliveryApplicationService
-	storeOrganizations *identityapplication.IdentityStoreOrganizationDeliveryApplicationService
-	organizationUnits  *identityapplication.IdentityOrganizationUnitDeliveryApplicationService
-	clock              identitysdk.Clock
-	mutationFence      IdentityMutationFence
-	loginTransactions  FederatedLoginTransactionReader
-	capabilities       *modulecapability.StaticBinding
+	subjects              SubjectLifecycle
+	workspaceResolver     identitysdk.WorkspaceResolver
+	descriptor            identitysdk.Descriptor
+	auth                  *authapplication.AuthApplicationService
+	providers             *authapplication.AuthProviderApplicationService
+	flows                 *authapplication.AuthProviderFlowApplicationService
+	providerCallback      authcontract.AuthProviderCallbackAdapter
+	access                *identityapplication.IdentityEffectiveAccessApplicationService
+	identity              *identityapplication.IdentityApplicationService
+	applications          *authapplication.AuthApplicationRegistrationService
+	permissions           *identityapplication.IdentityPermissionCatalogApplicationService
+	handlerDelivery       *identityapplication.IdentityHandlerDeliveryApplicationService
+	storeOrganizations    *identityapplication.IdentityStoreOrganizationDeliveryApplicationService
+	organizationUnits     *identityapplication.IdentityOrganizationUnitDeliveryApplicationService
+	clock                 identitysdk.Clock
+	mutationFence         IdentityMutationFence
+	operationsPersistence OperationsPersistence
+	loginTransactions     FederatedLoginTransactionReader
 }
 
 func NewBinding(dependencies BindingDependencies) (identitysdk.Binding, error) {
 	if dependencies.Authentication == nil || dependencies.ProviderConfiguration == nil || dependencies.ProviderFlows == nil ||
 		dependencies.ProviderCallback == nil || dependencies.EffectiveAccess == nil || dependencies.Identity == nil ||
-		dependencies.Applications == nil || dependencies.Permissions == nil || dependencies.HandlerDelivery == nil || dependencies.StoreOrganizations == nil || dependencies.OrganizationUnits == nil || dependencies.MutationFence == nil || dependencies.LoginTransactions == nil {
+		dependencies.Applications == nil || dependencies.Permissions == nil || dependencies.HandlerDelivery == nil || dependencies.StoreOrganizations == nil || dependencies.OrganizationUnits == nil || dependencies.MutationFence == nil || dependencies.OperationsPersistence == nil || dependencies.LoginTransactions == nil {
 		return nil, errors.New("complete Identity SDK Binding dependencies are required")
 	}
 	if dependencies.Clock == nil {
@@ -81,24 +79,25 @@ func NewBinding(dependencies BindingDependencies) (identitysdk.Binding, error) {
 	}, auth: dependencies.Authentication, providers: dependencies.ProviderConfiguration, flows: dependencies.ProviderFlows,
 		providerCallback: dependencies.ProviderCallback, access: dependencies.EffectiveAccess, identity: dependencies.Identity,
 		workspaceResolver: dependencies.WorkspaceResolver, applications: dependencies.Applications, permissions: dependencies.Permissions, handlerDelivery: dependencies.HandlerDelivery, storeOrganizations: dependencies.StoreOrganizations, organizationUnits: dependencies.OrganizationUnits, clock: dependencies.Clock,
-		subjects: dependencies.Subjects, mutationFence: dependencies.MutationFence, loginTransactions: dependencies.LoginTransactions}
-	capabilities, err := identitycapability.Open(identitycapability.Inputs{})
-	if err != nil {
-		return nil, fmt.Errorf("assemble Identity capability binding: %w", err)
-	}
-	binding.capabilities = capabilities
+		subjects: dependencies.Subjects, mutationFence: dependencies.MutationFence, operationsPersistence: dependencies.OperationsPersistence, loginTransactions: dependencies.LoginTransactions}
 	return binding, nil
 }
 
 func (binding *sdkBinding) Descriptor() identitysdk.Descriptor { return binding.descriptor }
-func (binding *sdkBinding) CapabilitySummary(ctx context.Context) (modulecapability.ModuleSummary, error) {
-	return binding.capabilities.CapabilitySummary(ctx)
+func (binding *sdkBinding) BindSubjectLifecyclePersistence() error {
+	if binding == nil || binding.subjects == nil {
+		return errors.New("Identity shared subject lifecycle persistence unavailable")
+	}
+	binding.subjects.BindSubjectLifecyclePersistence()
+	return nil
 }
-func (binding *sdkBinding) CapabilityCategory(ctx context.Context, key string) (modulecapability.CategoryDocument, error) {
-	return binding.capabilities.CapabilityCategory(ctx, key)
-}
-func (binding *sdkBinding) ValidateCapabilityCandidate(ctx context.Context, request modulecapability.ValidationRequest) (modulecapability.ValidationResult, error) {
-	return binding.capabilities.ValidateCapabilityCandidate(ctx, request)
+func (binding *sdkBinding) BindOperationsPersistence() error {
+	if binding == nil || binding.mutationFence == nil || binding.operationsPersistence == nil {
+		return errors.New("Identity shared Operations persistence unavailable")
+	}
+	binding.mutationFence.BindOperationsPersistence()
+	binding.operationsPersistence.BindOperationsPersistence()
+	return nil
 }
 func (binding *sdkBinding) Authentication() identitysdk.Authentication {
 	return sdkAuthentication{binding}
@@ -139,6 +138,8 @@ func (binding *sdkBinding) ApplicationServiceVerifier() identitysdk.ApplicationS
 func (binding *sdkBinding) Close(context.Context) error { return nil }
 
 var _ identitysdk.WorkflowWorkloadIdentityBinding = (*sdkBinding)(nil)
+var _ identitysdk.SubjectLifecyclePersistenceBinding = (*sdkBinding)(nil)
+var _ identitysdk.OperationsPersistenceBinding = (*sdkBinding)(nil)
 
 type sdkAuthentication struct{ binding *sdkBinding }
 

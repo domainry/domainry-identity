@@ -2,21 +2,19 @@ package httpserver_test
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"testing"
+	"time"
 
-	"github.com/domainry/domainry-foundation/modulecapability"
-	capabilitycontracttest "github.com/domainry/domainry-foundation/modulecapability/contracttest"
 	identity "github.com/domainry/domainry-identity-sdk"
 	identitycontracttest "github.com/domainry/domainry-identity-sdk/contracttest"
 	identityremote "github.com/domainry/domainry-identity-sdk/remote"
-	identitycapability "github.com/domainry/domainry-identity/capability"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 	httpserver "github.com/domainry/domainry-identity/internal/transport/http/server"
 )
@@ -49,6 +47,26 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = identityServer.CloseContext(t.Context()) })
+	ownerDB, err := sql.Open("sqlite", cfg.DBPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ownerDB.Close() })
+	for _, statement := range []string{
+		`CREATE TABLE _subject_requests (id TEXT NOT NULL, workspace_id TEXT NOT NULL, request_type TEXT NOT NULL, kind TEXT NOT NULL, resolved_identity TEXT NOT NULL, PRIMARY KEY(workspace_id,id))`,
+		`CREATE TABLE _subject_steps (workspace_id TEXT NOT NULL, request_id TEXT NOT NULL, owner TEXT NOT NULL, operation TEXT NOT NULL, payload_json TEXT NOT NULL, completed_at TEXT NOT NULL, PRIMARY KEY(workspace_id,request_id,owner,operation))`,
+	} {
+		if _, err = ownerDB.ExecContext(t.Context(), statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ownerLifecycle, ok := identityServer.SDKBinding().(identity.SubjectLifecyclePersistenceBinding)
+	if !ok {
+		t.Fatal("Identity server shared subject lifecycle persistence binder missing")
+	}
+	if err = ownerLifecycle.BindSubjectLifecyclePersistence(); err != nil {
+		t.Fatal(err)
+	}
 	testServer.Config.Handler = identityServer.Routes()
 	testServer.Start()
 	t.Cleanup(testServer.Close)
@@ -86,20 +104,10 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 	if wrongScopeResponse.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("projection endpoint accepted service credential for wrong application, status=%d", wrongScopeResponse.StatusCode)
 	}
-	sourceBinding, err := identitycapability.Open(identitycapability.Inputs{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	sourceSummary, err := sourceBinding.CapabilitySummary(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	factory := identityremote.NewFactory(identityremote.Config{
 		Endpoint: testServer.URL, WorkspaceID: "workspace-primary", Issuer: issuer,
 		Audience: "orders-runtime", ServiceAccessToken: serviceCredential,
-		CapabilityContractSHA256: sourceSummary.Identity.ContractSHA256,
-		HTTPClient:               testServer.Client(),
+		HTTPClient: testServer.Client(),
 	})
 	binding, err := factory.Open(t.Context(), identity.ApplicationRef{})
 	if err != nil {
@@ -200,32 +208,10 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 	if ordinaryUserResponse.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("ordinary user token published permission definitions, status=%d", ordinaryUserResponse.StatusCode)
 	}
-	capabilitycontracttest.VerifyBinding(t, binding)
-	capabilitySummary, err := binding.CapabilitySummary(t.Context())
-	if err != nil || capabilitySummary.Identity.Key != "identity" || capabilitySummary.Identity.ContractSHA256 == "" {
-		t.Fatalf("capability summary=%+v err=%v", capabilitySummary, err)
-	}
-	validation, err := binding.ValidateCapabilityCandidate(t.Context(), modulecapability.ValidationRequest{
-		ContractVersion: modulecapability.ValidationContractVersion, ModuleKey: "identity", CategoryKey: "identity.roles",
-		ContractSHA256: capabilitySummary.Identity.ContractSHA256, Kind: "identity.role",
-		Candidate: modulecapability.AuthoringFragment{Collection: "roles", Key: "sales", Value: []byte(`{"key":"sales","permissions":[],"unknown":true}`)},
-	})
-	if err != nil || len(validation.Diagnostics) == 0 || validation.Diagnostics[0].Owner != "identity" {
-		t.Fatalf("capability validation=%+v err=%v", validation, err)
-	}
-	staleFactory := identityremote.NewFactory(identityremote.Config{
-		Endpoint: testServer.URL, WorkspaceID: "workspace-primary", Issuer: issuer,
-		Audience: "orders-runtime", ServiceAccessToken: serviceCredential,
-		CapabilityContractSHA256: strings.Repeat("0", 64), HTTPClient: testServer.Client(),
-	})
-	if _, err := staleFactory.Open(t.Context(), identity.ApplicationRef{}); err == nil {
-		t.Fatal("Identity Remote accepted a stale capability digest")
-	}
 	notificationFactory := identityremote.NewFactory(identityremote.Config{
 		Endpoint: testServer.URL, WorkspaceID: "workspace-primary", Issuer: issuer,
 		Audience: "domainry-notification", ServiceAccessToken: notificationCredential,
-		CapabilityContractSHA256: sourceSummary.Identity.ContractSHA256,
-		HTTPClient:               testServer.Client(),
+		HTTPClient: testServer.Client(),
 	})
 	notificationBinding, err := notificationFactory.Open(t.Context(), identity.ApplicationRef{})
 	if err != nil {
@@ -268,6 +254,12 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 		t.Fatal("remote subject lifecycle unavailable")
 	}
 	erase := identity.SubjectErasureRequest{WorkspaceID: "workspace-primary", SubjectID: session.User.ID, RequestID: "erase-http-admin"}
+	if _, err = ownerDB.ExecContext(t.Context(), `INSERT INTO _subject_requests(id,workspace_id,request_type,kind,resolved_identity) VALUES(?,?,'subject_request','erase',?)`, erase.RequestID, erase.WorkspaceID, erase.SubjectID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = ownerDB.ExecContext(t.Context(), `INSERT INTO _subject_steps(workspace_id,request_id,owner,operation,payload_json,completed_at) VALUES(?,?,'lifecycle','erase_fence','{}',?)`, erase.WorkspaceID, erase.RequestID, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		t.Fatal(err)
+	}
 	raw, err := json.Marshal(erase)
 	if err != nil {
 		t.Fatal(err)

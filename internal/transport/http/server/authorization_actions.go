@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	actioncontract "github.com/domainry/domainry-foundation/action"
-	"github.com/domainry/domainry-foundation/modulecapability"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
@@ -64,10 +63,6 @@ func standaloneProtocolAuthorizationActions() ([]identitymodel.IdentityActionDef
 		{key: "identity.remote.subject.preview", owner: "identity:remote-sdk", sourceKind: "remote_sdk_http", capabilityKey: "identity.remote.subject", capabilityLabel: "Identity subject lifecycle", operationKey: "preview", operationLabel: "preview", label: "preview a subject for a trusted Runtime", method: http.MethodPost, route: "/identity/system/subjects/preview", exposure: actioncontract.ExposurePublic, authorization: service("identity.subject.application_credential"), risk: actioncontract.RiskMedium},
 		{key: "identity.remote.subject.export", owner: "identity:remote-sdk", sourceKind: "remote_sdk_http", capabilityKey: "identity.remote.subject", capabilityLabel: "Identity subject lifecycle", operationKey: "export", operationLabel: "export", label: "export a subject for a trusted Runtime", method: http.MethodPost, route: "/identity/system/subjects/export", exposure: actioncontract.ExposurePublic, authorization: service("identity.subject.application_credential"), risk: actioncontract.RiskMedium},
 		{key: "identity.remote.subject.erase", owner: "identity:remote-sdk", sourceKind: "remote_sdk_http", capabilityKey: "identity.remote.subject", capabilityLabel: "Identity subject lifecycle", operationKey: "erase", operationLabel: "erase", label: "erase a subject for a trusted Runtime", method: http.MethodPost, route: "/identity/system/subjects/erase", exposure: actioncontract.ExposurePublic, authorization: service("identity.subject.application_credential"), risk: actioncontract.RiskMedium},
-
-		{key: "identity.remote.module_capability.summary", owner: "identity:remote-sdk", sourceKind: "module_capability_protocol", capabilityKey: "identity.remote.module_capability", capabilityLabel: "Identity module capability protocol", operationKey: "summary", operationLabel: "Read summary", label: "Read the Identity module capability summary", method: http.MethodGet, route: modulecapability.SummaryPath, exposure: actioncontract.ExposurePublic, authorization: service("identity.module_capability.application_credential"), risk: actioncontract.RiskLow},
-		{key: "identity.remote.module_capability.category", owner: "identity:remote-sdk", sourceKind: "module_capability_protocol", capabilityKey: "identity.remote.module_capability", capabilityLabel: "Identity module capability protocol", operationKey: "category", operationLabel: "Read category", label: "Read one Identity module capability category", method: http.MethodGet, route: modulecapability.CategoriesPath + "{key}", exposure: actioncontract.ExposurePublic, authorization: service("identity.module_capability.application_credential"), risk: actioncontract.RiskLow},
-		{key: "identity.remote.module_capability.validate", owner: "identity:remote-sdk", sourceKind: "module_capability_protocol", capabilityKey: "identity.remote.module_capability", capabilityLabel: "Identity module capability protocol", operationKey: "validate", operationLabel: "Validate", label: "Validate an Identity module capability candidate", method: http.MethodPost, route: modulecapability.ValidationPath, exposure: actioncontract.ExposurePublic, authorization: service("identity.module_capability.application_credential"), risk: actioncontract.RiskMedium},
 	}
 	definitions := make([]identitymodel.IdentityActionDefinition, 0, len(specs))
 	for _, spec := range specs {

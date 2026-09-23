@@ -11,6 +11,7 @@ import (
 	"io"
 	"strings"
 
+	auditcontract "github.com/domainry/domainry-audit-sdk/contract"
 	"github.com/domainry/domainry-foundation/apperror"
 	"github.com/domainry/domainry-foundation/requestcontext"
 	auditapplication "github.com/domainry/domainry-identity/internal/application/auditbinding"
@@ -122,6 +123,7 @@ func (s *IdentityStoreOrganizationDeliveryApplicationService) Deliver(ctx contex
 		}
 		if err := s.dependencies.Audit.AppendAudit(transactionContext, auditapplication.AuditAppendRequest{
 			IdempotencyKey: "identity-store-organization-delivery:" + request.IdempotencyKey,
+			Family:         auditcontract.EventFamilyIdentityGovernance,
 			Event:          "identity.store_organization_delivery." + string(request.Operation),
 			ObjectKey:      identitycontract.IdentityOrganizationUnitObjectKey,
 			RecordID:       request.OrganizationID,

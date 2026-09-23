@@ -11,6 +11,8 @@ import (
 )
 
 type SubjectLifecycle interface {
+	BindSubjectLifecyclePersistence()
+	SubjectLifecyclePersistenceBound() bool
 	PreviewSubject(context.Context, string, string) (json.RawMessage, error)
 	ExportSubject(context.Context, string, string) (json.RawMessage, error)
 	EraseSubjectForRequest(context.Context, string, string, string, []privacy.LegalHold) (json.RawMessage, error)
@@ -31,6 +33,9 @@ func (adapter sdkSystemSubjects) validate(ctx context.Context, workspaceID, subj
 	}
 	if strings.TrimSpace(subjectID) == "" {
 		return &identitysdk.Error{StatusCode: http.StatusBadRequest, Code: "identity.subject_id_invalid"}
+	}
+	if !adapter.binding.subjects.SubjectLifecyclePersistenceBound() {
+		return &identitysdk.Error{StatusCode: http.StatusServiceUnavailable, Code: "identity.subject_lifecycle_persistence_unbound"}
 	}
 	return nil
 }

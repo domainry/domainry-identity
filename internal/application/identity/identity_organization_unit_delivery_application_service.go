@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 
+	auditcontract "github.com/domainry/domainry-audit-sdk/contract"
 	"github.com/domainry/domainry-foundation/apperror"
 	"github.com/domainry/domainry-foundation/requestcontext"
 	auditapplication "github.com/domainry/domainry-identity/internal/application/auditbinding"
@@ -128,6 +129,7 @@ func (s *IdentityOrganizationUnitDeliveryApplicationService) Create(ctx context.
 		}
 		if appendErr := s.dependencies.Audit.AppendAudit(transactionContext, auditapplication.AuditAppendRequest{
 			IdempotencyKey: "identity-organization-unit-delivery:" + request.IdempotencyKey,
+			Family:         auditcontract.EventFamilyIdentityGovernance,
 			Event:          "identity.organization_unit_delivery.create",
 			ObjectKey:      identitycontract.IdentityOrganizationUnitObjectKey,
 			RecordID:       request.OrganizationID,

@@ -15,6 +15,7 @@ import (
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
 
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
+	metadatasdk "github.com/domainry/domainry-metadata-sdk"
 	"github.com/domainry/domainry-orm/query"
 )
 
@@ -61,7 +62,7 @@ func (r MetadataStore) loadBusinessDefinitions(ctx context.Context) ([]definitio
 	if binding == nil || binding.Definitions() == nil {
 		return nil, nil, nil, nil, fmt.Errorf("Metadata definition repository is unavailable")
 	}
-	snapshot, err := binding.Definitions().Snapshot(ctx)
+	snapshot, err := binding.Definitions().Snapshot(ctx, metadatasdk.DefinitionQuery{Owner: metadatasdk.DefinitionOwnerMetadata})
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}

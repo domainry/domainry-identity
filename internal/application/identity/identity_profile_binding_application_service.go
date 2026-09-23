@@ -180,7 +180,7 @@ func (s *IdentityProfileBindingApplicationService) replayProbe(ctx context.Conte
 		IdentityField: extension.IdentityRelationField, Operation: operation,
 		IdentityUserID: profileBindingRequestedTarget(request, operation, principal.UserID), InvitationChannel: strings.TrimSpace(request.InvitationChannel),
 		ClaimProofType: strings.TrimSpace(request.ClaimProofType), Reason: strings.TrimSpace(request.Reason), ApprovalID: strings.TrimSpace(request.ApprovalID),
-		ExpectedVersion: request.ExpectedVersion, IdempotencyKey: idempotencyKey, ActorID: principal.UserID,
+		ExpectedVersion: request.ExpectedVersion, IdempotencyKey: idempotencyKey, ActorID: principal.UserID, CausationID: principal.CausationID,
 	}
 	if s.dependencies.SystemRoles != nil {
 		roleIDs, err := s.dependencies.SystemRoles.ResolveIdentityProfileSystemRoleIDs(ctx, bindingKey)
@@ -241,7 +241,7 @@ func (s *IdentityProfileBindingApplicationService) prepareMutation(ctx context.C
 		WorkspaceID: principal.WorkspaceID, BindingKey: request.BindingKey, ObjectKey: request.ObjectKey, ProfileID: request.ProfileID,
 		IdentityField: extension.IdentityRelationField, Operation: operation, IdentityUserID: profileBindingRequestedTarget(request, operation, principal.UserID),
 		InvitationChannel: strings.TrimSpace(request.InvitationChannel), ClaimProofType: strings.TrimSpace(request.ClaimProofType),
-		Reason: strings.TrimSpace(request.Reason), ExpectedVersion: request.ExpectedVersion, IdempotencyKey: request.IdempotencyKey, ActorID: principal.UserID,
+		Reason: strings.TrimSpace(request.Reason), ExpectedVersion: request.ExpectedVersion, IdempotencyKey: request.IdempotencyKey, ActorID: principal.UserID, CausationID: principal.CausationID,
 		ApprovalID: strings.TrimSpace(request.ApprovalID),
 	}
 	if s.dependencies.SystemRoles != nil {

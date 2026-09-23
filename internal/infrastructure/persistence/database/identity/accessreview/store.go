@@ -12,6 +12,7 @@ import (
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	identityrepository "github.com/domainry/domainry-identity/internal/domain/identity/repository"
 	identitydatascope "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/datascope"
+	operationreceipt "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/operationreceipt"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 	"github.com/domainry/domainry-orm/query"
 )
@@ -21,7 +22,13 @@ var _ identityrepository.IdentityAccessReviewRepository = (*Store)(nil)
 type Backend interface {
 	DB() *sql.DB
 	SQLRenderer() ormdialect.Renderer
+	OperationsPersistenceBound() bool
 }
+
+const (
+	accessReviewOperationOwner = "identity"
+	accessReviewOperationKind  = "identity.access_review_decision"
+)
 
 type RoleAssignmentWriter func(context.Context, *sql.Tx, string, identitymodel.IdentityUserRoleAssignment) error
 type ScopedRoleAssignmentWriter func(context.Context, *sql.Tx, string, identitymodel.IdentityUserRoleAssignment, identitymodel.IdentityDataScopeFilter) (bool, error)
@@ -277,6 +284,9 @@ func (s *Store) ApplyIdentityAccessReviewDecision(ctx context.Context, mutation 
 	if mutation.ItemID == "" || mutation.ReviewerID == "" || mutation.Request.IdempotencyKey == "" || mutation.RequestFingerprint == "" {
 		return identitymodel.IdentityAccessReviewDecisionReceipt{}, fmt.Errorf("identity access review decision is invalid")
 	}
+	if !s.backend.OperationsPersistenceBound() {
+		return identitymodel.IdentityAccessReviewDecisionReceipt{}, fmt.Errorf("identity shared Operations persistence is not bound")
+	}
 	tx, err := s.backend.DB().BeginTx(ctx, nil)
 	if err != nil {
 		return identitymodel.IdentityAccessReviewDecisionReceipt{}, err
@@ -418,13 +428,17 @@ func (s *Store) ApplyIdentityAccessReviewDecision(ctx context.Context, mutation 
 	}
 
 	resultJSON, _ := json.Marshal(receipt)
-	statement, arguments, err = query.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_access_review_receipts", workspaceID).
-		Columns("id", "item_id", "idempotency_key", "request_fingerprint", "result_json", "created_at").
-		Values(receipt.ID, item.ID, receipt.IdempotencyKey, receipt.RequestFingerprint, string(resultJSON), receipt.CreatedAt).Build()
-	if err != nil {
-		return identitymodel.IdentityAccessReviewDecisionReceipt{}, fmt.Errorf("build identity access review receipt: %w", err)
+	relatedIDsJSON, _ := json.Marshal(uniqueAccessReviewStrings([]string{item.ReviewID, item.UserID, item.RoleID, item.ReplacementRoleID}))
+	reason := strings.TrimSpace(mutation.Request.Reason)
+	if reason == "" {
+		reason = "decide identity access review item"
 	}
-	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
+	if err := operationreceipt.InsertSucceeded(ctx, tx, s.backend.SQLRenderer(), operationreceipt.Succeeded{
+		ID: receipt.ID, WorkspaceID: workspaceID, Owner: accessReviewOperationOwner, Kind: accessReviewOperationKind,
+		ActionKey: "identity.access_review_items.decide", ResourceType: "identity_access_review_item", ResourceID: item.ID,
+		IdempotencyKey: receipt.IdempotencyKey, RequestFingerprint: receipt.RequestFingerprint, RequestedBy: mutation.ReviewerID,
+		Reason: reason, ResultJSON: resultJSON, RelatedIDsJSON: relatedIDsJSON, CompletedAt: receipt.CreatedAt,
+	}); err != nil {
 		return identitymodel.IdentityAccessReviewDecisionReceipt{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -563,33 +577,46 @@ func (s *Store) LoadReceipt(ctx context.Context, queryer Queryer, workspaceID, i
 }
 
 func (s *Store) loadReceipt(ctx context.Context, queryer Queryer, workspaceID, itemID, idempotencyKey string, scope identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityAccessReviewDecisionReceipt, bool, error) {
-	predicates := []query.Predicate{query.Equal("item_id", itemID), query.Equal("idempotency_key", idempotencyKey)}
-	if !scope.Unrestricted {
-		predicates = append(predicates, query.Exists("_identity_access_review_items", query.And(
-			query.Equal("workspace_id", workspaceID),
-			query.EqualExpressions(query.Column("id"), query.TableColumn("_identity_access_review_receipts", "item_id")),
-			identitydatascope.UserExists(workspaceID, query.TableColumn("_identity_access_review_items", "user_id"), scope),
-		)))
+	if !s.backend.OperationsPersistenceBound() {
+		return identitymodel.IdentityAccessReviewDecisionReceipt{}, false, fmt.Errorf("identity shared Operations persistence is not bound")
 	}
-	statement, arguments, buildErr := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_access_review_receipts", workspaceID).
-		Columns("result_json", "request_fingerprint").Where(query.And(predicates...)).Build()
-	if buildErr != nil {
-		return identitymodel.IdentityAccessReviewDecisionReceipt{}, false, buildErr
-	}
-	var resultJSON, fingerprint string
-	err := queryer.QueryRowContext(ctx, statement, arguments...).Scan(&resultJSON, &fingerprint)
-	if errors.Is(err, sql.ErrNoRows) {
-		return identitymodel.IdentityAccessReviewDecisionReceipt{}, false, nil
-	}
-	if err != nil {
-		return identitymodel.IdentityAccessReviewDecisionReceipt{}, false, err
+	operation, found, err := operationreceipt.Load(ctx, queryer, s.backend.SQLRenderer(), workspaceID, accessReviewOperationOwner, accessReviewOperationKind, idempotencyKey)
+	if err != nil || !found {
+		return identitymodel.IdentityAccessReviewDecisionReceipt{}, found, err
 	}
 	var receipt identitymodel.IdentityAccessReviewDecisionReceipt
-	if err := json.Unmarshal([]byte(resultJSON), &receipt); err != nil {
+	if err := json.Unmarshal(operation.ResultJSON, &receipt); err != nil {
 		return identitymodel.IdentityAccessReviewDecisionReceipt{}, false, err
 	}
-	receipt.RequestFingerprint = fingerprint
+	if receipt.ID != operation.ID || receipt.WorkspaceID != workspaceID || receipt.ItemID != itemID ||
+		receipt.IdempotencyKey != idempotencyKey || operation.ResourceID != itemID {
+		return identitymodel.IdentityAccessReviewDecisionReceipt{}, false, fmt.Errorf("identity shared access review operation scope mismatch")
+	}
+	if !scope.Unrestricted {
+		if _, allowed, loadErr := s.LoadItemWithinDataScope(ctx, queryer, workspaceID, itemID, scope); loadErr != nil || !allowed {
+			return identitymodel.IdentityAccessReviewDecisionReceipt{}, false, loadErr
+		}
+	}
+	receipt.RequestFingerprint = operation.RequestFingerprint
+	receipt.CreatedAt = operation.CreatedAt
 	return receipt, true, nil
+}
+
+func uniqueAccessReviewStrings(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, found := seen[value]; found {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
 }
 
 func (s *Store) LoadAssignment(ctx context.Context, queryer Queryer, workspaceID, userID, roleID string) (identitymodel.IdentityUserRoleAssignment, bool, error) {

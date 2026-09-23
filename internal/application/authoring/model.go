@@ -16,6 +16,7 @@ type Receipt struct {
 	UseCase            string
 	ResourceType       string
 	TargetID           string
+	ActorID            string
 	IdempotencyKey     string
 	RequestFingerprint string
 	Status             idempotency.Status

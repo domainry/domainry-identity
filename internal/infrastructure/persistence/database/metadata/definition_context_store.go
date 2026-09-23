@@ -14,8 +14,6 @@ import (
 	"time"
 )
 
-const metadataRefreshIntentTable = "_identity_metadata_refresh_intents"
-
 func (r MetadataStore) PublishDefinition(ctx context.Context, scope identitymodel.SystemScope, resourceType, resourceKey string, req metadatamodel.MetadataDefinitionUpsertRequest, audit auditmodel.AuditEvent, publication *metadatamodel.MetadataDefinitionPublication) (metadatamodel.MetadataDefinition, error) {
 	if err := requireMetadataInstallationScope(scope); err != nil {
 		return metadatamodel.MetadataDefinition{}, err
@@ -86,6 +84,9 @@ func (r MetadataStore) publishDefinition(ctx context.Context, scope identitymode
 	if err := r.applyIdentityRoleProjectionMutation(ctx, tx, publication, metadatamodel.MetadataDefinitionMutation{Operation: "update", ResourceType: resourceType, ResourceKey: shape.Key, Request: req}, definition); err != nil {
 		return metadatamodel.MetadataDefinition{}, err
 	}
+	if err := r.syncLocalizedProjection(ctx, tx, resourceType, shape.Key, raw, sourceID, now); err != nil {
+		return metadatamodel.MetadataDefinition{}, err
+	}
 	if audit != nil {
 		audit.After = metadataDefinitionAuditValue(definition)
 		if audit.Metadata == nil {
@@ -95,9 +96,6 @@ func (r MetadataStore) publishDefinition(ctx context.Context, scope identitymode
 		if err := r.insertChangeAudit(ctx, tx, *audit); err != nil {
 			return metadatamodel.MetadataDefinition{}, err
 		}
-	}
-	if err := r.insertDefinitionRefreshIntentTx(ctx, tx, definition, now); err != nil {
-		return metadatamodel.MetadataDefinition{}, err
 	}
 	if err := r.refreshCatalogHashTx(ctx, tx, now); err != nil {
 		return metadatamodel.MetadataDefinition{}, fmt.Errorf("refresh active metadata revision: %w", err)
@@ -109,58 +107,6 @@ func (r MetadataStore) publishDefinition(ctx context.Context, scope identitymode
 		return metadatamodel.MetadataDefinition{}, fmt.Errorf("commit metadata upsert: %w", err)
 	}
 	return definition, nil
-}
-
-func (r MetadataStore) insertDefinitionRefreshIntentTx(ctx context.Context, tx *sql.Tx, definition metadatamodel.MetadataDefinition, now string) error {
-	payload, _ := json.Marshal(map[string]any{"resource_type": definition.ResourceType, "resource_key": definition.ResourceKey, "schema_version": definition.SchemaVersion, "schema_hash": definition.SchemaHash})
-	id := metadataDefinitionRefreshIntentID(definition.ResourceType, definition.ResourceKey, definition.SchemaVersion, definition.SchemaHash)
-	leaseExpires := time.Now().UTC().Add(90 * time.Second).Format(time.RFC3339Nano)
-	statement, arguments, err := query.NewWorkspaceInsertBuilder(r.store.SQLRenderer, metadataRefreshIntentTable, r.tenantWorkspaceID(ctx)).
-		Columns("id", "owner", "operation", "resource_id", "idempotency_key", "status", "payload_json", "compensation_payload_json", "attempt_count", "next_attempt_at", "lease_owner", "lease_expires_at", "fencing_token", "last_error", "created_at", "updated_at").
-		Values(id, "metadata", "catalog_refresh", definition.ResourceType+":"+definition.ResourceKey, definition.SchemaVersion+":"+definition.SchemaHash, "executing", string(payload), "{}", 0, "", "metadata-inline", leaseExpires, 1, "", now, now).Build()
-	if err != nil {
-		return fmt.Errorf("build metadata refresh intent insert: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
-		return fmt.Errorf("insert metadata refresh intent: %w", err)
-	}
-	return nil
-}
-
-func (r MetadataStore) CompleteDefinitionRefresh(ctx context.Context, scope identitymodel.SystemScope, resourceType, resourceKey, schemaVersion, schemaHash, errorText string) error {
-	if err := requireMetadataInstallationScope(scope); err != nil {
-		return err
-	}
-	id := metadataDefinitionRefreshIntentID(strings.TrimSpace(resourceType), strings.TrimSpace(resourceKey), strings.TrimSpace(schemaVersion), strings.TrimSpace(schemaHash))
-	status, nextAttemptAt, attemptIncrement := "succeeded", "", 0
-	if strings.TrimSpace(errorText) != "" {
-		status = "reconciliation_required"
-		nextAttemptAt = time.Now().UTC().Add(time.Minute).Format(time.RFC3339Nano)
-		attemptIncrement = 1
-	}
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	statement, arguments, err := query.NewWorkspaceUpdateBuilder(r.store.SQLRenderer, metadataRefreshIntentTable, r.tenantWorkspaceID(ctx)).
-		Set("status", status).
-		Set("last_error", strings.TrimSpace(errorText)).
-		Set("next_attempt_at", nextAttemptAt).
-		SetExpression("attempt_count", query.Add(query.Column("attempt_count"), query.Value(attemptIncrement))).
-		Set("lease_owner", "").Set("lease_expires_at", "").Set("updated_at", now).
-		Where(query.And(query.Equal("id", id), query.Equal("status", "executing"), query.Equal("lease_owner", "metadata-inline"), query.Equal("fencing_token", 1))).Build()
-	if err != nil {
-		return fmt.Errorf("build metadata refresh intent completion: %w", err)
-	}
-	result, err := r.database().ExecContext(ctx, statement, arguments...)
-	if err != nil {
-		return fmt.Errorf("complete metadata refresh intent: %w", err)
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("read completed metadata refresh intent rows: %w", err)
-	}
-	if affected != 1 {
-		return fmt.Errorf("metadata refresh intent transition conflict")
-	}
-	return nil
 }
 
 func metadataDefinitionAuditValue(definition metadatamodel.MetadataDefinition) map[string]any {

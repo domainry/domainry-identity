@@ -2,6 +2,7 @@ package identity_test
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/domainry/domainry-foundation/apperror"
@@ -19,6 +20,17 @@ func TestIdentityProfileBindingStoreProvidesAtomicOptimisticIdempotentLifecycle(
 	t.Cleanup(func() { _ = identityStore.Close() })
 	if err := identityStore.EnsureSchema(t.Context()); err != nil {
 		t.Fatal(err)
+	}
+	var retiredEvents int
+	if err := identityStore.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='_identity_profile_binding_events'`).Scan(&retiredEvents); err != nil || retiredEvents != 0 {
+		t.Fatalf("retired profile binding event table count=%d err=%v", retiredEvents, err)
+	}
+	unboundSQLStore, err := identitypersistence.NewSQLIdentityStore(t.Context(), identityStore.DB(), identityStore.PersistenceEngine())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := identitypersistence.NewIdentityProfileBindingStore(unboundSQLStore).GetIdentityProfileBindingReceipt(t.Context(), profileBindingMutation("member-1", identitymodel.IdentityProfileBindingInvite, "", 0, "unbound")); err == nil || !strings.Contains(err.Error(), "not bound") {
+		t.Fatalf("unbound shared Operations error=%v", err)
 	}
 	if _, err := identityStore.DB().ExecContext(t.Context(), `CREATE TABLE member_profile (
 		workspace_id TEXT NOT NULL,
@@ -55,6 +67,7 @@ func TestIdentityProfileBindingStoreProvidesAtomicOptimisticIdempotentLifecycle(
 	}
 	mutation := profileBindingMutation("member-1", identitymodel.IdentityProfileBindingInvite, "", 0, "invite-1")
 	mutation.InvitationChannel = "email"
+	mutation.CausationID = "cause-invite-1"
 	invited, err := store.ExecuteIdentityProfileBindingMutation(t.Context(), mutation)
 	if err != nil || invited.Binding.Status != identitymodel.IdentityProfileBindingInvited || invited.Binding.Version != 1 {
 		t.Fatalf("invited=%#v err=%v", invited, err)
@@ -83,8 +96,12 @@ func TestIdentityProfileBindingStoreProvidesAtomicOptimisticIdempotentLifecycle(
 		t.Fatalf("loaded=%#v found=%v err=%v", loaded, found, err)
 	}
 	events, err := store.ListIdentityProfileBindingEvents(t.Context(), "workspace-primary", "member_profile", "member-1")
-	if err != nil || len(events) != 2 || events[1].Operation != identitymodel.IdentityProfileBindingClaim || events[1].Status != "pending" {
+	if err != nil || len(events) != 2 || events[0].OperationID != invited.ID || events[0].CausationID != "cause-invite-1" || events[1].Operation != identitymodel.IdentityProfileBindingClaim || events[1].Status != "pending" {
 		t.Fatalf("events=%#v err=%v", events, err)
+	}
+	var auditEvents int
+	if err := identityStore.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _audit_events WHERE workspace_id=? AND object_key=? AND record_id=? AND event IN (?, ?)`, "workspace-primary", "member_profile", "member-1", "identity.profile_binding.invite", "identity.profile_binding.claim").Scan(&auditEvents); err != nil || auditEvents != 2 {
+		t.Fatalf("profile binding audit events=%d err=%v", auditEvents, err)
 	}
 
 	conflicting := profileBindingMutation("member-2", identitymodel.IdentityProfileBindingBind, "user-1", 0, "bind-conflict")
@@ -127,6 +144,13 @@ func TestIdentityProfileBindingStoreProvidesAtomicOptimisticIdempotentLifecycle(
 	if _, err := store.ExecuteIdentityProfileBindingMutation(t.Context(), profileBindingMutation("member-1", identitymodel.IdentityProfileBindingUnlink, "", 4, "unlink-2")); apperror.CodeOf(err) != "backend.identity.profile_not_bound" {
 		t.Fatalf("duplicate unlink error=%v", err)
 	}
+	var operationCount, legacyTableCount int
+	if err := identityStore.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _operations WHERE workspace_id='workspace-primary' AND owner='identity' AND kind='identity.profile_binding' AND status='succeeded'`).Scan(&operationCount); err != nil || operationCount != 5 {
+		t.Fatalf("shared profile binding operation count=%d err=%v", operationCount, err)
+	}
+	if err := identityStore.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='_identity_profile_binding_receipts'`).Scan(&legacyTableCount); err != nil || legacyTableCount != 0 {
+		t.Fatalf("legacy profile binding receipt table count=%d err=%v", legacyTableCount, err)
+	}
 }
 
 func assertProfileBindingRole(t *testing.T, store *IdentityStore, userID, roleID, status, bindingKey, profileID string) {
@@ -147,6 +171,7 @@ func identitySQLStoreForProfileBindingTest(t *testing.T, store *IdentityStore) *
 	if err != nil {
 		t.Fatal(err)
 	}
+	bindSharedOperations(t, identityStore)
 	return identityStore
 }
 

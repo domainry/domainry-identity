@@ -36,7 +36,6 @@ type Store interface {
 	DropIndex(context.Context, string, string) error
 	EnsureCompositePrimaryKey(context.Context, string, ...string) error
 	MetadataIDColumnType() string
-	LocalizedTextKeyColumnType() string
 	SchemaTypes() driver.SchemaTypes
 	ColumnDefinition(string) string
 }

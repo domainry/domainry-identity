@@ -25,7 +25,7 @@ func TestAuthMutationDecisionLifecycle(t *testing.T) {
 	repository := NewAuthStore(identity)
 	now := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
 	request := authmodel.AuthMutationClaimRequest{
-		Receipt:            authmodel.AuthMutationReceipt{WorkspaceID: "workspace-primary", UseCase: " reset ", TargetID: " user ", IdempotencyKey: " key "},
+		Receipt:            authmodel.AuthMutationReceipt{WorkspaceID: "workspace-primary", UseCase: " reset ", TargetID: " user ", ActorID: " actor ", IdempotencyKey: " key "},
 		RequestFingerprint: " fingerprint ",
 		LeaseOwner:         " worker ",
 		Now:                now,
@@ -34,6 +34,10 @@ func TestAuthMutationDecisionLifecycle(t *testing.T) {
 	if _, err := repository.TryBeginAuthMutation(t.Context(), "other", request); err == nil {
 		t.Fatal("workspace mismatch accepted")
 	}
+	if _, err := repository.TryBeginAuthMutation(t.Context(), "workspace-primary", request); err == nil {
+		t.Fatal("unbound shared Operations persistence accepted")
+	}
+	installAndBindAuthTestSharedOperations(t, identity)
 	claim, err := repository.TryBeginAuthMutation(t.Context(), "workspace-primary", request)
 	if err != nil || claim.Decision != idempotency.DecisionAcquired || claim.Receipt.UseCase != "reset" {
 		t.Fatalf("claim=%#v err=%v", claim, err)
@@ -60,6 +64,13 @@ func TestAuthMutationDecisionLifecycle(t *testing.T) {
 	})
 	if err != nil || completed.Status != string(idempotency.StatusFailedTerminal) || completed.ErrorCode != "failed" {
 		t.Fatalf("completed=%#v err=%v", completed, err)
+	}
+	var operationCount, legacyTableCount int
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _operations WHERE workspace_id='workspace-primary' AND owner='identity' AND kind='identity.auth_mutation' AND idempotency_key='key' AND status='failed' AND fencing_token=2`).Scan(&operationCount); err != nil || operationCount != 1 {
+		t.Fatalf("shared auth mutation operation count=%d err=%v", operationCount, err)
+	}
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='_identity_auth_mutation_receipts'`).Scan(&legacyTableCount); err != nil || legacyTableCount != 0 {
+		t.Fatalf("legacy auth mutation receipt table count=%d err=%v", legacyTableCount, err)
 	}
 	replayed, err := repository.TryBeginAuthMutation(t.Context(), "workspace-primary", reclaimedRequest)
 	if err != nil || replayed.Decision != idempotency.DecisionReplay {

@@ -12,7 +12,13 @@ import (
 // IdentityMutationFence is the application-boundary cutover guard. It is
 // checked by both the in-process Module Binding and the standalone service;
 // migration operations deliberately use their dedicated repository instead.
+type OperationsPersistence interface {
+	BindOperationsPersistence()
+	OperationsPersistenceBound() bool
+}
+
 type IdentityMutationFence interface {
+	OperationsPersistence
 	IdentityWritesFrozen(context.Context, string) (bool, error)
 }
 

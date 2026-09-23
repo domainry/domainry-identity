@@ -127,9 +127,11 @@ cutover evidence record.
   copying only the changed rows are forbidden.
 
 Every freeze and release is recorded in the shared append-only `_audit_events`
-ledger; current enforcement state is the `_identity_workspace_write_fences`
-projection. Data Exchange job and artifact evidence plus the Audit events must
-be retained with the cutover evidence.
+ledger; current enforcement state is the active `workspace_control/write_fence`
+row in `_operation_controls`. The host must install and explicitly bind shared
+Operations control persistence before starting a cutover. Data Exchange job and
+artifact evidence plus the Audit events must be retained with the cutover
+evidence.
 
 ## External-provider drill
 

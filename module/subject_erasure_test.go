@@ -2,6 +2,7 @@ package module_test
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"github.com/domainry/domainry-foundation/requestcontext"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
@@ -10,7 +11,27 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
+
+func bindSharedSubjectLifecycle(t *testing.T, binding identitysdk.Binding, db *sql.DB) {
+	t.Helper()
+	for _, statement := range []string{
+		`CREATE TABLE _subject_requests (id TEXT NOT NULL, workspace_id TEXT NOT NULL, request_type TEXT NOT NULL, kind TEXT NOT NULL, resolved_identity TEXT NOT NULL, PRIMARY KEY(workspace_id,id))`,
+		`CREATE TABLE _subject_steps (workspace_id TEXT NOT NULL, request_id TEXT NOT NULL, owner TEXT NOT NULL, operation TEXT NOT NULL, payload_json TEXT NOT NULL, completed_at TEXT NOT NULL, PRIMARY KEY(workspace_id,request_id,owner,operation))`,
+	} {
+		if _, err := db.ExecContext(t.Context(), statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	binder, ok := binding.(identitysdk.SubjectLifecyclePersistenceBinding)
+	if !ok {
+		t.Fatal("module shared subject lifecycle persistence binder missing")
+	}
+	if err := binder.BindSubjectLifecyclePersistence(); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestSubjectErasureThroughModuleRevokesSessionsAndPreservesReceipt(t *testing.T) {
 	catalog := identitysdk.ProjectRoleCatalog{
@@ -65,6 +86,16 @@ func TestSubjectErasureThroughModuleRevokesSessionsAndPreservesReceipt(t *testin
 		t.Fatal("module subject port missing")
 	}
 	erase := identitysdk.SubjectErasureRequest{WorkspaceID: request.WorkspaceID, SubjectID: request.InitialAdminUserID, RequestID: "erase-1"}
+	if _, err = subjects.SystemSubjects().PreviewSubject(ctx, erase.WorkspaceID, erase.SubjectID); err == nil || !strings.Contains(err.Error(), "unbound") {
+		t.Fatalf("unbound shared Lifecycle persistence error=%v", err)
+	}
+	bindSharedSubjectLifecycle(t, binding, db)
+	if _, err = db.ExecContext(ctx, `INSERT INTO _subject_requests(id,workspace_id,request_type,kind,resolved_identity) VALUES(?,?,'subject_request','erase',?)`, erase.RequestID, erase.WorkspaceID, erase.SubjectID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.ExecContext(ctx, `INSERT INTO _subject_steps(workspace_id,request_id,owner,operation,payload_json,completed_at) VALUES(?,?,'lifecycle','erase_fence','{}',?)`, erase.WorkspaceID, erase.RequestID, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		t.Fatal(err)
+	}
 	wrong := erase
 	wrong.WorkspaceID = "other-workspace"
 	if _, err = subjects.SystemSubjects().EraseSubjectForRequest(ctx, wrong); err == nil {
@@ -108,8 +139,11 @@ func TestSubjectErasureThroughModuleRevokesSessionsAndPreservesReceipt(t *testin
 		t.Fatalf("identity data survived: %s", exported)
 	}
 	var count int
-	if err = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM _identity_subject_erasure_receipts WHERE workspace_id=? AND subject_id=?`, erase.WorkspaceID, erase.SubjectID).Scan(&count); err != nil || count != 1 {
-		t.Fatalf("receipt count %d: %v", count, err)
+	if err = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM _subject_steps WHERE workspace_id=? AND request_id=? AND owner='identity' AND operation='erase'`, erase.WorkspaceID, erase.RequestID).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("shared execution step count %d: %v", count, err)
+	}
+	if err = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='_identity_subject_erasure_receipts'`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("legacy Identity erasure receipt table count %d: %v", count, err)
 	}
 	var version int64
 	if err = db.QueryRowContext(ctx, `SELECT version FROM _identity_users WHERE workspace_id=? AND id=?`, erase.WorkspaceID, erase.SubjectID).Scan(&version); err != nil {
@@ -117,8 +151,8 @@ func TestSubjectErasureThroughModuleRevokesSessionsAndPreservesReceipt(t *testin
 	}
 	next := erase
 	next.RequestID = "erase-2"
-	if _, err = subjects.SystemSubjects().EraseSubjectForRequest(ctx, next); err != nil {
-		t.Fatal(err)
+	if _, err = subjects.SystemSubjects().EraseSubjectForRequest(ctx, next); err == nil {
+		t.Fatal("second erasure request bypassed the shared Lifecycle fence")
 	}
 	var nextVersion int64
 	if err = db.QueryRowContext(ctx, `SELECT version FROM _identity_users WHERE workspace_id=? AND id=?`, erase.WorkspaceID, erase.SubjectID).Scan(&nextVersion); err != nil || nextVersion != version {

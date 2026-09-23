@@ -370,12 +370,6 @@ func (validator *identitySchemaValidator) validateProfileBindings() {
 	for index, binding := range validator.schema.IdentityProfileExtensions {
 		path := fmt.Sprintf("identity_profile_extensions[%d]", index)
 		objectKey := strings.TrimSpace(binding.ObjectKey)
-		if binding.ContractVersion != identitymodel.IdentityProfileExtensionContractVersion {
-			validator.add(path+".contract_version", "must be %q", identitymodel.IdentityProfileExtensionContractVersion)
-		}
-		if binding.MinReaderVersion != identitymodel.IdentityProfileExtensionMinReaderVersion {
-			validator.add(path+".min_reader_version", "must be %q", identitymodel.IdentityProfileExtensionMinReaderVersion)
-		}
 		if validator.objects[objectKey].Key == "" {
 			validator.add(path+".object_key", "references unknown object %q", objectKey)
 		} else if seenObjects[objectKey] {
@@ -405,17 +399,6 @@ func (validator *identitySchemaValidator) validateProfileBindings() {
 
 func (validator *identitySchemaValidator) validateProfileFieldReferences(path string, binding identitymodel.IdentityProfileExtension) {
 	objectKey := strings.TrimSpace(binding.ObjectKey)
-	fieldLists := [][]string{binding.SummaryFields}
-	for _, fields := range binding.ProfileTabFields {
-		fieldLists = append(fieldLists, fields)
-	}
-	for _, fields := range fieldLists {
-		for _, fieldKey := range fields {
-			if validator.fields[objectKey][strings.TrimSpace(fieldKey)].Key == "" {
-				validator.add(path, "references unknown profile field %q", fieldKey)
-			}
-		}
-	}
 	for _, claim := range binding.BusinessIdentity.Claims {
 		if validator.fields[objectKey][strings.TrimSpace(claim.FieldKey)].Key == "" {
 			validator.add(path+".business_identity.claims", "references unknown field %q", claim.FieldKey)

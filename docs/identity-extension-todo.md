@@ -23,7 +23,7 @@ Identity 核心模型保持稳定，客户无需修改或 fork `domainry-identit
 
 当前仓库已经具备以下基础：
 
-- `IdentityProfileExtension` 可以声明业务 Profile 对象、Identity relation、摘要字段、Profile Tab、可见性和所需权限。
+- `IdentityProfileExtension` 只声明业务 Profile 对象、Identity relation、生命周期、可见性和所需权限；所有 Tab、组件、标签和字段分组由产品前端代码拥有。
 - Metadata candidate 支持 `field` 和 `identity_profile_binding` 资源变更。
 - `IdentityProfileBindingApplicationService` 已实现 `invite`、`claim`、`bind`、`rebind` 和 `unlink` 业务流程。
 - Identity Profile Binding persistence 已具备幂等 receipt、乐观锁、事件记录和 system-managed role 同步。
@@ -99,8 +99,7 @@ Identity 核心模型保持稳定，客户无需修改或 fork `domainry-identit
 
 - [ ] 保持 `IdentityUser` SDK DTO 稳定，不把客户字段动态塞进核心 DTO。
 - [ ] 增加 `identity + profiles` 组合查询结果或等价 projection contract。
-- [ ] 支持 Profile 摘要字段和目录筛选字段。
-- [ ] 支持 Profile Tab、字段分组、自定义标签和关联对象投影。
+- [ ] Profile 摘要、筛选、Tab、字段分组、自定义标签和关联对象展示全部由产品前端实现，后端不表达 UI 元数据。
 - [ ] 支持字段级可见权限和 Profile 级 required permissions。
 - [ ] 支持敏感字段隐藏、脱敏和导出限制。
 - [ ] 前端必须能区分 Identity 核心字段、业务 Profile 字段和不可用字段。

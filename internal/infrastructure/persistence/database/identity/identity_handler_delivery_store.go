@@ -3,19 +3,23 @@ package identity
 import (
 	"context"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/domainry/domainry-foundation/apperror"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	identityrepository "github.com/domainry/domainry-identity/internal/domain/identity/repository"
+	operationreceipt "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/operationreceipt"
 	roleassignmentpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/roleassignment"
 	identitytransaction "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/transaction"
 	"github.com/domainry/domainry-orm/query"
+)
+
+const (
+	handlerDeliveryOperationOwner = "identity"
+	handlerDeliveryOperationKind  = "identity.handler_delivery"
 )
 
 func (s *SQLIdentityStore) GetIdentityHandlerDeliveryReceipt(ctx context.Context, workspaceID, idempotencyKey string) (identitymodel.IdentityHandlerDeliveryReceipt, bool, error) {
@@ -23,26 +27,10 @@ func (s *SQLIdentityStore) GetIdentityHandlerDeliveryReceipt(ctx context.Context
 	if err != nil {
 		return identitymodel.IdentityHandlerDeliveryReceipt{}, false, err
 	}
-	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.sqlRenderer(), "_identity_handler_deliveries", workspaceID).
-		Columns("actor_id", "idempotency_key", "request_fingerprint", "result_json", "created_at").
-		Where(query.Equal("idempotency_key", strings.TrimSpace(idempotencyKey))).Limit(1).Build()
-	if err != nil {
-		return identitymodel.IdentityHandlerDeliveryReceipt{}, false, fmt.Errorf("build identity handler delivery receipt query: %w", err)
+	if !s.OperationsPersistenceBound() {
+		return identitymodel.IdentityHandlerDeliveryReceipt{}, false, fmt.Errorf("identity shared Operations persistence is not bound")
 	}
-	var receipt identitymodel.IdentityHandlerDeliveryReceipt
-	var resultJSON string
-	err = s.reader(ctx).QueryRowContext(ctx, statement, arguments...).Scan(&receipt.ActorID, &receipt.IdempotencyKey, &receipt.RequestFingerprint, &resultJSON, &receipt.CreatedAt)
-	if errors.Is(err, sql.ErrNoRows) {
-		return identitymodel.IdentityHandlerDeliveryReceipt{}, false, nil
-	}
-	if err != nil {
-		return identitymodel.IdentityHandlerDeliveryReceipt{}, false, err
-	}
-	receipt.WorkspaceID = workspaceID
-	if err := json.Unmarshal([]byte(resultJSON), &receipt.Result); err != nil {
-		return identitymodel.IdentityHandlerDeliveryReceipt{}, false, fmt.Errorf("decode identity handler delivery receipt: %w", err)
-	}
-	return receipt, true, nil
+	return s.loadIdentityHandlerDeliveryReceipt(ctx, workspaceID, strings.TrimSpace(idempotencyKey))
 }
 
 func (s *SQLIdentityStore) ExecuteIdentityHandlerDelivery(ctx context.Context, mutation identitymodel.IdentityHandlerDeliveryMutation) (identitymodel.IdentityHandlerDeliveryReceipt, error) {
@@ -52,6 +40,9 @@ func (s *SQLIdentityStore) ExecuteIdentityHandlerDelivery(ctx context.Context, m
 	}
 	if strings.TrimSpace(mutation.ActorID) == "" || strings.TrimSpace(mutation.IdempotencyKey) == "" || strings.TrimSpace(mutation.RequestFingerprint) == "" {
 		return identitymodel.IdentityHandlerDeliveryReceipt{}, handlerDeliveryStoreError(apperror.KindBadRequest, "backend.identity.handler_delivery_invalid")
+	}
+	if !s.OperationsPersistenceBound() {
+		return identitymodel.IdentityHandlerDeliveryReceipt{}, fmt.Errorf("identity shared Operations persistence is not bound")
 	}
 	if receipt, found, err := s.GetIdentityHandlerDeliveryReceipt(ctx, mutation.WorkspaceID, mutation.IdempotencyKey); err != nil {
 		return identitymodel.IdentityHandlerDeliveryReceipt{}, err
@@ -160,16 +151,43 @@ func (s *SQLIdentityStore) ExecuteIdentityHandlerDelivery(ctx context.Context, m
 	if err != nil {
 		return identitymodel.IdentityHandlerDeliveryReceipt{}, err
 	}
-	statement, arguments, err = query.NewWorkspaceInsertBuilder(s.sqlRenderer(), "_identity_handler_deliveries", mutation.WorkspaceID).
-		Columns("id", "actor_id", "idempotency_key", "request_fingerprint", "result_json", "created_at").
-		Values(result.DeliveryID, mutation.ActorID, mutation.IdempotencyKey, mutation.RequestFingerprint, string(resultJSON), now).Build()
-	if err != nil {
-		return identitymodel.IdentityHandlerDeliveryReceipt{}, fmt.Errorf("build identity handler delivery receipt insert: %w", err)
-	}
-	if _, err := executor.ExecContext(ctx, statement, arguments...); err != nil {
+	relatedIDsJSON, _ := json.Marshal(handlerDeliveryRelatedIDs(mutation))
+	if err := operationreceipt.InsertSucceeded(ctx, executor, s.sqlRenderer(), operationreceipt.Succeeded{
+		ID: result.DeliveryID, WorkspaceID: mutation.WorkspaceID, Owner: handlerDeliveryOperationOwner, Kind: handlerDeliveryOperationKind,
+		ActionKey: "identity.handler_delivery." + string(mutation.Operation), ResourceType: "identity_user", ResourceID: mutation.User.ID,
+		IdempotencyKey: mutation.IdempotencyKey, RequestFingerprint: mutation.RequestFingerprint, RequestedBy: mutation.ActorID,
+		Reason: "deliver identity handler mutation", ResultJSON: resultJSON, RelatedIDsJSON: relatedIDsJSON, CompletedAt: now,
+	}); err != nil {
 		return identitymodel.IdentityHandlerDeliveryReceipt{}, normalizeHandlerDeliveryWriteError(err)
 	}
 	return receipt, nil
+}
+
+func (s *SQLIdentityStore) loadIdentityHandlerDeliveryReceipt(ctx context.Context, workspaceID, idempotencyKey string) (identitymodel.IdentityHandlerDeliveryReceipt, bool, error) {
+	operation, found, err := operationreceipt.Load(ctx, s.reader(ctx), s.sqlRenderer(), workspaceID, handlerDeliveryOperationOwner, handlerDeliveryOperationKind, idempotencyKey)
+	if err != nil || !found {
+		return identitymodel.IdentityHandlerDeliveryReceipt{}, found, err
+	}
+	var result identitymodel.IdentityHandlerDeliveryResult
+	if err := json.Unmarshal(operation.ResultJSON, &result); err != nil {
+		return identitymodel.IdentityHandlerDeliveryReceipt{}, false, fmt.Errorf("decode identity handler delivery operation: %w", err)
+	}
+	if result.DeliveryID != operation.ID || result.User.ID != operation.ResourceID {
+		return identitymodel.IdentityHandlerDeliveryReceipt{}, false, fmt.Errorf("identity shared handler delivery operation scope mismatch")
+	}
+	return identitymodel.IdentityHandlerDeliveryReceipt{
+		WorkspaceID: workspaceID, ActorID: operation.RequestedBy, IdempotencyKey: idempotencyKey,
+		RequestFingerprint: operation.RequestFingerprint, Result: result, CreatedAt: operation.CreatedAt,
+	}, true, nil
+}
+
+func handlerDeliveryRelatedIDs(mutation identitymodel.IdentityHandlerDeliveryMutation) []string {
+	values := []string{mutation.User.ID}
+	values = append(values, mutation.RevokeUserIDs...)
+	for _, assignment := range mutation.RoleAssignments {
+		values = append(values, assignment.UserID, assignment.RoleID)
+	}
+	return uniqueHandlerDeliveryStrings(values)
 }
 
 func uniqueHandlerDeliveryStrings(values []string) []string {

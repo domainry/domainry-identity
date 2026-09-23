@@ -167,8 +167,7 @@ func (s scriptedSchemaStore) DropIndex(ctx context.Context, table, index string)
 func (scriptedSchemaStore) EnsureCompositePrimaryKey(context.Context, string, ...string) error {
 	return nil
 }
-func (scriptedSchemaStore) MetadataIDColumnType() string       { return "TEXT" }
-func (scriptedSchemaStore) LocalizedTextKeyColumnType() string { return "TEXT" }
+func (scriptedSchemaStore) MetadataIDColumnType() string { return "TEXT" }
 func (s scriptedSchemaStore) SchemaTypes() persistencedriver.SchemaTypes {
 	if s.Driver() == "mysql" {
 		return persistencedriver.SchemaTypes{Boolean: "BOOLEAN", FalseLiteral: "0", DefaultText: "VARCHAR(255)", DocumentText: "LONGTEXT", IndexedText: mysqlIndexedTextType, AuditCursorText: mysqlIndexedTextType}

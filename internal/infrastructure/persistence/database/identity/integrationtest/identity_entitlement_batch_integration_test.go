@@ -2,6 +2,7 @@ package identity_test
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/domainry/domainry-foundation/apperror"
@@ -10,6 +11,50 @@ import (
 	identitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 )
+
+func bindSharedOperations(t *testing.T, store *identitypersistence.SQLIdentityStore) {
+	t.Helper()
+	if _, err := store.DB().ExecContext(t.Context(), `CREATE TABLE IF NOT EXISTS _operations (
+		id TEXT PRIMARY KEY,
+		workspace_id TEXT NOT NULL,
+		system_purpose TEXT NOT NULL DEFAULT '',
+		owner TEXT NOT NULL,
+		kind TEXT NOT NULL,
+		action_key TEXT NOT NULL,
+		parent_id TEXT NOT NULL DEFAULT '',
+		resource_type TEXT NOT NULL,
+		resource_id TEXT NOT NULL DEFAULT '',
+		idempotency_key TEXT NOT NULL,
+		request_fingerprint TEXT NOT NULL,
+		requested_by TEXT NOT NULL,
+		reason TEXT NOT NULL,
+		reference TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL,
+		status_url TEXT NOT NULL,
+		result_json TEXT NOT NULL,
+		metadata_json TEXT NOT NULL,
+		error_code TEXT NOT NULL DEFAULT '',
+		failure_class TEXT NOT NULL DEFAULT '',
+		next_action TEXT NOT NULL DEFAULT '',
+		related_ids_json TEXT NOT NULL,
+		correlation TEXT NOT NULL DEFAULT '',
+		evidence_json TEXT NOT NULL,
+		lease_owner TEXT NOT NULL DEFAULT '',
+		lease_expires_at TEXT NOT NULL DEFAULT '',
+		fencing_token BIGINT NOT NULL DEFAULT 0,
+		expires_at TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL,
+		started_at TEXT NOT NULL DEFAULT '',
+		finished_at TEXT NOT NULL DEFAULT '',
+		updated_at TEXT NOT NULL
+	)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.DB().ExecContext(t.Context(), `CREATE UNIQUE INDEX IF NOT EXISTS uniq_runtime_operation_key ON _operations(workspace_id,system_purpose,owner,kind,idempotency_key)`); err != nil {
+		t.Fatal(err)
+	}
+	store.BindOperationsPersistence()
+}
 
 func TestEntitlementBatchUsesOneTransactionAndStableIdempotencyReceipt(t *testing.T) {
 	identityStore, err := persistence.OpenContext(t.Context(), config.Config{DatabaseDriver: "sqlite", DBPath: filepath.Join(t.TempDir(), "entitlement-batch.db")})
@@ -24,6 +69,10 @@ func TestEntitlementBatchUsesOneTransactionAndStableIdempotencyReceipt(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, _, err := store.GetIdentityEntitlementBatchReceipt(t.Context(), "workspace-primary", "batch-1"); err == nil || !strings.Contains(err.Error(), "not bound") {
+		t.Fatalf("unbound shared Operations error=%v", err)
+	}
+	bindSharedOperations(t, store)
 	mutation := identitymodel.IdentityEntitlementBatchMutation{
 		WorkspaceID: "workspace-primary", ActorID: "grant-admin", IdempotencyKey: "batch-1", RequestFingerprint: "fingerprint-1",
 		Items: []identitymodel.IdentityEntitlementBatchItem{
@@ -69,6 +118,13 @@ func TestEntitlementBatchUsesOneTransactionAndStableIdempotencyReceipt(t *testin
 	if err != nil || len(assignments) != 2 {
 		t.Fatalf("atomic batch assignments=%#v err=%v", assignments, err)
 	}
+	var operationCount, legacyTableCount int
+	if err := identityStore.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _operations WHERE workspace_id='workspace-primary' AND owner='identity' AND kind='identity.entitlement_batch' AND idempotency_key='batch-1' AND status='succeeded'`).Scan(&operationCount); err != nil || operationCount != 1 {
+		t.Fatalf("shared entitlement operation count=%d err=%v", operationCount, err)
+	}
+	if err := identityStore.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='_identity_entitlement_batch_receipts'`).Scan(&legacyTableCount); err != nil || legacyTableCount != 0 {
+		t.Fatalf("legacy entitlement receipt table count=%d err=%v", legacyTableCount, err)
+	}
 }
 
 func TestScopedEntitlementBatchRejectsOneForeignTargetWithoutPartialWrites(t *testing.T) {
@@ -84,6 +140,7 @@ func TestScopedEntitlementBatchRejectsOneForeignTargetWithoutPartialWrites(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
+	bindSharedOperations(t, store)
 	for _, user := range []identitymodel.IdentityUser{
 		{ID: "sales-user", Name: "Sales", Email: "sales@example.com", OrgID: "sales", Status: identitymodel.IdentityStatusActive},
 		{ID: "finance-user", Name: "Finance", Email: "finance@example.com", OrgID: "finance", Status: identitymodel.IdentityStatusActive},

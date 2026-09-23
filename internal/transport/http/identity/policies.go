@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	auditcontract "github.com/domainry/domainry-audit-sdk/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
@@ -101,7 +102,7 @@ func (h *IdentityHandler) appendIdentityMutationAudit(r *http.Request, event str
 	}
 	metadata["path"] = r.URL.Path
 	metadata["method"] = r.Method
-	h.audit.AppendWithMetadata(r.Context(), event, objectKey, recordID, h.principal(r), summary, nil, nil, metadata)
+	h.audit.AppendWithMetadata(r.Context(), auditcontract.EventFamilyIdentityGovernance, event, objectKey, recordID, h.principal(r), summary, nil, nil, metadata)
 }
 
 func cloneStringAnyMap(value map[string]any) map[string]any {

@@ -14,7 +14,12 @@ import (
 	"github.com/domainry/domainry-foundation/mutation"
 	authmodel "github.com/domainry/domainry-identity/internal/domain/auth/model"
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
-	"github.com/domainry/domainry-orm/query"
+	operationreceipt "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/operationreceipt"
+)
+
+const (
+	authMutationOperationOwner = "identity"
+	authMutationOperationKind  = "identity.auth_mutation"
 )
 
 func (s AuthStore) TryBeginAuthMutation(ctx context.Context, workspaceID string, request authmodel.AuthMutationClaimRequest) (authmodel.AuthMutationClaimResult, error) {
@@ -24,6 +29,9 @@ func (s AuthStore) TryBeginAuthMutation(ctx context.Context, workspaceID string,
 	}
 	if strings.TrimSpace(request.Receipt.WorkspaceID) != workspaceID {
 		return authmodel.AuthMutationClaimResult{}, errors.New("auth mutation workspace does not match repository workspace")
+	}
+	if !s.store.OperationsPersistenceBound() {
+		return authmodel.AuthMutationClaimResult{}, errors.New("identity shared Operations persistence is not bound")
 	}
 	now := request.Now.UTC()
 	if now.IsZero() {
@@ -35,17 +43,24 @@ func (s AuthStore) TryBeginAuthMutation(ctx context.Context, workspaceID string,
 	receipt := request.Receipt
 	receipt.WorkspaceID = workspaceID
 	receipt.UseCase, receipt.TargetID, receipt.IdempotencyKey = strings.TrimSpace(receipt.UseCase), strings.TrimSpace(receipt.TargetID), strings.TrimSpace(receipt.IdempotencyKey)
+	receipt.ActorID = strings.TrimSpace(receipt.ActorID)
+	if receipt.UseCase == "" || receipt.TargetID == "" || receipt.IdempotencyKey == "" || receipt.ActorID == "" {
+		return authmodel.AuthMutationClaimResult{}, errors.New("auth mutation receipt identity is invalid")
+	}
 	receipt.ID = authMutationReceiptID(receipt)
 	receipt.RequestFingerprint, receipt.Status = strings.TrimSpace(request.RequestFingerprint), string(idempotency.StatusProcessing)
 	receipt.LeaseOwner, receipt.LeaseExpiresAt, receipt.FencingToken = strings.TrimSpace(request.LeaseOwner), now.Add(request.LeaseTTL).Format(time.RFC3339Nano), 1
 	receipt.CreatedAt, receipt.UpdatedAt = now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)
-	insert := query.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_auth_mutation_receipts", workspaceID).
-		Columns(authMutationReceiptWriteColumns()...).Values(authMutationReceiptWriteValues(receipt, "{}")...)
-	statement, arguments, buildErr := insert.Build()
-	if buildErr != nil {
-		return authmodel.AuthMutationClaimResult{}, buildErr
-	}
-	_, insertErr := s.db.ExecContext(ctx, statement, arguments...)
+	relatedIDsJSON, _ := json.Marshal([]string{receipt.TargetID})
+	insertErr := operationreceipt.InsertStarted(ctx, s.db, s.store.SQLRenderer(), operationreceipt.Started{
+		Leased: operationreceipt.Leased{
+			ID: receipt.ID, WorkspaceID: workspaceID, ActionKey: receipt.UseCase, ResourceType: "identity_user", ResourceID: receipt.TargetID,
+			IdempotencyKey: receipt.IdempotencyKey, RequestFingerprint: receipt.RequestFingerprint, RequestedBy: receipt.ActorID,
+			LeaseOwner: receipt.LeaseOwner, LeaseExpiresAt: receipt.LeaseExpiresAt, FencingToken: receipt.FencingToken,
+			CreatedAt: receipt.CreatedAt, UpdatedAt: receipt.UpdatedAt,
+		},
+		Owner: authMutationOperationOwner, Kind: authMutationOperationKind, Reason: "execute identity auth mutation", RelatedIDsJSON: relatedIDsJSON,
+	})
 	if insertErr == nil {
 		s.observeAuthMutation(receipt.WorkspaceID, receipt.UseCase, idempotency.OutcomeAcquired)
 		return authmodel.AuthMutationClaimResult{Decision: idempotency.DecisionAcquired, Receipt: receipt}, nil
@@ -62,18 +77,11 @@ func (s AuthStore) TryBeginAuthMutation(ctx context.Context, workspaceID string,
 		s.observeAuthMutation(receipt.WorkspaceID, receipt.UseCase, idempotency.OutcomeForDecision(decision, false))
 		return authmodel.AuthMutationClaimResult{Decision: decision, Receipt: current}, nil
 	}
-	statement, arguments, err = query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_auth_mutation_receipts", workspaceID).
-		Set("status", string(idempotency.StatusProcessing)).Set("lease_owner", receipt.LeaseOwner).Set("lease_expires_at", receipt.LeaseExpiresAt).
-		SetExpression("fencing_token", query.Add(query.Column("fencing_token"), query.Value(1))).Set("updated_at", receipt.UpdatedAt).
-		Where(query.And(query.Equal("id", receipt.ID), query.Equal("request_fingerprint", receipt.RequestFingerprint), query.Equal("status", string(idempotency.StatusProcessing)), query.LessThanOrEqual("lease_expires_at", now.Format(time.RFC3339Nano)))).Build()
-	if err != nil {
-		return authmodel.AuthMutationClaimResult{}, err
-	}
-	result, err := s.db.ExecContext(ctx, statement, arguments...)
-	if err != nil {
-		return authmodel.AuthMutationClaimResult{}, err
-	}
-	rows, err := result.RowsAffected()
+	reclaimed, err := operationreceipt.ReclaimStarted(ctx, s.db, s.store.SQLRenderer(), operationreceipt.Reclaim{
+		WorkspaceID: workspaceID, ID: receipt.ID, RequestFingerprint: receipt.RequestFingerprint,
+		LeaseOwner: receipt.LeaseOwner, LeaseExpiresAt: receipt.LeaseExpiresAt, ExpectedToken: current.FencingToken,
+		ExpiredAt: now.Format(time.RFC3339Nano), UpdatedAt: receipt.UpdatedAt,
+	})
 	if err != nil {
 		return authmodel.AuthMutationClaimResult{}, err
 	}
@@ -84,7 +92,7 @@ func (s AuthStore) TryBeginAuthMutation(ctx context.Context, workspaceID string,
 	if !found {
 		return authmodel.AuthMutationClaimResult{}, sql.ErrNoRows
 	}
-	if rows == 1 {
+	if reclaimed {
 		s.observeAuthMutation(receipt.WorkspaceID, receipt.UseCase, idempotency.OutcomeReclaimed)
 		return authmodel.AuthMutationClaimResult{Decision: idempotency.DecisionAcquired, Receipt: current}, nil
 	}
@@ -96,6 +104,9 @@ func (s AuthStore) CompleteAuthMutation(ctx context.Context, workspaceID string,
 	workspaceID, err := authWorkspaceID(workspaceID)
 	if err != nil {
 		return authmodel.AuthMutationReceipt{}, err
+	}
+	if !s.store.OperationsPersistenceBound() {
+		return authmodel.AuthMutationReceipt{}, errors.New("identity shared Operations persistence is not bound")
 	}
 	resultJSON, err := json.Marshal(completion.Result)
 	if err != nil {
@@ -109,22 +120,20 @@ func (s AuthStore) CompleteAuthMutation(ctx context.Context, workspaceID string,
 	if completion.Failed {
 		status = idempotency.StatusFailedTerminal
 	}
-	statement, arguments, err := query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_auth_mutation_receipts", workspaceID).
-		Set("status", string(status)).Set("result_json", string(resultJSON)).Set("error_code", strings.TrimSpace(completion.ErrorCode)).
-		Set("expires_at", completion.ExpiresAt.UTC().Format(time.RFC3339Nano)).Set("updated_at", now.Format(time.RFC3339Nano)).
-		Where(query.And(query.Equal("id", completion.ReceiptID), query.Equal("lease_owner", strings.TrimSpace(completion.LeaseOwner)), query.Equal("fencing_token", completion.FencingToken), query.Equal("status", string(idempotency.StatusProcessing)))).Build()
+	operationStatus, err := operationreceipt.OperationStatus(status)
 	if err != nil {
 		return authmodel.AuthMutationReceipt{}, err
 	}
-	result, err := s.db.ExecContext(ctx, statement, arguments...)
+	completed, err := operationreceipt.CompleteLeased(ctx, s.db, s.store.SQLRenderer(), operationreceipt.Completion{
+		WorkspaceID: workspaceID, ID: completion.ReceiptID, LeaseOwner: strings.TrimSpace(completion.LeaseOwner),
+		FencingToken: completion.FencingToken, Status: operationStatus, ResultJSON: resultJSON,
+		ErrorCode: strings.TrimSpace(completion.ErrorCode), ExpiresAt: completion.ExpiresAt.UTC().Format(time.RFC3339Nano),
+		CompletedAt: now.Format(time.RFC3339Nano),
+	})
 	if err != nil {
 		return authmodel.AuthMutationReceipt{}, err
 	}
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return authmodel.AuthMutationReceipt{}, err
-	}
-	if rows != 1 {
+	if !completed {
 		if receipt, loadErr := s.findAuthMutationByID(ctx, workspaceID, completion.ReceiptID); loadErr == nil {
 			s.observeAuthMutation(receipt.WorkspaceID, receipt.UseCase, idempotency.OutcomeLeaseLost)
 		}
@@ -140,55 +149,45 @@ func (s AuthStore) observeAuthMutation(workspaceID, scope string, outcome idempo
 }
 
 func (s AuthStore) findAuthMutation(ctx context.Context, scope authmodel.AuthMutationReceipt) (authmodel.AuthMutationReceipt, bool, error) {
-	statement, arguments, buildErr := authMutationReceiptSelect(s, scope.WorkspaceID).Where(query.And(query.Equal("use_case", scope.UseCase), query.Equal("target_id", scope.TargetID), query.Equal("idempotency_key", scope.IdempotencyKey))).Build()
-	if buildErr != nil {
-		return authmodel.AuthMutationReceipt{}, false, buildErr
+	operation, found, err := operationreceipt.LoadLeasedByKey(ctx, s.db, s.store.SQLRenderer(), scope.WorkspaceID, authMutationOperationOwner, authMutationOperationKind, scope.IdempotencyKey)
+	if err != nil || !found {
+		return authmodel.AuthMutationReceipt{}, found, err
 	}
-	receipt, err := scanAuthMutationReceipt(s.db.QueryRowContext(ctx, statement, arguments...))
-	if errors.Is(err, sql.ErrNoRows) {
-		return authmodel.AuthMutationReceipt{}, false, nil
-	}
+	receipt, err := authMutationReceipt(operation)
 	return receipt, err == nil, err
 }
 
 func (s AuthStore) findAuthMutationByID(ctx context.Context, workspaceID, id string) (authmodel.AuthMutationReceipt, error) {
-	statement, arguments, err := authMutationReceiptSelect(s, workspaceID).Where(query.Equal("id", id)).Build()
-	if err != nil {
+	operation, found, err := operationreceipt.LoadLeasedByID(ctx, s.db, s.store.SQLRenderer(), workspaceID, authMutationOperationOwner, authMutationOperationKind, id)
+	if err != nil || !found {
+		if err == nil {
+			err = sql.ErrNoRows
+		}
 		return authmodel.AuthMutationReceipt{}, err
 	}
-	return scanAuthMutationReceipt(s.db.QueryRowContext(ctx, statement, arguments...))
+	return authMutationReceipt(operation)
 }
 
 func authMutationReceiptColumns() []string {
-	return []string{"id", "workspace_id", "use_case", "target_id", "idempotency_key", "request_fingerprint", "status", "result_json", "lease_owner", "lease_expires_at", "fencing_token", "error_code", "expires_at", "actor_id", "created_at", "updated_at"}
+	return []string{
+		"id", "workspace_id", "action_key", "resource_type", "resource_id", "idempotency_key", "request_fingerprint",
+		"requested_by", "status", "result_json", "lease_owner", "lease_expires_at", "fencing_token", "error_code",
+		"expires_at", "created_at", "updated_at",
+	}
 }
 
-func authMutationReceiptWriteColumns() []string {
-	columns := authMutationReceiptColumns()
-	return append(append([]string{}, columns[:1]...), columns[2:]...)
-}
-
-func authMutationReceiptWriteValues(value authmodel.AuthMutationReceipt, resultJSON string) []any {
-	values := authMutationReceiptValues(value, resultJSON)
-	return append(append([]any{}, values[:1]...), values[2:]...)
-}
-
-func authMutationReceiptSelect(s AuthStore, workspaceID string) *query.SelectBuilder {
-	return query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_auth_mutation_receipts", workspaceID).Columns(authMutationReceiptColumns()...)
-}
-
-func authMutationReceiptValues(value authmodel.AuthMutationReceipt, resultJSON string) []any {
-	return []any{value.ID, value.WorkspaceID, value.UseCase, value.TargetID, value.IdempotencyKey, value.RequestFingerprint, value.Status, resultJSON, value.LeaseOwner, value.LeaseExpiresAt, value.FencingToken, value.ErrorCode, value.ExpiresAt, value.ActorID, value.CreatedAt, value.UpdatedAt}
-}
-
-type authMutationScanner interface{ Scan(...any) error }
-
-func scanAuthMutationReceipt(row authMutationScanner) (authmodel.AuthMutationReceipt, error) {
-	var value authmodel.AuthMutationReceipt
-	var resultJSON string
-	err := row.Scan(&value.ID, &value.WorkspaceID, &value.UseCase, &value.TargetID, &value.IdempotencyKey, &value.RequestFingerprint, &value.Status, &resultJSON, &value.LeaseOwner, &value.LeaseExpiresAt, &value.FencingToken, &value.ErrorCode, &value.ExpiresAt, &value.ActorID, &value.CreatedAt, &value.UpdatedAt)
-	value.Result = json.RawMessage(resultJSON)
-	return value, err
+func authMutationReceipt(operation operationreceipt.Leased) (authmodel.AuthMutationReceipt, error) {
+	status, err := operationreceipt.IdempotencyStatus(operation.Status)
+	if err != nil {
+		return authmodel.AuthMutationReceipt{}, err
+	}
+	return authmodel.AuthMutationReceipt{
+		ID: operation.ID, WorkspaceID: operation.WorkspaceID, UseCase: operation.ActionKey, TargetID: operation.ResourceID,
+		IdempotencyKey: operation.IdempotencyKey, RequestFingerprint: operation.RequestFingerprint, Status: string(status),
+		Result: operation.ResultJSON, LeaseOwner: operation.LeaseOwner, LeaseExpiresAt: operation.LeaseExpiresAt,
+		FencingToken: operation.FencingToken, ErrorCode: operation.ErrorCode, ExpiresAt: operation.ExpiresAt,
+		ActorID: operation.RequestedBy, CreatedAt: operation.CreatedAt, UpdatedAt: operation.UpdatedAt,
+	}, nil
 }
 
 func authMutationReceiptID(value authmodel.AuthMutationReceipt) string {

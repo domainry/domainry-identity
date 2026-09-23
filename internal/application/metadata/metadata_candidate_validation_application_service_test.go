@@ -113,7 +113,7 @@ func TestIdentityProfileBindingValidationDefaultsBackendProtocolFields(t *testin
 	if err := json.Unmarshal(normalized.Payload, &binding); err != nil {
 		t.Fatal(err)
 	}
-	if binding.ContractVersion != identitymodel.IdentityProfileExtensionContractVersion || binding.MinReaderVersion != identitymodel.IdentityProfileExtensionMinReaderVersion || binding.Cardinality != "one_to_one" {
+	if binding.Cardinality != "one_to_one" {
 		t.Fatalf("backend defaults were not materialized: %#v", binding)
 	}
 }

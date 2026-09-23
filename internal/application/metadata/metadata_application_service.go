@@ -160,7 +160,7 @@ func buildRollbackAudit(ctx context.Context, factory auditcontract.AuditEventFac
 		"from_version": current.SchemaVersion, "from_hash": current.SchemaHash, "target_version": target.SchemaVersion, "target_hash": target.SchemaHash,
 	}
 	return factory.NewAuditEvent(ctx, auditcontract.AuditAppendRequest{
-		Event: "metadata_definition.rolled_back", ObjectKey: resourceType, RecordID: resourceKey, Principal: principal,
+		Family: auditmodel.EventFamilyIdentityGovernance, Event: "metadata_definition.rolled_back", ObjectKey: resourceType, RecordID: resourceKey, Principal: principal,
 		Summary: "Rolled back " + resourceType + " " + resourceKey + " to version " + target.SchemaVersion,
 		Before:  rollbackJSONMap(current.Payload), After: rollbackJSONMap(target.Payload), Metadata: metadata,
 	})
@@ -199,7 +199,7 @@ func (s *MetadataApplicationService) DisableMetadataDefinition(ctx context.Conte
 		return metadataInternalError("build metadata disable audit")
 	}
 	audit := s.audit.NewAuditEvent(ctx, auditcontract.AuditAppendRequest{
-		Event: "metadata_definition.disabled", ObjectKey: resourceType, RecordID: resourceKey, Principal: principal,
+		Family: auditmodel.EventFamilyIdentityGovernance, Event: "metadata_definition.disabled", ObjectKey: resourceType, RecordID: resourceKey, Principal: principal,
 		Summary: "Disabled " + resourceType + " " + resourceKey, Before: DefinitionAuditValue(before, true),
 		After: map[string]any{"resource_type": resourceType, "resource_key": resourceKey, "schema_hash": before.SchemaHash, "disabled": true},
 	})
@@ -260,24 +260,14 @@ func (s *MetadataApplicationService) upsertMetadataDefinition(ctx context.Contex
 	event := valueOrDefault(options.event, "metadata_definition.saved")
 	summary := valueOrDefault(options.summary, "Saved "+resourceType+" "+resourceKey)
 	audit := s.audit.NewAuditEvent(ctx, auditcontract.AuditAppendRequest{
-		Event: event, ObjectKey: resourceType, RecordID: resourceKey, Principal: principal,
+		Family: auditmodel.EventFamilyIdentityGovernance, Event: event, ObjectKey: resourceType, RecordID: resourceKey, Principal: principal,
 		Summary: summary, Before: DefinitionAuditValue(before, beforeFound), Metadata: auditMetadata,
 	})
 	definition, err := s.repository.PublishDefinition(ctx, metadataInstallationScope("publish metadata definition"), resourceType, resourceKey, normalized, audit, metadataPublicationForPrincipal(principal))
 	if err != nil {
 		return metadatamodel.MetadataDefinition{}, metadatamodel.MetadataSchemaSnapshot{}, wrapMetadataError(err)
 	}
-	replayed := beforeFound && before.SchemaVersion == definition.SchemaVersion && before.SchemaHash == definition.SchemaHash
 	snapshot, reloadErr := s.ReloadMetadata(ctx, principal)
-	if !replayed {
-		errorText := ""
-		if reloadErr != nil {
-			errorText = reloadErr.Error()
-		}
-		if completeErr := s.repository.CompleteDefinitionRefresh(ctx, metadataInstallationScope("complete metadata definition refresh"), resourceType, resourceKey, definition.SchemaVersion, definition.SchemaHash, errorText); completeErr != nil {
-			return definition, metadatamodel.MetadataSchemaSnapshot{}, metadataInternalErrorWithCause("complete metadata refresh intent", completeErr)
-		}
-	}
 	if reloadErr != nil {
 		return definition, metadatamodel.MetadataSchemaSnapshot{}, reloadErr
 	}

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	auditcontract "github.com/domainry/domainry-audit-sdk/contract"
 	actioncontract "github.com/domainry/domainry-foundation/action"
 	"github.com/domainry/domainry-foundation/requestcontext"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
@@ -122,6 +123,15 @@ func NewWithStore(ctx context.Context, cfg config.Config, store *database.Identi
 	})
 	if err != nil {
 		return nil, err
+	}
+	operationsBinder, ok := core.Binding.(identitysdk.OperationsPersistenceBinding)
+	if !ok {
+		_ = core.CloseContext(context.Background())
+		return nil, fmt.Errorf("Identity SaaS binding does not expose shared Operations persistence")
+	}
+	if err := operationsBinder.BindOperationsPersistence(); err != nil {
+		_ = core.CloseContext(context.Background())
+		return nil, fmt.Errorf("bind Identity SaaS shared Operations persistence: %w", err)
 	}
 	if runtimeURL := strings.TrimSpace(cfg.IdentityActionUsageRuntimeURL); runtimeURL != "" {
 		credentialID, credentialErr := runtimeActionUsageCredentialID(cfg)
@@ -276,7 +286,7 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 			idempotencyKey = strings.TrimSpace(event) + ":" + principal.RequestID
 		}
 		core.Audit.AppendAuditTelemetry(r.Context(), auditapplication.AuditAppendRequest{
-			IdempotencyKey: idempotencyKey, Event: event, ObjectKey: "identity_security", Principal: principal,
+			IdempotencyKey: idempotencyKey, Family: auditcontract.EventFamilyIdentitySecurity, Event: event, ObjectKey: "identity_security", Principal: principal,
 			Summary: summary, Metadata: metadata,
 		})
 	}
@@ -332,7 +342,7 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 	accessReviews := identityapplication.NewIdentityAccessReviewApplicationService(identityapplication.IdentityAccessReviewDependencies{
 		Identity: core.Identity,
 		Audit: func(ctx context.Context, event, recordID string, principal identitymodel.Principal, metadata map[string]any) {
-			core.Audit.AppendWithMetadata(ctx, event, "identity_access_review", recordID, principal, event, nil, nil, metadata)
+			core.Audit.AppendWithMetadata(ctx, auditcontract.EventFamilyIdentityGovernance, event, "identity_access_review", recordID, principal, event, nil, nil, metadata)
 		},
 	})
 	identityHandler := identityhttp.NewIdentityHandler(identityhttp.IdentityDependencies{
@@ -375,9 +385,6 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 		DecodeJSON: httpSupport.decodeJSON, WriteJSON: httpSupport.writeJSON, WriteError: httpSupport.writeError,
 		WriteServiceError: httpSupport.writeServiceError,
 	}, applicationCredentials)
-	if err := remotesdkhttp.RegisterCapabilityRoutes(remoteSDKRoutes, core.Binding, applicationCredentials); err != nil {
-		return nil, fmt.Errorf("register Identity capability routes: %w", err)
-	}
 	if _, err := core.Binding.Applications().Register(ctx, identitysdk.ApplicationRegistration{
 		Application:  identitysdk.ApplicationRef{WorkspaceID: identitysdk.WorkspaceID(cfg.IdentityWorkspaceID), ApplicationKey: identitysdk.ApplicationKey(cfg.IdentityBrowserApplicationKey)},
 		RedirectURLs: append([]string(nil), cfg.IdentityBrowserReturnURLs...),
