@@ -14,7 +14,6 @@ import (
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
 
 	metadatasdk "github.com/domainry/domainry-metadata-sdk"
-	"github.com/domainry/domainry-orm/query"
 )
 
 func (r MetadataStore) LoadManifest(ctx context.Context, scope identitymodel.SystemScope) (manifestmodel.ManifestSchema, error) {
@@ -98,30 +97,39 @@ func (r MetadataStore) loadBusinessDefinitions(ctx context.Context) ([]definitio
 }
 
 func (r MetadataStore) loadCatalog(ctx context.Context) (map[string]string, error) {
-	statement, arguments, err := query.NewSelectBuilder(r.store.SQLRenderer, "_identity_manifest_catalog").Columns("key", "value").Build()
+	definitions, err := r.metadataModuleDefinitions()
 	if err != nil {
-		return nil, fmt.Errorf("build metadata catalog query: %w", err)
+		return nil, err
 	}
-	rows, err := r.database().QueryContext(ctx, statement, arguments...)
+	values, err := definitions.List(ctx, metadatasdk.DefinitionQuery{
+		Owner: metadatasdk.DefinitionOwnerMetadata, ResourceType: "application",
+	})
 	if err != nil {
-		return nil, fmt.Errorf("load metadata catalog: %w", err)
+		return nil, fmt.Errorf("load manifest application Definition: %w", err)
 	}
-	defer rows.Close()
-	out := map[string]string{}
-	for rows.Next() {
-		var key, value string
-		if err := rows.Scan(&key, &value); err != nil {
-			return nil, fmt.Errorf("scan metadata catalog: %w", err)
+	generated := make([]metadatasdk.Definition, 0, len(values))
+	for _, value := range values {
+		if value.SourceKind == "generated" {
+			generated = append(generated, value)
 		}
-		out[key] = value
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("read metadata catalog: %w", err)
+	if len(generated) != 1 {
+		return nil, fmt.Errorf("manifest application Definition count is %d, want 1", len(generated))
 	}
-	if strings.TrimSpace(out["template_id"]) == "" || strings.TrimSpace(out["template_version"]) == "" {
-		return nil, fmt.Errorf("metadata catalog is missing template identity")
+	var payload struct {
+		Name          string `json:"name"`
+		DefaultLocale string `json:"default_locale"`
 	}
-	return out, nil
+	if err := json.Unmarshal(generated[0].Payload, &payload); err != nil {
+		return nil, fmt.Errorf("decode manifest application Definition: %w", err)
+	}
+	if strings.TrimSpace(generated[0].SourceID) == "" || strings.TrimSpace(generated[0].SchemaVersion) == "" {
+		return nil, fmt.Errorf("manifest application Definition is missing template identity")
+	}
+	return map[string]string{
+		"template_id": generated[0].SourceID, "template_version": generated[0].SchemaVersion,
+		"default_locale": payload.DefaultLocale, "name": payload.Name,
+	}, nil
 }
 
 func (r MetadataStore) ListDefinitions(ctx context.Context, scope identitymodel.SystemScope, resourceType string) ([]metadatamodel.MetadataDefinition, error) {

@@ -222,7 +222,6 @@ func bindSharedWorkspaceOperationControls(t *testing.T, store *database.Identity
 func seedPortableWorkspace(t *testing.T, store *database.IdentityStore, now time.Time) {
 	t.Helper()
 	timestamp := now.Format(time.RFC3339Nano)
-	seedMetadataSchemaHash(t, store)
 	for _, application := range []struct{ id, key, redirects string }{
 		{id: "application-admin", key: "identity-admin", redirects: `["https://admin.example/callback"]`},
 		{id: "application-runtime", key: "orders-runtime", redirects: `[]`},
@@ -290,19 +289,11 @@ func seedPortableWorkspace(t *testing.T, store *database.IdentityStore, now time
 
 func seedTargetProvider(t *testing.T, store *database.IdentityStore, now time.Time) {
 	t.Helper()
-	seedMetadataSchemaHash(t, store)
 	timestamp := now.Format(time.RFC3339Nano)
 	providerConfiguration := `{"provider_key":"oidc","workspace_id":"workspace-a","type":"oidc","issuer":"https://issuer.example","client_id":"saas-client","auto_create_users":false}`
 	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO _identity_auth_provider_credentials
         (workspace_id, provider_key, configuration_json, secret_envelope, updated_by, created_at, updated_at)
         VALUES (?, 'oidc', ?, 'target-provider-secret-envelope', 'operator', ?, ?)`, "workspace-a", providerConfiguration, timestamp, timestamp); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func seedMetadataSchemaHash(t *testing.T, store *database.IdentityStore) {
-	t.Helper()
-	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO _identity_manifest_catalog (key, value, updated_at) VALUES ('schema_hash', ?, '2026-08-27T12:00:00Z')`, strings.Repeat("a", 64)); err != nil {
 		t.Fatal(err)
 	}
 }

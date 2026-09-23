@@ -24,9 +24,9 @@ import (
 )
 
 const (
-	CurrentIdentitySchemaVersion           = "015_shared_identity_definitions"
-	EmbeddedIdentitySchemaMigrationVersion = uint(15)
-	EmbeddedIdentitySchemaMigrationName    = "shared_identity_definitions"
+	CurrentIdentitySchemaVersion           = "016_shared_manifest_catalog"
+	EmbeddedIdentitySchemaMigrationVersion = uint(16)
+	EmbeddedIdentitySchemaMigrationName    = "shared_manifest_catalog"
 )
 
 const (

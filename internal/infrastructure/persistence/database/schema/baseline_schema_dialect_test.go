@@ -35,10 +35,12 @@ func TestBaselinePhysicalSchemaDDLHasThreeDialectCoverage(t *testing.T) {
 			rendered := strings.Join(state.execQueries, "\n")
 			if !strings.Contains(rendered, "CREATE TABLE IF NOT EXISTS") ||
 				!strings.Contains(rendered, store.TableIdentifier("_identity_users")) ||
-				!strings.Contains(rendered, store.TableIdentifier("_identity_manifest_catalog")) ||
 				!strings.Contains(rendered, "login_name_key") ||
 				!strings.Contains(rendered, "delivery_state_fingerprint") {
 				t.Fatalf("baseline physical DDL was not rendered through %s identifiers", driver)
+			}
+			if strings.Contains(rendered, store.TableIdentifier("_identity_manifest_catalog")) {
+				t.Fatalf("retired Identity manifest catalog was rendered for %s", driver)
 			}
 		})
 	}

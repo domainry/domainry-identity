@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	shareddefinition "github.com/domainry/domainry-foundation/definition"
 	portabilityapplication "github.com/domainry/domainry-identity/internal/application/portability"
 	portabilitymodel "github.com/domainry/domainry-identity/internal/domain/portability"
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
@@ -80,26 +81,15 @@ func (repository *SQLRepository) Inventory(ctx context.Context, workspaceID stri
 }
 
 func (repository *SQLRepository) MetadataSchemaSHA256(ctx context.Context) (string, error) {
-	var digest string
-	queryValue, arguments, err := query.NewSelectBuilder(repository.store.SQLRenderer, "_identity_manifest_catalog").
-		Columns("value").Where(query.Equal("key", "schema_hash")).Build()
+	definitions := repository.store.Definitions()
+	if definitions == nil {
+		return "", fmt.Errorf("identity.portability_metadata_definitions_unavailable")
+	}
+	snapshot, err := definitions.Snapshot(ctx, shareddefinition.Query{CrossOwner: true})
 	if err != nil {
-		return "", fmt.Errorf("build Identity metadata schema hash read: %w", err)
+		return "", fmt.Errorf("load Identity portability Definition snapshot: %w", err)
 	}
-	if err := repository.store.DB().QueryRowContext(ctx, queryValue, arguments...).Scan(&digest); err != nil {
-		if err == sql.ErrNoRows {
-			return "", fmt.Errorf("identity.portability_metadata_schema_hash_missing")
-		}
-		return "", err
-	}
-	digest = strings.ToLower(strings.TrimSpace(digest))
-	if len(digest) != 64 {
-		return "", fmt.Errorf("identity.portability_metadata_schema_hash_invalid")
-	}
-	if _, err := hex.DecodeString(digest); err != nil {
-		return "", fmt.Errorf("identity.portability_metadata_schema_hash_invalid")
-	}
-	return digest, nil
+	return shareddefinition.SnapshotRevision(snapshot), nil
 }
 
 func (repository *SQLRepository) Export(ctx context.Context, workspaceID string) ([]portabilitymodel.Dataset, []portabilitymodel.ProviderReference, map[string]int64, error) {

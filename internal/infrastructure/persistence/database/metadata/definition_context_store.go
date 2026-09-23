@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 
 	auditmodel "github.com/domainry/domainry-audit-sdk/contract"
 	shareddefinition "github.com/domainry/domainry-foundation/definition"
@@ -68,9 +67,6 @@ func (r MetadataStore) publishDefinition(ctx context.Context, scope identitymode
 			return metadatamodel.MetadataDefinition{}, err
 		}
 	}
-	if err := r.refreshCatalogHashTx(ctx, tx, now); err != nil {
-		return metadatamodel.MetadataDefinition{}, fmt.Errorf("refresh active metadata revision: %w", err)
-	}
 	if err := tx.Commit(); err != nil {
 		if replay, found, replayErr := r.metadataDefinitionReplay(ctx, scope, resourceType, shape.Key, hash, req.ExpectedSchemaHash); replayErr == nil && found {
 			return replay, nil
@@ -113,10 +109,6 @@ func (r MetadataStore) DisableDefinition(ctx context.Context, scope identitymode
 	if err := r.insertChangeAudit(ctx, tx, audit); err != nil {
 		return err
 	}
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	if err := r.refreshCatalogHashTx(ctx, tx, now); err != nil {
-		return fmt.Errorf("refresh metadata catalog hash while disabling %s %s: %w", resourceType, resourceKey, err)
-	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit disable %s %s: %w", resourceType, resourceKey, err)
 	}
@@ -157,9 +149,6 @@ func (r MetadataStore) ApplyDefinitionMutations(ctx context.Context, scope ident
 		if err := r.insertChangeAudit(ctx, tx, audit); err != nil {
 			return nil, err
 		}
-	}
-	if err := r.refreshCatalogHashTx(ctx, tx, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
-		return nil, fmt.Errorf("refresh metadata catalog hash: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit metadata publication: %w", err)
@@ -256,9 +245,6 @@ func (r MetadataStore) RollbackDefinition(ctx context.Context, scope identitymod
 	}
 	if err := r.insertChangeAudit(ctx, tx, audit); err != nil {
 		return metadatamodel.MetadataDefinition{}, err
-	}
-	if err := r.refreshCatalogHashTx(ctx, tx, now); err != nil {
-		return metadatamodel.MetadataDefinition{}, fmt.Errorf("refresh metadata catalog hash during rollback: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return metadatamodel.MetadataDefinition{}, fmt.Errorf("commit rollback: %w", err)

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	shareddefinition "github.com/domainry/domainry-foundation/definition"
 	"github.com/domainry/domainry-foundation/requestcontext"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	manifestmodel "github.com/domainry/domainry-identity/internal/domain/manifest/model"
@@ -13,7 +14,7 @@ import (
 	metadatarepository "github.com/domainry/domainry-identity/internal/domain/metadata/repository"
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/transaction"
-	"github.com/domainry/domainry-orm/query"
+	metadatamodulehost "github.com/domainry/domainry-metadata-sdk/modulehost"
 )
 
 type MetadataStore struct {
@@ -54,23 +55,18 @@ func (r MetadataStore) SnapshotRevision(ctx context.Context, scope identitymodel
 	if actionExecutor := transaction.ExecutorFromContext(ctx); actionExecutor != nil {
 		executor = actionExecutor
 	}
-	var revision string
-	statement, arguments, err := query.NewSelectBuilder(r.store.SQLRenderer, "_identity_manifest_catalog").
-		Columns("value").Where(query.Equal("key", "schema_hash")).Build()
+	binding := r.store.Metadata()
+	if binding == nil || binding.Definitions() == nil {
+		return "", fmt.Errorf("Metadata definitions are unavailable")
+	}
+	snapshot, err := binding.Definitions().Snapshot(
+		metadatamodulehost.WithExecutor(ctx, executor),
+		shareddefinition.Query{CrossOwner: true},
+	)
 	if err != nil {
-		return "", fmt.Errorf("build metadata snapshot revision read: %w", err)
+		return "", fmt.Errorf("load active Definition snapshot: %w", err)
 	}
-	err = executor.QueryRowContext(ctx, statement, arguments...).Scan(&revision)
-	if err == sql.ErrNoRows {
-		if refreshErr := r.refreshCatalogHashWithExecutor(ctx, executor); refreshErr != nil {
-			return "", refreshErr
-		}
-		err = executor.QueryRowContext(ctx, statement, arguments...).Scan(&revision)
-	}
-	if err != nil {
-		return "", fmt.Errorf("load metadata snapshot revision: %w", err)
-	}
-	return strings.TrimSpace(revision), nil
+	return shareddefinition.SnapshotRevision(snapshot), nil
 }
 
 func (r MetadataStore) MigrationPlan(ctx context.Context, scope identitymodel.SystemScope, _ manifestmodel.ManifestSchema) ([]metadatamodel.MetadataMigrationStep, error) {

@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/domainry/domainry-foundation/requestcontext"
 	manifestmodel "github.com/domainry/domainry-identity/internal/domain/manifest/model"
@@ -27,45 +26,7 @@ type metadataResourceSeed struct {
 }
 
 func (s MetadataStore) EnsureManifestMetadata(ctx context.Context, seed manifestmodel.ManifestSchema) error {
-	ctx = s.manifestMetadataContext(ctx)
-	seeded, err := s.manifestMetadataSeeded(ctx)
-	if err != nil {
-		return err
-	}
-	if seeded {
-		return s.SyncManifestMetadata(ctx, seed)
-	}
-	tx, err := s.database().BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin metadata seed: %w", err)
-	}
-	defer tx.Rollback()
-	ctx = metadatamodulehost.WithExecutor(ctx, tx)
-	if err := s.syncBusinessMetadataDefinitions(ctx, seed); err != nil {
-		return err
-	}
-	if err := s.syncIdentityDefinitions(ctx, tx, seed); err != nil {
-		return err
-	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	for key, value := range map[string]string{
-		"template_id":      seed.TemplateID,
-		"template_version": seed.Version,
-		"default_locale":   manifestDefaultLocale(seed),
-		"name":             seed.Name,
-		"schema_version":   seed.Version,
-	} {
-		if err := s.insertMetadataCatalog(ctx, tx, key, value, now); err != nil {
-			return err
-		}
-	}
-	if err := s.refreshCatalogHashWithExecutorAt(ctx, tx, now); err != nil {
-		return fmt.Errorf("refresh Identity metadata catalog: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit metadata seed: %w", err)
-	}
-	return nil
+	return s.SyncManifestMetadata(ctx, seed)
 }
 
 func (s MetadataStore) SyncManifestMetadata(ctx context.Context, seed manifestmodel.ManifestSchema) error {
@@ -81,21 +42,6 @@ func (s MetadataStore) SyncManifestMetadata(ctx context.Context, seed manifestmo
 	}
 	if err := s.syncIdentityDefinitions(ctx, tx, seed); err != nil {
 		return err
-	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	for key, value := range map[string]string{
-		"template_id":      seed.TemplateID,
-		"template_version": seed.Version,
-		"default_locale":   manifestDefaultLocale(seed),
-		"name":             seed.Name,
-		"schema_version":   seed.Version,
-	} {
-		if err := s.upsertMetadataCatalog(ctx, tx, key, value, now); err != nil {
-			return err
-		}
-	}
-	if err := s.refreshCatalogHashWithExecutorAt(ctx, tx, now); err != nil {
-		return fmt.Errorf("refresh Identity metadata catalog: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit metadata sync: %w", err)

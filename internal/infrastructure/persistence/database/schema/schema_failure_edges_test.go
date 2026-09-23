@@ -67,7 +67,6 @@ func TestSchemaAssemblersPropagateEveryOrderedMutationFailure(t *testing.T) {
 		name   string
 		ensure func(context.Context, identityschema.Store) error
 	}{
-		{name: "metadata", ensure: identityschema.EnsureMetadataSchema},
 		{name: "identity", ensure: identityschema.EnsureIdentitySchema},
 	}
 	for _, test := range tests {
@@ -124,7 +123,6 @@ func TestSchemaAssemblersReachMySQLTypeBranchesBeforeMutation(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	for name, ensure := range map[string]func(context.Context, identityschema.Store) error{
-		"metadata": identityschema.EnsureMetadataSchema,
 		"identity": identityschema.EnsureIdentitySchema,
 	} {
 		t.Run(name, func(t *testing.T) {

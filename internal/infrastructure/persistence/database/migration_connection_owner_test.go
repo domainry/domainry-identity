@@ -51,10 +51,10 @@ func TestIdentitySchemaUsesDedicatedManagementConnection(t *testing.T) {
 	if err := store.EnsureSchema(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if sqliteTableExists(t, migrationDB, "_identity_manifest_catalog") != 1 {
+	if sqliteTableExists(t, migrationDB, "_identity_users") != 1 {
 		t.Fatal("Identity schema was not created on management connection")
 	}
-	if sqliteTableExists(t, queryDB, "_identity_manifest_catalog") != 0 {
+	if sqliteTableExists(t, queryDB, "_identity_users") != 0 {
 		t.Fatal("Identity schema leaked onto query connection")
 	}
 }

@@ -92,7 +92,7 @@ func TestEveryStandaloneIdentityTableHasOneOwnerAndMigrationDisposition(t *testi
 	if !sort.StringsAreSorted(actual) {
 		t.Fatalf("table inventory is not deterministic: %v", actual)
 	}
-	for _, retired := range []string{"_identity_role_definitions", "_identity_role_definition_versions", "_identity_profile_binding_definitions", "_identity_profile_binding_definition_versions"} {
+	for _, retired := range []string{"_identity_role_definitions", "_identity_role_definition_versions", "_identity_profile_binding_definitions", "_identity_profile_binding_definition_versions", "_identity_manifest_catalog"} {
 		if actualSet[retired] {
 			t.Errorf("fresh Identity schema retains retired private Definition table %q", retired)
 		}

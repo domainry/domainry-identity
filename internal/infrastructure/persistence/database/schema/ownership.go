@@ -58,7 +58,6 @@ var identityTableOwnership = []TableOwnership{
 	{Name: "_identity_user_role_assignments", Boundary: TableBoundaryAuthorization, MigrationDisposition: MigrationPortable},
 	{Name: "_identity_workflow_workload_bindings", Boundary: TableBoundaryAuthorization, MigrationDisposition: MigrationPortable},
 	{Name: "_identity_users", Boundary: TableBoundaryIdentityCore, MigrationDisposition: MigrationPortable},
-	{Name: "_identity_manifest_catalog", Boundary: TableBoundaryMetadata, MigrationDisposition: MigrationPortable},
 }
 
 func IdentityTableOwnership() []TableOwnership {
