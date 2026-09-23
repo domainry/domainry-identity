@@ -254,13 +254,7 @@ func (s *Store) redactSubjectReceipts(ctx context.Context, tx *sql.Tx, workspace
 		table, column, owner string
 		predicate            query.Predicate
 	}
-	definitions := []definition{{
-		table: "_audit_events", column: "metadata_json",
-		predicate: query.InExpression(query.Column("event"),
-			"identity.profile_binding.invite", "identity.profile_binding.claim", "identity.profile_binding.bind",
-			"identity.profile_binding.rebind", "identity.profile_binding.unlink",
-		),
-	}}
+	definitions := []definition{}
 	if s.store.OperationsPersistenceBound() {
 		definitions = append(definitions, definition{table: "_operations", column: "result_json", owner: "identity"})
 	}

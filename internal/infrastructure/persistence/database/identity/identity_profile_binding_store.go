@@ -4,20 +4,26 @@ import (
 	"context"
 	"database/sql"
 
+	auditsdk "github.com/domainry/domainry-audit-sdk"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	profilebindingpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/profilebinding"
 )
 
 type IdentityProfileBindingStore struct {
-	store lifecycleSQLStore
+	store profileBindingSQLStore
 }
 
-func NewIdentityProfileBindingStore(store lifecycleSQLStore) *IdentityProfileBindingStore {
+type profileBindingSQLStore interface {
+	lifecycleSQLStore
+	Audit() auditsdk.Binding
+}
+
+func NewIdentityProfileBindingStore(store profileBindingSQLStore) *IdentityProfileBindingStore {
 	return &IdentityProfileBindingStore{store: store}
 }
 
 func (s *IdentityProfileBindingStore) owner() *profilebindingpersistence.Store {
-	var store lifecycleSQLStore
+	var store profileBindingSQLStore
 	if s != nil {
 		store = s.store
 	}

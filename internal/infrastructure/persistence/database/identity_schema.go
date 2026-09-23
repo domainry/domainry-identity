@@ -9,9 +9,6 @@ import (
 	"strings"
 	"time"
 
-	auditsdk "github.com/domainry/domainry-audit-sdk"
-	auditmodulehost "github.com/domainry/domainry-audit-sdk/modulehost"
-	auditmodule "github.com/domainry/domainry-audit/module"
 	shareddefinition "github.com/domainry/domainry-foundation/definition"
 	sharedoperation "github.com/domainry/domainry-foundation/operation"
 	sharedsubject "github.com/domainry/domainry-foundation/subjectlifecycle"
@@ -43,10 +40,7 @@ func (s *IdentityStore) EnsureSchema(ctx context.Context) error {
 	}
 	if s.migrationDB != nil {
 		migrationStore := s.identityMigrationStore()
-		if err := migrationStore.EnsureSchema(ctx); err != nil {
-			return err
-		}
-		return s.ensureMetadataModuleSchema(ctx)
+		return migrationStore.EnsureSchema(ctx)
 	}
 	release, err := s.LockManager.Acquire(ctx, s.config)
 	if err != nil {
@@ -65,9 +59,6 @@ func (s *IdentityStore) EnsureSchema(ctx context.Context) error {
 		if err := s.startIdentitySchemaMigration(ctx, CurrentIdentitySchemaVersion); err != nil {
 			return err
 		}
-	}
-	if err := s.ensureMetadataModuleSchema(ctx); err != nil {
-		return err
 	}
 	if err := s.ensureDefinitionsKernelLocked(ctx); err != nil {
 		return err
@@ -265,32 +256,7 @@ func (s *IdentityStore) EnsureEvidenceSchema(ctx context.Context) error {
 	if s.schemaAssembler != nil {
 		return s.schemaAssembler.EnsureEvidenceSchema(ctx, s)
 	}
-	binding, err := auditmodule.NewFactory(auditmodule.Options{}).OpenModule(ctx, auditsdk.ApplicationRef{InstallationID: "domainry-identity"}, identityAuditLockedHost{store: s})
-	if err != nil {
-		return fmt.Errorf("prepare Audit module schema: %w", err)
-	}
-	defer binding.Close(ctx)
 	return identityschema.EnsureEvidenceSchema(ctx, s)
-}
-
-type identityAuditLockedHost struct{ store *IdentityStore }
-
-func (h identityAuditLockedHost) Database() auditmodulehost.Database { return h.store.DB() }
-func (h identityAuditLockedHost) Dialect() auditmodulehost.Dialect {
-	return h.store.BuilderRenderer()
-}
-func (h identityAuditLockedHost) Migrations() auditmodulehost.MigrationRegistrar {
-	return identityAuditLockedMigrationRegistrar{store: h.store}
-}
-
-type identityAuditLockedMigrationRegistrar struct{ store *IdentityStore }
-
-func (r identityAuditLockedMigrationRegistrar) Driver() string {
-	return r.store.PersistenceEngine().Name()
-}
-func (r identityAuditLockedMigrationRegistrar) Schema() string { return r.store.DatabaseSchema() }
-func (r identityAuditLockedMigrationRegistrar) ApplyOwnedMigrations(ctx context.Context, owner string, migrations []auditmodulehost.SchemaMigration) error {
-	return r.store.ApplyOwnedMigrationsLocked(ctx, owner, migrations)
 }
 
 func (s *IdentityStore) identityMigrationConfig() config.Config {

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	auditsdk "github.com/domainry/domainry-audit-sdk"
 	auditcontract "github.com/domainry/domainry-audit-sdk/contract"
 	actioncontract "github.com/domainry/domainry-foundation/action"
 	"github.com/domainry/domainry-foundation/requestcontext"
@@ -34,6 +35,7 @@ import (
 	identityhttp "github.com/domainry/domainry-identity/internal/transport/http/identity"
 	portabilityhttp "github.com/domainry/domainry-identity/internal/transport/http/portability"
 	remotesdkhttp "github.com/domainry/domainry-identity/internal/transport/http/remotesdk"
+	metadatasdk "github.com/domainry/domainry-metadata-sdk"
 )
 
 type Server struct {
@@ -98,15 +100,17 @@ func newRecordingRouteRegistrar(mux *http.ServeMux, actions *identityapplication
 
 type ServerAssemblyOptions struct {
 	Clock           identitysdk.Clock
+	AuditFactory    auditsdk.Factory
+	MetadataFactory metadatasdk.Factory
 	ModuleProviders []actioncontract.Provider
 }
 
-func New(ctx context.Context, cfg config.Config) (*Server, error) {
+func New(ctx context.Context, cfg config.Config, options ServerAssemblyOptions) (*Server, error) {
 	store, err := database.OpenContext(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("open Identity database: %w", err)
 	}
-	return NewWithStore(ctx, cfg, store, ServerAssemblyOptions{})
+	return NewWithStore(ctx, cfg, store, options)
 }
 
 func NewWithStore(ctx context.Context, cfg config.Config, store *database.IdentityStore, options ServerAssemblyOptions) (*Server, error) {
@@ -119,6 +123,7 @@ func NewWithStore(ctx context.Context, cfg config.Config, store *database.Identi
 	}
 	core, err := assembly.New(ctx, cfg, store, assembly.Options{
 		Clock: options.Clock, WorkspaceID: cfg.IdentityWorkspaceID,
+		AuditFactory: options.AuditFactory, MetadataFactory: options.MetadataFactory,
 		ModuleProviders: append([]actioncontract.Provider(nil), options.ModuleProviders...),
 	})
 	if err != nil {

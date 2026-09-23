@@ -42,7 +42,7 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 	cfg.IdentityApplicationPermissionOwners = map[string][]string{"workspace-primary/orders-runtime": {"application:orders-runtime", "application:other-runtime"}}
 	cfg.IdentityApplicationServicePolicies = map[string][]string{"workspace-primary/orders-runtime": {"audience:domainry-notification", "grant:notification_event.publish"}}
 
-	identityServer, err := httpserver.New(t.Context(), cfg)
+	identityServer, err := httpserver.New(t.Context(), cfg, testServerAssemblyOptions())
 	if err != nil {
 		t.Fatal(err)
 	}

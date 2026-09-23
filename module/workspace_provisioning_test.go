@@ -34,7 +34,7 @@ func TestInstallationAdministratorBootstrapIsEmbeddedAtomicAuditedAndFirstOnly(t
 		t.Fatal(err)
 	}
 
-	binding, err := identitymodule.NewFactory(identitymodule.Options{IdentityVersion: "test", DatabaseDriver: "sqlite"}).OpenWithDatabase(
+	binding, err := testIdentityFactory(identitymodule.Options{IdentityVersion: "test", DatabaseDriver: "sqlite"}).OpenWithDatabase(
 		t.Context(), identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "runtime"},
 		identitysdk.DatabaseHandle{Pool: db, Driver: "sqlite", Migrations: &testEmbeddedMigrationRegistrar{}},
 	)
@@ -559,7 +559,7 @@ func openWorkspaceIdentityBootstrapUnbound(t *testing.T) (identitysdk.BootstrapB
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	bootstrap, err := identitymodule.NewFactory(identitymodule.Options{IdentityVersion: "test", DatabaseDriver: "sqlite", DatabasePath: databasePath}).OpenBootstrapWithDatabase(
+	bootstrap, err := testIdentityFactory(identitymodule.Options{IdentityVersion: "test", DatabaseDriver: "sqlite", DatabasePath: databasePath}).OpenBootstrapWithDatabase(
 		t.Context(), "runtime", identitysdk.DatabaseHandle{Pool: db, Driver: "sqlite", FilePath: databasePath, Migrations: &testEmbeddedMigrationRegistrar{}},
 	)
 	if err != nil {

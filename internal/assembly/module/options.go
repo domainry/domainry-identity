@@ -7,9 +7,11 @@ import (
 	"os"
 	"strings"
 
+	auditsdk "github.com/domainry/domainry-audit-sdk"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	manifestmodel "github.com/domainry/domainry-identity/internal/domain/manifest/model"
 	"github.com/domainry/domainry-identity/internal/platform/config"
+	metadatasdk "github.com/domainry/domainry-metadata-sdk"
 )
 
 // Options configures both the deployment-neutral Identity application graph
@@ -25,6 +27,11 @@ type Options struct {
 	DatabaseMigrationDSN     string
 	DatabaseSchema           string
 	DatabasePath             string
+	// AuditFactory and MetadataFactory are selected by the outer composition
+	// root. Identity never imports either module implementation from its shared
+	// application or persistence layers.
+	AuditFactory    auditsdk.Factory
+	MetadataFactory metadatasdk.Factory
 	// Clock is an optional module-local infrastructure override, primarily for
 	// deterministic tests. The embedding Runtime does not supply it.
 	Clock identitysdk.Clock

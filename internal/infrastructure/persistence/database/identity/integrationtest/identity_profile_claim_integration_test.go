@@ -54,6 +54,7 @@ func TestUnboundProfileCanBeClaimedAfterAccountRegistrationWithoutTrustingClient
 	if err != nil {
 		t.Fatal(err)
 	}
+	bindTestAuditModule(t, databaseStore, identityStore)
 	bindSharedOperations(t, identityStore)
 	ctx := requestcontext.WithWorkspaceID(t.Context(), "workspace-primary")
 	for _, user := range []identitymodel.IdentityUser{

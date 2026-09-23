@@ -25,6 +25,7 @@ func TestApplyRoleDefinitionsRemainListableAfterRestart(t *testing.T) {
 		if err := store.EnsureSchema(t.Context()); err != nil {
 			t.Fatal(err)
 		}
+		bindTestModuleDependencies(t, store)
 		return store, NewMetadataStore(store, "workspace-primary")
 	}
 	scope := identitymodel.NewSystemScope(identitymodel.SystemScopeInstallation, "test role definition publication")
@@ -94,6 +95,7 @@ func TestDirectRolePublicationRollbackAndDisableAreAtomicWithProjectionAndAudit(
 	if err := store.EnsureSchema(t.Context()); err != nil {
 		t.Fatal(err)
 	}
+	bindTestModuleDependencies(t, store)
 	var retiredLocalizedTextTable int
 	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='_identity_localized_texts'`).Scan(&retiredLocalizedTextTable); err != nil || retiredLocalizedTextTable != 0 {
 		t.Fatalf("retired Identity localized-text table count=%d err=%v", retiredLocalizedTextTable, err)

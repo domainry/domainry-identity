@@ -34,7 +34,7 @@ func TestFactoryUsesRuntimeHostMigrationLedgerWithoutServiceVersionColumn(t *tes
 		t.Fatal(err)
 	}
 	registrar := &testEmbeddedMigrationRegistrar{}
-	binding, err := identitymodule.NewFactory(identitymodule.Options{DatabaseDriver: "sqlite", DatabasePath: databasePath}).OpenWithDatabase(
+	binding, err := testIdentityFactory(identitymodule.Options{DatabaseDriver: "sqlite", DatabasePath: databasePath}).OpenWithDatabase(
 		t.Context(),
 		identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "crm"},
 		identitysdk.DatabaseHandle{Pool: db, Driver: "sqlite", FilePath: databasePath, Migrations: registrar},

@@ -123,7 +123,7 @@ func newBrowserIdentityTestServer(t *testing.T) *httptest.Server {
 	cfg.IdentityWorkspaceID = "workspace-primary"
 	cfg.ManifestPath = filepath.Join(projectRoot, "domainry.template.json")
 
-	identityServer, err := httpserver.New(t.Context(), cfg)
+	identityServer, err := httpserver.New(t.Context(), cfg, testServerAssemblyOptions())
 	if err != nil {
 		t.Fatal(err)
 	}

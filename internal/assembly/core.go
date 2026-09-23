@@ -8,7 +8,6 @@ import (
 
 	auditsdk "github.com/domainry/domainry-audit-sdk"
 	auditcontract "github.com/domainry/domainry-audit-sdk/contract"
-	auditmoduleimpl "github.com/domainry/domainry-audit/module"
 	actioncontract "github.com/domainry/domainry-foundation/action"
 	"github.com/domainry/domainry-foundation/modulehttp"
 	"github.com/domainry/domainry-foundation/requestcontext"
@@ -33,12 +32,15 @@ import (
 	identitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity"
 	metadatapersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/metadata"
 	"github.com/domainry/domainry-identity/internal/platform/config"
+	metadatasdk "github.com/domainry/domainry-metadata-sdk"
 )
 
 type Options struct {
 	WorkspaceResolver identitysdk.WorkspaceResolver
 	Clock             identitysdk.Clock
 	WorkspaceID       string
+	AuditFactory      auditsdk.Factory
+	MetadataFactory   metadatasdk.Factory
 	ModuleProviders   []actioncontract.Provider
 }
 
@@ -51,6 +53,7 @@ type Core struct {
 	MetadataStore         metadatapersistence.MetadataStore
 	IdentityStore         *identitypersistence.SQLIdentityStore
 	AuditBinding          auditsdk.Binding
+	MetadataBinding       metadatasdk.Binding
 	ModuleHTTPProviders   []modulehttp.Provider
 	AuditStore            auditrepository.AuditRepository
 	AuthStore             authpersistence.AuthStore
@@ -92,38 +95,41 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 	if store == nil {
 		return nil, fmt.Errorf("Identity persistence store is required")
 	}
+	var auditBinding auditsdk.Binding
+	var metadataBinding metadatasdk.Binding
 	fail := func(err error) (*Core, error) {
+		if auditBinding != nil {
+			_ = auditBinding.Close(context.Background())
+		}
+		if metadataBinding != nil {
+			_ = metadataBinding.Close(context.Background())
+		}
 		_ = store.CloseContext(context.Background())
 		return nil, err
 	}
+	if options.MetadataFactory == nil {
+		return fail(fmt.Errorf("Metadata module factory is required"))
+	}
+	if options.AuditFactory == nil {
+		return fail(fmt.Errorf("Audit module factory is required"))
+	}
 	manifest.Roles = identityapplication.WithStandaloneIdentityRoleDefinitions(manifest.Roles)
-	metadataStore := metadatapersistence.NewMetadataStore(store, options.WorkspaceID)
-	if err := metadataStore.EnsureManifestMetadata(ctx, manifest); err != nil {
-		return fail(fmt.Errorf("install metadata manifest: %w", err))
-	}
-	identityStore, err := identitypersistence.NewSQLIdentityStoreWithSchema(ctx, store.DB(), store.SchemaDB(), store.PersistenceEngine(), store.DatabaseSchema(), store.RelationPrefix())
+	installationID := defaultString(manifest.TemplateID, "domainry-identity")
+	var err error
+	metadataBinding, err = store.OpenMetadataModule(ctx, options.MetadataFactory, metadatasdk.ApplicationRef{InstallationID: installationID})
 	if err != nil {
-		return fail(fmt.Errorf("open Identity repository: %w", err))
+		return fail(fmt.Errorf("open Metadata module: %w", err))
 	}
-	workspaceIDInput := strings.TrimSpace(options.WorkspaceID)
-	if workspaceIDInput == "" {
-		workspaceIDInput = strings.TrimSpace(cfg.IdentityWorkspaceID)
+	if err := metadataBinding.Descriptor().Validate(); err != nil {
+		return fail(fmt.Errorf("validate Metadata module descriptor: %w", err))
 	}
-	workspace, err := identitymodel.NewWorkspaceID(workspaceIDInput)
-	if err != nil {
-		return fail(fmt.Errorf("initialized Identity workspace is required: %w", err))
-	}
-	workspaceID := workspace.String()
-	workspaceCtx := requestcontext.WithWorkspaceID(ctx, workspaceID)
-	seed := identityapplication.FromManifest(manifest)
-	if err := identityapplication.SyncIdentitySeeds(workspaceCtx, metadataStore, identityStore, manifest, seed, identitymodel.NewSystemScope(identitymodel.SystemScopeInstallation, "bootstrap Identity admin data")); err != nil {
-		return fail(fmt.Errorf("synchronize Identity bootstrap: %w", err))
-	}
-
-	auditBinding, err := auditmoduleimpl.NewFactory(auditmoduleimpl.Options{}).OpenModule(ctx,
-		auditsdk.ApplicationRef{InstallationID: defaultString(manifest.TemplateID, "domainry-identity")}, identityauditmodule.NewHost(store))
+	auditBinding, err = options.AuditFactory.OpenModule(ctx,
+		auditsdk.ApplicationRef{InstallationID: installationID}, identityauditmodule.NewHost(store))
 	if err != nil {
 		return fail(fmt.Errorf("open Audit module: %w", err))
+	}
+	if err := store.BindAudit(auditBinding); err != nil {
+		return fail(err)
 	}
 	if err := auditBinding.Descriptor().Validate(); err != nil {
 		return fail(fmt.Errorf("validate Audit module descriptor: %w", err))
@@ -142,6 +148,32 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 	if !ok {
 		return fail(fmt.Errorf("Audit Binding does not provide its authorization Action manifest"))
 	}
+	metadataStore := metadatapersistence.NewMetadataStore(store, options.WorkspaceID)
+	if err := metadataStore.EnsureManifestMetadata(ctx, manifest); err != nil {
+		return fail(fmt.Errorf("install metadata manifest: %w", err))
+	}
+	identityStore, err := identitypersistence.NewSQLIdentityStoreWithSchema(ctx, store.DB(), store.SchemaDB(), store.PersistenceEngine(), store.DatabaseSchema(), store.RelationPrefix())
+	if err != nil {
+		return fail(fmt.Errorf("open Identity repository: %w", err))
+	}
+	if err := identityStore.BindAudit(auditBinding); err != nil {
+		return fail(err)
+	}
+	workspaceIDInput := strings.TrimSpace(options.WorkspaceID)
+	if workspaceIDInput == "" {
+		workspaceIDInput = strings.TrimSpace(cfg.IdentityWorkspaceID)
+	}
+	workspace, err := identitymodel.NewWorkspaceID(workspaceIDInput)
+	if err != nil {
+		return fail(fmt.Errorf("initialized Identity workspace is required: %w", err))
+	}
+	workspaceID := workspace.String()
+	workspaceCtx := requestcontext.WithWorkspaceID(ctx, workspaceID)
+	seed := identityapplication.FromManifest(manifest)
+	if err := identityapplication.SyncIdentitySeeds(workspaceCtx, metadataStore, identityStore, manifest, seed, identitymodel.NewSystemScope(identitymodel.SystemScopeInstallation, "bootstrap Identity admin data")); err != nil {
+		return fail(fmt.Errorf("synchronize Identity bootstrap: %w", err))
+	}
+
 	moduleProviders := append([]actioncontract.Provider{auditProvider}, options.ModuleProviders...)
 	actionDefinitions, moduleHTTPProviders, err := identityActionDefinitionsWithModuleProviders(identityapplication.IdentityBuiltinAuthorizationActions(), moduleProviders...)
 	if err != nil {
@@ -280,7 +312,7 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 	return &Core{
 		WorkspaceResolver: options.WorkspaceResolver,
 		Store:             store, Manifest: manifest, MetadataStore: metadataStore, IdentityStore: identityStore,
-		AuditBinding: auditBinding, ModuleHTTPProviders: append([]modulehttp.Provider(nil), moduleHTTPProviders...), AuditStore: auditStore, AuthStore: authStore, Identity: identityApp, Audit: auditApp, Auth: authApp,
+		AuditBinding: auditBinding, MetadataBinding: metadataBinding, ModuleHTTPProviders: append([]modulehttp.Provider(nil), moduleHTTPProviders...), AuditStore: auditStore, AuthStore: authStore, Identity: identityApp, Audit: auditApp, Auth: authApp,
 		Applications:    applicationRegistrations,
 		MetadataRuntime: metadataRuntime, Metadata: metadataApp, MetadataSchema: metadataSchemaApp,
 		ProviderConfiguration: providerConfiguration, ProviderFlows: providerFlows,
@@ -332,7 +364,19 @@ func (core *Core) CloseContext(ctx context.Context) error {
 	if core == nil || core.Store == nil {
 		return nil
 	}
-	return core.Store.CloseContext(ctx)
+	var closeErr error
+	if core.AuditBinding != nil {
+		closeErr = core.AuditBinding.Close(ctx)
+	}
+	if core.MetadataBinding != nil {
+		if err := core.MetadataBinding.Close(ctx); closeErr == nil {
+			closeErr = err
+		}
+	}
+	if err := core.Store.CloseContext(ctx); closeErr == nil {
+		closeErr = err
+	}
+	return closeErr
 }
 
 func loadManifest(path string) (manifestmodel.ManifestSchema, error) {

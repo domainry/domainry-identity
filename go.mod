@@ -6,14 +6,14 @@ require (
 	github.com/beevik/etree v1.6.0
 	github.com/coreos/go-oidc/v3 v3.20.0
 	github.com/crewjam/saml v0.5.1
-	github.com/domainry/domainry-audit v0.1.14
-	github.com/domainry/domainry-audit-sdk v0.1.6
+	github.com/domainry/domainry-audit v0.1.18
+	github.com/domainry/domainry-audit-sdk v0.1.8
 	github.com/domainry/domainry-data-exchange-sdk v0.3.8
 	github.com/domainry/domainry-foundation v0.1.36
 	github.com/domainry/domainry-identity-sdk v0.1.14
 	github.com/domainry/domainry-lifecycle-sdk v0.1.13
-	github.com/domainry/domainry-metadata v0.1.13
-	github.com/domainry/domainry-metadata-sdk v0.1.5
+	github.com/domainry/domainry-metadata v0.1.16
+	github.com/domainry/domainry-metadata-sdk v0.1.6
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/russellhaering/goxmldsig v1.6.0

@@ -58,7 +58,7 @@ func TestHandlerDeliveryModuleAcceptsRuntimeStagedProfileWithinBoundTransaction(
 	if _, err := store.DB().ExecContext(t.Context(), `CREATE TABLE employee_profile (id TEXT NOT NULL, workspace_id TEXT NOT NULL, identity_user_id TEXT, employment_status TEXT, PRIMARY KEY (workspace_id, id))`); err != nil {
 		t.Fatal(err)
 	}
-	core, err := identityassembly.NewWithManifest(t.Context(), cfg, store, manifest, identityassembly.Options{WorkspaceID: cfg.IdentityWorkspaceID})
+	core, err := identityassembly.NewWithManifest(t.Context(), cfg, store, manifest, testAssemblyOptions(identityassembly.Options{WorkspaceID: cfg.IdentityWorkspaceID}))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -19,6 +19,7 @@ func TestManifestCatalogUsesSharedDefinitionsAndOperations(t *testing.T) {
 	if err := store.EnsureSchema(t.Context()); err != nil {
 		t.Fatal(err)
 	}
+	bindTestModuleDependencies(t, store)
 	repository := NewMetadataStore(store, "workspace-primary")
 	manifest := manifestmodel.ManifestSchema{
 		TemplateID: "identity-template", Version: "7", Name: "Identity Template", DefaultLocale: "zh-CN",

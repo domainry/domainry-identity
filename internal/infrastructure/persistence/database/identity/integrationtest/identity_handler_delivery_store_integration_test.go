@@ -35,6 +35,7 @@ func TestHandlerDeliveryStoreCommitsUserRolesProfileAndReceiptAsOneUnit(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
+	bindTestAuditModule(t, store, identityStore)
 	if _, _, err := identityStore.GetIdentityHandlerDeliveryReceipt(t.Context(), "workspace-primary", "delivery-1"); err == nil || !strings.Contains(err.Error(), "not bound") {
 		t.Fatalf("unbound shared Operations error=%v", err)
 	}

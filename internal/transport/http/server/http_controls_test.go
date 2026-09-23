@@ -31,7 +31,7 @@ func TestStandaloneRouteInventoryBaseline(t *testing.T) {
 	cfg.DBPath = filepath.Join(t.TempDir(), "identity-route-inventory.db")
 	cfg.IdentityWorkspaceID = "workspace-primary"
 	cfg.ManifestPath = filepath.Join(projectRoot, "domainry.template.json")
-	server, err := New(t.Context(), cfg)
+	server, err := New(t.Context(), cfg, testServerAssemblyOptions())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestStandaloneRouteInventoryAndFrozenActionRegistryAreBidirectionallyComple
 	cfg.DBPath = filepath.Join(t.TempDir(), "identity-route-action-coverage.db")
 	cfg.IdentityWorkspaceID = "workspace-primary"
 	cfg.ManifestPath = filepath.Join(projectRoot, "domainry.template.json")
-	server, err := New(t.Context(), cfg)
+	server, err := New(t.Context(), cfg, testServerAssemblyOptions())
 	if err != nil {
 		t.Fatal(err)
 	}

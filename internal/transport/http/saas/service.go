@@ -11,8 +11,8 @@ import (
 
 type Server = httpserver.Server
 
-func New(ctx context.Context, cfg config.Config) (*Server, error) {
-	return httpserver.New(ctx, cfg)
+func New(ctx context.Context, cfg config.Config, options httpserver.ServerAssemblyOptions) (*Server, error) {
+	return httpserver.New(ctx, cfg, options)
 }
 
 func DevelopmentRoutes(server *Server) http.Handler { return server.Routes() }

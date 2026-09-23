@@ -39,7 +39,7 @@ func TestStandalonePermissionAPIProjectsDatabaseStateAndActionBindingsWithRoleEn
 	if err != nil {
 		t.Fatal(err)
 	}
-	identityServer, err := httpserver.NewWithStore(t.Context(), cfg, store, httpserver.ServerAssemblyOptions{})
+	identityServer, err := httpserver.NewWithStore(t.Context(), cfg, store, testServerAssemblyOptions())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +168,7 @@ func TestStandalonePermissionAPIQueriesRemoteRuntimeUsageWithoutPersistingIt(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	identityServer, err := httpserver.NewWithStore(t.Context(), cfg, store, httpserver.ServerAssemblyOptions{})
+	identityServer, err := httpserver.NewWithStore(t.Context(), cfg, store, testServerAssemblyOptions())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +267,7 @@ func TestStandaloneRolePermissionPublicationVersionsRoleSchemaAndSurvivesRestart
 		if err != nil {
 			t.Fatal(err)
 		}
-		identityServer, err := httpserver.NewWithStore(t.Context(), cfg, store, httpserver.ServerAssemblyOptions{})
+		identityServer, err := httpserver.NewWithStore(t.Context(), cfg, store, testServerAssemblyOptions())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -380,7 +380,7 @@ func TestStandaloneRoleAndPolicyAuthoringPublishesRoleSchemaDirectly(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	identityServer, err := httpserver.NewWithStore(t.Context(), cfg, store, httpserver.ServerAssemblyOptions{})
+	identityServer, err := httpserver.NewWithStore(t.Context(), cfg, store, testServerAssemblyOptions())
 	if err != nil {
 		t.Fatal(err)
 	}

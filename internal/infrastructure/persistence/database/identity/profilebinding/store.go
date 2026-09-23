@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	auditsdk "github.com/domainry/domainry-audit-sdk"
 	auditcontract "github.com/domainry/domainry-audit-sdk/contract"
 	"github.com/domainry/domainry-foundation/apperror"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
@@ -26,6 +27,7 @@ type Backend interface {
 	SQLRenderer() ormdialect.Renderer
 	ApplyUpsert(*query.InsertBuilder, []string, ...string) *query.InsertBuilder
 	OperationsPersistenceBound() bool
+	Audit() auditsdk.Binding
 }
 
 const (
@@ -295,45 +297,47 @@ func uniqueProfileBindingStrings(values []string) []string {
 }
 
 func (s *Store) ListIdentityProfileBindingEvents(ctx context.Context, workspaceID, objectKey, profileID string) ([]identitymodel.IdentityProfileBindingEvent, error) {
-	eventValues := make([]any, 0, len(profileBindingAuditEventNames()))
-	for _, event := range profileBindingAuditEventNames() {
-		eventValues = append(eventValues, event)
+	binding := s.store.Audit()
+	if binding == nil || binding.Reader() == nil {
+		return nil, fmt.Errorf("Audit module binding is unavailable")
 	}
-	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_audit_events", workspaceID).
-		Columns("id", "operation_id", "causation_id", "event", "metadata_json", "created_at").
-		Where(query.And(
-			query.Equal("object_key", strings.TrimSpace(objectKey)),
-			query.Equal("record_id", strings.TrimSpace(profileID)),
-			query.InExpression(query.Column("event"), eventValues...),
-		)).
-		OrderBy(query.Ascending("created_at"), query.Ascending("id")).Build()
+	auditEvents, err := binding.Reader().List(ctx, strings.TrimSpace(workspaceID), auditcontract.Query{
+		ObjectKey: strings.TrimSpace(objectKey), RecordID: strings.TrimSpace(profileID), Limit: 1000,
+	})
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.store.DB().QueryContext(ctx, statement, arguments...)
-	if err != nil {
-		return nil, err
+	allowed := make(map[string]bool, len(profileBindingAuditEventNames()))
+	for _, eventName := range profileBindingAuditEventNames() {
+		allowed[eventName] = true
 	}
-	defer rows.Close()
 	out := []identitymodel.IdentityProfileBindingEvent{}
-	for rows.Next() {
-		var event identitymodel.IdentityProfileBindingEvent
-		var id, eventName, metadataJSON, createdAt string
-		var operationID, causationID sql.NullString
-		if err := rows.Scan(&id, &operationID, &causationID, &eventName, &metadataJSON, &createdAt); err != nil {
-			return nil, err
+	for _, auditEvent := range auditEvents {
+		if !allowed[auditEvent.Event] {
+			continue
 		}
-		if err := json.Unmarshal([]byte(metadataJSON), &event); err != nil {
+		var event identitymodel.IdentityProfileBindingEvent
+		metadataJSON, marshalErr := json.Marshal(auditEvent.Metadata)
+		if marshalErr != nil {
+			return nil, marshalErr
+		}
+		if err := json.Unmarshal(metadataJSON, &event); err != nil {
 			return nil, fmt.Errorf("decode Identity profile binding audit event: %w", err)
 		}
-		event.OperationID, event.CausationID = operationID.String, causationID.String
-		if event.ID != id || event.WorkspaceID != workspaceID || event.ObjectKey != strings.TrimSpace(objectKey) || event.ProfileID != strings.TrimSpace(profileID) ||
-			profileBindingAuditPrefix+string(event.Operation) != eventName || event.CreatedAt != createdAt {
+		event.OperationID, event.CausationID = auditEvent.OperationID, auditEvent.CausationID
+		if event.ID != auditEvent.ID || event.WorkspaceID != workspaceID || event.ObjectKey != strings.TrimSpace(objectKey) || event.ProfileID != strings.TrimSpace(profileID) ||
+			profileBindingAuditPrefix+string(event.Operation) != auditEvent.Event || event.CreatedAt != auditEvent.CreatedAt {
 			return nil, fmt.Errorf("identity profile binding audit event scope mismatch")
 		}
 		out = append(out, event)
 	}
-	return out, rows.Err()
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].CreatedAt == out[j].CreatedAt {
+			return out[i].ID < out[j].ID
+		}
+		return out[i].CreatedAt < out[j].CreatedAt
+	})
+	return out, nil
 }
 
 type identityProfileBindingQuerier interface {
@@ -467,22 +471,28 @@ func (s *Store) writeEvent(ctx context.Context, executor identitytransaction.Exe
 	}
 	prepared := auditcontract.Event{
 		ID: event.ID, WorkspaceID: event.WorkspaceID, Family: auditcontract.EventFamilyIdentityProfileBinding,
-		OperationID: event.OperationID, CausationID: event.CausationID, Event: profileBindingAuditPrefix + string(event.Operation), Metadata: metadata, CreatedAt: event.CreatedAt,
+		OperationID: event.OperationID, CausationID: event.CausationID, Event: profileBindingAuditPrefix + string(event.Operation),
+		ObjectKey: event.ObjectKey, RecordID: event.ProfileID, ActorID: event.ActorID,
+		Summary: "Identity profile binding " + string(event.Operation), Metadata: metadata, CreatedAt: event.CreatedAt,
 	}
 	if buildErr = auditcontract.ValidatePreparedEvent(prepared); buildErr != nil {
 		return buildErr
 	}
-	statement, arguments, buildErr := query.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_audit_events", event.WorkspaceID).
-		Columns("id", "operation_id", "causation_id", "family", "event", "object_key", "record_id", "actor_id", "role_key", "summary", "metadata_json", "before_json", "after_json", "created_at").
-		Values(
-			prepared.ID, prepared.OperationID, nullableProfileBindingText(prepared.CausationID), prepared.Family, prepared.Event, event.ObjectKey, event.ProfileID, event.ActorID, nil,
-			"Identity profile binding "+string(event.Operation), string(metadataJSON), "null", "null", event.CreatedAt,
-		).Build()
-	if buildErr != nil {
-		return buildErr
+	binding := s.store.Audit()
+	if binding == nil || binding.PreparedAppender() == nil {
+		return fmt.Errorf("Audit module binding is unavailable")
 	}
-	_, err := executor.ExecContext(ctx, statement, arguments...)
-	return err
+	return binding.PreparedAppender().AppendPreparedWithin(ctx, profileBindingAuditTransaction{executor: executor}, prepared)
+}
+
+type profileBindingAuditTransaction struct{ executor identitytransaction.Executor }
+
+func (adapter profileBindingAuditTransaction) ExecContext(ctx context.Context, queryValue string, arguments ...any) (auditcontract.Result, error) {
+	return adapter.executor.ExecContext(ctx, queryValue, arguments...)
+}
+
+func (adapter profileBindingAuditTransaction) QueryRowContext(ctx context.Context, queryValue string, arguments ...any) auditcontract.Row {
+	return adapter.executor.QueryRowContext(ctx, queryValue, arguments...)
 }
 
 func profileBindingAuditEventNames() []string {

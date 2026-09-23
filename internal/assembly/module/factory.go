@@ -98,9 +98,6 @@ func (factory *Factory) OpenBootstrapWithDatabase(ctx context.Context, applicati
 	if err := store.EnsureOperationsSchema(ctx); err != nil {
 		return fail(fmt.Errorf("open Identity bootstrap Operations persistence: %w", err))
 	}
-	if err := store.EnsureEmbeddedModuleBindings(ctx); err != nil {
-		return fail(fmt.Errorf("open Identity bootstrap module bindings: %w", err))
-	}
 	manifest, err := loadModuleManifest()
 	if err != nil {
 		return fail(err)
@@ -192,10 +189,6 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 			_ = store.CloseContext(context.Background())
 			return nil, fmt.Errorf("open Identity Module Subject Lifecycle persistence: %w", err)
 		}
-		if err := store.EnsureEmbeddedModuleBindings(ctx); err != nil {
-			_ = store.CloseContext(context.Background())
-			return nil, fmt.Errorf("open Identity embedded module bindings: %w", err)
-		}
 	}
 	manifest, err := loadModuleManifest()
 	if err != nil {
@@ -209,7 +202,13 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 			cfg.IdentityBrowserApplicationKey = string(application.ApplicationKey)
 		}
 	}
-	identityRuntime, err := assembly.NewWithManifest(ctx, cfg, store, manifest, assembly.Options{WorkspaceResolver: workspaceResolver, Clock: factory.Options.Clock, WorkspaceID: string(application.WorkspaceID)})
+	identityRuntime, err := assembly.NewWithManifest(ctx, cfg, store, manifest, assembly.Options{
+		WorkspaceResolver: workspaceResolver,
+		Clock:             factory.Options.Clock,
+		WorkspaceID:       string(application.WorkspaceID),
+		AuditFactory:      factory.Options.AuditFactory,
+		MetadataFactory:   factory.Options.MetadataFactory,
+	})
 	if err != nil {
 		_ = store.CloseContext(context.Background())
 		return nil, err

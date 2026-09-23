@@ -39,7 +39,7 @@ func TestEmbeddedHostWorkspaceLoginAfterAtomicBootstrap(t *testing.T) {
 	}
 	completeWorkspaceIdentityBootstrap(t, bootstrap, receipt, identitysdk.WorkspaceIdentityBootstrapTransactionCommitted)
 	resolver := testWorkspaceResolver{"public-a": "workspace-primary", "workspace-primary": "workspace-primary", "public-b": "workspace-b", "workspace-b": "workspace-b"}
-	binding, err := identitymodule.NewFactory(identitymodule.Options{IdentityVersion: "test", DatabaseDriver: "sqlite"}).OpenWithDatabase(t.Context(), identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "runtime"}, identitysdk.DatabaseHandle{Pool: db, Driver: "sqlite", Migrations: &testEmbeddedMigrationRegistrar{}, WorkspaceResolver: resolver})
+	binding, err := testIdentityFactory(identitymodule.Options{IdentityVersion: "test", DatabaseDriver: "sqlite"}).OpenWithDatabase(t.Context(), identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "runtime"}, identitysdk.DatabaseHandle{Pool: db, Driver: "sqlite", Migrations: &testEmbeddedMigrationRegistrar{}, WorkspaceResolver: resolver})
 	if err != nil {
 		t.Fatal(err)
 	}

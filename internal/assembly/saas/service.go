@@ -5,8 +5,11 @@ import (
 	"context"
 	"net/http"
 
+	auditmodule "github.com/domainry/domainry-audit/module"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 	saashttp "github.com/domainry/domainry-identity/internal/transport/http/saas"
+	httpserver "github.com/domainry/domainry-identity/internal/transport/http/server"
+	metadatamodule "github.com/domainry/domainry-metadata/module"
 )
 
 type Service struct {
@@ -14,7 +17,10 @@ type Service struct {
 }
 
 func Open(ctx context.Context, cfg config.Config) (*Service, error) {
-	server, err := saashttp.New(ctx, cfg)
+	server, err := saashttp.New(ctx, cfg, httpserver.ServerAssemblyOptions{
+		AuditFactory:    auditmodule.NewFactory(auditmodule.Options{}),
+		MetadataFactory: metadatamodule.NewFactory(),
+	})
 	if err != nil {
 		return nil, err
 	}

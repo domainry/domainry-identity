@@ -149,7 +149,7 @@ func TestFactoryInitializesNestedBindingsWhenHostSkipsAppliedIdentityMigration(t
 	modules := &testModuleMigrationRegistrar{database: db}
 	firstMigration := &testEmbeddedMigrationRegistrar{}
 	handle := identitysdk.DatabaseHandle{Pool: db, Driver: "sqlite", FilePath: databasePath, Migrations: firstMigration, ModuleMigrations: modules}
-	first, err := identitymodule.NewFactory(identitymodule.Options{DatabaseDriver: "sqlite", DatabasePath: databasePath}).OpenWithDatabase(t.Context(), application, handle)
+	first, err := testIdentityFactory(identitymodule.Options{DatabaseDriver: "sqlite", DatabasePath: databasePath}).OpenWithDatabase(t.Context(), application, handle)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +159,7 @@ func TestFactoryInitializesNestedBindingsWhenHostSkipsAppliedIdentityMigration(t
 
 	secondMigration := &testEmbeddedMigrationRegistrar{skipApply: true}
 	handle.Migrations = secondMigration
-	second, err := identitymodule.NewFactory(identitymodule.Options{DatabaseDriver: "sqlite", DatabasePath: databasePath}).OpenWithDatabase(t.Context(), application, handle)
+	second, err := testIdentityFactory(identitymodule.Options{DatabaseDriver: "sqlite", DatabasePath: databasePath}).OpenWithDatabase(t.Context(), application, handle)
 	if err != nil {
 		t.Fatalf("reopen after applied host migration: %v", err)
 	}
@@ -185,7 +185,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	t.Setenv("AUTH_AUDIENCE", "must-not-win-over-host-application")
 	now := time.Now().UTC().Truncate(time.Second)
 	application := identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "orders-runtime"}
-	factory := identitymodule.NewFactory(identitymodule.Options{IdentityVersion: "test", DatabaseDriver: "sqlite", DatabasePath: moduleDBPath, Clock: testClock{now: now}})
+	factory := testIdentityFactory(identitymodule.Options{IdentityVersion: "test", DatabaseDriver: "sqlite", DatabasePath: moduleDBPath, Clock: testClock{now: now}})
 	binding, err := factory.Open(t.Context(), application)
 	if err != nil {
 		t.Fatal(err)
@@ -692,13 +692,13 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 }
 
 func TestFactoryRejectsMissingApplication(t *testing.T) {
-	if _, err := identitymodule.NewFactory(identitymodule.Options{}).Open(t.Context(), identitysdk.ApplicationRef{}); err == nil {
+	if _, err := testIdentityFactory(identitymodule.Options{}).Open(t.Context(), identitysdk.ApplicationRef{}); err == nil {
 		t.Fatal("module factory accepted a missing application scope")
 	}
 }
 
 func TestFactoryRejectsUnavailableContextBeforeOpeningInfrastructure(t *testing.T) {
-	factory := identitymodule.NewFactory(identitymodule.Options{})
+	factory := testIdentityFactory(identitymodule.Options{})
 	application := identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "orders-runtime"}
 	if _, err := factory.Open(nil, application); err == nil {
 		t.Fatal("module factory accepted a nil context")
@@ -738,7 +738,7 @@ func TestFactoryBorrowsProjectPoolWithoutClosingOrColliding(t *testing.T) {
 	if _, err := db.ExecContext(t.Context(), `CREATE TABLE metadata_catalog (owner TEXT NOT NULL); INSERT INTO metadata_catalog (owner) VALUES ('runtime'); CREATE TABLE runtime_audit_events (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL); INSERT INTO runtime_audit_events (id, workspace_id) VALUES ('runtime-event', 'workspace-primary')`); err != nil {
 		t.Fatal(err)
 	}
-	factory := identitymodule.NewFactory(identitymodule.Options{DatabaseDriver: "sqlite", DatabasePath: dbPath})
+	factory := testIdentityFactory(identitymodule.Options{DatabaseDriver: "sqlite", DatabasePath: dbPath})
 	registrar := &testEmbeddedMigrationRegistrar{}
 	binding, err := factory.OpenWithDatabase(t.Context(), identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "crm"}, identitysdk.DatabaseHandle{Pool: db, Driver: "sqlite", FilePath: dbPath, Migrations: registrar})
 	if err != nil {
@@ -788,7 +788,7 @@ func TestFactoryEmbeddedOrganizationUnitDeliveryRollsBackWithHostTransaction(t *
 	db.SetMaxOpenConns(4)
 	handle := identitysdk.DatabaseHandle{Pool: db, Driver: "sqlite", FilePath: databasePath, Migrations: &testEmbeddedMigrationRegistrar{}}
 	application := identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "runtime-a"}
-	factory := identitymodule.NewFactory(identitymodule.Options{DatabaseDriver: "sqlite", DatabasePath: databasePath})
+	factory := testIdentityFactory(identitymodule.Options{DatabaseDriver: "sqlite", DatabasePath: databasePath})
 	binding, err := factory.OpenWithDatabase(t.Context(), application, handle)
 	if err != nil {
 		t.Fatal(err)
@@ -902,7 +902,7 @@ func TestEmbeddedWorkspaceIdentityUsageJoinsHostTransactionAndAuditsReleasedPage
 	t.Cleanup(func() { _ = db.Close() })
 	db.SetMaxOpenConns(3)
 	authority := &testWorkspaceIdentityUsageAuthority{}
-	binding, err := identitymodule.NewFactory(identitymodule.Options{DatabaseDriver: "sqlite", DatabasePath: dbPath}).OpenWithDatabase(
+	binding, err := testIdentityFactory(identitymodule.Options{DatabaseDriver: "sqlite", DatabasePath: dbPath}).OpenWithDatabase(
 		t.Context(),
 		identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "crm"},
 		identitysdk.DatabaseHandle{
@@ -1004,7 +1004,7 @@ func TestEmbeddedWorkspaceIdentityUsageRequiresStableCursorKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	_, err = identitymodule.NewFactory(identitymodule.Options{DatabaseDriver: "sqlite", DatabasePath: dbPath}).OpenWithDatabase(
+	_, err = testIdentityFactory(identitymodule.Options{DatabaseDriver: "sqlite", DatabasePath: dbPath}).OpenWithDatabase(
 		t.Context(),
 		identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "crm"},
 		identitysdk.DatabaseHandle{
@@ -1024,7 +1024,7 @@ func TestFactoryRejectsBorrowedDatabaseWithoutHostMigrationRegistrar(t *testing.
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	_, err = identitymodule.NewFactory(identitymodule.Options{DatabaseDriver: "sqlite"}).OpenWithDatabase(t.Context(), identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "runtime"}, identitysdk.DatabaseHandle{Pool: db, Driver: "sqlite"})
+	_, err = testIdentityFactory(identitymodule.Options{DatabaseDriver: "sqlite"}).OpenWithDatabase(t.Context(), identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "runtime"}, identitysdk.DatabaseHandle{Pool: db, Driver: "sqlite"})
 	var sdkErr *identitysdk.Error
 	if !errors.As(err, &sdkErr) || sdkErr.Code != "identity.module_migration_registrar_required" {
 		t.Fatalf("missing registrar error=%v", err)

@@ -70,7 +70,7 @@ func TestHandlerDeliveryIsAtomicIdempotentGovernedAndRestartSafe(t *testing.T) {
 			_ = store.Close()
 			t.Fatal(err)
 		}
-		core, err := NewWithManifest(t.Context(), cfg, store, manifest, Options{WorkspaceID: cfg.IdentityWorkspaceID})
+		core, err := NewWithManifest(t.Context(), cfg, store, manifest, testAssemblyOptions(Options{WorkspaceID: cfg.IdentityWorkspaceID}))
 		if err != nil {
 			_ = store.Close()
 			t.Fatal(err)

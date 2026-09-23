@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	auditsdk "github.com/domainry/domainry-audit-sdk"
 	shareddefinition "github.com/domainry/domainry-foundation/definition"
 	"github.com/domainry/domainry-foundation/idempotency"
 	"github.com/domainry/domainry-foundation/secrets"
@@ -48,6 +49,7 @@ type IdentityStore struct {
 	borrowedDatabase     bool
 	relationPrefix       string
 	metadataBinding      metadatasdk.Binding
+	auditBinding         auditsdk.Binding
 	definitionStore      shareddefinition.Store
 	hostModuleMigrations identitymodulehost.MigrationRegistrar
 }
@@ -57,6 +59,25 @@ func (s *IdentityStore) Metadata() metadatasdk.Binding {
 		return nil
 	}
 	return s.metadataBinding
+}
+
+func (s *IdentityStore) Audit() auditsdk.Binding {
+	if s == nil {
+		return nil
+	}
+	return s.auditBinding
+}
+
+// BindAudit installs the process-local Audit binding opened by the outer
+// composition root. Persistence code receives only the SDK capability and
+// never imports or constructs the Audit implementation.
+func (s *IdentityStore) BindAudit(binding auditsdk.Binding) error {
+	if s == nil || binding == nil || binding.PreparedAppender() == nil {
+		return fmt.Errorf("Audit module binding is required")
+	}
+	s.auditBinding = binding
+	s.WriteFenceStore.BindAuditPreparedAppender(binding.PreparedAppender())
+	return nil
 }
 
 func (s *IdentityStore) Definitions() shareddefinition.StorePort {

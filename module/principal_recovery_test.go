@@ -39,7 +39,7 @@ func TestPrincipalRecoveryMatchesBearerAndRestrictsExplicitRole(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	binding, err := identitymodule.NewFactory(identitymodule.Options{DatabaseDriver: "sqlite"}).OpenWithDatabase(t.Context(), identitysdk.ApplicationRef{WorkspaceID: identitysdk.WorkspaceID(request.WorkspaceID), ApplicationKey: "runtime"}, identitysdk.DatabaseHandle{
+	binding, err := testIdentityFactory(identitymodule.Options{DatabaseDriver: "sqlite"}).OpenWithDatabase(t.Context(), identitysdk.ApplicationRef{WorkspaceID: identitysdk.WorkspaceID(request.WorkspaceID), ApplicationKey: "runtime"}, identitysdk.DatabaseHandle{
 		Pool: db, Driver: "sqlite", Migrations: &testEmbeddedMigrationRegistrar{}, WorkspaceResolver: testWorkspaceResolver{"workspace-primary": "workspace-primary"},
 	})
 	if err != nil {

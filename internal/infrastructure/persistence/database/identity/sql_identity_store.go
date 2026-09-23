@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	auditsdk "github.com/domainry/domainry-audit-sdk"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	identityrepository "github.com/domainry/domainry-identity/internal/domain/identity/repository"
 	identityschema "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/schema"
@@ -41,6 +42,7 @@ type SQLIdentityStore struct {
 	memory                      *MemoryIdentityStore
 	subjectLifecyclePersistence atomic.Bool
 	operationsPersistence       atomic.Bool
+	auditBinding                auditsdk.Binding
 }
 
 var _ identityrepository.IdentityRepository = (*SQLIdentityStore)(nil)
@@ -65,6 +67,21 @@ func (s *SQLIdentityStore) BindOperationsPersistence() {
 
 func (s *SQLIdentityStore) OperationsPersistenceBound() bool {
 	return s != nil && s.operationsPersistence.Load()
+}
+
+func (s *SQLIdentityStore) BindAudit(binding auditsdk.Binding) error {
+	if s == nil || binding == nil || binding.PreparedAppender() == nil || binding.Reader() == nil {
+		return fmt.Errorf("Audit module binding is required")
+	}
+	s.auditBinding = binding
+	return nil
+}
+
+func (s *SQLIdentityStore) Audit() auditsdk.Binding {
+	if s == nil {
+		return nil
+	}
+	return s.auditBinding
 }
 
 func (s *SQLIdentityStore) sqlRenderer() ormdialect.Renderer {

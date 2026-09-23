@@ -11,7 +11,6 @@ import (
 	"time"
 
 	auditmodel "github.com/domainry/domainry-audit-sdk/contract"
-	auditmoduleimpl "github.com/domainry/domainry-audit/module"
 	sharedoperation "github.com/domainry/domainry-foundation/operation"
 	"github.com/domainry/domainry-foundation/requestcontext"
 	portabilitymodel "github.com/domainry/domainry-identity/internal/domain/portability"
@@ -20,13 +19,19 @@ import (
 
 type WriteFenceStore struct {
 	db                    *sql.DB
-	renderer              ormdialect.Renderer
 	operations            *sharedoperation.SQLStore
+	auditAppender         auditmodel.PreparedAppender
 	operationsPersistence atomic.Bool
 }
 
 func NewWriteFenceStore(db *sql.DB, renderer ormdialect.Renderer) *WriteFenceStore {
-	return &WriteFenceStore{db: db, renderer: renderer, operations: sharedoperation.NewSQLStore(db, renderer)}
+	return &WriteFenceStore{db: db, operations: sharedoperation.NewSQLStore(db, renderer)}
+}
+
+func (store *WriteFenceStore) BindAuditPreparedAppender(appender auditmodel.PreparedAppender) {
+	if store != nil {
+		store.auditAppender = appender
+	}
 }
 
 const (
@@ -205,7 +210,10 @@ func (store *WriteFenceStore) appendIdentityWriteFenceEvent(ctx context.Context,
 	if err != nil {
 		return fmt.Errorf("build Identity write-fence audit event: %w", err)
 	}
-	if err := auditmoduleimpl.AppendPreparedWithin(ctx, store.renderer, writeFenceAuditTransaction{tx: tx}, auditEvent); err != nil {
+	if store.auditAppender == nil {
+		return fmt.Errorf("Identity Audit module binding is unavailable")
+	}
+	if err := store.auditAppender.AppendPreparedWithin(ctx, writeFenceAuditTransaction{tx: tx}, auditEvent); err != nil {
 		return fmt.Errorf("append Identity write-fence audit event: %w", err)
 	}
 	return nil

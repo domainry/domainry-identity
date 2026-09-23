@@ -7,8 +7,11 @@ import (
 	"testing"
 	"time"
 
+	auditsdk "github.com/domainry/domainry-audit-sdk"
+	auditmoduleimpl "github.com/domainry/domainry-audit/module"
 	portabilityapplication "github.com/domainry/domainry-identity/internal/application/portability"
 	portabilitymodel "github.com/domainry/domainry-identity/internal/domain/portability"
+	identityauditmodule "github.com/domainry/domainry-identity/internal/infrastructure/auditmodule"
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
 	portabilitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/portability"
 	"github.com/domainry/domainry-identity/internal/platform/config"
@@ -195,6 +198,16 @@ func openIdentityStore(t *testing.T, name string) *database.IdentityStore {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	if err := store.EnsureSchema(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	auditBinding, err := auditmoduleimpl.NewFactory(auditmoduleimpl.Options{}).OpenModule(
+		t.Context(), auditsdk.ApplicationRef{InstallationID: "identity-portability-test"}, identityauditmodule.NewHost(store),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = auditBinding.Close(t.Context()) })
+	if err := store.BindAudit(auditBinding); err != nil {
 		t.Fatal(err)
 	}
 	return store

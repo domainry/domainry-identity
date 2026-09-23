@@ -38,7 +38,7 @@ func TestSharedPasswordLoginBoundaryAuditsSuccessAndFailureWithoutCredentials(t 
 	if err := store.EnsureSchema(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	core, err := New(t.Context(), cfg, store, Options{WorkspaceID: cfg.IdentityWorkspaceID})
+	core, err := New(t.Context(), cfg, store, testAssemblyOptions(Options{WorkspaceID: cfg.IdentityWorkspaceID}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +171,7 @@ func TestBindingRuntimeAssemblyReturnsDirectSDKBinding(t *testing.T) {
 	if err := store.EnsureSchema(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	assembled, err := New(t.Context(), cfg, store, Options{WorkspaceID: cfg.IdentityWorkspaceID})
+	assembled, err := New(t.Context(), cfg, store, testAssemblyOptions(Options{WorkspaceID: cfg.IdentityWorkspaceID}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +195,7 @@ func TestAssemblySeparatesApplicationRegistrationFromPermissionReconcile(t *test
 	if err := store.EnsureSchema(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	core, err := New(t.Context(), cfg, store, Options{WorkspaceID: cfg.IdentityWorkspaceID})
+	core, err := New(t.Context(), cfg, store, testAssemblyOptions(Options{WorkspaceID: cfg.IdentityWorkspaceID}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +246,7 @@ func TestColdStartLoadsPublishedRoleDefinitions(t *testing.T) {
 		if err := store.EnsureSchema(t.Context()); err != nil {
 			t.Fatal(err)
 		}
-		core, err := New(t.Context(), cfg, store, Options{WorkspaceID: cfg.IdentityWorkspaceID})
+		core, err := New(t.Context(), cfg, store, testAssemblyOptions(Options{WorkspaceID: cfg.IdentityWorkspaceID}))
 		if err != nil {
 			t.Fatal(err)
 		}

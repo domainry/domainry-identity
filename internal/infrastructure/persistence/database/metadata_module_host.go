@@ -8,7 +8,6 @@ import (
 	identitymodulehost "github.com/domainry/domainry-identity-sdk/modulehost"
 	metadatasdk "github.com/domainry/domainry-metadata-sdk"
 	metadatamodulehost "github.com/domainry/domainry-metadata-sdk/modulehost"
-	metadatamodule "github.com/domainry/domainry-metadata/module"
 )
 
 // UseHostModuleMigrationRegistrar preserves the embedding Runtime as the sole
@@ -24,18 +23,6 @@ func (s *IdentityStore) UseHostModuleMigrationRegistrar(registrar identitymodule
 	return nil
 }
 
-// EnsureEmbeddedModuleBindings opens process-local bindings even when the
-// host correctly skips an already-applied Identity schema migration.
-func (s *IdentityStore) EnsureEmbeddedModuleBindings(ctx context.Context) error {
-	if s == nil {
-		return fmt.Errorf("Identity store is unavailable")
-	}
-	if s.metadataBinding != nil {
-		return nil
-	}
-	return s.ensureMetadataModuleSchema(ctx)
-}
-
 func (s *IdentityStore) applyNestedOwnedMigrations(ctx context.Context, owner string, migrations []identitymodulehost.SchemaMigration) error {
 	if s.hostModuleMigrations != nil {
 		return s.hostModuleMigrations.ApplyOwnedMigrations(ctx, owner, migrations)
@@ -43,13 +30,25 @@ func (s *IdentityStore) applyNestedOwnedMigrations(ctx context.Context, owner st
 	return s.ApplyOwnedMigrations(ctx, owner, migrations)
 }
 
-func (s *IdentityStore) ensureMetadataModuleSchema(ctx context.Context) error {
-	binding, err := metadatamodule.NewFactory().OpenModule(ctx, metadatasdk.ApplicationRef{InstallationID: "domainry-identity"}, identityMetadataModuleHost{store: s})
+// OpenMetadataModule lets the source-owned Metadata factory apply its own
+// migrations through Identity's host registrar, then retains only its SDK
+// binding for Identity's metadata repositories.
+func (s *IdentityStore) OpenMetadataModule(ctx context.Context, factory metadatasdk.Factory, application metadatasdk.ApplicationRef) (metadatasdk.Binding, error) {
+	if s == nil {
+		return nil, fmt.Errorf("Identity store is unavailable")
+	}
+	if factory == nil {
+		return nil, fmt.Errorf("Metadata module factory is required")
+	}
+	if s.metadataBinding != nil {
+		return s.metadataBinding, nil
+	}
+	binding, err := factory.OpenModule(ctx, application, identityMetadataModuleHost{store: s})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	s.metadataBinding = binding
-	return nil
+	return binding, nil
 }
 
 type identityMetadataModuleHost struct{ store *IdentityStore }

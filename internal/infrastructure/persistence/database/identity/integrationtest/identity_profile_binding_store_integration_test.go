@@ -171,6 +171,7 @@ func identitySQLStoreForProfileBindingTest(t *testing.T, store *IdentityStore) *
 	if err != nil {
 		t.Fatal(err)
 	}
+	bindTestAuditModule(t, store, identityStore)
 	bindSharedOperations(t, identityStore)
 	return identityStore
 }

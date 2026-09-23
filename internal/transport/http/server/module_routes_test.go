@@ -66,7 +66,7 @@ func TestStandaloneGenericModuleContributionReconcilesBeforeMountAndUsesHostGate
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	cfg, store := openModuleContributionStore(t)
-	server, err := httpserver.NewWithStore(t.Context(), cfg, store, httpserver.ServerAssemblyOptions{ModuleProviders: []actioncontract.Provider{provider}})
+	server, err := httpserver.NewWithStore(t.Context(), cfg, store, testServerAssemblyOptions(httpserver.ServerAssemblyOptions{ModuleProviders: []actioncontract.Provider{provider}}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestStandaloneRejectsModuleActionOwnerMismatchBeforeReady(t *testing.T) {
 		t.Fatal("invalid module adapter was mounted")
 	}))
 	cfg, store := openModuleContributionStore(t)
-	_, err := httpserver.NewWithStore(t.Context(), cfg, store, httpserver.ServerAssemblyOptions{ModuleProviders: []actioncontract.Provider{provider}})
+	_, err := httpserver.NewWithStore(t.Context(), cfg, store, testServerAssemblyOptions(httpserver.ServerAssemblyOptions{ModuleProviders: []actioncontract.Provider{provider}}))
 	if err == nil || !strings.Contains(err.Error(), `owner="module:other" want="module:inventory"`) {
 		t.Fatalf("module owner mismatch error=%v", err)
 	}
@@ -100,7 +100,7 @@ func TestStandaloneRejectsModuleHTTPAdapterDriftFromSourceManifest(t *testing.T)
 	adapter.routes[0].Action.Label = "Drifted route copy"
 	provider.adapters[0] = adapter
 	cfg, store := openModuleContributionStore(t)
-	_, err := httpserver.NewWithStore(t.Context(), cfg, store, httpserver.ServerAssemblyOptions{ModuleProviders: []actioncontract.Provider{provider}})
+	_, err := httpserver.NewWithStore(t.Context(), cfg, store, testServerAssemblyOptions(httpserver.ServerAssemblyOptions{ModuleProviders: []actioncontract.Provider{provider}}))
 	if err == nil || !strings.Contains(err.Error(), "differs from its source manifest") {
 		t.Fatalf("module Action drift error=%v", err)
 	}
@@ -121,7 +121,7 @@ func TestStandaloneReconcilesPureNonHTTPModuleActionAndRejectsUnservedHTTP(t *te
 	action.IdempotencyDecision = "natural_key"
 	provider := testModuleActionProvider{actions: []actioncontract.ActionDefinition{action}}
 	cfg, store := openModuleContributionStore(t)
-	server, err := httpserver.NewWithStore(t.Context(), cfg, store, httpserver.ServerAssemblyOptions{ModuleProviders: []actioncontract.Provider{provider}})
+	server, err := httpserver.NewWithStore(t.Context(), cfg, store, testServerAssemblyOptions(httpserver.ServerAssemblyOptions{ModuleProviders: []actioncontract.Provider{provider}}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func TestStandaloneReconcilesPureNonHTTPModuleActionAndRejectsUnservedHTTP(t *te
 
 	unserved := inventoryModuleAction("module:inventory")
 	cfg2, store2 := openModuleContributionStore(t)
-	_, err = httpserver.NewWithStore(t.Context(), cfg2, store2, httpserver.ServerAssemblyOptions{ModuleProviders: []actioncontract.Provider{testModuleActionProvider{actions: []actioncontract.ActionDefinition{unserved}}}})
+	_, err = httpserver.NewWithStore(t.Context(), cfg2, store2, testServerAssemblyOptions(httpserver.ServerAssemblyOptions{ModuleProviders: []actioncontract.Provider{testModuleActionProvider{actions: []actioncontract.ActionDefinition{unserved}}}}))
 	if err == nil || !strings.Contains(err.Error(), "has no mounted adapter route") {
 		t.Fatalf("unserved module HTTP Action error=%v", err)
 	}
