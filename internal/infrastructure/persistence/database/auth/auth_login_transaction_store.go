@@ -260,19 +260,34 @@ func (s AuthStore) FederatedLoginWorkspace(ctx context.Context, provider, state 
 	}
 	queryValue, args, buildErr := query.NewSelectBuilder(s.store.SQLRenderer(), "_identity_auth_login_transactions").Columns("workspace_id").Where(query.And(
 		query.Equal("state_hash", authLoginStateHash(state)), query.Equal("provider_key", provider), query.IsNull("consumed_at"), query.GreaterThan("expires_at", now.UTC().Format(time.RFC3339Nano)),
-	)).Limit(1).Build()
+	)).OrderBy(query.Ascending("workspace_id")).Build()
 	if buildErr != nil {
 		return "", false, buildErr
 	}
-	var workspaceID string
-	err := s.db.QueryRowContext(ctx, queryValue, args...).Scan(&workspaceID)
-	if err == sql.ErrNoRows {
-		return "", false, nil
-	}
+	rows, err := s.db.QueryContext(ctx, queryValue, args...)
 	if err != nil {
 		return "", false, err
 	}
-	return strings.TrimSpace(workspaceID), true, nil
+	defer rows.Close()
+	workspaceID := ""
+	for rows.Next() {
+		var candidate string
+		if err := rows.Scan(&candidate); err != nil {
+			return "", false, err
+		}
+		candidate = strings.TrimSpace(candidate)
+		if workspaceID != "" && workspaceID != candidate {
+			return "", false, nil
+		}
+		workspaceID = candidate
+	}
+	if err := rows.Err(); err != nil {
+		return "", false, err
+	}
+	if workspaceID == "" {
+		return "", false, nil
+	}
+	return workspaceID, true, nil
 }
 
 func (s AuthStore) ConsumeAuthOTPTransaction(ctx context.Context, workspaceID, provider, state, code string, allowedPurposes []string, expectedUserID string, maxAttempts int, now time.Time) (authmodel.AuthProviderChallenge, bool, error) {
