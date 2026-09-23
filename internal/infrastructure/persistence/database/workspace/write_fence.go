@@ -12,24 +12,24 @@ import (
 
 	auditmodel "github.com/domainry/domainry-audit-sdk/contract"
 	auditmoduleimpl "github.com/domainry/domainry-audit/module"
+	sharedoperation "github.com/domainry/domainry-foundation/operation"
 	"github.com/domainry/domainry-foundation/requestcontext"
 	portabilitymodel "github.com/domainry/domainry-identity/internal/domain/portability"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
-	"github.com/domainry/domainry-orm/query"
 )
 
 type WriteFenceStore struct {
 	db                    *sql.DB
 	renderer              ormdialect.Renderer
+	operations            *sharedoperation.SQLStore
 	operationsPersistence atomic.Bool
 }
 
 func NewWriteFenceStore(db *sql.DB, renderer ormdialect.Renderer) *WriteFenceStore {
-	return &WriteFenceStore{db: db, renderer: renderer}
+	return &WriteFenceStore{db: db, renderer: renderer, operations: sharedoperation.NewSQLStore(db, renderer)}
 }
 
 const (
-	sharedOperationControlsTable      = "_operation_controls"
 	workspaceControlSystemPurpose     = "workspace_control"
 	workspaceWriteFenceControlKind    = "write_fence"
 	workspaceWriteFenceControlReason  = "identity portability cutover"
@@ -38,18 +38,6 @@ const (
 	identityWriteFenceEventFrozen     = "frozen"
 	identityWriteFenceEventReleased   = "released"
 )
-
-type workspaceOperationControlQueryer interface {
-	QueryRowContext(context.Context, string, ...any) *sql.Row
-}
-
-type workspaceOperationControl struct {
-	State     string
-	Reference string
-	UpdatedBy string
-	Revision  int64
-	UpdatedAt time.Time
-}
 
 func (store *WriteFenceStore) BindOperationsPersistence() {
 	if store != nil {
@@ -79,7 +67,8 @@ func (store *WriteFenceStore) FreezeIdentityWrites(ctx context.Context, workspac
 		return portabilitymodel.WriteFence{}, err
 	}
 	defer tx.Rollback()
-	existing, found, err := store.workspaceWriteControl(ctx, tx, workspaceID)
+	txctx := sharedoperation.WithExecutor(ctx, tx)
+	existing, found, err := store.workspaceWriteControl(txctx, workspaceID)
 	if err != nil {
 		return portabilitymodel.WriteFence{}, err
 	}
@@ -89,41 +78,20 @@ func (store *WriteFenceStore) FreezeIdentityWrites(ctx context.Context, workspac
 		}
 		return portabilitymodel.WriteFence{}, fmt.Errorf("identity.portability_write_fence_already_active")
 	}
-	if !found {
-		statement, arguments, buildErr := query.NewInsertBuilder(store.renderer, sharedOperationControlsTable).
-			Columns("system_purpose", "control_kind", "owner", "state", "reason", "reference", "updated_by", "revision", "updated_at").
-			Values(workspaceControlSystemPurpose, workspaceWriteFenceControlKind, workspaceID, workspaceOperationControlActive, workspaceWriteFenceControlReason, fence.EvidenceSHA256, operator, int64(1), fence.FrozenAt.Format(time.RFC3339Nano)).Build()
-		if buildErr != nil {
-			return portabilitymodel.WriteFence{}, fmt.Errorf("build shared workspace write control insert: %w", buildErr)
-		}
-		if _, err = tx.ExecContext(ctx, statement, arguments...); err != nil {
-			return portabilitymodel.WriteFence{}, err
-		}
-	} else {
-		statement, arguments, buildErr := query.NewUpdateBuilder(store.renderer, sharedOperationControlsTable).
-			Set("state", workspaceOperationControlActive).Set("reason", workspaceWriteFenceControlReason).
-			Set("reference", fence.EvidenceSHA256).Set("updated_by", operator).
-			Set("revision", existing.Revision+1).Set("updated_at", fence.FrozenAt.Format(time.RFC3339Nano)).
-			Where(query.And(
-				query.Equal("system_purpose", workspaceControlSystemPurpose),
-				query.Equal("control_kind", workspaceWriteFenceControlKind),
-				query.Equal("owner", workspaceID),
-				query.Equal("revision", existing.Revision),
-			)).Build()
-		if buildErr != nil {
-			return portabilitymodel.WriteFence{}, fmt.Errorf("build shared workspace write control activation: %w", buildErr)
-		}
-		result, execErr := tx.ExecContext(ctx, statement, arguments...)
-		if execErr != nil {
-			return portabilitymodel.WriteFence{}, execErr
-		}
-		rows, rowsErr := result.RowsAffected()
-		if rowsErr != nil {
-			return portabilitymodel.WriteFence{}, rowsErr
-		}
-		if rows != 1 {
-			return portabilitymodel.WriteFence{}, fmt.Errorf("identity.portability_write_fence_revision_conflict")
-		}
+	expectedRevision, revision := int64(0), int64(1)
+	if found {
+		expectedRevision, revision = existing.Revision, existing.Revision+1
+	}
+	changed, err := store.operations.PutControl(txctx, sharedoperation.Control{
+		SystemPurpose: workspaceControlSystemPurpose, Kind: workspaceWriteFenceControlKind, Owner: workspaceID,
+		State: workspaceOperationControlActive, Reason: workspaceWriteFenceControlReason, Reference: fence.EvidenceSHA256,
+		UpdatedBy: operator, Revision: revision, UpdatedAt: fence.FrozenAt,
+	}, expectedRevision)
+	if err != nil {
+		return portabilitymodel.WriteFence{}, err
+	}
+	if !changed {
+		return portabilitymodel.WriteFence{}, fmt.Errorf("identity.portability_write_fence_revision_conflict")
 	}
 	if err := store.appendIdentityWriteFenceEvent(ctx, tx, fence.WorkspaceID, identityWriteFenceEventFrozen, fence.EvidenceSHA256, operator, fence.FrozenAt); err != nil {
 		return portabilitymodel.WriteFence{}, err
@@ -148,7 +116,8 @@ func (store *WriteFenceStore) ReleaseIdentityWriteFence(ctx context.Context, wor
 		return portabilitymodel.WriteFence{}, err
 	}
 	defer tx.Rollback()
-	control, found, err := store.workspaceWriteControl(ctx, tx, workspaceID)
+	txctx := sharedoperation.WithExecutor(ctx, tx)
+	control, found, err := store.workspaceWriteControl(txctx, workspaceID)
 	if err != nil {
 		return portabilitymodel.WriteFence{}, err
 	}
@@ -156,29 +125,15 @@ func (store *WriteFenceStore) ReleaseIdentityWriteFence(ctx context.Context, wor
 		return portabilitymodel.WriteFence{}, fmt.Errorf("identity.portability_write_fence_not_active")
 	}
 	fence := identityWriteFenceFromControl(workspaceID, control)
-	queryValue, arguments, err := query.NewUpdateBuilder(store.renderer, sharedOperationControlsTable).
-		Set("state", workspaceOperationControlInactive).Set("reason", workspaceWriteFenceControlReason).
-		Set("reference", control.Reference).Set("updated_by", operator).
-		Set("revision", control.Revision+1).Set("updated_at", releasedAt.Format(time.RFC3339Nano)).
-		Where(query.And(
-			query.Equal("system_purpose", workspaceControlSystemPurpose),
-			query.Equal("control_kind", workspaceWriteFenceControlKind),
-			query.Equal("owner", workspaceID),
-			query.Equal("state", workspaceOperationControlActive),
-			query.Equal("revision", control.Revision),
-		)).Build()
-	if err != nil {
-		return portabilitymodel.WriteFence{}, fmt.Errorf("build shared workspace write control release: %w", err)
-	}
-	result, err := tx.ExecContext(ctx, queryValue, arguments...)
+	changed, err := store.operations.PutControl(txctx, sharedoperation.Control{
+		SystemPurpose: workspaceControlSystemPurpose, Kind: workspaceWriteFenceControlKind, Owner: workspaceID,
+		State: workspaceOperationControlInactive, Reason: workspaceWriteFenceControlReason, Reference: control.Reference,
+		UpdatedBy: operator, Revision: control.Revision + 1, UpdatedAt: releasedAt,
+	}, control.Revision)
 	if err != nil {
 		return portabilitymodel.WriteFence{}, err
 	}
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return portabilitymodel.WriteFence{}, err
-	}
-	if rows != 1 {
+	if !changed {
 		return portabilitymodel.WriteFence{}, fmt.Errorf("identity.portability_write_fence_not_active")
 	}
 	if err := store.appendIdentityWriteFenceEvent(ctx, tx, workspaceID, identityWriteFenceEventReleased, fence.EvidenceSHA256, operator, releasedAt); err != nil {
@@ -197,45 +152,29 @@ func (store *WriteFenceStore) IdentityWriteFence(ctx context.Context, workspaceI
 	if !store.OperationsPersistenceBound() {
 		return portabilitymodel.WriteFence{}, false, fmt.Errorf("identity shared workspace operation control persistence is not bound")
 	}
-	control, found, err := store.workspaceWriteControl(ctx, store.db, strings.TrimSpace(workspaceID))
+	control, found, err := store.workspaceWriteControl(ctx, strings.TrimSpace(workspaceID))
 	if err != nil || !found {
 		return portabilitymodel.WriteFence{}, found, err
 	}
 	return identityWriteFenceFromControl(strings.TrimSpace(workspaceID), control), true, nil
 }
 
-func (store *WriteFenceStore) workspaceWriteControl(ctx context.Context, queryer workspaceOperationControlQueryer, workspaceID string) (workspaceOperationControl, bool, error) {
+func (store *WriteFenceStore) workspaceWriteControl(ctx context.Context, workspaceID string) (sharedoperation.Control, bool, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
-	queryValue, arguments, err := query.NewSelectBuilder(store.renderer, sharedOperationControlsTable).
-		Columns("state", "reference", "updated_by", "revision", "updated_at").
-		Where(query.And(
-			query.Equal("system_purpose", workspaceControlSystemPurpose),
-			query.Equal("control_kind", workspaceWriteFenceControlKind),
-			query.Equal("owner", workspaceID),
-		)).Build()
+	control, found, err := store.operations.GetControl(ctx, workspaceControlSystemPurpose, workspaceWriteFenceControlKind, workspaceID)
 	if err != nil {
-		return workspaceOperationControl{}, false, fmt.Errorf("build shared workspace write control read: %w", err)
+		return sharedoperation.Control{}, false, err
 	}
-	var control workspaceOperationControl
-	var updatedAt string
-	err = queryer.QueryRowContext(ctx, queryValue, arguments...).Scan(&control.State, &control.Reference, &control.UpdatedBy, &control.Revision, &updatedAt)
-	if err == sql.ErrNoRows {
-		return workspaceOperationControl{}, false, nil
-	}
-	if err != nil {
-		return workspaceOperationControl{}, false, err
-	}
-	control.UpdatedAt, err = time.Parse(time.RFC3339Nano, updatedAt)
-	if err != nil {
-		return workspaceOperationControl{}, false, err
+	if !found {
+		return sharedoperation.Control{}, false, nil
 	}
 	if (control.State != workspaceOperationControlActive && control.State != workspaceOperationControlInactive) || strings.TrimSpace(control.Reference) == "" || strings.TrimSpace(control.UpdatedBy) == "" || control.Revision <= 0 {
-		return workspaceOperationControl{}, false, fmt.Errorf("identity shared workspace operation control invalid")
+		return sharedoperation.Control{}, false, fmt.Errorf("identity shared workspace operation control invalid")
 	}
 	return control, true, nil
 }
 
-func identityWriteFenceFromControl(workspaceID string, control workspaceOperationControl) portabilitymodel.WriteFence {
+func identityWriteFenceFromControl(workspaceID string, control sharedoperation.Control) portabilitymodel.WriteFence {
 	fence := portabilitymodel.WriteFence{WorkspaceID: workspaceID, EvidenceSHA256: control.Reference}
 	if control.State == workspaceOperationControlActive {
 		fence.State, fence.FrozenBy, fence.FrozenAt = "frozen", control.UpdatedBy, control.UpdatedAt
@@ -254,7 +193,7 @@ func (store *WriteFenceStore) appendIdentityWriteFenceEvent(ctx context.Context,
 		OperationID:    requestcontext.OwnerExecutionID(ctx),
 		Family:         auditmodel.EventFamilyIdentityGovernance,
 		Event:          stateEvent,
-		ObjectKey:      sharedOperationControlsTable,
+		ObjectKey:      sharedoperation.ControlTableName,
 		RecordID:       workspaceID,
 		Actor:          auditmodel.Actor{WorkspaceID: workspaceID, SubjectID: operator, Kind: "operator"},
 		Summary:        "Identity portability write fence " + event,
@@ -294,18 +233,5 @@ func (store *WriteFenceStore) AnyIdentityWritesFrozen(ctx context.Context) (bool
 	if !store.OperationsPersistenceBound() {
 		return false, nil
 	}
-	queryValue, arguments, err := query.NewSelectBuilder(store.renderer, sharedOperationControlsTable).
-		Projections(query.Project(query.CountAll())).Where(query.And(
-		query.Equal("system_purpose", workspaceControlSystemPurpose),
-		query.Equal("control_kind", workspaceWriteFenceControlKind),
-		query.Equal("state", workspaceOperationControlActive),
-	)).Build()
-	if err != nil {
-		return false, fmt.Errorf("build active Identity write fence count: %w", err)
-	}
-	var count int64
-	if err := store.db.QueryRowContext(ctx, queryValue, arguments...).Scan(&count); err != nil {
-		return false, err
-	}
-	return count > 0, nil
+	return store.operations.ControlStateExists(ctx, workspaceControlSystemPurpose, workspaceWriteFenceControlKind, workspaceOperationControlActive)
 }
