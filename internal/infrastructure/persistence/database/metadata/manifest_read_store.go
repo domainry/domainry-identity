@@ -6,7 +6,6 @@ import (
 	manifestmodel "github.com/domainry/domainry-identity/internal/domain/manifest/model"
 
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 
@@ -14,7 +13,6 @@ import (
 
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
 
-	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
 	metadatasdk "github.com/domainry/domainry-metadata-sdk"
 	"github.com/domainry/domainry-orm/query"
 )
@@ -31,11 +29,11 @@ func (r MetadataStore) LoadManifest(ctx context.Context, scope identitymodel.Sys
 	if err != nil {
 		return manifestmodel.ManifestSchema{}, err
 	}
-	roles, err := loadMetadataSliceContext[identitymodel.RoleSchema](ctx, r.database(), r.store, "_identity_role_definitions")
+	roles, err := loadIdentityDefinitionPayloads[identitymodel.RoleSchema](ctx, r, "role")
 	if err != nil {
 		return manifestmodel.ManifestSchema{}, err
 	}
-	profileBindings, err := loadMetadataSliceContext[identitymodel.IdentityProfileExtension](ctx, r.database(), r.store, "_identity_profile_binding_definitions")
+	profileBindings, err := loadIdentityDefinitionPayloads[identitymodel.IdentityProfileExtension](ctx, r, "identity_profile_binding")
 	if err != nil {
 		return manifestmodel.ManifestSchema{}, err
 	}
@@ -126,34 +124,6 @@ func (r MetadataStore) loadCatalog(ctx context.Context) (map[string]string, erro
 	return out, nil
 }
 
-func loadMetadataSliceContext[T any](ctx context.Context, db *sql.DB, store *database.IdentityStore, table string) ([]T, error) {
-	statement, arguments, err := query.NewSelectBuilder(store.SQLRenderer, table).Columns("payload_json").Where(query.IsNull("disabled_at")).OrderBy(query.Ascending("resource_key")).Build()
-	if err != nil {
-		return nil, fmt.Errorf("build %s query: %w", table, err)
-	}
-	rows, err := db.QueryContext(ctx, statement, arguments...)
-	if err != nil {
-		return nil, fmt.Errorf("load %s: %w", table, err)
-	}
-	defer rows.Close()
-	out := []T{}
-	for rows.Next() {
-		var raw string
-		if err := rows.Scan(&raw); err != nil {
-			return nil, fmt.Errorf("scan %s: %w", table, err)
-		}
-		var value T
-		if err := json.Unmarshal([]byte(raw), &value); err != nil {
-			return nil, fmt.Errorf("decode %s payload: %w", table, err)
-		}
-		out = append(out, value)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("read %s: %w", table, err)
-	}
-	return out, nil
-}
-
 func (r MetadataStore) ListDefinitions(ctx context.Context, scope identitymodel.SystemScope, resourceType string) ([]metadatamodel.MetadataDefinition, error) {
 	if err := requireMetadataInstallationScope(scope); err != nil {
 		return nil, err
@@ -161,28 +131,7 @@ func (r MetadataStore) ListDefinitions(ctx context.Context, scope identitymodel.
 	if metadataModuleOwnsDefinition(resourceType) {
 		return r.ListMetadataDefinitions(ctx, resourceType, "")
 	}
-	table, err := metadataDefinitionTable(resourceType)
-	if err != nil {
-		return nil, err
-	}
-	statement, arguments, err := metadataDefinitionSelect(r, table).Where(query.IsNull("disabled_at")).OrderBy(query.Ascending("resource_key")).Build()
-	if err != nil {
-		return nil, fmt.Errorf("build %s definitions query: %w", resourceType, err)
-	}
-	rows, err := r.database().QueryContext(ctx, statement, arguments...)
-	if err != nil {
-		return nil, fmt.Errorf("list %s definitions: %w", resourceType, err)
-	}
-	defer rows.Close()
-	out := []metadatamodel.MetadataDefinition{}
-	for rows.Next() {
-		definition, err := scanMetadataDefinition(rows, resourceType)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, definition)
-	}
-	return out, rows.Err()
+	return r.listIdentityDefinitions(ctx, resourceType, "")
 }
 
 func (r MetadataStore) GetDefinition(ctx context.Context, scope identitymodel.SystemScope, resourceType, resourceKey string) (metadatamodel.MetadataDefinition, bool, error) {
@@ -192,49 +141,17 @@ func (r MetadataStore) GetDefinition(ctx context.Context, scope identitymodel.Sy
 	if metadataModuleOwnsDefinition(resourceType) {
 		return r.GetMetadataDefinition(ctx, resourceType, resourceKey)
 	}
-	table, err := metadataDefinitionTable(resourceType)
-	if err != nil {
-		return metadatamodel.MetadataDefinition{}, false, err
-	}
-	statement, arguments, err := metadataDefinitionSelect(r, table).Where(query.Equal("resource_key", resourceKey)).Build()
-	if err != nil {
-		return metadatamodel.MetadataDefinition{}, false, fmt.Errorf("build %s definition query: %w", resourceType, err)
-	}
-	definition, err := scanMetadataDefinition(r.database().QueryRowContext(ctx, statement, arguments...), resourceType)
-	if err == sql.ErrNoRows {
-		return metadatamodel.MetadataDefinition{}, false, nil
-	}
-	return definition, err == nil, err
-}
-
-func metadataDefinitionSelect(r MetadataStore, table string) *query.SelectBuilder {
-	return query.NewSelectBuilder(r.store.SQLRenderer, table).Columns(
-		"resource_key", "object_key", "name", "payload_json", "schema_version", "schema_hash", "source_kind", "source_id", "disabled_at", "created_at", "updated_at",
-	)
-}
-
-type metadataDefinitionScanner interface{ Scan(...any) error }
-
-func scanMetadataDefinition(scanner metadataDefinitionScanner, resourceType string) (metadatamodel.MetadataDefinition, error) {
-	var definition metadatamodel.MetadataDefinition
-	var payload string
-	var disabled sql.NullString
-	if err := scanner.Scan(&definition.ResourceKey, &definition.ObjectKey, &definition.Name, &payload, &definition.SchemaVersion, &definition.SchemaHash, &definition.SourceKind, &definition.SourceID, &disabled, &definition.CreatedAt, &definition.UpdatedAt); err != nil {
-		return metadatamodel.MetadataDefinition{}, err
-	}
-	definition.ResourceType = resourceType
-	definition.Payload = json.RawMessage(payload)
-	if disabled.Valid {
-		definition.DisabledAt = disabled.String
-	}
-	return definition, nil
+	return r.getIdentityDefinition(ctx, resourceType, resourceKey)
 }
 
 func (r MetadataStore) ListDefinitionVersions(ctx context.Context, scope identitymodel.SystemScope, resourceType, resourceKey string) ([]metadatamodel.MetadataDefinitionVersion, error) {
 	if err := requireMetadataInstallationScope(scope); err != nil {
 		return nil, err
 	}
-	return r.ListMetadataDefinitionVersions(ctx, resourceType, resourceKey)
+	if metadataModuleOwnsDefinition(resourceType) {
+		return r.ListMetadataDefinitionVersions(ctx, resourceType, resourceKey)
+	}
+	return r.listIdentityDefinitionVersions(ctx, resourceType, resourceKey)
 }
 
 func (r MetadataStore) metadataDefinitionReplay(ctx context.Context, scope identitymodel.SystemScope, resourceType, resourceKey, targetHash string, expectedHash *string) (metadatamodel.MetadataDefinition, bool, error) {

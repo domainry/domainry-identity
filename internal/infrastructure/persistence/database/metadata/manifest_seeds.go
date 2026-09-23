@@ -22,14 +22,13 @@ func manifestMetadataSeeds(seed manifestmodel.ManifestSchema) ([]metadataResourc
 	if sourceID == "" {
 		sourceID = "generated-template"
 	}
-	newSeed := func(resourceType, table, key, objectKey, name string, payload any) (metadataResourceSeed, error) {
+	newSeed := func(resourceType, key, objectKey, name string, payload any) (metadataResourceSeed, error) {
 		key = strings.TrimSpace(key)
 		if key == "" {
 			return metadataResourceSeed{}, fmt.Errorf("%s metadata key is required", resourceType)
 		}
 		return metadataResourceSeed{
 			ResourceType:  resourceType,
-			Table:         table,
 			Key:           key,
 			ObjectKey:     strings.TrimSpace(objectKey),
 			Name:          strings.TrimSpace(name),
@@ -40,8 +39,8 @@ func manifestMetadataSeeds(seed manifestmodel.ManifestSchema) ([]metadataResourc
 		}, nil
 	}
 	seeds := []metadataResourceSeed{}
-	appendSeed := func(resourceType, table, key, objectKey, name string, payload any) error {
-		seed, err := newSeed(resourceType, table, key, objectKey, name, payload)
+	appendSeed := func(resourceType, key, objectKey, name string, payload any) error {
+		seed, err := newSeed(resourceType, key, objectKey, name, payload)
 		if err != nil {
 			return err
 		}
@@ -51,12 +50,12 @@ func manifestMetadataSeeds(seed manifestmodel.ManifestSchema) ([]metadataResourc
 	roles := append([]identitymodel.RoleSchema(nil), seed.Roles...)
 	roles = appendSystemRoleDefinition(roles, "identity_effective", "Identity Effective")
 	for _, role := range roles {
-		if err := appendSeed("role", "_identity_role_definitions", role.Key, "", role.Name, role); err != nil {
+		if err := appendSeed("role", role.Key, "", role.Name, role); err != nil {
 			return nil, err
 		}
 	}
 	for _, binding := range seed.IdentityProfileExtensions {
-		if err := appendSeed("identity_profile_binding", "_identity_profile_binding_definitions", binding.ObjectKey, binding.ObjectKey, binding.BusinessIdentity.Key, binding); err != nil {
+		if err := appendSeed("identity_profile_binding", binding.ObjectKey, binding.ObjectKey, binding.BusinessIdentity.Key, binding); err != nil {
 			return nil, err
 		}
 	}
@@ -70,18 +69,6 @@ func metadataPayload(payload any) ([]byte, string, error) {
 	}
 	sum := sha256.Sum256(raw)
 	return raw, hex.EncodeToString(sum[:]), nil
-}
-
-func metadataResourceID(resourceType, key string) string {
-	return strings.TrimSpace(resourceType) + ":" + strings.TrimSpace(key)
-}
-
-func metadataHashPrefix(hash string) string {
-	hash = strings.TrimSpace(hash)
-	if len(hash) <= 12 {
-		return hash
-	}
-	return hash[:12]
 }
 
 func metadataJoinedKey(left, right string) string {

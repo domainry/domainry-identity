@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	auditmodule "github.com/domainry/domainry-audit/module"
+	shareddefinition "github.com/domainry/domainry-foundation/definition"
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
 	identityschema "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/schema"
 	"github.com/domainry/domainry-identity/internal/platform/config"
@@ -33,6 +34,9 @@ func TestEveryStandaloneIdentityTableHasOneOwnerAndMigrationDisposition(t *testi
 		hostOwned[table] = true
 	}
 	for _, table := range auditmodule.OwnedTables() {
+		moduleOwned[table] = true
+	}
+	for _, table := range shareddefinition.OwnedTables() {
 		moduleOwned[table] = true
 	}
 	for _, table := range metadatamodule.OwnedTables() {
@@ -87,6 +91,11 @@ func TestEveryStandaloneIdentityTableHasOneOwnerAndMigrationDisposition(t *testi
 	}
 	if !sort.StringsAreSorted(actual) {
 		t.Fatalf("table inventory is not deterministic: %v", actual)
+	}
+	for _, retired := range []string{"_identity_role_definitions", "_identity_role_definition_versions", "_identity_profile_binding_definitions", "_identity_profile_binding_definition_versions"} {
+		if actualSet[retired] {
+			t.Errorf("fresh Identity schema retains retired private Definition table %q", retired)
+		}
 	}
 	for table := range ownership {
 		if table == "_identity_managed_database" {

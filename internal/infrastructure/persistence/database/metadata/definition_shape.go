@@ -18,17 +18,6 @@ type metadataDefinitionPayloadShape struct {
 	Payload   any
 }
 
-func metadataDefinitionTable(resourceType string) (string, error) {
-	switch strings.TrimSpace(resourceType) {
-	case "role":
-		return "_identity_role_definitions", nil
-	case "identity_profile_binding":
-		return "_identity_profile_binding_definitions", nil
-	default:
-		return "", fmt.Errorf("unsupported Identity metadata resource type %q", resourceType)
-	}
-}
-
 func metadataDefinitionShape(_ context.Context, resourceType, resourceKey string, req metadatamodel.MetadataDefinitionUpsertRequest) (metadataDefinitionPayloadShape, error) {
 	switch strings.TrimSpace(resourceType) {
 	case "object":

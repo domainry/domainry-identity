@@ -180,6 +180,10 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 		return nil, fmt.Errorf("prepare Identity module schema: %w", err)
 	}
 	if handle != nil {
+		if err := store.EnsureDefinitionsSchema(ctx); err != nil {
+			_ = store.CloseContext(context.Background())
+			return nil, fmt.Errorf("open Identity Module Definitions persistence: %w", err)
+		}
 		if err := store.EnsureOperationsSchema(ctx); err != nil {
 			_ = store.CloseContext(context.Background())
 			return nil, fmt.Errorf("open Identity Module Operations persistence: %w", err)

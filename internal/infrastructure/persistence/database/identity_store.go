@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	shareddefinition "github.com/domainry/domainry-foundation/definition"
 	"github.com/domainry/domainry-foundation/idempotency"
 	"github.com/domainry/domainry-foundation/secrets"
 	"github.com/domainry/domainry-foundation/telemetry"
@@ -47,6 +48,7 @@ type IdentityStore struct {
 	borrowedDatabase     bool
 	relationPrefix       string
 	metadataBinding      metadatasdk.Binding
+	definitionStore      shareddefinition.Store
 	hostModuleMigrations identitymodulehost.MigrationRegistrar
 }
 
@@ -55,6 +57,13 @@ func (s *IdentityStore) Metadata() metadatasdk.Binding {
 		return nil
 	}
 	return s.metadataBinding
+}
+
+func (s *IdentityStore) Definitions() shareddefinition.StorePort {
+	if s == nil {
+		return nil
+	}
+	return s.definitionStore
 }
 
 func newMigrationCoordinator(queryDatabase, migrationPool *sql.DB, migrationDatabase driver.SchemaDatabase, backupDatabase, lockDatabase *sql.DB, engine databaseEngine, renderer ormdialect.Renderer, databaseSchema, relationPrefix string, cfg config.Config, secretMaterialKey [32]byte, metrics *observability.Metrics) *migrationowner.Coordinator {
@@ -120,6 +129,7 @@ func openContextWithDependencies(ctx context.Context, cfg config.Config, depende
 	}
 	coordinator := newMigrationCoordinator(db, migrationDB, migrationDatabase, backupDatabase, lockDatabase, engine, sqlDatabase.SQLRenderer, databaseSchema, "", cfg, activeMaterial, operationalMetrics)
 	store := &IdentityStore{SQLDatabase: sqlDatabase, WriteFenceStore: workspace.NewWriteFenceStore(db, sqlDatabase.SQLRenderer), Coordinator: coordinator, db: db, migrationDB: migrationDB, engine: engine, config: cfg, databaseSchema: databaseSchema, postgresProfile: connectionState.PostgresProfile, postgresCapabilities: connectionState.PostgresCapabilities, migratorCapabilities: connectionState.MigratorCapabilities, secretMaterialKey: activeMaterial, secretKeyProvider: keyRing, idempotencyMetrics: idempotency.NewMemoryMetricsCollector(4096), sqlMetrics: sqlMetrics, operationalMetrics: operationalMetrics}
+	store.definitionStore = shareddefinition.NewStore(db, sqlDatabase.SQLRenderer, "domainry-identity")
 	var migrationErr error
 	migrationStarted := time.Now()
 	if cfg.EffectiveDatabaseMigrationMode() == "verify" {
@@ -171,6 +181,7 @@ func OpenBorrowedContext(ctx context.Context, cfg config.Config, db *sql.DB) (*I
 		borrowedDatabase: true,
 		relationPrefix:   "",
 	}
+	store.definitionStore = shareddefinition.NewStore(db, sqlDatabase.SQLRenderer, "domainry-identity")
 	// A borrowed database is migrated exclusively by the embedding host. The
 	// module factory submits source-owned schema work through the host registrar
 	// after this connection-only store is prepared.

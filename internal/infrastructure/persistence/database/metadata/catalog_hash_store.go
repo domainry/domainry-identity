@@ -11,7 +11,6 @@ import (
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/transaction"
 	metadatasdk "github.com/domainry/domainry-metadata-sdk"
 	metadatamodulehost "github.com/domainry/domainry-metadata-sdk/modulehost"
-	"github.com/domainry/domainry-orm/query"
 )
 
 func (r MetadataStore) refreshCatalogHashTx(ctx context.Context, tx *sql.Tx, now string) error {
@@ -34,7 +33,6 @@ func (r MetadataStore) refreshCatalogHashWithExecutorAt(
 	executor transaction.Executor,
 	now string,
 ) error {
-	tables := metadataCatalogDefinitionTables()
 	hash := sha256.New()
 	binding := r.store.Metadata()
 	if binding == nil || binding.Definitions() == nil {
@@ -48,31 +46,6 @@ func (r MetadataStore) refreshCatalogHashWithExecutorAt(
 	for _, definition := range snapshot.Definitions {
 		hash.Write([]byte(definition.Owner + ":" + definition.ResourceType + ":" + definition.ResourceKey + ":" + definition.SchemaHash + "|"))
 	}
-	for _, table := range tables {
-		queryValue, args, err := query.NewSelectBuilder(r.store.SQLRenderer, table).
-			Columns("resource_key", "schema_hash").OrderBy(query.Ascending("resource_key")).Build()
-		if err != nil {
-			return err
-		}
-		rows, err := executor.QueryContext(ctx, queryValue, args...)
-		if err != nil {
-			return err
-		}
-		hash.Write([]byte(table + ":"))
-		for rows.Next() {
-			var key, schemaHash string
-			if err := rows.Scan(&key, &schemaHash); err != nil {
-				rows.Close()
-				return err
-			}
-			hash.Write([]byte(key + ":" + schemaHash + "|"))
-		}
-		if err := rows.Err(); err != nil {
-			rows.Close()
-			return err
-		}
-		rows.Close()
-	}
 	value := hex.EncodeToString(hash.Sum(nil))
 	queryValue, args, err := buildMetadataCatalogUpsert(r, "schema_hash", value, now)
 	if err != nil {
@@ -84,8 +57,4 @@ func (r MetadataStore) refreshCatalogHashWithExecutorAt(
 
 func (r MetadataStore) refreshCatalogHash(ctx context.Context) error {
 	return r.refreshCatalogHashWithExecutor(ctx, r.database())
-}
-
-func metadataCatalogDefinitionTables() []string {
-	return []string{"_identity_role_definitions", "_identity_profile_binding_definitions"}
 }

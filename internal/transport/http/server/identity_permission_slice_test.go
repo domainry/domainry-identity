@@ -647,7 +647,7 @@ func identityRolePolicyRequest(t *testing.T, server *httptest.Server, accessToke
 func storedRoleSchema(t *testing.T, store *database.IdentityStore, roleKey string) identitymodel.RoleSchema {
 	t.Helper()
 	var payload []byte
-	if err := store.DB().QueryRowContext(t.Context(), `SELECT payload_json FROM _identity_role_definitions WHERE resource_key = ?`, roleKey).Scan(&payload); err != nil {
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT payload_json FROM _definitions WHERE installation_id = ? AND owner = ? AND kind = ? AND definition_key = ?`, "domainry-identity", "identity", "role", roleKey).Scan(&payload); err != nil {
 		t.Fatal(err)
 	}
 	var role identitymodel.RoleSchema
@@ -660,7 +660,7 @@ func storedRoleSchema(t *testing.T, store *database.IdentityStore, roleKey strin
 func assertRolePermissionPublicationRows(t *testing.T, store *database.IdentityStore, wantVersions, wantAudits int) {
 	t.Helper()
 	var versions int
-	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _identity_role_definition_versions WHERE resource_type = ? AND resource_key = ?`, "role", "organization_administrator").Scan(&versions); err != nil {
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _definition_versions WHERE installation_id = ? AND owner = ? AND kind = ? AND definition_key = ?`, "domainry-identity", "identity", "role", "organization_administrator").Scan(&versions); err != nil {
 		t.Fatal(err)
 	}
 	if versions != wantVersions {
@@ -678,7 +678,7 @@ func assertRolePermissionPublicationRows(t *testing.T, store *database.IdentityS
 func assertRoleDefinitionEventRows(t *testing.T, store *database.IdentityStore, roleKey, event string, wantVersions, wantAudits int) {
 	t.Helper()
 	var versions int
-	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _identity_role_definition_versions WHERE resource_type = ? AND resource_key = ?`, "role", roleKey).Scan(&versions); err != nil {
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _definition_versions WHERE installation_id = ? AND owner = ? AND kind = ? AND definition_key = ?`, "domainry-identity", "identity", "role", roleKey).Scan(&versions); err != nil {
 		t.Fatal(err)
 	}
 	if versions != wantVersions {

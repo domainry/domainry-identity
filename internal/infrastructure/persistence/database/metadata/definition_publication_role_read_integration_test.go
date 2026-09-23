@@ -41,12 +41,33 @@ func TestApplyRoleDefinitionsRemainListableAfterRestart(t *testing.T) {
 	if _, err := repository.ApplyDefinitionMutations(t.Context(), scope, mutations, nil, publication); err != nil {
 		t.Fatal(err)
 	}
+	profilePayload, err := json.Marshal(identitymodel.IdentityProfileExtension{
+		ObjectKey: "employee_profile", IdentityRelationField: "identity_user_id", Cardinality: "one_to_one",
+		BusinessIdentity: identitymodel.BusinessIdentityBinding{Key: "employee"}, DefaultVisibility: "private",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.ApplyDefinitionMutations(t.Context(), scope, []metadatamodel.MetadataDefinitionMutation{{
+		Operation: "create", ResourceType: "identity_profile_binding", ResourceKey: "employee_profile",
+		Request: metadatamodel.MetadataDefinitionUpsertRequest{SourceKind: "admin", SourceID: "gym-profile-bindings", Payload: profilePayload},
+	}}, nil, nil); err != nil {
+		t.Fatal(err)
+	}
 	definitions, err := repository.ListDefinitions(t.Context(), scope, "role")
 	if err != nil || len(definitions) != 4 {
 		t.Fatalf("list applied roles count=%d err=%v", len(definitions), err)
 	}
 	if definitions[0].SchemaVersion != "1" {
 		t.Fatalf("first applied schema version=%q", definitions[0].SchemaVersion)
+	}
+	profileDefinitions, err := repository.ListDefinitions(t.Context(), scope, "identity_profile_binding")
+	if err != nil || len(profileDefinitions) != 1 || profileDefinitions[0].ResourceKey != "employee_profile" {
+		t.Fatalf("shared profile-binding definitions=%#v err=%v", profileDefinitions, err)
+	}
+	var sharedRows int
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _definitions WHERE installation_id='domainry-identity' AND owner='identity' AND kind IN ('role', 'identity_profile_binding')`).Scan(&sharedRows); err != nil || sharedRows != 5 {
+		t.Fatalf("shared Identity definition rows=%d err=%v", sharedRows, err)
 	}
 	if err := store.CloseContext(t.Context()); err != nil {
 		t.Fatal(err)
@@ -57,6 +78,10 @@ func TestApplyRoleDefinitionsRemainListableAfterRestart(t *testing.T) {
 	definitions, err = restartedRepository.ListDefinitions(t.Context(), scope, "role")
 	if err != nil || len(definitions) != 4 {
 		t.Fatalf("list restarted roles count=%d err=%v", len(definitions), err)
+	}
+	profileDefinitions, err = restartedRepository.ListDefinitions(t.Context(), scope, "identity_profile_binding")
+	if err != nil || len(profileDefinitions) != 1 || profileDefinitions[0].ResourceKey != "employee_profile" {
+		t.Fatalf("list restarted profile bindings=%#v err=%v", profileDefinitions, err)
 	}
 }
 
@@ -116,7 +141,7 @@ func TestDirectRolePublicationRollbackAndDisableAreAtomicWithProjectionAndAudit(
 	}
 	assertRoleProjectionState(t, store, "Reviewer", "disabled", 4)
 	var disabled int
-	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _identity_role_definitions WHERE resource_key='reviewer' AND disabled_at IS NOT NULL`).Scan(&disabled); err != nil || disabled != 1 {
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _definitions WHERE installation_id='domainry-identity' AND owner='identity' AND kind='role' AND definition_key='reviewer' AND disabled_at IS NOT NULL`).Scan(&disabled); err != nil || disabled != 1 {
 		t.Fatalf("disabled role definitions=%d err=%v", disabled, err)
 	}
 }

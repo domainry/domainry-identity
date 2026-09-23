@@ -17,7 +17,6 @@ var closeGeneratedActionRows = func(rows *sql.Rows) error { return rows.Close() 
 
 type metadataResourceSeed struct {
 	ResourceType  string
-	Table         string
 	Key           string
 	ObjectKey     string
 	Name          string
@@ -36,10 +35,6 @@ func (s MetadataStore) EnsureManifestMetadata(ctx context.Context, seed manifest
 	if seeded {
 		return s.SyncManifestMetadata(ctx, seed)
 	}
-	seeds, err := manifestMetadataSeeds(seed)
-	if err != nil {
-		return err
-	}
 	tx, err := s.database().BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin metadata seed: %w", err)
@@ -47,6 +42,9 @@ func (s MetadataStore) EnsureManifestMetadata(ctx context.Context, seed manifest
 	defer tx.Rollback()
 	ctx = metadatamodulehost.WithExecutor(ctx, tx)
 	if err := s.syncBusinessMetadataDefinitions(ctx, seed); err != nil {
+		return err
+	}
+	if err := s.syncIdentityDefinitions(ctx, tx, seed); err != nil {
 		return err
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -61,11 +59,6 @@ func (s MetadataStore) EnsureManifestMetadata(ctx context.Context, seed manifest
 			return err
 		}
 	}
-	for _, seed := range seeds {
-		if err := s.insertMetadataResource(ctx, tx, seed, now); err != nil {
-			return err
-		}
-	}
 	if err := s.refreshCatalogHashWithExecutorAt(ctx, tx, now); err != nil {
 		return fmt.Errorf("refresh Identity metadata catalog: %w", err)
 	}
@@ -77,10 +70,6 @@ func (s MetadataStore) EnsureManifestMetadata(ctx context.Context, seed manifest
 
 func (s MetadataStore) SyncManifestMetadata(ctx context.Context, seed manifestmodel.ManifestSchema) error {
 	ctx = s.manifestMetadataContext(ctx)
-	seeds, err := manifestMetadataSeeds(seed)
-	if err != nil {
-		return err
-	}
 	tx, err := s.database().BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin metadata sync: %w", err)
@@ -88,6 +77,9 @@ func (s MetadataStore) SyncManifestMetadata(ctx context.Context, seed manifestmo
 	defer tx.Rollback()
 	ctx = metadatamodulehost.WithExecutor(ctx, tx)
 	if err := s.syncBusinessMetadataDefinitions(ctx, seed); err != nil {
+		return err
+	}
+	if err := s.syncIdentityDefinitions(ctx, tx, seed); err != nil {
 		return err
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -99,11 +91,6 @@ func (s MetadataStore) SyncManifestMetadata(ctx context.Context, seed manifestmo
 		"schema_version":   seed.Version,
 	} {
 		if err := s.upsertMetadataCatalog(ctx, tx, key, value, now); err != nil {
-			return err
-		}
-	}
-	for _, seed := range seeds {
-		if err := s.syncMetadataResource(ctx, tx, seed, now); err != nil {
 			return err
 		}
 	}
