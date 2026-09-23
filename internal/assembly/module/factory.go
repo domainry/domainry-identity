@@ -95,6 +95,9 @@ func (factory *Factory) OpenBootstrapWithDatabase(ctx context.Context, applicati
 	if err != nil {
 		return fail(fmt.Errorf("prepare Identity bootstrap schema: %w", err))
 	}
+	if err := store.EnsureOperationsSchema(ctx); err != nil {
+		return fail(fmt.Errorf("open Identity bootstrap Operations persistence: %w", err))
+	}
 	if err := store.EnsureEmbeddedModuleBindings(ctx); err != nil {
 		return fail(fmt.Errorf("open Identity bootstrap module bindings: %w", err))
 	}
@@ -177,6 +180,10 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 		return nil, fmt.Errorf("prepare Identity module schema: %w", err)
 	}
 	if handle != nil {
+		if err := store.EnsureOperationsSchema(ctx); err != nil {
+			_ = store.CloseContext(context.Background())
+			return nil, fmt.Errorf("open Identity Module Operations persistence: %w", err)
+		}
 		if err := store.EnsureEmbeddedModuleBindings(ctx); err != nil {
 			_ = store.CloseContext(context.Background())
 			return nil, fmt.Errorf("open Identity embedded module bindings: %w", err)

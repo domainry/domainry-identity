@@ -13,6 +13,7 @@ import (
 	auditsdk "github.com/domainry/domainry-audit-sdk"
 	auditmodulehost "github.com/domainry/domainry-audit-sdk/modulehost"
 	auditmodule "github.com/domainry/domainry-audit/module"
+	sharedoperation "github.com/domainry/domainry-foundation/operation"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/base"
 	migrationcontract "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/migration"
 	identityschema "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/schema"
@@ -85,7 +86,7 @@ func (s *IdentityStore) EnsureSchema(ctx context.Context) error {
 	if err := s.EnsureIdentitySchema(ctx); err != nil {
 		return err
 	}
-	if err := s.EnsureOperationsSchema(ctx); err != nil {
+	if err := s.ensureOperationsKernelLocked(ctx); err != nil {
 		return err
 	}
 	if err := s.EnsureEvidenceSchema(ctx); err != nil {
@@ -209,7 +210,25 @@ func (s *IdentityStore) EnsureOperationsSchema(ctx context.Context) error {
 	if s.schemaAssembler != nil {
 		return s.schemaAssembler.EnsureOperationsSchema(ctx, s)
 	}
-	return identityschema.EnsureOperationsSchema(ctx, s)
+	migrations, err := sharedoperation.SchemaMigrationsForDialect(s.SchemaRenderer())
+	if err != nil {
+		return err
+	}
+	if s.hostModuleMigrations != nil {
+		return s.hostModuleMigrations.ApplyOwnedMigrations(ctx, sharedoperation.MigrationOwner, migrations)
+	}
+	return s.ApplyOwnedMigrations(ctx, sharedoperation.MigrationOwner, migrations)
+}
+
+func (s *IdentityStore) ensureOperationsKernelLocked(ctx context.Context) error {
+	if s.schemaAssembler != nil {
+		return s.schemaAssembler.EnsureOperationsSchema(ctx, s)
+	}
+	migrations, err := sharedoperation.SchemaMigrationsForDialect(s.SchemaRenderer())
+	if err != nil {
+		return err
+	}
+	return s.ApplyOwnedMigrationsLocked(ctx, sharedoperation.MigrationOwner, migrations)
 }
 
 func (s *IdentityStore) EnsureEvidenceSchema(ctx context.Context) error {

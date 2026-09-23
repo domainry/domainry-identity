@@ -14,7 +14,7 @@ import (
 	"github.com/domainry/domainry-orm/query"
 )
 
-var moduleMigrationIdentityPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
+var moduleMigrationIdentityPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]*(?:/[a-z][a-z0-9_-]*)?$`)
 
 func (s *IdentityStore) ApplyOwnedMigrations(ctx context.Context, owner string, migrations []modulehost.SchemaMigration) error {
 	if err := validateOwnedMigrations(owner, migrations); err != nil {
