@@ -1,8 +1,12 @@
 package architecture
 
 import (
+	"go/parser"
+	"go/token"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -88,5 +92,59 @@ func TestIdentityDoesNotReachIntoMetadataPersistence(t *testing.T) {
 		} else if !os.IsNotExist(err) {
 			t.Fatal(err)
 		}
+	}
+}
+
+func TestIdentityCoreDoesNotSelectForeignModuleImplementations(t *testing.T) {
+	root := filepath.Clean(filepath.Join("..", ".."))
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		relative, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		relative = filepath.ToSlash(relative)
+		if entry.IsDir() {
+			if relative == ".git" || relative == "docs" || relative == "testsupport" || relative == "internal/assembly/saas" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if filepath.Ext(path) != ".go" || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
+		if err != nil {
+			return err
+		}
+		for _, specification := range file.Imports {
+			importPath, err := strconv.Unquote(specification.Path.Value)
+			if err != nil {
+				return err
+			}
+			const domainry = "github.com/domainry/"
+			if !strings.HasPrefix(importPath, domainry) {
+				continue
+			}
+			parts := strings.Split(strings.TrimPrefix(importPath, domainry), "/")
+			repository := parts[0]
+			if repository == "domainry-identity" || repository == "domainry-foundation" || strings.HasSuffix(repository, "-sdk") {
+				continue
+			}
+			if len(parts) == 1 {
+				t.Errorf("%s selects foreign implementation root %s; only the SaaS composition root may do that", relative, importPath)
+				continue
+			}
+			switch parts[1] {
+			case "internal", "module", "remote", "server", "web", "webhost":
+				t.Errorf("%s selects foreign implementation %s; only the SaaS composition root may do that", relative, importPath)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
