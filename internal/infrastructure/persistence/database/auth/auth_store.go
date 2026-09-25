@@ -90,7 +90,7 @@ func authRefreshTokenInsert(s AuthStore, workspaceID string, token identitymodel
 	methods, _ := json.Marshal(token.AuthenticationMethods)
 	return query.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_auth_refresh_tokens", workspaceID).
 		Columns("id", "user_id", "session_id", "audience", "authentication_time", "authentication_methods", "assurance_level", "token_hash", "expires_at", "revoked_at", "replaced_by_id", "last_used_at", "created_at", "updated_at").
-		Values(token.ID, token.UserID, token.SessionID, token.Audience, token.AuthenticationTime, string(methods), token.AssuranceLevel, token.TokenHash, token.ExpiresAt, database.NullableText(token.RevokedAt), database.NullableText(token.ReplacedByID), database.NullableText(token.LastUsedAt), token.CreatedAt, updatedAt)
+		Values(token.ID, token.UserID, token.SessionID, token.Audience, token.AuthenticationTime*1000, string(methods), token.AssuranceLevel, token.TokenHash, identitypersistence.TimeMillis(token.ExpiresAt), identitypersistence.TimeMillis(token.RevokedAt), database.NullableText(token.ReplacedByID), identitypersistence.TimeMillis(token.LastUsedAt), identitypersistence.TimeMillis(token.CreatedAt), identitypersistence.TimeMillis(updatedAt))
 }
 
 func (s AuthStore) ListUserProjectionSecurityFacts(ctx context.Context, workspaceID string, userIDs []string) ([]authmodel.UserProjectionSecurityFact, error) {
@@ -111,10 +111,13 @@ func (s AuthStore) ListUserProjectionSecurityFacts(ctx context.Context, workspac
 		}
 		for rows.Next() {
 			var fact authmodel.UserProjectionSecurityFact
-			if err := rows.Scan(&fact.UserID, &fact.LockedUntil, &fact.LastLoginAt, &fact.ActiveSessions, &fact.MFAEnabled); err != nil {
+			var lockedUntil, lastLoginAt int64
+			if err := rows.Scan(&fact.UserID, &lockedUntil, &lastLoginAt, &fact.ActiveSessions, &fact.MFAEnabled); err != nil {
 				rows.Close()
 				return nil, err
 			}
+			fact.LockedUntil = identitypersistence.TimeString(lockedUntil)
+			fact.LastLoginAt = identitypersistence.TimeString(lastLoginAt)
 			facts = append(facts, fact)
 		}
 		if err := rows.Err(); err != nil {
@@ -129,13 +132,13 @@ func (s AuthStore) ListUserProjectionSecurityFacts(ctx context.Context, workspac
 func (s AuthStore) queryUserProjectionSecurityFacts(ctx context.Context, workspaceID string, userIDs []string) (*sql.Rows, error) {
 	outerUserID := query.QualifiedColumn("u", "id")
 	credentialPredicate := query.And(query.Equal("workspace_id", workspaceID), query.EqualExpressions(query.Column("user_id"), outerUserID))
-	refreshPredicate := query.And(query.Equal("workspace_id", workspaceID), query.EqualExpressions(query.Column("user_id"), outerUserID), query.IsNull("revoked_at"), query.GreaterThan("expires_at", identitypersistence.NowString()))
-	mfaPredicate := query.And(query.Equal("workspace_id", workspaceID), query.EqualExpressions(query.Column("user_id"), outerUserID), query.Equal("status", "active"), query.NotEqualExpressions(query.Coalesce(query.Column("verified_at"), query.Value("")), query.Value("")))
+	refreshPredicate := query.And(query.Equal("workspace_id", workspaceID), query.EqualExpressions(query.Column("user_id"), outerUserID), query.Equal("revoked_at", int64(0)), query.GreaterThan("expires_at", identitypersistence.TimeMillis(identitypersistence.NowString())))
+	mfaPredicate := query.And(query.Equal("workspace_id", workspaceID), query.EqualExpressions(query.Column("user_id"), outerUserID), query.Equal("status", "active"), query.NotEqual("verified_at", int64(0)))
 	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_users", workspaceID).Alias("u").
 		Projections(
 			query.Project(outerUserID),
-			query.Project(query.Coalesce(query.ScalarSubquery("_identity_credentials", query.Column("locked_until"), credentialPredicate), query.Value(""))),
-			query.Project(query.Coalesce(query.ScalarSubquery("_identity_credentials", query.Column("last_login_at"), credentialPredicate), query.Value(""))),
+			query.Project(query.Coalesce(query.ScalarSubquery("_identity_credentials", query.Column("locked_until"), credentialPredicate), query.Value(int64(0)))),
+			query.Project(query.Coalesce(query.ScalarSubquery("_identity_credentials", query.Column("last_login_at"), credentialPredicate), query.Value(int64(0)))),
 			query.Project(query.ScalarSubquery("_identity_auth_refresh_tokens", query.CountAll(), refreshPredicate)),
 			query.Project(query.CaseWhen(query.Exists("_identity_mfa_factors", mfaPredicate), 1).Else(0)),
 		).
@@ -184,14 +187,15 @@ func (s AuthStore) GetIdentityCredential(ctx context.Context, workspaceID, userI
 	}
 	row := s.db.QueryRowContext(ctx, statement, arguments...)
 	var credential identitymodel.IdentityCredential
-	var lockedUntil, lastLoginAt sql.NullString
-	if err := row.Scan(&credential.UserID, &credential.PasswordHash, &credential.PasswordUpdatedAt, &credential.FailedLoginCount, &lockedUntil, &lastLoginAt, &credential.MustChangePassword); err != nil {
+	var passwordUpdatedAt, lockedUntil, lastLoginAt int64
+	if err := row.Scan(&credential.UserID, &credential.PasswordHash, &passwordUpdatedAt, &credential.FailedLoginCount, &lockedUntil, &lastLoginAt, &credential.MustChangePassword); err != nil {
 		if err == sql.ErrNoRows {
 			return identitymodel.IdentityCredential{}, false, nil
 		}
 		return identitymodel.IdentityCredential{}, false, err
 	}
-	credential.LockedUntil, credential.LastLoginAt = identitypersistence.ValueFromNull(lockedUntil), identitypersistence.ValueFromNull(lastLoginAt)
+	credential.PasswordUpdatedAt = identitypersistence.TimeString(passwordUpdatedAt)
+	credential.LockedUntil, credential.LastLoginAt = identitypersistence.TimeString(lockedUntil), identitypersistence.TimeString(lastLoginAt)
 	return credential, true, nil
 }
 
@@ -218,7 +222,7 @@ func (s AuthStore) UpsertIdentityCredentialWithExecutor(ctx context.Context, exe
 	}
 	insert := query.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_credentials", workspaceID).
 		Columns("user_id", "password_hash", "password_updated_at", "failed_login_count", "locked_until", "last_login_at", "must_change_password", "created_at", "updated_at").
-		Values(credential.UserID, credential.PasswordHash, credential.PasswordUpdatedAt, credential.FailedLoginCount, database.NullableText(credential.LockedUntil), database.NullableText(credential.LastLoginAt), credential.MustChangePassword, now, now)
+		Values(credential.UserID, credential.PasswordHash, identitypersistence.TimeMillis(credential.PasswordUpdatedAt), credential.FailedLoginCount, identitypersistence.TimeMillis(credential.LockedUntil), identitypersistence.TimeMillis(credential.LastLoginAt), credential.MustChangePassword, identitypersistence.TimeMillis(now), identitypersistence.TimeMillis(now))
 	s.store.ApplyUpsert(insert, []string{"workspace_id", "user_id"}, "password_hash", "password_updated_at", "failed_login_count", "locked_until", "last_login_at", "must_change_password", "updated_at")
 	statement, arguments, err := insert.Build()
 	if err != nil {
@@ -237,7 +241,7 @@ func (s AuthStore) RecordIdentityLoginSuccess(ctx context.Context, workspaceID, 
 		at = identitypersistence.NowString()
 	}
 	statement, arguments, err := query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_credentials", workspaceID).
-		Set("failed_login_count", 0).Set("locked_until", nil).Set("last_login_at", at).Set("updated_at", at).Where(query.Equal("user_id", userID)).Build()
+		Set("failed_login_count", 0).Set("locked_until", int64(0)).Set("last_login_at", identitypersistence.TimeMillis(at)).Set("updated_at", identitypersistence.TimeMillis(at)).Where(query.Equal("user_id", userID)).Build()
 	if err != nil {
 		return fmt.Errorf("build identity login success update: %w", err)
 	}
@@ -265,10 +269,10 @@ func (s AuthStore) RecordIdentityLoginFailure(ctx context.Context, workspaceID, 
 		}
 		update.SetExpression("locked_until", query.CaseWhen(
 			query.GreaterThanOrEqualExpressions(query.Add(query.Column("failed_login_count"), query.Value(1)), query.Value(maxFailures)),
-			lockedUntil,
+			identitypersistence.TimeMillis(lockedUntil),
 		).Else(query.Column("locked_until")))
 	}
-	statement, arguments, err := update.Set("updated_at", at).Where(query.Equal("user_id", userID)).Build()
+	statement, arguments, err := update.Set("updated_at", identitypersistence.TimeMillis(at)).Where(query.Equal("user_id", userID)).Build()
 	if err != nil {
 		return fmt.Errorf("build identity login failure update: %w", err)
 	}
@@ -381,7 +385,7 @@ func (s AuthStore) RevokeAuthRefreshToken(ctx context.Context, workspaceID, toke
 		revokedAt = identitypersistence.NowString()
 	}
 	statement, arguments, err := query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_auth_refresh_tokens", workspaceID).
-		Set("revoked_at", revokedAt).Set("replaced_by_id", database.NullableText(replacedByID)).Set("last_used_at", revokedAt).Set("updated_at", revokedAt).
+		Set("revoked_at", identitypersistence.TimeMillis(revokedAt)).Set("replaced_by_id", database.NullableText(replacedByID)).Set("last_used_at", identitypersistence.TimeMillis(revokedAt)).Set("updated_at", identitypersistence.TimeMillis(revokedAt)).
 		Where(query.Equal("id", tokenID)).Build()
 	if err != nil {
 		return fmt.Errorf("build auth refresh token revoke: %w", err)
@@ -410,8 +414,8 @@ func (s AuthStore) RotateAuthRefreshToken(ctx context.Context, workspaceID, toke
 	}
 	defer func() { _ = tx.Rollback() }()
 	statement, arguments, err := query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_auth_refresh_tokens", workspaceID).
-		Set("revoked_at", revokedAt).Set("replaced_by_id", replacement.ID).Set("last_used_at", revokedAt).Set("updated_at", revokedAt).
-		Where(query.And(query.Equal("id", tokenID), query.IsNull("revoked_at"))).Build()
+		Set("revoked_at", identitypersistence.TimeMillis(revokedAt)).Set("replaced_by_id", replacement.ID).Set("last_used_at", identitypersistence.TimeMillis(revokedAt)).Set("updated_at", identitypersistence.TimeMillis(revokedAt)).
+		Where(query.And(query.Equal("id", tokenID), query.Equal("revoked_at", int64(0)))).Build()
 	if err != nil {
 		return false, fmt.Errorf("build auth refresh token rotation claim: %w", err)
 	}
@@ -477,7 +481,7 @@ func (s AuthStore) RevokeAuthRefreshTokensForUser(ctx context.Context, workspace
 		return 0, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	predicate := query.And(query.Equal("user_id", userID), query.IsNull("revoked_at"))
+	predicate := query.And(query.Equal("user_id", userID), query.Equal("revoked_at", int64(0)))
 	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_auth_refresh_tokens", workspaceID).
 		Columns("session_id", "expires_at").Where(predicate).Build()
 	if err != nil {
@@ -487,24 +491,16 @@ func (s AuthStore) RevokeAuthRefreshTokensForUser(ctx context.Context, workspace
 	if err != nil {
 		return 0, err
 	}
-	now, parseErr := time.Parse(time.RFC3339Nano, revokedAt)
-	if parseErr != nil {
-		rows.Close()
-		return 0, fmt.Errorf("parse auth session revocation time: %w", parseErr)
-	}
+	now := identitypersistence.TimeMillis(revokedAt)
 	active := map[string]struct{}{}
 	for rows.Next() {
-		var sessionID, expiresAt string
+		var sessionID string
+		var expiresAt int64
 		if err := rows.Scan(&sessionID, &expiresAt); err != nil {
 			rows.Close()
 			return 0, err
 		}
-		expires, err := time.Parse(time.RFC3339Nano, expiresAt)
-		if err != nil {
-			rows.Close()
-			return 0, fmt.Errorf("parse auth session expiry: %w", err)
-		}
-		if expires.After(now) {
+		if expiresAt > now {
 			active[sessionID] = struct{}{}
 		}
 	}
@@ -512,11 +508,15 @@ func (s AuthStore) RevokeAuthRefreshTokensForUser(ctx context.Context, workspace
 		return 0, err
 	}
 	statement, arguments, err = query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_auth_refresh_tokens", workspaceID).
-		Set("revoked_at", revokedAt).Set("last_used_at", revokedAt).Set("updated_at", revokedAt).Where(predicate).Build()
+		Set("revoked_at", identitypersistence.TimeMillis(revokedAt)).Set("last_used_at", identitypersistence.TimeMillis(revokedAt)).Set("updated_at", identitypersistence.TimeMillis(revokedAt)).Where(predicate).Build()
 	if err != nil {
 		return 0, fmt.Errorf("build auth sessions revoke: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
+	result, err := tx.ExecContext(ctx, statement, arguments...)
+	if err != nil {
+		return 0, err
+	}
+	if _, err := result.RowsAffected(); err != nil {
 		return 0, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -543,20 +543,15 @@ func (s AuthStore) AuthSessionState(ctx context.Context, workspaceID, userID, se
 	found, revoked := false, false
 	for rows.Next() {
 		found = true
-		var expiresAt string
-		var revokedAt sql.NullString
+		var expiresAt, revokedAt int64
 		if err := rows.Scan(&expiresAt, &revokedAt); err != nil {
 			return authrepository.AuthSessionStateMissing, err
 		}
-		if revokedAt.Valid && strings.TrimSpace(revokedAt.String) != "" {
+		if revokedAt != 0 {
 			revoked = true
 			continue
 		}
-		expires, err := time.Parse(time.RFC3339Nano, expiresAt)
-		if err != nil {
-			return authrepository.AuthSessionStateExpired, fmt.Errorf("parse auth session expiry: %w", err)
-		}
-		if expires.After(now) {
+		if expiresAt > now.UTC().UnixMilli() {
 			return authrepository.AuthSessionStateActive, nil
 		}
 	}
@@ -595,7 +590,7 @@ func (s AuthStore) revokeLogicalSessions(ctx context.Context, workspaceID, userI
 	if exclude {
 		sessionPredicate = query.NotEqual("session_id", sessionID)
 	}
-	predicate := query.And(query.Equal("user_id", userID), sessionPredicate, query.IsNull("revoked_at"))
+	predicate := query.And(query.Equal("user_id", userID), sessionPredicate, query.Equal("revoked_at", int64(0)))
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
@@ -624,23 +619,15 @@ func (s AuthStore) revokeLogicalSessions(ctx context.Context, workspaceID, userI
 		return 0, err
 	}
 	active := map[string]struct{}{}
-	now, parseErr := time.Parse(time.RFC3339Nano, revokedAt)
-	if parseErr != nil {
-		rows.Close()
-		return 0, fmt.Errorf("parse auth session revocation time: %w", parseErr)
-	}
+	now := identitypersistence.TimeMillis(revokedAt)
 	for rows.Next() {
-		var candidate, expiresAt string
+		var candidate string
+		var expiresAt int64
 		if err := rows.Scan(&candidate, &expiresAt); err != nil {
 			rows.Close()
 			return 0, err
 		}
-		expires, err := time.Parse(time.RFC3339Nano, expiresAt)
-		if err != nil {
-			rows.Close()
-			return 0, fmt.Errorf("parse auth session expiry: %w", err)
-		}
-		if expires.After(now) {
+		if expiresAt > now {
 			active[candidate] = struct{}{}
 		}
 	}
@@ -648,7 +635,7 @@ func (s AuthStore) revokeLogicalSessions(ctx context.Context, workspaceID, userI
 		return 0, err
 	}
 	statement, arguments, err = query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_auth_refresh_tokens", workspaceID).
-		Set("revoked_at", revokedAt).Set("last_used_at", revokedAt).Set("updated_at", revokedAt).Where(predicate).Build()
+		Set("revoked_at", identitypersistence.TimeMillis(revokedAt)).Set("last_used_at", identitypersistence.TimeMillis(revokedAt)).Set("updated_at", identitypersistence.TimeMillis(revokedAt)).Where(predicate).Build()
 	if err != nil {
 		return 0, fmt.Errorf("build logical auth sessions revoke: %w", err)
 	}
@@ -684,11 +671,13 @@ func (s AuthStore) ListIdentityExternalAccounts(ctx context.Context, workspaceID
 	for rows.Next() {
 		var account identitymodel.IdentityExternalAccount
 		var email, phone, displayName, avatarURL, metadata sql.NullString
-		if err := rows.Scan(&account.ID, &account.UserID, &account.Provider, &account.ProviderSubject, &email, &phone, &displayName, &avatarURL, &metadata, &account.LinkedAt); err != nil {
+		var linkedAt int64
+		if err := rows.Scan(&account.ID, &account.UserID, &account.Provider, &account.ProviderSubject, &email, &phone, &displayName, &avatarURL, &metadata, &linkedAt); err != nil {
 			return nil, err
 		}
 		account.Email, account.Phone = identitypersistence.ValueFromNull(email), identitypersistence.ValueFromNull(phone)
 		account.DisplayName, account.AvatarURL, account.Metadata = identitypersistence.ValueFromNull(displayName), identitypersistence.ValueFromNull(avatarURL), identitypersistence.ValueFromNull(metadata)
+		account.LinkedAt = identitypersistence.TimeString(linkedAt)
 		out = append(out, account)
 	}
 	return out, rows.Err()
@@ -711,7 +700,7 @@ func (s AuthStore) UpsertIdentityExternalAccount(ctx context.Context, workspaceI
 	}
 	insert := query.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_external_accounts", workspaceID).
 		Columns("id", "user_id", "provider", "provider_subject", "email", "phone", "display_name", "avatar_url", "metadata", "linked_at", "created_at", "updated_at").
-		Values(account.ID, account.UserID, account.Provider, account.ProviderSubject, database.NullableText(account.Email), database.NullableText(account.Phone), database.NullableText(account.DisplayName), database.NullableText(account.AvatarURL), database.NullableText(account.Metadata), account.LinkedAt, now, now)
+		Values(account.ID, account.UserID, account.Provider, account.ProviderSubject, database.NullableText(account.Email), database.NullableText(account.Phone), database.NullableText(account.DisplayName), database.NullableText(account.AvatarURL), database.NullableText(account.Metadata), identitypersistence.TimeMillis(account.LinkedAt), identitypersistence.TimeMillis(now), identitypersistence.TimeMillis(now))
 	s.store.ApplyUpsert(insert, []string{"workspace_id", "id"}, "user_id", "provider", "provider_subject", "email", "phone", "display_name", "avatar_url", "metadata", "linked_at", "updated_at")
 	statement, arguments, err := insert.Build()
 	if err != nil {
@@ -744,15 +733,18 @@ func (s AuthStore) ListIdentityMFAFactors(ctx context.Context, workspaceID, user
 	factors := []identitymodel.IdentityMFAFactor{}
 	for rows.Next() {
 		var factor identitymodel.IdentityMFAFactor
-		var label, provider, providerRef, verifiedAt, lastUsedAt sql.NullString
-		if err := rows.Scan(&factor.ID, &factor.UserID, &factor.Type, &label, &provider, &providerRef, &factor.Status, &verifiedAt, &lastUsedAt, &factor.CreatedAt, &factor.UpdatedAt); err != nil {
+		var label, provider, providerRef sql.NullString
+		var verifiedAt, lastUsedAt, createdAt, updatedAt int64
+		if err := rows.Scan(&factor.ID, &factor.UserID, &factor.Type, &label, &provider, &providerRef, &factor.Status, &verifiedAt, &lastUsedAt, &createdAt, &updatedAt); err != nil {
 			return nil, err
 		}
 		factor.Label = identitypersistence.ValueFromNull(label)
 		factor.Provider = identitypersistence.ValueFromNull(provider)
 		factor.ProviderRef = identitypersistence.ValueFromNull(providerRef)
-		factor.VerifiedAt = identitypersistence.ValueFromNull(verifiedAt)
-		factor.LastUsedAt = identitypersistence.ValueFromNull(lastUsedAt)
+		factor.VerifiedAt = identitypersistence.TimeString(verifiedAt)
+		factor.LastUsedAt = identitypersistence.TimeString(lastUsedAt)
+		factor.CreatedAt = identitypersistence.TimeString(createdAt)
+		factor.UpdatedAt = identitypersistence.TimeString(updatedAt)
 		factors = append(factors, factor)
 	}
 	return factors, rows.Err()
@@ -778,7 +770,7 @@ func (s AuthStore) UpsertIdentityMFAFactor(ctx context.Context, workspaceID stri
 	factor.UpdatedAt = now
 	insert := query.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_mfa_factors", workspaceID).
 		Columns("id", "user_id", "factor_type", "label", "provider", "provider_ref", "status", "verified_at", "last_used_at", "created_at", "updated_at").
-		Values(factor.ID, factor.UserID, factor.Type, database.NullableText(factor.Label), database.NullableText(factor.Provider), database.NullableText(factor.ProviderRef), factor.Status, database.NullableText(factor.VerifiedAt), database.NullableText(factor.LastUsedAt), factor.CreatedAt, factor.UpdatedAt)
+		Values(factor.ID, factor.UserID, factor.Type, database.NullableText(factor.Label), database.NullableText(factor.Provider), database.NullableText(factor.ProviderRef), factor.Status, identitypersistence.TimeMillis(factor.VerifiedAt), identitypersistence.TimeMillis(factor.LastUsedAt), identitypersistence.TimeMillis(factor.CreatedAt), identitypersistence.TimeMillis(factor.UpdatedAt))
 	s.store.ApplyUpsert(insert, []string{"workspace_id", "id"}, "user_id", "factor_type", "label", "provider", "provider_ref", "status", "verified_at", "last_used_at", "updated_at")
 	statement, arguments, err := insert.Build()
 	if err != nil {
@@ -798,7 +790,7 @@ func (s AuthStore) RevokeIdentityMFAFactor(ctx context.Context, workspaceID, use
 		return fmt.Errorf("MFA factor user id and factor id are required")
 	}
 	statement, arguments, err := query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_mfa_factors", workspaceID).
-		Set("status", "disabled").Set("updated_at", identitypersistence.NowString()).
+		Set("status", "disabled").Set("updated_at", identitypersistence.TimeMillis(identitypersistence.NowString())).
 		Where(query.And(query.Equal("user_id", userID), query.Equal("id", factorID))).Build()
 	if err != nil {
 		return fmt.Errorf("build identity MFA factor revoke: %w", err)

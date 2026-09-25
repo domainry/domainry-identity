@@ -442,7 +442,7 @@ func portableValue(value any) (json.RawMessage, error) {
 	case []byte:
 		return json.Marshal(string(typed))
 	case time.Time:
-		return json.Marshal(typed.UTC().Format(time.RFC3339Nano))
+		return json.Marshal(typed.UTC().UnixMilli())
 	default:
 		return json.Marshal(typed)
 	}

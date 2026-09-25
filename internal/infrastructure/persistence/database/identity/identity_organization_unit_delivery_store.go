@@ -62,7 +62,8 @@ func (s *SQLIdentityStore) GetIdentityOrganizationUnitDeliveryState(ctx context.
 		return identitymodel.IdentityOrganizationUnitDeliveryState{}, false, fmt.Errorf("build Identity organization unit delivery state query: %w", err)
 	}
 	var state identitymodel.IdentityOrganizationUnitDeliveryState
-	err = s.reader(ctx).QueryRowContext(ctx, statement, arguments...).Scan(&state.OrganizationID, &state.Version, &state.StateFingerprint, &state.UpdatedAt)
+	var updatedAt int64
+	err = s.reader(ctx).QueryRowContext(ctx, statement, arguments...).Scan(&state.OrganizationID, &state.Version, &state.StateFingerprint, &updatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return identitymodel.IdentityOrganizationUnitDeliveryState{}, false, nil
 	}
@@ -70,6 +71,7 @@ func (s *SQLIdentityStore) GetIdentityOrganizationUnitDeliveryState(ctx context.
 		return identitymodel.IdentityOrganizationUnitDeliveryState{}, false, err
 	}
 	state.WorkspaceID = workspaceID
+	state.UpdatedAt = timeString(updatedAt)
 	return state, true, nil
 }
 
@@ -274,7 +276,7 @@ func (s *SQLIdentityStore) insertDeliveredOrganizationUnit(ctx context.Context, 
 	ancestors, _ := json.Marshal(organization.AncestorIDs)
 	statement, arguments, err := query.NewWorkspaceInsertBuilder(s.sqlRenderer(), "_identity_organization_units", workspaceID).
 		Columns("id", "code", "name", "sibling_key", "node_type", "parent_id", "path", "ancestor_ids", "depth", "sort_order", "status", "delivery_owner", "delivery_version", "delivery_state_fingerprint", "created_at", "updated_at").
-		Values(organization.ID, organization.Code, organization.Name, identitymodel.IdentityOrganizationUnitSiblingKey(organization.ParentID, organization.Name), string(organization.NodeType), identityOrganizationUnitDeliveryParentID(organization.ParentID), organization.Path, string(ancestors), organization.Depth, organization.SortOrder, string(organization.Status), organizationUnitStateOwner, version, fingerprint, nowString(), nowString()).Build()
+		Values(organization.ID, organization.Code, organization.Name, identitymodel.IdentityOrganizationUnitSiblingKey(organization.ParentID, organization.Name), string(organization.NodeType), identityOrganizationUnitDeliveryParentID(organization.ParentID), organization.Path, string(ancestors), organization.Depth, organization.SortOrder, string(organization.Status), organizationUnitStateOwner, version, fingerprint, timeMillis(nowString()), timeMillis(nowString())).Build()
 	if err != nil {
 		return fmt.Errorf("build Identity organization unit delivery insert: %w", err)
 	}

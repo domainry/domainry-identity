@@ -26,8 +26,9 @@ func (s *SQLIdentityStore) ApplyIdentityWorkflowWorkloadRelease(ctx context.Cont
 	}
 	defer tx.Rollback()
 	now := nowString()
+	nowMillis := timeMillis(now)
 	statement, arguments, err := query.NewWorkspaceUpdateBuilder(s.sqlRenderer(), "_identity_workflow_workload_bindings", workspaceID).
-		Set("status", "inactive").Set("deactivated_at", now).Set("updated_at", now).
+		Set("status", "inactive").Set("deactivated_at", nowMillis).Set("updated_at", nowMillis).
 		Where(query.And(query.Equal("application_key", release.ApplicationKey), query.Equal("status", "active"))).Build()
 	if err != nil {
 		return nil, fmt.Errorf("build workflow workload deactivation: %w", err)
@@ -43,7 +44,7 @@ func (s *SQLIdentityStore) ApplyIdentityWorkflowWorkloadRelease(ctx context.Cont
 		}
 		insert := query.NewWorkspaceInsertBuilder(s.sqlRenderer(), "_identity_workflow_workload_bindings", workspaceID).
 			Columns("id", "application_key", "subject_id", "workflow_key", "definition_version_id", "definition_version", "role_key", "action_keys_json", "release_id", "release_digest", "source_kind", "source_id", "status", "created_at", "updated_at", "deactivated_at").
-			Values(identityID("workflow_workload", workspaceID, release.ApplicationKey, binding.WorkflowKey), release.ApplicationKey, binding.SubjectID, binding.WorkflowKey, binding.DefinitionVersionID, binding.DefinitionVersion, binding.RoleKey, string(actionsJSON), release.ReleaseID, release.ReleaseDigest, binding.SourceKind, binding.SourceID, "active", now, now, nil)
+			Values(identityID("workflow_workload", workspaceID, release.ApplicationKey, binding.WorkflowKey), release.ApplicationKey, binding.SubjectID, binding.WorkflowKey, binding.DefinitionVersionID, binding.DefinitionVersion, binding.RoleKey, string(actionsJSON), release.ReleaseID, release.ReleaseDigest, binding.SourceKind, binding.SourceID, "active", nowMillis, nowMillis, int64(0))
 		s.ApplyUpsert(insert, []string{"workspace_id", "application_key", "workflow_key"}, "subject_id", "definition_version_id", "definition_version", "role_key", "action_keys_json", "release_id", "release_digest", "source_kind", "source_id", "status", "updated_at", "deactivated_at")
 		statement, arguments, buildErr := insert.Build()
 		if buildErr != nil {
@@ -74,8 +75,8 @@ func (s *SQLIdentityStore) GetIdentityWorkflowWorkloadBinding(ctx context.Contex
 	}
 	var binding identitymodel.IdentityWorkflowWorkloadBinding
 	var actionsJSON string
-	var deactivatedAt sql.NullString
-	err = s.reader(ctx).QueryRowContext(ctx, statement, arguments...).Scan(&binding.SubjectID, &binding.WorkflowKey, &binding.DefinitionVersionID, &binding.DefinitionVersion, &binding.RoleKey, &actionsJSON, &binding.ReleaseID, &binding.ReleaseDigest, &binding.SourceKind, &binding.SourceID, &binding.Status, &binding.CreatedAt, &binding.UpdatedAt, &deactivatedAt)
+	var createdAt, updatedAt, deactivatedAt int64
+	err = s.reader(ctx).QueryRowContext(ctx, statement, arguments...).Scan(&binding.SubjectID, &binding.WorkflowKey, &binding.DefinitionVersionID, &binding.DefinitionVersion, &binding.RoleKey, &actionsJSON, &binding.ReleaseID, &binding.ReleaseDigest, &binding.SourceKind, &binding.SourceID, &binding.Status, &createdAt, &updatedAt, &deactivatedAt)
 	if err == sql.ErrNoRows {
 		return identitymodel.IdentityWorkflowWorkloadBinding{}, false, nil
 	}
@@ -85,6 +86,7 @@ func (s *SQLIdentityStore) GetIdentityWorkflowWorkloadBinding(ctx context.Contex
 	if err := json.Unmarshal([]byte(actionsJSON), &binding.ActionKeys); err != nil {
 		return identitymodel.IdentityWorkflowWorkloadBinding{}, false, err
 	}
-	binding.WorkspaceID, binding.ApplicationKey, binding.DeactivatedAt = workspaceID, applicationKey, valueFromNull(deactivatedAt)
+	binding.WorkspaceID, binding.ApplicationKey = workspaceID, applicationKey
+	binding.CreatedAt, binding.UpdatedAt, binding.DeactivatedAt = timeString(createdAt), timeString(updatedAt), timeString(deactivatedAt)
 	return binding, true, nil
 }

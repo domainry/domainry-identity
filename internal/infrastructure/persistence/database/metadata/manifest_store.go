@@ -8,6 +8,7 @@ import (
 
 	"github.com/domainry/domainry-foundation/requestcontext"
 	manifestmodel "github.com/domainry/domainry-identity/internal/domain/manifest/model"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/timevalue"
 	metadatamodulehost "github.com/domainry/domainry-metadata-sdk/modulehost"
 	"github.com/domainry/domainry-orm/query"
 )
@@ -96,7 +97,7 @@ func (s MetadataStore) disableRemovedGeneratedDefinitions(ctx context.Context, t
 		return nil
 	}
 	update, updateArguments, err := query.NewUpdateBuilder(s.store.SQLRenderer, table).
-		Set("disabled_at", now).Set("updated_at", now).
+		Set("disabled_at", timevalue.Millis(now)).Set("updated_at", timevalue.Millis(now)).
 		Where(query.In("resource_key", stringValues(removedKeys)...)).Build()
 	if err != nil {
 		return fmt.Errorf("build removed generated %s disable: %w", table, err)

@@ -406,7 +406,7 @@ func TestApplyMigrationsOrchestrationErrorEdges(t *testing.T) {
 	})
 	t.Run("non-current status", func(t *testing.T) {
 		store := openMigrationEdgeStore(t)
-		if _, err := store.db.ExecContext(t.Context(), `INSERT INTO _schema_migrations(path, checksum, dirty, applied_at) VALUES ('999_unknown.sql', 'unknown', FALSE, 'now')`); err != nil {
+		if _, err := store.db.ExecContext(t.Context(), `INSERT INTO _schema_migrations(path, checksum, dirty, applied_at) VALUES ('999_unknown.sql', 'unknown', FALSE, 0)`); err != nil {
 			t.Fatal(err)
 		}
 		path := writeMigrationEdgeFile(t, "005_current.sql", "CREATE TABLE current_edge(id TEXT);")
@@ -437,7 +437,7 @@ func TestVerifyMigrationsOrchestrationEdges(t *testing.T) {
 	if err := store.Coordinator.Verify(t.Context(), config.Config{MigrationSQL: path}); err != nil {
 		t.Fatalf("current verification=%v", err)
 	}
-	if _, err := store.db.ExecContext(t.Context(), `INSERT INTO _schema_migrations(path, checksum, dirty, applied_at) VALUES ('999_unknown.sql', 'unknown', FALSE, 'now')`); err != nil {
+	if _, err := store.db.ExecContext(t.Context(), `INSERT INTO _schema_migrations(path, checksum, dirty, applied_at) VALUES ('999_unknown.sql', 'unknown', FALSE, 0)`); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Coordinator.Verify(t.Context(), config.Config{MigrationSQL: path}); err == nil || !strings.Contains(err.Error(), "migration.schema_newer") {

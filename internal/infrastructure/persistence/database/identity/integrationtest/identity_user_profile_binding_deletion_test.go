@@ -35,7 +35,7 @@ func TestIdentityUserDeletionEnumeratesAndBlocksBoundProfiles(t *testing.T) {
 	}
 	if _, err := identityStore.DB().ExecContext(t.Context(), `INSERT INTO _identity_profile_bindings
 		(id, workspace_id, binding_key, object_key, profile_id, identity_user_id, status, version, created_at, updated_at)
-		VALUES ('binding-1', 'workspace-primary', 'member', 'member_profile', 'member-1', 'member-user', 'active', 1, 'now', 'now')`); err != nil {
+		VALUES ('binding-1', 'workspace-primary', 'member', 'member_profile', 'member-1', 'member-user', 'active', 1, 1, 1)`); err != nil {
 		t.Fatal(err)
 	}
 	if err := service.RemoveUser(t.Context(), user.ID); apperror.CodeOf(err) != "backend.identity.user_profile_bindings_exist" {

@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/timevalue"
 	"github.com/domainry/domainry-orm/query"
 )
 
@@ -53,13 +54,19 @@ func (s Store) appendIdentityProjectionRoles(ctx context.Context, workspaceID st
 	defer rows.Close()
 	for rows.Next() {
 		var assignment identitymodel.IdentityUserRoleAssignment
-		var bindingKey, profileID, validFrom, validUntil, grantedBy, grantReason, revokedBy, revokedAt, revokeReason, expiresAt sql.NullString
-		if err := rows.Scan(&assignment.UserID, &assignment.RoleID, &bindingKey, &profileID, &assignment.Source, &assignment.Status, &validFrom, &validUntil, &grantedBy, &grantReason, &revokedBy, &revokedAt, &revokeReason, &expiresAt, &assignment.CreatedAt, &assignment.UpdatedAt); err != nil {
+		var bindingKey, profileID, grantedBy, grantReason, revokedBy, revokeReason sql.NullString
+		var validFrom, validUntil, revokedAt, expiresAt, createdAt, updatedAt int64
+		if err := rows.Scan(&assignment.UserID, &assignment.RoleID, &bindingKey, &profileID, &assignment.Source, &assignment.Status, &validFrom, &validUntil, &grantedBy, &grantReason, &revokedBy, &revokedAt, &revokeReason, &expiresAt, &createdAt, &updatedAt); err != nil {
 			return err
 		}
 		assignment.BindingKey, assignment.ProfileID = bindingKey.String, profileID.String
-		assignment.ValidFrom, assignment.ValidUntil, assignment.GrantedBy, assignment.GrantReason = validFrom.String, validUntil.String, grantedBy.String, grantReason.String
-		assignment.RevokedBy, assignment.RevokedAt, assignment.RevokeReason, assignment.ExpiresAt = revokedBy.String, revokedAt.String, revokeReason.String, pointerFromNull(expiresAt)
+		assignment.ValidFrom, assignment.ValidUntil, assignment.GrantedBy, assignment.GrantReason = timevalue.String(validFrom), timevalue.String(validUntil), grantedBy.String, grantReason.String
+		assignment.RevokedBy, assignment.RevokedAt, assignment.RevokeReason = revokedBy.String, timevalue.String(revokedAt), revokeReason.String
+		if expiresAt != 0 {
+			value := timevalue.String(expiresAt)
+			assignment.ExpiresAt = &value
+		}
+		assignment.CreatedAt, assignment.UpdatedAt = timevalue.String(createdAt), timevalue.String(updatedAt)
 		facts.RoleAssignments = append(facts.RoleAssignments, assignment)
 	}
 	return rows.Err()
@@ -122,10 +129,12 @@ func scanIdentityProfileBinding(row interface{ Scan(...any) error }) (identitymo
 	var binding identitymodel.IdentityProfileBinding
 	var status string
 	var identityUserID, invitationChannel, claimProofType sql.NullString
-	err := row.Scan(&binding.WorkspaceID, &binding.BindingKey, &binding.ObjectKey, &binding.ProfileID, &identityUserID, &status, &invitationChannel, &claimProofType, &binding.Version, &binding.CreatedAt, &binding.UpdatedAt)
+	var createdAt, updatedAt int64
+	err := row.Scan(&binding.WorkspaceID, &binding.BindingKey, &binding.ObjectKey, &binding.ProfileID, &identityUserID, &status, &invitationChannel, &claimProofType, &binding.Version, &createdAt, &updatedAt)
 	binding.IdentityUserID = identityUserID.String
 	binding.InvitationChannel = invitationChannel.String
 	binding.ClaimProofType = claimProofType.String
 	binding.Status = identitymodel.IdentityProfileBindingStatus(status)
+	binding.CreatedAt, binding.UpdatedAt = timevalue.String(createdAt), timevalue.String(updatedAt)
 	return binding, err
 }

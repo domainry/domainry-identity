@@ -60,5 +60,5 @@ func (Dialect) SQLDialect() ormdialect.Dialect {
 }
 
 func (Dialect) SchemaMigrationSQL() string {
-	return `CREATE TABLE IF NOT EXISTS "_schema_migrations" ("path" TEXT PRIMARY KEY, "applied_at" TEXT NOT NULL)`
+	return `CREATE TABLE IF NOT EXISTS "_schema_migrations" ("path" TEXT PRIMARY KEY, "applied_at" BIGINT NOT NULL)`
 }

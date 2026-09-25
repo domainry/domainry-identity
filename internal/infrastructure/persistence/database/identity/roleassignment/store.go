@@ -8,6 +8,7 @@ import (
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	identitydatascope "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/datascope"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/timevalue"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 	"github.com/domainry/domainry-orm/query"
 )
@@ -195,8 +196,8 @@ func values(workspaceID string, assignment identitymodel.IdentityUserRoleAssignm
 	}
 	return []any{identifier("identity_user_role", workspaceID, assignment.UserID, assignment.RoleID), workspaceID, assignment.UserID, assignment.RoleID,
 		nullIfBlank(assignment.BindingKey), nullIfBlank(assignment.ProfileID), assignment.Source, assignment.Status,
-		nullIfBlank(assignment.ValidFrom), nullIfBlank(assignment.ValidUntil), nullIfBlank(assignment.GrantedBy), nullIfBlank(assignment.GrantReason),
-		nullIfBlank(assignment.RevokedBy), nullIfBlank(assignment.RevokedAt), nullIfBlank(assignment.RevokeReason), nullableString(assignment.ExpiresAt), createdAt, now}
+		timevalue.Millis(assignment.ValidFrom), timevalue.Millis(assignment.ValidUntil), nullIfBlank(assignment.GrantedBy), nullIfBlank(assignment.GrantReason),
+		nullIfBlank(assignment.RevokedBy), timevalue.Millis(assignment.RevokedAt), nullIfBlank(assignment.RevokeReason), timevalue.Millis(nullableString(assignment.ExpiresAt)), timevalue.Millis(createdAt), timevalue.Millis(now)}
 }
 
 func workspaceIdentifier(value string) (string, error) {

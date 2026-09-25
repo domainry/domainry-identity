@@ -13,7 +13,6 @@ import (
 	sharedsubject "github.com/domainry/domainry-foundation/subjectlifecycle"
 	identitypolicy "github.com/domainry/domainry-identity/internal/domain/identity/policy"
 	privacy "github.com/domainry/domainry-identity/internal/domain/privacy"
-	lifecyclemodel "github.com/domainry/domainry-lifecycle-sdk/model"
 	"github.com/domainry/domainry-orm/query"
 )
 
@@ -55,6 +54,15 @@ type subjectStepWriter interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }
 
+type persistedSubjectStep struct {
+	WorkspaceID string          `json:"workspace_id"`
+	RequestID   string          `json:"request_id"`
+	Owner       string          `json:"owner"`
+	Operation   string          `json:"operation"`
+	Payload     json.RawMessage `json:"payload"`
+	CompletedAt int64           `json:"completed_at"`
+}
+
 func (s *Store) sharedSubjectStep(ctx context.Context, reader subjectStepReader, workspaceID, requestID, operation string) (json.RawMessage, bool, error) {
 	statement, args, err := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), sharedSubjectExecutionStepsTable, workspaceID).
 		Columns("payload_json").Where(query.And(
@@ -71,7 +79,7 @@ func (s *Store) sharedSubjectStep(ctx context.Context, reader subjectStepReader,
 	} else if err != nil {
 		return nil, false, err
 	}
-	var step lifecyclemodel.SubjectExecutionStep
+	var step persistedSubjectStep
 	if json.Unmarshal([]byte(raw), &step) != nil || step.WorkspaceID != workspaceID || step.RequestID != requestID || step.Owner != identitySubjectOwner || step.Operation != operation || !json.Valid(step.Payload) {
 		return nil, false, fmt.Errorf("identity shared subject execution step invalid")
 	}
@@ -91,13 +99,13 @@ func (s *Store) saveSharedSubjectStep(ctx context.Context, writer subjectStepWri
 		return nil
 	}
 	completedAt := time.Now().UTC()
-	step := lifecyclemodel.SubjectExecutionStep{
+	step := persistedSubjectStep{
 		WorkspaceID: workspaceID,
 		RequestID:   requestID,
 		Owner:       identitySubjectOwner,
 		Operation:   operation,
 		Payload:     append(json.RawMessage(nil), payload...),
-		CompletedAt: completedAt,
+		CompletedAt: completedAt.UnixMilli(),
 	}
 	raw, err := json.Marshal(step)
 	if err != nil {
@@ -105,7 +113,7 @@ func (s *Store) saveSharedSubjectStep(ctx context.Context, writer subjectStepWri
 	}
 	statement, args, err := query.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), sharedSubjectExecutionStepsTable, workspaceID).
 		Columns("request_id", "owner", "operation", "payload_json", "completed_at").
-		Values(requestID, identitySubjectOwner, operation, string(raw), completedAt.Format(time.RFC3339Nano)).Build()
+		Values(requestID, identitySubjectOwner, operation, string(raw), completedAt.UTC().UnixMilli()).Build()
 	if err != nil {
 		return err
 	}
@@ -192,7 +200,7 @@ func (s *Store) EraseSubjectForRequest(ctx context.Context, requestID, workspace
 		}
 	}
 	anonymized := identitypolicy.IdentityAnonymizedSubject(workspaceID, userID)
-	now := time.Now().UTC().Format(time.RFC3339Nano)
+	now := time.Now().UTC().UnixMilli()
 	if status != "erased" {
 		update := query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_users", workspaceID).
 			Set("name", anonymized.Name).Set("email", anonymized.Email).Set("status", "erased").

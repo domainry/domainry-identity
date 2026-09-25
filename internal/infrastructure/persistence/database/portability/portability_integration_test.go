@@ -224,7 +224,7 @@ func bindSharedWorkspaceOperationControls(t *testing.T, store *database.Identity
 		reference TEXT NOT NULL DEFAULT '',
 		updated_by TEXT NOT NULL,
 		revision BIGINT NOT NULL,
-		updated_at TEXT NOT NULL,
+		updated_at BIGINT NOT NULL,
 		PRIMARY KEY(system_purpose,control_kind,owner)
 	)`); err != nil {
 		t.Fatal(err)
@@ -234,7 +234,7 @@ func bindSharedWorkspaceOperationControls(t *testing.T, store *database.Identity
 
 func seedPortableWorkspace(t *testing.T, store *database.IdentityStore, now time.Time) {
 	t.Helper()
-	timestamp := now.Format(time.RFC3339Nano)
+	timestamp := now.UnixMilli()
 	for _, application := range []struct{ id, key, redirects string }{
 		{id: "application-admin", key: "identity-admin", redirects: `["https://admin.example/callback"]`},
 		{id: "application-runtime", key: "orders-runtime", redirects: `[]`},
@@ -277,19 +277,19 @@ func seedPortableWorkspace(t *testing.T, store *database.IdentityStore, now time
 	}
 	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO _identity_user_role_assignments
 		(id, workspace_id, user_id, role_id, binding_key, profile_id, source, status, valid_from, valid_until, granted_by, grant_reason, revoked_by, revoked_at, revoke_reason, expires_at, created_at, updated_at)
-		VALUES (?, ?, ?, ?, NULL, NULL, 'manual', 'active', NULL, NULL, 'admin', '', NULL, NULL, NULL, NULL, ?, ?)`,
+		VALUES (?, ?, ?, ?, NULL, NULL, 'manual', 'active', 0, 0, 'admin', '', NULL, 0, NULL, 0, ?, ?)`,
 		"assignment-1", "workspace-a", "user-1", "role-1", timestamp, timestamp); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO _identity_credentials
         (user_id, workspace_id, password_hash, password_updated_at, failed_login_count, locked_until, last_login_at, must_change_password, created_at, updated_at)
-        VALUES (?, ?, ?, ?, 0, NULL, NULL, 0, ?, ?)`, "user-1", "workspace-a", "password_hash", timestamp, timestamp, timestamp); err != nil {
+		VALUES (?, ?, ?, ?, 0, 0, 0, 0, ?, ?)`, "user-1", "workspace-a", "password_hash", timestamp, timestamp, timestamp); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO _identity_auth_refresh_tokens
         (id, workspace_id, user_id, session_id, audience, token_hash, expires_at, revoked_at, replaced_by_id, last_used_at, created_at, updated_at)
-        VALUES (?, ?, ?, ?, 'runtime', ?, ?, NULL, NULL, NULL, ?, ?)`,
-		"refresh-1", "workspace-a", "user-1", "session-1", "refresh-token-secret", now.Add(time.Hour).Format(time.RFC3339Nano), timestamp, timestamp); err != nil {
+		VALUES (?, ?, ?, ?, 'runtime', ?, ?, 0, NULL, 0, ?, ?)`,
+		"refresh-1", "workspace-a", "user-1", "session-1", "refresh-token-secret", now.Add(time.Hour).UnixMilli(), timestamp, timestamp); err != nil {
 		t.Fatal(err)
 	}
 	providerConfiguration := `{"provider_key":"oidc","workspace_id":"workspace-a","type":"oidc","issuer":"https://issuer.example","client_id":"client-a","auto_create_users":false}`
@@ -302,7 +302,7 @@ func seedPortableWorkspace(t *testing.T, store *database.IdentityStore, now time
 
 func seedTargetProvider(t *testing.T, store *database.IdentityStore, now time.Time) {
 	t.Helper()
-	timestamp := now.Format(time.RFC3339Nano)
+	timestamp := now.UnixMilli()
 	providerConfiguration := `{"provider_key":"oidc","workspace_id":"workspace-a","type":"oidc","issuer":"https://issuer.example","client_id":"saas-client","auto_create_users":false}`
 	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO _identity_auth_provider_credentials
         (workspace_id, provider_key, configuration_json, secret_envelope, updated_by, created_at, updated_at)

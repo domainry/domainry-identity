@@ -7,6 +7,7 @@ import (
 	"time"
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/timevalue"
 )
 
 func identityID(parts ...string) string {
@@ -47,7 +48,15 @@ func valueFromNull(value sql.NullString) string {
 }
 
 func nowString() string {
-	return time.Now().UTC().Format(time.RFC3339)
+	return time.Now().UTC().Truncate(time.Millisecond).Format(time.RFC3339Nano)
+}
+
+func timeMillis(value any) int64 {
+	return timevalue.Millis(value)
+}
+
+func timeString(value int64) string {
+	return timevalue.String(value)
 }
 
 func uniqueSortedStrings(values []string) []string {

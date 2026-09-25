@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
-	"strings"
 	"time"
 
 	"github.com/domainry/domainry-foundation/apperror"
@@ -27,7 +26,7 @@ func (s AuthStore) TOTPFactorState(ctx context.Context, workspaceID, userID stri
 	}
 	id := totpFactorID(workspaceID, userID)
 	statement, args, err := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_mfa_factors", workspaceID).
-		Columns("totp_secret", "provider_ref").Where(query.And(query.Equal("id", id), query.Equal("user_id", userID), query.Equal("provider", authmodel.TOTPProvider), query.Equal("status", "active"), query.IsNotNull("verified_at"))).Build()
+		Columns("totp_secret", "provider_ref").Where(query.And(query.Equal("id", id), query.Equal("user_id", userID), query.Equal("provider", authmodel.TOTPProvider), query.Equal("status", "active"), query.NotEqual("verified_at", int64(0)))).Build()
 	if err != nil {
 		return authmodel.TOTPFactorState{}, err
 	}
@@ -80,7 +79,7 @@ func (s AuthStore) CreateTOTPEnrollment(ctx context.Context, challenge authmodel
 		return err
 	}
 	update, args, err := query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_mfa_factors", ws).
-		Set("totp_secret", envelope).Set("provider_ref", challenge.RequestID).Set("status", "pending").Set("verified_at", nil).
+		Set("totp_secret", envelope).Set("provider_ref", challenge.RequestID).Set("status", "pending").Set("verified_at", int64(0)).
 		Set("totp_step", -1).Set("updated_at", now).
 		Where(query.And(query.Equal("id", id), query.Equal("user_id", challenge.UserID), query.NotEqual("status", "active"))).Build()
 	if err != nil {
@@ -124,19 +123,15 @@ func (s AuthStore) verifyTOTPFactor(ctx context.Context, tx *sql.Tx, challenge a
 	var envelope string
 	var step int64
 	var failures int
-	var lockedUntil sql.NullString
+	var lockedUntil int64
 	if err := tx.QueryRowContext(ctx, statement, args...).Scan(&envelope, &step, &failures, &lockedUntil); err != nil {
 		if err == sql.ErrNoRows {
 			return false, nil
 		}
 		return false, err
 	}
-	if lockedUntil.Valid {
-		until, err := time.Parse(time.RFC3339, lockedUntil.String)
-		if err != nil {
-			return false, err
-		}
-		if until.After(now) {
+	if lockedUntil != 0 {
+		if time.UnixMilli(lockedUntil).After(now) {
 			return false, nil
 		}
 	}
@@ -150,14 +145,14 @@ func (s AuthStore) verifyTOTPFactor(ctx context.Context, tx *sql.Tx, challenge a
 	}
 	matchedStep, valid := authpolicy.MatchTOTP(secret.Secret, code, now, step)
 	nextFailures := failures + 1
-	if lockedUntil.Valid {
+	if lockedUntil != 0 {
 		nextFailures = 1
 	}
-	update := query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_mfa_factors", ws).Set("updated_at", now.UTC().Format(time.RFC3339))
+	update := query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_mfa_factors", ws).Set("updated_at", now.UTC().UnixMilli())
 	if valid {
-		update.Set("totp_step", matchedStep).Set("totp_failures", 0).Set("totp_locked_until", nil).Set("last_used_at", now.UTC().Format(time.RFC3339))
+		update.Set("totp_step", matchedStep).Set("totp_failures", 0).Set("totp_locked_until", int64(0)).Set("last_used_at", now.UTC().UnixMilli())
 		if challenge.Purpose == authmodel.TOTPEnrollmentPurpose {
-			update.Set("status", "active").Set("verified_at", now.UTC().Format(time.RFC3339))
+			update.Set("status", "active").Set("verified_at", now.UTC().UnixMilli())
 		}
 		if challenge.Purpose == authmodel.TOTPDisablePurpose {
 			update.Set("status", "disabled").Set("totp_secret", nil)
@@ -165,17 +160,14 @@ func (s AuthStore) verifyTOTPFactor(ctx context.Context, tx *sql.Tx, challenge a
 	} else {
 		update.Set("totp_failures", nextFailures)
 		if nextFailures >= maxAttempts {
-			update.Set("totp_locked_until", now.Add(5*time.Minute).UTC().Format(time.RFC3339))
+			update.Set("totp_locked_until", now.Add(5*time.Minute).UTC().UnixMilli())
 		} else {
-			update.Set("totp_locked_until", nil)
+			update.Set("totp_locked_until", int64(0))
 		}
 	}
 	// Compare all mutable verification state, so concurrent requests cannot
 	// reuse a step or lose failed attempts across processes.
-	expectedLock := query.IsNull("totp_locked_until")
-	if lockedUntil.Valid {
-		expectedLock = query.Equal("totp_locked_until", strings.TrimSpace(lockedUntil.String))
-	}
+	expectedLock := query.Equal("totp_locked_until", lockedUntil)
 	statement, args, err = update.Where(query.And(predicate, query.Equal("totp_step", step), query.Equal("totp_failures", failures), expectedLock)).Build()
 	if err != nil {
 		return false, err

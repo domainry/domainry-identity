@@ -10,6 +10,7 @@ import (
 
 	authmodel "github.com/domainry/domainry-identity/internal/domain/auth/model"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	identitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity"
 	"github.com/domainry/domainry-orm/query"
 )
 
@@ -80,7 +81,9 @@ func (s AuthStore) UpsertAuthProviderCredential(ctx context.Context, provider st
 		credential.CreatedAt = now
 	}
 	credential.UpdatedAt = now
-	configuration, err := json.Marshal(credential)
+	configurationValue := credential
+	configurationValue.CreatedAt, configurationValue.UpdatedAt = "", ""
+	configuration, err := json.Marshal(configurationValue)
 	if err != nil {
 		return authmodel.AuthProviderCredential{}, err
 	}
@@ -91,7 +94,7 @@ func (s AuthStore) UpsertAuthProviderCredential(ctx context.Context, provider st
 	}
 	insert := query.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_auth_provider_credentials", workspaceID).
 		Columns("provider_key", "configuration_json", "secret_envelope", "updated_by", "created_at", "updated_at").
-		Values(provider, string(configuration), envelope, credential.UpdatedBy, credential.CreatedAt, credential.UpdatedAt)
+		Values(provider, string(configuration), envelope, credential.UpdatedBy, identitypersistence.TimeMillis(credential.CreatedAt), identitypersistence.TimeMillis(credential.UpdatedAt))
 	insert.OnConflictDoUpdate([]string{"workspace_id", "provider_key"},
 		query.AssignExpression("configuration_json", query.InsertedValue("configuration_json")),
 		query.AssignExpression("secret_envelope", query.InsertedValue("secret_envelope")),
@@ -128,12 +131,15 @@ type authProviderCredentialScanner interface{ Scan(...any) error }
 func (s AuthStore) scanAuthProviderCredential(ctx context.Context, workspaceID string, scanner authProviderCredentialScanner) (authmodel.AuthProviderCredential, error) {
 	var credential authmodel.AuthProviderCredential
 	var configuration, envelope string
-	if err := scanner.Scan(&credential.ProviderKey, &configuration, &envelope, &credential.UpdatedBy, &credential.CreatedAt, &credential.UpdatedAt); err != nil {
+	var createdAt, updatedAt int64
+	if err := scanner.Scan(&credential.ProviderKey, &configuration, &envelope, &credential.UpdatedBy, &createdAt, &updatedAt); err != nil {
 		return credential, err
 	}
 	if err := json.Unmarshal([]byte(configuration), &credential); err != nil {
 		return credential, fmt.Errorf("decode auth provider credential %q: %w", credential.ProviderKey, err)
 	}
+	credential.CreatedAt = identitypersistence.TimeString(createdAt)
+	credential.UpdatedAt = identitypersistence.TimeString(updatedAt)
 	credential.WorkspaceID = workspaceID
 	plain, err := s.secrets.Decrypt(ctx, workspaceID, credential.ProviderKey, envelope)
 	if err != nil {

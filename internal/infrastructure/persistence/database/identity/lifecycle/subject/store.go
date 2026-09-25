@@ -83,17 +83,17 @@ func (s *Store) ExportSubject(ctx context.Context, workspaceID, userID string) (
 	stringColumns := []string{"id", "name", "given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale", "email", "phone", "account_type", "locale", "timezone", "org_id", "support_org_id", "manager_user_id", "reporting_path", "worker_no", "worker_type", "work_status", "start_date", "end_date", "status"}
 	projections := coalescedIdentityProjections(stringColumns...)
 	projections = append(projections, query.Project(query.Column("version")))
-	projections = append(projections, coalescedIdentityProjections("created_at", "updated_at")...)
+	projections = append(projections, query.Project(query.Column("created_at")), query.Project(query.Column("updated_at")))
 	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_users", workspaceID).
 		Projections(projections...).Where(query.Equal("id", userID)).Build()
 	if err != nil {
 		return nil, fmt.Errorf("build identity subject export query: %w", err)
 	}
-	var values [26]string
-	var version int64
+	var values [24]string
+	var version, createdAt, updatedAt int64
 	if err := s.store.DB().QueryRowContext(ctx, statement, arguments...).Scan(
 		&values[0], &values[1], &values[2], &values[3], &values[4], &values[5], &values[6], &values[7], &values[8],
-		&values[9], &values[10], &values[11], &values[12], &values[13], &values[14], &values[15], &values[16], &values[17], &values[18], &values[19], &values[20], &values[21], &values[22], &values[23], &version, &values[24], &values[25],
+		&values[9], &values[10], &values[11], &values[12], &values[13], &values[14], &values[15], &values[16], &values[17], &values[18], &values[19], &values[20], &values[21], &values[22], &values[23], &version, &createdAt, &updatedAt,
 	); err != nil {
 		return nil, err
 	}
@@ -103,7 +103,7 @@ func (s *Store) ExportSubject(ctx context.Context, workspaceID, userID string) (
 		"email": values[9], "phone": values[10], "account_type": values[11], "locale": values[12], "timezone": values[13],
 		"org_id": values[14], "support_org_id": values[15], "manager_user_id": values[16], "reporting_path": values[17],
 		"worker_no": values[18], "worker_type": values[19], "work_status": values[20],
-		"start_date": values[21], "end_date": values[22], "status": values[23], "version": version, "created_at": values[24], "updated_at": values[25],
+		"start_date": values[21], "end_date": values[22], "status": values[23], "version": version, "created_at": createdAt, "updated_at": updatedAt,
 	}
 	preview, err := s.PreviewSubject(ctx, workspaceID, userID)
 	if err != nil {

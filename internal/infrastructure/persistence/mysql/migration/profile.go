@@ -16,7 +16,7 @@ type Profile struct{}
 func NewProfile() Profile { return Profile{} }
 
 func (Profile) MigrationLedgerTypes() driver.MigrationLedgerTypes {
-	return driver.MigrationLedgerTypes{Key: "VARCHAR(255)", Timestamp: "VARCHAR(64)"}
+	return driver.MigrationLedgerTypes{Key: "VARCHAR(255)", Timestamp: "BIGINT"}
 }
 func (Profile) MigrationBackupPolicy() driver.MigrationBackupPolicy {
 	return driver.MigrationBackupPolicy{ExternalEvidence: true, EvidenceEngine: "mysql"}

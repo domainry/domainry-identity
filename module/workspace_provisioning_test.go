@@ -113,14 +113,14 @@ func TestInstallationAdministratorBootstrapIsEmbeddedAtomicAuditedAndFirstOnly(t
 	}
 	var persistedInstallation struct {
 		UserID                string `json:"user_id"`
-		CredentialClaimedAt   string `json:"credential_claimed_at"`
-		CredentialDeliveredAt string `json:"credential_delivered_at"`
+		CredentialClaimedAt   int64  `json:"credential_claimed_at"`
+		CredentialDeliveredAt int64  `json:"credential_delivered_at"`
 	}
 	if err := json.Unmarshal([]byte(operationResult), &persistedInstallation); err != nil {
 		t.Fatal(err)
 	}
 	if operationResourceID != receipt.UserID || operationReference != request.InvocationID || operationStatus != "succeeded" ||
-		persistedInstallation.UserID != receipt.UserID || persistedInstallation.CredentialClaimedAt == "" || persistedInstallation.CredentialDeliveredAt == "" {
+		persistedInstallation.UserID != receipt.UserID || persistedInstallation.CredentialClaimedAt == 0 || persistedInstallation.CredentialDeliveredAt == 0 {
 		t.Fatalf("installation administrator operation resource=%q reference=%q status=%q result=%s", operationResourceID, operationReference, operationStatus, operationResult)
 	}
 	var roleKey, orgID string

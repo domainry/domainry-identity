@@ -59,8 +59,8 @@ func identityPermissionsTableDefinition(renderer ormdialect.Renderer) *ormschema
 			ormschema.Column("enabled", ormschema.Boolean()).NotNull().DefaultValue(true),
 			ormschema.Column("definition_hash", ormschema.TextKey(64)).NotNull(),
 			ormschema.Column("source_snapshot_hash", ormschema.TextKey(64)).NotNull(),
-			ormschema.Column("created_at", ormschema.Text()).NotNull(),
-			ormschema.Column("updated_at", ormschema.Text()).NotNull(),
+			ormschema.Column("created_at", ormschema.BigInt()).NotNull(),
+			ormschema.Column("updated_at", ormschema.BigInt()).NotNull(),
 		).
 		PrimaryKey("workspace_id", "id").
 		Unique("workspace_id", "permission_key")

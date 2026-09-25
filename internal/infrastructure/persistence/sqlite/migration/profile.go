@@ -20,7 +20,7 @@ type Profile struct{}
 func NewProfile() Profile { return Profile{} }
 
 func (Profile) MigrationLedgerTypes() driver.MigrationLedgerTypes {
-	return driver.MigrationLedgerTypes{Key: "TEXT", Timestamp: "TEXT"}
+	return driver.MigrationLedgerTypes{Key: "TEXT", Timestamp: "INTEGER"}
 }
 func (Profile) MigrationBackupPolicy() driver.MigrationBackupPolicy {
 	return driver.MigrationBackupPolicy{LocalSnapshot: true, EvidenceEngine: "sqlite", BackupIDPrefix: "sqlite-"}

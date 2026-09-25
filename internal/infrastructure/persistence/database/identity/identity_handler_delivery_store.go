@@ -82,7 +82,7 @@ func (s *SQLIdentityStore) ExecuteIdentityHandlerDelivery(ctx context.Context, m
 		}
 		statement, arguments, err := query.NewWorkspaceInsertBuilder(s.sqlRenderer(), "_identity_credentials", mutation.WorkspaceID).
 			Columns("user_id", "password_hash", "password_updated_at", "failed_login_count", "locked_until", "last_login_at", "must_change_password", "created_at", "updated_at").
-			Values(mutation.Credential.UserID, mutation.Credential.PasswordHash, passwordUpdatedAt, 0, nil, nil, true, now, now).Build()
+			Values(mutation.Credential.UserID, mutation.Credential.PasswordHash, timeMillis(passwordUpdatedAt), 0, int64(0), int64(0), true, timeMillis(now), timeMillis(now)).Build()
 		if err != nil {
 			return identitymodel.IdentityHandlerDeliveryReceipt{}, fmt.Errorf("build handler delivery credential insert: %w", err)
 		}
@@ -114,9 +114,10 @@ func (s *SQLIdentityStore) ExecuteIdentityHandlerDelivery(ctx context.Context, m
 
 	revokedSessions := 0
 	for _, userID := range uniqueHandlerDeliveryStrings(mutation.RevokeUserIDs) {
+		nowMillis := timeMillis(nowString())
 		statement, arguments, err := query.NewWorkspaceUpdateBuilder(s.sqlRenderer(), "_identity_auth_refresh_tokens", mutation.WorkspaceID).
-			Set("revoked_at", nowString()).Set("updated_at", nowString()).
-			Where(query.And(query.Equal("user_id", userID), query.IsNull("revoked_at"))).Build()
+			Set("revoked_at", nowMillis).Set("updated_at", nowMillis).
+			Where(query.And(query.Equal("user_id", userID), query.Equal("revoked_at", int64(0)))).Build()
 		if err != nil {
 			return identitymodel.IdentityHandlerDeliveryReceipt{}, fmt.Errorf("build handler delivery session revocation: %w", err)
 		}

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	authmodel "github.com/domainry/domainry-identity/internal/domain/auth/model"
+	identitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity"
 	"github.com/domainry/domainry-orm/query"
 )
 
@@ -31,10 +32,10 @@ func (s AuthStore) CreateAuthAuthorizationCode(ctx context.Context, value authmo
 	if err != nil {
 		return err
 	}
-	now := time.Now().UTC().Format(time.RFC3339Nano)
+	now := time.Now().UTC().UnixMilli()
 	statement, args, buildErr := query.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_auth_authorization_codes", workspaceID).
 		Columns("code_hash", "application_key", "session_json", "redirect_url", "expires_at", "consumed_at", "created_at").
-		Values(codeHash, strings.TrimSpace(value.ApplicationKey), envelope, strings.TrimSpace(value.RedirectURL), value.ExpiresAt, nil, valueOrNow(value.CreatedAt, now)).Build()
+		Values(codeHash, strings.TrimSpace(value.ApplicationKey), envelope, strings.TrimSpace(value.RedirectURL), identitypersistence.TimeMillis(value.ExpiresAt), int64(0), valueOrNowMillis(value.CreatedAt, now)).Build()
 	if buildErr != nil {
 		return buildErr
 	}
@@ -56,16 +57,16 @@ func (s AuthStore) ConsumeAuthAuthorizationCode(ctx context.Context, workspaceID
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	nowText := now.UTC().Format(time.RFC3339Nano)
+	nowMillis := now.UTC().UnixMilli()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return authmodel.AuthSession{}, false, err
 	}
 	defer func() { _ = tx.Rollback() }()
 	updateStatement, updateArgs, buildErr := query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_auth_authorization_codes", workspaceID).
-		Set("consumed_at", nowText).Where(query.And(
+		Set("consumed_at", nowMillis).Where(query.And(
 		query.Equal("code_hash", codeHash), query.Equal("application_key", applicationKey), query.Equal("redirect_url", redirectURL),
-		query.IsNull("consumed_at"), query.GreaterThan("expires_at", nowText),
+		query.Equal("consumed_at", int64(0)), query.GreaterThan("expires_at", nowMillis),
 	)).Build()
 	if buildErr != nil {
 		return authmodel.AuthSession{}, false, buildErr

@@ -23,7 +23,7 @@ func identityProjectionUserColumns() []string {
 func identityProjectionUserRow() []driver.Value {
 	return []driver.Value{
 		"user", "User", "", "", "", "", "", "", "",
-		"user@example.test", "", "human", "en-US", "UTC", "store", "sales", nil, "/user", "E001", "employee", "active", "2026-01-01", nil, "active", int64(1), "created", "updated",
+		"user@example.test", "", "human", "en-US", "UTC", "store", "sales", nil, "/user", "E001", "employee", "active", "2026-01-01", nil, "active", int64(1), int64(1), int64(2),
 	}
 }
 

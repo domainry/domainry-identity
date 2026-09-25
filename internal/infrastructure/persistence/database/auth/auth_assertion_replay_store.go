@@ -35,14 +35,14 @@ func (s AuthStore) ClaimAuthAssertion(ctx context.Context, workspaceID, provider
 	}
 
 	deleteStatement, deleteArgs, deleteBuildErr := query.NewWorkspaceDeleteBuilder(s.store.SQLRenderer(), "_identity_auth_assertion_replays", workspaceID).
-		Where(query.LessThanOrEqual("expires_at", now.Format(time.RFC3339Nano))).Build()
+		Where(query.LessThanOrEqual("expires_at", now.UnixMilli())).Build()
 	if deleteBuildErr == nil {
 		_, _ = s.db.ExecContext(ctx, deleteStatement, deleteArgs...)
 	}
 	replayHash := authAssertionReplayHash(workspaceID, provider, issuer, assertionID)
 	insertStatement, insertArgs, buildErr := query.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_auth_assertion_replays", workspaceID).
 		Columns("replay_hash", "provider_key", "expires_at", "created_at").
-		Values(replayHash, provider, expiresAt.UTC().Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)).Build()
+		Values(replayHash, provider, expiresAt.UTC().UnixMilli(), now.UnixMilli()).Build()
 	if buildErr != nil {
 		return false, buildErr
 	}

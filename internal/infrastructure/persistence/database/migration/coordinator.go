@@ -212,7 +212,7 @@ func (coordinator *Coordinator) ApplyFile(ctx context.Context, path string) erro
 	version, migrationName := Identity(name)
 	insertDirty, insertArguments, buildErr := query.NewInsertBuilder(coordinator.renderer, "_schema_migrations").
 		Columns("path", "version", "name", "kind", "checksum", "dirty", "applied_at", "service_version", "duration_ms", "operator", "instance_id", "backup_id").
-		Values(name, version, migrationName, Kind(migrationName), checksum, true, time.Now().UTC().Format(time.RFC3339), strings.TrimSpace(coordinator.config.ServiceVersion), 0, Operator(coordinator.config), InstanceID(coordinator.config), strings.TrimSpace(coordinator.BackupManager.BackupID())).Build()
+		Values(name, version, migrationName, Kind(migrationName), checksum, true, time.Now().UTC().UnixMilli(), strings.TrimSpace(coordinator.config.ServiceVersion), 0, Operator(coordinator.config), InstanceID(coordinator.config), strings.TrimSpace(coordinator.BackupManager.BackupID())).Build()
 	if buildErr != nil {
 		return fmt.Errorf("build dirty migration record: %w", buildErr)
 	}
@@ -236,7 +236,7 @@ func (coordinator *Coordinator) ApplyFile(ctx context.Context, path string) erro
 	completeMigration, completeArguments, buildErr := query.NewUpdateBuilder(coordinator.renderer, "_schema_migrations").
 		Set("dirty", false).
 		Set("duration_ms", duration.Milliseconds()).
-		Set("applied_at", time.Now().UTC().Format(time.RFC3339)).
+		Set("applied_at", time.Now().UTC().UnixMilli()).
 		Where(query.And(query.Equal("path", name), query.Equal("checksum", checksum))).Build()
 	if buildErr != nil {
 		return fmt.Errorf("build migration completion record: %w", buildErr)

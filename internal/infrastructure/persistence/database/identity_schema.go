@@ -322,7 +322,7 @@ func (s *IdentityStore) identitySchemaMigrationPending(ctx context.Context, vers
 func (s *IdentityStore) startIdentitySchemaMigration(ctx context.Context, version string) error {
 	queryValue, arguments, err := query.NewInsertBuilder(s.BuilderRenderer(), "_schema_migrations").
 		Columns("path", "version", "name", "kind", "checksum", "dirty", "applied_at", "service_version", "duration_ms", "operator", "instance_id", "backup_id").
-		Values(identitySchemaMigrationPath(version), version, identitySchemaMigrationName, identitySchemaMigrationKind, currentIdentitySchemaChecksum(), true, time.Now().UTC().Format(time.RFC3339), s.config.ServiceVersion, 0, migrationcontract.Operator(s.config), migrationcontract.InstanceID(s.config), s.BackupManager.BackupID()).Build()
+		Values(identitySchemaMigrationPath(version), version, identitySchemaMigrationName, identitySchemaMigrationKind, currentIdentitySchemaChecksum(), true, time.Now().UTC().UnixMilli(), s.config.ServiceVersion, 0, migrationcontract.Operator(s.config), migrationcontract.InstanceID(s.config), s.BackupManager.BackupID()).Build()
 	if err != nil {
 		return fmt.Errorf("build Identity schema migration start: %w", err)
 	}
@@ -334,7 +334,7 @@ func (s *IdentityStore) recordIdentitySchemaMigration(ctx context.Context, versi
 	statement, arguments, buildErr := query.NewUpdateBuilder(s.BuilderRenderer(), "_schema_migrations").
 		Set("dirty", false).
 		Set("duration_ms", duration.Milliseconds()).
-		Set("applied_at", time.Now().UTC().Format(time.RFC3339)).
+		Set("applied_at", time.Now().UTC().UnixMilli()).
 		Where(query.Equal("path", identitySchemaMigrationPath(version))).Build()
 	if buildErr != nil {
 		return fmt.Errorf("build Identity schema migration completion: %w", buildErr)

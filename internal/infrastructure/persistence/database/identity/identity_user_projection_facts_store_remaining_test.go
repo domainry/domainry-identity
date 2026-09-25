@@ -17,7 +17,7 @@ func identityProjectionRoleColumns() []string {
 func identityProjectionRoleRow() []driver.Value {
 	return []driver.Value{
 		"user", "role", "binding", "profile", "manual", "active",
-		"from", "until", "admin", "reason", nil, nil, nil, nil, "created", "updated",
+		int64(1), int64(2), "admin", "reason", nil, int64(0), nil, int64(0), int64(3), int64(4),
 	}
 }
 
@@ -31,7 +31,7 @@ func identityProjectionBindingColumns() []string {
 func identityProjectionBindingRow() []driver.Value {
 	return []driver.Value{
 		"workspace", "binding", "member", "profile", "user",
-		"active", "email", "token", int64(1), "created", "updated",
+		"active", "email", "token", int64(1), int64(1), int64(2),
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	identitydatascope "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/datascope"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/timevalue"
 	"github.com/domainry/domainry-orm/batch"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 	"github.com/domainry/domainry-orm/query"
@@ -105,7 +106,7 @@ func (s *Store) UpsertBatchWithExecutor(ctx context.Context, execer Execer, work
 	if err != nil {
 		return fmt.Errorf("plan identity role upsert batches: %w", err)
 	}
-	now := s.now()
+	now := timevalue.Millis(s.now())
 	for _, batchRange := range ranges {
 		insert := query.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_roles", workspaceID).
 			Columns("id", "role_key", "label", "description", "status", "created_at", "updated_at")
@@ -235,15 +236,17 @@ func (s *Store) ListUserAssignmentsWithinDataScope(ctx context.Context, workspac
 	out := []identitymodel.IdentityUserRoleAssignment{}
 	for rows.Next() {
 		var item identitymodel.IdentityUserRoleAssignment
-		var bindingKey, profileID, validFrom, validUntil, grantedBy, grantReason, revokedBy, revokedAt, revokeReason, expiresAt sql.NullString
-		if err := rows.Scan(&item.UserID, &item.RoleID, &bindingKey, &profileID, &item.Source, &item.Status, &validFrom, &validUntil, &grantedBy, &grantReason, &revokedBy, &revokedAt, &revokeReason, &expiresAt, &item.CreatedAt, &item.UpdatedAt); err != nil {
+		var bindingKey, profileID, grantedBy, grantReason, revokedBy, revokeReason sql.NullString
+		var validFrom, validUntil, revokedAt, expiresAt, createdAt, updatedAt int64
+		if err := rows.Scan(&item.UserID, &item.RoleID, &bindingKey, &profileID, &item.Source, &item.Status, &validFrom, &validUntil, &grantedBy, &grantReason, &revokedBy, &revokedAt, &revokeReason, &expiresAt, &createdAt, &updatedAt); err != nil {
 			return nil, err
 		}
 		item.BindingKey, item.ProfileID = bindingKey.String, profileID.String
-		item.ValidFrom, item.ValidUntil, item.GrantedBy, item.GrantReason = validFrom.String, validUntil.String, grantedBy.String, grantReason.String
-		item.RevokedBy, item.RevokedAt, item.RevokeReason = revokedBy.String, revokedAt.String, revokeReason.String
-		if expiresAt.Valid {
-			value := expiresAt.String
+		item.ValidFrom, item.ValidUntil, item.GrantedBy, item.GrantReason = timevalue.String(validFrom), timevalue.String(validUntil), grantedBy.String, grantReason.String
+		item.RevokedBy, item.RevokedAt, item.RevokeReason = revokedBy.String, timevalue.String(revokedAt), revokeReason.String
+		item.CreatedAt, item.UpdatedAt = timevalue.String(createdAt), timevalue.String(updatedAt)
+		if expiresAt != 0 {
+			value := timevalue.String(expiresAt)
 			item.ExpiresAt = &value
 		}
 		out = append(out, item)

@@ -9,6 +9,7 @@ import (
 
 	"github.com/domainry/domainry-foundation/pagination"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/timevalue"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 	"github.com/domainry/domainry-orm/query"
 )
@@ -68,9 +69,10 @@ func (s Store) SearchIdentityUsersWithinDataScope(ctx context.Context, workspace
 		var user identitymodel.IdentityUser
 		var accountType, workerType, workStatus, status string
 		var organizationUnitID, supportOrganizationUnitID, managerUserID, startDate, endDate sql.NullString
+		var createdAt, updatedAt int64
 		if err := rows.Scan(
 			&user.ID, &user.Name, &user.GivenName, &user.MiddleName, &user.FamilyName, &user.NamePrefix, &user.NameSuffix, &user.NativeName, &user.NameLocale,
-			&user.Email, &user.Phone, &accountType, &user.Locale, &user.Timezone, &organizationUnitID, &supportOrganizationUnitID, &managerUserID, &user.ReportingPath, &user.WorkerNo, &workerType, &workStatus, &startDate, &endDate, &status, &user.Version, &user.CreatedAt, &user.UpdatedAt,
+			&user.Email, &user.Phone, &accountType, &user.Locale, &user.Timezone, &organizationUnitID, &supportOrganizationUnitID, &managerUserID, &user.ReportingPath, &user.WorkerNo, &workerType, &workStatus, &startDate, &endDate, &status, &user.Version, &createdAt, &updatedAt,
 		); err != nil {
 			return identitymodel.IdentityUserPage{}, err
 		}
@@ -81,6 +83,7 @@ func (s Store) SearchIdentityUsersWithinDataScope(ctx context.Context, workspace
 		user.WorkerType, user.WorkStatus = identitymodel.IdentityWorkerType(workerType), identitymodel.IdentityWorkStatus(workStatus)
 		user.StartDate, user.EndDate = startDate.String, endDate.String
 		user.Status = identitymodel.IdentityStatus(status)
+		user.CreatedAt, user.UpdatedAt = timevalue.String(createdAt), timevalue.String(updatedAt)
 		items = append(items, user)
 	}
 	if err := rows.Err(); err != nil {

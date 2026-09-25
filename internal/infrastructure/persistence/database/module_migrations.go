@@ -108,7 +108,7 @@ func (s *IdentityStore) applyOwnedMigration(ctx context.Context, owner string, m
 	}
 	insert, insertArgs, err := query.NewInsertBuilder(renderer, "_schema_migrations").
 		Columns("path", "version", "name", "kind", "checksum", "dirty", "applied_at", "duration_ms", "operator", "instance_id", "backup_id").
-		Values(path, fmt.Sprint(migration.Version), migration.Name, "module:"+owner, checksum, !baseline, time.Now().UTC().Format(time.RFC3339), 0, "module", "identity", "").Build()
+		Values(path, fmt.Sprint(migration.Version), migration.Name, "module:"+owner, checksum, !baseline, time.Now().UTC().UnixMilli(), 0, "module", "identity", "").Build()
 	if err != nil {
 		return err
 	}
@@ -130,7 +130,7 @@ func (s *IdentityStore) applyOwnedMigration(ctx context.Context, owner string, m
 		}
 	}
 	complete, completeArgs, err := query.NewUpdateBuilder(renderer, "_schema_migrations").
-		Set("dirty", false).Set("duration_ms", time.Since(started).Milliseconds()).Set("applied_at", time.Now().UTC().Format(time.RFC3339)).
+		Set("dirty", false).Set("duration_ms", time.Since(started).Milliseconds()).Set("applied_at", time.Now().UTC().UnixMilli()).
 		Where(query.And(query.Equal("path", path), query.Equal("checksum", checksum))).Build()
 	if err != nil {
 		return err

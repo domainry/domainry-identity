@@ -61,7 +61,8 @@ func (s *SQLIdentityStore) GetIdentityStoreOrganizationState(ctx context.Context
 		return identitymodel.IdentityStoreOrganizationState{}, false, fmt.Errorf("build Identity store organization state query: %w", err)
 	}
 	var state identitymodel.IdentityStoreOrganizationState
-	err = s.reader(ctx).QueryRowContext(ctx, statement, arguments...).Scan(&state.OrganizationID, &state.Version, &state.StateFingerprint, &state.UpdatedAt)
+	var updatedAt int64
+	err = s.reader(ctx).QueryRowContext(ctx, statement, arguments...).Scan(&state.OrganizationID, &state.Version, &state.StateFingerprint, &updatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return identitymodel.IdentityStoreOrganizationState{}, false, nil
 	}
@@ -69,6 +70,7 @@ func (s *SQLIdentityStore) GetIdentityStoreOrganizationState(ctx context.Context
 		return identitymodel.IdentityStoreOrganizationState{}, false, err
 	}
 	state.WorkspaceID = workspaceID
+	state.UpdatedAt = timeString(updatedAt)
 	return state, true, nil
 }
 
@@ -265,7 +267,7 @@ func (s *SQLIdentityStore) insertStoreOrganization(ctx context.Context, executor
 	ancestors, _ := json.Marshal(organization.AncestorIDs)
 	statement, arguments, err := query.NewWorkspaceInsertBuilder(s.sqlRenderer(), "_identity_organization_units", workspaceID).
 		Columns("id", "code", "name", "sibling_key", "node_type", "parent_id", "path", "ancestor_ids", "depth", "sort_order", "status", "delivery_owner", "delivery_version", "delivery_state_fingerprint", "created_at", "updated_at").
-		Values(organization.ID, organization.Code, organization.Name, identitymodel.IdentityOrganizationUnitSiblingKey(organization.ParentID, organization.Name), string(identitymodel.IdentityOrganizationUnitStore), identityStoreOrganizationParentID(organization), organization.Path, string(ancestors), organization.Depth, organization.SortOrder, string(organization.Status), storeOrganizationStateOwner, version, fingerprint, nowString(), nowString()).Build()
+		Values(organization.ID, organization.Code, organization.Name, identitymodel.IdentityOrganizationUnitSiblingKey(organization.ParentID, organization.Name), string(identitymodel.IdentityOrganizationUnitStore), identityStoreOrganizationParentID(organization), organization.Path, string(ancestors), organization.Depth, organization.SortOrder, string(organization.Status), storeOrganizationStateOwner, version, fingerprint, timeMillis(nowString()), timeMillis(nowString())).Build()
 	if err != nil {
 		return fmt.Errorf("build Identity store organization insert: %w", err)
 	}
@@ -287,7 +289,7 @@ func (s *SQLIdentityStore) updateStoreOrganizationCAS(ctx context.Context, execu
 		predicates = append(predicates, query.Equal("delivery_owner", ""), query.Equal("delivery_version", int64(0)), query.Equal("delivery_state_fingerprint", ""))
 	}
 	update := query.NewWorkspaceUpdateBuilder(s.sqlRenderer(), "_identity_organization_units", workspaceID).
-		Set("delivery_owner", storeOrganizationStateOwner).Set("delivery_version", nextVersion).Set("delivery_state_fingerprint", nextFingerprint).Set("updated_at", nowString())
+		Set("delivery_owner", storeOrganizationStateOwner).Set("delivery_version", nextVersion).Set("delivery_state_fingerprint", nextFingerprint).Set("updated_at", timeMillis(nowString()))
 	switch operation {
 	case identitymodel.IdentityStoreOrganizationRename:
 		update.Set("name", desired.Name).Set("sibling_key", identitymodel.IdentityOrganizationUnitSiblingKey(desired.ParentID, desired.Name))

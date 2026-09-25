@@ -154,6 +154,48 @@ type WorkspaceIdentityBootstrapReceipt struct {
 	CreatedAt                            string `json:"created_at"`
 }
 
+type workspaceIdentityBootstrapReceiptJSON struct {
+	ID                                   string `json:"id"`
+	WorkspaceID                          string `json:"workspace_id"`
+	InvocationID                         string `json:"invocation_id"`
+	RequestFingerprint                   string `json:"request_fingerprint"`
+	ContractVersion                      string `json:"contract_version"`
+	ContractHash                         string `json:"contract_hash"`
+	CompanyID                            string `json:"company_id"`
+	FirstStoreID                         string `json:"first_store_id"`
+	InitialAdminUserID                   string `json:"initial_admin_user_id"`
+	InitialAdminLoginID                  string `json:"initial_admin_login_id"`
+	RoleCatalogSHA256                    string `json:"role_catalog_sha256"`
+	InitialWorkspaceAdministratorRoleKey string `json:"initial_workspace_administrator_role_key"`
+	CredentialClaimedAt                  int64  `json:"credential_claimed_at,omitempty"`
+	CreatedAt                            int64  `json:"created_at"`
+}
+
+func (value WorkspaceIdentityBootstrapReceipt) MarshalJSON() ([]byte, error) {
+	return json.Marshal(workspaceIdentityBootstrapReceiptJSON{
+		ID: value.ID, WorkspaceID: value.WorkspaceID, InvocationID: value.InvocationID, RequestFingerprint: value.RequestFingerprint,
+		ContractVersion: value.ContractVersion, ContractHash: value.ContractHash, CompanyID: value.CompanyID, FirstStoreID: value.FirstStoreID,
+		InitialAdminUserID: value.InitialAdminUserID, InitialAdminLoginID: value.InitialAdminLoginID, RoleCatalogSHA256: value.RoleCatalogSHA256,
+		InitialWorkspaceAdministratorRoleKey: value.InitialWorkspaceAdministratorRoleKey,
+		CredentialClaimedAt:                  timeMillis(value.CredentialClaimedAt), CreatedAt: timeMillis(value.CreatedAt),
+	})
+}
+
+func (value *WorkspaceIdentityBootstrapReceipt) UnmarshalJSON(raw []byte) error {
+	var stored workspaceIdentityBootstrapReceiptJSON
+	if err := json.Unmarshal(raw, &stored); err != nil {
+		return err
+	}
+	*value = WorkspaceIdentityBootstrapReceipt{
+		ID: stored.ID, WorkspaceID: stored.WorkspaceID, InvocationID: stored.InvocationID, RequestFingerprint: stored.RequestFingerprint,
+		ContractVersion: stored.ContractVersion, ContractHash: stored.ContractHash, CompanyID: stored.CompanyID, FirstStoreID: stored.FirstStoreID,
+		InitialAdminUserID: stored.InitialAdminUserID, InitialAdminLoginID: stored.InitialAdminLoginID, RoleCatalogSHA256: stored.RoleCatalogSHA256,
+		InitialWorkspaceAdministratorRoleKey: stored.InitialWorkspaceAdministratorRoleKey,
+		CredentialClaimedAt:                  timeString(stored.CredentialClaimedAt), CreatedAt: timeString(stored.CreatedAt),
+	}
+	return nil
+}
+
 func WorkspaceIdentityBootstrapReceiptID(workspaceID, invocationID string) string {
 	digest := sha256.Sum256([]byte(strings.TrimSpace(workspaceID) + "\x00workspace_identity_bootstrap_v1\x00" + strings.TrimSpace(invocationID)))
 	return "workspace_bootstrap_" + hex.EncodeToString(digest[:16])

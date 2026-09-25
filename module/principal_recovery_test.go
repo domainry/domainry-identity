@@ -69,7 +69,7 @@ func TestPrincipalRecoveryMatchesBearerAndRestrictsExplicitRole(t *testing.T) {
 		t.Fatal(err)
 	}
 	statement, arguments, err := query.NewWorkspaceInsertBuilder(renderer, "_identity_user_role_assignments", request.WorkspaceID).
-		Columns("id", "user_id", "role_id", "source", "status", "created_at", "updated_at").Values("onboarding-assignment", request.InitialAdminUserID, onboardingID, "manual", "active", time.Now().UTC().Format(time.RFC3339Nano), time.Now().UTC().Format(time.RFC3339Nano)).Build()
+		Columns("id", "user_id", "role_id", "source", "status", "created_at", "updated_at").Values("onboarding-assignment", request.InitialAdminUserID, onboardingID, "manual", "active", time.Now().UTC().UnixMilli(), time.Now().UTC().UnixMilli()).Build()
 	if err != nil {
 		t.Fatal(err)
 	}

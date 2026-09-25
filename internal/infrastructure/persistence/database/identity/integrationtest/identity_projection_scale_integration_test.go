@@ -25,7 +25,7 @@ func TestIdentityDirectoriesPageAndSearchInSQLAtOneHundredThousandRows(t *testin
 	if _, err := identityStore.DB().ExecContext(t.Context(), `WITH RECURSIVE n(i) AS (
 		SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 100000
 	) INSERT INTO _identity_users (id, workspace_id, name, email, phone, worker_no, worker_type, work_status, status, created_at, updated_at)
-	SELECT printf('user-%06d', i), 'workspace-primary', printf('User %06d', i), printf('user-%06d@example.test', i), '', printf('E-%06d', i), 'employee', 'active', 'active', 'now', 'now' FROM n`); err != nil {
+	SELECT printf('user-%06d', i), 'workspace-primary', printf('User %06d', i), printf('user-%06d@example.test', i), '', printf('E-%06d', i), 'employee', 'active', 'active', 1, 1 FROM n`); err != nil {
 		t.Fatal(err)
 	}
 	repository, err := identitypersistence.NewSQLIdentityStore(t.Context(), identityStore.DB(), identityStore.PersistenceEngine())

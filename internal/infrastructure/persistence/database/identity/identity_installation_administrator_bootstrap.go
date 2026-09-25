@@ -36,6 +36,41 @@ type InstallationAdministratorBootstrapReceipt struct {
 	CreatedAt             string `json:"created_at"`
 }
 
+type installationAdministratorBootstrapReceiptJSON struct {
+	ID                    string `json:"id"`
+	WorkspaceID           string `json:"workspace_id"`
+	InvocationID          string `json:"invocation_id"`
+	RequestFingerprint    string `json:"request_fingerprint"`
+	ContractVersion       string `json:"contract_version"`
+	ContractHash          string `json:"contract_hash"`
+	UserID                string `json:"user_id"`
+	LoginID               string `json:"login_id"`
+	CredentialClaimedAt   int64  `json:"credential_claimed_at,omitempty"`
+	CredentialDeliveredAt int64  `json:"credential_delivered_at,omitempty"`
+	CreatedAt             int64  `json:"created_at"`
+}
+
+func (value InstallationAdministratorBootstrapReceipt) MarshalJSON() ([]byte, error) {
+	return json.Marshal(installationAdministratorBootstrapReceiptJSON{
+		ID: value.ID, WorkspaceID: value.WorkspaceID, InvocationID: value.InvocationID, RequestFingerprint: value.RequestFingerprint,
+		ContractVersion: value.ContractVersion, ContractHash: value.ContractHash, UserID: value.UserID, LoginID: value.LoginID,
+		CredentialClaimedAt: timeMillis(value.CredentialClaimedAt), CredentialDeliveredAt: timeMillis(value.CredentialDeliveredAt), CreatedAt: timeMillis(value.CreatedAt),
+	})
+}
+
+func (value *InstallationAdministratorBootstrapReceipt) UnmarshalJSON(raw []byte) error {
+	var stored installationAdministratorBootstrapReceiptJSON
+	if err := json.Unmarshal(raw, &stored); err != nil {
+		return err
+	}
+	*value = InstallationAdministratorBootstrapReceipt{
+		ID: stored.ID, WorkspaceID: stored.WorkspaceID, InvocationID: stored.InvocationID, RequestFingerprint: stored.RequestFingerprint,
+		ContractVersion: stored.ContractVersion, ContractHash: stored.ContractHash, UserID: stored.UserID, LoginID: stored.LoginID,
+		CredentialClaimedAt: timeString(stored.CredentialClaimedAt), CredentialDeliveredAt: timeString(stored.CredentialDeliveredAt), CreatedAt: timeString(stored.CreatedAt),
+	}
+	return nil
+}
+
 func InstallationAdministratorBootstrapReceiptID(workspaceID, invocationID string) string {
 	digest := sha256.Sum256([]byte(strings.TrimSpace(workspaceID) + "\x00installation_administrator_bootstrap_v1\x00" + strings.TrimSpace(invocationID)))
 	return "installation_admin_" + hex.EncodeToString(digest[:16])

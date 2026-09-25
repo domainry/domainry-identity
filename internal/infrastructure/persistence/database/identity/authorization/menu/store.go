@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/timevalue"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 	"github.com/domainry/domainry-orm/query"
 )
@@ -82,7 +83,7 @@ func (s *Store) UpsertIdentityMenu(ctx context.Context, workspaceID string, menu
 	if identitymodel.IdentityStatus(persistedStatus) == identitymodel.IdentityStatusDeleted {
 		return nil
 	}
-	now := s.now()
+	now := timevalue.Millis(s.now())
 	insert := query.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_menus", workspaceID).
 		Columns("id", "menu_key", "label", "description", "route", "icon", "parent_id", "sort_order", "status", "created_at", "updated_at").
 		Values(menu.ID, menu.Key, menu.Label, menu.Description, menu.Route, menu.Icon, nullableText(menu.ParentID), menu.SortOrder, string(menu.Status), now, now)
@@ -142,7 +143,7 @@ func (s *Store) removeStatements(ctx context.Context, execer execer, workspaceID
 		return err
 	}
 	statement, arguments, err = query.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_menus", workspaceID).
-		Set("status", string(identitymodel.IdentityStatusDeleted)).Set("updated_at", s.now()).Where(query.Equal("id", menu.ID)).Build()
+		Set("status", string(identitymodel.IdentityStatusDeleted)).Set("updated_at", timevalue.Millis(s.now())).Where(query.Equal("id", menu.ID)).Build()
 	if err != nil {
 		return fmt.Errorf("build identity menu soft delete: %w", err)
 	}
@@ -174,7 +175,7 @@ func (s *Store) SetIdentityRoleMenus(ctx context.Context, workspaceID, roleID st
 	if _, err := s.backend.DB().ExecContext(ctx, statement, arguments...); err != nil {
 		return err
 	}
-	now := s.now()
+	now := timevalue.Millis(s.now())
 	menuIDs = uniqueSortedStrings(menuIDs)
 	if len(menuIDs) == 0 {
 		return nil

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	"github.com/domainry/domainry-identity/internal/platform/config"
@@ -66,6 +67,7 @@ func (reader *StatusReader) MigrationStatus(ctx context.Context) (MigrationStatu
 	status.Expected = len(status.ExpectedPaths)
 	applied := map[string]struct{}{}
 	currentSchemaVersion := ""
+	var lastAppliedAt int64
 	statement, arguments, err := query.NewSelectBuilder(reader.renderer, "_schema_migrations").
 		Columns("path", "checksum", "dirty", "applied_at").
 		OrderBy(query.Ascending("path")).Build()
@@ -80,7 +82,8 @@ func (reader *StatusReader) MigrationStatus(ctx context.Context) (MigrationStatu
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var path, checksum, at string
+		var path, checksum string
+		var at int64
 		var dirty bool
 		if err := rows.Scan(&path, &checksum, &dirty, &at); err != nil {
 			status.Current = false
@@ -111,13 +114,16 @@ func (reader *StatusReader) MigrationStatus(ctx context.Context) (MigrationStatu
 		if dirty {
 			status.DirtyPaths = append(status.DirtyPaths, path)
 		}
-		if at > status.LastAppliedAt {
-			status.LastAppliedAt = at
+		if at > lastAppliedAt {
+			lastAppliedAt = at
 		}
 	}
 	if err := rows.Err(); err != nil {
 		status.Current = false
 		return status, fmt.Errorf("read migration rows: %w", err)
+	}
+	if lastAppliedAt != 0 {
+		status.LastAppliedAt = time.UnixMilli(lastAppliedAt).UTC().Format(time.RFC3339Nano)
 	}
 	status.Applied = len(status.AppliedPaths)
 	for _, path := range status.ExpectedPaths {

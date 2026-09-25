@@ -31,7 +31,7 @@ func TestRemoveIdentityUserRollsBackEveryOwnedSecurityFact(t *testing.T) {
 	}
 	if _, err := identityStore.DB().ExecContext(t.Context(), `INSERT INTO _identity_auth_refresh_tokens
 		(id, workspace_id, user_id, session_id, token_hash, expires_at, created_at, updated_at)
-		VALUES ('token-1','workspace-primary','user-1','session-1','hash','2999-01-01T00:00:00Z','now','now')`); err != nil {
+		VALUES ('token-1','workspace-primary','user-1','session-1','hash',32503680000000,1,1)`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := identityStore.DB().ExecContext(t.Context(), `CREATE TRIGGER fail_identity_user_delete BEFORE DELETE ON _identity_users

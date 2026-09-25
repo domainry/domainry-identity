@@ -11,6 +11,7 @@ import (
 
 	"github.com/domainry/domainry-foundation/apperror"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/timevalue"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/transaction"
 	"github.com/domainry/domainry-orm/batch"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
@@ -113,7 +114,7 @@ func (store *Store) SetEnabled(ctx context.Context, workspaceID, permissionKey s
 func permissionEnablementBuilder(renderer ormdialect.Renderer, workspaceID, permissionKey string, enabled bool, now string) *query.UpdateBuilder {
 	return query.NewWorkspaceUpdateBuilder(renderer, "_identity_permissions", workspaceID).
 		Set("enabled", enabled).
-		Set("updated_at", now).
+		Set("updated_at", timevalue.Millis(now)).
 		Where(query.And(
 			query.Equal("permission_key", permissionKey),
 			query.Equal("definition_status", identitymodel.IdentityPermissionDefinitionActive),
@@ -280,12 +281,14 @@ type permissionDefinitionScanner interface {
 
 func scanPermissionDefinition(scanner permissionDefinitionScanner) (identitymodel.IdentityPermissionDefinitionRecord, error) {
 	var definition identitymodel.IdentityPermissionDefinitionRecord
+	var createdAt, updatedAt int64
 	err := scanner.Scan(
 		&definition.ID, &definition.WorkspaceID, &definition.PermissionKey, &definition.ResourceKey, &definition.OperationKey,
 		&definition.Label, &definition.Description, &definition.Category, &definition.SourceKind, &definition.SourceOwner,
 		&definition.DefinitionStatus, &definition.Enabled, &definition.DefinitionHash, &definition.SourceSnapshotHash,
-		&definition.CreatedAt, &definition.UpdatedAt,
+		&createdAt, &updatedAt,
 	)
+	definition.CreatedAt, definition.UpdatedAt = timevalue.String(createdAt), timevalue.String(updatedAt)
 	return definition, err
 }
 
@@ -293,7 +296,7 @@ func retireOwnerDefinitions(ctx context.Context, executor reconcileExecutor, ren
 	statement, arguments, err := query.NewWorkspaceUpdateBuilder(renderer, "_identity_permissions", workspaceID).
 		Set("definition_status", identitymodel.IdentityPermissionDefinitionRetired).
 		Set("source_snapshot_hash", snapshotHash).
-		Set("updated_at", now).
+		Set("updated_at", timevalue.Millis(now)).
 		Where(query.Equal("source_owner", sourceOwner)).
 		Build()
 	if err != nil {
@@ -333,7 +336,7 @@ func permissionUpsertBuilder(backend Backend, workspaceID string, keys []string,
 			permissionRowID(workspaceID, key), key, definition.ResourceKey, definition.OperationKey,
 			definition.Label, definition.Description, definition.Category, definition.SourceKind, definition.SourceOwner,
 			identitymodel.IdentityPermissionDefinitionActive, true, definition.DefinitionHash, definition.SourceSnapshotHash,
-			now, now,
+			timevalue.Millis(now), timevalue.Millis(now),
 		)
 	}
 	return backend.ApplyUpsert(insert, []string{"workspace_id", "permission_key"},

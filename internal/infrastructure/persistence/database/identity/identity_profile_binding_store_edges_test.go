@@ -62,7 +62,7 @@ func TestIdentityProfileBindingStoreUnavailableAndLookupEdges(t *testing.T) {
 	}
 
 	bindingColumns := []string{"workspace_id", "binding_key", "object_key", "profile_id", "identity_user_id", "status", "invitation_channel", "claim_proof_type", "version", "created_at", "updated_at"}
-	bindingRow := []driver.Value{"workspace", "member", "member_profile", "profile", "user", "active", "", "", int64(1), "created", "updated"}
+	bindingRow := []driver.Value{"workspace", "member", "member_profile", "profile", "user", "active", "", "", int64(1), int64(1), int64(2)}
 	for _, lookup := range []func(*IdentityProfileBindingStore) (identitymodel.IdentityProfileBinding, bool, error){
 		func(store *IdentityProfileBindingStore) (identitymodel.IdentityProfileBinding, bool, error) {
 			return store.GetIdentityProfileBinding(t.Context(), "workspace", "member_profile", "profile")
@@ -95,9 +95,9 @@ func TestIdentityProfileBindingStoreUnavailableAndLookupEdges(t *testing.T) {
 func TestIdentityRoleBindingActiveEdges(t *testing.T) {
 	columns := []string{"workspace_id", "binding_key", "object_key", "profile_id", "identity_user_id", "status", "invitation_channel", "claim_proof_type", "version", "created_at", "updated_at"}
 	for _, row := range [][]driver.Value{
-		{"workspace", "member", "member_profile", "profile", " user ", "active", "", "", int64(1), "", ""},
-		{"workspace", "member", "member_profile", "profile", "other", "active", "", "", int64(1), "", ""},
-		{"workspace", "member", "member_profile", "profile", "user", "unlinked", "", "", int64(1), "", ""},
+		{"workspace", "member", "member_profile", "profile", " user ", "active", "", "", int64(1), int64(0), int64(0)},
+		{"workspace", "member", "member_profile", "profile", "other", "active", "", "", int64(1), int64(0), int64(0)},
+		{"workspace", "member", "member_profile", "profile", "user", "unlinked", "", "", int64(1), int64(0), int64(0)},
 	} {
 		store, closeDB := scriptedProfileBindingStore(&identitySQLState{querySteps: []identitySQLQueryStep{{columns: columns, rows: [][]driver.Value{row}}}})
 		active, err := store.IdentityRoleBindingActive(t.Context(), "workspace", " member ", " profile ", "user")
@@ -227,7 +227,7 @@ func TestIdentityProfileBindingMutationLoadAndVersionEdges(t *testing.T) {
 	bindingColumns := []string{"workspace_id", "binding_key", "object_key", "profile_id", "identity_user_id", "status", "invitation_channel", "claim_proof_type", "version", "created_at", "updated_at"}
 	store, closeDB = scriptedProfileBindingStore(&identitySQLState{querySteps: []identitySQLQueryStep{
 		{}, {columns: []string{"identity_user_id"}, rows: [][]driver.Value{{""}}},
-		{columns: bindingColumns, rows: [][]driver.Value{{"workspace", "member", "member_profile", "profile", "", "invited", "", "", int64(2), "created", "updated"}}},
+		{columns: bindingColumns, rows: [][]driver.Value{{"workspace", "member", "member_profile", "profile", "", "invited", "", "", int64(2), int64(1), int64(2)}}},
 	}})
 	if _, err := store.ExecuteIdentityProfileBindingMutation(t.Context(), mutation); apperror.CodeOf(err) != "backend.identity.profile_binding_version_conflict" {
 		t.Fatalf("version error=%v", err)

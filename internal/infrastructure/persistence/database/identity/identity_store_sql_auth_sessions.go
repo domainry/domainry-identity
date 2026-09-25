@@ -12,16 +12,18 @@ func scanAuthRefreshToken(rows interface {
 	Scan(dest ...any) error
 }) (identitymodel.AuthRefreshToken, error) {
 	var token identitymodel.AuthRefreshToken
-	var revokedAt sql.NullString
+	var revokedAt int64
 	var replacedByID sql.NullString
-	var lastUsedAt sql.NullString
+	var lastUsedAt int64
 	var methods string
-	err := rows.Scan(&token.ID, &token.UserID, &token.SessionID, &token.Audience, &token.AuthenticationTime, &methods, &token.AssuranceLevel, &token.TokenHash, &token.ExpiresAt, &revokedAt, &replacedByID, &lastUsedAt, &token.CreatedAt)
+	var authenticationTime, expiresAt, createdAt int64
+	err := rows.Scan(&token.ID, &token.UserID, &token.SessionID, &token.Audience, &authenticationTime, &methods, &token.AssuranceLevel, &token.TokenHash, &expiresAt, &revokedAt, &replacedByID, &lastUsedAt, &createdAt)
 	if err == nil && json.Unmarshal([]byte(methods), &token.AuthenticationMethods) != nil {
 		return identitymodel.AuthRefreshToken{}, fmt.Errorf("decode refresh token authentication methods")
 	}
-	token.RevokedAt = valueFromNull(revokedAt)
+	token.AuthenticationTime = authenticationTime / 1000
+	token.ExpiresAt, token.RevokedAt = timeString(expiresAt), timeString(revokedAt)
 	token.ReplacedByID = valueFromNull(replacedByID)
-	token.LastUsedAt = valueFromNull(lastUsedAt)
+	token.LastUsedAt, token.CreatedAt = timeString(lastUsedAt), timeString(createdAt)
 	return token, err
 }

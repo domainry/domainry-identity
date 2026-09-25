@@ -30,8 +30,8 @@ func identityApplicationsTableDefinition(renderer ormdialect.Renderer) *ormschem
 			ormschema.Column("application_key", ormschema.TextKey(255)).NotNull(),
 			ormschema.Column("redirect_urls_json", ormschema.Text()).NotNull(),
 			ormschema.Column("status", ormschema.TextKey(32)).NotNull(),
-			ormschema.Column("created_at", ormschema.Text()).NotNull(),
-			ormschema.Column("updated_at", ormschema.Text()).NotNull(),
+			ormschema.Column("created_at", ormschema.BigInt()).NotNull(),
+			ormschema.Column("updated_at", ormschema.BigInt()).NotNull(),
 		).
 		PrimaryKey("workspace_id", "id").
 		Unique("workspace_id", "application_key")

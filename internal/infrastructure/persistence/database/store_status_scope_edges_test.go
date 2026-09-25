@@ -25,6 +25,7 @@ func TestMigrationStatusReadFailures(t *testing.T) {
 }
 
 func TestMigrationStatusClassificationsAndVersionBounds(t *testing.T) {
+	const day1, day2 int64 = 1767225600000, 1767312000000
 	tests := []struct {
 		name      string
 		expected  []string
@@ -33,18 +34,18 @@ func TestMigrationStatusClassificationsAndVersionBounds(t *testing.T) {
 		cfg       config.Config
 		state     string
 	}{
-		{"current", []string{"001_base.sql"}, map[string]string{"001_base.sql": "sum"}, [][]driver.Value{{"001_base.sql", "sum", false, "2026-01-01"}}, config.Config{}, "current"},
-		{"dirty", []string{"001_base.sql"}, map[string]string{"001_base.sql": "sum"}, [][]driver.Value{{"001_base.sql", "sum", true, "2026-01-01"}}, config.Config{}, "dirty"},
-		{"drift", []string{"001_base.sql"}, map[string]string{"001_base.sql": "sum"}, [][]driver.Value{{"001_base.sql", "other", false, "2026-01-01"}}, config.Config{}, "drift"},
-		{"newer", []string{"001_base.sql"}, map[string]string{"001_base.sql": "sum"}, [][]driver.Value{{"002_future.sql", "sum", false, "2026-01-01"}}, config.Config{}, "newer"},
-		{"unknown", nil, nil, [][]driver.Value{{"001_unknown.sql", "sum", false, "2026-01-01"}}, config.Config{}, "unknown"},
+		{"current", []string{"001_base.sql"}, map[string]string{"001_base.sql": "sum"}, [][]driver.Value{{"001_base.sql", "sum", false, day1}}, config.Config{}, "current"},
+		{"dirty", []string{"001_base.sql"}, map[string]string{"001_base.sql": "sum"}, [][]driver.Value{{"001_base.sql", "sum", true, day1}}, config.Config{}, "dirty"},
+		{"drift", []string{"001_base.sql"}, map[string]string{"001_base.sql": "sum"}, [][]driver.Value{{"001_base.sql", "other", false, day1}}, config.Config{}, "drift"},
+		{"newer", []string{"001_base.sql"}, map[string]string{"001_base.sql": "sum"}, [][]driver.Value{{"002_future.sql", "sum", false, day1}}, config.Config{}, "newer"},
+		{"unknown", nil, nil, [][]driver.Value{{"001_unknown.sql", "sum", false, day1}}, config.Config{}, "unknown"},
 		{"pending", []string{"001_base.sql"}, map[string]string{"001_base.sql": "sum"}, nil, config.Config{}, "pending"},
-		{"minimum", []string{"001_base.sql"}, map[string]string{"001_base.sql": "sum"}, [][]driver.Value{{"001_base.sql", "sum", false, "2026-01-01"}}, config.Config{DatabaseMinSchemaVersion: "002", DatabaseMaxSchemaVersion: "003"}, "pending"},
-		{"maximum", []string{"001_base.sql"}, map[string]string{"001_base.sql": "sum"}, [][]driver.Value{{"003_future.sql", "sum", false, "2026-01-01"}}, config.Config{DatabaseMinSchemaVersion: "001", DatabaseMaxSchemaVersion: "002"}, "newer"},
-		{"descending tracked", []string{"001_base.sql", "002_next.sql"}, map[string]string{"001_base.sql": "one", "002_next.sql": "two"}, [][]driver.Value{{"002_next.sql", "two", false, "2026-01-02"}, {"001_base.sql", "one", false, "2026-01-01"}}, config.Config{}, "current"},
-		{"tracked without bounds", nil, map[string]string{"001_base.sql": "sum"}, [][]driver.Value{{"001_base.sql", "sum", false, "2026-01-01"}}, config.Config{}, "current"},
-		{"minimum with existing pending", []string{"002_expected.sql"}, map[string]string{"001_applied.sql": "sum", "002_expected.sql": "expected"}, [][]driver.Value{{"001_applied.sql", "sum", false, "2026-01-01"}}, config.Config{}, "pending"},
-		{"maximum already newer", nil, map[string]string{"003_current.sql": "sum"}, [][]driver.Value{{"003_current.sql", "sum", false, "2026-01-01"}, {"004_newer.sql", "sum", false, "2026-01-02"}}, config.Config{DatabaseMaxSchemaVersion: "002"}, "newer"},
+		{"minimum", []string{"001_base.sql"}, map[string]string{"001_base.sql": "sum"}, [][]driver.Value{{"001_base.sql", "sum", false, day1}}, config.Config{DatabaseMinSchemaVersion: "002", DatabaseMaxSchemaVersion: "003"}, "pending"},
+		{"maximum", []string{"001_base.sql"}, map[string]string{"001_base.sql": "sum"}, [][]driver.Value{{"003_future.sql", "sum", false, day1}}, config.Config{DatabaseMinSchemaVersion: "001", DatabaseMaxSchemaVersion: "002"}, "newer"},
+		{"descending tracked", []string{"001_base.sql", "002_next.sql"}, map[string]string{"001_base.sql": "one", "002_next.sql": "two"}, [][]driver.Value{{"002_next.sql", "two", false, day2}, {"001_base.sql", "one", false, day1}}, config.Config{}, "current"},
+		{"tracked without bounds", nil, map[string]string{"001_base.sql": "sum"}, [][]driver.Value{{"001_base.sql", "sum", false, day1}}, config.Config{}, "current"},
+		{"minimum with existing pending", []string{"002_expected.sql"}, map[string]string{"001_applied.sql": "sum", "002_expected.sql": "expected"}, [][]driver.Value{{"001_applied.sql", "sum", false, day1}}, config.Config{}, "pending"},
+		{"maximum already newer", nil, map[string]string{"003_current.sql": "sum"}, [][]driver.Value{{"003_current.sql", "sum", false, day1}, {"004_newer.sql", "sum", false, day2}}, config.Config{DatabaseMaxSchemaVersion: "002"}, "newer"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

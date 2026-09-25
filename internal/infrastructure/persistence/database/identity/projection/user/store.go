@@ -9,6 +9,7 @@ import (
 
 	"github.com/domainry/domainry-foundation/apperror"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/timevalue"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 	"github.com/domainry/domainry-orm/query"
 )
@@ -136,14 +137,14 @@ func (s *Store) Upsert(ctx context.Context, execer Execer, workspaceID string, i
 	}
 	now := s.now()
 	var version int64
-	var createdAt string
+	var createdAt int64
 	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_users", workspaceID).Columns("version", "created_at").Where(query.Equal("id", item.ID)).Build()
 	if err != nil {
 		return fmt.Errorf("build identity user version query: %w", err)
 	}
 	switch existingErr := execer.QueryRowContext(ctx, statement, arguments...).Scan(&version, &createdAt); existingErr {
 	case nil:
-		item.Version, item.CreatedAt = version+1, createdAt
+		item.Version, item.CreatedAt = version+1, timevalue.String(createdAt)
 	case sql.ErrNoRows:
 		item.Version, item.CreatedAt = 1, now
 	default:
@@ -152,7 +153,7 @@ func (s *Store) Upsert(ctx context.Context, execer Execer, workspaceID string, i
 	item.UpdatedAt = now
 	insert := query.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_users", workspaceID).
 		Columns("id", "name", "given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale", "email", "login_name_key", "phone", "account_type", "locale", "timezone", "org_id", "support_org_id", "manager_user_id", "reporting_path", "worker_no", "worker_type", "work_status", "start_date", "end_date", "status", "version", "created_at", "updated_at").
-		Values(item.ID, item.Name, item.GivenName, item.MiddleName, item.FamilyName, item.NamePrefix, item.NameSuffix, item.NativeName, item.NameLocale, item.Email, identitymodel.IdentityLoginNameKey(item.Email), item.Phone, string(item.AccountType), item.Locale, item.Timezone, nullable(item.OrgID), nullable(item.SupportOrgID), nullable(item.ManagerUserID), item.ReportingPath, item.WorkerNo, string(item.WorkerType), string(item.WorkStatus), nullable(item.StartDate), nullable(item.EndDate), string(item.Status), item.Version, item.CreatedAt, item.UpdatedAt)
+		Values(item.ID, item.Name, item.GivenName, item.MiddleName, item.FamilyName, item.NamePrefix, item.NameSuffix, item.NativeName, item.NameLocale, item.Email, identitymodel.IdentityLoginNameKey(item.Email), item.Phone, string(item.AccountType), item.Locale, item.Timezone, nullable(item.OrgID), nullable(item.SupportOrgID), nullable(item.ManagerUserID), item.ReportingPath, item.WorkerNo, string(item.WorkerType), string(item.WorkStatus), nullable(item.StartDate), nullable(item.EndDate), string(item.Status), item.Version, timevalue.Millis(item.CreatedAt), timevalue.Millis(item.UpdatedAt))
 
 	statement, arguments, err = insert.Build()
 	if err != nil {
@@ -161,7 +162,7 @@ func (s *Store) Upsert(ctx context.Context, execer Execer, workspaceID string, i
 	if item.Version > 1 {
 		update := query.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_users", workspaceID)
 		columns := []string{"id", "name", "given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale", "email", "login_name_key", "phone", "account_type", "locale", "timezone", "org_id", "support_org_id", "manager_user_id", "reporting_path", "worker_no", "worker_type", "work_status", "start_date", "end_date", "status", "version", "created_at", "updated_at"}
-		values := []any{item.ID, item.Name, item.GivenName, item.MiddleName, item.FamilyName, item.NamePrefix, item.NameSuffix, item.NativeName, item.NameLocale, item.Email, identitymodel.IdentityLoginNameKey(item.Email), item.Phone, string(item.AccountType), item.Locale, item.Timezone, nullable(item.OrgID), nullable(item.SupportOrgID), nullable(item.ManagerUserID), item.ReportingPath, item.WorkerNo, string(item.WorkerType), string(item.WorkStatus), nullable(item.StartDate), nullable(item.EndDate), string(item.Status), item.Version, item.CreatedAt, item.UpdatedAt}
+		values := []any{item.ID, item.Name, item.GivenName, item.MiddleName, item.FamilyName, item.NamePrefix, item.NameSuffix, item.NativeName, item.NameLocale, item.Email, identitymodel.IdentityLoginNameKey(item.Email), item.Phone, string(item.AccountType), item.Locale, item.Timezone, nullable(item.OrgID), nullable(item.SupportOrgID), nullable(item.ManagerUserID), item.ReportingPath, item.WorkerNo, string(item.WorkerType), string(item.WorkStatus), nullable(item.StartDate), nullable(item.EndDate), string(item.Status), item.Version, timevalue.Millis(item.CreatedAt), timevalue.Millis(item.UpdatedAt)}
 		for index, column := range columns {
 			if column != "id" && column != "created_at" {
 				update.Set(column, values[index])
@@ -211,7 +212,7 @@ func (s *Store) CreateWithExecutor(ctx context.Context, execer Execer, workspace
 	item.Version, item.CreatedAt, item.UpdatedAt = 1, now, now
 	insert := query.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_users", workspaceID).
 		Columns("id", "name", "given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale", "email", "login_name_key", "phone", "account_type", "locale", "timezone", "org_id", "support_org_id", "manager_user_id", "reporting_path", "worker_no", "worker_type", "work_status", "start_date", "end_date", "status", "version", "created_at", "updated_at").
-		Values(item.ID, item.Name, item.GivenName, item.MiddleName, item.FamilyName, item.NamePrefix, item.NameSuffix, item.NativeName, item.NameLocale, item.Email, identitymodel.IdentityLoginNameKey(item.Email), item.Phone, string(item.AccountType), item.Locale, item.Timezone, nullable(item.OrgID), nullable(item.SupportOrgID), nullable(item.ManagerUserID), item.ReportingPath, item.WorkerNo, string(item.WorkerType), string(item.WorkStatus), nullable(item.StartDate), nullable(item.EndDate), string(item.Status), item.Version, item.CreatedAt, item.UpdatedAt)
+		Values(item.ID, item.Name, item.GivenName, item.MiddleName, item.FamilyName, item.NamePrefix, item.NameSuffix, item.NativeName, item.NameLocale, item.Email, identitymodel.IdentityLoginNameKey(item.Email), item.Phone, string(item.AccountType), item.Locale, item.Timezone, nullable(item.OrgID), nullable(item.SupportOrgID), nullable(item.ManagerUserID), item.ReportingPath, item.WorkerNo, string(item.WorkerType), string(item.WorkStatus), nullable(item.StartDate), nullable(item.EndDate), string(item.Status), item.Version, timevalue.Millis(item.CreatedAt), timevalue.Millis(item.UpdatedAt))
 	statement, arguments, err := insert.Build()
 	if err != nil {
 		return fmt.Errorf("build identity user create: %w", err)
@@ -252,7 +253,7 @@ func (s *Store) UpdateManyWithExecutorCAS(ctx context.Context, execer Execer, wo
 			Set("manager_user_id", nullable(item.ManagerUserID)).Set("reporting_path", item.ReportingPath).Set("worker_no", item.WorkerNo).
 			Set("worker_type", string(item.WorkerType)).Set("work_status", string(item.WorkStatus)).Set("start_date", nullable(item.StartDate)).
 			Set("end_date", nullable(item.EndDate)).Set("status", string(item.Status)).
-			SetExpression("version", query.Add(query.Column("version"), query.Value(1))).Set("updated_at", s.now()).
+			SetExpression("version", query.Add(query.Column("version"), query.Value(1))).Set("updated_at", timevalue.Millis(s.now())).
 			Where(query.And(predicates...)).Build()
 		if buildErr != nil {
 			return false, fmt.Errorf("build CAS identity user update: %w", buildErr)
@@ -277,7 +278,7 @@ func (s *Store) UpdateLocale(ctx context.Context, workspaceID, userID, locale st
 	if err != nil {
 		return identitymodel.IdentityUser{}, false, err
 	}
-	statement, arguments, err := query.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_users", workspaceID).Set("locale", locale).SetExpression("version", query.Add(query.Column("version"), query.Value(1))).Set("updated_at", s.now()).Where(query.And(query.Equal("id", userID), query.Equal("version", expectedVersion), query.NotEqual("status", "erased"))).Build()
+	statement, arguments, err := query.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_users", workspaceID).Set("locale", locale).SetExpression("version", query.Add(query.Column("version"), query.Value(1))).Set("updated_at", timevalue.Millis(s.now())).Where(query.And(query.Equal("id", userID), query.Equal("version", expectedVersion), query.NotEqual("status", "erased"))).Build()
 	if err != nil {
 		return identitymodel.IdentityUser{}, false, fmt.Errorf("build identity user locale update: %w", err)
 	}
@@ -395,7 +396,7 @@ func (s *Store) UpdateManyWithExecutorWithinDataScope(ctx context.Context, tx *s
 			Set("end_date", nullable(item.EndDate)).
 			Set("status", string(item.Status)).
 			SetExpression("version", query.Add(query.Column("version"), query.Value(1))).
-			Set("updated_at", s.now()).
+			Set("updated_at", timevalue.Millis(s.now())).
 			Where(query.And(predicates...))
 		statement, arguments, buildErr := builder.Build()
 		if buildErr != nil {
@@ -504,7 +505,7 @@ func (s *Store) SetStatus(ctx context.Context, workspaceID, userID string, statu
 	if err != nil {
 		return err
 	}
-	statement, arguments, err := query.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_users", workspaceID).Set("status", string(status)).SetExpression("version", query.Add(query.Column("version"), query.Value(1))).Set("updated_at", s.now()).Where(query.And(query.Equal("id", userID), query.NotEqual("status", "erased"))).Build()
+	statement, arguments, err := query.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_users", workspaceID).Set("status", string(status)).SetExpression("version", query.Add(query.Column("version"), query.Value(1))).Set("updated_at", timevalue.Millis(s.now())).Where(query.And(query.Equal("id", userID), query.NotEqual("status", "erased"))).Build()
 	if err != nil {
 		return fmt.Errorf("build identity user status update: %w", err)
 	}
@@ -530,7 +531,7 @@ func (s *Store) SetStatusWithinDataScope(ctx context.Context, workspaceID, userI
 	if !scope.Unrestricted {
 		predicates = append(predicates, userDataScopePredicate(scope))
 	}
-	statement, arguments, err := query.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_users", workspaceID).Set("status", string(status)).SetExpression("version", query.Add(query.Column("version"), query.Value(1))).Set("updated_at", s.now()).Where(query.And(predicates...)).Build()
+	statement, arguments, err := query.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_users", workspaceID).Set("status", string(status)).SetExpression("version", query.Add(query.Column("version"), query.Value(1))).Set("updated_at", timevalue.Millis(s.now())).Where(query.And(predicates...)).Build()
 	if err != nil {
 		return false, fmt.Errorf("build identity user status update: %w", err)
 	}
@@ -570,7 +571,7 @@ func (s *Store) DisableWithinDataScope(ctx context.Context, workspaceID, userID 
 	statement, arguments, err := query.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_users", workspaceID).
 		Set("status", string(identitymodel.IdentityStatusDisabled)).
 		SetExpression("version", query.Add(query.Column("version"), query.Value(1))).
-		Set("updated_at", now).
+		Set("updated_at", timevalue.Millis(now)).
 		Where(query.And(predicates...)).
 		Build()
 	if err != nil {
@@ -588,9 +589,9 @@ func (s *Store) DisableWithinDataScope(ctx context.Context, workspaceID, userID 
 		return 0, false, nil
 	}
 	statement, arguments, err = query.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_auth_refresh_tokens", workspaceID).
-		Set("revoked_at", now).
-		Set("updated_at", now).
-		Where(query.And(query.Equal("user_id", userID), query.IsNull("revoked_at"))).
+		Set("revoked_at", timevalue.Millis(now)).
+		Set("updated_at", timevalue.Millis(now)).
+		Where(query.And(query.Equal("user_id", userID), query.Equal("revoked_at", int64(0)))).
 		Build()
 	if err != nil {
 		return 0, false, fmt.Errorf("build identity refresh-token revocation: %w", err)
@@ -663,13 +664,15 @@ func scan(scanner interface{ Scan(...any) error }) (identitymodel.IdentityUser, 
 	var item identitymodel.IdentityUser
 	var accountType, workerType, workStatus, status string
 	var organizationUnitID, supportOrganizationUnitID, managerUserID, startDate, endDate sql.NullString
-	err := scanner.Scan(&item.ID, &item.Name, &item.GivenName, &item.MiddleName, &item.FamilyName, &item.NamePrefix, &item.NameSuffix, &item.NativeName, &item.NameLocale, &item.Email, &item.Phone, &accountType, &item.Locale, &item.Timezone, &organizationUnitID, &supportOrganizationUnitID, &managerUserID, &item.ReportingPath, &item.WorkerNo, &workerType, &workStatus, &startDate, &endDate, &status, &item.Version, &item.CreatedAt, &item.UpdatedAt)
+	var createdAt, updatedAt int64
+	err := scanner.Scan(&item.ID, &item.Name, &item.GivenName, &item.MiddleName, &item.FamilyName, &item.NamePrefix, &item.NameSuffix, &item.NativeName, &item.NameLocale, &item.Email, &item.Phone, &accountType, &item.Locale, &item.Timezone, &organizationUnitID, &supportOrganizationUnitID, &managerUserID, &item.ReportingPath, &item.WorkerNo, &workerType, &workStatus, &startDate, &endDate, &status, &item.Version, &createdAt, &updatedAt)
 	item.AccountType, item.Status = identitymodel.IdentityAccountType(accountType), identitymodel.IdentityStatus(status)
 	item.OrgID = organizationUnitID.String
 	item.SupportOrgID = supportOrganizationUnitID.String
 	item.ManagerUserID = managerUserID.String
 	item.WorkerType, item.WorkStatus = identitymodel.IdentityWorkerType(workerType), identitymodel.IdentityWorkStatus(workStatus)
 	item.StartDate, item.EndDate = startDate.String, endDate.String
+	item.CreatedAt, item.UpdatedAt = timevalue.String(createdAt), timevalue.String(updatedAt)
 	return item, err
 }
 

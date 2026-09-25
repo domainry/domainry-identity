@@ -34,9 +34,10 @@ func (s AuthStore) GetAuthApplication(ctx context.Context, workspaceID, applicat
 	}
 	var registration authmodel.AuthApplicationRegistration
 	var redirects []byte
+	var createdAt, updatedAt int64
 	err = s.store.QueryIdentityRowContext(ctx, statement, arguments...).Scan(
 		&registration.ID, &registration.WorkspaceID, &registration.ApplicationKey, &redirects,
-		&registration.Status, &registration.CreatedAt, &registration.UpdatedAt,
+		&registration.Status, &createdAt, &updatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return authmodel.AuthApplicationRegistration{}, false, nil
@@ -47,6 +48,8 @@ func (s AuthStore) GetAuthApplication(ctx context.Context, workspaceID, applicat
 	if err := json.Unmarshal(redirects, &registration.RedirectURLs); err != nil {
 		return authmodel.AuthApplicationRegistration{}, false, fmt.Errorf("decode authentication application redirects: %w", err)
 	}
+	registration.CreatedAt = identitypersistence.TimeString(createdAt)
+	registration.UpdatedAt = identitypersistence.TimeString(updatedAt)
 	return registration, true, nil
 }
 
@@ -82,7 +85,7 @@ func (s AuthStore) UpsertAuthApplications(ctx context.Context, workspaceID strin
 	if hostExecutor := transaction.ExecutorFromContext(ctx); hostExecutor != nil {
 		executor = hostExecutor
 	}
-	now := identitypersistence.NowString()
+	now := identitypersistence.TimeMillis(identitypersistence.NowString())
 	for _, batchRange := range ranges {
 		insert := query.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_applications", workspaceID).
 			Columns("id", "application_key", "redirect_urls_json", "status", "created_at", "updated_at")

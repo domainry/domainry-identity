@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
-	"time"
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	identitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity"
@@ -75,7 +74,7 @@ func (s AuthStore) UnlockIdentityCredentialWithinDataScope(ctx context.Context, 
 		predicates = append(predicates, identitydatascope.UserExists(workspaceID, query.TableColumn("_identity_credentials", "user_id"), scope))
 	}
 	statement, arguments, err = query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_credentials", workspaceID).
-		Set("failed_login_count", 0).Set("locked_until", nil).Set("updated_at", identitypersistence.NowString()).
+		Set("failed_login_count", 0).Set("locked_until", int64(0)).Set("updated_at", identitypersistence.TimeMillis(identitypersistence.NowString())).
 		Where(query.And(predicates...)).Build()
 	if err != nil {
 		return true, false, fmt.Errorf("build scoped credential unlock: %w", err)
@@ -130,7 +129,7 @@ func (s AuthStore) ResetIdentityCredentialWithinDataScope(ctx context.Context, w
 		return false, err
 	}
 	now := identitypersistence.NowString()
-	values := []any{workspaceID, userID, passwordHash, passwordUpdatedAt, 0, nil, nil, mustChangePassword, now, now}
+	values := []any{workspaceID, userID, passwordHash, identitypersistence.TimeMillis(passwordUpdatedAt), 0, int64(0), int64(0), mustChangePassword, identitypersistence.TimeMillis(now), identitypersistence.TimeMillis(now)}
 	projections := make([]query.Projection, len(values))
 	for index := range values {
 		projections[index] = query.Project(query.Value(values[index]))
@@ -182,7 +181,7 @@ func (s AuthStore) RevokeIdentityMFAFactorWithinDataScope(ctx context.Context, w
 		predicates = append(predicates, identitydatascope.UserExists(workspaceID, query.TableColumn("_identity_mfa_factors", "user_id"), scope))
 	}
 	statement, arguments, err := query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_mfa_factors", workspaceID).
-		Set("status", "disabled").Set("updated_at", identitypersistence.NowString()).
+		Set("status", "disabled").Set("updated_at", identitypersistence.TimeMillis(identitypersistence.NowString())).
 		Where(query.And(predicates...)).Build()
 	if err != nil {
 		return true, false, fmt.Errorf("build scoped identity MFA factor revoke: %w", err)
@@ -222,7 +221,7 @@ func (s AuthStore) RevokeAuthRefreshTokensForUserWithinDataScope(ctx context.Con
 	if err != nil || !visible {
 		return 0, visible, err
 	}
-	predicate := query.And(query.Equal("user_id", userID), query.IsNull("revoked_at"))
+	predicate := query.And(query.Equal("user_id", userID), query.Equal("revoked_at", int64(0)))
 	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_auth_refresh_tokens", workspaceID).
 		Columns("session_id", "expires_at").Where(predicate).Build()
 	if err != nil {
@@ -232,24 +231,16 @@ func (s AuthStore) RevokeAuthRefreshTokensForUserWithinDataScope(ctx context.Con
 	if err != nil {
 		return 0, true, err
 	}
-	now, parseErr := time.Parse(time.RFC3339Nano, revokedAt)
-	if parseErr != nil {
-		rows.Close()
-		return 0, true, fmt.Errorf("parse auth session revocation time: %w", parseErr)
-	}
+	nowMillis := identitypersistence.TimeMillis(revokedAt)
 	active := map[string]struct{}{}
 	for rows.Next() {
-		var sessionID, expiresAt string
+		var sessionID string
+		var expiresAt int64
 		if err := rows.Scan(&sessionID, &expiresAt); err != nil {
 			rows.Close()
 			return 0, true, err
 		}
-		expires, err := time.Parse(time.RFC3339Nano, expiresAt)
-		if err != nil {
-			rows.Close()
-			return 0, true, fmt.Errorf("parse auth session expiry: %w", err)
-		}
-		if expires.After(now) {
+		if expiresAt > nowMillis {
 			active[sessionID] = struct{}{}
 		}
 	}
@@ -260,12 +251,12 @@ func (s AuthStore) RevokeAuthRefreshTokensForUserWithinDataScope(ctx context.Con
 	if err := rows.Close(); err != nil {
 		return 0, true, err
 	}
-	writePredicates := []query.Predicate{query.Equal("user_id", userID), query.IsNull("revoked_at")}
+	writePredicates := []query.Predicate{query.Equal("user_id", userID), query.Equal("revoked_at", int64(0))}
 	if !scope.Unrestricted {
 		writePredicates = append(writePredicates, identitydatascope.UserExists(workspaceID, query.TableColumn("_identity_auth_refresh_tokens", "user_id"), scope))
 	}
 	statement, arguments, err = query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_auth_refresh_tokens", workspaceID).
-		Set("revoked_at", revokedAt).Set("last_used_at", revokedAt).Set("updated_at", revokedAt).
+		Set("revoked_at", nowMillis).Set("last_used_at", nowMillis).Set("updated_at", nowMillis).
 		Where(query.And(writePredicates...)).Build()
 	if err != nil {
 		return 0, true, fmt.Errorf("build scoped auth sessions revoke: %w", err)

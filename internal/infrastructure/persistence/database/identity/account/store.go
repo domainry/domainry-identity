@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/timevalue"
+
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 	"github.com/domainry/domainry-orm/query"
 )
@@ -30,7 +32,7 @@ func (s Store) Disable(ctx context.Context, workspaceID, userID string) (int, er
 	statement, arguments, err := query.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_users", workspaceID).
 		Set("status", "disabled").
 		SetExpression("version", query.Add(query.Column("version"), query.Value(1))).
-		Set("updated_at", s.now()).
+		Set("updated_at", timevalue.Millis(s.now())).
 		Where(query.And(query.Equal("id", userID), query.NotEqual("status", "erased"))).
 		Build()
 	if err != nil {
@@ -47,11 +49,11 @@ func (s Store) Disable(ctx context.Context, workspaceID, userID string) (int, er
 	if changed != 1 {
 		return 0, fmt.Errorf("identity user %q not found", userID)
 	}
-	now := s.now()
+	now := timevalue.Millis(s.now())
 	statement, arguments, err = query.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_auth_refresh_tokens", workspaceID).
 		Set("revoked_at", now).
 		Set("updated_at", now).
-		Where(query.And(query.Equal("user_id", userID), query.IsNull("revoked_at"))).
+		Where(query.And(query.Equal("user_id", userID), query.Equal("revoked_at", int64(0)))).
 		Build()
 	if err != nil {
 		return 0, fmt.Errorf("build identity refresh-token revocation: %w", err)

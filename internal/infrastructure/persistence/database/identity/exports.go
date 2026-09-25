@@ -29,6 +29,10 @@ func (s *SQLIdentityStore) ApplyUpsert(insert *query.InsertBuilder, conflictColu
 
 func NowString() string { return nowString() }
 
+func TimeMillis(value any) int64 { return timeMillis(value) }
+
+func TimeString(value int64) string { return timeString(value) }
+
 func ValueFromNull(value sql.NullString) string { return valueFromNull(value) }
 
 func ScanAuthRefreshToken(scanner interface{ Scan(...any) error }) (identitymodel.AuthRefreshToken, error) {

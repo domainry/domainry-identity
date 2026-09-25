@@ -13,6 +13,7 @@ import (
 	identityrepository "github.com/domainry/domainry-identity/internal/domain/identity/repository"
 	identitydatascope "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/datascope"
 	operationreceipt "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/operationreceipt"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/timevalue"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 	"github.com/domainry/domainry-orm/query"
 )
@@ -73,7 +74,7 @@ func (s *Store) CreateIdentityAccessReview(ctx context.Context, review identitym
 	defer tx.Rollback()
 	statement, arguments, err := query.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_access_reviews", workspaceID).
 		Columns("id", "period_start", "period_end", "due_at", "status", "created_by", "created_at", "updated_at").
-		Values(review.ID, review.PeriodStart, review.PeriodEnd, review.DueAt, review.Status, review.CreatedBy, review.CreatedAt, review.UpdatedAt).Build()
+		Values(review.ID, review.PeriodStart, review.PeriodEnd, timevalue.Millis(review.DueAt), review.Status, review.CreatedBy, timevalue.Millis(review.CreatedAt), timevalue.Millis(review.UpdatedAt)).Build()
 	if err != nil {
 		return fmt.Errorf("build identity access review insert: %w", err)
 	}
@@ -88,10 +89,10 @@ func (s *Store) CreateIdentityAccessReview(ctx context.Context, review identitym
 		items.Values(
 			item.ID, review.ID, item.UserID, item.RoleID, item.RoleKey,
 			nullIfBlank(item.BindingKey), nullIfBlank(item.ProfileID),
-			item.RiskLevel, item.Priority, string(priorityReasonsJSON), nullIfBlank(item.LastUsedAt),
+			item.RiskLevel, item.Priority, string(priorityReasonsJSON), timevalue.Millis(item.LastUsedAt),
 			item.Status, nullIfBlank(string(item.Decision)), nullIfBlank(item.ReplacementRoleID),
-			nullIfBlank(item.ExpiresAt), nullIfBlank(item.ReviewerID), nullIfBlank(item.Reason), nullIfBlank(item.DecidedAt),
-			item.Version, item.CreatedAt, item.UpdatedAt)
+			timevalue.Millis(item.ExpiresAt), nullIfBlank(item.ReviewerID), nullIfBlank(item.Reason), timevalue.Millis(item.DecidedAt),
+			item.Version, timevalue.Millis(item.CreatedAt), timevalue.Millis(item.UpdatedAt))
 	}
 	statement, arguments, err = items.Build()
 	if err != nil {
@@ -118,7 +119,7 @@ func (s *Store) CreateIdentityAccessReviewWithinDataScope(ctx context.Context, r
 	defer tx.Rollback()
 	statement, arguments, err := query.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_access_reviews", workspaceID).
 		Columns("id", "period_start", "period_end", "due_at", "status", "created_by", "created_at", "updated_at").
-		Values(review.ID, review.PeriodStart, review.PeriodEnd, review.DueAt, review.Status, review.CreatedBy, review.CreatedAt, review.UpdatedAt).Build()
+		Values(review.ID, review.PeriodStart, review.PeriodEnd, timevalue.Millis(review.DueAt), review.Status, review.CreatedBy, timevalue.Millis(review.CreatedAt), timevalue.Millis(review.UpdatedAt)).Build()
 	if err != nil {
 		return false, fmt.Errorf("build identity access review insert: %w", err)
 	}
@@ -131,9 +132,9 @@ func (s *Store) CreateIdentityAccessReviewWithinDataScope(ctx context.Context, r
 		values := []any{
 			workspaceID, item.ID, review.ID, item.UserID, item.RoleID, item.RoleKey,
 			nullIfBlank(item.BindingKey), nullIfBlank(item.ProfileID), item.RiskLevel, item.Priority,
-			string(priorityReasonsJSON), nullIfBlank(item.LastUsedAt), item.Status, nullIfBlank(string(item.Decision)),
-			nullIfBlank(item.ReplacementRoleID), nullIfBlank(item.ExpiresAt), nullIfBlank(item.ReviewerID),
-			nullIfBlank(item.Reason), nullIfBlank(item.DecidedAt), item.Version, item.CreatedAt, item.UpdatedAt,
+			string(priorityReasonsJSON), timevalue.Millis(item.LastUsedAt), item.Status, nullIfBlank(string(item.Decision)),
+			nullIfBlank(item.ReplacementRoleID), timevalue.Millis(item.ExpiresAt), nullIfBlank(item.ReviewerID),
+			nullIfBlank(item.Reason), timevalue.Millis(item.DecidedAt), item.Version, timevalue.Millis(item.CreatedAt), timevalue.Millis(item.UpdatedAt),
 		}
 		projections := make([]query.Projection, len(values))
 		for index := range values {
@@ -217,11 +218,13 @@ func (s *Store) ListIdentityAccessReviewsWithinDataScope(ctx context.Context, wo
 	for rows.Next() {
 		var review identitymodel.IdentityAccessReview
 		var reviewStatus string
-		if err := rows.Scan(&review.ID, &review.PeriodStart, &review.PeriodEnd, &review.DueAt, &reviewStatus, &review.CreatedBy, &review.CreatedAt, &review.UpdatedAt); err != nil {
+		var dueAt, createdAt, updatedAt int64
+		if err := rows.Scan(&review.ID, &review.PeriodStart, &review.PeriodEnd, &dueAt, &reviewStatus, &review.CreatedBy, &createdAt, &updatedAt); err != nil {
 			rows.Close()
 			return nil, err
 		}
 		review.WorkspaceID, review.Status = workspaceID, identitymodel.IdentityAccessReviewStatus(reviewStatus)
+		review.DueAt, review.CreatedAt, review.UpdatedAt = timevalue.String(dueAt), timevalue.String(createdAt), timevalue.String(updatedAt)
 		out = append(out, review)
 	}
 	if err := rows.Err(); err != nil {
@@ -384,8 +387,8 @@ func (s *Store) ApplyIdentityAccessReviewDecision(ctx context.Context, mutation 
 	}
 	statement, arguments, err := query.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_access_review_items", workspaceID).
 		Set("status", item.Status).Set("decision", item.Decision).Set("replacement_role_id", nullIfBlank(item.ReplacementRoleID)).
-		Set("expires_at", nullIfBlank(item.ExpiresAt)).Set("reviewer_id", item.ReviewerID).Set("reason", item.Reason).
-		Set("decided_at", item.DecidedAt).Set("updated_at", item.UpdatedAt).Set("version", item.Version).
+		Set("expires_at", timevalue.Millis(item.ExpiresAt)).Set("reviewer_id", item.ReviewerID).Set("reason", item.Reason).
+		Set("decided_at", timevalue.Millis(item.DecidedAt)).Set("updated_at", timevalue.Millis(item.UpdatedAt)).Set("version", item.Version).
 		Where(query.And(itemPredicates...)).Build()
 	if err != nil {
 		return identitymodel.IdentityAccessReviewDecisionReceipt{}, fmt.Errorf("build identity access review decision: %w", err)
@@ -414,7 +417,7 @@ func (s *Store) ApplyIdentityAccessReviewDecision(ctx context.Context, mutation 
 		reviewStatus = identitymodel.IdentityAccessReviewCompleted
 	}
 	statement, arguments, err = query.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_access_reviews", workspaceID).
-		Set("status", reviewStatus).Set("updated_at", now).Where(query.Equal("id", item.ReviewID)).Build()
+		Set("status", reviewStatus).Set("updated_at", timevalue.Millis(now)).Where(query.Equal("id", item.ReviewID)).Build()
 	if err != nil {
 		return identitymodel.IdentityAccessReviewDecisionReceipt{}, fmt.Errorf("build identity access review status update: %w", err)
 	}
@@ -550,11 +553,12 @@ func (s *Store) loadItem(ctx context.Context, queryer Queryer, workspaceID, item
 	var item identitymodel.IdentityAccessReviewItem
 	var riskLevel string
 	var priorityReasonsJSON string
-	var bindingKey, profileID, lastUsedAt, decision, replacementRoleID, expiresAt, reviewerID, reason, decidedAt sql.NullString
+	var bindingKey, profileID, decision, replacementRoleID, reviewerID, reason sql.NullString
+	var lastUsedAt, expiresAt, decidedAt, createdAt, updatedAt int64
 	err := queryer.QueryRowContext(ctx, statement, arguments...).Scan(
 		&item.ID, &item.ReviewID, &item.UserID, &item.RoleID, &item.RoleKey, &bindingKey, &profileID,
 		&riskLevel, &item.Priority, &priorityReasonsJSON, &lastUsedAt, &item.Status, &decision, &replacementRoleID, &expiresAt, &reviewerID, &reason, &decidedAt,
-		&item.Version, &item.CreatedAt, &item.UpdatedAt,
+		&item.Version, &createdAt, &updatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return identitymodel.IdentityAccessReviewItem{}, false, nil
@@ -566,9 +570,10 @@ func (s *Store) loadItem(ctx context.Context, queryer Queryer, workspaceID, item
 	if err := json.Unmarshal([]byte(priorityReasonsJSON), &item.PriorityReasons); err != nil {
 		return identitymodel.IdentityAccessReviewItem{}, false, err
 	}
-	item.LastUsedAt = lastUsedAt.String
+	item.LastUsedAt = timevalue.String(lastUsedAt)
 	item.RiskLevel, item.Decision = identitymodel.IdentityRoleRiskLevel(riskLevel), identitymodel.IdentityAccessReviewDecision(decision.String)
-	item.ReplacementRoleID, item.ExpiresAt, item.ReviewerID, item.Reason, item.DecidedAt = replacementRoleID.String, expiresAt.String, reviewerID.String, reason.String, decidedAt.String
+	item.ReplacementRoleID, item.ExpiresAt, item.ReviewerID, item.Reason, item.DecidedAt = replacementRoleID.String, timevalue.String(expiresAt), reviewerID.String, reason.String, timevalue.String(decidedAt)
+	item.CreatedAt, item.UpdatedAt = timevalue.String(createdAt), timevalue.String(updatedAt)
 	return item, true, nil
 }
 
@@ -627,10 +632,11 @@ func (s *Store) LoadAssignment(ctx context.Context, queryer Queryer, workspaceID
 		return identitymodel.IdentityUserRoleAssignment{}, false, buildErr
 	}
 	assignment := identitymodel.IdentityUserRoleAssignment{UserID: userID, RoleID: roleID}
-	var bindingKey, profileID, validFrom, validUntil, grantedBy, grantReason, revokedBy, revokedAt, revokeReason, expiresAt sql.NullString
+	var bindingKey, profileID, grantedBy, grantReason, revokedBy, revokeReason sql.NullString
+	var validFrom, validUntil, revokedAt, expiresAt, createdAt, updatedAt int64
 	err := queryer.QueryRowContext(ctx, statement, arguments...).Scan(
 		&bindingKey, &profileID, &assignment.Source, &assignment.Status, &validFrom, &validUntil,
-		&grantedBy, &grantReason, &revokedBy, &revokedAt, &revokeReason, &expiresAt, &assignment.CreatedAt, &assignment.UpdatedAt,
+		&grantedBy, &grantReason, &revokedBy, &revokedAt, &revokeReason, &expiresAt, &createdAt, &updatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return identitymodel.IdentityUserRoleAssignment{}, false, nil
@@ -639,8 +645,13 @@ func (s *Store) LoadAssignment(ctx context.Context, queryer Queryer, workspaceID
 		return identitymodel.IdentityUserRoleAssignment{}, false, err
 	}
 	assignment.BindingKey, assignment.ProfileID = bindingKey.String, profileID.String
-	assignment.ValidFrom, assignment.ValidUntil, assignment.GrantedBy, assignment.GrantReason = validFrom.String, validUntil.String, grantedBy.String, grantReason.String
-	assignment.RevokedBy, assignment.RevokedAt, assignment.RevokeReason, assignment.ExpiresAt = revokedBy.String, revokedAt.String, revokeReason.String, pointerFromNull(expiresAt)
+	assignment.ValidFrom, assignment.ValidUntil, assignment.GrantedBy, assignment.GrantReason = timevalue.String(validFrom), timevalue.String(validUntil), grantedBy.String, grantReason.String
+	assignment.RevokedBy, assignment.RevokedAt, assignment.RevokeReason = revokedBy.String, timevalue.String(revokedAt), revokeReason.String
+	if expiresAt != 0 {
+		value := timevalue.String(expiresAt)
+		assignment.ExpiresAt = &value
+	}
+	assignment.CreatedAt, assignment.UpdatedAt = timevalue.String(createdAt), timevalue.String(updatedAt)
 	return assignment, true, nil
 }
 

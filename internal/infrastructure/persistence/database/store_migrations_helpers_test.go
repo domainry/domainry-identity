@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +14,7 @@ import (
 
 	migrationcontract "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/migration"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/observability"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/timevalue"
 	persistencedriver "github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/mysql"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/postgres"
@@ -32,7 +32,7 @@ func TestMigrationHelpersCoverDialectAndFilesystemEdges(t *testing.T) {
 
 	mysqlStore := &IdentityStore{engine: mysql.NewEngine()}
 	attachLedger(mysqlStore)
-	if sql := mysqlStore.Ledger.SchemaSQL(); !strings.Contains(sql, "VARCHAR(255)") || !strings.Contains(sql, "VARCHAR(64)") {
+	if sql := mysqlStore.Ledger.SchemaSQL(); !strings.Contains(sql, "VARCHAR(255)") || !strings.Contains(sql, "BIGINT") {
 		t.Fatalf("mysql ledger SQL=%q", sql)
 	}
 	postgresStore := &IdentityStore{engine: postgres.NewEngine(), databaseSchema: "runtime"}
@@ -117,7 +117,7 @@ func TestValidateExternalMigrationBackupAcceptsMatchingEvidence(t *testing.T) {
 			{Kind: migrationcontract.ArtifactService, Checksum: "service", Size: 1},
 		},
 	}
-	raw, err := json.Marshal(evidence)
+	raw, err := timevalue.MarshalJSON(evidence)
 	if err != nil {
 		t.Fatal(err)
 	}

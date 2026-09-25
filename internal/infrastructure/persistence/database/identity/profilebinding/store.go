@@ -17,6 +17,7 @@ import (
 	"github.com/domainry/domainry-foundation/apperror"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	operationreceipt "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/operationreceipt"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/timevalue"
 	identitytransaction "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/transaction"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 	"github.com/domainry/domainry-orm/query"
@@ -248,8 +249,8 @@ func (s *Store) synchronizeSystemManagedRoles(ctx context.Context, executor iden
 	}
 	if previousUserID != "" && (mutation.Operation == identitymodel.IdentityProfileBindingRebind || mutation.Operation == identitymodel.IdentityProfileBindingUnlink) {
 		statement, arguments, buildErr := query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_user_role_assignments", mutation.WorkspaceID).
-			Set("status", "revoked").Set("revoked_by", mutation.ActorID).Set("revoked_at", now).
-			Set("revoke_reason", string(mutation.Operation)).Set("updated_at", now).
+			Set("status", "revoked").Set("revoked_by", mutation.ActorID).Set("revoked_at", timevalue.Millis(now)).
+			Set("revoke_reason", string(mutation.Operation)).Set("updated_at", timevalue.Millis(now)).
 			Where(query.And(query.Equal("user_id", previousUserID), query.Equal("binding_key", mutation.BindingKey), query.Equal("profile_id", mutation.ProfileID), query.Equal("source", "profile_binding"))).Build()
 		if buildErr != nil {
 			return buildErr
@@ -264,7 +265,7 @@ func (s *Store) synchronizeSystemManagedRoles(ctx context.Context, executor iden
 	for _, roleID := range roleIDs {
 		insert := query.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_user_role_assignments", mutation.WorkspaceID).
 			Columns("id", "user_id", "role_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason", "expires_at", "created_at", "updated_at").
-			Values(profileBindingStableID("profile_role", mutation.WorkspaceID, nextUserID, roleID), nextUserID, roleID, mutation.BindingKey, mutation.ProfileID, "profile_binding", "active", nil, nil, mutation.ActorID, string(mutation.Operation), nil, nil, nil, nil, now, now)
+			Values(profileBindingStableID("profile_role", mutation.WorkspaceID, nextUserID, roleID), nextUserID, roleID, mutation.BindingKey, mutation.ProfileID, "profile_binding", "active", int64(0), int64(0), mutation.ActorID, string(mutation.Operation), nil, int64(0), nil, int64(0), timevalue.Millis(now), timevalue.Millis(now))
 		s.store.ApplyUpsert(insert, []string{"workspace_id", "id"}, "binding_key", "profile_id", "source", "status", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason", "updated_at")
 		statement, arguments, buildErr := insert.Build()
 		if buildErr != nil {
@@ -397,7 +398,7 @@ func (s *Store) loadBinding(ctx context.Context, queryer identityProfileBindingQ
 
 func (s *Store) updateProfileIdentityUser(ctx context.Context, executor identitytransaction.Executor, mutation identitymodel.IdentityProfileBindingMutation, currentUserID, desiredUserID, now string) error {
 	statement, arguments, buildErr := query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), mutation.ObjectKey, mutation.WorkspaceID).
-		Set(mutation.IdentityField, nullableProfileBindingUser(desiredUserID)).Set("updated_at", now).
+		Set(mutation.IdentityField, nullableProfileBindingUser(desiredUserID)).Set("updated_at", timevalue.Millis(now)).
 		Where(query.And(query.Equal("id", mutation.ProfileID), query.EqualExpressions(query.Coalesce(query.Column(mutation.IdentityField), query.Value("")), query.Value(currentUserID)))).Build()
 	if buildErr != nil {
 		return buildErr
@@ -425,7 +426,7 @@ func (s *Store) writeBinding(ctx context.Context, executor identitytransaction.E
 		statement, arguments, buildErr := query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_profile_bindings", binding.WorkspaceID).
 			Set("binding_key", binding.BindingKey).Set("identity_user_id", nullableProfileBindingUser(binding.IdentityUserID)).
 			Set("status", string(binding.Status)).Set("invitation_channel", nullableProfileBindingText(binding.InvitationChannel)).
-			Set("claim_proof_type", nullableProfileBindingText(binding.ClaimProofType)).Set("version", binding.Version).Set("updated_at", binding.UpdatedAt).
+			Set("claim_proof_type", nullableProfileBindingText(binding.ClaimProofType)).Set("version", binding.Version).Set("updated_at", timevalue.Millis(binding.UpdatedAt)).
 			Where(query.And(query.Equal("object_key", binding.ObjectKey), query.Equal("profile_id", binding.ProfileID))).Build()
 		if buildErr != nil {
 			return buildErr
@@ -435,7 +436,7 @@ func (s *Store) writeBinding(ctx context.Context, executor identitytransaction.E
 	}
 	statement, arguments, buildErr := query.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_profile_bindings", binding.WorkspaceID).
 		Columns("id", "binding_key", "object_key", "profile_id", "identity_user_id", "status", "invitation_channel", "claim_proof_type", "version", "created_at", "updated_at").
-		Values(profileBindingStableID("binding", binding.WorkspaceID, binding.ObjectKey, binding.ProfileID), binding.BindingKey, binding.ObjectKey, binding.ProfileID, nullableProfileBindingUser(binding.IdentityUserID), string(binding.Status), nullableProfileBindingText(binding.InvitationChannel), nullableProfileBindingText(binding.ClaimProofType), binding.Version, binding.CreatedAt, binding.UpdatedAt).Build()
+		Values(profileBindingStableID("binding", binding.WorkspaceID, binding.ObjectKey, binding.ProfileID), binding.BindingKey, binding.ObjectKey, binding.ProfileID, nullableProfileBindingUser(binding.IdentityUserID), string(binding.Status), nullableProfileBindingText(binding.InvitationChannel), nullableProfileBindingText(binding.ClaimProofType), binding.Version, timevalue.Millis(binding.CreatedAt), timevalue.Millis(binding.UpdatedAt)).Build()
 	if buildErr != nil {
 		return buildErr
 	}
@@ -509,11 +510,13 @@ func scanIdentityProfileBinding(row interface{ Scan(...any) error }) (identitymo
 	var binding identitymodel.IdentityProfileBinding
 	var status string
 	var identityUserID, invitationChannel, claimProofType sql.NullString
-	err := row.Scan(&binding.WorkspaceID, &binding.BindingKey, &binding.ObjectKey, &binding.ProfileID, &identityUserID, &status, &invitationChannel, &claimProofType, &binding.Version, &binding.CreatedAt, &binding.UpdatedAt)
+	var createdAt, updatedAt int64
+	err := row.Scan(&binding.WorkspaceID, &binding.BindingKey, &binding.ObjectKey, &binding.ProfileID, &identityUserID, &status, &invitationChannel, &claimProofType, &binding.Version, &createdAt, &updatedAt)
 	binding.IdentityUserID = identityUserID.String
 	binding.InvitationChannel = invitationChannel.String
 	binding.ClaimProofType = claimProofType.String
 	binding.Status = identitymodel.IdentityProfileBindingStatus(status)
+	binding.CreatedAt, binding.UpdatedAt = timevalue.String(createdAt), timevalue.String(updatedAt)
 	return binding, err
 }
 

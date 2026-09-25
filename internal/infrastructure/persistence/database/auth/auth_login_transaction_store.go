@@ -11,6 +11,7 @@ import (
 	"time"
 
 	authmodel "github.com/domainry/domainry-identity/internal/domain/auth/model"
+	identitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity"
 	"github.com/domainry/domainry-orm/query"
 )
 
@@ -56,7 +57,7 @@ func (s AuthStore) CreateAuthOTPTransaction(ctx context.Context, challenge authm
 	}
 	supersede, supersedeArgs, buildErr := query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_auth_login_transactions", workspaceID).
 		Set("challenge_status", authmodel.AuthChallengeStatusSuperseded).Set("consumed_at", nowText).Set("updated_at", nowText).
-		Where(query.And(query.Equal("provider_key", provider), query.Equal("subject_key_hash", subjectKeyHash), query.IsNull("consumed_at"))).Build()
+		Where(query.And(query.Equal("provider_key", provider), query.Equal("subject_key_hash", subjectKeyHash), query.Equal("consumed_at", int64(0)))).Build()
 	if buildErr != nil {
 		return false, buildErr
 	}
@@ -76,7 +77,7 @@ type authLoginTransactionExecutor interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }
 
-func (s AuthStore) insertAuthLoginTransaction(ctx context.Context, executor authLoginTransactionExecutor, workspaceID, provider, stateHash, subjectKeyHash, envelope string, challenge authmodel.AuthProviderChallenge, now string) error {
+func (s AuthStore) insertAuthLoginTransaction(ctx context.Context, executor authLoginTransactionExecutor, workspaceID, provider, stateHash, subjectKeyHash, envelope string, challenge authmodel.AuthProviderChallenge, now int64) error {
 	status := strings.TrimSpace(challenge.Status)
 	if status == "" {
 		status = authmodel.AuthChallengeStatusActive
@@ -87,7 +88,7 @@ func (s AuthStore) insertAuthLoginTransaction(ctx context.Context, executor auth
 	}
 	statement, args, buildErr := query.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_auth_login_transactions", workspaceID).
 		Columns("state_hash", "provider_key", "subject_key_hash", "challenge_status", "challenge_purpose", "delivery_ref", "delivery_error", "payload_json", "attempts", "expires_at", "consumed_at", "created_at", "updated_at").
-		Values(stateHash, provider, nullableAuthText(subjectKeyHash), status, purpose, nullableAuthText(challenge.DeliveryRef), nullableAuthText(challenge.DeliveryError), envelope, challenge.Attempts, challenge.ExpiresAt, nil, valueOrNow(challenge.CreatedAt, now), now).Build()
+		Values(stateHash, provider, nullableAuthText(subjectKeyHash), status, purpose, nullableAuthText(challenge.DeliveryRef), nullableAuthText(challenge.DeliveryError), envelope, challenge.Attempts, identitypersistence.TimeMillis(challenge.ExpiresAt), int64(0), valueOrNowMillis(challenge.CreatedAt, now), now).Build()
 	if buildErr != nil {
 		return buildErr
 	}
@@ -107,12 +108,13 @@ func (s AuthStore) UpdateAuthOTPTransactionStatus(ctx context.Context, workspace
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
+	nowMillis := now.UTC().UnixMilli()
 	update := query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_auth_login_transactions", workspaceID).
-		Set("challenge_status", status).Set("delivery_ref", nullableAuthText(deliveryRef)).Set("delivery_error", nullableAuthText(deliveryError)).Set("updated_at", now.UTC().Format(time.RFC3339Nano))
+		Set("challenge_status", status).Set("delivery_ref", nullableAuthText(deliveryRef)).Set("delivery_error", nullableAuthText(deliveryError)).Set("updated_at", nowMillis)
 	if status == authmodel.AuthChallengeStatusFailed || status == authmodel.AuthChallengeStatusSuperseded {
-		update.Set("consumed_at", now.UTC().Format(time.RFC3339Nano))
+		update.Set("consumed_at", nowMillis)
 	}
-	statement, args, buildErr := update.Where(query.And(query.Equal("state_hash", authLoginStateHash(state)), query.Equal("provider_key", provider), query.IsNull("consumed_at"))).Build()
+	statement, args, buildErr := update.Where(query.And(query.Equal("state_hash", authLoginStateHash(state)), query.Equal("provider_key", provider), query.Equal("consumed_at", int64(0)))).Build()
 	if buildErr != nil {
 		return buildErr
 	}
@@ -130,37 +132,37 @@ func (s AuthStore) UpdateAuthOTPTransactionStatus(ctx context.Context, workspace
 	return nil
 }
 
-func (s AuthStore) prepareAuthLoginTransaction(ctx context.Context, challenge authmodel.AuthProviderChallenge, now time.Time) (string, string, string, string, string, error) {
+func (s AuthStore) prepareAuthLoginTransaction(ctx context.Context, challenge authmodel.AuthProviderChallenge, now time.Time) (string, string, string, string, int64, error) {
 	workspaceID, err := authWorkspaceID(challenge.WorkspaceID)
 	if err != nil {
-		return "", "", "", "", "", err
+		return "", "", "", "", 0, err
 	}
 	provider, state := strings.ToLower(strings.TrimSpace(challenge.Provider)), strings.TrimSpace(challenge.State)
 	if provider == "" || state == "" {
-		return "", "", "", "", "", authWorkspaceRequiredError()
+		return "", "", "", "", 0, authWorkspaceRequiredError()
 	}
 	stateHash := authLoginStateHash(state)
 	persisted := challenge
 	persisted.State = ""
 	payload, err := json.Marshal(persisted)
 	if err != nil {
-		return "", "", "", "", "", err
+		return "", "", "", "", 0, err
 	}
 	envelope, err := s.loginSecrets.Encrypt(ctx, workspaceID, stateHash, payload)
 	if err != nil {
-		return "", "", "", "", "", err
+		return "", "", "", "", 0, err
 	}
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	return workspaceID, provider, stateHash, envelope, now.UTC().Format(time.RFC3339Nano), nil
+	return workspaceID, provider, stateHash, envelope, now.UTC().UnixMilli(), nil
 }
 
 func (s AuthStore) claimAuthOTPDelivery(ctx context.Context, tx *sql.Tx, workspaceID, provider, subjectKeyHash string, now, nextAllowedAt time.Time) (bool, error) {
-	nowText, nextText := now.UTC().Format(time.RFC3339Nano), nextAllowedAt.UTC().Format(time.RFC3339Nano)
+	nowMillis, nextMillis := now.UTC().UnixMilli(), nextAllowedAt.UTC().UnixMilli()
 	update, updateArgs, buildErr := query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_auth_otp_delivery_limits", workspaceID).
-		Set("provider_key", provider).Set("next_allowed_at", nextText).Set("updated_at", nowText).
-		Where(query.And(query.Equal("subject_key_hash", subjectKeyHash), query.LessThanOrEqual("next_allowed_at", nowText))).Build()
+		Set("provider_key", provider).Set("next_allowed_at", nextMillis).Set("updated_at", nowMillis).
+		Where(query.And(query.Equal("subject_key_hash", subjectKeyHash), query.LessThanOrEqual("next_allowed_at", nowMillis))).Build()
 	if buildErr != nil {
 		return false, buildErr
 	}
@@ -175,7 +177,7 @@ func (s AuthStore) claimAuthOTPDelivery(ctx context.Context, tx *sql.Tx, workspa
 	}
 	insert, insertArgs, buildErr := query.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_auth_otp_delivery_limits", workspaceID).
 		Columns("subject_key_hash", "provider_key", "next_allowed_at", "created_at", "updated_at").
-		Values(subjectKeyHash, provider, nextText, nowText, nowText).OnConflictDoNothing("workspace_id", "subject_key_hash").Build()
+		Values(subjectKeyHash, provider, nextMillis, nowMillis, nowMillis).OnConflictDoNothing("workspace_id", "subject_key_hash").Build()
 	if buildErr != nil {
 		return false, buildErr
 	}
@@ -203,15 +205,15 @@ func (s AuthStore) ConsumeAuthLoginTransaction(ctx context.Context, workspaceID,
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	nowText := now.UTC().Format(time.RFC3339Nano)
+	nowMillis := now.UTC().UnixMilli()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return authmodel.AuthProviderChallenge{}, false, err
 	}
 	defer func() { _ = tx.Rollback() }()
 	updateStatement, updateArgs, buildErr := query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_auth_login_transactions", workspaceID).
-		Set("consumed_at", nowText).Set("challenge_status", authmodel.AuthChallengeStatusConsumed).Set("updated_at", nowText).Where(query.And(
-		query.Equal("state_hash", stateHash), query.Equal("provider_key", provider), query.Equal("challenge_status", authmodel.AuthChallengeStatusActive), query.IsNull("consumed_at"), query.GreaterThan("expires_at", nowText),
+		Set("consumed_at", nowMillis).Set("challenge_status", authmodel.AuthChallengeStatusConsumed).Set("updated_at", nowMillis).Where(query.And(
+		query.Equal("state_hash", stateHash), query.Equal("provider_key", provider), query.Equal("challenge_status", authmodel.AuthChallengeStatusActive), query.Equal("consumed_at", int64(0)), query.GreaterThan("expires_at", nowMillis),
 	)).Build()
 	if buildErr != nil {
 		return authmodel.AuthProviderChallenge{}, false, buildErr
@@ -259,7 +261,7 @@ func (s AuthStore) FederatedLoginWorkspace(ctx context.Context, provider, state 
 		now = time.Now().UTC()
 	}
 	queryValue, args, buildErr := query.NewSelectBuilder(s.store.SQLRenderer(), "_identity_auth_login_transactions").Columns("workspace_id").Where(query.And(
-		query.Equal("state_hash", authLoginStateHash(state)), query.Equal("provider_key", provider), query.IsNull("consumed_at"), query.GreaterThan("expires_at", now.UTC().Format(time.RFC3339Nano)),
+		query.Equal("state_hash", authLoginStateHash(state)), query.Equal("provider_key", provider), query.Equal("consumed_at", int64(0)), query.GreaterThan("expires_at", now.UTC().UnixMilli()),
 	)).OrderBy(query.Ascending("workspace_id")).Build()
 	if buildErr != nil {
 		return "", false, buildErr
@@ -305,7 +307,7 @@ func (s AuthStore) ConsumeAuthOTPTransaction(ctx context.Context, workspaceID, p
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	nowText, stateHash := now.UTC().Format(time.RFC3339Nano), authLoginStateHash(state)
+	nowMillis, stateHash := now.UTC().UnixMilli(), authLoginStateHash(state)
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return authmodel.AuthProviderChallenge{}, false, err
@@ -313,7 +315,7 @@ func (s AuthStore) ConsumeAuthOTPTransaction(ctx context.Context, workspaceID, p
 	defer func() { _ = tx.Rollback() }()
 	selectStatement, selectArgs, buildErr := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_auth_login_transactions", workspaceID).
 		Columns("payload_json", "attempts", "challenge_purpose", "delivery_ref", "delivery_error").Where(query.And(
-		query.Equal("state_hash", stateHash), query.Equal("provider_key", provider), query.Equal("challenge_status", authmodel.AuthChallengeStatusActive), query.IsNull("consumed_at"), query.GreaterThan("expires_at", nowText),
+		query.Equal("state_hash", stateHash), query.Equal("provider_key", provider), query.Equal("challenge_status", authmodel.AuthChallengeStatusActive), query.Equal("consumed_at", int64(0)), query.GreaterThan("expires_at", nowMillis),
 	)).Limit(1).Build()
 	if buildErr != nil {
 		return authmodel.AuthProviderChallenge{}, false, buildErr
@@ -350,9 +352,9 @@ func (s AuthStore) ConsumeAuthOTPTransaction(ctx context.Context, workspaceID, p
 		valid = challenge.Code != "" && subtle.ConstantTimeCompare([]byte(strings.TrimSpace(challenge.Code)), []byte(strings.TrimSpace(code))) == 1
 	}
 	updateBuilder := query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_auth_login_transactions", workspaceID).
-		Set("attempts", attempts).Set("updated_at", nowText)
+		Set("attempts", attempts).Set("updated_at", nowMillis)
 	if valid || attempts+1 >= maxAttempts {
-		updateBuilder.Set("consumed_at", nowText)
+		updateBuilder.Set("consumed_at", nowMillis)
 		if valid {
 			updateBuilder.Set("challenge_status", authmodel.AuthChallengeStatusConsumed)
 		} else {
@@ -369,7 +371,7 @@ func (s AuthStore) ConsumeAuthOTPTransaction(ctx context.Context, workspaceID, p
 		expectedAttempts = attempts - 1
 	}
 	updateStatement, updateArgs, buildErr := updateBuilder.Where(query.And(
-		query.Equal("state_hash", stateHash), query.Equal("provider_key", provider), query.Equal("attempts", expectedAttempts), query.IsNull("consumed_at"),
+		query.Equal("state_hash", stateHash), query.Equal("provider_key", provider), query.Equal("attempts", expectedAttempts), query.Equal("consumed_at", int64(0)),
 	)).Build()
 	if buildErr != nil {
 		return authmodel.AuthProviderChallenge{}, false, buildErr
@@ -406,9 +408,9 @@ func nullableAuthText(value string) any {
 	return nil
 }
 
-func valueOrNow(value, fallback string) string {
-	if value = strings.TrimSpace(value); value != "" {
-		return value
+func valueOrNowMillis(value string, fallback int64) int64 {
+	if millis := identitypersistence.TimeMillis(value); millis != 0 {
+		return millis
 	}
 	return fallback
 }
