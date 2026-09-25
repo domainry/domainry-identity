@@ -153,7 +153,10 @@ func (s Store) apply(ctx context.Context, mutation identitymodel.IdentityEntitle
 		CreatedAt:          s.now(),
 	}
 
-	resultJSON, _ := json.Marshal(receipt)
+	resultJSON, err := marshalEntitlementReceipt(receipt)
+	if err != nil {
+		return identitymodel.IdentityEntitlementBatchReceipt{}, false, err
+	}
 	relatedIDsJSON, _ := json.Marshal(entitlementRelatedIDs(receipt.Items))
 	if err := operationreceipt.InsertSucceeded(ctx, tx, s.backend.SQLRenderer(), operationreceipt.Succeeded{
 		ID: receipt.ID, WorkspaceID: workspaceID, Owner: entitlementOperationOwner, Kind: entitlementOperationKind,
@@ -204,8 +207,8 @@ func (s Store) loadReceipt(ctx context.Context, queryer identityEntitlementRecei
 	if err != nil || !found {
 		return identitymodel.IdentityEntitlementBatchReceipt{}, found, err
 	}
-	var receipt identitymodel.IdentityEntitlementBatchReceipt
-	if err := json.Unmarshal(operation.ResultJSON, &receipt); err != nil {
+	receipt, err := unmarshalEntitlementReceipt(operation.ResultJSON)
+	if err != nil {
 		return identitymodel.IdentityEntitlementBatchReceipt{}, false, err
 	}
 	if receipt.ID != operation.ID || receipt.WorkspaceID != workspaceID || receipt.IdempotencyKey != idempotencyKey || receipt.ActorID != operation.RequestedBy {

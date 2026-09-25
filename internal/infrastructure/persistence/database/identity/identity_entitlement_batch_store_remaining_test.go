@@ -52,7 +52,7 @@ func TestApplyIdentityEntitlementBatchUsesChunkedWrites(t *testing.T) {
 }
 
 func identityEntitlementBatchReceiptJSON() string {
-	return `{"id":"receipt","workspace_id":"workspace","actor_id":"actor","idempotency_key":"batch-key","request_fingerprint":"fingerprint","items":[],"created_at":"created"}`
+	return `{"id":"receipt","workspace_id":"workspace","actor_id":"actor","idempotency_key":"batch-key","request_fingerprint":"fingerprint","items":[],"created_at":1700000000000}`
 }
 
 func TestApplyIdentityEntitlementBatchValidationAndFailureStages(t *testing.T) {

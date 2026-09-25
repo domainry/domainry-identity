@@ -6,7 +6,6 @@ import (
 	"crypto/subtle"
 	"database/sql"
 	"encoding/base64"
-	"encoding/json"
 	"strings"
 	"time"
 
@@ -144,7 +143,7 @@ func (s AuthStore) prepareAuthLoginTransaction(ctx context.Context, challenge au
 	stateHash := authLoginStateHash(state)
 	persisted := challenge
 	persisted.State = ""
-	payload, err := json.Marshal(persisted)
+	payload, err := marshalPersistedAuthProviderChallenge(persisted)
 	if err != nil {
 		return "", "", "", "", 0, err
 	}
@@ -240,8 +239,8 @@ func (s AuthStore) ConsumeAuthLoginTransaction(ctx context.Context, workspaceID,
 	if err != nil {
 		return authmodel.AuthProviderChallenge{}, false, err
 	}
-	var challenge authmodel.AuthProviderChallenge
-	if err := json.Unmarshal(plain, &challenge); err != nil {
+	challenge, err := unmarshalPersistedAuthProviderChallenge(plain)
+	if err != nil {
 		return authmodel.AuthProviderChallenge{}, false, err
 	}
 	challenge.State, challenge.Status, challenge.Purpose = state, authmodel.AuthChallengeStatusConsumed, purpose
@@ -333,8 +332,8 @@ func (s AuthStore) ConsumeAuthOTPTransaction(ctx context.Context, workspaceID, p
 	if err != nil {
 		return authmodel.AuthProviderChallenge{}, false, err
 	}
-	var challenge authmodel.AuthProviderChallenge
-	if err := json.Unmarshal(plain, &challenge); err != nil {
+	challenge, err := unmarshalPersistedAuthProviderChallenge(plain)
+	if err != nil {
 		return authmodel.AuthProviderChallenge{}, false, err
 	}
 	challenge.State, challenge.Attempts, challenge.Purpose, challenge.Status = state, attempts, purpose, authmodel.AuthChallengeStatusActive

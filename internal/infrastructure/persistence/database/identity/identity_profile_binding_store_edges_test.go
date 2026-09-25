@@ -23,7 +23,7 @@ func profileBindingOperationRow(fingerprint, resultJSON string) []driver.Value {
 	return []driver.Value{"receipt", "profile", fingerprint, "actor", resultJSON, int64(1_700_000_000_000), "succeeded"}
 }
 
-const profileBindingReceiptJSON = `{"id":"receipt","workspace_id":"workspace","binding_key":"member","object_key":"member_profile","profile_id":"profile","operation":"invite","idempotency_key":"key","request_fingerprint":"fingerprint","binding":{"status":"invited"},"created_at":"created"}`
+const profileBindingReceiptJSON = `{"id":"receipt","workspace_id":"workspace","binding_key":"member","object_key":"member_profile","profile_id":"profile","operation":"invite","idempotency_key":"key","request_fingerprint":"fingerprint","binding":{"status":"invited","created_at":1700000000000,"updated_at":1700000000000},"created_at":1700000000000}`
 
 func validProfileBindingMutation(operation identitymodel.IdentityProfileBindingOperation) identitymodel.IdentityProfileBindingMutation {
 	return identitymodel.IdentityProfileBindingMutation{

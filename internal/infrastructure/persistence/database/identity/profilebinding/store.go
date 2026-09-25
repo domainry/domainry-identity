@@ -366,8 +366,8 @@ func (s *Store) loadReceipt(ctx context.Context, queryer identityProfileBindingQ
 	if err != nil || !found {
 		return identitymodel.IdentityProfileBindingReceipt{}, found, err
 	}
-	var receipt identitymodel.IdentityProfileBindingReceipt
-	if err := json.Unmarshal(operation.ResultJSON, &receipt); err != nil {
+	receipt, err := unmarshalBindingReceipt(operation.ResultJSON)
+	if err != nil {
 		return identitymodel.IdentityProfileBindingReceipt{}, false, err
 	}
 	if receipt.ID != operation.ID || receipt.WorkspaceID != mutation.WorkspaceID || receipt.BindingKey != mutation.BindingKey ||
@@ -454,7 +454,10 @@ func (s *Store) writeBinding(ctx context.Context, executor identitytransaction.E
 }
 
 func (s *Store) writeReceipt(ctx context.Context, executor identitytransaction.Executor, receipt identitymodel.IdentityProfileBindingReceipt, mutation identitymodel.IdentityProfileBindingMutation) error {
-	resultJSON, _ := json.Marshal(receipt)
+	resultJSON, err := marshalBindingReceipt(receipt)
+	if err != nil {
+		return err
+	}
 	relatedIDsJSON, _ := json.Marshal(uniqueProfileBindingStrings(append(
 		[]string{receipt.ProfileID, receipt.Binding.IdentityUserID, mutation.ApprovalID}, mutation.SystemManagedRoleIDs...,
 	)))
@@ -471,7 +474,7 @@ func (s *Store) writeReceipt(ctx context.Context, executor identitytransaction.E
 }
 
 func (s *Store) writeEvent(ctx context.Context, executor identitytransaction.Executor, event identitymodel.IdentityProfileBindingEvent) error {
-	metadataJSON, buildErr := json.Marshal(event)
+	metadataJSON, buildErr := marshalBindingEvent(event)
 	if buildErr != nil {
 		return buildErr
 	}

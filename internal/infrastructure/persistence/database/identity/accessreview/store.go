@@ -430,7 +430,10 @@ func (s *Store) ApplyIdentityAccessReviewDecision(ctx context.Context, mutation 
 		RequestFingerprint: mutation.RequestFingerprint, Item: item, CreatedAt: now,
 	}
 
-	resultJSON, _ := json.Marshal(receipt)
+	resultJSON, err := marshalAccessReviewReceipt(receipt)
+	if err != nil {
+		return identitymodel.IdentityAccessReviewDecisionReceipt{}, err
+	}
 	relatedIDsJSON, _ := json.Marshal(uniqueAccessReviewStrings([]string{item.ReviewID, item.UserID, item.RoleID, item.ReplacementRoleID}))
 	reason := strings.TrimSpace(mutation.Request.Reason)
 	if reason == "" {
@@ -589,8 +592,8 @@ func (s *Store) loadReceipt(ctx context.Context, queryer Queryer, workspaceID, i
 	if err != nil || !found {
 		return identitymodel.IdentityAccessReviewDecisionReceipt{}, found, err
 	}
-	var receipt identitymodel.IdentityAccessReviewDecisionReceipt
-	if err := json.Unmarshal(operation.ResultJSON, &receipt); err != nil {
+	receipt, err := unmarshalAccessReviewReceipt(operation.ResultJSON)
+	if err != nil {
 		return identitymodel.IdentityAccessReviewDecisionReceipt{}, false, err
 	}
 	if receipt.ID != operation.ID || receipt.WorkspaceID != workspaceID || receipt.ItemID != itemID ||

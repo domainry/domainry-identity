@@ -3,11 +3,9 @@ package auth
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"strings"
 
-	authmodel "github.com/domainry/domainry-identity/internal/domain/auth/model"
 	"github.com/domainry/domainry-orm/query"
 )
 
@@ -43,8 +41,8 @@ func (s AuthStore) EraseSubjectLoginArtifacts(ctx context.Context, tx *sql.Tx, w
 			rows.Close()
 			return fmt.Errorf("inspect subject login transaction: %w", err)
 		}
-		var challenge authmodel.AuthProviderChallenge
-		if err := json.Unmarshal(raw, &challenge); err != nil {
+		challenge, err := unmarshalPersistedAuthProviderChallenge(raw)
+		if err != nil {
 			rows.Close()
 			return err
 		}
@@ -96,8 +94,8 @@ func (s AuthStore) EraseSubjectLoginArtifacts(ctx context.Context, tx *sql.Tx, w
 			rows.Close()
 			return fmt.Errorf("inspect subject authorization code: %w", err)
 		}
-		var session authmodel.AuthSession
-		if err := json.Unmarshal(raw, &session); err != nil {
+		session, err := unmarshalPersistedAuthSession(raw)
+		if err != nil {
 			rows.Close()
 			return err
 		}

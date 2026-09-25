@@ -148,7 +148,7 @@ func (s *SQLIdentityStore) ExecuteIdentityHandlerDelivery(ctx context.Context, m
 		WorkspaceID: mutation.WorkspaceID, ActorID: mutation.ActorID, IdempotencyKey: mutation.IdempotencyKey,
 		RequestFingerprint: mutation.RequestFingerprint, Result: result, CreatedAt: now,
 	}
-	resultJSON, err := json.Marshal(result)
+	resultJSON, err := marshalHandlerDeliveryResult(result)
 	if err != nil {
 		return identitymodel.IdentityHandlerDeliveryReceipt{}, err
 	}
@@ -169,8 +169,8 @@ func (s *SQLIdentityStore) loadIdentityHandlerDeliveryReceipt(ctx context.Contex
 	if err != nil || !found {
 		return identitymodel.IdentityHandlerDeliveryReceipt{}, found, err
 	}
-	var result identitymodel.IdentityHandlerDeliveryResult
-	if err := json.Unmarshal(operation.ResultJSON, &result); err != nil {
+	result, err := unmarshalHandlerDeliveryResult(operation.ResultJSON)
+	if err != nil {
 		return identitymodel.IdentityHandlerDeliveryReceipt{}, false, fmt.Errorf("decode identity handler delivery operation: %w", err)
 	}
 	if result.DeliveryID != operation.ID || result.User.ID != operation.ResourceID {

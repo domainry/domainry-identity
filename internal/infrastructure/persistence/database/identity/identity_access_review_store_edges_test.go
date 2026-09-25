@@ -10,7 +10,7 @@ import (
 
 var accessReviewOperationColumns = []string{"id", "resource_id", "request_fingerprint", "requested_by", "result_json", "created_at", "status"}
 
-const accessReviewReceiptJSON = `{"id":"receipt","workspace_id":"workspace","item_id":"item","idempotency_key":"key","request_fingerprint":"fingerprint","item":{"id":"item"},"created_at":"created"}`
+const accessReviewReceiptJSON = `{"id":"receipt","workspace_id":"workspace","item_id":"item","idempotency_key":"key","request_fingerprint":"fingerprint","item":{"id":"item","created_at":1700000000000,"updated_at":1700000000000},"created_at":1700000000000}`
 
 func accessReviewOperationRow(fingerprint, resultJSON string) []driver.Value {
 	return []driver.Value{"receipt", "item", fingerprint, "reviewer", resultJSON, int64(1_700_000_000_000), "succeeded"}

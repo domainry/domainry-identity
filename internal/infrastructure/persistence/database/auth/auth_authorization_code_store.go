@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
 	"strings"
 	"time"
 
@@ -24,7 +23,7 @@ func (s AuthStore) CreateAuthAuthorizationCode(ctx context.Context, value authmo
 		return err
 	}
 	codeHash := authAuthorizationCodeHash(value.Code)
-	sessionJSON, err := json.Marshal(value.Session)
+	sessionJSON, err := marshalPersistedAuthSession(value.Session)
 	if err != nil {
 		return err
 	}
@@ -92,8 +91,8 @@ func (s AuthStore) ConsumeAuthAuthorizationCode(ctx context.Context, workspaceID
 	if err != nil {
 		return authmodel.AuthSession{}, false, err
 	}
-	var session authmodel.AuthSession
-	if err := json.Unmarshal(plain, &session); err != nil {
+	session, err := unmarshalPersistedAuthSession(plain)
+	if err != nil {
 		return authmodel.AuthSession{}, false, err
 	}
 	if err := tx.Commit(); err != nil {
