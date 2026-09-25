@@ -232,7 +232,7 @@ func authMutationRow(status, fingerprint string, expires time.Time, token int64)
 	if status == "processing" {
 		status = "started"
 	}
-	return []driver.Value{"receipt", "workspace-primary", "reset", "identity_user", "user", "key", fingerprint, "actor", status, "{}", "worker", expires.Format(time.RFC3339Nano), token, "", "", "created", "updated"}
+	return []driver.Value{"receipt", "workspace-primary", "reset", "identity_user", "user", "key", fingerprint, "actor", status, "{}", "worker", expires.UTC().UnixMilli(), token, "", int64(0), expires.UTC().UnixMilli(), expires.UTC().UnixMilli()}
 }
 
 type authMutationQueryStep struct {

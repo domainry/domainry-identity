@@ -123,7 +123,7 @@ func TestGetIdentityEntitlementBatchReceiptRemainingFailures(t *testing.T) {
 		{queryFailAt: 1, failure: errProfileBindingSQL},
 		{querySteps: []identitySQLQueryStep{{
 			columns: []string{"id", "resource_id", "request_fingerprint", "requested_by", "result_json", "created_at", "status"},
-			rows:    [][]driver.Value{{"receipt", "receipt", "fingerprint", "actor", "{", "created", "succeeded"}},
+			rows:    [][]driver.Value{{"receipt", "receipt", "fingerprint", "actor", "{", int64(1_700_000_000_000), "succeeded"}},
 		}}},
 	} {
 		store, closeDB = scriptedEntitlementOperations(state)
@@ -139,7 +139,7 @@ func TestGetIdentityEntitlementBatchReceiptRemainingFailures(t *testing.T) {
 	closeDB()
 	store, closeDB = scriptedEntitlementOperations(&identitySQLState{querySteps: []identitySQLQueryStep{{
 		columns: []string{"id", "resource_id", "request_fingerprint", "requested_by", "result_json", "created_at", "status"},
-		rows:    [][]driver.Value{{"receipt", "receipt", "fingerprint", "actor", identityEntitlementBatchReceiptJSON(), "created", "succeeded"}},
+		rows:    [][]driver.Value{{"receipt", "receipt", "fingerprint", "actor", identityEntitlementBatchReceiptJSON(), int64(1_700_000_000_000), "succeeded"}},
 	}}})
 	receipt, found, err := store.GetIdentityEntitlementBatchReceipt(t.Context(), "workspace", "batch-key")
 	if err != nil || !found || receipt.RequestFingerprint != "fingerprint" {

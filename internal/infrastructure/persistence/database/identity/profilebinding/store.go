@@ -318,7 +318,16 @@ func (s *Store) ListIdentityProfileBindingEvents(ctx context.Context, workspaceI
 			continue
 		}
 		var event identitymodel.IdentityProfileBindingEvent
-		metadataJSON, marshalErr := json.Marshal(auditEvent.Metadata)
+		storedCreatedAt, ok := auditEvent.Metadata["created_at"].(int64)
+		if !ok || storedCreatedAt != timevalue.Millis(auditEvent.CreatedAt) {
+			return nil, fmt.Errorf("identity profile binding audit event scope mismatch")
+		}
+		metadata := make(map[string]any, len(auditEvent.Metadata))
+		for key, value := range auditEvent.Metadata {
+			metadata[key] = value
+		}
+		metadata["created_at"] = auditEvent.CreatedAt
+		metadataJSON, marshalErr := json.Marshal(metadata)
 		if marshalErr != nil {
 			return nil, marshalErr
 		}

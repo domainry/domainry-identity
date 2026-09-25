@@ -13,7 +13,7 @@ var accessReviewOperationColumns = []string{"id", "resource_id", "request_finger
 const accessReviewReceiptJSON = `{"id":"receipt","workspace_id":"workspace","item_id":"item","idempotency_key":"key","request_fingerprint":"fingerprint","item":{"id":"item"},"created_at":"created"}`
 
 func accessReviewOperationRow(fingerprint, resultJSON string) []driver.Value {
-	return []driver.Value{"receipt", "item", fingerprint, "reviewer", resultJSON, "created", "succeeded"}
+	return []driver.Value{"receipt", "item", fingerprint, "reviewer", resultJSON, int64(1_700_000_000_000), "succeeded"}
 }
 
 func scriptedAccessReviewOperations(state *identitySQLState) (*SQLIdentityStore, func()) {
@@ -34,7 +34,7 @@ func accessReviewItemRow(status string, version int64) []driver.Value {
 	return []driver.Value{
 		"item", "review", "user", "role", "role-key", nil, nil,
 		"normal", int64(1), `["reason"]`, nil, status, nil, nil,
-		nil, nil, nil, nil, version, "created", "updated",
+		nil, nil, nil, nil, version, int64(1_700_000_000_000), int64(1_700_000_000_000),
 	}
 }
 
@@ -46,7 +46,7 @@ func accessReviewAssignmentColumns() []string {
 }
 
 func accessReviewAssignmentRow() []driver.Value {
-	return []driver.Value{nil, nil, "manual", "active", nil, nil, nil, nil, nil, nil, nil, nil, "created", "updated"}
+	return []driver.Value{nil, nil, "manual", "active", nil, nil, nil, nil, nil, nil, nil, nil, int64(1_700_000_000_000), int64(1_700_000_000_000)}
 }
 
 func validAccessReviewMutation(decision identitymodel.IdentityAccessReviewDecision) identitymodel.IdentityAccessReviewDecisionMutation {

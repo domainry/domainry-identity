@@ -20,7 +20,7 @@ func scriptedProfileBindingStore(state *identitySQLState) (*IdentityProfileBindi
 var profileBindingOperationColumns = []string{"id", "resource_id", "request_fingerprint", "requested_by", "result_json", "created_at", "status"}
 
 func profileBindingOperationRow(fingerprint, resultJSON string) []driver.Value {
-	return []driver.Value{"receipt", "profile", fingerprint, "actor", resultJSON, "created", "succeeded"}
+	return []driver.Value{"receipt", "profile", fingerprint, "actor", resultJSON, int64(1_700_000_000_000), "succeeded"}
 }
 
 const profileBindingReceiptJSON = `{"id":"receipt","workspace_id":"workspace","binding_key":"member","object_key":"member_profile","profile_id":"profile","operation":"invite","idempotency_key":"key","request_fingerprint":"fingerprint","binding":{"status":"invited"},"created_at":"created"}`
