@@ -13,8 +13,8 @@ github.com/crewjam/saml v0.5.1/go.mod h1:r0fDkmFe5URDgPrmtH0IYokva6fac3AUdstiPhy
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/domainry/domainry-audit v0.1.23 h1:49gyGvnffD1sMGlRBP4lgrBz0ZTJJ7XHZczXAnI6A3g=
-github.com/domainry/domainry-audit v0.1.23/go.mod h1:fnFP+K5kcgr9Ohrdd2Gqiq794HOxTCRDrMmxwbCRr7M=
+github.com/domainry/domainry-audit v0.1.24 h1:Ao0zQ4XgUUJv+Q0ISbYxxUALeo+dtcZ73LIf5LPHYAU=
+github.com/domainry/domainry-audit v0.1.24/go.mod h1:fnFP+K5kcgr9Ohrdd2Gqiq794HOxTCRDrMmxwbCRr7M=
 github.com/domainry/domainry-audit-sdk v0.1.11 h1:EDydkCQs5iawF4G1R66UzgOpEXsS3jtXKPGv/5gUSqw=
 github.com/domainry/domainry-audit-sdk v0.1.11/go.mod h1:VxY7l5vw0nGKjY11M8snaeOqfk3T8UxFxPyM0TFtcvs=
 github.com/domainry/domainry-data-exchange-sdk v0.3.11 h1:MS3HH2jItBPow8XiJmEFiwPQ+nAH0rqoZITr06rwD+0=
