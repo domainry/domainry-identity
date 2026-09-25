@@ -6,14 +6,13 @@ require (
 	github.com/beevik/etree v1.6.0
 	github.com/coreos/go-oidc/v3 v3.20.0
 	github.com/crewjam/saml v0.5.1
-	github.com/domainry/domainry-audit v0.1.22
-	github.com/domainry/domainry-audit-sdk v0.1.10
-	github.com/domainry/domainry-data-exchange-sdk v0.3.10
-	github.com/domainry/domainry-foundation v0.1.40
-	github.com/domainry/domainry-identity-sdk v0.1.17
-	github.com/domainry/domainry-lifecycle-sdk v0.1.19
-	github.com/domainry/domainry-metadata v0.1.18
-	github.com/domainry/domainry-metadata-sdk v0.1.7
+	github.com/domainry/domainry-audit v0.1.23
+	github.com/domainry/domainry-audit-sdk v0.1.11
+	github.com/domainry/domainry-data-exchange-sdk v0.3.11
+	github.com/domainry/domainry-foundation v0.1.41
+	github.com/domainry/domainry-identity-sdk v0.1.18
+	github.com/domainry/domainry-metadata v0.1.19
+	github.com/domainry/domainry-metadata-sdk v0.1.8
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/russellhaering/goxmldsig v1.6.0
@@ -38,7 +37,7 @@ require (
 	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/domainry/domainry-orm v0.1.31
+	github.com/domainry/domainry-orm v0.1.32
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
