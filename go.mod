@@ -6,7 +6,7 @@ require (
 	github.com/beevik/etree v1.6.0
 	github.com/coreos/go-oidc/v3 v3.20.0
 	github.com/crewjam/saml v0.5.1
-	github.com/domainry/domainry-audit v0.1.24
+	github.com/domainry/domainry-audit v0.1.26
 	github.com/domainry/domainry-audit-sdk v0.1.11
 	github.com/domainry/domainry-data-exchange-sdk v0.3.11
 	github.com/domainry/domainry-foundation v0.1.41
