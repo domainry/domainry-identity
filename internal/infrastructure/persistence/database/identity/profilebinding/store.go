@@ -318,8 +318,8 @@ func (s *Store) ListIdentityProfileBindingEvents(ctx context.Context, workspaceI
 			continue
 		}
 		var event identitymodel.IdentityProfileBindingEvent
-		storedCreatedAt, ok := auditEvent.Metadata["created_at"].(int64)
-		if !ok || storedCreatedAt != timevalue.Millis(auditEvent.CreatedAt) {
+		storedCreatedAt, ok := auditEvent.Metadata["created_at"].(float64)
+		if !ok || storedCreatedAt != float64(timevalue.Millis(auditEvent.CreatedAt)) {
 			return nil, fmt.Errorf("identity profile binding audit event scope mismatch")
 		}
 		metadata := make(map[string]any, len(auditEvent.Metadata))
