@@ -129,8 +129,8 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 		"_identity_access_reviews": {
 			"id " + text + " PRIMARY KEY",
 			"workspace_id " + text + " NOT NULL",
-			"period_start " + text + " NOT NULL",
-			"period_end " + text + " NOT NULL",
+			"period_start BIGINT NOT NULL",
+			"period_end BIGINT NOT NULL",
 			"due_at BIGINT NOT NULL",
 			"status " + text + " NOT NULL",
 			"created_by " + text + " NOT NULL",

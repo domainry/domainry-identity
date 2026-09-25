@@ -126,7 +126,7 @@ func (s *IdentityAccessReviewApplicationService) CreateReview(ctx context.Contex
 	if !created {
 		return identitymodel.IdentityAccessReview{}, apperror.New(apperror.KindForbidden, "backend.identity.data_scope_denied", nil, nil)
 	}
-	s.audit(workspaceContext, "identity_access_review_created", review.ID, actor, map[string]any{"item_count": len(items), "period_start": review.PeriodStart, "period_end": review.PeriodEnd, "due_at": review.DueAt})
+	s.audit(workspaceContext, "identity_access_review_created", review.ID, actor, map[string]any{"item_count": len(items), "period_start": periodStart.UTC().UnixMilli(), "period_end": periodEnd.UTC().UnixMilli(), "due_at": dueAt.UTC().UnixMilli()})
 	return review, nil
 }
 

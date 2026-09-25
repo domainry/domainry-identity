@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/domainry/domainry-foundation/apperror"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
@@ -50,6 +51,15 @@ func TestAccessReviewDecisionIsAtomicAuditableAndIdempotent(t *testing.T) {
 	}
 	if err := store.CreateIdentityAccessReview(t.Context(), review); err != nil {
 		t.Fatal(err)
+	}
+	var periodStart, periodEnd int64
+	if err := identityStore.DB().QueryRowContext(t.Context(), `SELECT period_start,period_end FROM _identity_access_reviews WHERE id=?`, review.ID).Scan(&periodStart, &periodEnd); err != nil {
+		t.Fatal(err)
+	}
+	start, _ := time.Parse(time.RFC3339, review.PeriodStart)
+	end, _ := time.Parse(time.RFC3339, review.PeriodEnd)
+	if periodStart != start.UnixMilli() || periodEnd != end.UnixMilli() {
+		t.Fatalf("stored period start=%d end=%d", periodStart, periodEnd)
 	}
 	mutation := identitymodel.IdentityAccessReviewDecisionMutation{
 		WorkspaceID: "workspace-primary", ItemID: "item-1", ReviewerID: "reviewer",

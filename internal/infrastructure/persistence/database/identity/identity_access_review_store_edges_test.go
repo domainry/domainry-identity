@@ -84,7 +84,7 @@ func TestCreateIdentityAccessReviewFailureStages(t *testing.T) {
 
 func TestListIdentityAccessReviewsFailureStages(t *testing.T) {
 	reviewColumns := []string{"id", "period_start", "period_end", "due_at", "status", "created_by", "created_at", "updated_at"}
-	reviewRow := []driver.Value{"review", "start", "end", "due", "open", "creator", "created", "updated"}
+	reviewRow := []driver.Value{"review", int64(1_700_000_000_000), int64(1_700_086_400_000), int64(1_700_172_800_000), "open", "creator", int64(1_700_000_000_000), int64(1_700_000_000_000)}
 	for _, state := range []*identitySQLState{
 		{queryFailAt: 1, failure: errProfileBindingSQL},
 		{querySteps: []identitySQLQueryStep{{columns: []string{"only"}, rows: [][]driver.Value{{"value"}}}}},

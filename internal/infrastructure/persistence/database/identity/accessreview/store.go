@@ -74,7 +74,7 @@ func (s *Store) CreateIdentityAccessReview(ctx context.Context, review identitym
 	defer tx.Rollback()
 	statement, arguments, err := query.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_access_reviews", workspaceID).
 		Columns("id", "period_start", "period_end", "due_at", "status", "created_by", "created_at", "updated_at").
-		Values(review.ID, review.PeriodStart, review.PeriodEnd, timevalue.Millis(review.DueAt), review.Status, review.CreatedBy, timevalue.Millis(review.CreatedAt), timevalue.Millis(review.UpdatedAt)).Build()
+		Values(review.ID, timevalue.Millis(review.PeriodStart), timevalue.Millis(review.PeriodEnd), timevalue.Millis(review.DueAt), review.Status, review.CreatedBy, timevalue.Millis(review.CreatedAt), timevalue.Millis(review.UpdatedAt)).Build()
 	if err != nil {
 		return fmt.Errorf("build identity access review insert: %w", err)
 	}
@@ -119,7 +119,7 @@ func (s *Store) CreateIdentityAccessReviewWithinDataScope(ctx context.Context, r
 	defer tx.Rollback()
 	statement, arguments, err := query.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_access_reviews", workspaceID).
 		Columns("id", "period_start", "period_end", "due_at", "status", "created_by", "created_at", "updated_at").
-		Values(review.ID, review.PeriodStart, review.PeriodEnd, timevalue.Millis(review.DueAt), review.Status, review.CreatedBy, timevalue.Millis(review.CreatedAt), timevalue.Millis(review.UpdatedAt)).Build()
+		Values(review.ID, timevalue.Millis(review.PeriodStart), timevalue.Millis(review.PeriodEnd), timevalue.Millis(review.DueAt), review.Status, review.CreatedBy, timevalue.Millis(review.CreatedAt), timevalue.Millis(review.UpdatedAt)).Build()
 	if err != nil {
 		return false, fmt.Errorf("build identity access review insert: %w", err)
 	}
@@ -218,12 +218,13 @@ func (s *Store) ListIdentityAccessReviewsWithinDataScope(ctx context.Context, wo
 	for rows.Next() {
 		var review identitymodel.IdentityAccessReview
 		var reviewStatus string
-		var dueAt, createdAt, updatedAt int64
-		if err := rows.Scan(&review.ID, &review.PeriodStart, &review.PeriodEnd, &dueAt, &reviewStatus, &review.CreatedBy, &createdAt, &updatedAt); err != nil {
+		var periodStart, periodEnd, dueAt, createdAt, updatedAt int64
+		if err := rows.Scan(&review.ID, &periodStart, &periodEnd, &dueAt, &reviewStatus, &review.CreatedBy, &createdAt, &updatedAt); err != nil {
 			rows.Close()
 			return nil, err
 		}
 		review.WorkspaceID, review.Status = workspaceID, identitymodel.IdentityAccessReviewStatus(reviewStatus)
+		review.PeriodStart, review.PeriodEnd = timevalue.String(periodStart), timevalue.String(periodEnd)
 		review.DueAt, review.CreatedAt, review.UpdatedAt = timevalue.String(dueAt), timevalue.String(createdAt), timevalue.String(updatedAt)
 		out = append(out, review)
 	}

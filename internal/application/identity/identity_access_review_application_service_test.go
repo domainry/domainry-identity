@@ -147,10 +147,14 @@ func TestAccessReviewCreatesPrioritizedPeriodicQueueAndAuditsDecisionsOnce(t *te
 	})
 	now := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
 	audits := []string{}
+	var createdAuditMetadata map[string]any
 	service := NewIdentityAccessReviewApplicationService(IdentityAccessReviewDependencies{
 		Identity: identity, Now: func() time.Time { return now },
-		Audit: func(_ context.Context, event, _ string, _ identitymodel.Principal, _ map[string]any) {
+		Audit: func(_ context.Context, event, _ string, _ identitymodel.Principal, metadata map[string]any) {
 			audits = append(audits, event)
+			if event == "identity_access_review_created" {
+				createdAuditMetadata = metadata
+			}
 		},
 		LastUsed: func(_ context.Context, _ identitymodel.Principal, _ string, roleKey string) (string, bool, error) {
 			if roleKey == "reader" {
@@ -180,6 +184,11 @@ func TestAccessReviewCreatesPrioritizedPeriodicQueueAndAuditsDecisionsOnce(t *te
 	}
 	if len(audits) != 1 || audits[0] != "identity_access_review_created" {
 		t.Fatalf("create audits=%#v", audits)
+	}
+	if createdAuditMetadata["period_start"] != time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC).UnixMilli() ||
+		createdAuditMetadata["period_end"] != time.Date(2026, 6, 30, 0, 0, 0, 0, time.UTC).UnixMilli() ||
+		createdAuditMetadata["due_at"] != time.Date(2026, 7, 31, 0, 0, 0, 0, time.UTC).UnixMilli() {
+		t.Fatalf("create audit times=%#v", createdAuditMetadata)
 	}
 	identity.ReplacePermissionDefinitions([]identitymodel.IdentityPermissionDefinition{{
 		Key: "crm.member.read", DefinitionStatus: identitymodel.IdentityPermissionDefinitionActive,
