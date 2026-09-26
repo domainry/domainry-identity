@@ -10,7 +10,8 @@ import (
 
 func TestConfigContractTypedSettersAndCollectionParsers(t *testing.T) {
 	for field, want := range map[string]string{
-		"AuthJWTSecret": "AUTH_JWT_SECRET", "HTTPReadTimeout": "HTTP_READ_TIMEOUT", "AuthAccessTTL": "AUTH_ACCESS_TTL",
+		"IdentityBrowserReturnURLs": "IDENTITY_BROWSER_RETURN_URLS",
+		"AuthJWTSecret":             "AUTH_JWT_SECRET", "HTTPReadTimeout": "HTTP_READ_TIMEOUT", "AuthAccessTTL": "AUTH_ACCESS_TTL",
 		"CORSAllowedOrigins":             "CORS_ALLOWED_ORIGINS",
 		"MigrationRestoreDrillSuccessAt": "MIGRATION_RESTORE_DRILL_LAST_SUCCESS_AT",
 	} {

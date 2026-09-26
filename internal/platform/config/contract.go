@@ -174,7 +174,7 @@ func LoadWithProjectFile(projectFile string) (Config, Snapshot, error) {
 	for _, item := range os.Environ() {
 		name, _, _ := strings.Cut(item, "=")
 		base := strings.TrimSuffix(name, "_FILE")
-		if managedConfigName(name) && !known[base] {
+		if managedConfigName(name) && !known[base] && !embeddedRuntimeConfigName(base) {
 			unknown = append(unknown, name)
 		}
 	}
@@ -305,7 +305,7 @@ func setConfigField(cfg *Config, definition Definition, raw string) error {
 }
 
 func configEnvName(field string) string {
-	overrides := map[string]string{"ServiceVersion": "DOMAINRY_IDENTITY_VERSION", "ServiceInstanceID": "IDENTITY_INSTANCE_ID", "ServiceReplicaCount": "IDENTITY_REPLICA_COUNT", "Environment": "APP_ENV", "AppLocale": "APP_LOCALE", "DatabaseDSN": "DATABASE_DSN", "DBPath": "APP_DB_PATH", "ManifestPath": "TEMPLATE_MANIFEST", "MigrationSQL": "MIGRATION_SQL", "MigrationRestoreDrillSuccessAt": "MIGRATION_RESTORE_DRILL_LAST_SUCCESS_AT", "SkipManifestValidation": "SKIP_MANIFEST_VALIDATION", "Port": "PORT"}
+	overrides := map[string]string{"ServiceVersion": "DOMAINRY_IDENTITY_VERSION", "ServiceInstanceID": "IDENTITY_INSTANCE_ID", "ServiceReplicaCount": "IDENTITY_REPLICA_COUNT", "Environment": "APP_ENV", "AppLocale": "APP_LOCALE", "DatabaseDSN": "DATABASE_DSN", "DBPath": "APP_DB_PATH", "ManifestPath": "TEMPLATE_MANIFEST", "MigrationSQL": "MIGRATION_SQL", "MigrationRestoreDrillSuccessAt": "MIGRATION_RESTORE_DRILL_LAST_SUCCESS_AT", "SkipManifestValidation": "SKIP_MANIFEST_VALIDATION", "IdentityBrowserReturnURLs": "IDENTITY_BROWSER_RETURN_URLS", "Port": "PORT"}
 	if value := overrides[field]; value != "" {
 		return value
 	}
@@ -398,6 +398,16 @@ func managedConfigName(name string) bool {
 		}
 	}
 	return false
+}
+
+func embeddedRuntimeConfigName(name string) bool {
+	switch name {
+	case "DATABASE_URL", "HTTP_PUBLIC_ORIGINS", "HTTP_MANAGEMENT_ORIGINS", "HTTP_OPS_ORIGINS",
+		"IDENTITY_REDIRECT_URLS", "INTEGRATION_SECRET_KEY", "INTEGRATION_ACTIVE_KEY_ID", "UPLOAD_DIR":
+		return true
+	default:
+		return false
+	}
 }
 
 var configSourceStat = os.Stat
