@@ -20,12 +20,12 @@ func TestEnsureCompositePrimaryKeyMigratesWorkspaceCredentialIdentity(t *testing
 		configuration_json TEXT NOT NULL,
 		secret_envelope TEXT NOT NULL,
 		updated_by TEXT NOT NULL,
-		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL
+		created_at BIGINT NOT NULL,
+		updated_at BIGINT NOT NULL
 	)`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.Exec(`INSERT INTO identity__identity_auth_provider_credentials VALUES (?, ?, '{}', 'secret', 'user', 'created', 'updated')`, "workspace-a", "oidc"); err != nil {
+	if _, err := database.Exec(`INSERT INTO identity__identity_auth_provider_credentials VALUES (?, ?, '{}', 'secret', 'user', ?, ?)`, "workspace-a", "oidc", int64(0), int64(0)); err != nil {
 		t.Fatal(err)
 	}
 	dialect, _ := ormdialect.New(ormdialect.SQLite)
@@ -36,7 +36,7 @@ func TestEnsureCompositePrimaryKeyMigratesWorkspaceCredentialIdentity(t *testing
 	if err := NewEngine().EnsureCompositePrimaryKey(t.Context(), database, renderer, "", "identity_", "_identity_auth_provider_credentials", "workspace_id", "provider_key"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.Exec(`INSERT INTO identity__identity_auth_provider_credentials VALUES (?, ?, '{}', 'secret', 'user', 'created', 'updated')`, "workspace-b", "oidc"); err != nil {
+	if _, err := database.Exec(`INSERT INTO identity__identity_auth_provider_credentials VALUES (?, ?, '{}', 'secret', 'user', ?, ?)`, "workspace-b", "oidc", int64(0), int64(0)); err != nil {
 		t.Fatalf("same provider must coexist across workspaces: %v", err)
 	}
 	rows, err := database.Query(`PRAGMA table_info("identity__identity_auth_provider_credentials")`)

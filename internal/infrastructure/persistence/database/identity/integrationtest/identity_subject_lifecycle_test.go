@@ -28,7 +28,7 @@ func beginSharedSubjectErasure(t *testing.T, db *sql.DB, workspaceID, subjectID,
 	if _, err := db.ExecContext(t.Context(), `INSERT INTO _subject_requests(id,workspace_id,request_type,kind,status,subject_id,resolved_identity,updated_at,payload_json) VALUES(?,?,'subject_request','erase','executing',?,?,?,'{}')`, requestID, workspaceID, subjectID, subjectID, time.Now().UTC().UnixMilli()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ExecContext(t.Context(), `INSERT INTO _subject_steps(workspace_id,request_id,owner,operation,payload_json,completed_at) VALUES(?,?,'lifecycle','erase_fence','{}',?)`, workspaceID, requestID, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+	if _, err := db.ExecContext(t.Context(), `INSERT INTO _subject_steps(workspace_id,request_id,owner,operation,payload_json,completed_at) VALUES(?,?,'lifecycle','erase_fence','{}',?)`, workspaceID, requestID, time.Now().UTC().UnixMilli()); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -55,10 +55,11 @@ func TestIdentitySubjectLifecycleContract(t *testing.T) {
 	if err := identity.UpsertIdentityUser(t.Context(), "workspace-primary", user); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.DB().ExecContext(t.Context(), "INSERT INTO _identity_credentials (user_id, workspace_id, password_hash, password_updated_at, failed_login_count, must_change_password, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", "user", "workspace-primary", "hash", "now", 0, false, "now", "now"); err != nil {
+	nowMillis := time.Now().UTC().UnixMilli()
+	if _, err := store.DB().ExecContext(t.Context(), "INSERT INTO _identity_credentials (user_id, workspace_id, password_hash, password_updated_at, failed_login_count, must_change_password, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", "user", "workspace-primary", "hash", nowMillis, 0, false, nowMillis, nowMillis); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.DB().ExecContext(t.Context(), "INSERT INTO _identity_mfa_factors (id, workspace_id, user_id, factor_type, status, verified_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", "factor", "workspace-primary", "user", "totp", "active", "now", "now", "now"); err != nil {
+	if _, err := store.DB().ExecContext(t.Context(), "INSERT INTO _identity_mfa_factors (id, workspace_id, user_id, factor_type, status, verified_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", "factor", "workspace-primary", "user", "totp", "active", nowMillis, nowMillis, nowMillis); err != nil {
 		t.Fatal(err)
 	}
 	if err := identity.AssignIdentityUserRole(t.Context(), "workspace-primary", identitymodel.IdentityUserRoleAssignment{

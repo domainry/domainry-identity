@@ -15,7 +15,7 @@ import (
 
 func TestSQLiteDialectContract(t *testing.T) {
 	dialect := Dialect{}
-	if dialect.Name() != "sqlite" || dialect.SQLDriver() != "sqlite" || dialect.SQLDialect().Identifier("runtime_table") != `"runtime_table"` || dialect.SQLDialect().Placeholder(2) != "?" || !strings.Contains(dialect.SchemaMigrationSQL(), "_schema_migrations") {
+	if sql := dialect.SchemaMigrationSQL(); dialect.Name() != "sqlite" || dialect.SQLDriver() != "sqlite" || dialect.SQLDialect().Identifier("runtime_table") != `"runtime_table"` || dialect.SQLDialect().Placeholder(2) != "?" || !strings.Contains(sql, `"_schema_migrations"`) || !strings.Contains(sql, `"applied_at" INTEGER`) {
 		t.Fatalf("dialect identity contract failed")
 	}
 	for _, test := range []struct {

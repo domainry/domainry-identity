@@ -34,13 +34,13 @@ func installAndBindAuthTestSharedOperations(t *testing.T, identity *identitypers
 		correlation TEXT NOT NULL DEFAULT '',
 		evidence_json TEXT NOT NULL,
 		lease_owner TEXT NOT NULL DEFAULT '',
-		lease_expires_at TEXT NOT NULL DEFAULT '',
+		lease_expires_at BIGINT NOT NULL DEFAULT 0,
 		fencing_token BIGINT NOT NULL DEFAULT 0,
-		expires_at TEXT NOT NULL DEFAULT '',
-		created_at TEXT NOT NULL,
-		started_at TEXT NOT NULL DEFAULT '',
-		finished_at TEXT NOT NULL DEFAULT '',
-		updated_at TEXT NOT NULL
+		expires_at BIGINT NOT NULL DEFAULT 0,
+		created_at BIGINT NOT NULL,
+		started_at BIGINT NOT NULL DEFAULT 0,
+		finished_at BIGINT NOT NULL DEFAULT 0,
+		updated_at BIGINT NOT NULL
 	)`); err != nil {
 		t.Fatal(err)
 	}

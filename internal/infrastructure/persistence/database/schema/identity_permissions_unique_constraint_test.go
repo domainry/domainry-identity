@@ -3,6 +3,7 @@ package schema_test
 import (
 	"path/filepath"
 	"testing"
+	"time"
 
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
 	"github.com/domainry/domainry-identity/internal/platform/config"
@@ -21,7 +22,7 @@ func TestIdentityPermissionNaturalKeyRejectsDuplicateRows(t *testing.T) {
 	insertPermission := func(id string) error {
 		statement, arguments, err := query.NewWorkspaceInsertBuilder(store.BuilderRenderer(), "_identity_permissions", "workspace-a").
 			Columns("id", "permission_key", "resource_key", "operation_key", "label", "description", "category", "source_kind", "source_owner", "definition_status", "enabled", "definition_hash", "source_snapshot_hash", "created_at", "updated_at").
-			Values(id, "customer.read", "customer", "read", "Read customers", "", "record", "builder", "project", "active", true, "definition-hash", "snapshot-hash", "2026-09-03T00:00:00Z", "2026-09-03T00:00:00Z").
+			Values(id, "customer.read", "customer", "read", "Read customers", "", "record", "builder", "project", "active", true, "definition-hash", "snapshot-hash", time.Date(2026, 9, 3, 0, 0, 0, 0, time.UTC).UnixMilli(), time.Date(2026, 9, 3, 0, 0, 0, 0, time.UTC).UnixMilli()).
 			Build()
 		if err != nil {
 			return err

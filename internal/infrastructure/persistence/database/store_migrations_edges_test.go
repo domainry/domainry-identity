@@ -53,8 +53,12 @@ func insertMigrationEdgeLedger(t *testing.T, store *IdentityStore, path, checksu
 	if _, err := store.db.ExecContext(t.Context(), `DELETE FROM _schema_migrations`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.db.ExecContext(t.Context(), `INSERT INTO _schema_migrations(path, checksum, dirty, applied_at) VALUES (?, ?, ?, ?)`, filepath.Base(path), checksum, dirty, time.Now().UTC().Format(time.RFC3339)); err != nil {
+	if _, err := store.db.ExecContext(t.Context(), `INSERT INTO _schema_migrations(path, checksum, dirty, applied_at) VALUES (?, ?, ?, ?)`, filepath.Base(path), checksum, dirty, time.Now().UTC().UnixMilli()); err != nil {
 		t.Fatal(err)
+	}
+	var storageClass string
+	if err := store.db.QueryRowContext(t.Context(), `SELECT typeof(applied_at) FROM _schema_migrations WHERE path = ?`, filepath.Base(path)).Scan(&storageClass); err != nil || storageClass != "integer" {
+		t.Fatalf("applied_at storage class=%q error=%v", storageClass, err)
 	}
 }
 

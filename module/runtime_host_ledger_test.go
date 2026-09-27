@@ -24,7 +24,7 @@ func TestFactoryUsesRuntimeHostMigrationLedgerWithoutServiceVersionColumn(t *tes
 			kind TEXT NOT NULL DEFAULT 'schema',
 			checksum TEXT NOT NULL DEFAULT '',
 			dirty BOOLEAN NOT NULL DEFAULT FALSE,
-			applied_at TEXT NOT NULL,
+			applied_at BIGINT NOT NULL,
 			runtime_version TEXT NOT NULL DEFAULT '',
 			duration_ms BIGINT NOT NULL DEFAULT 0,
 			operator TEXT NOT NULL DEFAULT '',

@@ -24,11 +24,11 @@ func TestHandlerDeliveryStoreCommitsUserRolesProfileAndReceiptAsOneUnit(t *testi
 		t.Fatal(err)
 	}
 	if _, err := store.DB().ExecContext(t.Context(), `CREATE TABLE employee_profile (
-		workspace_id TEXT NOT NULL, id TEXT PRIMARY KEY, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, identity_user_id TEXT
+		workspace_id TEXT NOT NULL, id TEXT PRIMARY KEY, created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL, identity_user_id TEXT
 	)`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO employee_profile (workspace_id, id, created_at, updated_at) VALUES ('workspace-primary', 'employee-profile-1', 'now', 'now')`); err != nil {
+	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO employee_profile (workspace_id, id, created_at, updated_at) VALUES ('workspace-primary', 'employee-profile-1', 0, 0)`); err != nil {
 		t.Fatal(err)
 	}
 	identityStore, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceEngine())

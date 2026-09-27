@@ -35,8 +35,8 @@ func TestIdentityProfileBindingStoreProvidesAtomicOptimisticIdempotentLifecycle(
 	if _, err := identityStore.DB().ExecContext(t.Context(), `CREATE TABLE member_profile (
 		workspace_id TEXT NOT NULL,
 		id TEXT PRIMARY KEY,
-		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL,
+		created_at BIGINT NOT NULL,
+		updated_at BIGINT NOT NULL,
 		identity_user TEXT,
 		email TEXT NOT NULL
 	)`); err != nil {
@@ -46,12 +46,12 @@ func TestIdentityProfileBindingStoreProvidesAtomicOptimisticIdempotentLifecycle(
 		t.Fatal(err)
 	}
 	for _, profileID := range []string{"member-1", "member-2"} {
-		if _, err := identityStore.DB().ExecContext(t.Context(), `INSERT INTO member_profile (workspace_id, id, created_at, updated_at, identity_user, email) VALUES ('workspace-primary', ?, 'now', 'now', NULL, ?)`, profileID, profileID+"@example.com"); err != nil {
+		if _, err := identityStore.DB().ExecContext(t.Context(), `INSERT INTO member_profile (workspace_id, id, created_at, updated_at, identity_user, email) VALUES ('workspace-primary', ?, 0, 0, NULL, ?)`, profileID, profileID+"@example.com"); err != nil {
 			t.Fatal(err)
 		}
 	}
 	store := identitypersistence.NewIdentityProfileBindingStore(identitySQLStoreForProfileBindingTest(t, identityStore))
-	if _, err := identityStore.DB().ExecContext(t.Context(), `INSERT INTO member_profile (workspace_id, id, created_at, updated_at, identity_user, email) VALUES ('workspace-primary', 'member-seeded', 'now', 'now', 'seed-user', 'seed@example.com')`); err != nil {
+	if _, err := identityStore.DB().ExecContext(t.Context(), `INSERT INTO member_profile (workspace_id, id, created_at, updated_at, identity_user, email) VALUES ('workspace-primary', 'member-seeded', 0, 0, 'seed-user', 'seed@example.com')`); err != nil {
 		t.Fatal(err)
 	}
 	adopted, err := store.ExecuteIdentityProfileBindingMutation(t.Context(), profileBindingMutation("member-seeded", identitymodel.IdentityProfileBindingBind, "seed-user", 0, "adopt-seed"))

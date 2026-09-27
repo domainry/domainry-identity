@@ -33,7 +33,7 @@ func TestIdentityUserRemovalRollsBackEveryOwnedTable(t *testing.T) {
 	if err := repository.AssignIdentityUserRole(t.Context(), "workspace-primary", identitymodel.IdentityUserRoleAssignment{UserID: user.ID, RoleID: "role-1"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := identityStore.DB().ExecContext(t.Context(), "INSERT INTO _identity_mfa_factors (id, workspace_id, user_id, factor_type, status, verified_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", "factor-1", "workspace-primary", user.ID, "totp", "active", "now", "now", "now"); err != nil {
+	if _, err := identityStore.DB().ExecContext(t.Context(), "INSERT INTO _identity_mfa_factors (id, workspace_id, user_id, factor_type, status, verified_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", "factor-1", "workspace-primary", user.ID, "totp", "active", int64(1), int64(1), int64(1)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := identityStore.DB().ExecContext(t.Context(), `CREATE TRIGGER reject_identity_user_delete BEFORE DELETE ON _identity_users

@@ -43,11 +43,11 @@ func TestUnboundProfileCanBeClaimedAfterAccountRegistrationWithoutTrustingClient
 		t.Fatal(err)
 	}
 	if _, err := databaseStore.DB().ExecContext(t.Context(), `CREATE TABLE member_profile (
-		workspace_id TEXT NOT NULL, id TEXT PRIMARY KEY, identity_user TEXT, email TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+		workspace_id TEXT NOT NULL, id TEXT PRIMARY KEY, identity_user TEXT, email TEXT NOT NULL, created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL
 	)`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := databaseStore.DB().ExecContext(t.Context(), `INSERT INTO member_profile VALUES ('workspace-primary', 'member-1', NULL, 'member@example.com', 'now', 'now')`); err != nil {
+	if _, err := databaseStore.DB().ExecContext(t.Context(), `INSERT INTO member_profile VALUES ('workspace-primary', 'member-1', NULL, 'member@example.com', 0, 0)`); err != nil {
 		t.Fatal(err)
 	}
 	identityStore, err := identitypersistence.NewSQLIdentityStore(t.Context(), databaseStore.DB(), databaseStore.PersistenceEngine())

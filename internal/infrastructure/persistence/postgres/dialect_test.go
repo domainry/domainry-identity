@@ -48,7 +48,7 @@ func TestDialectContract(t *testing.T) {
 	if got := dialect.SQLDialect().Placeholder(7); got != "$7" {
 		t.Fatalf("placeholder=%q", got)
 	}
-	if sql := dialect.SchemaMigrationSQL(); !strings.Contains(sql, `"_schema_migrations"`) || !strings.Contains(sql, "PRIMARY KEY") {
+	if sql := dialect.SchemaMigrationSQL(); !strings.Contains(sql, `"_schema_migrations"`) || !strings.Contains(sql, `"applied_at" BIGINT`) || !strings.Contains(sql, "PRIMARY KEY") {
 		t.Fatalf("migration SQL=%q", sql)
 	}
 }
