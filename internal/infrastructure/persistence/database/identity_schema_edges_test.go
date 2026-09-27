@@ -163,10 +163,8 @@ func TestIdentitySchemaMutationFailuresAndDefinitions(t *testing.T) {
 	mysqlStore := &IdentityStore{engine: mysql.NewEngine()}
 	definition := "TEXT NOT NULL DEFAULT '[]', TEXT NOT NULL DEFAULT '{}', TEXT NOT NULL DEFAULT ''"
 	got := mysqlStore.columnDefinition(definition)
-	for _, expected := range []string{"DEFAULT ('[]')", "DEFAULT ('{}')", "DEFAULT ('')"} {
-		if !strings.Contains(got, expected) {
-			t.Fatalf("definition=%q", got)
-		}
+	if got != "TEXT NOT NULL, TEXT NOT NULL, TEXT NOT NULL" {
+		t.Fatalf("definition=%q", got)
 	}
 	if got := (&IdentityStore{engine: sqlite.NewEngine()}).columnDefinition(definition); got != definition {
 		t.Fatalf("sqlite definition=%q", got)

@@ -3,6 +3,7 @@ package schema
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
@@ -12,17 +13,15 @@ import (
 
 type Profile struct{}
 
+var textDefaultLiteral = regexp.MustCompile(`((?:LONG)?TEXT NOT NULL) DEFAULT (?:\('(?:''|[^'])*'\)|'(?:''|[^'])*')`)
+
 func NewProfile() Profile { return Profile{} }
 
 func (Profile) ManagedDatabaseMarkerEnabled() bool { return true }
 func (Profile) RendererSchema(string) string       { return "" }
 func (Profile) ColumnDefinition(definition string) string {
 	definition = strings.TrimSpace(definition)
-	// MySQL accepts defaults for TEXT/BLOB values only as expressions.
-	definition = strings.ReplaceAll(definition, "TEXT NOT NULL DEFAULT '[]'", "TEXT NOT NULL DEFAULT ('[]')")
-	definition = strings.ReplaceAll(definition, "TEXT NOT NULL DEFAULT '{}'", "TEXT NOT NULL DEFAULT ('{}')")
-	definition = strings.ReplaceAll(definition, "TEXT NOT NULL DEFAULT ''", "TEXT NOT NULL DEFAULT ('')")
-	return definition
+	return textDefaultLiteral.ReplaceAllString(definition, "$1")
 }
 
 // MySQL schema discovery must query information_schema. domainry-orm models
