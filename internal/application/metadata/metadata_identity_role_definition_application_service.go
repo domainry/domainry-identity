@@ -2,7 +2,9 @@ package metadata
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	auditmodel "github.com/domainry/domainry-audit-sdk/contract"
@@ -18,7 +20,19 @@ func (s *MetadataApplicationService) IdentityRolePermissionDefinition(ctx contex
 }
 
 func (s *MetadataApplicationService) IdentityRoleFieldPermissionDefinition(ctx context.Context, roleKey string, principal identitymodel.Principal) (identitymodel.RoleSchema, identitymodel.IdentityRoleDefinitionRevision, bool, error) {
-	return s.identityRoleDefinitionForAction(ctx, roleKey, identitycontract.IdentityActionRoleFieldPermissionsList, false, principal)
+	role, revision, found, err := s.identityRoleDefinitionForAction(ctx, roleKey, identitycontract.IdentityActionRoleFieldPermissionsList, false, principal)
+	if err != nil || found {
+		return role, revision, found, err
+	}
+	projectRole, found := s.projectRoleDefinition(roleKey)
+	if !found {
+		return identitymodel.RoleSchema{}, identitymodel.IdentityRoleDefinitionRevision{}, false, nil
+	}
+	revision, err = projectRoleDefinitionRevision(projectRole)
+	if err != nil {
+		return identitymodel.RoleSchema{}, identitymodel.IdentityRoleDefinitionRevision{}, false, metadataInternalErrorWithCause("hash project role field permission definition", err)
+	}
+	return projectRole, revision, true, nil
 }
 
 func (s *MetadataApplicationService) CreateIdentityRoleDefinition(ctx context.Context, role identitymodel.RoleSchema, businessReason, operationID string, principal identitymodel.Principal) (identitymodel.IdentityRoleDefinitionRevision, error) {
@@ -64,10 +78,48 @@ func (s *MetadataApplicationService) PublishIdentityRoleFieldPermissions(ctx con
 		return identitymodel.IdentityRoleDefinitionRevision{}, err
 	}
 	if !found {
-		return identitymodel.IdentityRoleDefinitionRevision{}, notFound("backend.identity.role_definition_not_found", "role", strings.TrimSpace(roleKey))
+		role, found = s.projectRoleDefinition(roleKey)
+		if !found {
+			return identitymodel.IdentityRoleDefinitionRevision{}, notFound("backend.identity.role_definition_not_found", "role", strings.TrimSpace(roleKey))
+		}
+		revision, revisionErr := projectRoleDefinitionRevision(role)
+		if revisionErr != nil {
+			return identitymodel.IdentityRoleDefinitionRevision{}, metadataInternalErrorWithCause("hash project role field permission definition", revisionErr)
+		}
+		if strings.TrimSpace(expectedSchemaHash) != revision.SchemaHash {
+			return identitymodel.IdentityRoleDefinitionRevision{}, conflict("backend.metadata.definition_revision_conflict", "resource_type", "role", "resource_key", strings.TrimSpace(roleKey), "expected_hash", strings.TrimSpace(expectedSchemaHash), "current_hash", revision.SchemaHash)
+		}
+		overlay := identitymodel.RoleSchema{
+			Key:                            strings.TrimSpace(role.Key),
+			Name:                           strings.TrimSpace(role.Name),
+			FieldPermissions:               append([]identitymodel.FieldPermission(nil), permissions...),
+			ProjectFieldPermissionOverride: true,
+		}
+		return s.publishIdentityRoleDefinition(ctx, overlay, "", businessReason, operationID, "identity_role_field_permissions.published", "Published role field permissions for "+overlay.Key, map[string]any{"field_permission_count": len(overlay.FieldPermissions), "project_role_overlay": true}, true, principal)
 	}
 	role.FieldPermissions = append([]identitymodel.FieldPermission(nil), permissions...)
 	return s.publishIdentityRoleDefinition(ctx, role, expectedSchemaHash, businessReason, operationID, "identity_role_field_permissions.published", "Published role field permissions for "+role.Key, map[string]any{"field_permission_count": len(role.FieldPermissions)}, false, principal)
+}
+
+type metadataProjectRoleRuntime interface {
+	ProjectRoleDefinition(string) (identitymodel.RoleSchema, bool)
+}
+
+func (s *MetadataApplicationService) projectRoleDefinition(roleKey string) (identitymodel.RoleSchema, bool) {
+	runtime, ok := s.runtime.(metadataProjectRoleRuntime)
+	if !ok {
+		return identitymodel.RoleSchema{}, false
+	}
+	return runtime.ProjectRoleDefinition(strings.TrimSpace(roleKey))
+}
+
+func projectRoleDefinitionRevision(role identitymodel.RoleSchema) (identitymodel.IdentityRoleDefinitionRevision, error) {
+	payload, err := json.Marshal(role)
+	if err != nil {
+		return identitymodel.IdentityRoleDefinitionRevision{}, err
+	}
+	digest := sha256.Sum256(payload)
+	return identitymodel.IdentityRoleDefinitionRevision{SchemaVersion: "project", SchemaHash: fmt.Sprintf("%x", digest[:])}, nil
 }
 
 func (s *MetadataApplicationService) DisableIdentityRoleDefinition(ctx context.Context, roleKey, expectedSchemaHash, businessReason, operationID string, principal identitymodel.Principal) error {
@@ -106,7 +158,7 @@ func (s *MetadataApplicationService) DisableIdentityRoleDefinition(ctx context.C
 	if err := s.repository.DisableDefinition(ctx, metadataInstallationScope("disable Identity role definition"), "role", roleKey, expectedSchemaHash, audit, metadataPublicationForPrincipal(principal)); err != nil {
 		return wrapMetadataError(err)
 	}
-	if _, err := s.ReloadMetadata(ctx, principal); err != nil {
+	if _, err := s.reloadMetadata(ctx); err != nil {
 		return err
 	}
 	return nil

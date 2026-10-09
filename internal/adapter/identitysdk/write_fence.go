@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/domainry/domainry-foundation/requestcontext"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 )
 
@@ -60,4 +61,12 @@ func (binding *sdkBinding) federatedLoginWorkspace(ctx context.Context, provider
 		return "", &identitysdk.Error{StatusCode: http.StatusForbidden, Code: "auth.provider_state_invalid"}
 	}
 	return workspace, nil
+}
+
+func (binding *sdkBinding) federatedLoginContext(ctx context.Context, provider, state string) (context.Context, identitysdk.WorkspaceID, error) {
+	workspaceID, err := binding.federatedLoginWorkspace(ctx, provider, state)
+	if err != nil {
+		return ctx, "", err
+	}
+	return requestcontext.WithWorkspaceID(ctx, string(workspaceID)), workspaceID, nil
 }

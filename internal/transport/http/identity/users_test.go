@@ -123,6 +123,28 @@ func TestCreateIdentityUserIssuesOneTimeInitialCredential(t *testing.T) {
 	}
 }
 
+func TestCreateIdentityServiceAccountDoesNotIssueLoginCredential(t *testing.T) {
+	repository := &identityHTTPRepository{}
+	handler, response := newIdentityHTTPHandler(repository)
+	security := handler.userSecurity.(*identityHTTPUserSecurity)
+	w, request := identityRoleRequest(
+		http.MethodPost,
+		"/identity/users",
+		`{"id":"service-1","name":"CRM API","email":"service-1@service.invalid","account_type":"service","status":"active"}`,
+		nil,
+	)
+
+	handler.createIdentityUser(w, request)
+
+	result, ok := response.value.(identityUserProvisioningResponse)
+	if response.status != http.StatusCreated || response.err != nil || !ok {
+		t.Fatalf("status=%d value=%#v err=%v", response.status, response.value, response.err)
+	}
+	if result.ID != "service-1" || result.AccountType != identitymodel.IdentityAccountService || result.InitialPassword != "" || result.MustChangePassword || security.issuedUserID != "" {
+		t.Fatalf("service account provisioning response=%#v issued_user=%q", result, security.issuedUserID)
+	}
+}
+
 func TestCreateIdentityUserRejectsExistingAccountWithoutRotatingCredential(t *testing.T) {
 	repository := &identityHTTPRepository{users: []identitymodel.IdentityUser{{
 		ID: "user-1", Name: "Existing User", Email: "existing@example.test", Status: identitymodel.IdentityStatusActive,

@@ -29,6 +29,10 @@ type FieldSchema struct {
 	Unique       bool                               `json:"unique,omitempty"`
 	Default      any                                `json:"default,omitempty"`
 	DefaultValue any                                `json:"default_value,omitempty"`
+	// Sensitive is part of the project schema contract published by Runtime.
+	// Identity must preserve it so effective field access defaults closed until
+	// a role declares an exact field permission.
+	Sensitive bool `json:"sensitive,omitempty"`
 	// DisabledAt is set when the field has been soft-disabled.
 	// ensureObjectStorage skips disabled fields (no physical DROP).
 	DisabledAt string `json:"disabled_at,omitempty"`

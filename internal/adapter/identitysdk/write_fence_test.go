@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/domainry/domainry-foundation/requestcontext"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 )
 
@@ -69,5 +70,16 @@ func TestFederatedLoginFenceResolvesOnlyTheOpaqueStatesWorkspace(t *testing.T) {
 	binding.loginTransactions = loginTransactionStub{}
 	if _, err := binding.federatedLoginWorkspace(t.Context(), "oidc", "unknown"); err == nil {
 		t.Fatal("unknown federated-login state was accepted")
+	}
+}
+
+func TestFederatedLoginContextCarriesTheWorkspaceResolvedFromOpaqueState(t *testing.T) {
+	binding := &sdkBinding{
+		clock:             fixedSDKClock{now: time.Date(2026, time.August, 27, 12, 0, 0, 0, time.UTC)},
+		loginTransactions: loginTransactionStub{workspaceID: "workspace-b", found: true},
+	}
+	ctx, workspaceID, err := binding.federatedLoginContext(t.Context(), "oidc", "opaque-state")
+	if err != nil || workspaceID != "workspace-b" || requestcontext.WorkspaceID(ctx) != "workspace-b" {
+		t.Fatalf("workspace=%q context_workspace=%q err=%v", workspaceID, requestcontext.WorkspaceID(ctx), err)
 	}
 }

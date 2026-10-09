@@ -172,6 +172,14 @@ func (s *IdentityDomainService) validateRoleEligibilityWithoutConflicts(ctx cont
 		if !active {
 			return forbidden("backend.identity.business_role_eligibility_required")
 		}
+	case identitymodel.IdentityRoleAudienceService:
+		user, found, err := s.userByID(ctx, strings.TrimSpace(assignment.UserID))
+		if err != nil {
+			return err
+		}
+		if !found || user.Status != identitymodel.IdentityStatusActive || user.AccountType != identitymodel.IdentityAccountService {
+			return forbidden("backend.identity.service_role_account_type_required")
+		}
 	}
 	return nil
 }
@@ -421,7 +429,9 @@ func (s *IdentityDomainService) ListAssignableRoles(ctx context.Context, targetU
 				continue
 			}
 		case identitymodel.IdentityRoleAudienceService:
-			continue
+			if target.AccountType != identitymodel.IdentityAccountService {
+				continue
+			}
 		}
 		if err := s.validateRoleConflictsAgainstAssignments(definition, assignments, roles); err != nil {
 			if apperror.CodeOf(err) == "backend.identity.role_conflict" {

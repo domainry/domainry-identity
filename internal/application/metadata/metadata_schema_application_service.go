@@ -52,6 +52,14 @@ func (s *MetadataApplicationService) ReloadMetadata(ctx context.Context, princip
 	if !identitycontract.IdentityRoleHasPermissionKey(principal.Role, metadatacontract.MetadataActionReload) {
 		return metadatamodel.MetadataSchemaSnapshot{}, forbidden("auth.permission_denied")
 	}
+	return s.reloadMetadata(ctx)
+}
+
+// reloadMetadata activates a definition change after the caller has already
+// authorized that concrete mutation. Requiring the separate generic reload
+// permission here would turn every specialized governance operation into an
+// undocumented two-permission transaction.
+func (s *MetadataApplicationService) reloadMetadata(ctx context.Context) (metadatamodel.MetadataSchemaSnapshot, error) {
 	if s == nil || s.repository == nil || s.runtime == nil {
 		return metadatamodel.MetadataSchemaSnapshot{}, metadataInternalError("reload metadata")
 	}

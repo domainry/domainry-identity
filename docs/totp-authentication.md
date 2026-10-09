@@ -2,7 +2,7 @@
 
 Identity 内置 `domainry_totp` 验证器，支持 RFC 6238 的 SHA-1、6 位数字、30 秒周期；苹果「密码」通过 `apple-otpauth://totp/` 设置链接或手动设置密钥绑定，其他兼容应用可使用返回的 `otpauth://totp/` URI。
 
-绑定只更换现有 PIN 挑战的验证方式。登录是否需要 PIN 仍由现有已验证 OTP 因子及 provider purpose 决定；绑定本身不会新增登录 MFA 要求。操作验证继续由 Runtime 的 Action assurance 策略触发，普通操作直接执行。已绑定时，Identity 优先返回 TOTP 挑战，不依赖短信提供方或手机号码。
+绑定默认只更换现有 PIN 挑战的验证方式。登录是否需要 PIN 仍由现有已验证 OTP 因子及 provider purpose 决定；项目也可通过 `AUTH_TOTP_LOGIN_MFA_WHEN_ENROLLED=true` 明确要求已绑定用户在密码登录后完成 TOTP，未绑定用户仍可登录后完成首次绑定。操作验证继续由 Runtime 的 Action assurance 策略触发，普通操作直接执行。已绑定时，Identity 优先返回 TOTP 挑战，不依赖短信提供方或手机号码。
 
 ## 自助接口
 

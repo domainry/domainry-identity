@@ -98,6 +98,12 @@ func TestTOTPFlowPreservesPINPolicyAndAuthenticatesWithoutPhone(t *testing.T) {
 	if err != nil || outcome.Status != authmodel.AuthenticationStatusAuthenticated {
 		t.Fatalf("binding changed login policy: %v", err)
 	}
+	flows.RequireTOTPLoginMFAWhenEnrolled(true)
+	outcome, err = flows.LoginWithPasswordOutcome(t.Context(), "workspace-primary", user.Email, password, "domainry-admin")
+	if err != nil || outcome.Challenge == nil || outcome.Challenge.Provider != authmodel.TOTPProvider || outcome.Challenge.Purpose != authmodel.AuthChallengePurposeLoginMFA || outcome.Session != nil {
+		t.Fatalf("installation TOTP login policy did not challenge: %+v %v", outcome, err)
+	}
+	flows.RequireTOTPLoginMFAWhenEnrolled(false)
 	if err := repository.UpsertIdentityMFAFactor(t.Context(), "workspace-primary", identitymodel.IdentityMFAFactor{ID: "existing-pin", UserID: user.ID, Type: "otp", Provider: "sms", Status: "active", VerifiedAt: time.Now().UTC().Format(time.RFC3339)}); err != nil {
 		t.Fatal(err)
 	}

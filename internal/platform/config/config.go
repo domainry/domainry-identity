@@ -103,6 +103,7 @@ type Config struct {
 	AuthLoginLockDuration                 time.Duration
 	AuthOTPResendCooldown                 time.Duration
 	AuthOTPMaxAttempts                    int
+	AuthTOTPLoginMFAWhenEnrolled          bool
 	AuthAllowDevHeaders                   bool
 	AuthExternalAutoCreateUsers           bool
 	IdentityApplicationServiceCredentials map[string]string
@@ -210,6 +211,7 @@ func FromEnv() Config {
 		AuthLoginLockDuration:                 durationEnv("AUTH_LOGIN_LOCK_DURATION", 15*time.Minute),
 		AuthOTPResendCooldown:                 durationEnv("AUTH_OTP_RESEND_COOLDOWN", 60*time.Second),
 		AuthOTPMaxAttempts:                    intEnv("AUTH_OTP_MAX_ATTEMPTS", 5),
+		AuthTOTPLoginMFAWhenEnrolled:          boolEnv("AUTH_TOTP_LOGIN_MFA_WHEN_ENROLLED", false),
 		AuthAllowDevHeaders:                   boolEnv("AUTH_ALLOW_DEV_HEADERS", false),
 		AuthExternalAutoCreateUsers:           boolEnv("AUTH_EXTERNAL_AUTO_CREATE_USERS", false),
 		IdentityApplicationServiceCredentials: keyMapEnv("IDENTITY_APPLICATION_SERVICE_CREDENTIALS"),

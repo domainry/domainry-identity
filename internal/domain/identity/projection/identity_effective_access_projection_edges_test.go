@@ -220,12 +220,15 @@ func TestIdentityEffectiveAccessProjectionHelpers(t *testing.T) {
 		t.Fatal("default deny field not sensitive")
 	}
 	for _, field := range []definitionmodel.FieldSchema{
+		{Sensitive: true},
 		{Config: map[string]any{"sensitive": true}},
 		{Config: map[string]any{"sensitive": false}},
 		{Config: map[string]any{"sensitivity": "secret"}},
 		{},
 	} {
-		_ = identityProjectionSensitiveField(definitionmodel.ObjectSchema{}, field)
+		if field.Sensitive && !identityProjectionSensitiveField(definitionmodel.ObjectSchema{}, field) {
+			t.Fatal("project schema sensitive field not preserved")
+		}
 	}
 }
 

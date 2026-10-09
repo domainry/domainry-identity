@@ -79,6 +79,16 @@ func (r *MetadataRuntime) ReplaceProjectObjects(objects []definitionmodel.Object
 	r.projectObjects = projectObjects
 }
 
+// ProjectObjects returns the application-owned object catalog without mixing
+// in Identity-owned metadata. Metadata candidate validation uses this to
+// validate persisted project-role field policy overlays against the same
+// schema used by effective access evaluation.
+func (r *MetadataRuntime) ProjectObjects() []definitionmodel.ObjectSchema {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return append([]definitionmodel.ObjectSchema(nil), r.projectObjects...)
+}
+
 // ReplaceProjectRoles keeps the embedding application's role catalog separate
 // from Identity-owned metadata. Metadata authoring reloads the source snapshot;
 // the application overlay must therefore be reapplied instead of being lost.
@@ -88,6 +98,20 @@ func (r *MetadataRuntime) ReplaceProjectRoles(roles []identitymodel.RoleSchema) 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.projectRoles = projectRoles
+}
+
+// ProjectRoleDefinition returns only the application-owned role definition.
+// It deliberately excludes Identity-authored roles and persisted overlays.
+func (r *MetadataRuntime) ProjectRoleDefinition(key string) (identitymodel.RoleSchema, bool) {
+	key = strings.TrimSpace(key)
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, role := range r.projectRoles {
+		if strings.TrimSpace(role.Key) == key {
+			return role, true
+		}
+	}
+	return identitymodel.RoleSchema{}, false
 }
 
 // EffectiveRoleDefinitions composes Identity-owned definitions with the
@@ -107,6 +131,9 @@ func (r *MetadataRuntime) EffectiveRoleDefinitions(source []identitymodel.RoleSc
 	for _, role := range projectRoles {
 		if key := strings.TrimSpace(role.Key); key != "" {
 			role.Key = key
+			if override, found := byKey[key]; found && override.ProjectFieldPermissionOverride {
+				role.FieldPermissions = append([]identitymodel.FieldPermission(nil), override.FieldPermissions...)
+			}
 			byKey[key] = role
 		}
 	}

@@ -25,6 +25,10 @@ type RoleSchema struct {
 	GuardrailKeys         []string                           `json:"guardrail_keys,omitempty"`
 	Guardrails            []IdentityGuardrailPolicy          `json:"guardrails,omitempty"`
 	ProvisionToWorkspaces bool                               `json:"provision_to_workspaces,omitempty"`
+	// ProjectFieldPermissionOverride marks a persisted, Identity-owned field
+	// policy overlay for an application-owned role. The application remains the
+	// authority for every other role property.
+	ProjectFieldPermissionOverride bool `json:"project_field_permission_override,omitempty"`
 }
 
 type IdentityRoleAudience string

@@ -65,3 +65,24 @@ func TestMetadataRuntimeReappliesProjectRolesAfterSourceReload(t *testing.T) {
 		t.Fatalf("project roles were not replaceable: %#v", roles)
 	}
 }
+
+func TestMetadataRuntimeAppliesOnlyFieldPermissionOverrideToProjectRole(t *testing.T) {
+	runtime := NewMetadataRuntime(metadataservice.SchemaSnapshotState{})
+	runtime.ReplaceProjectRoles([]identitymodel.RoleSchema{{
+		Key: "analyst", Name: "Project analyst",
+		Permissions:      identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "customer.read"),
+		FieldPermissions: []identitymodel.FieldPermission{{ObjectKey: "customer", FieldKey: "email", Read: false}},
+	}})
+
+	roles := runtime.EffectiveRoleDefinitions([]identitymodel.RoleSchema{{
+		Key: "analyst", Name: "Persisted field overlay",
+		FieldPermissions:               []identitymodel.FieldPermission{{ObjectKey: "customer", FieldKey: "email", Read: true}},
+		ProjectFieldPermissionOverride: true,
+	}})
+	if len(roles) != 1 || roles[0].Name != "Project analyst" || len(roles[0].Permissions) != 1 || roles[0].Permissions[0].PermissionKey != "customer.read" {
+		t.Fatalf("project role authority changed: %#v", roles)
+	}
+	if len(roles[0].FieldPermissions) != 1 || !roles[0].FieldPermissions[0].Read {
+		t.Fatalf("field permission override not applied: %#v", roles[0].FieldPermissions)
+	}
+}

@@ -273,7 +273,7 @@ func (adapter sdkAuthentication) CompleteFederatedLogin(ctx context.Context, req
 	if state == "" {
 		state = strings.TrimSpace(request.Values["RelayState"])
 	}
-	workspaceID, err := adapter.binding.federatedLoginWorkspace(ctx, request.Provider, state)
+	ctx, workspaceID, err := adapter.binding.federatedLoginContext(ctx, request.Provider, state)
 	if err != nil {
 		return identitysdk.FederatedLoginCompletion{}, err
 	}

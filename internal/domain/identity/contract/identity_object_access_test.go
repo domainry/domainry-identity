@@ -13,7 +13,7 @@ func TestWorkspaceAdminShapedPermissionDoesNotGrantFieldAuthority(t *testing.T) 
 		Key:    "payment",
 		Config: map[string]any{"field_access_mode": "default_deny"},
 	}
-	field := definitionmodel.FieldSchema{Key: "bank_account", Type: "string", Config: map[string]any{"sensitive": true}}
+	field := definitionmodel.FieldSchema{Key: "bank_account", Type: "string", Sensitive: true}
 
 	if IdentityCanReadObjectField(role, object, field) ||
 		IdentityCanWriteObjectField(role, object, field) ||

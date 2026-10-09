@@ -141,6 +141,9 @@ func identityFieldRequiresExplicitAccess(object definitionmodel.ObjectSchema, fi
 	if strings.TrimSpace(fmt.Sprint(object.Config["field_access_mode"])) == "default_deny" {
 		return true
 	}
+	if field.Sensitive {
+		return true
+	}
 	if sensitive, ok := field.Config["sensitive"].(bool); ok && sensitive {
 		return true
 	}

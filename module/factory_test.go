@@ -21,6 +21,7 @@ import (
 	identitycontracttest "github.com/domainry/domainry-identity-sdk/contracttest"
 	identityhttpapi "github.com/domainry/domainry-identity-sdk/httpapi"
 	identitymodulehost "github.com/domainry/domainry-identity-sdk/modulehost"
+	identitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity"
 	identitymodule "github.com/domainry/domainry-identity/module"
 	ormsqlite "github.com/domainry/domainry-orm/sqlite"
 )
@@ -358,7 +359,12 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	}
 	foundProjectRole := false
 	for _, role := range roles {
-		foundProjectRole = foundProjectRole || role.Key == "project_viewer"
+		if role.Key == "project_viewer" {
+			foundProjectRole = true
+			if want := identitypersistence.WorkspaceRoleID(string(application.WorkspaceID), role.Key); role.ID != want {
+				t.Fatalf("project role ID=%q want=%q", role.ID, want)
+			}
+		}
 	}
 	if !foundProjectRole {
 		t.Fatalf("project role missing from projection: %#v", roles)

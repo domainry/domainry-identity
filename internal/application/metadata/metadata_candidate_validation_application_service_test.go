@@ -128,6 +128,37 @@ func TestMetadataCandidateKeepsApplicationObjectReferencesOpaqueForRuntimeFinalV
 
 }
 
+func TestMetadataCandidateValidatesProjectFieldOverlayAgainstPublishedProjectObjects(t *testing.T) {
+	runtime := &metadataProjectObjectRuntimeStub{
+		metadataLifecycleRuntimeStub: metadataLifecycleRuntimeStub{},
+		objects: []definitionmodel.ObjectSchema{{
+			Key: "booking", Name: "Booking", Fields: []definitionmodel.FieldSchema{{Key: "owner", Name: "Owner", Type: "user"}, {Key: "email", Name: "Email", Type: "email"}},
+			// Runtime owns and has already validated this object metadata. It is
+			// deliberately not imported into Identity's authored graph.
+			Validations: []definitionmodel.ValidationSchema{{Key: "runtime-only", ObjectKey: "another_object"}},
+		}},
+	}
+	service := NewMetadataApplicationService(MetadataApplicationDependencies{
+		Repository:  metadataCandidateRepository{manifest: loadMetadataCandidateFixture(t)},
+		Permissions: allowMetadataCandidatePermissions("identity.roles.list", "booking.read"),
+		Runtime:     runtime,
+	})
+	role := json.RawMessage(`{"key":"analyst","name":"Analyst","field_permissions":[{"object_key":"booking","field_key":"email","read":true}],"project_field_permission_override":true}`)
+	mutation := metadatamodel.MetadataDefinitionMutation{Operation: "create", ResourceType: "role", ResourceKey: "analyst", Request: metadatamodel.MetadataDefinitionUpsertRequest{Payload: role}}
+	if err := service.ValidateMetadataCandidate(t.Context(), []metadatamodel.MetadataDefinitionMutation{mutation}); err != nil {
+		t.Fatalf("project role overlay rejected: %#v", err)
+	}
+}
+
+type metadataProjectObjectRuntimeStub struct {
+	metadataLifecycleRuntimeStub
+	objects []definitionmodel.ObjectSchema
+}
+
+func (runtime *metadataProjectObjectRuntimeStub) ProjectObjects() []definitionmodel.ObjectSchema {
+	return append([]definitionmodel.ObjectSchema(nil), runtime.objects...)
+}
+
 func TestMetadataCandidateRequiresRoleCleanupWhenLastDedicatedActionPermissionIsRetired(t *testing.T) {
 	manifest := loadMetadataCandidateFixture(t)
 	action := definitionmodel.ActionSchema{Key: "customer.approve", ObjectKey: "customer", Label: "Approve", Kind: "record_operation", AuditEvent: "customer.approved"}

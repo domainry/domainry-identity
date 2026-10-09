@@ -402,6 +402,9 @@ func identityProjectionSensitiveField(object definitionmodel.ObjectSchema, field
 	if strings.TrimSpace(identityProjectionString(object.Config["field_access_mode"])) == "default_deny" {
 		return true
 	}
+	if field.Sensitive {
+		return true
+	}
 	if sensitive, ok := field.Config["sensitive"].(bool); ok && sensitive {
 		return true
 	}

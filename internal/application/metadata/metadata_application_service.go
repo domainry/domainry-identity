@@ -150,7 +150,7 @@ func (s *MetadataApplicationService) RollbackMetadataDefinition(ctx context.Cont
 	if err != nil {
 		return metadatamodel.MetadataDefinition{}, metadatamodel.MetadataSchemaSnapshot{}, wrapMetadataError(err)
 	}
-	snapshot, err := s.ReloadMetadata(ctx, principal)
+	snapshot, err := s.reloadMetadata(ctx)
 	return definition, snapshot, err
 }
 
@@ -206,7 +206,7 @@ func (s *MetadataApplicationService) DisableMetadataDefinition(ctx context.Conte
 	if err := s.repository.DisableDefinition(ctx, metadataInstallationScope("disable metadata definition"), resourceType, resourceKey, expectedSchemaHash, audit, metadataPublicationForPrincipal(principal)); err != nil {
 		return wrapMetadataError(err)
 	}
-	if _, err := s.ReloadMetadata(ctx, principal); err != nil {
+	if _, err := s.reloadMetadata(ctx); err != nil {
 		return err
 	}
 	return nil
@@ -267,7 +267,7 @@ func (s *MetadataApplicationService) upsertMetadataDefinition(ctx context.Contex
 	if err != nil {
 		return metadatamodel.MetadataDefinition{}, metadatamodel.MetadataSchemaSnapshot{}, wrapMetadataError(err)
 	}
-	snapshot, reloadErr := s.ReloadMetadata(ctx, principal)
+	snapshot, reloadErr := s.reloadMetadata(ctx)
 	if reloadErr != nil {
 		return definition, metadatamodel.MetadataSchemaSnapshot{}, reloadErr
 	}

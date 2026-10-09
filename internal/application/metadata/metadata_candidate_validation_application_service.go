@@ -22,6 +22,10 @@ type MetadataPermissionSelectionValidator interface {
 	ValidatePermissionSelections([]string) error
 }
 
+type metadataProjectObjectRuntime interface {
+	ProjectObjects() []definitionmodel.ObjectSchema
+}
+
 // ValidateMetadataCandidate validates the complete Identity metadata graph
 // after applying a mutation set. Object, field, relation and authorization
 // references are checked together before the set is published atomically.
@@ -39,6 +43,7 @@ func (s *MetadataApplicationService) ValidateMetadataCandidate(ctx context.Conte
 			return badRequest("backend.metadata.candidate_invalid", "resource_type", mutation.ResourceType, "resource_key", mutation.ResourceKey, "diagnostic", err.Error())
 		}
 	}
+	candidate.Objects = s.metadataCandidateObjects(candidate.Objects)
 	if err := metadatavalidation.MetadataValidateIdentitySchema(candidate); err != nil {
 		return badRequest("backend.metadata.candidate_invalid", "diagnostic", err.Error())
 	}
@@ -54,6 +59,35 @@ func (s *MetadataApplicationService) ValidateMetadataCandidate(ctx context.Conte
 		return badRequest("backend.metadata.candidate_invalid", "diagnostic", err.Error())
 	}
 	return nil
+}
+
+func (s *MetadataApplicationService) metadataCandidateObjects(identityObjects []definitionmodel.ObjectSchema) []definitionmodel.ObjectSchema {
+	objects := append([]definitionmodel.ObjectSchema(nil), identityObjects...)
+	runtime, ok := s.runtime.(metadataProjectObjectRuntime)
+	if !ok {
+		return objects
+	}
+	seen := make(map[string]bool, len(objects))
+	for _, object := range objects {
+		if key := strings.TrimSpace(object.Key); key != "" {
+			seen[key] = true
+		}
+	}
+	for _, object := range runtime.ProjectObjects() {
+		key := strings.TrimSpace(object.Key)
+		if key == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		// The project catalog is already validated by Runtime. Identity needs
+		// only its object/field graph to validate field-permission overlays; it
+		// must not reinterpret Runtime-owned validations or lifecycle metadata
+		// as Identity-authored definitions.
+		objects = append(objects, definitionmodel.ObjectSchema{
+			Key: key, Fields: append([]definitionmodel.FieldSchema(nil), object.Fields...),
+		})
+	}
+	return objects
 }
 
 func (s *MetadataApplicationService) validateCandidatePermissionSelections(candidate manifestmodel.ManifestSchema) error {

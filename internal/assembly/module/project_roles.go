@@ -11,6 +11,7 @@ import (
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	definitionmodel "github.com/domainry/domainry-identity/internal/domain/definition/model"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	identitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity"
 )
 
 func (binding *moduleBinding) PublishProjectRoles(ctx context.Context, catalog identitysdk.ProjectRoleCatalog) (identitysdk.ProjectRoleCatalogReceipt, error) {
@@ -41,7 +42,7 @@ func (binding *moduleBinding) PublishProjectRoles(ctx context.Context, catalog i
 	for _, definition := range definitions {
 		role := byKey[definition.Key]
 		if role.ID == "" {
-			role.ID = definition.Key
+			role.ID = identitypersistence.WorkspaceRoleID(workspaceID, definition.Key)
 			role.Key = definition.Key
 		}
 		role.Label = definition.Name

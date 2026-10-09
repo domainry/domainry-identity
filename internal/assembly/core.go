@@ -267,6 +267,7 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 	}
 	providerConfiguration := authapplication.NewAuthProviderApplicationService(authapplication.MergeTypedAuthProviderCredentials(cfg.AuthProviders(), providerCredentials), cfg.AuthExternalAutoCreateUsers, authStore)
 	providerFlows := authapplication.NewAuthProviderFlowApplicationService(authApp, providerConfiguration)
+	providerFlows.RequireTOTPLoginMFAWhenEnrolled(cfg.AuthTOTPLoginMFAWhenEnrolled)
 	providerFlows.ConfigureAuthenticationAudit(func(ctx context.Context, request authapplication.AuthenticationAuditRequest) error {
 		return auditApp.AppendAudit(ctx, auditapplication.AuditAppendRequest{
 			IdempotencyKey: request.IdempotencyKey, Family: auditcontract.EventFamilyIdentitySecurity, Event: request.Event, ObjectKey: request.ObjectKey, RecordID: request.RecordID,

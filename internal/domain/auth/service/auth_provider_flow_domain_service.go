@@ -19,14 +19,22 @@ import (
 
 // AuthProviderFlowDomainService coordinates provider authorization flows.
 type AuthProviderFlowDomainService struct {
-	auth      *AuthDomainService
-	providers *AuthProviderDomainService
-	writeback authcontract.AuthProviderExternalIdentityWriteback
-	delivery  authcontract.AuthSecurityChallengeDelivery
+	auth                     *AuthDomainService
+	providers                *AuthProviderDomainService
+	writeback                authcontract.AuthProviderExternalIdentityWriteback
+	delivery                 authcontract.AuthSecurityChallengeDelivery
+	totpLoginMFAWhenEnrolled bool
 }
 
 func (s *AuthProviderFlowDomainService) UseSecurityChallengeDelivery(delivery authcontract.AuthSecurityChallengeDelivery) {
 	s.delivery = delivery
+}
+
+// RequireTOTPLoginMFAWhenEnrolled applies an installation policy: users who
+// have completed TOTP enrollment must finish that challenge after password
+// authentication. Users without a verifier can still sign in and enroll one.
+func (s *AuthProviderFlowDomainService) RequireTOTPLoginMFAWhenEnrolled(required bool) {
+	s.totpLoginMFAWhenEnrolled = required
 }
 
 func NewAuthProviderFlowDomainService(auth *AuthDomainService, providers *AuthProviderDomainService, writebacks ...authcontract.AuthProviderExternalIdentityWriteback) *AuthProviderFlowDomainService {
@@ -81,6 +89,14 @@ func (s *AuthProviderFlowDomainService) LoginWithPasswordOutcome(ctx context.Con
 	totp, err := s.auth.totpState(ctx, workspaceID, user.ID)
 	if err != nil {
 		return authmodel.AuthenticationOutcome{}, err
+	}
+	if totp.Enabled && s.totpLoginMFAWhenEnrolled {
+		result, err := s.auth.beginTOTPChallenge(ctx, workspaceID, user.ID, applicationKey, authmodel.AuthChallengePurposeLoginMFA, totp.Generation, []string{"pwd"})
+		if err != nil {
+			return authmodel.AuthenticationOutcome{}, err
+		}
+		challenge := authProviderChallengeFromProjection(result)
+		return authmodel.AuthenticationOutcome{Status: authmodel.AuthenticationStatusChallengeRequired, Challenge: &challenge}, nil
 	}
 	repository, mfaAvailable := s.auth.identityStore.(authrepository.AuthMFARepository)
 	if !mfaAvailable {

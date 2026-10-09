@@ -236,6 +236,7 @@ func normalizeNewRoleDefinition(role identitymodel.RoleSchema) (identitymodel.Ro
 	role.GuardrailKeys = nil
 	role.Guardrails = nil
 	role.ProvisionToWorkspaces = false
+	role.ProjectFieldPermissionOverride = false
 	if role.Audience == "" {
 		role.Audience = identitymodel.IdentityRoleAudienceAny
 	}

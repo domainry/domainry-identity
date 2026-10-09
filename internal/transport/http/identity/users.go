@@ -12,7 +12,7 @@ import (
 
 type identityUserProvisioningResponse struct {
 	identitymodel.IdentityUser
-	InitialPassword    string `json:"initial_password"`
+	InitialPassword    string `json:"initial_password,omitempty"`
 	MustChangePassword bool   `json:"must_change_password"`
 }
 
@@ -112,6 +112,11 @@ func (h *IdentityHandler) createIdentityUser(w http.ResponseWriter, r *http.Requ
 	}
 	if !found {
 		h.writeError(w, r, http.StatusInternalServerError, "backend.identity.user_not_found")
+		return
+	}
+	if persisted.AccountType == identitymodel.IdentityAccountService || persisted.AccountType == identitymodel.IdentityAccountAutomation {
+		h.appendIdentityMutationAudit(r, "identity_user_created", "identity_user", user.ID, "Created non-human identity account", map[string]any{"account_type": persisted.AccountType, "status": persisted.Status})
+		h.writeJSON(w, http.StatusCreated, identityUserProvisioningResponse{IdentityUser: persisted})
 		return
 	}
 	if h.userSecurity == nil {
