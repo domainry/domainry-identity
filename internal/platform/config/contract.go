@@ -69,13 +69,13 @@ func Definitions() []Definition {
 	for i := 0; i < typeOfConfig.NumField(); i++ {
 		field := typeOfConfig.Field(i)
 		name := configEnvName(field.Name)
-		secret := strings.Contains(name, "SECRET") || strings.Contains(name, "PASSWORD") || strings.Contains(name, "DSN") || strings.Contains(name, "API_KEY") || strings.Contains(name, "ACCESS_TOKEN") || strings.Contains(name, "CREDENTIAL") || field.Name == "AuthJWTVerificationKeys" || field.Name == "IdentityDataDecryptOnlyKeys" || field.Name == "TelemetryHeaders"
+		secret := strings.Contains(name, "SECRET") || strings.Contains(name, "PASSWORD") || strings.Contains(name, "DSN") || strings.Contains(name, "API_KEY") || strings.Contains(name, "ACCESS_TOKEN") || (strings.Contains(name, "CREDENTIAL") && name != "AUTH_INITIAL_CREDENTIAL_ROTATION_REQUIRED") || field.Name == "AuthJWTVerificationKeys" || field.Name == "IdentityDataDecryptOnlyKeys" || field.Name == "TelemetryHeaders"
 		defaultValue := valueOfDefaults.Field(i).Interface()
 		if secret {
 			defaultValue = "[REDACTED]"
 		}
 		definition := Definition{Field: field.Name, Name: name, Owner: configOwner(name), Type: reflectValueType(field.Type), Default: defaultValue, Secret: secret}
-		definition.Required = name == "AUTH_JWT_SECRET" || name == "AUTH_DEFAULT_PASSWORD" || name == "IDENTITY_DATA_SECRET_KEY"
+		definition.Required = name == "AUTH_JWT_SECRET" || name == "AUTH_DEFAULT_PASSWORD" || name == "AUTH_INITIAL_CREDENTIAL_ROTATION_REQUIRED" || name == "IDENTITY_DATA_SECRET_KEY"
 		out = append(out, definition)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })

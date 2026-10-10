@@ -99,7 +99,7 @@ func (binding *moduleBinding) BootstrapInstallationAdministratorV1(ctx context.C
 	}); err != nil {
 		return identitymodulehost.InstallationAdministratorBootstrapReceipt{}, fmt.Errorf("audit installation administrator issuance: %w", err)
 	}
-	binding.storeWorkspaceBootstrapCredential(receipt.ID, request.WorkspaceID, request.LoginID, []byte(password))
+	binding.storeWorkspaceBootstrapCredential(receipt.ID, request.WorkspaceID, request.LoginID, []byte(password), true)
 	return installationAdministratorReceipt(receipt, false), nil
 }
 

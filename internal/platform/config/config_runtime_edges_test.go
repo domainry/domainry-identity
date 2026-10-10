@@ -10,7 +10,7 @@ import (
 func TestValidateSecurityRemainingProductionGates(t *testing.T) {
 	valid := Config{
 		Environment: "production", AuthJWTSecret: "jwt-secret", AuthJWTActiveKID: "jwt-1",
-		AuthDefaultPassword: "StrongPassword!", AuthPasswordMinLength: 12,
+		AuthDefaultPassword: "StrongPassword!", AuthInitialCredentialRotationRequired: true, AuthPasswordMinLength: 12,
 		IdentityDataSecretKey: "integration-secret", IdentityDataActiveKeyID: "data-1",
 		CORSAllowedOrigins: []string{"https://admin.example.com"},
 	}
@@ -24,6 +24,7 @@ func TestValidateSecurityRemainingProductionGates(t *testing.T) {
 		{name: "missing jwt kid", mutate: func(c *Config) { c.AuthJWTActiveKID = " " }, want: "AUTH_JWT_ACTIVE_KID"},
 		{name: "missing password", mutate: func(c *Config) { c.AuthDefaultPassword = " " }, want: "AUTH_DEFAULT_PASSWORD"},
 		{name: "default password", mutate: func(c *Config) { c.AuthDefaultPassword = DevDefaultAdminPassword }, want: "AUTH_DEFAULT_PASSWORD"},
+		{name: "disabled initial credential rotation", mutate: func(c *Config) { c.AuthInitialCredentialRotationRequired = false }, want: "AUTH_INITIAL_CREDENTIAL_ROTATION_REQUIRED"},
 		{name: "missing integration key", mutate: func(c *Config) { c.IdentityDataSecretKey = " " }, want: "IDENTITY_DATA_SECRET_KEY"},
 		{name: "missing integration kid", mutate: func(c *Config) { c.IdentityDataActiveKeyID = " " }, want: "IDENTITY_DATA_ACTIVE_KEY_ID"},
 		{name: "missing operations token", mutate: func(c *Config) { c.IdentityOperationsAccessToken = " " }, want: "IDENTITY_OPERATIONS_ACCESS_TOKEN"},
@@ -52,7 +53,7 @@ func TestValidateSecurityRemainingProductionGates(t *testing.T) {
 func TestProductionApplicationServiceCredentialsAreStrongScopedSecrets(t *testing.T) {
 	valid := Config{
 		Environment: "production", AuthJWTSecret: "jwt-secret", AuthJWTActiveKID: "jwt-1",
-		AuthDefaultPassword: "StrongPassword!", AuthPasswordMinLength: 12,
+		AuthDefaultPassword: "StrongPassword!", AuthInitialCredentialRotationRequired: true, AuthPasswordMinLength: 12,
 		IdentityDataSecretKey: "integration-secret", IdentityDataActiveKeyID: "data-1",
 		IdentityOperationsAccessToken: "operations-access-token",
 		IdentityApplicationServiceCredentials: map[string]string{

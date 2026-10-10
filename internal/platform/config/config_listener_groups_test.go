@@ -84,7 +84,7 @@ func TestValidateProductionSurfaceListeners(t *testing.T) {
 func TestProductionSurfaceValidationRemainingConditions(t *testing.T) {
 	valid := Config{
 		Environment: "production", AuthJWTSecret: "jwt-secret", AuthJWTActiveKID: "jwt-1",
-		AuthDefaultPassword: "StrongPassword!", AuthPasswordMinLength: 12,
+		AuthDefaultPassword: "StrongPassword!", AuthInitialCredentialRotationRequired: true, AuthPasswordMinLength: 12,
 		IdentityDataSecretKey: "integration-secret", IdentityDataActiveKeyID: "data-1",
 	}
 	setValidProductionListeners(&valid)

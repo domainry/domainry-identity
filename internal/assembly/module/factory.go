@@ -115,8 +115,9 @@ func (factory *Factory) OpenBootstrapWithDatabase(ctx context.Context, applicati
 	}
 	authStore := authpersistence.NewAuthStoreWithKeyProvider(identityStore, store.SecretKeyProvider(), store.IdempotencyMetrics(ctx))
 	inner := &moduleBinding{
-		runtime:     &assembly.Core{Store: store, Manifest: manifest, IdentityStore: identityStore, Identity: identityApp, IdentityActions: identityActions, AuthStore: authStore},
-		application: identitysdk.ApplicationRef{ApplicationKey: applicationKey},
+		runtime:                   &assembly.Core{Store: store, Manifest: manifest, IdentityStore: identityStore, Identity: identityApp, IdentityActions: identityActions, AuthStore: authStore},
+		application:               identitysdk.ApplicationRef{ApplicationKey: applicationKey},
+		initialCredentialRotation: initialCredentialRotationPolicyFromConfig(cfg.AuthInitialCredentialRotationRequired),
 	}
 	return newBootstrapBinding(inner), nil
 }
@@ -335,7 +336,7 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 	return &moduleBinding{
 		Binding: scopedBinding, runtime: identityRuntime, application: application, adapters: []identityhttpapi.Adapter{browserAdapter, managementAdapter},
 		portability: &identityPortabilityDataExchangeProvider{service: portabilityService}, workspaceUsage: workspaceUsage,
-		workflowWorkloads: workflowWorkloads,
+		workflowWorkloads: workflowWorkloads, initialCredentialRotation: initialCredentialRotationPolicyFromConfig(cfg.AuthInitialCredentialRotationRequired),
 	}, nil
 }
 
@@ -420,15 +421,16 @@ func (resolver moduleBusinessProfileResolver) ResolveIdentityBusinessProfiles(ct
 
 type moduleBinding struct {
 	identitysdk.Binding
-	runtime              *assembly.Core
-	application          identitysdk.ApplicationRef
-	adapters             []identityhttpapi.Adapter
-	portability          *identityPortabilityDataExchangeProvider
-	workspaceUsage       *identityapplicationinternal.IdentityWorkspaceUsageApplicationService
-	workflowWorkloads    identitysdk.WorkflowWorkloadIdentity
-	bootstrapMu          sync.Mutex
-	bootstrapCredentials map[string]*workspaceBootstrapPendingCredential
-	bootstrapRoleCatalog workspaceBootstrapRoleCatalog
+	runtime                   *assembly.Core
+	application               identitysdk.ApplicationRef
+	adapters                  []identityhttpapi.Adapter
+	portability               *identityPortabilityDataExchangeProvider
+	workspaceUsage            *identityapplicationinternal.IdentityWorkspaceUsageApplicationService
+	workflowWorkloads         identitysdk.WorkflowWorkloadIdentity
+	bootstrapMu               sync.Mutex
+	bootstrapCredentials      map[string]*workspaceBootstrapPendingCredential
+	bootstrapRoleCatalog      workspaceBootstrapRoleCatalog
+	initialCredentialRotation initialCredentialRotationPolicy
 }
 
 func (binding *moduleBinding) IdentityDataExchangeProviders() (string, dataexchangemodulehost.ImportProvider, dataexchangemodulehost.ExportProvider) {

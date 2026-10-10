@@ -172,8 +172,21 @@ func TestLoadContractRejectsTyposAndInvalidCombinations(t *testing.T) {
 	}
 }
 
+func TestInitialCredentialRotationPolicyIsARequiredNonSecretBoolean(t *testing.T) {
+	for _, definition := range Definitions() {
+		if definition.Name != "AUTH_INITIAL_CREDENTIAL_ROTATION_REQUIRED" {
+			continue
+		}
+		if definition.Type != TypeBool || !definition.Required || definition.Secret {
+			t.Fatalf("definition=%#v", definition)
+		}
+		return
+	}
+	t.Fatal("initial credential rotation policy is absent from the contract")
+}
+
 func TestProductionSecurityRejectsJWTEncryptionFallback(t *testing.T) {
-	cfg := Config{Environment: "production", AuthJWTSecret: "shared", AuthDefaultPassword: "StrongPassword!", IdentityDataSecretKey: "shared", IdentityDataActiveKeyID: "key-1", CORSAllowedOrigins: []string{"https://admin.example.com"}, AuthPasswordMinLength: 12}
+	cfg := Config{Environment: "production", AuthJWTSecret: "shared", AuthDefaultPassword: "StrongPassword!", AuthInitialCredentialRotationRequired: true, IdentityDataSecretKey: "shared", IdentityDataActiveKeyID: "key-1", CORSAllowedOrigins: []string{"https://admin.example.com"}, AuthPasswordMinLength: 12}
 	if err := cfg.ValidateSecurity(); err == nil {
 		t.Fatal("production accepted JWT secret as integration encryption key")
 	}
@@ -188,7 +201,7 @@ func TestLoadRejectsMisspelledManagedEnvironmentVariable(t *testing.T) {
 }
 
 func TestProductionSecurityHardGates(t *testing.T) {
-	valid := Config{Environment: "production", AuthJWTSecret: "jwt", AuthJWTActiveKID: "jwt-1", AuthDefaultPassword: "StrongPassword!", IdentityDataSecretKey: "integration", IdentityDataActiveKeyID: "data-1", CORSAllowedOrigins: []string{"https://admin.example.com"}, AuthPasswordMinLength: 12}
+	valid := Config{Environment: "production", AuthJWTSecret: "jwt", AuthJWTActiveKID: "jwt-1", AuthDefaultPassword: "StrongPassword!", AuthInitialCredentialRotationRequired: true, IdentityDataSecretKey: "integration", IdentityDataActiveKeyID: "data-1", CORSAllowedOrigins: []string{"https://admin.example.com"}, AuthPasswordMinLength: 12}
 	setValidProductionListeners(&valid)
 	tests := []struct {
 		name   string

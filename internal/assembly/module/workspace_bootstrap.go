@@ -22,11 +22,27 @@ import (
 const workspaceBootstrapCredentialTTL = 5 * time.Minute
 
 type workspaceBootstrapPendingCredential struct {
-	workspaceID string
-	loginID     string
-	password    []byte
-	committed   bool
-	timer       *time.Timer
+	workspaceID        string
+	loginID            string
+	password           []byte
+	mustChangePassword bool
+	committed          bool
+	timer              *time.Timer
+}
+
+type initialCredentialRotationPolicy string
+
+const initialCredentialRotationDisabled initialCredentialRotationPolicy = "disabled"
+
+func initialCredentialRotationPolicyFromConfig(required bool) initialCredentialRotationPolicy {
+	if required {
+		return "required"
+	}
+	return initialCredentialRotationDisabled
+}
+
+func (binding *moduleBinding) initialCredentialRotationRequired() bool {
+	return binding == nil || binding.initialCredentialRotation != initialCredentialRotationDisabled
 }
 
 type workspaceBootstrapRoleCatalog struct {
@@ -53,7 +69,8 @@ func (binding *moduleBinding) BootstrapWorkspaceIdentity(ctx context.Context, re
 	if err := validateWorkspaceBootstrapRequest(request, roleCatalog); err != nil {
 		return identitysdk.WorkspaceIdentityBootstrapReceipt{}, err
 	}
-	fingerprint := workspaceBootstrapFingerprint(request, roleCatalog)
+	mustChangePassword := binding.initialCredentialRotationRequired()
+	fingerprint := workspaceBootstrapFingerprint(request, roleCatalog, mustChangePassword)
 	stored, found, err := binding.runtime.IdentityStore.GetWorkspaceIdentityBootstrapReceiptWithExecutor(ctx, tx, request.WorkspaceID, request.InvocationID)
 	if err != nil {
 		return identitysdk.WorkspaceIdentityBootstrapReceipt{}, fmt.Errorf("load workspace bootstrap receipt: %w", err)
@@ -144,7 +161,7 @@ func (binding *moduleBinding) BootstrapWorkspaceIdentity(ctx context.Context, re
 		}
 	}
 	if err := binding.runtime.AuthStore.UpsertIdentityCredentialWithExecutor(ctx, tx, request.WorkspaceID, identitymodel.IdentityCredential{
-		UserID: request.InitialAdminUserID, PasswordHash: string(passwordHash), MustChangePassword: true,
+		UserID: request.InitialAdminUserID, PasswordHash: string(passwordHash), MustChangePassword: mustChangePassword,
 	}); err != nil {
 		return identitysdk.WorkspaceIdentityBootstrapReceipt{}, fmt.Errorf("provision workspace bootstrap credential: %w", err)
 	}
@@ -170,7 +187,7 @@ func (binding *moduleBinding) BootstrapWorkspaceIdentity(ctx context.Context, re
 			return identitysdk.WorkspaceIdentityBootstrapReceipt{}, err
 		}
 	}
-	binding.storeWorkspaceBootstrapCredential(receipt.ID, request.WorkspaceID, request.InitialAdminLoginID, []byte(password))
+	binding.storeWorkspaceBootstrapCredential(receipt.ID, request.WorkspaceID, request.InitialAdminLoginID, []byte(password), mustChangePassword)
 	return workspaceBootstrapReceipt(receipt, false), nil
 }
 
@@ -258,11 +275,11 @@ func (binding *moduleBinding) ClaimWorkspaceIdentityBootstrapCredential(ctx cont
 	credential.timer.Stop()
 	password := string(credential.password)
 	clear(credential.password)
-	return identitysdk.WorkspaceIdentityBootstrapOneTimeCredential{LoginID: credential.loginID, InitialPassword: password, MustChangePassword: true}, nil
+	return identitysdk.WorkspaceIdentityBootstrapOneTimeCredential{LoginID: credential.loginID, InitialPassword: password, MustChangePassword: credential.mustChangePassword}, nil
 }
 
-func (binding *moduleBinding) storeWorkspaceBootstrapCredential(receiptID, workspaceID, loginID string, password []byte) {
-	credential := &workspaceBootstrapPendingCredential{workspaceID: workspaceID, loginID: loginID, password: append([]byte(nil), password...)}
+func (binding *moduleBinding) storeWorkspaceBootstrapCredential(receiptID, workspaceID, loginID string, password []byte, mustChangePassword bool) {
+	credential := &workspaceBootstrapPendingCredential{workspaceID: workspaceID, loginID: loginID, password: append([]byte(nil), password...), mustChangePassword: mustChangePassword}
 	binding.bootstrapMu.Lock()
 	if binding.bootstrapCredentials == nil {
 		binding.bootstrapCredentials = make(map[string]*workspaceBootstrapPendingCredential)
@@ -352,12 +369,13 @@ func validateWorkspaceBootstrapRequest(request identitysdk.WorkspaceIdentityBoot
 	return nil
 }
 
-func workspaceBootstrapFingerprint(request identitysdk.WorkspaceIdentityBootstrapRequest, roleCatalog workspaceBootstrapRoleCatalog) string {
+func workspaceBootstrapFingerprint(request identitysdk.WorkspaceIdentityBootstrapRequest, roleCatalog workspaceBootstrapRoleCatalog, mustChangePassword bool) string {
 	values := []string{
 		request.ContractVersion, request.ContractHash, request.InvocationID, request.WorkspaceID,
 		request.CompanyID, request.CompanyCode, request.CompanyName,
 		request.FirstStoreID, request.FirstStoreCode, request.FirstStoreName,
 		request.InitialAdminUserID, request.InitialAdminLoginID, request.InitialAdminName, request.InitialAdminPassword,
+		fmt.Sprintf("must_change_password=%t", mustChangePassword),
 	}
 	values = append(values, roleCatalog.sha256, roleCatalog.initialWorkspaceAdministratorRoleKey)
 	canonical, _ := json.Marshal(values)

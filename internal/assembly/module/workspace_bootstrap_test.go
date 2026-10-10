@@ -8,9 +8,9 @@ import (
 
 func TestWorkspaceBootstrapVolatileCredentialReplacementAndDiscardDoNotAccumulate(t *testing.T) {
 	binding := &moduleBinding{}
-	binding.storeWorkspaceBootstrapCredential("receipt", "workspace", "first@example.test", []byte("FirstPassword1!"))
+	binding.storeWorkspaceBootstrapCredential("receipt", "workspace", "first@example.test", []byte("FirstPassword1!"), true)
 	first := binding.bootstrapCredentials["receipt"]
-	binding.storeWorkspaceBootstrapCredential("receipt", "workspace", "second@example.test", []byte("SecondPassword1!"))
+	binding.storeWorkspaceBootstrapCredential("receipt", "workspace", "second@example.test", []byte("SecondPassword1!"), true)
 	if len(binding.bootstrapCredentials) != 1 {
 		t.Fatalf("pending credentials=%d", len(binding.bootstrapCredentials))
 	}

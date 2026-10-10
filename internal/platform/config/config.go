@@ -92,6 +92,7 @@ type Config struct {
 	AuthAudience                          string
 	AuthMarket                            string
 	AuthDefaultPassword                   string
+	AuthInitialCredentialRotationRequired bool
 	AuthPasswordMinLength                 int
 	AuthPasswordRequireUpper              bool
 	AuthPasswordRequireLower              bool
@@ -200,6 +201,7 @@ func FromEnv() Config {
 		AuthAudience:                          env("AUTH_AUDIENCE", "domainry-runtime"),
 		AuthMarket:                            env("AUTH_MARKET", env("APP_MARKET", "jp")),
 		AuthDefaultPassword:                   env("AUTH_DEFAULT_PASSWORD", DevDefaultAdminPassword),
+		AuthInitialCredentialRotationRequired: boolEnv("AUTH_INITIAL_CREDENTIAL_ROTATION_REQUIRED", true),
 		AuthPasswordMinLength:                 intEnv("AUTH_PASSWORD_MIN_LENGTH", 8),
 		AuthPasswordRequireUpper:              boolEnv("AUTH_PASSWORD_REQUIRE_UPPER", false),
 		AuthPasswordRequireLower:              boolEnv("AUTH_PASSWORD_REQUIRE_LOWER", false),
@@ -274,6 +276,9 @@ func (c Config) ValidateSecurity() error {
 	}
 	if strings.TrimSpace(c.AuthDefaultPassword) == "" || strings.TrimSpace(c.AuthDefaultPassword) == DevDefaultAdminPassword {
 		return fmt.Errorf("AUTH_DEFAULT_PASSWORD must be set to a non-default value in production")
+	}
+	if !c.AuthInitialCredentialRotationRequired {
+		return fmt.Errorf("AUTH_INITIAL_CREDENTIAL_ROTATION_REQUIRED must be true in production")
 	}
 	if strings.TrimSpace(c.IdentityDataSecretKey) == "" || strings.TrimSpace(c.IdentityDataSecretKey) == DevIdentityDataSecret || strings.TrimSpace(c.IdentityDataSecretKey) == c.AuthJWTSecret {
 		return fmt.Errorf("IDENTITY_DATA_SECRET_KEY must be set to a non-default value in production")

@@ -205,6 +205,37 @@ func TestWorkspaceIdentityBootstrapCreatesGraphAndReleasesCredentialAfterCommit(
 	assertBootstrapPasswordNotPersisted(t, db, credential.InitialPassword)
 }
 
+func TestWorkspaceIdentityBootstrapCanDisableInitialCredentialRotationOutsideProduction(t *testing.T) {
+	t.Setenv("APP_ENV", "development")
+	t.Setenv("AUTH_INITIAL_CREDENTIAL_ROTATION_REQUIRED", "false")
+	bootstrap, db := openWorkspaceIdentityBootstrapCatalog(t, m1WorkspaceBootstrapRoleCatalog())
+	request := workspaceIdentityBootstrapRequest("workspace-local", "invocation-local")
+	tx := beginBootstrapTx(t, db)
+	receipt, err := bootstrap.BootstrapWorkspaceIdentity(t.Context(), request, identitysdk.EmbeddedTransaction{Executor: tx})
+	if err != nil {
+		_ = tx.Rollback()
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	completeWorkspaceIdentityBootstrap(t, bootstrap, receipt, identitysdk.WorkspaceIdentityBootstrapTransactionCommitted)
+	credential, err := bootstrap.ClaimWorkspaceIdentityBootstrapCredential(t.Context(), identitysdk.WorkspaceIdentityBootstrapCredentialClaim{WorkspaceID: request.WorkspaceID, ReceiptID: receipt.ReceiptID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if credential != (identitysdk.WorkspaceIdentityBootstrapOneTimeCredential{LoginID: strings.ToLower(request.InitialAdminLoginID), InitialPassword: request.InitialAdminPassword, MustChangePassword: false}) {
+		t.Fatalf("credential=%#v", credential)
+	}
+	var mustChangePassword bool
+	if err := db.QueryRowContext(t.Context(), `SELECT must_change_password FROM _identity_credentials WHERE workspace_id=? AND user_id=?`, request.WorkspaceID, request.InitialAdminUserID).Scan(&mustChangePassword); err != nil {
+		t.Fatal(err)
+	}
+	if mustChangePassword {
+		t.Fatal("local bootstrap persisted mandatory initial credential rotation")
+	}
+}
+
 func TestWorkspaceIdentityBootstrapRequiresTheCompilerOwnedManifestPassword(t *testing.T) {
 	bootstrap, db := openWorkspaceIdentityBootstrapCatalog(t, m1WorkspaceBootstrapRoleCatalog())
 	request := workspaceIdentityBootstrapRequest("workspace-password", "invocation-password")

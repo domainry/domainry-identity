@@ -84,7 +84,7 @@ func (binding *moduleBinding) ProvisionWorkspaceIdentity(ctx context.Context, re
 		return identitysdk.WorkspaceIdentityProvisionResult{}, fmt.Errorf("provision workspace Identity permissions: %w", err)
 	}
 	if err := binding.runtime.AuthStore.UpsertIdentityCredentialWithExecutor(ctx, tx, request.WorkspaceID, identitymodel.IdentityCredential{
-		UserID: "admin", PasswordHash: string(passwordHash), MustChangePassword: true,
+		UserID: "admin", PasswordHash: string(passwordHash), MustChangePassword: binding.initialCredentialRotationRequired(),
 	}); err != nil {
 		return identitysdk.WorkspaceIdentityProvisionResult{}, fmt.Errorf("provision workspace administrator credential: %w", err)
 	}
@@ -99,7 +99,7 @@ func (binding *moduleBinding) ProvisionWorkspaceIdentity(ctx context.Context, re
 		}
 	}
 	return identitysdk.WorkspaceIdentityProvisionResult{
-		AdminLoginID: request.AdminLoginID, InitialPassword: password, MustChangePassword: true, ProvisionedRoles: len(roles),
+		AdminLoginID: request.AdminLoginID, InitialPassword: password, MustChangePassword: binding.initialCredentialRotationRequired(), ProvisionedRoles: len(roles),
 	}, nil
 }
 
