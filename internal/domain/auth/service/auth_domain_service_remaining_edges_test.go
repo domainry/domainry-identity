@@ -424,6 +424,18 @@ func TestWeChatExternalLoginReusesOrphanAndSkipsBindingManagedDefaultRole(t *tes
 	if len(repository.accounts) != 1 || repository.accounts[0].UserID != "orphan" {
 		t.Fatalf("external account was not linked to orphan: %+v", repository.accounts)
 	}
+	claims, err := auth.VerifySignedAccessToken(t.Context(), session.AccessToken)
+	if err != nil || claims.AuthenticatedProvider != "wechat_mini_program" || claims.ProviderSubject != "open-id" || !authMethodPresent(claims.AuthenticationMethods, "wechat_mini_program") {
+		t.Fatalf("wechat session claims=%+v err=%v", claims, err)
+	}
+	refreshed, err := auth.Refresh(t.Context(), "workspace-primary", session.RefreshToken)
+	if err != nil {
+		t.Fatalf("refresh wechat session: %v", err)
+	}
+	refreshedClaims, err := auth.VerifySignedAccessToken(t.Context(), refreshed.AccessToken)
+	if err != nil || refreshedClaims.AuthenticatedProvider != "wechat_mini_program" || refreshedClaims.ProviderSubject != "open-id" {
+		t.Fatalf("refreshed wechat session claims=%+v err=%v", refreshedClaims, err)
+	}
 }
 
 func TestLinkedExternalLoginBackfillsOnlySafeDefaultRole(t *testing.T) {

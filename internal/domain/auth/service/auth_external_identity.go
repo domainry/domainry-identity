@@ -30,6 +30,11 @@ func (s *AuthDomainService) ExternalLoginWithPolicyForApplicationAndAuthenticati
 	if assertion.Provider == "" || assertion.Subject == "" {
 		return authmodel.AuthSession{}, forbidden("auth.external_account_unlinked")
 	}
+	if assertion.Provider == "wechat_mini_program" && assertion.ProviderSubjectVerified {
+		authentication.AuthenticatedProvider = assertion.Provider
+		authentication.ProviderSubject = assertion.Subject
+		authentication.Methods = append(authentication.Methods, assertion.Provider)
+	}
 	account, ok, err := s.externalAccountByProviderSubject(ctx, workspaceID, assertion.Provider, assertion.Subject)
 	if err != nil {
 		return authmodel.AuthSession{}, err

@@ -10,7 +10,7 @@ import (
 	authmodel "github.com/domainry/domainry-identity/internal/domain/auth/model"
 )
 
-func TestExchangeWeChatMiniProgramCodeUsesUnionIDAndDiscardsSessionKey(t *testing.T) {
+func TestExchangeWeChatMiniProgramCodeUsesOpenIDAndDiscardsSessionKey(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("appid") != "app-id" || r.URL.Query().Get("secret") != "app-secret" || r.URL.Query().Get("js_code") != "login-code" || r.URL.Query().Get("grant_type") != "authorization_code" {
 			t.Fatalf("query=%s", r.URL.RawQuery)
@@ -19,7 +19,7 @@ func TestExchangeWeChatMiniProgramCodeUsesUnionIDAndDiscardsSessionKey(t *testin
 	}))
 	defer server.Close()
 	assertion, err := ExchangeWeChatMiniProgramCode(t.Context(), "wechat_mini_program", " login-code ", authmodel.AuthProviderConfig{ClientID: "app-id", ClientSecret: "app-secret", TokenURL: server.URL})
-	if err != nil || assertion.Subject != "union-1" || !assertion.ProviderSubjectVerified || assertion.Claims["openid"] != "open-1" || assertion.Claims["unionid"] != "union-1" {
+	if err != nil || assertion.Subject != "open-1" || !assertion.ProviderSubjectVerified || assertion.Claims["openid"] != "open-1" || assertion.Claims["unionid"] != "union-1" {
 		t.Fatalf("assertion=%#v err=%v", assertion, err)
 	}
 	if strings.Contains(assertion.Metadata, "session_key") || assertion.Claims["session_key"] != "" {

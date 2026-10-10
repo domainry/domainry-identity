@@ -370,7 +370,7 @@ func (adapter sdkTokenVerifier) Verify(ctx context.Context, request identitysdk.
 			return identitysdk.VerifiedToken{}, &identitysdk.Error{StatusCode: http.StatusForbidden, Code: "identity.application_not_registered"}
 		}
 	}
-	return identitysdk.VerifiedToken{Issuer: claims.Issuer, Audience: identitysdk.ApplicationKey(claims.Audience), SubjectID: identitysdk.SubjectID(claims.Subject), WorkspaceID: identitysdk.WorkspaceID(claims.WorkspaceID), SessionID: identitysdk.SessionID(claims.SessionID), AuthorizationRevision: identitysdk.AuthorizationRevision(claims.AuthorizationRevision), AuthenticationTime: claims.AuthenticationTime, AuthenticationMethods: append([]string(nil), claims.AuthenticationMethods...), AssuranceLevel: claims.AssuranceLevel, IssuedAt: claims.IssuedAt, ExpiresAt: claims.ExpiresAt, TokenID: claims.JTI}, nil
+	return identitysdk.VerifiedToken{Issuer: claims.Issuer, Audience: identitysdk.ApplicationKey(claims.Audience), SubjectID: identitysdk.SubjectID(claims.Subject), WorkspaceID: identitysdk.WorkspaceID(claims.WorkspaceID), SessionID: identitysdk.SessionID(claims.SessionID), AuthorizationRevision: identitysdk.AuthorizationRevision(claims.AuthorizationRevision), AuthenticationTime: claims.AuthenticationTime, AuthenticationMethods: append([]string(nil), claims.AuthenticationMethods...), AssuranceLevel: claims.AssuranceLevel, AuthenticatedProvider: claims.AuthenticatedProvider, ProviderSubject: claims.ProviderSubject, IssuedAt: claims.IssuedAt, ExpiresAt: claims.ExpiresAt, TokenID: claims.JTI}, nil
 }
 
 type sdkAuthorization struct{ binding *sdkBinding }

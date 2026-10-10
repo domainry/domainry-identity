@@ -77,6 +77,10 @@ func (s *AuthDomainService) prepareSessionForAudienceWithIDAndAuthentication(ctx
 	}
 	now := time.Now()
 	authentication = normalizeAuthenticationContext(authentication, now)
+	authenticatedProvider, providerSubject, err := s.resolveAuthenticatedExternalIdentity(ctx, workspaceID, user.ID, authentication)
+	if err != nil {
+		return authmodel.AuthSession{}, identitymodel.AuthRefreshToken{}, err
+	}
 	expiresAt := now.Add(s.accessTTL)
 	if sessionID == "" {
 		sessionID, err = s.randomToken()
@@ -104,6 +108,7 @@ func (s *AuthDomainService) prepareSessionForAudienceWithIDAndAuthentication(ctx
 		WorkspaceID: workspaceID, SessionID: sessionID,
 		AuthorizationRevision: principal.AuthorizationRevision,
 		AuthenticationTime:    authentication.AuthenticationTime, AuthenticationMethods: authentication.Methods, AssuranceLevel: authentication.AssuranceLevel,
+		AuthenticatedProvider: authenticatedProvider, ProviderSubject: providerSubject,
 		IssuedAt: now.Unix(), ExpiresAt: expiresAt.Unix(), JTI: jti,
 	}
 	accessToken, err := s.signClaims(claims)
@@ -147,6 +152,37 @@ func (s *AuthDomainService) prepareSessionForAudienceWithIDAndAuthentication(ctx
 		AuthenticationMethods: append([]string(nil), claims.AuthenticationMethods...),
 		AssuranceLevel:        claims.AssuranceLevel,
 	}, refreshRecord, nil
+}
+
+func (s *AuthDomainService) resolveAuthenticatedExternalIdentity(ctx context.Context, workspaceID, userID string, authentication authmodel.AuthenticationContext) (string, string, error) {
+	provider := normalizeProvider(authentication.AuthenticatedProvider)
+	subject := strings.TrimSpace(authentication.ProviderSubject)
+	if provider != "" || subject != "" {
+		if provider != "wechat_mini_program" || subject == "" || !authMethodPresent(authentication.Methods, provider) {
+			return "", "", forbidden("auth.session_external_identity_invalid")
+		}
+		return provider, subject, nil
+	}
+	if !authMethodPresent(authentication.Methods, "wechat_mini_program") {
+		return "", "", nil
+	}
+	accounts, err := s.identityStore.ListIdentityExternalAccounts(ctx, workspaceID, userID)
+	if err != nil {
+		return "", "", err
+	}
+	for _, account := range accounts {
+		if normalizeProvider(account.Provider) != "wechat_mini_program" || strings.TrimSpace(account.ProviderSubject) == "" {
+			continue
+		}
+		if subject != "" {
+			return "", "", forbidden("auth.session_external_identity_ambiguous")
+		}
+		subject = strings.TrimSpace(account.ProviderSubject)
+	}
+	if subject == "" {
+		return "", "", forbidden("auth.session_external_identity_missing")
+	}
+	return "wechat_mini_program", subject, nil
 }
 
 func passwordAuthenticationContext() authmodel.AuthenticationContext {

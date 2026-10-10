@@ -13,6 +13,8 @@ type AuthClaims struct {
 	AuthenticationTime    int64              `json:"auth_time,omitempty"`
 	AuthenticationMethods []string           `json:"amr,omitempty"`
 	AssuranceLevel        string             `json:"acr,omitempty"`
+	AuthenticatedProvider string             `json:"authenticated_provider,omitempty"`
+	ProviderSubject       string             `json:"provider_subject,omitempty"`
 	IssuedAt              int64              `json:"iat"`
 	ExpiresAt             int64              `json:"exp"`
 	JTI                   string             `json:"jti"`

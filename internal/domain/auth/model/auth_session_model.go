@@ -19,9 +19,11 @@ type AuthSession struct {
 }
 
 type AuthenticationContext struct {
-	AuthenticationTime int64
-	Methods            []string
-	AssuranceLevel     string
+	AuthenticationTime    int64
+	Methods               []string
+	AssuranceLevel        string
+	AuthenticatedProvider string
+	ProviderSubject       string
 }
 
 type AuthenticationOutcome struct {

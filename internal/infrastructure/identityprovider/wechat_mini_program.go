@@ -48,11 +48,7 @@ func ExchangeWeChatMiniProgramCode(ctx context.Context, provider, code string, c
 	}
 	openID := strings.TrimSpace(stringFromAny(response["openid"]))
 	unionID := strings.TrimSpace(stringFromAny(response["unionid"]))
-	subject := unionID
-	if subject == "" {
-		subject = openID
-	}
-	if subject == "" {
+	if openID == "" {
 		return authmodel.AuthExternalIdentityAssertion{}, fmt.Errorf("wechat jscode2session missing openid")
 	}
 	claims := map[string]string{}
@@ -63,7 +59,7 @@ func ExchangeWeChatMiniProgramCode(ctx context.Context, provider, code string, c
 		claims["unionid"] = unionID
 	}
 	return authmodel.AuthExternalIdentityAssertion{
-		Provider: strings.ToLower(strings.TrimSpace(provider)), Subject: subject, ProviderSubjectVerified: true,
+		Provider: strings.ToLower(strings.TrimSpace(provider)), Subject: openID, ProviderSubjectVerified: true,
 		Claims: claims, Metadata: `{"source":"wechat_jscode2session"}`,
 	}, nil
 }
