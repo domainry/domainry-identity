@@ -2,6 +2,7 @@ package moduleassembly
 
 import (
 	"context"
+	"reflect"
 	"strings"
 
 	"github.com/domainry/domainry-foundation/requestcontext"
@@ -49,36 +50,41 @@ func (binding *moduleBinding) PublishProjectRolePermissionBundle(ctx context.Con
 	}
 
 	permissions := append([]identitymodel.RolePermission(nil), current.Permissions...)
-	existing := make(map[string]bool, len(permissions))
-	for _, permission := range permissions {
-		existing[strings.TrimSpace(permission.PermissionKey)] = true
+	existing := make(map[string]int, len(permissions))
+	for index, permission := range permissions {
+		existing[strings.TrimSpace(permission.PermissionKey)] = index
 	}
-	added := 0
+	added, updatedCount := 0, 0
 	for _, permission := range request.Permissions {
 		key := strings.TrimSpace(permission.PermissionKey)
-		if existing[key] {
-			continue
-		}
-		existing[key] = true
-		added++
-		permissions = append(permissions, identitymodel.RolePermission{
+		next := identitymodel.RolePermission{
 			PermissionKey: key,
 			DataScope:     identitymodel.IdentityDataScope(permission.DataScope),
 			DataPolicy:    permission.DataPolicy,
 			AuditDenial:   permission.AuditDenial,
-		})
+		}
+		if index, found := existing[key]; found {
+			if !reflect.DeepEqual(permissions[index], next) {
+				permissions[index] = next
+				updatedCount++
+			}
+			continue
+		}
+		existing[key] = len(permissions)
+		added++
+		permissions = append(permissions, next)
 	}
 	permissions, valid := identitymodel.NormalizeRolePermissions(permissions)
 	if !valid {
 		return identitysdk.ProjectRolePermissionBundleReceipt{}, &identitysdk.Error{Code: "identity.project_role_permission_bundle_invalid"}
 	}
-	if added == 0 {
+	if added == 0 && updatedCount == 0 {
 		return identitysdk.ProjectRolePermissionBundleReceipt{RoleKey: roleKey, PermissionCount: len(permissions), SchemaVersion: revision.SchemaVersion, SchemaHash: revision.SchemaHash}, nil
 	}
 
-	updated, err := binding.runtime.Metadata.PublishIdentityRolePermissions(ctx, roleKey, permissions, revision.SchemaHash, strings.TrimSpace(request.BusinessReason), strings.TrimSpace(request.OperationID), principal)
+	updatedRevision, err := binding.runtime.Metadata.PublishIdentityRolePermissions(ctx, roleKey, permissions, revision.SchemaHash, strings.TrimSpace(request.BusinessReason), strings.TrimSpace(request.OperationID), principal)
 	if err != nil {
 		return identitysdk.ProjectRolePermissionBundleReceipt{}, err
 	}
-	return identitysdk.ProjectRolePermissionBundleReceipt{RoleKey: roleKey, Added: added, PermissionCount: len(permissions), SchemaVersion: updated.SchemaVersion, SchemaHash: updated.SchemaHash}, nil
+	return identitysdk.ProjectRolePermissionBundleReceipt{RoleKey: roleKey, Added: added, Updated: updatedCount, PermissionCount: len(permissions), SchemaVersion: updatedRevision.SchemaVersion, SchemaHash: updatedRevision.SchemaHash}, nil
 }

@@ -370,8 +370,15 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		t.Fatalf("project role permission bundle receipt=%#v err=%v", bundleReceipt, err)
 	}
 	repeatedBundleReceipt, err := bundlePublisher.PublishProjectRolePermissionBundle(t.Context(), bundleRequest)
-	if err != nil || repeatedBundleReceipt.Added != 0 || repeatedBundleReceipt.PermissionCount != 2 || repeatedBundleReceipt.SchemaHash != bundleReceipt.SchemaHash {
+	if err != nil || repeatedBundleReceipt.Added != 0 || repeatedBundleReceipt.Updated != 0 || repeatedBundleReceipt.PermissionCount != 2 || repeatedBundleReceipt.SchemaHash != bundleReceipt.SchemaHash {
 		t.Fatalf("repeated project role permission bundle receipt=%#v first=%#v err=%v", repeatedBundleReceipt, bundleReceipt, err)
+	}
+	updatedBundleRequest := bundleRequest
+	updatedBundleRequest.Permissions = []identitysdk.ProjectRolePermission{{PermissionKey: "customer.export", DataScope: identitysdk.DataScopeOwner}}
+	updatedBundleRequest.OperationID = "orders-export-setup-2"
+	updatedBundleReceipt, err := bundlePublisher.PublishProjectRolePermissionBundle(t.Context(), updatedBundleRequest)
+	if err != nil || updatedBundleReceipt.Added != 0 || updatedBundleReceipt.Updated != 1 || updatedBundleReceipt.PermissionCount != 2 || updatedBundleReceipt.SchemaHash == bundleReceipt.SchemaHash {
+		t.Fatalf("updated project role permission bundle receipt=%#v first=%#v err=%v", updatedBundleReceipt, bundleReceipt, err)
 	}
 	crossWorkspaceBundle := bundleRequest
 	crossWorkspaceBundle.Application.WorkspaceID = "other"
@@ -724,9 +731,9 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	if !ok {
 		t.Fatal("reopened module Binding does not expose project role permission bundles")
 	}
-	reopenedBundleReceipt, err := reopenedBundlePublisher.PublishProjectRolePermissionBundle(t.Context(), bundleRequest)
-	if err != nil || reopenedBundleReceipt.Added != 0 || reopenedBundleReceipt.PermissionCount != 2 || reopenedBundleReceipt.SchemaHash != bundleReceipt.SchemaHash {
-		t.Fatalf("persisted project role permission bundle receipt=%#v first=%#v err=%v", reopenedBundleReceipt, bundleReceipt, err)
+	reopenedBundleReceipt, err := reopenedBundlePublisher.PublishProjectRolePermissionBundle(t.Context(), updatedBundleRequest)
+	if err != nil || reopenedBundleReceipt.Added != 0 || reopenedBundleReceipt.Updated != 0 || reopenedBundleReceipt.PermissionCount != 2 || reopenedBundleReceipt.SchemaHash != updatedBundleReceipt.SchemaHash {
+		t.Fatalf("persisted project role permission bundle receipt=%#v first=%#v err=%v", reopenedBundleReceipt, updatedBundleReceipt, err)
 	}
 }
 
