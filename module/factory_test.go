@@ -321,7 +321,10 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("register project application: %v", err)
 	}
-	permissionDefinitions := []identitysdk.PermissionDefinition{{PermissionKey: "customer.read", ResourceKey: "customer", OperationKey: "read", Label: "Read customers", Category: "Orders", SourceKind: "object_action"}}
+	permissionDefinitions := []identitysdk.PermissionDefinition{
+		{PermissionKey: "customer.read", ResourceKey: "customer", OperationKey: "read", Label: "Read customers", Category: "Orders", SourceKind: "object_action"},
+		{PermissionKey: "customer.export", ResourceKey: "customer", OperationKey: "export", Label: "Export customers", Category: "Orders", SourceKind: "object_action"},
+	}
 	receipt, err := binding.Permissions().Reconcile(t.Context(), permissionReconcileRequest(t, application, "application:orders-runtime", "", permissionDefinitions))
 	if err != nil || receipt.SourceOwner != "application:orders-runtime" {
 		t.Fatalf("permission receipt=%#v err=%v", receipt, err)
@@ -352,6 +355,28 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	}
 	if _, err := rolePublisher.PublishProjectRoles(t.Context(), identitysdk.ProjectRoleCatalog{Application: identitysdk.ApplicationRef{WorkspaceID: "other", ApplicationKey: application.ApplicationKey}}); err == nil {
 		t.Fatal("cross-workspace project role publication accepted")
+	}
+	bundlePublisher, ok := binding.(identitysdk.ProjectRolePermissionBundlePublisher)
+	if !ok {
+		t.Fatal("module Binding does not expose project role permission bundles")
+	}
+	bundleRequest := identitysdk.ProjectRolePermissionBundleRequest{
+		Application: application, SourceOwner: "orders:exports", RoleKey: "project_viewer", ActorID: "admin",
+		Permissions:    []identitysdk.ProjectRolePermission{{PermissionKey: "customer.export", DataScope: identitysdk.DataScopeAll}},
+		BusinessReason: "Enable the fixed customer export bundle", OperationID: "orders-export-setup-1",
+	}
+	bundleReceipt, err := bundlePublisher.PublishProjectRolePermissionBundle(t.Context(), bundleRequest)
+	if err != nil || bundleReceipt.RoleKey != "project_viewer" || bundleReceipt.Added != 1 || bundleReceipt.PermissionCount != 2 || bundleReceipt.SchemaHash == "" {
+		t.Fatalf("project role permission bundle receipt=%#v err=%v", bundleReceipt, err)
+	}
+	repeatedBundleReceipt, err := bundlePublisher.PublishProjectRolePermissionBundle(t.Context(), bundleRequest)
+	if err != nil || repeatedBundleReceipt.Added != 0 || repeatedBundleReceipt.PermissionCount != 2 || repeatedBundleReceipt.SchemaHash != bundleReceipt.SchemaHash {
+		t.Fatalf("repeated project role permission bundle receipt=%#v first=%#v err=%v", repeatedBundleReceipt, bundleReceipt, err)
+	}
+	crossWorkspaceBundle := bundleRequest
+	crossWorkspaceBundle.Application.WorkspaceID = "other"
+	if _, err := bundlePublisher.PublishProjectRolePermissionBundle(t.Context(), crossWorkspaceBundle); err == nil {
+		t.Fatal("cross-workspace project role permission bundle accepted")
 	}
 	roles, err := binding.Projection().ListRoles(t.Context(), identitysdk.ProjectionQuery{})
 	if err != nil {
@@ -638,7 +663,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		t.Fatal("module management route list points at an unregistered Handler route")
 	}
 	repeatedReceipt, err := binding.Permissions().Reconcile(t.Context(), permissionReconcileRequest(t, application, "application:orders-runtime", receipt.SnapshotHash, permissionDefinitions))
-	if err != nil || repeatedReceipt.SnapshotHash != receipt.SnapshotHash || repeatedReceipt.Unchanged != 1 {
+	if err != nil || repeatedReceipt.SnapshotHash != receipt.SnapshotHash || repeatedReceipt.Unchanged != len(permissionDefinitions) {
 		t.Fatalf("idempotent permission reconcile receipt=%#v want hash=%q err=%v", repeatedReceipt, receipt.SnapshotHash, err)
 	}
 	changedDefinitions := append([]identitysdk.PermissionDefinition(nil), permissionDefinitions...)
@@ -692,8 +717,16 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	}
 	defer reopened.Close(t.Context())
 	reopenedReceipt, err := reopened.Permissions().Reconcile(t.Context(), permissionReconcileRequest(t, application, "application:orders-runtime", receipt.SnapshotHash, permissionDefinitions))
-	if err != nil || reopenedReceipt.SnapshotHash != receipt.SnapshotHash || reopenedReceipt.Unchanged != 1 {
+	if err != nil || reopenedReceipt.SnapshotHash != receipt.SnapshotHash || reopenedReceipt.Unchanged != len(permissionDefinitions) {
 		t.Fatalf("reopened permission receipt=%#v want hash=%q err=%v", reopenedReceipt, receipt.SnapshotHash, err)
+	}
+	reopenedBundlePublisher, ok := reopened.(identitysdk.ProjectRolePermissionBundlePublisher)
+	if !ok {
+		t.Fatal("reopened module Binding does not expose project role permission bundles")
+	}
+	reopenedBundleReceipt, err := reopenedBundlePublisher.PublishProjectRolePermissionBundle(t.Context(), bundleRequest)
+	if err != nil || reopenedBundleReceipt.Added != 0 || reopenedBundleReceipt.PermissionCount != 2 || reopenedBundleReceipt.SchemaHash != bundleReceipt.SchemaHash {
+		t.Fatalf("persisted project role permission bundle receipt=%#v first=%#v err=%v", reopenedBundleReceipt, bundleReceipt, err)
 	}
 }
 
