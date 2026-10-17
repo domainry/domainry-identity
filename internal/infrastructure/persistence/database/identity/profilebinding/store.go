@@ -342,10 +342,11 @@ func (s *Store) ListIdentityProfileBindingEvents(ctx context.Context, workspaceI
 		out = append(out, event)
 	}
 	sort.Slice(out, func(i, j int) bool {
-		if out[i].CreatedAt == out[j].CreatedAt {
+		leftCreatedAt, rightCreatedAt := timevalue.Millis(out[i].CreatedAt), timevalue.Millis(out[j].CreatedAt)
+		if leftCreatedAt == rightCreatedAt {
 			return out[i].ID < out[j].ID
 		}
-		return out[i].CreatedAt < out[j].CreatedAt
+		return leftCreatedAt < rightCreatedAt
 	})
 	return out, nil
 }
