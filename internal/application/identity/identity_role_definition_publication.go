@@ -2,6 +2,7 @@ package identity
 
 import (
 	"context"
+	"reflect"
 	"sort"
 	"strings"
 
@@ -16,6 +17,7 @@ import (
 // the aggregate it changes.
 type IdentityRoleDefinitionPublisher interface {
 	IdentityRolePermissionDefinition(context.Context, string, identitymodel.Principal) (identitymodel.RoleSchema, identitymodel.IdentityRoleDefinitionRevision, bool, error)
+	IdentityRolePermissionDefinitionForPublication(context.Context, string, identitymodel.Principal) (identitymodel.RoleSchema, identitymodel.IdentityRoleDefinitionRevision, bool, error)
 	IdentityRoleFieldPermissionDefinition(context.Context, string, identitymodel.Principal) (identitymodel.RoleSchema, identitymodel.IdentityRoleDefinitionRevision, bool, error)
 	CreateIdentityRoleDefinition(context.Context, identitymodel.RoleSchema, string, string, identitymodel.Principal) (identitymodel.IdentityRoleDefinitionRevision, error)
 	UpdateIdentityRoleDefinition(context.Context, string, identitymodel.IdentityRoleDefinitionUpdateRequest, identitymodel.Principal) (identitymodel.RoleSchema, identitymodel.IdentityRoleDefinitionRevision, error)
@@ -67,7 +69,17 @@ func (service *IdentityRoleDefinitionPublicationService) PublishPermissions(ctx 
 	if !valid {
 		return identitymodel.IdentityRolePermissionConfiguration{}, &apperror.AppError{Kind: apperror.KindBadRequest, Code: "backend.identity.role_permission_invalid"}
 	}
+	current, _, found, err := service.definitions.IdentityRolePermissionDefinitionForPublication(ctx, role.Key, principal)
+	if err != nil {
+		return identitymodel.IdentityRolePermissionConfiguration{}, err
+	}
+	if !found {
+		return identitymodel.IdentityRolePermissionConfiguration{}, roleDefinitionNotFound(role.Key)
+	}
 	if err := service.permissions.ValidatePermissionSelections(identitymodel.RolePermissionKeys(requested)); err != nil {
+		return identitymodel.IdentityRolePermissionConfiguration{}, err
+	}
+	if err := service.permissions.ValidateDirectPermissionSelections(ctx, changedRolePermissionKeys(current.Permissions, requested)); err != nil {
 		return identitymodel.IdentityRolePermissionConfiguration{}, err
 	}
 	revision, err := service.definitions.PublishIdentityRolePermissions(ctx, role.Key, requested, strings.TrimSpace(request.ExpectedSchemaHash), strings.TrimSpace(request.BusinessReason), strings.TrimSpace(request.OperationID), principal)
@@ -128,7 +140,7 @@ func (service *IdentityRoleDefinitionPublicationService) Create(ctx context.Cont
 	if service == nil || service.permissions == nil || service.definitions == nil {
 		return identitymodel.IdentityRoleDefinitionConfiguration{}, rolePublicationUnavailable()
 	}
-	if err := service.permissions.ValidatePermissionSelections(identitymodel.RolePermissionKeys(definition.Permissions)); err != nil {
+	if err := service.permissions.ValidateDirectPermissionSelections(ctx, identitymodel.RolePermissionKeys(definition.Permissions)); err != nil {
 		return identitymodel.IdentityRoleDefinitionConfiguration{}, err
 	}
 	revision, err := service.definitions.CreateIdentityRoleDefinition(ctx, definition, strings.TrimSpace(request.BusinessReason), strings.TrimSpace(request.OperationID), principal)
@@ -136,6 +148,28 @@ func (service *IdentityRoleDefinitionPublicationService) Create(ctx context.Cont
 		return identitymodel.IdentityRoleDefinitionConfiguration{}, err
 	}
 	return identitymodel.IdentityRoleDefinitionConfiguration{Role: definition, SchemaVersion: revision.SchemaVersion, SchemaHash: revision.SchemaHash}, nil
+}
+
+// changedRolePermissionKeys treats a data-scope or relational-policy change as
+// a new administrative grant. Bundled/internal grants may be retained exactly
+// or removed, but a direct author must not widen or otherwise rewrite them.
+func changedRolePermissionKeys(current, requested []identitymodel.RolePermission) []string {
+	current, currentValid := identitymodel.NormalizeRolePermissions(current)
+	requested, requestedValid := identitymodel.NormalizeRolePermissions(requested)
+	if !currentValid || !requestedValid {
+		return identitymodel.RolePermissionKeys(requested)
+	}
+	existing := make(map[string]identitymodel.RolePermission, len(current))
+	for _, permission := range current {
+		existing[permission.PermissionKey] = permission
+	}
+	changed := make([]string, 0, len(requested))
+	for _, permission := range requested {
+		if previous, found := existing[permission.PermissionKey]; !found || !reflect.DeepEqual(previous, permission) {
+			changed = append(changed, permission.PermissionKey)
+		}
+	}
+	return changed
 }
 
 func (service *IdentityRoleDefinitionPublicationService) Update(ctx context.Context, roleID string, request identitymodel.IdentityRoleDefinitionUpdateRequest, principal identitymodel.Principal) (identitymodel.IdentityRoleDefinitionConfiguration, error) {
@@ -237,6 +271,7 @@ func normalizeNewRoleDefinition(role identitymodel.RoleSchema) (identitymodel.Ro
 	role.Guardrails = nil
 	role.ProvisionToWorkspaces = false
 	role.ProjectFieldPermissionOverride = false
+	role.ProjectPermissionOverride = false
 	if role.Audience == "" {
 		role.Audience = identitymodel.IdentityRoleAudienceAny
 	}

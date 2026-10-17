@@ -388,6 +388,52 @@ func (service *IdentityPermissionCatalogApplicationService) ValidatePermissionSe
 	return nil
 }
 
+// ValidateDirectPermissionSelections is the command-side guard for
+// administrator-authored roles. Source-authored roles continue to use
+// ValidatePermissionSelections so bundled and internal execution grants can be
+// installed only through their owning product/runtime definition.
+func (service *IdentityPermissionCatalogApplicationService) ValidateDirectPermissionSelections(ctx context.Context, requested []string) error {
+	if service == nil {
+		return &apperror.AppError{Kind: apperror.KindUnavailable, Code: "backend.identity.permission_catalog_unavailable"}
+	}
+	hasSelection := false
+	for _, raw := range requested {
+		if strings.TrimSpace(raw) != "" {
+			hasSelection = true
+			break
+		}
+	}
+	if !hasSelection {
+		return nil
+	}
+	definitions, err := service.List(ctx)
+	if err != nil {
+		return err
+	}
+	byKey := make(map[string]identitymodel.IdentityPermissionDefinition, len(definitions))
+	for _, definition := range definitions {
+		byKey[definition.Key] = definition
+	}
+	for _, raw := range requested {
+		key := strings.TrimSpace(raw)
+		if key == "" {
+			continue
+		}
+		definition, found := byKey[key]
+		switch {
+		case !found:
+			return &apperror.AppError{Kind: apperror.KindBadRequest, Code: "backend.identity.permission_not_found", Params: map[string]string{"permission": key}}
+		case definition.DefinitionStatus != identitymodel.IdentityPermissionDefinitionActive:
+			return &apperror.AppError{Kind: apperror.KindBadRequest, Code: "backend.identity.permission_retired", Params: map[string]string{"permission": key}}
+		case !definition.Enabled:
+			return &apperror.AppError{Kind: apperror.KindBadRequest, Code: "backend.identity.permission_disabled", Params: map[string]string{"permission": key}}
+		case definition.ActionUsageStatus != identitymodel.IdentityActionUsageAvailable || definition.GrantMode != string(actioncontract.PermissionGrantDirect):
+			return &apperror.AppError{Kind: apperror.KindBadRequest, Code: "backend.identity.permission_not_directly_grantable", Params: map[string]string{"permission": key}}
+		}
+	}
+	return nil
+}
+
 func (service *IdentityPermissionCatalogApplicationService) refreshRuntimeSnapshot(ctx context.Context) error {
 	records, err := service.repository.ListIdentityPermissionDefinitions(ctx, service.workspace)
 	if err != nil {
@@ -454,7 +500,7 @@ func (service *IdentityPermissionCatalogApplicationService) projectDefinitionWit
 		Category: record.Category, Description: record.Description, SourceType: record.SourceKind,
 		DefinitionStatus: record.DefinitionStatus, Enabled: record.Enabled, SourceKind: record.SourceKind,
 		SourceOwner: record.SourceOwner, DefinitionHash: record.DefinitionHash, SourceSnapshotHash: record.SourceSnapshotHash,
-		ActionUsageStatus: usageStatus, ActionUsages: usages,
+		ActionUsageStatus: usageStatus, GrantMode: string(actioncontract.PermissionGrantInternal), ActionUsages: usages,
 	}
 	if len(usages) > 0 {
 		point.SourceActionKey = usages[0].ActionKey
@@ -463,6 +509,7 @@ func (service *IdentityPermissionCatalogApplicationService) projectDefinitionWit
 		point.ApprovalRequired = usages[0].ApprovalRequired
 		point.AssuranceRequired = append([]string(nil), usages[0].AssuranceRequired...)
 		point.LifecycleStatus = usages[0].LifecycleStatus
+		point.GrantMode = usages[0].GrantMode
 	}
 	return point
 }

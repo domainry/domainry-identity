@@ -436,6 +436,18 @@ func (r *faultExternalAuthRepository) ListIdentityExternalAccounts(_ context.Con
 	return accounts, nil
 }
 
+func (r *faultExternalAuthRepository) GlobalExternalAccountWorkspace(_ context.Context, provider, subject string) (string, bool, error) {
+	if r.listAccountsErr != nil {
+		return "", false, r.listAccountsErr
+	}
+	for _, account := range r.accounts {
+		if strings.EqualFold(account.Provider, provider) && account.ProviderSubject == subject {
+			return "workspace-a", true, nil
+		}
+	}
+	return "", false, nil
+}
+
 func (r *faultExternalAuthRepository) UpsertIdentityExternalAccount(_ context.Context, _ string, account identitymodel.IdentityExternalAccount) error {
 	if r.upsertAccountErr != nil {
 		return r.upsertAccountErr

@@ -134,6 +134,9 @@ func (r *MetadataRuntime) EffectiveRoleDefinitions(source []identitymodel.RoleSc
 			if override, found := byKey[key]; found && override.ProjectFieldPermissionOverride {
 				role.FieldPermissions = append([]identitymodel.FieldPermission(nil), override.FieldPermissions...)
 			}
+			if override, found := byKey[key]; found && override.ProjectPermissionOverride {
+				role.Permissions = append([]identitymodel.RolePermission(nil), override.Permissions...)
+			}
 			byKey[key] = role
 		}
 	}

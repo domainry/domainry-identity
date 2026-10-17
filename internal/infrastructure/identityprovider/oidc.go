@@ -26,7 +26,10 @@ func ExchangeOIDCCallback(ctx context.Context, provider, code string, config aut
 		return authmodel.AuthExternalIdentityAssertion{}, fmt.Errorf("provider callback code or state missing")
 	}
 	if isFeishu(provider) {
-		token, err := exchangeFeishuToken(ctx, code, config)
+		if strings.TrimSpace(challenge.CodeVerifier) == "" {
+			return authmodel.AuthExternalIdentityAssertion{}, fmt.Errorf("feishu PKCE verifier is required")
+		}
+		token, err := exchangeFeishuToken(ctx, code, challenge.CodeVerifier, config)
 		if err != nil {
 			return authmodel.AuthExternalIdentityAssertion{}, err
 		}
@@ -167,8 +170,11 @@ func fetchGenericUserInfo(ctx context.Context, token, provider string, config au
 	return authmodel.AuthExternalIdentityAssertion{Provider: strings.ToLower(strings.TrimSpace(provider)), Subject: FirstNonEmptyClaim(claims, "sub", "id", "user_id", "open_id", "union_id", "account_id", "login"), Email: FirstNonEmptyClaim(claims, "email", "mail", "emailaddress"), DisplayName: FirstNonEmptyClaim(claims, "name", "display_name", "displayname", "login", "preferred_username"), AvatarURL: FirstNonEmptyClaim(claims, "picture", "avatar_url", "avatar", "avatarUrl"), Claims: claims, Metadata: `{"source":"generic_oidc_userinfo"}`}, nil
 }
 
-func exchangeFeishuToken(ctx context.Context, code string, config authmodel.AuthProviderConfig) (string, error) {
-	payload, _ := json.Marshal(map[string]string{"grant_type": "authorization_code", "client_id": config.ClientID, "client_secret": config.ClientSecret, "code": strings.TrimSpace(code), "redirect_uri": config.RedirectURL})
+func exchangeFeishuToken(ctx context.Context, code, codeVerifier string, config authmodel.AuthProviderConfig) (string, error) {
+	if strings.TrimSpace(codeVerifier) == "" {
+		return "", fmt.Errorf("feishu PKCE verifier is required")
+	}
+	payload, _ := json.Marshal(map[string]string{"grant_type": "authorization_code", "client_id": config.ClientID, "client_secret": config.ClientSecret, "code": strings.TrimSpace(code), "redirect_uri": config.RedirectURL, "code_verifier": codeVerifier})
 	tokenURL := config.TokenURL
 	if tokenURL == "" {
 		tokenURL = "https://open.feishu.cn/open-apis/authen/v2/oauth/token"

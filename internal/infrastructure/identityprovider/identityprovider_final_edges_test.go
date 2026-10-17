@@ -79,7 +79,7 @@ func TestOIDCRequestConstructionAndFeishuProjectionEdges(t *testing.T) {
 	if _, err := fetchGenericUserInfo(t.Context(), "token", "oidc", authmodel.AuthProviderConfig{UserInfoURL: "http://bad\nheader"}, nil); err == nil {
 		t.Fatal("malformed userinfo URL accepted")
 	}
-	if _, err := exchangeFeishuToken(t.Context(), "code", authmodel.AuthProviderConfig{TokenURL: "http://bad\nheader"}); err == nil {
+	if _, err := exchangeFeishuToken(t.Context(), "code", "verifier", authmodel.AuthProviderConfig{TokenURL: "http://bad\nheader"}); err == nil {
 		t.Fatal("malformed Feishu token URL accepted")
 	}
 	if _, err := fetchFeishuUserInfo(t.Context(), "token", authmodel.AuthProviderConfig{UserInfoURL: "http://bad\nheader"}); err == nil {
@@ -98,7 +98,7 @@ func TestOIDCRequestConstructionAndFeishuProjectionEdges(t *testing.T) {
 	})
 	mux.HandleFunc("/invalid", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(`{`)) })
 	for path, want := range map[string]string{"/top-token": "top", "/nested-access": "nested"} {
-		token, err := exchangeFeishuToken(t.Context(), "code", authmodel.AuthProviderConfig{TokenURL: server.URL + path})
+		token, err := exchangeFeishuToken(t.Context(), "code", "verifier", authmodel.AuthProviderConfig{TokenURL: server.URL + path})
 		if err != nil || token != want {
 			t.Fatalf("path=%s token=%q err=%v", path, token, err)
 		}
@@ -110,24 +110,24 @@ func TestOIDCRequestConstructionAndFeishuProjectionEdges(t *testing.T) {
 	if _, err := fetchFeishuUserInfo(t.Context(), "token", authmodel.AuthProviderConfig{UserInfoURL: server.URL + "/invalid"}); err == nil {
 		t.Fatal("invalid Feishu userinfo accepted")
 	}
-	if _, err := exchangeFeishuToken(t.Context(), "code", authmodel.AuthProviderConfig{TokenURL: server.URL + "/invalid"}); err == nil {
+	if _, err := exchangeFeishuToken(t.Context(), "code", "verifier", authmodel.AuthProviderConfig{TokenURL: server.URL + "/invalid"}); err == nil {
 		t.Fatal("invalid Feishu token response accepted")
 	}
 	if _, err := ExchangeOIDCCallback(t.Context(), "oidc", "code", authmodel.AuthProviderConfig{}, authmodel.AuthProviderChallenge{State: "state"}); err == nil {
 		t.Fatal("generic exchange token failure accepted")
 	}
-	if _, err := ExchangeOIDCCallback(t.Context(), "feishu", "code", authmodel.AuthProviderConfig{TokenURL: "http://bad\nheader"}, authmodel.AuthProviderChallenge{State: "state"}); err == nil {
+	if _, err := ExchangeOIDCCallback(t.Context(), "feishu", "code", authmodel.AuthProviderConfig{TokenURL: "http://bad\nheader"}, authmodel.AuthProviderChallenge{State: "state", CodeVerifier: "verifier"}); err == nil {
 		t.Fatal("Feishu exchange token failure accepted")
 	}
 	canceled, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, err := exchangeFeishuToken(canceled, "code", authmodel.AuthProviderConfig{}); err == nil {
+	if _, err := exchangeFeishuToken(canceled, "code", "verifier", authmodel.AuthProviderConfig{}); err == nil {
 		t.Fatal("default Feishu token endpoint ignored cancellation")
 	}
 	if _, err := fetchFeishuUserInfo(canceled, "token", authmodel.AuthProviderConfig{}); err == nil {
 		t.Fatal("default Feishu user endpoint ignored cancellation")
 	}
-	assertion, err = ExchangeOIDCCallback(t.Context(), "LARK", "code", authmodel.AuthProviderConfig{TokenURL: server.URL + "/top-token", UserInfoURL: server.URL + "/nested-user"}, authmodel.AuthProviderChallenge{State: "state"})
+	assertion, err = ExchangeOIDCCallback(t.Context(), "LARK", "code", authmodel.AuthProviderConfig{TokenURL: server.URL + "/top-token", UserInfoURL: server.URL + "/nested-user"}, authmodel.AuthProviderChallenge{State: "state", CodeVerifier: "verifier"})
 	if err != nil || assertion.Provider != "lark" || assertion.Subject != "union" {
 		t.Fatalf("Lark assertion=%+v err=%v", assertion, err)
 	}

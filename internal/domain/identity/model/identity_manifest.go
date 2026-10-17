@@ -29,6 +29,9 @@ type RoleSchema struct {
 	// policy overlay for an application-owned role. The application remains the
 	// authority for every other role property.
 	ProjectFieldPermissionOverride bool `json:"project_field_permission_override,omitempty"`
+	// ProjectPermissionOverride marks an Identity-owned functional-grant overlay.
+	// Other project role properties remain source-owned.
+	ProjectPermissionOverride bool `json:"project_permission_override,omitempty"`
 }
 
 type IdentityRoleAudience string

@@ -419,6 +419,14 @@ func (s *AuthProviderFlowDomainService) ExchangeAndCompleteCallbackWithChallenge
 	if err != nil {
 		return authmodel.AuthSession{}, challenge, err
 	}
+	resolvedWorkspaceID, found, err := s.auth.ExternalIdentityWorkspace(ctx, assertion.Provider, assertion.Subject)
+	if err != nil {
+		return authmodel.AuthSession{}, challenge, err
+	}
+	if !found {
+		return authmodel.AuthSession{}, challenge, forbidden("auth.external_account_unlinked")
+	}
+	resolvedContext := requestcontext.WithWorkspaceID(ctx, resolvedWorkspaceID)
 	if strings.EqualFold(config.Type, "saml") {
 		claims := assertion.Claims
 		assertionID, issuer, expiryText := strings.TrimSpace(claims["assertion_id"]), strings.TrimSpace(claims["issuer"]), strings.TrimSpace(claims["not_on_or_after"])
@@ -427,7 +435,7 @@ func (s *AuthProviderFlowDomainService) ExchangeAndCompleteCallbackWithChallenge
 		if parseErr != nil || assertionID == "" || issuer == "" || !supported {
 			return authmodel.AuthSession{}, challenge, forbidden("auth.provider_assertion_invalid")
 		}
-		claimed, claimErr := replays.ClaimAuthAssertion(ctx, challenge.WorkspaceID, provider, issuer, assertionID, expiresAt)
+		claimed, claimErr := replays.ClaimAuthAssertion(resolvedContext, resolvedWorkspaceID, provider, issuer, assertionID, expiresAt)
 		if claimErr != nil {
 			return authmodel.AuthSession{}, challenge, claimErr
 		}
@@ -435,6 +443,6 @@ func (s *AuthProviderFlowDomainService) ExchangeAndCompleteCallbackWithChallenge
 			return authmodel.AuthSession{}, challenge, forbidden("auth.provider_assertion_replayed")
 		}
 	}
-	result, err := s.CompleteCallbackForApplication(ctx, challenge.WorkspaceID, config, assertion, challenge.ApplicationKey)
+	result, err := s.CompleteCallbackForApplication(resolvedContext, resolvedWorkspaceID, config, assertion, challenge.ApplicationKey)
 	return result, challenge, err
 }

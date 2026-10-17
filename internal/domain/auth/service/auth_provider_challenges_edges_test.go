@@ -2,7 +2,10 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"errors"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -56,6 +59,18 @@ func TestProviderAndSAMLChallengeValidationLifecycle(t *testing.T) {
 	started, err := auth.BeginProviderLogin(t.Context(), " workspace-a ", " OIDC ", "https://id.example/auth", "client", "https://app.example/callback", "openid profile")
 	if err != nil || started.Provider != "oidc" || started.State == "" || started.Nonce == "" || !strings.Contains(started.AuthURL, "state=") || !strings.Contains(started.AuthURL, "nonce=") {
 		t.Fatalf("OIDC start=%+v err=%v", started, err)
+	}
+	authorizationURL, err := url.Parse(started.AuthURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	storedChallenge := auth.challenges[started.State]
+	verifierDigest := sha256.Sum256([]byte(storedChallenge.CodeVerifier))
+	if got, want := authorizationURL.Query().Get("code_challenge"), base64.RawURLEncoding.EncodeToString(verifierDigest[:]); got != want {
+		t.Fatalf("code_challenge = %q, want digest of stored code_verifier %q", got, want)
+	}
+	if got := authorizationURL.Query().Get("code_challenge_method"); got != "S256" {
+		t.Fatalf("code_challenge_method = %q", got)
 	}
 	if _, err := auth.ConsumeProviderChallenge(t.Context(), "workspace-a", "saml", started.State); err == nil {
 		t.Fatal("provider mismatch accepted")

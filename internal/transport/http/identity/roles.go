@@ -13,7 +13,7 @@ import (
 )
 
 func (h *IdentityHandler) listIdentityRoles(w http.ResponseWriter, r *http.Request) {
-	roles, err := h.roles.ListRoles(r.Context())
+	roles, err := h.roles.RoleDirectory(r.Context())
 	if err != nil {
 		h.writeServiceError(w, r, err)
 		return

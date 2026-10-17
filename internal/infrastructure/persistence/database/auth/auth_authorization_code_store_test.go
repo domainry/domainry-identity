@@ -29,6 +29,17 @@ func TestAuthorizationCodeIsBoundAndConsumedExactlyOnce(t *testing.T) {
 	if err := repository.CreateAuthAuthorizationCode(t.Context(), value); err != nil {
 		t.Fatal(err)
 	}
+	if workspaceID, found, err := repository.AuthorizationCodeWorkspace(t.Context(), value.Code, value.ApplicationKey, value.RedirectURL, now); err != nil || !found || workspaceID != value.WorkspaceID {
+		t.Fatalf("authorization code workspace=%q found=%v err=%v", workspaceID, found, err)
+	}
+	for _, mismatch := range []struct {
+		applicationKey string
+		redirectURL    string
+	}{{"other-app", value.RedirectURL}, {value.ApplicationKey, "https://other.example.com/callback"}} {
+		if workspaceID, found, err := repository.AuthorizationCodeWorkspace(t.Context(), value.Code, mismatch.applicationKey, mismatch.redirectURL, now); err != nil || found || workspaceID != "" {
+			t.Fatalf("mismatched authorization code workspace=%q found=%v err=%v", workspaceID, found, err)
+		}
+	}
 	if _, consumed, err := repository.ConsumeAuthAuthorizationCode(t.Context(), value.WorkspaceID, value.Code, "other-app", value.RedirectURL, now); err != nil || consumed {
 		t.Fatalf("wrong application consumed=%v err=%v", consumed, err)
 	}
@@ -44,6 +55,9 @@ func TestAuthorizationCodeIsBoundAndConsumedExactlyOnce(t *testing.T) {
 	}
 	if _, consumed, err := repository.ConsumeAuthAuthorizationCode(t.Context(), value.WorkspaceID, value.Code, value.ApplicationKey, value.RedirectURL, now); err != nil || consumed {
 		t.Fatalf("replay consumed=%v err=%v", consumed, err)
+	}
+	if workspaceID, found, err := repository.AuthorizationCodeWorkspace(t.Context(), value.Code, value.ApplicationKey, value.RedirectURL, now); err != nil || found || workspaceID != "" {
+		t.Fatalf("consumed authorization code workspace=%q found=%v err=%v", workspaceID, found, err)
 	}
 	var persisted string
 	if err := store.DB().QueryRowContext(t.Context(), "SELECT session_json FROM _identity_auth_authorization_codes").Scan(&persisted); err != nil {

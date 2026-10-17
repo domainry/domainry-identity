@@ -115,6 +115,35 @@ func TestRolePermissionSelectionsRequireCurrentSelectableDefinitions(t *testing.
 	}
 }
 
+func TestDirectRolePermissionSelectionUsesCurrentRepositoryState(t *testing.T) {
+	registry, err := NewStandaloneIdentityAuthorizationSliceRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository := &permissionCatalogRepositoryStub{}
+	service, err := NewIdentityPermissionCatalogApplicationService(repository, registry, "workspace-primary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.ReconcileOwner(t.Context(), IdentityBuiltinAuthorizationOwner); err != nil {
+		t.Fatal(err)
+	}
+	service.snapshot.Store(nil)
+	key := "identity.roles.list"
+	if err := service.ValidateDirectPermissionSelections(t.Context(), []string{key}); err != nil {
+		t.Fatalf("current direct permission rejected without cached snapshot: %v", err)
+	}
+	for index := range repository.records {
+		if repository.records[index].PermissionKey == key {
+			repository.records[index].Enabled = false
+			break
+		}
+	}
+	if err := service.ValidateDirectPermissionSelections(t.Context(), []string{key}); apperror.CodeOf(err) != "backend.identity.permission_disabled" {
+		t.Fatalf("current disabled permission error=%v", err)
+	}
+}
+
 func TestPermissionReconcileEmitsStableReceiptLogWithGeneratedRequestID(t *testing.T) {
 	registry, err := NewStandaloneIdentityAuthorizationSliceRegistry()
 	if err != nil {
@@ -244,7 +273,8 @@ func TestPermissionCatalogQueriesExternalActionUsageWithoutPersistingIt(t *testi
 		HTTP:          &actioncontract.HTTPBinding{Method: "GET", RouteTemplate: "/objects/customer/records"},
 		Permission: &actioncontract.PermissionDefinition{
 			Key: "customer.read", Owner: "runtime:orders", ResourceKey: "customer", OperationKey: "read",
-			Label: "Read customers", Category: "Customers", LifecycleStatus: actioncontract.LifecycleActive,
+			Label: "Read customers", Category: "Customers", GrantMode: actioncontract.PermissionGrantBundled,
+			LifecycleStatus: actioncontract.LifecycleActive,
 		},
 		EffectClass: actioncontract.EffectRead, RiskLevel: actioncontract.RiskLow,
 		IdempotencyDecision: "not_applicable", AuditClass: "business_read", LifecycleStatus: actioncontract.LifecycleActive,
@@ -262,8 +292,11 @@ func TestPermissionCatalogQueriesExternalActionUsageWithoutPersistingIt(t *testi
 	if err != nil || len(listed) != 1 {
 		t.Fatalf("listed=%#v err=%v", listed, err)
 	}
-	if listed[0].ActionUsageStatus != identitymodel.IdentityActionUsageAvailable || len(listed[0].ActionUsages) != 1 || listed[0].ActionUsages[0].ActionKey != "customer.read" || listed[0].ActionUsages[0].RouteTemplate != "/objects/customer/records" {
+	if listed[0].ActionUsageStatus != identitymodel.IdentityActionUsageAvailable || listed[0].GrantMode != string(actioncontract.PermissionGrantBundled) || len(listed[0].ActionUsages) != 1 || listed[0].ActionUsages[0].ActionKey != "customer.read" || listed[0].ActionUsages[0].RouteTemplate != "/objects/customer/records" {
 		t.Fatalf("external usage=%#v", listed[0])
+	}
+	if err := service.ValidateDirectPermissionSelections(t.Context(), []string{"customer.read"}); apperror.CodeOf(err) != "backend.identity.permission_not_directly_grantable" {
+		t.Fatalf("bundled permission direct-selection error=%v", err)
 	}
 	stored, found, err := repository.GetIdentityPermissionDefinition(t.Context(), "workspace", "customer.read")
 	if err != nil || !found || stored.PermissionKey != "customer.read" {

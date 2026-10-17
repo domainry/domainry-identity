@@ -44,19 +44,31 @@ func (s *AuthDomainService) IssueAuthorizationCode(ctx context.Context, applicat
 	return code, err
 }
 
-func (s *AuthDomainService) ExchangeAuthorizationCode(ctx context.Context, workspaceID, code, applicationKey, redirectURL string) (authmodel.AuthSession, error) {
+func (s *AuthDomainService) ExchangeAuthorizationCode(ctx context.Context, code, applicationKey, redirectURL string) (authmodel.AuthSession, error) {
 	repository, ok := s.identityStore.(authrepository.AuthAuthorizationCodeRepository)
 	if !ok {
 		return authmodel.AuthSession{}, internalError("authorization code store unavailable", nil)
 	}
-	if strings.TrimSpace(workspaceID) == "" || strings.TrimSpace(code) == "" || strings.TrimSpace(applicationKey) == "" || !validAuthorizationRedirectURL(redirectURL) {
+	if strings.TrimSpace(code) == "" || strings.TrimSpace(applicationKey) == "" || !validAuthorizationRedirectURL(redirectURL) {
 		return authmodel.AuthSession{}, badRequest("auth.authorization_code_request_invalid")
 	}
-	session, consumed, err := repository.ConsumeAuthAuthorizationCode(ctx, workspaceID, code, applicationKey, redirectURL, time.Now().UTC())
+	resolver, ok := s.identityStore.(authrepository.AuthAuthorizationCodeWorkspaceRepository)
+	if !ok {
+		return authmodel.AuthSession{}, internalError("authorization code workspace resolver unavailable", nil)
+	}
+	now := time.Now().UTC()
+	workspaceID, found, err := resolver.AuthorizationCodeWorkspace(ctx, code, applicationKey, redirectURL, now)
 	if err != nil {
 		return authmodel.AuthSession{}, err
 	}
-	if !consumed {
+	if !found {
+		return authmodel.AuthSession{}, forbidden("auth.authorization_code_invalid")
+	}
+	session, consumed, err := repository.ConsumeAuthAuthorizationCode(ctx, workspaceID, code, applicationKey, redirectURL, now)
+	if err != nil {
+		return authmodel.AuthSession{}, err
+	}
+	if !consumed || strings.TrimSpace(session.WorkspaceID) != workspaceID {
 		return authmodel.AuthSession{}, forbidden("auth.authorization_code_invalid")
 	}
 	return session, nil

@@ -16,13 +16,42 @@ import (
 )
 
 func (s *MetadataApplicationService) IdentityRolePermissionDefinition(ctx context.Context, roleKey string, principal identitymodel.Principal) (identitymodel.RoleSchema, identitymodel.IdentityRoleDefinitionRevision, bool, error) {
-	return s.identityRoleDefinitionForAction(ctx, roleKey, identitycontract.IdentityActionRolePermissionsList, false, principal)
+	return s.identityRolePermissionDefinitionForAction(ctx, roleKey, identitycontract.IdentityActionRolePermissionsList, false, principal)
+}
+
+func (s *MetadataApplicationService) IdentityRolePermissionDefinitionForPublication(ctx context.Context, roleKey string, principal identitymodel.Principal) (identitymodel.RoleSchema, identitymodel.IdentityRoleDefinitionRevision, bool, error) {
+	return s.identityRolePermissionDefinitionForAction(ctx, roleKey, identitycontract.IdentityActionRolePermissionsPublish, true, principal)
+}
+
+func (s *MetadataApplicationService) identityRolePermissionDefinitionForAction(ctx context.Context, roleKey, actionKey string, command bool, principal identitymodel.Principal) (identitymodel.RoleSchema, identitymodel.IdentityRoleDefinitionRevision, bool, error) {
+	role, revision, found, err := s.identityRoleDefinitionForAction(ctx, roleKey, actionKey, command, principal)
+	if err != nil {
+		return role, revision, found, err
+	}
+	project, isProject := s.projectRoleDefinition(roleKey)
+	if !isProject {
+		return role, revision, found, nil
+	}
+	if !found {
+		revision, err = projectRoleDefinitionRevision(project)
+		return project, revision, true, err
+	}
+	if !role.ProjectPermissionOverride {
+		role.Permissions = project.Permissions
+	}
+	return role, revision, true, nil
 }
 
 func (s *MetadataApplicationService) IdentityRoleFieldPermissionDefinition(ctx context.Context, roleKey string, principal identitymodel.Principal) (identitymodel.RoleSchema, identitymodel.IdentityRoleDefinitionRevision, bool, error) {
 	role, revision, found, err := s.identityRoleDefinitionForAction(ctx, roleKey, identitycontract.IdentityActionRoleFieldPermissionsList, false, principal)
-	if err != nil || found {
+	if err != nil {
 		return role, revision, found, err
+	}
+	if found {
+		if project, isProject := s.projectRoleDefinition(roleKey); isProject && !role.ProjectFieldPermissionOverride {
+			role.FieldPermissions = project.FieldPermissions
+		}
+		return role, revision, true, nil
 	}
 	projectRole, found := s.projectRoleDefinition(roleKey)
 	if !found {
@@ -65,6 +94,22 @@ func (s *MetadataApplicationService) PublishIdentityRolePermissions(ctx context.
 	if err != nil {
 		return identitymodel.IdentityRoleDefinitionRevision{}, err
 	}
+	if project, isProject := s.projectRoleDefinition(roleKey); isProject {
+		if !found {
+			revision, err := projectRoleDefinitionRevision(project)
+			if err != nil {
+				return identitymodel.IdentityRoleDefinitionRevision{}, err
+			}
+			if strings.TrimSpace(expectedSchemaHash) != revision.SchemaHash {
+				return identitymodel.IdentityRoleDefinitionRevision{}, conflict("backend.metadata.definition_revision_conflict", "role", roleKey)
+			}
+			role = identitymodel.RoleSchema{Key: project.Key, Name: project.Name}
+			expectedSchemaHash = ""
+		}
+		role.Permissions = append([]identitymodel.RolePermission(nil), permissions...)
+		role.ProjectPermissionOverride = true
+		return s.publishIdentityRoleDefinition(ctx, role, expectedSchemaHash, businessReason, operationID, "identity_role_permissions.published", "Published role permissions for "+role.Key, map[string]any{"permission_count": len(permissions), "project_role_overlay": true}, !found, principal)
+	}
 	if !found {
 		return identitymodel.IdentityRoleDefinitionRevision{}, notFound("backend.identity.role_definition_not_found", "role", strings.TrimSpace(roleKey))
 	}
@@ -98,6 +143,9 @@ func (s *MetadataApplicationService) PublishIdentityRoleFieldPermissions(ctx con
 		return s.publishIdentityRoleDefinition(ctx, overlay, "", businessReason, operationID, "identity_role_field_permissions.published", "Published role field permissions for "+overlay.Key, map[string]any{"field_permission_count": len(overlay.FieldPermissions), "project_role_overlay": true}, true, principal)
 	}
 	role.FieldPermissions = append([]identitymodel.FieldPermission(nil), permissions...)
+	if _, isProject := s.projectRoleDefinition(roleKey); isProject {
+		role.ProjectFieldPermissionOverride = true
+	}
 	return s.publishIdentityRoleDefinition(ctx, role, expectedSchemaHash, businessReason, operationID, "identity_role_field_permissions.published", "Published role field permissions for "+role.Key, map[string]any{"field_permission_count": len(role.FieldPermissions)}, false, principal)
 }
 

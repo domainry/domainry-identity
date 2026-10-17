@@ -86,3 +86,18 @@ func TestMetadataRuntimeAppliesOnlyFieldPermissionOverrideToProjectRole(t *testi
 		t.Fatalf("field permission override not applied: %#v", roles[0].FieldPermissions)
 	}
 }
+
+func TestMetadataRuntimeComposesFunctionalAndFieldOverlaysWithoutReplacingRoleGovernance(t *testing.T) {
+	runtime := NewMetadataRuntime(metadataservice.SchemaSnapshotState{})
+	runtime.ReplaceProjectRoles([]identitymodel.RoleSchema{{Key: "sales", Name: "销售", Audience: identitymodel.IdentityRoleAudienceUser, AssignmentMode: identitymodel.IdentityRoleAssignmentManual, RiskLevel: identitymodel.IdentityRoleRiskElevated, GrantableRoleKeys: []string{"analyst"}, Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeOwner, "customer.read"), FieldPermissions: []identitymodel.FieldPermission{{ObjectKey: "customer", FieldKey: "email", Read: false}}}})
+	overlay := identitymodel.RoleSchema{Key: "sales", Name: "Untrusted replacement", RiskLevel: identitymodel.IdentityRoleRiskNormal, GrantableRoleKeys: []string{"*"}, ProjectPermissionOverride: true, ProjectFieldPermissionOverride: true, Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeOwner, "customer.read", "customer.update"), FieldPermissions: []identitymodel.FieldPermission{{ObjectKey: "customer", FieldKey: "email", Read: true}}}
+	roles := runtime.EffectiveRoleDefinitions([]identitymodel.RoleSchema{overlay})
+	if len(roles) != 1 || roles[0].Name != "销售" || roles[0].RiskLevel != identitymodel.IdentityRoleRiskElevated || len(roles[0].GrantableRoleKeys) != 1 || roles[0].GrantableRoleKeys[0] != "analyst" || len(roles[0].Permissions) != 2 || !roles[0].FieldPermissions[0].Read {
+		t.Fatalf("ownership lost: %+v", roles)
+	}
+	overlay.ProjectPermissionOverride = false
+	roles = runtime.EffectiveRoleDefinitions([]identitymodel.RoleSchema{overlay})
+	if len(roles[0].Permissions) != 1 {
+		t.Fatal("unmarked functional overlay was applied")
+	}
+}

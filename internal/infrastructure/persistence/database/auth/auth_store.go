@@ -683,6 +683,50 @@ func (s AuthStore) ListIdentityExternalAccounts(ctx context.Context, workspaceID
 	return out, rows.Err()
 }
 
+func (s AuthStore) GlobalExternalAccountWorkspace(ctx context.Context, provider, providerSubject string) (string, bool, error) {
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	providerSubject = strings.TrimSpace(providerSubject)
+	if provider == "" || providerSubject == "" {
+		return "", false, nil
+	}
+	statement, arguments, err := query.NewSelectBuilder(s.store.SQLRenderer(), "_identity_external_accounts").
+		Columns("workspace_id").
+		Where(query.And(query.Equal("provider", provider), query.Equal("provider_subject", providerSubject))).
+		OrderBy(query.Ascending("workspace_id")).
+		Limit(2).
+		Build()
+	if err != nil {
+		return "", false, fmt.Errorf("build global external account workspace query: %w", err)
+	}
+	rows, err := s.db.QueryContext(ctx, statement, arguments...)
+	if err != nil {
+		return "", false, err
+	}
+	defer rows.Close()
+	workspaceID := ""
+	for rows.Next() {
+		var candidate string
+		if err := rows.Scan(&candidate); err != nil {
+			return "", false, err
+		}
+		candidate = strings.TrimSpace(candidate)
+		if workspaceID != "" {
+			return "", false, nil
+		}
+		workspaceID = candidate
+	}
+	if err := rows.Err(); err != nil {
+		return "", false, err
+	}
+	if workspaceID == "" {
+		return "", false, nil
+	}
+	if _, err := authWorkspaceID(workspaceID); err != nil {
+		return "", false, err
+	}
+	return workspaceID, true, nil
+}
+
 func (s AuthStore) UpsertIdentityExternalAccount(ctx context.Context, workspaceID string, account identitymodel.IdentityExternalAccount) error {
 	if err := ctx.Err(); err != nil {
 		return err

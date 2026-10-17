@@ -67,6 +67,13 @@ type AuthLoginTransactionRepository interface {
 	ConsumeAuthLoginTransaction(context.Context, string, string, string, time.Time) (authmodel.AuthProviderChallenge, bool, error)
 }
 
+// AuthExternalAccountWorkspaceRepository resolves a verified provider subject
+// to the one Workspace that owns its linked Identity user. Authentication must
+// fail closed when no link exists or persisted data is ambiguous.
+type AuthExternalAccountWorkspaceRepository interface {
+	GlobalExternalAccountWorkspace(context.Context, string, string) (string, bool, error)
+}
+
 // AuthOTPTransactionRepository owns both delivery throttling and verification
 // attempts across replicas while keeping the phone and code encrypted at rest.
 // Create returns false when the subject is still inside its delivery cooldown.
@@ -84,6 +91,12 @@ type AuthOTPTransactionRepository interface {
 type AuthAuthorizationCodeRepository interface {
 	CreateAuthAuthorizationCode(context.Context, authmodel.AuthAuthorizationCode) error
 	ConsumeAuthAuthorizationCode(context.Context, string, string, string, string, time.Time) (authmodel.AuthSession, bool, error)
+}
+
+// AuthAuthorizationCodeWorkspaceRepository restores server-owned Workspace
+// scope from an opaque authorization code before its atomic scoped consume.
+type AuthAuthorizationCodeWorkspaceRepository interface {
+	AuthorizationCodeWorkspace(context.Context, string, string, string, time.Time) (string, bool, error)
 }
 
 type AuthApplicationRepository interface {

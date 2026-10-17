@@ -2,9 +2,9 @@ package identity
 
 import (
 	"context"
-	"errors"
 	"testing"
 
+	"github.com/domainry/domainry-foundation/apperror"
 	"github.com/domainry/domainry-foundation/requestcontext"
 	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
@@ -12,6 +12,7 @@ import (
 
 type roleDefinitionPublisherSpy struct {
 	permissionDefinitionLoads int
+	currentRole               identitymodel.RoleSchema
 	publishedRoleKey          string
 	publishedPermissions      []identitymodel.RolePermission
 	createdRole               identitymodel.RoleSchema
@@ -19,7 +20,12 @@ type roleDefinitionPublisherSpy struct {
 
 func (s *roleDefinitionPublisherSpy) IdentityRolePermissionDefinition(context.Context, string, identitymodel.Principal) (identitymodel.RoleSchema, identitymodel.IdentityRoleDefinitionRevision, bool, error) {
 	s.permissionDefinitionLoads++
-	return identitymodel.RoleSchema{}, identitymodel.IdentityRoleDefinitionRevision{}, false, errors.New("permission configuration load must not run during publish")
+	return s.currentRole, identitymodel.IdentityRoleDefinitionRevision{SchemaVersion: "1", SchemaHash: "before-hash"}, true, nil
+}
+
+func (s *roleDefinitionPublisherSpy) IdentityRolePermissionDefinitionForPublication(context.Context, string, identitymodel.Principal) (identitymodel.RoleSchema, identitymodel.IdentityRoleDefinitionRevision, bool, error) {
+	s.permissionDefinitionLoads++
+	return s.currentRole, identitymodel.IdentityRoleDefinitionRevision{SchemaVersion: "1", SchemaHash: "before-hash"}, true, nil
 }
 
 func (*roleDefinitionPublisherSpy) IdentityRoleFieldPermissionDefinition(context.Context, string, identitymodel.Principal) (identitymodel.RoleSchema, identitymodel.IdentityRoleDefinitionRevision, bool, error) {
@@ -79,14 +85,53 @@ func TestRolePermissionPublishRequiresOnlyItsExactAction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if publisher.permissionDefinitionLoads != 0 {
-		t.Fatalf("publish acquired the list action through %d configuration loads", publisher.permissionDefinitionLoads)
+	if publisher.permissionDefinitionLoads != 1 {
+		t.Fatalf("publish current-definition loads = %d", publisher.permissionDefinitionLoads)
 	}
 	if publisher.publishedRoleKey != "reviewer" || len(publisher.publishedPermissions) != 1 || publisher.publishedPermissions[0].PermissionKey != identitycontract.IdentityActionRolesList || publisher.publishedPermissions[0].DataScope != identitymodel.IdentityDataScopeAll {
 		t.Fatalf("published role mutation = %q %#v", publisher.publishedRoleKey, publisher.publishedPermissions)
 	}
 	if configuration.SchemaVersion != "2" || configuration.SchemaHash != "published-hash" {
 		t.Fatalf("published configuration = %#v", configuration)
+	}
+}
+
+func TestRolePermissionPublishPreservesExistingBundledPermission(t *testing.T) {
+	repository := &identityScopedRepository{roles: []identitymodel.IdentityRole{{ID: "reviewer", Key: "reviewer", Label: "Reviewer", Status: identitymodel.IdentityStatusActive}}}
+	bundled := identitycontract.IdentityOrganizationUnitDeliveryResolvePermission
+	publisher := &roleDefinitionPublisherSpy{currentRole: identitymodel.RoleSchema{Permissions: identityTestRolePermissions(bundled)}}
+	service := NewIdentityRoleDefinitionPublicationService(NewIdentityApplicationService(repository, nil), roleDefinitionPublicationCatalog(t), publisher)
+	principal := identitymodel.Principal{Known: true, WorkspaceID: "workspace-primary", Role: identitymodel.RoleSchema{Permissions: identityTestRolePermissions(identitycontract.IdentityActionRolePermissionsPublish)}}
+	ctx := requestcontext.WithWorkspaceID(context.Background(), "workspace-primary")
+
+	requested := identityTestRolePermissions(bundled, identitycontract.IdentityActionRolesList)
+	if _, err := service.PublishPermissions(ctx, "reviewer", identitymodel.IdentityRolePermissionPublicationRequest{
+		Permissions: requested, ExpectedSchemaHash: "before-hash", BusinessReason: "add role list", OperationID: "publish-preserve-bundle",
+	}, principal); err != nil {
+		t.Fatal(err)
+	}
+	if len(publisher.publishedPermissions) != 2 || publisher.publishedPermissions[0].PermissionKey != bundled || publisher.publishedPermissions[1].PermissionKey != identitycontract.IdentityActionRolesList {
+		t.Fatalf("published permissions=%#v", publisher.publishedPermissions)
+	}
+}
+
+func TestRolePermissionPublishCannotRewriteExistingBundledPermissionScope(t *testing.T) {
+	repository := &identityScopedRepository{roles: []identitymodel.IdentityRole{{ID: "reviewer", Key: "reviewer", Label: "Reviewer", Status: identitymodel.IdentityStatusActive}}}
+	bundled := identitycontract.IdentityOrganizationUnitDeliveryResolvePermission
+	publisher := &roleDefinitionPublisherSpy{currentRole: identitymodel.RoleSchema{Permissions: identityTestScopedRolePermissions(identitymodel.IdentityDataScopeOwner, bundled)}}
+	service := NewIdentityRoleDefinitionPublicationService(NewIdentityApplicationService(repository, nil), roleDefinitionPublicationCatalog(t), publisher)
+	principal := identitymodel.Principal{Known: true, WorkspaceID: "workspace-primary", Role: identitymodel.RoleSchema{Permissions: identityTestRolePermissions(identitycontract.IdentityActionRolePermissionsPublish)}}
+	ctx := requestcontext.WithWorkspaceID(context.Background(), "workspace-primary")
+
+	_, err := service.PublishPermissions(ctx, "reviewer", identitymodel.IdentityRolePermissionPublicationRequest{
+		Permissions: identityTestScopedRolePermissions(identitymodel.IdentityDataScopeAll, bundled), ExpectedSchemaHash: "before-hash",
+		BusinessReason: "widen bundled grant", OperationID: "publish-rewrite-bundle",
+	}, principal)
+	if apperror.CodeOf(err) != "backend.identity.permission_not_directly_grantable" {
+		t.Fatalf("bundled scope rewrite error=%v", err)
+	}
+	if len(publisher.publishedPermissions) != 0 {
+		t.Fatalf("bundled scope rewrite was published: %#v", publisher.publishedPermissions)
 	}
 }
 

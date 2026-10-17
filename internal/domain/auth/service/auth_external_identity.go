@@ -9,8 +9,22 @@ import (
 	"strings"
 	"time"
 
+	authrepository "github.com/domainry/domainry-identity/internal/domain/auth/repository"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
+
+func (s *AuthDomainService) ExternalIdentityWorkspace(ctx context.Context, provider, subject string) (string, bool, error) {
+	provider = normalizeProvider(provider)
+	subject = strings.TrimSpace(subject)
+	if provider == "" || subject == "" {
+		return "", false, nil
+	}
+	repository, ok := s.identityStore.(authrepository.AuthExternalAccountWorkspaceRepository)
+	if !ok {
+		return "", false, internalError("external identity workspace resolver unavailable", nil)
+	}
+	return repository.GlobalExternalAccountWorkspace(ctx, provider, subject)
+}
 
 func (s *AuthDomainService) ExternalLogin(ctx context.Context, workspaceID string, assertion authmodel.AuthExternalIdentityAssertion, autoCreateUser bool) (authmodel.AuthSession, error) {
 	return s.ExternalLoginWithPolicy(ctx, workspaceID, assertion, authmodel.AuthExternalLoginPolicy{AutoCreateUsers: autoCreateUser})

@@ -208,11 +208,11 @@ func TestOIDCAndFeishuFailureAndFallbackMatrix(t *testing.T) {
 	}
 
 	for _, endpoint := range []string{"/feishu-error", "/feishu-missing"} {
-		if _, err := exchangeFeishuToken(t.Context(), "code", authmodel.AuthProviderConfig{TokenURL: server.URL + endpoint}); err == nil {
+		if _, err := exchangeFeishuToken(t.Context(), "code", "verifier", authmodel.AuthProviderConfig{TokenURL: server.URL + endpoint}); err == nil {
 			t.Fatalf("Feishu token endpoint %s succeeded", endpoint)
 		}
 	}
-	feishuToken, err := exchangeFeishuToken(t.Context(), "code", authmodel.AuthProviderConfig{TokenURL: server.URL + "/feishu-token"})
+	feishuToken, err := exchangeFeishuToken(t.Context(), "code", "verifier", authmodel.AuthProviderConfig{TokenURL: server.URL + "/feishu-token"})
 	if err != nil || feishuToken != "nested-token" {
 		t.Fatalf("Feishu token=%q err=%v", feishuToken, err)
 	}

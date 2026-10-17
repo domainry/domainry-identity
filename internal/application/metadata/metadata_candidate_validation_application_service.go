@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 
@@ -44,7 +45,36 @@ func (s *MetadataApplicationService) ValidateMetadataCandidate(ctx context.Conte
 		}
 	}
 	candidate.Objects = s.metadataCandidateObjects(candidate.Objects)
-	if err := metadatavalidation.MetadataValidateIdentitySchema(candidate); err != nil {
+	// Runtime already validates its source-owned grants, including runtime
+	// system fields and relational paths outside Identity's narrower schema.
+	// Recheck every changed/new grant here, but do not reinterpret an exact
+	// unchanged source grant using a different module's structural validator.
+	structuralCandidate := candidate
+	structuralCandidate.Roles = append([]identitymodel.RoleSchema(nil), candidate.Roles...)
+	for index, role := range structuralCandidate.Roles {
+		if !role.ProjectPermissionOverride {
+			continue
+		}
+		project, found := s.projectRoleDefinition(role.Key)
+		if !found {
+			continue
+		}
+		changed := make([]identitymodel.RolePermission, 0, len(role.Permissions))
+		for _, permission := range role.Permissions {
+			unchanged := false
+			for _, trusted := range project.Permissions {
+				if reflect.DeepEqual(permission, trusted) {
+					unchanged = true
+					break
+				}
+			}
+			if !unchanged {
+				changed = append(changed, permission)
+			}
+		}
+		structuralCandidate.Roles[index].Permissions = changed
+	}
+	if err := metadatavalidation.MetadataValidateIdentitySchema(structuralCandidate); err != nil {
 		return badRequest("backend.metadata.candidate_invalid", "diagnostic", err.Error())
 	}
 	if err := validateRetiredActionPermissionAssignments(activeActions, candidate.Actions, candidate.Roles); err != nil {

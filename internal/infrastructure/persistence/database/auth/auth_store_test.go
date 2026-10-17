@@ -319,12 +319,35 @@ func TestAuthStoreWorkspaceIsolationContract(t *testing.T) {
 	}
 
 	accountA := identitymodel.IdentityExternalAccount{ID: "external-a", UserID: credentialA.UserID, Provider: "oidc", ProviderSubject: "shared-subject"}
-	accountB := identitymodel.IdentityExternalAccount{ID: "external-b", UserID: credentialB.UserID, Provider: "oidc", ProviderSubject: "shared-subject"}
+	accountB := identitymodel.IdentityExternalAccount{ID: "external-b", UserID: credentialB.UserID, Provider: "oidc", ProviderSubject: "workspace-b-subject"}
 	if err := repository.UpsertIdentityExternalAccount(t.Context(), "workspace-a", accountA); err != nil {
 		t.Fatalf("upsert workspace A account: %v", err)
 	}
+	if workspaceID, found, err := repository.GlobalExternalAccountWorkspace(t.Context(), "OIDC", accountA.ProviderSubject); err != nil || !found || workspaceID != "workspace-a" {
+		t.Fatalf("global external account workspace=%q found=%v err=%v", workspaceID, found, err)
+	}
+	duplicate := accountB
+	duplicate.ID = "external-ambiguous"
+	duplicate.ProviderSubject = accountA.ProviderSubject
+	if err := repository.UpsertIdentityExternalAccount(t.Context(), "workspace-b", duplicate); err != nil {
+		t.Fatalf("upsert ambiguous provider subject: %v", err)
+	}
+	if workspaceID, found, err := repository.GlobalExternalAccountWorkspace(t.Context(), accountA.Provider, accountA.ProviderSubject); err != nil || found || workspaceID != "" {
+		t.Fatalf("ambiguous external account workspace=%q found=%v err=%v", workspaceID, found, err)
+	}
 	if err := repository.UpsertIdentityExternalAccount(t.Context(), "workspace-b", accountB); err != nil {
 		t.Fatalf("upsert workspace B account: %v", err)
+	}
+	if workspaceID, found, err := repository.GlobalExternalAccountWorkspace(t.Context(), accountB.Provider, accountB.ProviderSubject); err != nil || !found || workspaceID != "workspace-b" {
+		t.Fatalf("workspace B external account workspace=%q found=%v err=%v", workspaceID, found, err)
+	}
+	sameWorkspaceDuplicate := accountB
+	sameWorkspaceDuplicate.ID = "external-b-duplicate"
+	if err := repository.UpsertIdentityExternalAccount(t.Context(), "workspace-b", sameWorkspaceDuplicate); err != nil {
+		t.Fatalf("upsert same-Workspace ambiguous provider subject: %v", err)
+	}
+	if workspaceID, found, err := repository.GlobalExternalAccountWorkspace(t.Context(), accountB.Provider, accountB.ProviderSubject); err != nil || found || workspaceID != "" {
+		t.Fatalf("same-Workspace ambiguous external account workspace=%q found=%v err=%v", workspaceID, found, err)
 	}
 	accountsA, err := repository.ListIdentityExternalAccounts(t.Context(), "workspace-a", "")
 	if err != nil || len(accountsA) != 1 || accountsA[0].ID != accountA.ID {

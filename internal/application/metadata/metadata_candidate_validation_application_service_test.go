@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/domainry/domainry-foundation/apperror"
+	identitysdk "github.com/domainry/domainry-identity-sdk"
 	definitionmodel "github.com/domainry/domainry-identity/internal/domain/definition/model"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	manifestmodel "github.com/domainry/domainry-identity/internal/domain/manifest/model"
@@ -206,5 +207,65 @@ func TestMetadataCandidateRejectsUnknownCurrentPermissionKey(t *testing.T) {
 	err := service.ValidateMetadataCandidate(t.Context(), nil)
 	if apperror.CodeOf(err) != "backend.metadata.candidate_invalid" || !strings.Contains(apperror.ParamsOf(err)["diagnostic"], "backend.identity.permission_not_found") {
 		t.Fatalf("unknown permission error=%#v", err)
+	}
+}
+
+type metadataProjectGrantRuntimeStub struct {
+	metadataProjectObjectRuntimeStub
+	role identitymodel.RoleSchema
+}
+
+func (runtime *metadataProjectGrantRuntimeStub) ProjectRoleDefinition(key string) (identitymodel.RoleSchema, bool) {
+	return runtime.role, key == runtime.role.Key
+}
+
+func TestMetadataProjectGrantTrustIsExactAndDoesNotSkipCurrentPermissionValidation(t *testing.T) {
+	// The host owns this system field; Identity's partial object graph does not.
+	trusted := identitymodel.RolePermission{PermissionKey: "customer.read", DataPolicy: &identitysdk.ProjectDataPolicy{Operator: "eq", FieldKey: "owner_user_id", SubjectClaim: "id"}}
+	project := identitymodel.RoleSchema{Key: "sales", Name: "Sales", Permissions: []identitymodel.RolePermission{trusted}}
+	for _, test := range []struct {
+		name      string
+		mutate    func(*identitymodel.RoleSchema)
+		allowRead bool
+		want      string
+	}{
+		{name: "unchanged source grant", allowRead: true},
+		{name: "modified source grant", allowRead: true, mutate: func(role *identitymodel.RoleSchema) { role.Permissions[0].DataPolicy.FieldKey = "untrusted_field" }, want: "unknown or disabled field"},
+		{name: "new invalid grant", allowRead: true, mutate: func(role *identitymodel.RoleSchema) {
+			role.Permissions = append(role.Permissions, identitymodel.RolePermission{PermissionKey: "customer.update", DataScope: "invalid"})
+		}, want: "unsupported scope"},
+		{name: "unmarked metadata cannot claim source trust", allowRead: true, mutate: func(role *identitymodel.RoleSchema) { role.ProjectPermissionOverride = false }, want: "unknown or disabled field"},
+		{name: "source key no longer selectable", allowRead: false, want: "backend.identity.permission_not_found"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			payload, err := json.Marshal(project)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var overlay identitymodel.RoleSchema
+			if err := json.Unmarshal(payload, &overlay); err != nil {
+				t.Fatal(err)
+			}
+			overlay.ProjectPermissionOverride = true
+			if test.mutate != nil {
+				test.mutate(&overlay)
+			}
+			manifest := loadMetadataCandidateFixture(t)
+			manifest.Roles = append(manifest.Roles, overlay)
+			permissions := allowMetadataCandidatePermissions("identity.roles.list", "customer.update")
+			permissions.allowed["customer.read"] = test.allowRead
+			service := NewMetadataApplicationService(MetadataApplicationDependencies{Repository: metadataCandidateRepository{manifest: manifest}, Permissions: permissions, Runtime: &metadataProjectGrantRuntimeStub{role: project}})
+			err = service.ValidateMetadataCandidate(t.Context(), nil)
+			if test.want == "" {
+				if err != nil {
+					t.Fatalf("unchanged host grant rejected: %v", err)
+				}
+				if len(permissions.calls) != 1 || !strings.Contains(strings.Join(permissions.calls[0], ","), "customer.read") {
+					t.Fatalf("trusted grant bypassed registry validation: %v", permissions.calls)
+				}
+			} else if apperror.CodeOf(err) != "backend.metadata.candidate_invalid" || !strings.Contains(apperror.ParamsOf(err)["diagnostic"], test.want) {
+				t.Fatalf("error=%v params=%v want=%q", err, apperror.ParamsOf(err), test.want)
+			}
+		})
 	}
 }

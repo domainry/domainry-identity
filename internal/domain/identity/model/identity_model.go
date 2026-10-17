@@ -161,6 +161,7 @@ type IdentityPermissionDefinition struct {
 	DefinitionHash     string                          `json:"definition_hash,omitempty"`
 	SourceSnapshotHash string                          `json:"source_snapshot_hash,omitempty"`
 	ActionUsageStatus  string                          `json:"action_usage_status"`
+	GrantMode          string                          `json:"grant_mode"`
 	ActionUsages       []IdentityActionPermissionUsage `json:"action_usages,omitempty"`
 }
 
@@ -186,6 +187,7 @@ type IdentityActionPermissionUsage struct {
 	ApprovalRequired     bool     `json:"approval_required"`
 	AssuranceRequired    []string `json:"assurance_required"`
 	LifecycleStatus      string   `json:"lifecycle_status"`
+	GrantMode            string   `json:"grant_mode"`
 }
 
 type IdentityRole struct {

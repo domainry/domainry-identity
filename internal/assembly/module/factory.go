@@ -266,14 +266,17 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 	}
 	auditRecorder := moduleAuditRecorder{append: identityRuntime.Audit.AppendAudit}
 	managementAdapter := modulehttptransport.NewAdapter("identity_management", managementServer.Routes(), managementRoutes, auditRecorder)
-	defaultWorkspaceID := application.WorkspaceID
+	browserBinding := scopedBinding
 	if workspaceResolver != nil {
-		defaultWorkspaceID = ""
+		// Browser authentication derives Workspace from credentials and provider
+		// identities. The application-scoped wrapper expects a caller-supplied
+		// Workspace, so the internal gateway uses the source binding instead.
+		browserBinding = binding
 	}
-	browserGateway, err := browsergateway.New(scopedBinding, browsergateway.Config{
+	browserGateway, err := browsergateway.New(browserBinding, browsergateway.Config{
 		ApplicationKey:           application.ApplicationKey,
-		DefaultWorkspaceID:       defaultWorkspaceID,
-		RequireExplicitWorkspace: workspaceResolver != nil,
+		DefaultWorkspaceID:       application.WorkspaceID,
+		RequireExplicitWorkspace: false,
 		ResolvePasswordLoginWorkspace: func(ctx context.Context, login string) (identitysdk.WorkspaceID, bool, error) {
 			workspaceID, found, err := identityRuntime.IdentityStore.GlobalLoginWorkspace(ctx, login)
 			return identitysdk.WorkspaceID(workspaceID), found, err

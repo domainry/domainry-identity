@@ -2,9 +2,11 @@ package module_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -25,7 +27,10 @@ func (r testWorkspaceResolver) ResolveWorkspace(_ context.Context, ref identitys
 
 func TestEmbeddedHostWorkspaceLoginAfterAtomicBootstrap(t *testing.T) {
 	initialCatalog := m1WorkspaceBootstrapRoleCatalog()
-	initialCatalog.Roles[0].Permissions = []identitysdk.ProjectRolePermission{{PermissionKey: "identity.users.list", DataScope: "all"}}
+	initialCatalog.Roles[0].Permissions = []identitysdk.ProjectRolePermission{
+		{PermissionKey: "identity.users.list", DataScope: "all"},
+		{PermissionKey: "auth.providers.setup", DataScope: "all"},
+	}
 	bootstrap, db := openWorkspaceIdentityBootstrapCatalog(t, initialCatalog)
 	a := workspaceIdentityBootstrapRequest("workspace-primary", "bootstrap-a")
 	tx := beginBootstrapTx(t, db)
@@ -38,6 +43,10 @@ func TestEmbeddedHostWorkspaceLoginAfterAtomicBootstrap(t *testing.T) {
 		t.Fatal(err)
 	}
 	completeWorkspaceIdentityBootstrap(t, bootstrap, receipt, identitysdk.WorkspaceIdentityBootstrapTransactionCommitted)
+	primaryCredential, err := bootstrap.ClaimWorkspaceIdentityBootstrapCredential(t.Context(), identitysdk.WorkspaceIdentityBootstrapCredentialClaim{WorkspaceID: a.WorkspaceID, ReceiptID: receipt.ReceiptID})
+	if err != nil {
+		t.Fatal(err)
+	}
 	resolver := testWorkspaceResolver{"public-a": "workspace-primary", "workspace-primary": "workspace-primary", "public-b": "workspace-b", "workspace-b": "workspace-b"}
 	binding, err := testIdentityFactory(identitymodule.Options{IdentityVersion: "test", DatabaseDriver: "sqlite"}).OpenWithDatabase(t.Context(), identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "runtime"}, identitysdk.DatabaseHandle{Pool: db, Driver: "sqlite", Migrations: &testEmbeddedMigrationRegistrar{}, WorkspaceResolver: resolver})
 	if err != nil {
@@ -115,6 +124,15 @@ func TestEmbeddedHostWorkspaceLoginAfterAtomicBootstrap(t *testing.T) {
 			mounted.Handle(route.Pattern(), adapter.Handler())
 		}
 	}
+	primarySession, err := binding.Authentication().LoginWithPassword(t.Context(), identitysdk.PasswordLoginRequest{WorkspaceID: identitysdk.WorkspaceID(a.WorkspaceID), Login: primaryCredential.LoginID, Password: primaryCredential.InitialPassword})
+	if err != nil {
+		t.Fatal(err)
+	}
+	primarySession, err = binding.Credentials().ChangePassword(t.Context(), identitysdk.ChangePasswordRequest{AccessToken: primarySession.AccessToken, CurrentPassword: primaryCredential.InitialPassword, NewPassword: "Workspace-A-Test-Password!29", IdempotencyKey: "change-a-password"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertFederatedLoginResolvesLinkedWorkspace(t, mounted, primarySession.AccessToken, session.AccessToken)
 	unscopedLogin := httptest.NewRecorder()
 	unscopedRequest := httptest.NewRequest(http.MethodPost, "/auth/login", strings.NewReader(`{"login":"`+b.InitialAdminLoginID+`","password":"Workspace-B-Test-Password!29"}`))
 	mounted.ServeHTTP(unscopedLogin, unscopedRequest)
@@ -155,5 +173,80 @@ func TestEmbeddedHostWorkspaceLoginAfterAtomicBootstrap(t *testing.T) {
 	}
 	if _, err := binding.Authentication().CurrentSession(t.Context(), identitysdk.CurrentSessionRequest{AccessToken: session.AccessToken}); err == nil {
 		t.Fatal("inactive token accepted")
+	}
+}
+
+func assertFederatedLoginResolvesLinkedWorkspace(t *testing.T, mounted http.Handler, primaryAccessToken, linkedAccessToken string) {
+	t.Helper()
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/token":
+			var payload struct {
+				CodeVerifier string `json:"code_verifier"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || strings.TrimSpace(payload.CodeVerifier) == "" {
+				http.Error(w, "missing PKCE verifier", http.StatusBadRequest)
+				return
+			}
+			_, _ = w.Write([]byte(`{"code":0,"access_token":"feishu-access"}`))
+		case "/userinfo":
+			if r.Header.Get("Authorization") != "Bearer feishu-access" {
+				http.Error(w, "invalid token", http.StatusUnauthorized)
+				return
+			}
+			_, _ = w.Write([]byte(`{"code":0,"data":{"union_id":"feishu-user-b","name":"Workspace B User"}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer provider.Close()
+
+	setupBody := `{"type":"oidc","client_id":"feishu-app","client_secret":"feishu-secret","redirect_url":"http://localhost/auth/providers/feishu/callback","token_url":"` + provider.URL + `/token","userinfo_url":"` + provider.URL + `/userinfo","scope":"openid","auto_create_users":false}`
+	setupRequest := httptest.NewRequest(http.MethodPut, "/auth/providers/feishu/setup", strings.NewReader(setupBody))
+	setupRequest.Header.Set("Content-Type", "application/json")
+	setupRequest.Header.Set("Authorization", "Bearer "+primaryAccessToken)
+	setupResponse := httptest.NewRecorder()
+	mounted.ServeHTTP(setupResponse, setupRequest)
+	if setupResponse.Code != http.StatusOK {
+		t.Fatalf("configure Feishu provider status=%d body=%s", setupResponse.Code, setupResponse.Body.String())
+	}
+
+	bindRequest := httptest.NewRequest(http.MethodPost, "/auth/external-accounts/feishu/bind", strings.NewReader(`{"subject":"feishu-user-b"}`))
+	bindRequest.Header.Set("Content-Type", "application/json")
+	bindRequest.Header.Set("Authorization", "Bearer "+linkedAccessToken)
+	bindResponse := httptest.NewRecorder()
+	mounted.ServeHTTP(bindResponse, bindRequest)
+	if bindResponse.Code != http.StatusCreated {
+		t.Fatalf("bind Workspace B Feishu account status=%d body=%s", bindResponse.Code, bindResponse.Body.String())
+	}
+
+	const returnURL = "http://localhost:3100/auth/callback"
+	startRequest := httptest.NewRequest(http.MethodPost, "/auth/providers/feishu/start", strings.NewReader(`{"return_url":"`+returnURL+`"}`))
+	startRequest.Header.Set("Content-Type", "application/json")
+	startResponse := httptest.NewRecorder()
+	mounted.ServeHTTP(startResponse, startRequest)
+	var started struct {
+		State string `json:"state"`
+	}
+	if err := json.Unmarshal(startResponse.Body.Bytes(), &started); err != nil || startResponse.Code != http.StatusOK || started.State == "" {
+		t.Fatalf("unscoped Feishu start status=%d body=%s err=%v", startResponse.Code, startResponse.Body.String(), err)
+	}
+
+	callbackResponse := httptest.NewRecorder()
+	mounted.ServeHTTP(callbackResponse, httptest.NewRequest(http.MethodGet, "/auth/providers/feishu/callback?code=provider-code&state="+url.QueryEscape(started.State), nil))
+	if callbackResponse.Code != http.StatusSeeOther {
+		t.Fatalf("Feishu callback status=%d body=%s", callbackResponse.Code, callbackResponse.Body.String())
+	}
+	redirect, err := url.Parse(callbackResponse.Header().Get("Location"))
+	if err != nil || redirect.Query().Get("code") == "" {
+		t.Fatalf("Feishu callback redirect=%q err=%v", callbackResponse.Header().Get("Location"), err)
+	}
+
+	exchangeRequest := httptest.NewRequest(http.MethodPost, "/auth/code/exchange", strings.NewReader(`{"code":"`+redirect.Query().Get("code")+`","return_url":"`+returnURL+`"}`))
+	exchangeRequest.Header.Set("Content-Type", "application/json")
+	exchangeResponse := httptest.NewRecorder()
+	mounted.ServeHTTP(exchangeResponse, exchangeRequest)
+	if exchangeResponse.Code != http.StatusOK || !strings.Contains(exchangeResponse.Body.String(), `"workspace_id":"workspace-b"`) {
+		t.Fatalf("unscoped authorization-code exchange status=%d body=%s", exchangeResponse.Code, exchangeResponse.Body.String())
 	}
 }

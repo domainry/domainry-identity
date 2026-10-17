@@ -74,6 +74,27 @@ func TestAuthProviderFlowUsesNeutralCallbackAdapterAfterConsumingState(t *testin
 	}
 }
 
+func TestFederatedCallbackDoesNotAutoCreateUnlinkedIdentityInChallengeWorkspace(t *testing.T) {
+	auth, identityRepository, _ := newFaultAuthDomainService()
+	providers := NewAuthProviderDomainService([]map[string]any{{
+		"key": "oidc", "type": "oidc", "enabled": true,
+		"auth_url": "https://id.example/auth", "client_id": "client", "redirect_url": "https://app.example/callback",
+		"auto_create_users": true,
+	}}, true)
+	flows := NewAuthProviderFlowDomainService(auth, providers)
+	started, err := flows.Start(t.Context(), "workspace-application", "oidc", "GET", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertion := authmodel.AuthExternalIdentityAssertion{Provider: "oidc", Subject: "unlinked-subject", Email: "unlinked@example.test"}
+	if _, err := flows.ExchangeAndCompleteCallback(t.Context(), "workspace-application", "oidc", started.State, authmodel.AuthProviderCallbackInput{}, assertionAdapter{assertion: assertion}); authProviderTestErrorCode(err) != "auth.external_account_unlinked" {
+		t.Fatalf("unlinked callback error=%v", err)
+	}
+	if len(identityRepository.users) != 0 {
+		t.Fatalf("unlinked federated identity created users=%#v", identityRepository.users)
+	}
+}
+
 func TestOTPChallengeCannotBeConsumedOrInvalidatedAcrossWorkspaces(t *testing.T) {
 	auth := NewAuthDomainService(nil, nil, "secret", "", 0, 0, 0, 0, 0, 0, authpolicy.AuthPasswordPolicy{})
 	started, err := auth.BeginOTPLogin(t.Context(), "workspace-a", "otp", "+10000000002")

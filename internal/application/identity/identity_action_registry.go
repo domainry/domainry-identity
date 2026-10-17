@@ -78,6 +78,7 @@ func projectIdentityActionPermissionUsage(usage actioncontract.PermissionUsage) 
 		ActionLabel: definition.Label,
 		RiskLevel:   string(definition.RiskLevel), ApprovalRequired: len(definition.ApprovalPolicies) != 0,
 		AssuranceRequired: append([]string(nil), definition.AssuranceRequired...), LifecycleStatus: string(definition.LifecycleStatus),
+		GrantMode: string(usage.Permission.GrantMode),
 	}
 	if definition.HTTP != nil {
 		projected.HTTPMethod = definition.HTTP.Method

@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/base64"
 	"strings"
 	"time"
@@ -40,6 +41,42 @@ func (s AuthStore) CreateAuthAuthorizationCode(ctx context.Context, value authmo
 	}
 	_, err = s.db.ExecContext(ctx, statement, args...)
 	return err
+}
+
+func (s AuthStore) AuthorizationCodeWorkspace(ctx context.Context, code, applicationKey, redirectURL string, now time.Time) (string, bool, error) {
+	code, applicationKey, redirectURL = strings.TrimSpace(code), strings.TrimSpace(applicationKey), strings.TrimSpace(redirectURL)
+	if code == "" || applicationKey == "" || redirectURL == "" {
+		return "", false, nil
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	statement, arguments, err := query.NewSelectBuilder(s.store.SQLRenderer(), "_identity_auth_authorization_codes").
+		Columns("workspace_id").
+		Where(query.And(
+			query.Equal("code_hash", authAuthorizationCodeHash(code)),
+			query.Equal("application_key", applicationKey),
+			query.Equal("redirect_url", redirectURL),
+			query.Equal("consumed_at", int64(0)),
+			query.GreaterThan("expires_at", now.UTC().UnixMilli()),
+		)).
+		Limit(1).
+		Build()
+	if err != nil {
+		return "", false, err
+	}
+	var workspaceID string
+	if err := s.db.QueryRowContext(ctx, statement, arguments...).Scan(&workspaceID); err != nil {
+		if err == sql.ErrNoRows {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+	workspaceID, err = authWorkspaceID(workspaceID)
+	if err != nil {
+		return "", false, err
+	}
+	return workspaceID, true, nil
 }
 
 func (s AuthStore) ConsumeAuthAuthorizationCode(ctx context.Context, workspaceID, code, applicationKey, redirectURL string, now time.Time) (authmodel.AuthSession, bool, error) {

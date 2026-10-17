@@ -31,6 +31,15 @@ type authPasswordRepository struct {
 	completionErr error
 }
 
+func (r *authPasswordRepository) GlobalExternalAccountWorkspace(_ context.Context, provider, subject string) (string, bool, error) {
+	for _, account := range r.accounts {
+		if strings.EqualFold(account.Provider, provider) && account.ProviderSubject == subject {
+			return "workspace-a", true, nil
+		}
+	}
+	return "", false, nil
+}
+
 func (r *authPasswordRepository) GetIdentityCredential(_ context.Context, _ string, userID string) (identitymodel.IdentityCredential, bool, error) {
 	if r.credentialErr != nil {
 		return identitymodel.IdentityCredential{}, false, r.credentialErr

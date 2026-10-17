@@ -43,24 +43,25 @@ type BindingDependencies struct {
 }
 
 type sdkBinding struct {
-	subjects              SubjectLifecycle
-	workspaceResolver     identitysdk.WorkspaceResolver
-	descriptor            identitysdk.Descriptor
-	auth                  *authapplication.AuthApplicationService
-	providers             *authapplication.AuthProviderApplicationService
-	flows                 *authapplication.AuthProviderFlowApplicationService
-	providerCallback      authcontract.AuthProviderCallbackAdapter
-	access                *identityapplication.IdentityEffectiveAccessApplicationService
-	identity              *identityapplication.IdentityApplicationService
-	applications          *authapplication.AuthApplicationRegistrationService
-	permissions           *identityapplication.IdentityPermissionCatalogApplicationService
-	handlerDelivery       *identityapplication.IdentityHandlerDeliveryApplicationService
-	storeOrganizations    *identityapplication.IdentityStoreOrganizationDeliveryApplicationService
-	organizationUnits     *identityapplication.IdentityOrganizationUnitDeliveryApplicationService
-	clock                 identitysdk.Clock
-	mutationFence         IdentityMutationFence
-	operationsPersistence OperationsPersistence
-	loginTransactions     FederatedLoginTransactionReader
+	subjects                    SubjectLifecycle
+	workspaceResolver           identitysdk.WorkspaceResolver
+	descriptor                  identitysdk.Descriptor
+	auth                        *authapplication.AuthApplicationService
+	providers                   *authapplication.AuthProviderApplicationService
+	flows                       *authapplication.AuthProviderFlowApplicationService
+	providerCallback            authcontract.AuthProviderCallbackAdapter
+	access                      *identityapplication.IdentityEffectiveAccessApplicationService
+	identity                    *identityapplication.IdentityApplicationService
+	applications                *authapplication.AuthApplicationRegistrationService
+	permissions                 *identityapplication.IdentityPermissionCatalogApplicationService
+	handlerDelivery             *identityapplication.IdentityHandlerDeliveryApplicationService
+	storeOrganizations          *identityapplication.IdentityStoreOrganizationDeliveryApplicationService
+	organizationUnits           *identityapplication.IdentityOrganizationUnitDeliveryApplicationService
+	clock                       identitysdk.Clock
+	mutationFence               IdentityMutationFence
+	operationsPersistence       OperationsPersistence
+	loginTransactions           FederatedLoginTransactionReader
+	loginApplicationWorkspaceID identitysdk.WorkspaceID
 }
 
 func NewBinding(dependencies BindingDependencies) (identitysdk.Binding, error) {
@@ -79,7 +80,8 @@ func NewBinding(dependencies BindingDependencies) (identitysdk.Binding, error) {
 	}, auth: dependencies.Authentication, providers: dependencies.ProviderConfiguration, flows: dependencies.ProviderFlows,
 		providerCallback: dependencies.ProviderCallback, access: dependencies.EffectiveAccess, identity: dependencies.Identity,
 		workspaceResolver: dependencies.WorkspaceResolver, applications: dependencies.Applications, permissions: dependencies.Permissions, handlerDelivery: dependencies.HandlerDelivery, storeOrganizations: dependencies.StoreOrganizations, organizationUnits: dependencies.OrganizationUnits, clock: dependencies.Clock,
-		subjects: dependencies.Subjects, mutationFence: dependencies.MutationFence, operationsPersistence: dependencies.OperationsPersistence, loginTransactions: dependencies.LoginTransactions}
+		subjects: dependencies.Subjects, mutationFence: dependencies.MutationFence, operationsPersistence: dependencies.OperationsPersistence, loginTransactions: dependencies.LoginTransactions,
+		loginApplicationWorkspaceID: identitysdk.WorkspaceID(strings.TrimSpace(dependencies.Config.IdentityWorkspaceID))}
 	return binding, nil
 }
 
@@ -241,13 +243,17 @@ func (adapter sdkAuthentication) LoginWithPasswordOutcome(ctx context.Context, r
 }
 
 func (adapter sdkAuthentication) BeginFederatedLogin(ctx context.Context, request identitysdk.BeginFederatedLoginRequest) (identitysdk.ProviderChallenge, error) {
-	if err := adapter.binding.requireMutableWorkspace(ctx, request.WorkspaceID); err != nil {
+	application := identitysdk.ApplicationRef{WorkspaceID: adapter.binding.loginApplicationWorkspaceID, ApplicationKey: request.ApplicationKey}
+	if !application.WorkspaceID.Valid() || !application.ApplicationKey.Valid() {
+		return identitysdk.ProviderChallenge{}, &identitysdk.Error{Code: "identity.application_scope_invalid"}
+	}
+	if err := adapter.binding.requireMutableWorkspace(ctx, application.WorkspaceID); err != nil {
 		return identitysdk.ProviderChallenge{}, err
 	}
-	if err := adapter.binding.validateApplicationRedirect(ctx, identitysdk.ApplicationRef{WorkspaceID: request.WorkspaceID, ApplicationKey: request.ApplicationKey}, request.ReturnURL); err != nil {
+	if err := adapter.binding.validateApplicationRedirect(ctx, application, request.ReturnURL); err != nil {
 		return identitysdk.ProviderChallenge{}, sdkBoundaryError(err)
 	}
-	result, err := adapter.binding.flows.StartForApplication(requestcontext.WithWorkspaceID(ctx, string(request.WorkspaceID)), string(request.WorkspaceID), request.Provider, "POST", request.Phone, string(request.ApplicationKey), request.ReturnURL)
+	result, err := adapter.binding.flows.StartForApplication(requestcontext.WithWorkspaceID(ctx, string(application.WorkspaceID)), string(application.WorkspaceID), request.Provider, "POST", request.Phone, string(application.ApplicationKey), request.ReturnURL)
 	if err != nil {
 		return identitysdk.ProviderChallenge{}, sdkBoundaryError(err)
 	}
@@ -255,14 +261,21 @@ func (adapter sdkAuthentication) BeginFederatedLogin(ctx context.Context, reques
 }
 
 func (adapter sdkAuthentication) ExchangeAuthorizationCode(ctx context.Context, request identitysdk.ExchangeAuthorizationCodeRequest) (identitysdk.AuthSession, error) {
-	if err := adapter.binding.requireMutableWorkspace(ctx, request.WorkspaceID); err != nil {
-		return identitysdk.AuthSession{}, err
+	if !request.ApplicationKey.Valid() {
+		return identitysdk.AuthSession{}, &identitysdk.Error{Code: "identity.application_scope_invalid"}
 	}
-	if err := adapter.binding.validateApplicationRedirect(ctx, identitysdk.ApplicationRef{WorkspaceID: request.WorkspaceID, ApplicationKey: request.ApplicationKey}, request.ReturnURL); err != nil {
+	session, err := adapter.binding.auth.ExchangeAuthorizationCode(ctx, request.Code, string(request.ApplicationKey), request.ReturnURL)
+	if err != nil {
 		return identitysdk.AuthSession{}, sdkBoundaryError(err)
 	}
-	session, err := adapter.binding.auth.ExchangeAuthorizationCode(ctx, string(request.WorkspaceID), request.Code, string(request.ApplicationKey), request.ReturnURL)
-	return sdkAuthSession(session), sdkBoundaryError(err)
+	workspaceID := identitysdk.WorkspaceID(strings.TrimSpace(session.WorkspaceID))
+	if err := adapter.binding.requireMutableWorkspace(ctx, workspaceID); err != nil {
+		return identitysdk.AuthSession{}, err
+	}
+	if err := adapter.binding.validateApplicationRedirect(requestcontext.WithWorkspaceID(ctx, string(workspaceID)), identitysdk.ApplicationRef{WorkspaceID: workspaceID, ApplicationKey: request.ApplicationKey}, request.ReturnURL); err != nil {
+		return identitysdk.AuthSession{}, sdkBoundaryError(err)
+	}
+	return sdkAuthSession(session), nil
 }
 
 func (adapter sdkAuthentication) CompleteFederatedLogin(ctx context.Context, request identitysdk.CompleteFederatedLoginRequest) (identitysdk.FederatedLoginCompletion, error) {
@@ -284,10 +297,16 @@ func (adapter sdkAuthentication) CompleteFederatedLogin(ctx context.Context, req
 	if err != nil {
 		return identitysdk.FederatedLoginCompletion{}, sdkBoundaryError(err)
 	}
+	resolvedWorkspaceID := identitysdk.WorkspaceID(strings.TrimSpace(session.WorkspaceID))
+	resolvedContext := requestcontext.WithWorkspaceID(ctx, string(resolvedWorkspaceID))
+	if err := adapter.binding.requireMutableWorkspace(resolvedContext, resolvedWorkspaceID); err != nil {
+		adapter.binding.auth.Logout(resolvedContext, string(resolvedWorkspaceID), session.RefreshToken)
+		return identitysdk.FederatedLoginCompletion{}, err
+	}
 	if strings.TrimSpace(challenge.ApplicationKey) == "" || strings.TrimSpace(challenge.ReturnURL) == "" {
 		return identitysdk.FederatedLoginCompletion{}, &identitysdk.Error{Code: "auth.authorization_code_request_invalid"}
 	}
-	code, err := adapter.binding.auth.IssueAuthorizationCode(ctx, challenge.ApplicationKey, challenge.ReturnURL, session)
+	code, err := adapter.binding.auth.IssueAuthorizationCode(resolvedContext, challenge.ApplicationKey, challenge.ReturnURL, session)
 	if err != nil {
 		return identitysdk.FederatedLoginCompletion{}, sdkBoundaryError(err)
 	}
