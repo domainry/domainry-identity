@@ -16,6 +16,29 @@ type permissionCatalogRepositoryStub struct {
 	records []identitymodel.IdentityPermissionDefinitionRecord
 }
 
+const identityTestDirectBusinessPermission = "business.customer.read"
+
+func identityTestAuthorizationRegistryWithDirectPermission(t *testing.T) *IdentityActionRegistry {
+	t.Helper()
+	actions := IdentityBuiltinAuthorizationActions()
+	direct := buildIdentityBuiltinAction(permissionAction(
+		identityTestDirectBusinessPermission,
+		"客户",
+		"查看",
+		"GET",
+		"/test/customers",
+		"查看客户",
+		nil,
+	))
+	direct.Permission.GrantMode = actioncontract.PermissionGrantDirect
+	actions = append(actions, direct)
+	registry, err := NewIdentityActionRegistry(actions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return registry
+}
+
 func (repository *permissionCatalogRepositoryStub) ListIdentityPermissionDefinitions(context.Context, string) ([]identitymodel.IdentityPermissionDefinitionRecord, error) {
 	return slices.Clone(repository.records), nil
 }
@@ -116,10 +139,7 @@ func TestRolePermissionSelectionsRequireCurrentSelectableDefinitions(t *testing.
 }
 
 func TestDirectRolePermissionSelectionUsesCurrentRepositoryState(t *testing.T) {
-	registry, err := NewStandaloneIdentityAuthorizationSliceRegistry()
-	if err != nil {
-		t.Fatal(err)
-	}
+	registry := identityTestAuthorizationRegistryWithDirectPermission(t)
 	repository := &permissionCatalogRepositoryStub{}
 	service, err := NewIdentityPermissionCatalogApplicationService(repository, registry, "workspace-primary")
 	if err != nil {
@@ -129,7 +149,7 @@ func TestDirectRolePermissionSelectionUsesCurrentRepositoryState(t *testing.T) {
 		t.Fatal(err)
 	}
 	service.snapshot.Store(nil)
-	key := "identity.roles.list"
+	key := identityTestDirectBusinessPermission
 	if err := service.ValidateDirectPermissionSelections(t.Context(), []string{key}); err != nil {
 		t.Fatalf("current direct permission rejected without cached snapshot: %v", err)
 	}

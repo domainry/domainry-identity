@@ -57,10 +57,7 @@ func (*roleDefinitionPublisherSpy) PublishIdentityRoleFieldPermissions(context.C
 
 func roleDefinitionPublicationCatalog(t *testing.T) *IdentityPermissionCatalogApplicationService {
 	t.Helper()
-	registry, err := NewStandaloneIdentityAuthorizationSliceRegistry()
-	if err != nil {
-		t.Fatal(err)
-	}
+	registry := identityTestAuthorizationRegistryWithDirectPermission(t)
 	catalog, err := NewIdentityPermissionCatalogApplicationService(&permissionCatalogRepositoryStub{}, registry, "workspace-primary")
 	if err != nil {
 		t.Fatal(err)
@@ -79,7 +76,7 @@ func TestRolePermissionPublishRequiresOnlyItsExactAction(t *testing.T) {
 	ctx := requestcontext.WithWorkspaceID(context.Background(), "workspace-primary")
 
 	configuration, err := service.PublishPermissions(ctx, "reviewer", identitymodel.IdentityRolePermissionPublicationRequest{
-		Permissions: identityTestRolePermissions(identitycontract.IdentityActionRolesList), ExpectedSchemaHash: "before-hash",
+		Permissions: identityTestRolePermissions(identityTestDirectBusinessPermission), ExpectedSchemaHash: "before-hash",
 		BusinessReason: "grant role list", OperationID: "publish-1",
 	}, principal)
 	if err != nil {
@@ -88,7 +85,7 @@ func TestRolePermissionPublishRequiresOnlyItsExactAction(t *testing.T) {
 	if publisher.permissionDefinitionLoads != 1 {
 		t.Fatalf("publish current-definition loads = %d", publisher.permissionDefinitionLoads)
 	}
-	if publisher.publishedRoleKey != "reviewer" || len(publisher.publishedPermissions) != 1 || publisher.publishedPermissions[0].PermissionKey != identitycontract.IdentityActionRolesList || publisher.publishedPermissions[0].DataScope != identitymodel.IdentityDataScopeAll {
+	if publisher.publishedRoleKey != "reviewer" || len(publisher.publishedPermissions) != 1 || publisher.publishedPermissions[0].PermissionKey != identityTestDirectBusinessPermission || publisher.publishedPermissions[0].DataScope != identitymodel.IdentityDataScopeAll {
 		t.Fatalf("published role mutation = %q %#v", publisher.publishedRoleKey, publisher.publishedPermissions)
 	}
 	if configuration.SchemaVersion != "2" || configuration.SchemaHash != "published-hash" {
@@ -104,13 +101,13 @@ func TestRolePermissionPublishPreservesExistingBundledPermission(t *testing.T) {
 	principal := identitymodel.Principal{Known: true, WorkspaceID: "workspace-primary", Role: identitymodel.RoleSchema{Permissions: identityTestRolePermissions(identitycontract.IdentityActionRolePermissionsPublish)}}
 	ctx := requestcontext.WithWorkspaceID(context.Background(), "workspace-primary")
 
-	requested := identityTestRolePermissions(bundled, identitycontract.IdentityActionRolesList)
+	requested := identityTestRolePermissions(bundled, identityTestDirectBusinessPermission)
 	if _, err := service.PublishPermissions(ctx, "reviewer", identitymodel.IdentityRolePermissionPublicationRequest{
 		Permissions: requested, ExpectedSchemaHash: "before-hash", BusinessReason: "add role list", OperationID: "publish-preserve-bundle",
 	}, principal); err != nil {
 		t.Fatal(err)
 	}
-	if len(publisher.publishedPermissions) != 2 || publisher.publishedPermissions[0].PermissionKey != bundled || publisher.publishedPermissions[1].PermissionKey != identitycontract.IdentityActionRolesList {
+	if len(publisher.publishedPermissions) != 2 || publisher.publishedPermissions[0].PermissionKey != identityTestDirectBusinessPermission || publisher.publishedPermissions[1].PermissionKey != bundled {
 		t.Fatalf("published permissions=%#v", publisher.publishedPermissions)
 	}
 }
@@ -143,7 +140,7 @@ func TestRoleCreateIsFailClosedForDataAuthority(t *testing.T) {
 	configuration, err := service.Create(t.Context(), identitymodel.IdentityRoleDefinitionMutationRequest{
 		Role: identitymodel.RoleSchema{
 			Key: " Reviewer ", Name: " Reviewer ", Permissions: []identitymodel.RolePermission{
-				{PermissionKey: identitycontract.IdentityActionRolesList, DataScope: identitymodel.IdentityDataScopeAll},
+				{PermissionKey: identityTestDirectBusinessPermission, DataScope: identitymodel.IdentityDataScopeAll},
 			},
 			FieldPermissions:     []identitymodel.FieldPermission{{ObjectKey: "customer", FieldKey: "secret", Read: true}},
 			ReferencePermissions: []identitymodel.ReferencePermission{{SourceObjectKey: "customer", RelationFieldKey: "owner", TargetObjectKey: "identity_user"}},
@@ -156,7 +153,7 @@ func TestRoleCreateIsFailClosedForDataAuthority(t *testing.T) {
 		t.Fatal(err)
 	}
 	created := publisher.createdRole
-	if created.Key != "reviewer" || len(created.Permissions) != 1 || created.Permissions[0].PermissionKey != identitycontract.IdentityActionRolesList || created.Permissions[0].DataScope != identitymodel.IdentityDataScopeAll || len(created.FieldPermissions) != 0 || len(created.ReferencePermissions) != 0 || len(created.ExportRules) != 0 || len(created.GrantableRoleKeys) != 0 || len(created.GuardrailKeys) != 0 || created.ProvisionToWorkspaces {
+	if created.Key != "reviewer" || len(created.Permissions) != 1 || created.Permissions[0].PermissionKey != identityTestDirectBusinessPermission || created.Permissions[0].DataScope != identitymodel.IdentityDataScopeAll || len(created.FieldPermissions) != 0 || len(created.ReferencePermissions) != 0 || len(created.ExportRules) != 0 || len(created.GrantableRoleKeys) != 0 || len(created.GuardrailKeys) != 0 || created.ProvisionToWorkspaces {
 		t.Fatalf("new role did not fail closed: %#v", created)
 	}
 	if created.Audience != identitymodel.IdentityRoleAudienceAny || created.AssignmentMode != identitymodel.IdentityRoleAssignmentManual || created.RiskLevel != identitymodel.IdentityRoleRiskNormal {

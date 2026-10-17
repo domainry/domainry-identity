@@ -342,7 +342,7 @@ func buildIdentityBuiltinAction(spec identityBuiltinActionSpec) identitymodel.Id
 		definition.Permission = &identitymodel.IdentityPermissionDefinitionContract{
 			Key: key, Owner: IdentityBuiltinAuthorizationOwner, ResourceKey: capabilityKey, OperationKey: operationKey,
 			Label: strings.TrimSpace(spec.capabilityLabel) + " · " + strings.TrimSpace(spec.operationLabel), Description: spec.label,
-			Category: "Identity 权限管理", LifecycleStatus: actioncontract.LifecycleActive,
+			Category: "Identity 权限管理", GrantMode: actioncontract.PermissionGrantInternal, LifecycleStatus: actioncontract.LifecycleActive,
 		}
 	}
 	return definition
