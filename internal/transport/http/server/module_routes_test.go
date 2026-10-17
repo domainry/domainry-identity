@@ -155,7 +155,8 @@ func inventoryModuleAction(actionOwner string) actioncontract.ActionDefinition {
 		HTTP:          &actioncontract.HTTPBinding{Method: http.MethodGet, RouteTemplate: "/inventory/items"},
 		Permission: &actioncontract.PermissionDefinition{
 			Key: "inventory.items.list", Owner: actionOwner, ResourceKey: "inventory.items", OperationKey: "list",
-			Label: "Inventory items · List", Category: "Inventory", LifecycleStatus: actioncontract.LifecycleActive,
+			Label: "Inventory items · List", Category: "Inventory", GrantMode: actioncontract.PermissionGrantDirect,
+			LifecycleStatus: actioncontract.LifecycleActive,
 		},
 		EffectClass: actioncontract.EffectRead, RiskLevel: actioncontract.RiskLow,
 		IdempotencyDecision: "not_applicable", AuditClass: "inventory", LifecycleStatus: actioncontract.LifecycleActive,

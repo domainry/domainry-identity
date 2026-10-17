@@ -267,7 +267,9 @@ func TestStandaloneRolePermissionPublicationVersionsRoleSchemaAndSurvivesRestart
 		if err != nil {
 			t.Fatal(err)
 		}
-		identityServer, err := httpserver.NewWithStore(t.Context(), cfg, store, testServerAssemblyOptions())
+		identityServer, err := httpserver.NewWithStore(t.Context(), cfg, store, testServerAssemblyOptions(httpserver.ServerAssemblyOptions{
+			ModuleProviders: []actioncontract.Provider{inventoryModuleProvider("module:inventory", http.NotFoundHandler())},
+		}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -286,6 +288,7 @@ func TestStandaloneRolePermissionPublicationVersionsRoleSchemaAndSurvivesRestart
 	requestedKeys := slices.DeleteFunc(slices.Clone(initialKeys), func(key string) bool {
 		return key == "identity.role_permissions.list"
 	})
+	requestedKeys = append(requestedKeys, "inventory.items.list")
 	published, publishedHash, publishedVersion := publishRolePermissions(t, testServer, adminToken, "organization_administrator", initialHash, "role-permission-publication-1", requestedKeys, "verify direct RoleSchema publication")
 	if publishedHash == "" || publishedHash == initialHash || publishedVersion == "" || publishedVersion == initialVersion {
 		t.Fatalf("publication revision did not advance: initial=%s/%s published=%s/%s", initialVersion, initialHash, publishedVersion, publishedHash)
@@ -305,7 +308,9 @@ func TestStandaloneRolePermissionPublicationVersionsRoleSchemaAndSurvivesRestart
 	}
 	assertRolePermissionPublicationRows(t, store, 2, 1)
 
-	staleKeys := append(slices.Clone(requestedKeys), "identity.role_permissions.list")
+	staleKeys := slices.DeleteFunc(slices.Clone(requestedKeys), func(key string) bool {
+		return key == "inventory.items.list"
+	})
 	stale := publishRolePermissionsResponse(t, testServer, adminToken, "organization_administrator", initialHash, "role-permission-publication-stale", staleKeys, "verify stale CAS")
 	if stale.StatusCode != http.StatusConflict {
 		t.Fatalf("stale RoleSchema publication status=%d body=%s", stale.StatusCode, readResponseBody(t, stale))
@@ -380,7 +385,9 @@ func TestStandaloneRoleAndPolicyAuthoringPublishesRoleSchemaDirectly(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	identityServer, err := httpserver.NewWithStore(t.Context(), cfg, store, testServerAssemblyOptions())
+	identityServer, err := httpserver.NewWithStore(t.Context(), cfg, store, testServerAssemblyOptions(httpserver.ServerAssemblyOptions{
+		ModuleProviders: []actioncontract.Provider{inventoryModuleProvider("module:inventory", http.NotFoundHandler())},
+	}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -392,7 +399,7 @@ func TestStandaloneRoleAndPolicyAuthoringPublishesRoleSchemaDirectly(t *testing.
 	create := identitymodel.IdentityRoleDefinitionMutationRequest{
 		Role: identitymodel.RoleSchema{
 			Key: "auditor", Name: "Auditor", Description: "Reads audit resources",
-			Permissions:      identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "identity.roles.list"),
+			Permissions:      identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "inventory.items.list"),
 			FieldPermissions: []identitymodel.FieldPermission{{ObjectKey: "invoice", FieldKey: "amount", Read: true, Write: true}},
 		},
 		BusinessReason: "create a least-privilege audit role",
@@ -407,7 +414,7 @@ func TestStandaloneRoleAndPolicyAuthoringPublishesRoleSchemaDirectly(t *testing.
 		t.Fatalf("created role revision=%s/%s", createdVersion, createdHash)
 	}
 	createdRole := storedRoleSchema(t, store, "auditor")
-	if !reflect.DeepEqual(createdRole.Permissions, identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "identity.roles.list")) || len(createdRole.FieldPermissions) != 0 {
+	if !reflect.DeepEqual(createdRole.Permissions, identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "inventory.items.list")) || len(createdRole.FieldPermissions) != 0 {
 		t.Fatalf("created role was not fail closed: %+v", createdRole)
 	}
 	replay := identityRolePolicyRequest(t, testServer, adminToken, http.MethodPost, "/identity/roles", "", "role-create-1", create)
@@ -418,7 +425,7 @@ func TestStandaloneRoleAndPolicyAuthoringPublishesRoleSchemaDirectly(t *testing.
 	assertRoleDefinitionEventRows(t, store, "auditor", "identity_role.created", 1, 1)
 
 	permissionResponse := identityRolePolicyRequest(t, testServer, adminToken, http.MethodPut, "/identity/roles/auditor/permissions", createdHash, "role-permissions-1", identitymodel.IdentityRolePermissionPublicationRequest{
-		Permissions:    identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeOwner, "identity.roles.list"),
+		Permissions:    identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeOwner, "inventory.items.list"),
 		BusinessReason: "restrict invoices to owned records",
 	})
 	if permissionResponse.StatusCode != http.StatusOK {
@@ -430,7 +437,7 @@ func TestStandaloneRoleAndPolicyAuthoringPublishesRoleSchemaDirectly(t *testing.
 		t.Fatalf("permission publication hash=%q", dataHash)
 	}
 	afterData := storedRoleSchema(t, store, "auditor")
-	if !reflect.DeepEqual(afterData.Permissions, identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeOwner, "identity.roles.list")) {
+	if !reflect.DeepEqual(afterData.Permissions, identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeOwner, "inventory.items.list")) {
 		t.Fatalf("permission publication changed the wrong RoleSchema fields: %+v", afterData)
 	}
 
