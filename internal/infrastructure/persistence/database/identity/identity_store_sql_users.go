@@ -79,6 +79,10 @@ func (s *SQLIdentityStore) ListIdentityUsersWithinDataScope(ctx context.Context,
 	return s.userStore().ListWithinDataScope(ctx, workspaceID, scope)
 }
 
+func (s *SQLIdentityStore) ArchiveIdentityAccountWithinDataScope(ctx context.Context, workspaceID, userID string, expectedVersion int64, scope identitymodel.IdentityDataScopeFilter) (int, bool, error) {
+	return s.userStore().ArchiveWithinDataScope(ctx, workspaceID, userID, expectedVersion, scope)
+}
+
 func (s *SQLIdentityStore) ListIdentityProfileBindingsByUser(ctx context.Context, workspaceID, userID string) ([]identitymodel.IdentityProfileBinding, error) {
 	workspaceID, err := identityWorkspaceID(workspaceID)
 	if err != nil {

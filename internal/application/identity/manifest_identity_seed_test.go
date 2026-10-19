@@ -2,6 +2,7 @@ package identity
 
 import (
 	"context"
+	"github.com/domainry/domainry-foundation/requestcontext"
 	"strings"
 	"testing"
 
@@ -181,6 +182,18 @@ func (s loginSeedStore) GetIdentityUser(_ context.Context, workspace, id string)
 }
 func (s loginSeedStore) GlobalLoginNameAvailable(_ context.Context, _, _, login string) (bool, error) {
 	return !s.occupied[strings.ToLower(strings.TrimSpace(login))], nil
+}
+
+func TestManifestResyncDoesNotResurrectDeletedUsersOrRoles(t *testing.T) {
+	workspace := "workspace-primary"
+	ctx := requestcontext.WithWorkspaceID(t.Context(), workspace)
+	store := loginSeedStore{existing: map[string]identitymodel.IdentityUser{workspace + "/implicit": {ID: "implicit", Status: identitymodel.IdentityStatusDeleted}, workspace + "/declared": {ID: "declared", Status: identitymodel.IdentityStatusDeleted}}}
+	manifest := manifestmodel.ManifestSchema{IdentityBootstrap: &identitymodel.ManifestIdentityBootstrapSchema{Users: []identitymodel.ManifestIdentityUserSchema{{ID: "declared"}}}}
+	seed := Seed{Users: []identitymodel.IdentityUser{{ID: "implicit"}, {ID: "declared"}, {ID: "active"}}, UserRoles: []identitymodel.IdentityUserRoleAssignment{{UserID: "implicit", RoleID: "admin"}, {UserID: "declared", RoleID: "admin"}, {UserID: "active", RoleID: "sales"}}}
+	got, err := preserveExistingImplicitSeedUsers(ctx, store, manifest, seed)
+	if err != nil || len(got.Users) != 1 || got.Users[0].ID != "active" || len(got.UserRoles) != 1 || got.UserRoles[0].UserID != "active" {
+		t.Fatalf("resync restored archived accounts: %+v %v", got, err)
+	}
 }
 func TestGeneratedSeedLoginNamesAvoidGlobalDuplicatesAndSurviveResync(t *testing.T) {
 	seed := Seed{Users: []identitymodel.IdentityUser{{ID: "admin", Email: "admin@example.com"}}}

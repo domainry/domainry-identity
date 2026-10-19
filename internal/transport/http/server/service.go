@@ -17,6 +17,7 @@ import (
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	"github.com/domainry/domainry-identity-sdk/browsergateway"
 	auditapplication "github.com/domainry/domainry-identity/internal/application/auditbinding"
+	authapplication "github.com/domainry/domainry-identity/internal/application/auth"
 	identityauthoring "github.com/domainry/domainry-identity/internal/application/authoring"
 	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
 	portabilityapplication "github.com/domainry/domainry-identity/internal/application/portability"
@@ -311,7 +312,9 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) 
 		securityAudit(r, principal, event, summary, metadata)
 	}
 	authHandler := authhttp.NewAuthHandler(authhttp.AuthDependencies{
-		Passwords: core.Auth, ExternalAccounts: core.Auth, RoleRequests: core.Identity,
+		FeishuEventPolicy: identityprovider.FeishuEventPolicy{Enabled: cfg.AuthFeishuOffboardingEnabled, AppID: cfg.AuthFeishuOffboardingAppID, TenantKey: cfg.AuthFeishuOffboardingTenantKey, WorkspaceID: cfg.AuthFeishuOffboardingWorkspaceID, VerificationToken: cfg.AuthFeishuEventVerificationToken, EncryptKey: cfg.AuthFeishuEventEncryptKey},
+		FeishuOffboarding: authapplication.FeishuOffboardingService{Auth: core.Auth, Identity: core.Identity, WorkspaceID: cfg.AuthFeishuOffboardingWorkspaceID},
+		Passwords:         core.Auth, ExternalAccounts: core.Auth, RoleRequests: core.Identity,
 		ProviderConfiguration: core.ProviderConfiguration, ProviderFlows: core.ProviderFlows, ProviderCallback: identityprovider.CallbackAdapter{},
 		Principal: httpSupport.principal, WriteJSON: httpSupport.writeJSON, WriteError: httpSupport.writeError,
 		WriteServiceError: httpSupport.writeServiceError, DecodeJSON: httpSupport.decodeJSON,

@@ -35,15 +35,22 @@ type Store struct {
 func New(backend Backend, now func() string) *Store { return &Store{backend: backend, now: now} }
 
 func (s *Store) List(ctx context.Context, workspaceID string) ([]identitymodel.IdentityUser, error) {
-	return s.ListWithinDataScope(ctx, workspaceID, identitymodel.IdentityDataScopeFilter{Unrestricted: true})
+	return s.list(ctx, workspaceID, identitymodel.IdentityDataScopeFilter{Unrestricted: true}, true)
 }
 
 func (s *Store) ListWithinDataScope(ctx context.Context, workspaceID string, scope identitymodel.IdentityDataScopeFilter) ([]identitymodel.IdentityUser, error) {
+	return s.list(ctx, workspaceID, scope, false)
+}
+
+func (s *Store) list(ctx context.Context, workspaceID string, scope identitymodel.IdentityDataScopeFilter, includeDeleted bool) ([]identitymodel.IdentityUser, error) {
 	workspaceID, err := workspace(workspaceID)
 	if err != nil {
 		return nil, err
 	}
 	builder := selectUsers(s.backend.SQLRenderer(), workspaceID).OrderBy(query.Ascending("id"))
+	if !includeDeleted {
+		builder.Where(query.NotEqual("status", string(identitymodel.IdentityStatusDeleted)))
+	}
 	applyUserDataScope(builder, scope)
 	statement, arguments, err := builder.Build()
 	if err != nil {
@@ -168,7 +175,7 @@ func (s *Store) Upsert(ctx context.Context, execer Execer, workspaceID string, i
 				update.Set(column, values[index])
 			}
 		}
-		statement, arguments, err = update.Where(query.And(query.Equal("id", item.ID), query.Equal("version", item.Version-1), query.NotEqual("status", "erased"))).Build()
+		statement, arguments, err = update.Where(query.And(query.Equal("id", item.ID), query.Equal("version", item.Version-1), query.NotEqual("status", "erased"), query.NotEqual("status", "deleted"))).Build()
 		if err != nil {
 			return err
 		}
@@ -240,7 +247,7 @@ func (s *Store) UpdateManyWithExecutorCAS(ctx context.Context, execer Execer, wo
 		if item.AccountType == "" {
 			item.AccountType = identitymodel.IdentityAccountHuman
 		}
-		predicates := []query.Predicate{query.Equal("id", item.ID), query.Equal("version", item.Version), query.NotEqual("status", "erased")}
+		predicates := []query.Predicate{query.Equal("id", item.ID), query.Equal("version", item.Version), query.NotEqual("status", "erased"), query.NotEqual("status", "deleted")}
 		if !scope.Unrestricted {
 			predicates = append(predicates, userDataScopePredicate(scope))
 		}
@@ -278,7 +285,7 @@ func (s *Store) UpdateLocale(ctx context.Context, workspaceID, userID, locale st
 	if err != nil {
 		return identitymodel.IdentityUser{}, false, err
 	}
-	statement, arguments, err := query.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_users", workspaceID).Set("locale", locale).SetExpression("version", query.Add(query.Column("version"), query.Value(1))).Set("updated_at", timevalue.Millis(s.now())).Where(query.And(query.Equal("id", userID), query.Equal("version", expectedVersion), query.NotEqual("status", "erased"))).Build()
+	statement, arguments, err := query.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_users", workspaceID).Set("locale", locale).SetExpression("version", query.Add(query.Column("version"), query.Value(1))).Set("updated_at", timevalue.Millis(s.now())).Where(query.And(query.Equal("id", userID), query.Equal("version", expectedVersion), query.NotEqual("status", "erased"), query.NotEqual("status", "deleted"))).Build()
 	if err != nil {
 		return identitymodel.IdentityUser{}, false, fmt.Errorf("build identity user locale update: %w", err)
 	}
@@ -367,7 +374,7 @@ func (s *Store) UpdateManyWithExecutorWithinDataScope(ctx context.Context, tx *s
 		if item.AccountType == "" {
 			item.AccountType = identitymodel.IdentityAccountHuman
 		}
-		predicates := []query.Predicate{query.Equal("id", item.ID), query.NotEqual("status", "erased")}
+		predicates := []query.Predicate{query.Equal("id", item.ID), query.NotEqual("status", "erased"), query.NotEqual("status", "deleted")}
 		if !scope.Unrestricted {
 			predicates = append(predicates, userDataScopePredicate(scope))
 		}
@@ -505,11 +512,18 @@ func (s *Store) SetStatus(ctx context.Context, workspaceID, userID string, statu
 	if err != nil {
 		return err
 	}
-	statement, arguments, err := query.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_users", workspaceID).Set("status", string(status)).SetExpression("version", query.Add(query.Column("version"), query.Value(1))).Set("updated_at", timevalue.Millis(s.now())).Where(query.And(query.Equal("id", userID), query.NotEqual("status", "erased"))).Build()
+	statement, arguments, err := query.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_users", workspaceID).Set("status", string(status)).SetExpression("version", query.Add(query.Column("version"), query.Value(1))).Set("updated_at", timevalue.Millis(s.now())).Where(query.And(query.Equal("id", userID), query.NotEqual("status", "erased"), query.NotEqual("status", "deleted"))).Build()
 	if err != nil {
 		return fmt.Errorf("build identity user status update: %w", err)
 	}
-	_, err = s.backend.DB().ExecContext(ctx, statement, arguments...)
+	result, err := s.backend.DB().ExecContext(ctx, statement, arguments...)
+	if err != nil {
+		return err
+	}
+	count, err := result.RowsAffected()
+	if err == nil && count != 1 {
+		return apperror.New(apperror.KindConflict, "backend.identity.user_deleted_or_changed", nil, nil)
+	}
 	return err
 }
 
@@ -527,7 +541,7 @@ func (s *Store) SetStatusWithinDataScope(ctx context.Context, workspaceID, userI
 	if err != nil || !allowed {
 		return false, err
 	}
-	predicates := []query.Predicate{query.Equal("id", userID), query.NotEqual("status", "erased")}
+	predicates := []query.Predicate{query.Equal("id", userID), query.NotEqual("status", "erased"), query.NotEqual("status", "deleted")}
 	if !scope.Unrestricted {
 		predicates = append(predicates, userDataScopePredicate(scope))
 	}
@@ -563,7 +577,7 @@ func (s *Store) DisableWithinDataScope(ctx context.Context, workspaceID, userID 
 	if err != nil || !allowed {
 		return 0, false, err
 	}
-	predicates := []query.Predicate{query.Equal("id", userID), query.NotEqual("status", "erased")}
+	predicates := []query.Predicate{query.Equal("id", userID), query.NotEqual("status", "erased"), query.NotEqual("status", "deleted")}
 	if !scope.Unrestricted {
 		predicates = append(predicates, userDataScopePredicate(scope))
 	}
@@ -631,7 +645,7 @@ func scopedUserMutationCandidatesExist(ctx context.Context, tx *sql.Tx, renderer
 		seen[userID] = struct{}{}
 		values = append(values, userID)
 	}
-	predicates := []query.Predicate{query.In("id", values...), query.NotEqual("status", "erased")}
+	predicates := []query.Predicate{query.In("id", values...), query.NotEqual("status", "erased"), query.NotEqual("status", "deleted")}
 	if !scope.Unrestricted {
 		predicates = append(predicates, userDataScopePredicate(scope))
 	}

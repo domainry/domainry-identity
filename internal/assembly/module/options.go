@@ -9,6 +9,7 @@ import (
 
 	auditsdk "github.com/domainry/domainry-audit-sdk"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
+	"github.com/domainry/domainry-identity/credentialemail"
 	manifestmodel "github.com/domainry/domainry-identity/internal/domain/manifest/model"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 	metadatasdk "github.com/domainry/domainry-metadata-sdk"
@@ -34,7 +35,9 @@ type Options struct {
 	MetadataFactory metadatasdk.Factory
 	// Clock is an optional module-local infrastructure override, primarily for
 	// deterministic tests. The embedding Runtime does not supply it.
-	Clock identitysdk.Clock
+	Clock              identitysdk.Clock
+	CredentialEmail    credentialemail.Delivery
+	CredentialSetupURL string
 }
 
 // OptionsFromEnvironment supplies standalone defaults. A Runtime host using

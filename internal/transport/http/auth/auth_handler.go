@@ -13,6 +13,7 @@ import (
 	authmodel "github.com/domainry/domainry-identity/internal/domain/auth/model"
 	authprojection "github.com/domainry/domainry-identity/internal/domain/auth/projection"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	"github.com/domainry/domainry-identity/internal/infrastructure/identityprovider"
 )
 
 type AuthProviderFlowApplication interface {
@@ -39,6 +40,8 @@ type authAuthorizationCodeIssuer interface {
 }
 
 type AuthHandler struct {
+	feishuEventPolicy         identityprovider.FeishuEventPolicy
+	feishuOffboarding         authapplication.FeishuOffboardingService
 	passwords                 *authapplication.AuthApplicationService
 	externalAccounts          *authapplication.AuthApplicationService
 	roleRequests              *identityapplication.IdentityApplicationService
@@ -60,6 +63,8 @@ type AuthHandler struct {
 }
 
 type AuthDependencies struct {
+	FeishuEventPolicy         identityprovider.FeishuEventPolicy
+	FeishuOffboarding         authapplication.FeishuOffboardingService
 	Passwords                 *authapplication.AuthApplicationService
 	ExternalAccounts          *authapplication.AuthApplicationService
 	RoleRequests              *identityapplication.IdentityApplicationService
@@ -98,6 +103,7 @@ func NewAuthHandler(deps AuthDependencies) *AuthHandler {
 		providerFailureAudit: deps.ProviderFailureAudit, securityAudit: deps.SecurityAudit,
 		securityAuditForPrincipal: deps.SecurityAuditForPrincipal, applicationRegistered: deps.ApplicationRegistered,
 		writesFrozen: deps.WritesFrozen, federatedLoginWorkspace: deps.FederatedLoginWorkspace,
+		feishuEventPolicy: deps.FeishuEventPolicy, feishuOffboarding: deps.FeishuOffboarding,
 	}
 }
 

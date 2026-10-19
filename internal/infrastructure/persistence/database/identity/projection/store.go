@@ -43,6 +43,7 @@ func (s Store) SearchIdentityUsersWithinDataScope(ctx context.Context, workspace
 		return identitymodel.IdentityUserPage{}, err
 	}
 	conditions := identityProjectionPredicates(queryValue, identityUserProjectionColumns)
+	conditions = append(conditions, query.NotEqual("status", string(identitymodel.IdentityStatusDeleted)))
 	if !scope.Unrestricted {
 		conditions = append(conditions, identityUserDataScopePredicate(scope))
 	}

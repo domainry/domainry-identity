@@ -306,20 +306,32 @@ func preserveExistingImplicitSeedUsers(ctx context.Context, identityStore identi
 	}
 	declaredUserIDs := manifestDeclaredIdentityUserIDs(manifest)
 	workspaceID := manifestIdentityWorkspaceID(ctx)
-	users := append([]identitymodel.IdentityUser(nil), seed.Users...)
-	for index, user := range users {
-		if declaredUserIDs[strings.TrimSpace(user.ID)] {
-			continue
-		}
+	users := make([]identitymodel.IdentityUser, 0, len(seed.Users))
+	deletedIDs := map[string]bool{}
+	for _, user := range seed.Users {
 		existing, found, err := reader.GetIdentityUser(ctx, workspaceID, user.ID)
 		if err != nil {
 			return Seed{}, fmt.Errorf("load implicit identity seed user %s: %w", user.ID, err)
 		}
-		if found {
-			users[index] = existing
+		// An account lifecycle decision wins over source seed defaults. Do not
+		// resurrect the user or its role grants on a later manifest refresh.
+		if found && existing.Status == identitymodel.IdentityStatusDeleted {
+			deletedIDs[user.ID] = true
+			continue
 		}
+		if found && !declaredUserIDs[strings.TrimSpace(user.ID)] {
+			user = existing
+		}
+		users = append(users, user)
 	}
 	seed.Users = users
+	assignments := make([]identitymodel.IdentityUserRoleAssignment, 0, len(seed.UserRoles))
+	for _, assignment := range seed.UserRoles {
+		if !deletedIDs[assignment.UserID] {
+			assignments = append(assignments, assignment)
+		}
+	}
+	seed.UserRoles = assignments
 	return seed, nil
 }
 

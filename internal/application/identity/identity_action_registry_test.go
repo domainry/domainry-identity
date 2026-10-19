@@ -13,8 +13,8 @@ func TestStandaloneAuthorizationSliceRegistryOwnsCompleteRouteAndPermissionMatri
 		t.Fatal(err)
 	}
 	definitions := registry.Definitions()
-	if len(definitions) != 129 {
-		t.Fatalf("Identity Action count=%d want=129", len(definitions))
+	if len(definitions) != 136 {
+		t.Fatalf("Identity Action count=%d want=136", len(definitions))
 	}
 	seenHTTP := map[string]string{}
 	pageBindings := 0
@@ -82,8 +82,8 @@ func TestStandaloneAuthorizationSliceRegistryOwnsCompleteRouteAndPermissionMatri
 		}
 	}
 	permissions := registry.OwnedPermissionDefinitions(IdentityBuiltinAuthorizationOwner)
-	if len(permissions) != 97 {
-		t.Fatalf("owned permission count=%d want=97", len(permissions))
+	if len(permissions) != 100 {
+		t.Fatalf("owned permission count=%d want=100", len(permissions))
 	}
 	for _, key := range []string{
 		"identity.handler_delivery.create", "identity.handler_delivery.update",

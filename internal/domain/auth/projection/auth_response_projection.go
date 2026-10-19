@@ -4,11 +4,12 @@ import authmodel "github.com/domainry/domainry-identity/internal/domain/auth/mod
 
 // AuthMeResponse is the authenticated identity projection returned to callers.
 type AuthMeResponse struct {
-	User               authmodel.AuthUser   `json:"user"`
-	Roles              []authmodel.AuthRole `json:"roles"`
-	DefaultRole        string               `json:"default_role"`
-	Permissions        []string             `json:"permissions"`
-	MustChangePassword bool                 `json:"must_change_password"`
+	User                  authmodel.AuthUser   `json:"user"`
+	Roles                 []authmodel.AuthRole `json:"roles"`
+	DefaultRole           string               `json:"default_role"`
+	Permissions           []string             `json:"permissions"`
+	AuthorizationRevision string               `json:"authorization_revision"`
+	MustChangePassword    bool                 `json:"must_change_password"`
 }
 
 // AuthProviderStartResponse is the public projection for an external login challenge.

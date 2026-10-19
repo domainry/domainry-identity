@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/domainry/domainry-identity/credentialemail"
 	authcontract "github.com/domainry/domainry-identity/internal/domain/auth/contract"
 	authrepository "github.com/domainry/domainry-identity/internal/domain/auth/repository"
 )
@@ -23,31 +24,33 @@ import (
 // aggregate's full storage contract merely because Store implements both.
 // AuthDomainService owns authentication sessions and credential operations.
 type AuthDomainService struct {
-	identity          authcontract.AuthIdentityPort
-	localeIdentity    authcontract.AuthLocaleIdentityPort
-	authorization     authcontract.AuthAuthorization
-	identityStore     authrepository.AuthRepository
-	secret            []byte
-	issuer            string
-	audience          string
-	activeKID         string
-	activePrivateKey  ed25519.PrivateKey
-	verificationKeys  map[string]ed25519.PublicKey
-	defaultPassword   string
-	accessTTL         time.Duration
-	refreshTTL        time.Duration
-	maxLoginFailures  int
-	loginLockDuration time.Duration
-	otpResendCooldown time.Duration
-	otpMaxAttempts    int
-	passwordPolicy    authpolicy.AuthPasswordPolicy
-	defaultLocale     string
-	normalizeLocale   func(string) string
-	supportedLocales  map[string]struct{}
-	readRandomBytes   func([]byte) (int, error)
-	guestMu           sync.Mutex
-	challengeMu       sync.Mutex
-	challenges        map[string]authmodel.AuthProviderChallenge
+	identity           authcontract.AuthIdentityPort
+	localeIdentity     authcontract.AuthLocaleIdentityPort
+	authorization      authcontract.AuthAuthorization
+	identityStore      authrepository.AuthRepository
+	secret             []byte
+	issuer             string
+	audience           string
+	activeKID          string
+	activePrivateKey   ed25519.PrivateKey
+	verificationKeys   map[string]ed25519.PublicKey
+	defaultPassword    string
+	accessTTL          time.Duration
+	refreshTTL         time.Duration
+	maxLoginFailures   int
+	loginLockDuration  time.Duration
+	otpResendCooldown  time.Duration
+	otpMaxAttempts     int
+	passwordPolicy     authpolicy.AuthPasswordPolicy
+	defaultLocale      string
+	normalizeLocale    func(string) string
+	supportedLocales   map[string]struct{}
+	readRandomBytes    func([]byte) (int, error)
+	guestMu            sync.Mutex
+	challengeMu        sync.Mutex
+	challenges         map[string]authmodel.AuthProviderChallenge
+	credentialEmail    credentialemail.Delivery
+	credentialSetupURL string
 }
 
 func NewAuthDomainService(identity authcontract.AuthIdentityPort, identityStore authrepository.AuthRepository, secret string, defaultPassword string, accessTTL time.Duration, refreshTTL time.Duration, maxLoginFailures int, loginLockDuration time.Duration, otpResendCooldown time.Duration, otpMaxAttempts int, passwordPolicy authpolicy.AuthPasswordPolicy) *AuthDomainService {

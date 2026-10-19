@@ -12,6 +12,7 @@ import (
 	"github.com/domainry/domainry-foundation/modulehttp"
 	"github.com/domainry/domainry-foundation/requestcontext"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
+	"github.com/domainry/domainry-identity/credentialemail"
 	identitysdkadapter "github.com/domainry/domainry-identity/internal/adapter/identitysdk"
 	auditapplication "github.com/domainry/domainry-identity/internal/application/auditbinding"
 	auditrepository "github.com/domainry/domainry-identity/internal/application/auditbinding"
@@ -36,12 +37,14 @@ import (
 )
 
 type Options struct {
-	WorkspaceResolver identitysdk.WorkspaceResolver
-	Clock             identitysdk.Clock
-	WorkspaceID       string
-	AuditFactory      auditsdk.Factory
-	MetadataFactory   metadatasdk.Factory
-	ModuleProviders   []actioncontract.Provider
+	WorkspaceResolver  identitysdk.WorkspaceResolver
+	Clock              identitysdk.Clock
+	WorkspaceID        string
+	AuditFactory       auditsdk.Factory
+	MetadataFactory    metadatasdk.Factory
+	ModuleProviders    []actioncontract.Provider
+	CredentialEmail    credentialemail.Delivery
+	CredentialSetupURL string
 }
 
 // Core is the deployment-neutral Identity application graph shared by the
@@ -215,6 +218,9 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 			auditApp.AppendWithMetadata(ctx, auditcontract.EventFamilyIdentitySecurity, event, objectKey, recordID, principal, summary, before, after, metadata)
 		},
 	)
+	if err := authApp.ConfigureCredentialEmail(options.CredentialEmail, options.CredentialSetupURL); err != nil {
+		return fail(fmt.Errorf("configure Identity credential emails: %w", err))
+	}
 	if err := authApp.ConfigureSigningKeys(defaultString(cfg.AuthJWTActiveKID, "dev-v1"), defaultString(cfg.AuthJWTSecret, config.DevJWTSecret), cfg.AuthJWTVerificationKeys); err != nil {
 		return fail(fmt.Errorf("configure signing keys: %w", err))
 	}

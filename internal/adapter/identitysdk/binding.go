@@ -359,7 +359,7 @@ func (adapter sdkAuthentication) CurrentSession(ctx context.Context, request ide
 	for _, role := range me.Roles {
 		roles = append(roles, identitysdk.Role{ID: role.ID, Key: role.Key, Label: role.Label})
 	}
-	return identitysdk.SessionView{SessionID: identitysdk.SessionID(claims.SessionID), WorkspaceID: identitysdk.WorkspaceID(claims.WorkspaceID), SubjectID: identitysdk.SubjectID(claims.Subject), AuthorizationRevision: identitysdk.AuthorizationRevision(claims.AuthorizationRevision), User: identitysdk.User{ID: me.User.ID, Name: me.User.Name, Email: me.User.Email, Locale: me.User.Locale, Version: me.User.Version, Status: string(me.User.Status)}, Roles: roles, DefaultRole: me.DefaultRole, Permissions: append([]string(nil), me.Permissions...), MustChangePassword: me.MustChangePassword}, nil
+	return identitysdk.SessionView{SessionID: identitysdk.SessionID(claims.SessionID), WorkspaceID: identitysdk.WorkspaceID(claims.WorkspaceID), SubjectID: identitysdk.SubjectID(claims.Subject), AuthorizationRevision: identitysdk.AuthorizationRevision(me.AuthorizationRevision), User: identitysdk.User{ID: me.User.ID, Name: me.User.Name, Email: me.User.Email, Locale: me.User.Locale, Version: me.User.Version, Status: string(me.User.Status)}, Roles: roles, DefaultRole: me.DefaultRole, Permissions: append([]string(nil), me.Permissions...), MustChangePassword: me.MustChangePassword}, nil
 }
 
 type sdkTokenVerifier struct{ binding *sdkBinding }

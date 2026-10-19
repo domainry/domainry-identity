@@ -187,6 +187,30 @@ func (s *AuthDomainService) BindExternalAccount(ctx context.Context, workspaceID
 	return account, nil
 }
 
+// LinkedExternalIdentityUser is an internal trusted-provider lookup, not an HTTP
+// enumeration API. It performs no email matching or provisioning.
+func (s *AuthDomainService) LinkedExternalIdentityUser(ctx context.Context, workspaceID, provider, subject string) (string, bool, error) {
+	provider, subject = normalizeProvider(provider), strings.TrimSpace(subject)
+	if provider == "" || subject == "" {
+		return "", false, nil
+	}
+	accounts, err := s.identityStore.ListIdentityExternalAccounts(ctx, workspaceID, "")
+	if err != nil {
+		return "", false, err
+	}
+	userID := ""
+	for _, account := range accounts {
+		if normalizeProvider(account.Provider) != provider || strings.TrimSpace(account.ProviderSubject) != subject {
+			continue
+		}
+		if userID != "" && userID != account.UserID {
+			return "", false, forbidden("auth.external_account_ambiguous")
+		}
+		userID = account.UserID
+	}
+	return userID, userID != "", nil
+}
+
 func (s *AuthDomainService) UnbindExternalAccount(ctx context.Context, workspaceID, userID string, provider string, accountID string) error {
 	userID = strings.TrimSpace(userID)
 	provider = normalizeProvider(provider)

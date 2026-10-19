@@ -95,13 +95,8 @@ func (s AuthStore) UpsertAuthProviderCredential(ctx context.Context, provider st
 	insert := query.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_auth_provider_credentials", workspaceID).
 		Columns("provider_key", "configuration_json", "secret_envelope", "updated_by", "created_at", "updated_at").
 		Values(provider, string(configuration), envelope, credential.UpdatedBy, identitypersistence.TimeMillis(credential.CreatedAt), identitypersistence.TimeMillis(credential.UpdatedAt))
-	insert.OnConflictDoUpdate([]string{"workspace_id", "provider_key"},
-		query.AssignExpression("configuration_json", query.InsertedValue("configuration_json")),
-		query.AssignExpression("secret_envelope", query.InsertedValue("secret_envelope")),
-		query.AssignExpression("updated_by", query.InsertedValue("updated_by")),
-		query.AssignExpression("created_at", query.InsertedValue("created_at")),
-		query.AssignExpression("updated_at", query.InsertedValue("updated_at")),
-	)
+	s.store.ApplyUpsert(insert, []string{"workspace_id", "provider_key"},
+		"configuration_json", "secret_envelope", "updated_by", "created_at", "updated_at")
 	statement, args, buildErr := insert.Build()
 	if buildErr != nil {
 		return authmodel.AuthProviderCredential{}, buildErr

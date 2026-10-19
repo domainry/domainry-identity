@@ -85,6 +85,13 @@ type AuthOTPTransactionRepository interface {
 	ConsumeAuthOTPTransaction(context.Context, string, string, string, string, []string, string, int, time.Time) (authmodel.AuthProviderChallenge, bool, error)
 }
 
+// AuthEmailCredentialRepository consumes the grant, changes the credential and
+// revokes existing sessions in one owner transaction. A false result includes
+// expired, replayed, mismatched or superseded grants without revealing users.
+type AuthEmailCredentialRepository interface {
+	CompleteEmailCredential(context.Context, string, string, string, string, string, int, time.Time) (string, bool, error)
+}
+
 // AuthAuthorizationCodeRepository owns the short-lived handoff from the
 // Identity provider callback to a Runtime browser gateway. Codes are hashed at
 // rest and atomically consumed once.

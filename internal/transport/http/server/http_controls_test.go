@@ -38,8 +38,8 @@ func TestStandaloneRouteInventoryBaseline(t *testing.T) {
 	t.Cleanup(func() { _ = server.CloseContext(t.Context()) })
 	routes := server.RouteInventory()
 	sum := sha256.Sum256([]byte(strings.Join(routes, "\n")))
-	const wantCount = 155
-	const wantSHA256 = "a72e833613efe0910328c7da63158b5a2984b1fdd47c28b16b5de5160994dce4"
+	const wantCount = 162
+	const wantSHA256 = "6b68461a4759ee1967f3ab0931f057d166ac27d87260962d959169e733b1d5b8"
 	if len(routes) != wantCount || hex.EncodeToString(sum[:]) != wantSHA256 {
 		t.Fatalf("standalone route inventory count=%d sha256=%s routes=%#v", len(routes), hex.EncodeToString(sum[:]), routes)
 	}
@@ -137,7 +137,11 @@ func TestEmbeddedAuthRouteInventoryOwnsEveryNonBrowserRoute(t *testing.T) {
 	wantPublic := []string{
 		"GET /.well-known/jwks.json",
 		"GET /.well-known/openid-configuration",
+		"POST /auth/password/setup",
+		"POST /auth/password/recovery/start",
+		"POST /auth/password/recovery/complete",
 		"POST /auth/guest",
+		"POST /auth/providers/feishu/events",
 		"POST /auth/providers/{provider}/exchange",
 		"GET /auth/external-accounts",
 		"POST /auth/external-accounts/{provider}/bind",

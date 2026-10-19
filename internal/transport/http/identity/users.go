@@ -187,6 +187,23 @@ func (h *IdentityHandler) deleteIdentityUser(w http.ResponseWriter, r *http.Requ
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *IdentityHandler) archiveIdentityUser(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		ExpectedVersion int64 `json:"expected_version"`
+	}
+	if !h.decodeJSON(w, r, &input) {
+		return
+	}
+	userID := strings.TrimSpace(r.PathValue("userID"))
+	revoked, err := h.users.ArchiveUserWithinDataScope(r.Context(), userID, input.ExpectedVersion, h.principal(r))
+	if err != nil {
+		h.writeServiceError(w, r, err)
+		return
+	}
+	h.appendIdentityMutationAudit(r, "identity_user_archived", "identity_user", userID, "Archived login account; business history retained", map[string]any{"revoked_sessions": revoked})
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *IdentityHandler) getIdentityUserDeletionImpact(w http.ResponseWriter, r *http.Request) {
 	impact, err := h.users.UserDeletionImpactWithinDataScope(r.Context(), strings.TrimSpace(r.PathValue("userID")), h.principal(r), "identity.users.deletion_impact")
 	if err != nil {

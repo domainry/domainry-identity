@@ -107,6 +107,12 @@ type Config struct {
 	AuthTOTPLoginMFAWhenEnrolled          bool
 	AuthAllowDevHeaders                   bool
 	AuthExternalAutoCreateUsers           bool
+	AuthFeishuOffboardingEnabled          bool
+	AuthFeishuOffboardingAppID            string
+	AuthFeishuOffboardingTenantKey        string
+	AuthFeishuOffboardingWorkspaceID      string
+	AuthFeishuEventVerificationToken      string
+	AuthFeishuEventEncryptKey             string
 	IdentityApplicationServiceCredentials map[string]string
 	IdentityApplicationPermissionOwners   map[string][]string
 	IdentityApplicationServicePolicies    map[string][]string
@@ -216,6 +222,12 @@ func FromEnv() Config {
 		AuthTOTPLoginMFAWhenEnrolled:          boolEnv("AUTH_TOTP_LOGIN_MFA_WHEN_ENROLLED", false),
 		AuthAllowDevHeaders:                   boolEnv("AUTH_ALLOW_DEV_HEADERS", false),
 		AuthExternalAutoCreateUsers:           boolEnv("AUTH_EXTERNAL_AUTO_CREATE_USERS", false),
+		AuthFeishuOffboardingEnabled:          boolEnv("AUTH_FEISHU_OFFBOARDING_ENABLED", false),
+		AuthFeishuOffboardingAppID:            strings.TrimSpace(os.Getenv("AUTH_FEISHU_OFFBOARDING_APP_ID")),
+		AuthFeishuOffboardingTenantKey:        strings.TrimSpace(os.Getenv("AUTH_FEISHU_OFFBOARDING_TENANT_KEY")),
+		AuthFeishuOffboardingWorkspaceID:      strings.TrimSpace(os.Getenv("AUTH_FEISHU_OFFBOARDING_WORKSPACE_ID")),
+		AuthFeishuEventVerificationToken:      strings.TrimSpace(os.Getenv("AUTH_FEISHU_EVENT_VERIFICATION_TOKEN")),
+		AuthFeishuEventEncryptKey:             strings.TrimSpace(os.Getenv("AUTH_FEISHU_EVENT_ENCRYPT_KEY")),
 		IdentityApplicationServiceCredentials: keyMapEnv("IDENTITY_APPLICATION_SERVICE_CREDENTIALS"),
 		IdentityApplicationPermissionOwners:   keyListMapEnv("IDENTITY_APPLICATION_PERMISSION_OWNERS"),
 		IdentityApplicationServicePolicies:    keyListMapEnv("IDENTITY_APPLICATION_SERVICE_POLICIES"),

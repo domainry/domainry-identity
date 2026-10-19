@@ -52,12 +52,27 @@ func TestCurrentSessionIdentity(t *testing.T) {
 		assertExternalAuthFault(t, err, fault)
 	})
 
-	t.Run("permission lookup failure", func(t *testing.T) {
+	t.Run("current authorization lookup failure", func(t *testing.T) {
 		auth, _, authorization := currentIdentityFixture()
-		authorization.permissionsErr = fault
+		authorization.principalErr = fault
 		_, err := auth.Me(t.Context(), validIdentityAccessToken(t, auth, "user", "workspace-primary"))
 		assertExternalAuthFault(t, err, fault)
 	})
+	for _, invalid := range []struct {
+		name      string
+		principal identitymodel.Principal
+	}{
+		{"unknown current principal", identitymodel.Principal{UserID: "user", AuthorizationRevision: "current-revision"}},
+		{"missing current revision", identitymodel.Principal{UserID: "user", Known: true}},
+	} {
+		t.Run(invalid.name, func(t *testing.T) {
+			auth, _, authorization := currentIdentityFixture()
+			authorization.principal = invalid.principal
+			if _, err := auth.Me(t.Context(), validIdentityAccessToken(t, auth, "user", "workspace-primary")); err == nil {
+				t.Fatal("session accepted without a known current authorization revision")
+			}
+		})
+	}
 
 	t.Run("credential handoff lookup failure", func(t *testing.T) {
 		auth, _, _ := currentIdentityFixture()
@@ -74,15 +89,13 @@ func TestCurrentSessionIdentity(t *testing.T) {
 			UserID:             "user",
 			MustChangePassword: true,
 		}}
-		authorization.permissions = []string{
-			"identity.users.list",
-			"runtime.operations.list_operations",
-		}
+		authorization.principal.Role.Permissions = identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll,
+			"runtime.operations.list_operations", "identity.users.list", "identity.users.list")
 		response, err := auth.Me(t.Context(), validIdentityAccessToken(t, auth, "user", "workspace-primary"))
 		if err != nil {
 			t.Fatalf("resolve current session identity: %v", err)
 		}
-		if response.User.ID != "user" || response.User.Locale != "en-US" || response.User.Version != 1 || response.DefaultRole != "sales" || !response.MustChangePassword || len(response.Permissions) != 2 {
+		if response.User.ID != "user" || response.User.Locale != "en-US" || response.User.Version != 1 || response.DefaultRole != "sales" || !response.MustChangePassword || len(response.Permissions) != 2 || response.Permissions[0] != "identity.users.list" || response.AuthorizationRevision != "current-revision" {
 			t.Fatalf("unexpected current identity: %#v", response)
 		}
 	})
@@ -143,7 +156,7 @@ func currentIdentityFixture() (*AuthDomainService, *faultExternalIdentityReposit
 	identityRepository.users = []identitymodel.IdentityUser{activeExternalIdentityUser("user", "user@example.com")}
 	identityRepository.roleAssignments = []identitymodel.IdentityUserRoleAssignment{{UserID: "user", RoleID: "role-sales"}}
 	authorization := &faultSessionAuthorization{
-		principal:   identitymodel.Principal{UserID: "user", Known: true},
+		principal:   identitymodel.Principal{UserID: "user", Known: true, AuthorizationRevision: "current-revision", Role: identitymodel.RoleSchema{Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "record.read")}},
 		permissions: []string{"record.read"},
 	}
 	auth.authorization = authorization

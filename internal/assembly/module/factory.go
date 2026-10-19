@@ -204,11 +204,13 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 		}
 	}
 	identityRuntime, err := assembly.NewWithManifest(ctx, cfg, store, manifest, assembly.Options{
-		WorkspaceResolver: workspaceResolver,
-		Clock:             factory.Options.Clock,
-		WorkspaceID:       string(application.WorkspaceID),
-		AuditFactory:      factory.Options.AuditFactory,
-		MetadataFactory:   factory.Options.MetadataFactory,
+		WorkspaceResolver:  workspaceResolver,
+		Clock:              factory.Options.Clock,
+		CredentialEmail:    factory.Options.CredentialEmail,
+		CredentialSetupURL: factory.Options.CredentialSetupURL,
+		WorkspaceID:        string(application.WorkspaceID),
+		AuditFactory:       factory.Options.AuditFactory,
+		MetadataFactory:    factory.Options.MetadataFactory,
 	})
 	if err != nil {
 		_ = store.CloseContext(context.Background())

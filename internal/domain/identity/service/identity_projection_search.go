@@ -214,6 +214,9 @@ func (s *IdentityDomainService) searchUsers(ctx context.Context, query identitym
 	needle := strings.ToLower(strings.TrimSpace(query.Search))
 	filtered := make([]identitymodel.IdentityUser, 0, len(users))
 	for _, user := range users {
+		if user.Status == identitymodel.IdentityStatusDeleted {
+			continue
+		}
 		value := func(field string) string { return identityUserValue(user, field) }
 		if identityProjectionMatchesSearch(needle, fields, value) && identityProjectionMatchesFilters(filters, value) {
 			filtered = append(filtered, user)

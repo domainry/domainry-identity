@@ -4,6 +4,7 @@ import authprojection "github.com/domainry/domainry-identity/internal/domain/aut
 
 import (
 	"context"
+	"slices"
 
 	"github.com/domainry/domainry-foundation/requestcontext"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
@@ -26,20 +27,30 @@ func (s *AuthDomainService) Me(ctx context.Context, accessToken string) (authpro
 	if err != nil {
 		return authprojection.AuthMeResponse{}, err
 	}
-	permissions, err := s.authorization.ResolveEffectivePermissions(ctx, user.ID)
+	principal, err := s.authorization.ResolvePrincipal(ctx, user.ID)
 	if err != nil {
 		return authprojection.AuthMeResponse{}, err
 	}
+	if !principal.Known || principal.AuthorizationRevision == "" {
+		return authprojection.AuthMeResponse{}, forbidden("auth.user_disabled")
+	}
+	// Permissions and their revision must come from the same current principal.
+	// Returning the JWT's issuance revision would let resource servers keep an
+	// obsolete AccessBundle after a department, role, or permission change.
+	permissions := identitymodel.RolePermissionKeys(principal.Role.Permissions)
+	slices.Sort(permissions)
+	permissions = slices.Compact(permissions)
 	mustChangePassword, err := s.RequiresPasswordChange(ctx, claims.WorkspaceID, user.ID)
 	if err != nil {
 		return authprojection.AuthMeResponse{}, err
 	}
 	return authprojection.AuthMeResponse{
-		User:               s.authUser(user),
-		Roles:              authRoles(roles),
-		DefaultRole:        identitypolicy.SelectDefaultRole(roles),
-		Permissions:        permissions,
-		MustChangePassword: mustChangePassword,
+		User:                  s.authUser(user),
+		Roles:                 authRoles(roles),
+		DefaultRole:           identitypolicy.SelectDefaultRole(roles),
+		Permissions:           permissions,
+		AuthorizationRevision: principal.AuthorizationRevision,
+		MustChangePassword:    mustChangePassword,
 	}, nil
 }
 

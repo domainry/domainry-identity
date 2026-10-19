@@ -62,6 +62,7 @@ type AuthProviderChallenge struct {
 	RequestID             string   `json:"request_id,omitempty"`
 	ReturnURL             string   `json:"return_url,omitempty"`
 	Phone                 string   `json:"phone,omitempty"`
+	Email                 string   `json:"email,omitempty"`
 	Code                  string   `json:"code,omitempty"`
 	MaskedDestination     string   `json:"masked_destination,omitempty"`
 	RetryAt               string   `json:"retry_at,omitempty"`

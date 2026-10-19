@@ -110,6 +110,13 @@ type IdentityAccountDataScopeDisableRepository interface {
 	DisableIdentityAccountWithinDataScope(context.Context, string, string, identitymodel.IdentityDataScopeFilter) (int, bool, error)
 }
 
+// Archive is an atomic login-lifecycle operation, not subject erasure. It keeps
+// the user and external identity tombstones so business references remain valid
+// and a later federated login cannot recreate the departed account.
+type IdentityAccountArchiveRepository interface {
+	ArchiveIdentityAccountWithinDataScope(context.Context, string, string, int64, identitymodel.IdentityDataScopeFilter) (int, bool, error)
+}
+
 type IdentityRoleRequestDecisionRepository interface {
 	ApplyIdentityRoleRequestDecision(context.Context, string, identitymodel.IdentityRoleRequest, []identitymodel.IdentityUserRoleAssignment, string) error
 }
