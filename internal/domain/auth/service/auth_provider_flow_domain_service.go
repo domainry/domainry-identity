@@ -294,7 +294,9 @@ func (s *AuthProviderFlowDomainService) deliverOTPChallenge(ctx context.Context,
 		return result, nil
 	}
 	if s.delivery == nil || strings.TrimSpace(config.ConnectionKey) == "" {
-		_ = s.auth.UpdateOTPChallengeDelivery(ctx, workspaceID, config.Key, result.State, authmodel.AuthChallengeStatusFailed, "", "delivery unavailable")
+		if err := s.auth.UpdateOTPChallengeDelivery(ctx, workspaceID, config.Key, result.State, authmodel.AuthChallengeStatusFailed, "", "delivery unavailable"); err != nil {
+			return authprojection.AuthProviderStartResponse{}, apperror.New(apperror.KindInternal, "auth.otp_delivery_state_update_failed", err, nil)
+		}
 		return authprojection.AuthProviderStartResponse{}, &apperror.AppError{Kind: apperror.KindUnavailable, Code: "auth.otp_delivery_unavailable"}
 	}
 	receipt, err := s.delivery.DeliverSecurityChallenge(ctx, authcontract.AuthSecurityChallengeDeliveryRequest{
@@ -305,7 +307,9 @@ func (s *AuthProviderFlowDomainService) deliverOTPChallenge(ctx context.Context,
 		// Provider errors are untrusted and may echo request fields. Persist only a
 		// stable non-sensitive reason; the returned error still carries operational
 		// detail for request-scoped logging at the owning boundary.
-		_ = s.auth.UpdateOTPChallengeDelivery(ctx, workspaceID, config.Key, result.State, authmodel.AuthChallengeStatusFailed, receipt.ResponseRef, "delivery failed")
+		if updateErr := s.auth.UpdateOTPChallengeDelivery(ctx, workspaceID, config.Key, result.State, authmodel.AuthChallengeStatusFailed, receipt.ResponseRef, "delivery failed"); updateErr != nil {
+			return authprojection.AuthProviderStartResponse{}, apperror.New(apperror.KindInternal, "auth.otp_delivery_state_update_failed", updateErr, nil)
+		}
 		return authprojection.AuthProviderStartResponse{}, &apperror.AppError{Kind: apperror.KindUnavailable, Code: "auth.otp_delivery_failed"}
 	}
 	if err := s.auth.UpdateOTPChallengeDelivery(ctx, workspaceID, config.Key, result.State, authmodel.AuthChallengeStatusActive, receipt.ResponseRef, ""); err != nil {

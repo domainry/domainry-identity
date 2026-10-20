@@ -7,6 +7,7 @@ import (
 	"time"
 
 	actioncontract "github.com/domainry/domainry-foundation/action"
+	"github.com/domainry/domainry-foundation/httpresponse"
 	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
 )
 
@@ -209,7 +210,7 @@ func controlClassOf(classes []listenerClass) listenerClass {
 func listenerOnly(listener listenerClass, resolver *routeExposureResolver, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		if !resolver.exposedOn(request, listener) {
-			http.NotFound(w, request)
+			httpresponse.WriteError(w, request, httpresponse.Failure{Status: http.StatusNotFound, Code: "identity.route_not_found"})
 			return
 		}
 		next.ServeHTTP(w, request)

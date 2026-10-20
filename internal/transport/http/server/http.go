@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/domainry/domainry-foundation/apperror"
+	"github.com/domainry/domainry-foundation/httpresponse"
 	"github.com/domainry/domainry-foundation/requestcontext"
-	"github.com/domainry/domainry-foundation/telemetry"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	authapplication "github.com/domainry/domainry-identity/internal/application/auth"
 	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
@@ -75,25 +75,15 @@ func (h *httpSupport) principal(r *http.Request) identitymodel.Principal {
 }
 
 func (h *httpSupport) writeJSON(w http.ResponseWriter, status int, value any) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(status)
-	if value != nil {
-		_ = json.NewEncoder(w).Encode(value)
-	}
+	httpresponse.WriteJSON(w, status, value)
 }
 
-func (h *httpSupport) writeError(w http.ResponseWriter, _ *http.Request, status int, code string, params ...string) {
-	telemetry.RecordHTTPStatusError(w, status, code)
+func (h *httpSupport) writeError(w http.ResponseWriter, r *http.Request, status int, code string, params ...string) {
 	details := map[string]string{}
 	for index := 0; index+1 < len(params); index += 2 {
 		details[params[index]] = params[index+1]
 	}
-	payload := map[string]any{"code": code, "error": map[string]any{"code": code}}
-	if len(details) > 0 {
-		payload["params"] = details
-		payload["error"].(map[string]any)["params"] = details
-	}
-	h.writeJSON(w, status, payload)
+	httpresponse.WriteError(w, r, httpresponse.Failure{Status: status, Code: code, Params: details})
 }
 
 func (h *httpSupport) writeServiceError(w http.ResponseWriter, r *http.Request, err error) {
@@ -103,11 +93,11 @@ func (h *httpSupport) writeServiceError(w http.ResponseWriter, r *http.Request, 
 		if status == 0 {
 			status = http.StatusBadRequest
 		}
-		params := []string{}
+		details := make(map[string]string, len(sdkError.Params))
 		for key, value := range sdkError.Params {
-			params = append(params, key, value)
+			details[key] = value
 		}
-		h.writeError(w, r, status, sdkError.Code, params...)
+		httpresponse.WriteError(w, r, httpresponse.Failure{Status: status, Code: sdkError.Code, Message: sdkError.Message, Params: details, Cause: err})
 		return
 	}
 	status := http.StatusInternalServerError
@@ -125,11 +115,7 @@ func (h *httpSupport) writeServiceError(w http.ResponseWriter, r *http.Request, 
 	case apperror.KindUnavailable:
 		status = http.StatusServiceUnavailable
 	}
-	params := []string{}
-	for key, value := range apperror.ParamsOf(err) {
-		params = append(params, key, value)
-	}
-	h.writeError(w, r, status, apperror.CodeOf(err), params...)
+	httpresponse.WriteError(w, r, httpresponse.Failure{Status: status, Code: apperror.CodeOf(err), Params: apperror.ParamsOf(err), Cause: err})
 }
 
 func (h *httpSupport) decodeJSON(w http.ResponseWriter, r *http.Request, value any) bool {

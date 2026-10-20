@@ -3,7 +3,10 @@
 package module
 
 import (
+	"context"
+
 	"github.com/domainry/domainry-foundation/schemaownership"
+	identitysdkadapter "github.com/domainry/domainry-identity/internal/adapter/identitysdk"
 	moduleassembly "github.com/domainry/domainry-identity/internal/assembly/module"
 	databaseschema "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/schema"
 	organizationunit "github.com/domainry/domainry-identity/organizationunit"
@@ -46,3 +49,13 @@ const (
 func OptionsFromEnvironment() Options { return moduleassembly.OptionsFromEnvironment() }
 
 func NewFactory(options Options) *Factory { return moduleassembly.NewFactory(options) }
+
+// BeginPrincipalResolutionScope reuses authoritative Identity reads only within
+// one synchronous host evaluation. Always call end before external IO/execution.
+func BeginPrincipalResolutionScope(ctx context.Context) (context.Context, func()) {
+	return identitysdkadapter.BeginPrincipalResolutionScope(ctx)
+}
+
+func BeginPrincipalReadScope(ctx context.Context) (context.Context, func() error) {
+	return identitysdkadapter.BeginPrincipalReadScope(ctx)
+}

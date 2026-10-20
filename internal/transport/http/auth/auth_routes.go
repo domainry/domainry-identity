@@ -3,6 +3,7 @@ package auth
 import (
 	"net/http"
 
+	"github.com/domainry/domainry-foundation/httpresponse"
 	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
 	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
@@ -70,7 +71,7 @@ func (h *AuthHandler) registerAuthAction(mux routeRegistrar, actionKey string, n
 				h.writeError(w, r, http.StatusForbidden, "auth.permission_denied")
 				return
 			}
-			w.WriteHeader(http.StatusForbidden)
+			httpresponse.WriteError(w, r, httpresponse.Failure{Status: http.StatusForbidden, Code: "auth.permission_denied"})
 			return
 		}
 		next(w, r)
