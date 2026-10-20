@@ -13,7 +13,7 @@ import (
 
 type sdkPrincipalResolver struct{ binding *sdkBinding }
 
-func (adapter sdkPrincipalResolver) Resolve(ctx context.Context, request identitysdk.PrincipalResolutionRequest) (identitysdk.PrincipalResolution, error) {
+func (adapter sdkPrincipalResolver) resolve(ctx context.Context, request identitysdk.PrincipalResolutionRequest) (identitysdk.PrincipalResolution, error) {
 	request.RoleKey, request.SessionRoleKey = strings.TrimSpace(request.RoleKey), strings.TrimSpace(request.SessionRoleKey)
 	if request.SessionRoleKey != "" && (request.RoleKey != "" || request.Workload != nil) {
 		return identitysdk.PrincipalResolution{}, &identitysdk.Error{StatusCode: http.StatusBadRequest, Code: "identity.principal_role_selection_invalid"}
