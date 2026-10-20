@@ -57,7 +57,7 @@ func IdentityBuiltinAuthorizationActions() []identitymodel.IdentityActionDefinit
 		anonymousAction("auth.providers.verify", "认证提供方", "验证", "POST", "/auth/providers/{provider}/verify", "验证认证提供方挑战"),
 		anonymousAction("auth.providers.exchange", "认证提供方", "交换凭证", "POST", "/auth/providers/{provider}/exchange", "交换认证提供方凭证"),
 		authPrincipalAction("auth.external_accounts.list", "外部账号", "列出", "GET", "/auth/external-accounts", "列出当前用户外部账号"),
-		authPrincipalAction("auth.external_accounts.bind", "外部账号", "绑定", "POST", "/auth/external-accounts/{provider}/bind", "绑定当前用户外部账号"),
+		authPrincipalAction("auth.external_accounts.link_start", "外部账号", "验证绑定", "POST", "/auth/external-accounts/{provider}/link/start", "通过认证提供方验证后绑定当前用户外部账号"),
 		authPrincipalAction("auth.external_accounts.unbind", "外部账号", "解绑", "DELETE", "/auth/external-accounts/{provider}/{accountID}", "解绑当前用户外部账号"),
 		authPrincipalAction("auth.me.get", "当前用户", "查看", "GET", "/auth/me", "查看当前用户"),
 		authPrincipalAction("auth.me.update", "当前用户", "更新", "PATCH", "/auth/me", "更新当前用户设置"),

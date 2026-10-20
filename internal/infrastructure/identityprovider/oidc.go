@@ -35,6 +35,7 @@ func ExchangeOIDCCallback(ctx context.Context, provider, code string, config aut
 		}
 		assertion, err := fetchFeishuUserInfo(ctx, token, config)
 		assertion.Provider = strings.ToLower(strings.TrimSpace(provider))
+		assertion.ProviderSubjectVerified = err == nil && strings.TrimSpace(assertion.Subject) != ""
 		return assertion, err
 	}
 	return exchangeStandardOIDC(ctx, provider, code, config, challenge)
@@ -115,6 +116,7 @@ func exchangeStandardOIDC(ctx context.Context, providerKey, code string, config 
 		Provider: strings.ToLower(strings.TrimSpace(providerKey)), Subject: verified.Subject,
 		Email: FirstNonEmptyClaim(claims, "email"), DisplayName: FirstNonEmptyClaim(claims, "name", "preferred_username", "email"),
 		AvatarURL: FirstNonEmptyClaim(claims, "picture"), Claims: claims, Metadata: `{"source":"verified_oidc_id_token"}`,
+		ProviderSubjectVerified: true,
 	}, nil
 }
 

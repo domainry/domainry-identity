@@ -197,6 +197,63 @@ func TestAuthProviderStartSupportsOIDCOTPAndRejectsInvalidRequests(t *testing.T)
 	}
 }
 
+func TestExternalAccountLinkStartsForPrincipalAndCompletesWithVerifiedProviderSubject(t *testing.T) {
+	fixture := newAuthProviderFlowFixture(t)
+	fixture.repository.accounts = nil
+	startRequest := providerFlowRequest(http.MethodPost, "/auth/external-accounts/oidc/link/start", "oidc", `{"application_key":"aurora","return_url":"https://aurora.example/sso/callback"}`)
+	startResponse := httptest.NewRecorder()
+	fixture.handler.authStartExternalAccountLink(startResponse, startRequest)
+	var started authprojection.AuthProviderStartResponse
+	if startResponse.Code != http.StatusOK || json.Unmarshal(startResponse.Body.Bytes(), &started) != nil || started.State == "" || started.AuthURL == "" {
+		t.Fatalf("start status=%d response=%#v body=%s error=%v", startResponse.Code, started, startResponse.Body.String(), fixture.capture.serviceErr)
+	}
+
+	fixture.callback.assertion = authmodel.AuthExternalIdentityAssertion{Provider: "oidc", Subject: "verified-oidc-user", Email: "user@example.com", ProviderSubjectVerified: true}
+	callbackRequest := providerFlowRequest(http.MethodGet, "/auth/providers/oidc/callback?state="+url.QueryEscape(started.State)+"&code=verified-code", "oidc", "")
+	callbackResponse := httptest.NewRecorder()
+	fixture.handler.authProviderCallback(callbackResponse, callbackRequest)
+	if callbackResponse.Code != http.StatusSeeOther || !strings.Contains(callbackResponse.Header().Get("Location"), "https://aurora.example/sso/callback?") {
+		t.Fatalf("callback status=%d location=%q code=%q body=%s", callbackResponse.Code, callbackResponse.Header().Get("Location"), fixture.capture.errorCode, callbackResponse.Body.String())
+	}
+	if fixture.callback.challenge.Purpose != authmodel.AuthChallengePurposeLink || fixture.callback.challenge.UserID != "user-1" {
+		t.Fatalf("callback challenge=%#v", fixture.callback.challenge)
+	}
+	if len(fixture.repository.accounts) != 1 || fixture.repository.accounts[0].UserID != "user-1" || fixture.repository.accounts[0].ProviderSubject != "verified-oidc-user" {
+		t.Fatalf("accounts=%#v", fixture.repository.accounts)
+	}
+
+	replayResponse := httptest.NewRecorder()
+	fixture.handler.authProviderCallback(replayResponse, callbackRequest)
+	if replayResponse.Code != http.StatusForbidden || fixture.capture.errorCode != "auth.provider_state_invalid" {
+		t.Fatalf("replay status=%d code=%q", replayResponse.Code, fixture.capture.errorCode)
+	}
+}
+
+func TestExternalAccountLinkRequiresPrincipalAndProviderProof(t *testing.T) {
+	fixture := newAuthProviderFlowFixture(t)
+	fixture.handler.principal = func(*http.Request) identitymodel.Principal { return identitymodel.Principal{} }
+	unauthorized := httptest.NewRecorder()
+	fixture.handler.authStartExternalAccountLink(unauthorized, providerFlowRequest(http.MethodPost, "/", "oidc", `{"return_url":"https://aurora.example/sso/callback"}`))
+	if unauthorized.Code != http.StatusForbidden || fixture.capture.errorCode != "auth.token_required" {
+		t.Fatalf("unauthorized status=%d code=%q", unauthorized.Code, fixture.capture.errorCode)
+	}
+
+	fixture = newAuthProviderFlowFixture(t)
+	fixture.repository.accounts = nil
+	startResponse := httptest.NewRecorder()
+	fixture.handler.authStartExternalAccountLink(startResponse, providerFlowRequest(http.MethodPost, "/", "oidc", `{"return_url":"https://aurora.example/sso/callback"}`))
+	var started authprojection.AuthProviderStartResponse
+	if startResponse.Code != http.StatusOK || json.Unmarshal(startResponse.Body.Bytes(), &started) != nil {
+		t.Fatalf("start status=%d body=%s", startResponse.Code, startResponse.Body.String())
+	}
+	fixture.callback.assertion = authmodel.AuthExternalIdentityAssertion{Provider: "oidc", Subject: "unverified-subject"}
+	callbackResponse := httptest.NewRecorder()
+	fixture.handler.authProviderCallback(callbackResponse, providerFlowRequest(http.MethodGet, "/auth/providers/oidc/callback?state="+url.QueryEscape(started.State)+"&code=code", "oidc", ""))
+	if callbackResponse.Code != http.StatusForbidden || fixture.capture.errorCode != "auth.external_account_unlinked" || len(fixture.repository.accounts) != 0 {
+		t.Fatalf("callback status=%d code=%q accounts=%#v", callbackResponse.Code, fixture.capture.errorCode, fixture.repository.accounts)
+	}
+}
+
 func TestAuthProviderStartAllowsNilAndEmptyPostBodies(t *testing.T) {
 	for _, nilBody := range []bool{true, false} {
 		fixture := newAuthProviderFlowFixture(t)

@@ -10,6 +10,8 @@ import (
 	"errors"
 	"net/url"
 	"testing"
+
+	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
 type authProviderCallbackAdapterProbe struct {
@@ -92,6 +94,61 @@ func TestFederatedCallbackDoesNotAutoCreateUnlinkedIdentityInChallengeWorkspace(
 	}
 	if len(identityRepository.users) != 0 {
 		t.Fatalf("unlinked federated identity created users=%#v", identityRepository.users)
+	}
+}
+
+func TestVerifiedOIDCCallbackLinksOnlyTheAuthenticatedChallengeUser(t *testing.T) {
+	auth, identityRepository, authRepository := newFaultAuthDomainService()
+	identityRepository.users = []identitymodel.IdentityUser{activeExternalIdentityUser("user-current", "current@example.test")}
+	providers := NewAuthProviderDomainService([]map[string]any{{
+		"key": "feishu", "type": "oidc", "enabled": true,
+		"auth_url": "https://open.feishu.cn/open-apis/authen/v1/authorize", "client_id": "client", "redirect_url": "https://app.example/callback",
+	}}, false)
+	flows := NewAuthProviderFlowDomainService(auth, providers)
+	started, err := flows.StartExternalAccountLinkForApplication(t.Context(), "workspace-application", "user-current", "feishu", "aurora", "https://aurora.example/sso/callback")
+	if err != nil {
+		t.Fatal(err)
+	}
+	challenge := auth.challenges[started.State]
+	if challenge.Purpose != authmodel.AuthChallengePurposeLink || challenge.UserID != "user-current" || challenge.ReturnURL != "https://aurora.example/sso/callback" {
+		t.Fatalf("link challenge=%#v", challenge)
+	}
+	assertion := authmodel.AuthExternalIdentityAssertion{Provider: "feishu", Subject: "verified-feishu-user", Email: "current@example.test", ProviderSubjectVerified: true}
+	session, completed, err := flows.ExchangeAndCompleteCallbackWithChallenge(t.Context(), "workspace-application", "feishu", started.State, authmodel.AuthProviderCallbackInput{}, assertionAdapter{assertion: assertion})
+	if err != nil || session.User.ID != "user-current" || completed.Purpose != authmodel.AuthChallengePurposeLink {
+		t.Fatalf("session=%#v challenge=%#v err=%v", session, completed, err)
+	}
+	if len(authRepository.accounts) != 1 || authRepository.accounts[0].UserID != "user-current" || authRepository.accounts[0].ProviderSubject != "verified-feishu-user" {
+		t.Fatalf("linked accounts=%#v", authRepository.accounts)
+	}
+	if _, _, err := flows.ExchangeAndCompleteCallbackWithChallenge(t.Context(), "workspace-application", "feishu", started.State, authmodel.AuthProviderCallbackInput{}, assertionAdapter{assertion: assertion}); authProviderTestErrorCode(err) != "auth.provider_state_invalid" {
+		t.Fatalf("link callback replay error=%v", err)
+	}
+}
+
+func TestExternalAccountLinkRejectsUnverifiedOrMismatchedProviderAssertions(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		assertion authmodel.AuthExternalIdentityAssertion
+		wantCode  string
+	}{
+		{name: "unverified", assertion: authmodel.AuthExternalIdentityAssertion{Provider: "feishu", Subject: "subject"}, wantCode: "auth.external_account_unverified"},
+		{name: "provider mismatch", assertion: authmodel.AuthExternalIdentityAssertion{Provider: "other", Subject: "subject", ProviderSubjectVerified: true}, wantCode: "auth.external_account_provider_mismatch"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			auth, identityRepository, authRepository := newFaultAuthDomainService()
+			identityRepository.users = []identitymodel.IdentityUser{activeExternalIdentityUser("user-current", "current@example.test")}
+			providers := NewAuthProviderDomainService([]map[string]any{{"key": "feishu", "type": "oidc", "enabled": true, "auth_url": "https://open.feishu.cn/authorize", "client_id": "client", "redirect_url": "https://app.example/callback"}}, false)
+			flows := NewAuthProviderFlowDomainService(auth, providers)
+			started, err := flows.StartExternalAccountLinkForApplication(t.Context(), "workspace-application", "user-current", "feishu", "aurora", "https://aurora.example/sso/callback")
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, _, err = flows.ExchangeAndCompleteCallbackWithChallenge(t.Context(), "workspace-application", "feishu", started.State, authmodel.AuthProviderCallbackInput{}, assertionAdapter{assertion: test.assertion})
+			if authProviderTestErrorCode(err) != test.wantCode || len(authRepository.accounts) != 0 {
+				t.Fatalf("error=%v accounts=%#v", err, authRepository.accounts)
+			}
+		})
 	}
 }
 

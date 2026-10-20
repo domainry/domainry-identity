@@ -86,6 +86,7 @@ const (
 	AuthChallengePurposeLogin     = "login"
 	AuthChallengePurposeLoginMFA  = "login_mfa"
 	AuthChallengePurposeAction    = "action_assurance"
+	AuthChallengePurposeLink      = "external_account_link"
 	AuthChallengeStatusPending    = "pending_delivery"
 	AuthChallengeStatusActive     = "active"
 	AuthChallengeStatusFailed     = "failed"

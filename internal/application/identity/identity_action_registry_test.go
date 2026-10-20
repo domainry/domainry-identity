@@ -64,6 +64,7 @@ func TestStandaloneAuthorizationSliceRegistryOwnsCompleteRouteAndPermissionMatri
 	for key, binding := range map[string]string{
 		"auth.session.get":                        "GET /auth/session",
 		"auth.code.exchange":                      "POST /auth/code/exchange",
+		"auth.external_accounts.link_start":       "POST /auth/external-accounts/{provider}/link/start",
 		"identity.users.create":                   "POST /identity/users",
 		"identity.users.force_logout":             "POST /identity/users/{userID}/force-logout",
 		"identity.organization_units.update":      "PATCH /identity/organization-units/{organizationUnitID}",

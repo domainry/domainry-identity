@@ -187,6 +187,20 @@ func (s *AuthDomainService) BindExternalAccount(ctx context.Context, workspaceID
 	return account, nil
 }
 
+func (s *AuthDomainService) BindVerifiedExternalAccount(ctx context.Context, workspaceID, userID string, assertion authmodel.AuthExternalIdentityAssertion) (identitymodel.IdentityExternalAccount, error) {
+	if !assertion.ProviderSubjectVerified {
+		return identitymodel.IdentityExternalAccount{}, forbidden("auth.external_account_unverified")
+	}
+	user, ok, err := s.identity.UserByID(ctx, strings.TrimSpace(userID))
+	if err != nil {
+		return identitymodel.IdentityExternalAccount{}, err
+	}
+	if !ok || user.Status != identitymodel.IdentityStatusActive {
+		return identitymodel.IdentityExternalAccount{}, forbidden("auth.user_disabled")
+	}
+	return s.BindExternalAccount(ctx, workspaceID, userID, assertion)
+}
+
 // LinkedExternalIdentityUser is an internal trusted-provider lookup, not an HTTP
 // enumeration API. It performs no email matching or provisioning.
 func (s *AuthDomainService) LinkedExternalIdentityUser(ctx context.Context, workspaceID, provider, subject string) (string, bool, error) {

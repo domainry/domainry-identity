@@ -81,6 +81,30 @@ func (s *AuthProviderFlowDomainService) StartForApplication(ctx context.Context,
 	}
 }
 
+func (s *AuthProviderFlowDomainService) StartExternalAccountLinkForApplication(ctx context.Context, workspaceID, userID, provider, applicationKey, returnURL string) (authprojection.AuthProviderStartResponse, error) {
+	if strings.TrimSpace(userID) == "" {
+		return authprojection.AuthProviderStartResponse{}, forbidden("auth.token_required")
+	}
+	if strings.TrimSpace(returnURL) == "" {
+		return authprojection.AuthProviderStartResponse{}, badRequest("auth.external_account_link_return_url_required")
+	}
+	config, ok := s.providers.Enabled(ctx, provider)
+	if !ok {
+		return authprojection.AuthProviderStartResponse{}, forbidden("auth.provider_not_configured")
+	}
+	if !strings.EqualFold(config.Type, "oidc") {
+		return authprojection.AuthProviderStartResponse{}, badRequest("auth.external_account_link_not_supported")
+	}
+	user, found, err := s.auth.identity.UserByID(ctx, strings.TrimSpace(userID))
+	if err != nil {
+		return authprojection.AuthProviderStartResponse{}, err
+	}
+	if !found || user.Status != identitymodel.IdentityStatusActive {
+		return authprojection.AuthProviderStartResponse{}, forbidden("auth.user_disabled")
+	}
+	return s.auth.BeginProviderLinkForApplication(ctx, workspaceID, user.ID, provider, config.AuthURL, config.ClientID, config.RedirectURL, config.Scope, applicationKey, returnURL)
+}
+
 func (s *AuthProviderFlowDomainService) LoginWithPasswordOutcome(ctx context.Context, workspaceID, login, password, applicationKey string) (authmodel.AuthenticationOutcome, error) {
 	user, err := s.auth.AuthenticatePassword(ctx, workspaceID, login, password)
 	if err != nil {
@@ -422,6 +446,23 @@ func (s *AuthProviderFlowDomainService) ExchangeAndCompleteCallbackWithChallenge
 	assertion, err := adapter.Exchange(ctx, provider, config, challenge, input)
 	if err != nil {
 		return authmodel.AuthSession{}, challenge, err
+	}
+	if challenge.Purpose == authmodel.AuthChallengePurposeLink {
+		if normalizeProvider(assertion.Provider) != normalizeProvider(provider) {
+			return authmodel.AuthSession{}, challenge, forbidden("auth.external_account_provider_mismatch")
+		}
+		linkContext := requestcontext.WithWorkspaceID(ctx, challenge.WorkspaceID)
+		if _, err := s.auth.BindVerifiedExternalAccount(linkContext, challenge.WorkspaceID, challenge.UserID, assertion); err != nil {
+			return authmodel.AuthSession{}, challenge, err
+		}
+		result, err := s.CompleteCallbackForApplication(linkContext, challenge.WorkspaceID, config, assertion, challenge.ApplicationKey)
+		if err != nil {
+			return authmodel.AuthSession{}, challenge, err
+		}
+		if result.User.ID != challenge.UserID {
+			return authmodel.AuthSession{}, challenge, forbidden("auth.external_account_link_user_mismatch")
+		}
+		return result, challenge, nil
 	}
 	resolvedWorkspaceID, found, err := s.auth.ExternalIdentityWorkspace(ctx, assertion.Provider, assertion.Subject)
 	if err != nil {

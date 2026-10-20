@@ -25,6 +25,14 @@ func (s *AuthDomainService) BeginProviderLogin(ctx context.Context, workspaceID,
 }
 
 func (s *AuthDomainService) BeginProviderLoginForApplication(ctx context.Context, workspaceID, provider string, authURL string, clientID string, redirectURL string, scope string, applicationKey string, returnURL string) (authprojection.AuthProviderStartResponse, error) {
+	return s.beginProviderAuthorizationForApplication(ctx, workspaceID, provider, authURL, clientID, redirectURL, scope, applicationKey, returnURL, authmodel.AuthChallengePurposeLogin, "")
+}
+
+func (s *AuthDomainService) BeginProviderLinkForApplication(ctx context.Context, workspaceID, userID, provider string, authURL string, clientID string, redirectURL string, scope string, applicationKey string, returnURL string) (authprojection.AuthProviderStartResponse, error) {
+	return s.beginProviderAuthorizationForApplication(ctx, workspaceID, provider, authURL, clientID, redirectURL, scope, applicationKey, returnURL, authmodel.AuthChallengePurposeLink, userID)
+}
+
+func (s *AuthDomainService) beginProviderAuthorizationForApplication(ctx context.Context, workspaceID, provider string, authURL string, clientID string, redirectURL string, scope string, applicationKey string, returnURL string, purpose string, userID string) (authprojection.AuthProviderStartResponse, error) {
 	if err := ctx.Err(); err != nil {
 		return authprojection.AuthProviderStartResponse{}, err
 	}
@@ -62,6 +70,8 @@ func (s *AuthDomainService) BeginProviderLoginForApplication(ctx context.Context
 		WorkspaceID:    workspaceID,
 		ApplicationKey: strings.TrimSpace(applicationKey),
 		Provider:       provider,
+		Purpose:        strings.TrimSpace(purpose),
+		UserID:         strings.TrimSpace(userID),
 		RedirectURL:    strings.TrimSpace(redirectURL),
 		State:          state,
 		Nonce:          nonce,

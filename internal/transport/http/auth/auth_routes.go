@@ -38,7 +38,7 @@ func (h *AuthHandler) RegisterRoutes(mux routeRegistrar) {
 	h.registerAuthAction(mux, "auth.providers.verify", h.authProviderVerify)
 	h.registerAuthAction(mux, "auth.providers.exchange", h.authProviderExchange)
 	h.registerAuthAction(mux, "auth.external_accounts.list", h.authExternalAccounts)
-	h.registerAuthAction(mux, "auth.external_accounts.bind", h.authBindExternalAccount)
+	h.registerAuthAction(mux, "auth.external_accounts.link_start", h.authStartExternalAccountLink)
 	h.registerAuthAction(mux, "auth.external_accounts.unbind", h.authUnbindExternalAccount)
 	h.registerAuthAction(mux, "auth.me.get", h.authMe)
 	h.registerAuthAction(mux, "auth.me.update", h.authUpdateCurrentUserLocale)

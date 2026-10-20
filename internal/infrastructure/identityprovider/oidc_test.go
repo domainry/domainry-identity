@@ -73,7 +73,7 @@ func TestExchangeFeishuCallbackSendsBoundPKCEVerifier(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if assertion.Provider != "feishu" || assertion.Subject != "union-1" {
+	if assertion.Provider != "feishu" || assertion.Subject != "union-1" || !assertion.ProviderSubjectVerified {
 		t.Fatalf("assertion = %#v", assertion)
 	}
 	if _, err := ExchangeOIDCCallback(t.Context(), "feishu", "code", config, authmodel.AuthProviderChallenge{State: "state"}); err == nil {

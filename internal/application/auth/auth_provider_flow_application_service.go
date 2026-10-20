@@ -135,6 +135,13 @@ func (s *AuthProviderFlowApplicationService) ExchangeAndCompleteCallbackWithChal
 	return session, challenge, nil
 }
 
+func (s *AuthProviderFlowApplicationService) IssueAuthorizationCode(ctx context.Context, applicationKey, redirectURL string, session authmodel.AuthSession) (string, error) {
+	if s == nil || s.auth == nil {
+		return "", apperror.New(apperror.KindInternal, "auth.authorization_code_store_unavailable", nil, nil)
+	}
+	return s.auth.IssueAuthorizationCode(ctx, applicationKey, redirectURL, session)
+}
+
 func (s *AuthProviderFlowApplicationService) appendAuthenticationSuccess(ctx context.Context, method, provider, applicationKey string, session authmodel.AuthSession) error {
 	requestID, ctx := authenticationRequestID(ctx)
 	principal := identitymodel.Principal{

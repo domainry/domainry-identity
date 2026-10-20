@@ -1,7 +1,5 @@
 package auth
 
-import authmodel "github.com/domainry/domainry-identity/internal/domain/auth/model"
-
 import (
 	"context"
 	"net/http"
@@ -26,38 +24,31 @@ func (h *AuthHandler) authExternalAccounts(w http.ResponseWriter, r *http.Reques
 	h.writeJSON(w, http.StatusOK, accounts)
 }
 
-func (h *AuthHandler) authBindExternalAccount(w http.ResponseWriter, r *http.Request) {
+func (h *AuthHandler) authStartExternalAccountLink(w http.ResponseWriter, r *http.Request) {
 	principal := h.principal(r)
 	if !principal.Known {
 		h.writeError(w, r, http.StatusForbidden, "auth.token_required")
 		return
 	}
 	var req struct {
-		Subject         string `json:"subject"`
-		ProviderSubject string `json:"provider_subject"`
-		Email           string `json:"email"`
-		Phone           string `json:"phone"`
-		DisplayName     string `json:"display_name"`
-		AvatarURL       string `json:"avatar_url"`
-		Metadata        string `json:"metadata"`
+		ApplicationKey string `json:"application_key"`
+		ReturnURL      string `json:"return_url"`
 	}
 	if !h.decodeJSON(w, r, &req) {
 		return
 	}
-	account, err := h.externalAccounts.BindExternalAccount(r.Context(), principal.WorkspaceID, principal.UserID, authmodel.AuthExternalIdentityAssertion{
-		Provider:    r.PathValue("provider"),
-		Subject:     valueOrDefault(req.Subject, req.ProviderSubject),
-		Email:       req.Email,
-		Phone:       req.Phone,
-		DisplayName: req.DisplayName,
-		AvatarURL:   req.AvatarURL,
-		Metadata:    req.Metadata,
-	})
+	flow, ok := h.providerFlows.(authProviderExternalAccountLinkFlow)
+	if !ok {
+		h.writeError(w, r, http.StatusServiceUnavailable, "auth.external_account_link_unavailable")
+		return
+	}
+	flowContext := requestcontext.WithWorkspaceID(r.Context(), principal.WorkspaceID)
+	result, err := flow.StartExternalAccountLinkForApplication(flowContext, principal.WorkspaceID, principal.UserID, r.PathValue("provider"), req.ApplicationKey, req.ReturnURL)
 	if err != nil {
 		h.writeServiceError(w, r, err)
 		return
 	}
-	h.writeJSON(w, http.StatusCreated, account)
+	h.writeJSON(w, http.StatusOK, result)
 }
 
 func (h *AuthHandler) authUnbindExternalAccount(w http.ResponseWriter, r *http.Request) {

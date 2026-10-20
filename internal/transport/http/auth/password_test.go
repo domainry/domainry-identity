@@ -25,10 +25,48 @@ import (
 type authPasswordRepository struct {
 	*authExternalAccountRepository
 	receipts      map[string]authmodel.AuthMutationReceipt
+	authCodes     map[string]authmodel.AuthAuthorizationCode
 	credentialErr error
 	refreshErr    error
 	mutationErr   error
 	completionErr error
+}
+
+func (r *authPasswordRepository) CreateAuthAuthorizationCode(_ context.Context, code authmodel.AuthAuthorizationCode) error {
+	if r.authCodes == nil {
+		r.authCodes = map[string]authmodel.AuthAuthorizationCode{}
+	}
+	r.authCodes[code.Code] = code
+	return nil
+}
+
+func (r *authPasswordRepository) ConsumeAuthAuthorizationCode(_ context.Context, workspaceID, code, applicationKey, redirectURL string, _ time.Time) (authmodel.AuthSession, bool, error) {
+	stored, ok := r.authCodes[code]
+	if !ok || stored.WorkspaceID != workspaceID || stored.ApplicationKey != applicationKey || stored.RedirectURL != redirectURL {
+		return authmodel.AuthSession{}, false, nil
+	}
+	delete(r.authCodes, code)
+	return stored.Session, true, nil
+}
+
+func (r *authPasswordRepository) AuthorizationCodeWorkspace(_ context.Context, code, applicationKey, redirectURL string, _ time.Time) (string, bool, error) {
+	stored, ok := r.authCodes[code]
+	if !ok || stored.ApplicationKey != applicationKey || stored.RedirectURL != redirectURL {
+		return "", false, nil
+	}
+	return stored.WorkspaceID, true, nil
+}
+
+func (*authPasswordRepository) GetAuthApplication(context.Context, string, string) (authmodel.AuthApplicationRegistration, bool, error) {
+	return authmodel.AuthApplicationRegistration{}, false, nil
+}
+
+func (*authPasswordRepository) UpsertAuthApplications(context.Context, string, []authmodel.AuthApplicationRegistration) error {
+	return nil
+}
+
+func (*authPasswordRepository) AuthorizationRedirectRegistered(_ context.Context, _ string, applicationKey, redirectURL string) (bool, error) {
+	return applicationKey == "aurora" && redirectURL == "https://aurora.example/sso/callback", nil
 }
 
 func (r *authPasswordRepository) GlobalExternalAccountWorkspace(_ context.Context, provider, subject string) (string, bool, error) {

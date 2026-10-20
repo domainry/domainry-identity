@@ -336,21 +336,13 @@ func TestCurrentUserLocaleHandlerIsSelfOnlyStrictIdempotentAndConcurrent(t *test
 	}
 }
 
-func TestExternalAccountHandlersListBindUnbindAndMe(t *testing.T) {
+func TestExternalAccountHandlersListUnbindAndMe(t *testing.T) {
 	handler, _, repository, capture, accessToken := newAuthExternalHandler(t)
 
 	listResponse := httptest.NewRecorder()
 	handler.authExternalAccounts(listResponse, httptest.NewRequest(http.MethodGet, "/auth/external-accounts", nil))
 	if listResponse.Code != http.StatusOK || !strings.Contains(listResponse.Body.String(), `"account-1"`) {
 		t.Fatalf("list status=%d body=%s", listResponse.Code, listResponse.Body.String())
-	}
-
-	bindRequest := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"provider_subject":"new-subject","email":" new@example.com ","display_name":" New User "}`))
-	bindRequest.SetPathValue("provider", " GitHub ")
-	bindResponse := httptest.NewRecorder()
-	handler.authBindExternalAccount(bindResponse, bindRequest)
-	if bindResponse.Code != http.StatusCreated || len(repository.accounts) != 2 || repository.accounts[1].Provider != "github" || repository.accounts[1].ProviderSubject != "new-subject" || repository.accounts[1].Email != "new@example.com" {
-		t.Fatalf("bind status=%d accounts=%#v body=%s", bindResponse.Code, repository.accounts, bindResponse.Body.String())
 	}
 
 	unbindRequest := httptest.NewRequest(http.MethodDelete, "/", nil)
@@ -386,7 +378,6 @@ func TestExternalAccountHandlersAuthenticationDecodeAndServiceErrors(t *testing.
 		handle func(http.ResponseWriter, *http.Request)
 	}{
 		{name: "list", handle: handler.authExternalAccounts},
-		{name: "bind", handle: handler.authBindExternalAccount},
 		{name: "unbind", handle: handler.authUnbindExternalAccount},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -402,12 +393,6 @@ func TestExternalAccountHandlersAuthenticationDecodeAndServiceErrors(t *testing.
 	handler.principal = func(*http.Request) identitymodel.Principal {
 		return identitymodel.Principal{Known: true, WorkspaceID: "workspace-a", UserID: "user-1"}
 	}
-	badJSONResponse := httptest.NewRecorder()
-	handler.authBindExternalAccount(badJSONResponse, httptest.NewRequest(http.MethodPost, "/", strings.NewReader("{")))
-	if badJSONResponse.Code != http.StatusBadRequest {
-		t.Fatalf("bad JSON status = %d", badJSONResponse.Code)
-	}
-
 	repository.listErr = errors.New("list failed")
 	for _, handle := range []func(http.ResponseWriter, *http.Request){handler.authExternalAccounts, handler.authUnbindExternalAccount} {
 		capture.serviceErr = nil
@@ -418,16 +403,6 @@ func TestExternalAccountHandlersAuthenticationDecodeAndServiceErrors(t *testing.
 		}
 	}
 
-	repository.listErr = nil
-	repository.upsertErr = errors.New("bind failed")
-	capture.serviceErr = nil
-	bindRequest := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"subject":"subject"}`))
-	bindRequest.SetPathValue("provider", "github")
-	bindResponse := httptest.NewRecorder()
-	handler.authBindExternalAccount(bindResponse, bindRequest)
-	if bindResponse.Code != http.StatusUnprocessableEntity || capture.serviceErr == nil {
-		t.Fatalf("bind failure status=%d error=%v", bindResponse.Code, capture.serviceErr)
-	}
 }
 
 func TestAuthRoleHandlersOptionsRequestsCreationAndErrors(t *testing.T) {

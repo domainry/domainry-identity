@@ -128,7 +128,7 @@ func TestOIDCRequestConstructionAndFeishuProjectionEdges(t *testing.T) {
 		t.Fatal("default Feishu user endpoint ignored cancellation")
 	}
 	assertion, err = ExchangeOIDCCallback(t.Context(), "LARK", "code", authmodel.AuthProviderConfig{TokenURL: server.URL + "/top-token", UserInfoURL: server.URL + "/nested-user"}, authmodel.AuthProviderChallenge{State: "state", CodeVerifier: "verifier"})
-	if err != nil || assertion.Provider != "lark" || assertion.Subject != "union" {
+	if err != nil || assertion.Provider != "lark" || assertion.Subject != "union" || !assertion.ProviderSubjectVerified {
 		t.Fatalf("Lark assertion=%+v err=%v", assertion, err)
 	}
 }

@@ -39,7 +39,7 @@ func TestStandaloneRouteInventoryBaseline(t *testing.T) {
 	routes := server.RouteInventory()
 	sum := sha256.Sum256([]byte(strings.Join(routes, "\n")))
 	const wantCount = 162
-	const wantSHA256 = "6b68461a4759ee1967f3ab0931f057d166ac27d87260962d959169e733b1d5b8"
+	const wantSHA256 = "c81a4fd980af3f4281aea02f4cd56bb3ab302087a454b20b9a7fe77d0b062da2"
 	if len(routes) != wantCount || hex.EncodeToString(sum[:]) != wantSHA256 {
 		t.Fatalf("standalone route inventory count=%d sha256=%s routes=%#v", len(routes), hex.EncodeToString(sum[:]), routes)
 	}
@@ -144,7 +144,7 @@ func TestEmbeddedAuthRouteInventoryOwnsEveryNonBrowserRoute(t *testing.T) {
 		"POST /auth/providers/feishu/events",
 		"POST /auth/providers/{provider}/exchange",
 		"GET /auth/external-accounts",
-		"POST /auth/external-accounts/{provider}/bind",
+		"POST /auth/external-accounts/{provider}/link/start",
 		"DELETE /auth/external-accounts/{provider}/{accountID}",
 		"GET /auth/me",
 		"PATCH /auth/me",

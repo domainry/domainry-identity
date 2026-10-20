@@ -26,6 +26,10 @@ type authProviderApplicationFlow interface {
 	StartForApplication(context.Context, string, string, string, string, string, string) (authprojection.AuthProviderStartResponse, error)
 }
 
+type authProviderExternalAccountLinkFlow interface {
+	StartExternalAccountLinkForApplication(context.Context, string, string, string, string, string) (authprojection.AuthProviderStartResponse, error)
+}
+
 type authChallengeAwareProviderFlow interface {
 	LoginWithPasswordOutcome(context.Context, string, string, string, string) (authmodel.AuthenticationOutcome, error)
 	VerifyOTPOutcome(context.Context, string, string, string, string) (authmodel.AuthenticationOutcome, error)
