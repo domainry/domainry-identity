@@ -12,6 +12,7 @@ import (
 
 	"github.com/domainry/domainry-foundation/apperror"
 	"github.com/domainry/domainry-foundation/requestcontext"
+	"github.com/domainry/domainry-foundation/telemetry"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	authapplication "github.com/domainry/domainry-identity/internal/application/auth"
 	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
@@ -82,6 +83,7 @@ func (h *httpSupport) writeJSON(w http.ResponseWriter, status int, value any) {
 }
 
 func (h *httpSupport) writeError(w http.ResponseWriter, _ *http.Request, status int, code string, params ...string) {
+	telemetry.RecordHTTPStatusError(w, status, code)
 	details := map[string]string{}
 	for index := 0; index+1 < len(params); index += 2 {
 		details[params[index]] = params[index+1]
