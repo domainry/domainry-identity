@@ -38,7 +38,9 @@ func (s *AuthDomainService) RefreshForApplication(ctx context.Context, workspace
 	}
 	if strings.TrimSpace(session.RevokedAt) != "" {
 		if strings.TrimSpace(session.ReplacedByID) != "" {
-			_, _ = s.identityStore.RevokeAuthRefreshTokensForUser(ctx, workspaceID, session.UserID, time.Now().UTC().Format(time.RFC3339))
+			if _, revokeErr := s.identityStore.RevokeAuthRefreshTokensForUser(ctx, workspaceID, session.UserID, time.Now().UTC().Format(time.RFC3339)); revokeErr != nil {
+				return authmodel.AuthSession{}, revokeErr
+			}
 			return authmodel.AuthSession{}, forbidden("auth.refresh_token_reused")
 		}
 		return authmodel.AuthSession{}, forbidden("auth.session_expired")

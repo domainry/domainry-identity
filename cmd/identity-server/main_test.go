@@ -12,11 +12,11 @@ func TestIdentityHTTPListenersSeparateProductionSurfaces(t *testing.T) {
 		Environment: "production", HTTPPublicAddr: "0.0.0.0:8081",
 		HTTPManagementAddr: "127.0.0.1:8082", HTTPOpsAddr: "127.0.0.1:8083",
 	}
-	listeners := identityHTTPListeners(production, &saasassembly.Service{})
+	listeners := identityHTTPListeners(production, &saasassembly.Service{}, nil)
 	if len(listeners) != 3 {
 		t.Fatalf("production listener count=%d", len(listeners))
 	}
-	want := map[string]string{"public": production.HTTPPublicAddr, "management": production.HTTPManagementAddr, "operations": production.HTTPOpsAddr}
+	want := map[string]string{"public": production.HTTPPublicAddr, "management": production.HTTPManagementAddr, "ops": production.HTTPOpsAddr}
 	for _, listener := range listeners {
 		if listener.server == nil || listener.server.Addr != want[listener.group] {
 			t.Fatalf("listener=%+v", listener)
@@ -24,7 +24,7 @@ func TestIdentityHTTPListenersSeparateProductionSurfaces(t *testing.T) {
 	}
 
 	development := config.Config{Environment: "development", Port: "9091"}
-	listeners = identityHTTPListeners(development, &saasassembly.Service{})
+	listeners = identityHTTPListeners(development, &saasassembly.Service{}, nil)
 	if len(listeners) != 1 || listeners[0].group != "development" || listeners[0].server.Addr != ":9091" {
 		t.Fatalf("development listeners=%+v", listeners)
 	}

@@ -11,10 +11,9 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/domainry/domainry-foundation/logging"
+	"github.com/domainry/domainry-foundation/processhost"
 	saasassembly "github.com/domainry/domainry-identity/internal/assembly/saas"
 	"github.com/domainry/domainry-identity/internal/platform/config"
-	"go.uber.org/zap"
 )
 
 var identityVersion = "dev"
@@ -47,20 +46,22 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if err := serve(); err != nil {
-		_, _ = fmt.Fprintf(stderr, "domainry-identity: %v\n", err)
+		_, _ = fmt.Fprintln(stderr, "domainry-identity: process failed")
 		return 1
 	}
 	return 0
 }
 
-func serve() error {
-	logger, err := logging.Initialize("domainry-identity")
+func serve() (runErr error) {
+	lifecycleCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	observability, err := processhost.Open(lifecycleCtx, processhost.Config{ServiceName: "domainry-identity", ServiceVersion: identityVersion})
 	if err != nil {
 		return fmt.Errorf("initialize logger: %w", err)
 	}
-	defer func() { _ = logger.Sync() }()
+	defer func() { runErr = observability.Finish(context.Background(), nil, runErr) }()
 
-	cfg, snapshot, err := config.Load()
+	cfg, _, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("load configuration: %w", err)
 	}
@@ -68,21 +69,16 @@ func serve() error {
 	if err := cfg.ValidateSaaSDeployment(); err != nil {
 		return fmt.Errorf("validate SaaS deployment: %w", err)
 	}
-	logger.Info("Identity configuration loaded", zap.String("revision", snapshot.Revision))
-
-	lifecycleCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
 	identityServer, err := saasassembly.Open(lifecycleCtx, cfg)
 	if err != nil {
 		return fmt.Errorf("initialize Identity backend: %w", err)
 	}
 
-	listeners := identityHTTPListeners(cfg, identityServer)
+	listeners := identityHTTPListeners(cfg, identityServer, observability)
 	serveErr := make(chan error, len(listeners))
+	observability.Started(lifecycleCtx, map[string]any{"listener_count": len(listeners)})
 	for _, listener := range listeners {
 		listener := listener
-		logger.Info("Identity backend listening", zap.String("group", listener.group), zap.String("address", listener.server.Addr))
 		go func() { serveErr <- listener.server.ListenAndServe() }()
 	}
 
@@ -97,6 +93,7 @@ func serve() error {
 		}
 		return errors.Join(err, shutdownErr, closeErr)
 	case <-lifecycleCtx.Done():
+		observability.Stopping(context.Background(), map[string]any{"reason": "signal"})
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.HTTPShutdownTimeout)
 		defer cancel()
 		return errors.Join(shutdownIdentityListeners(shutdownCtx, listeners), identityServer.Close(shutdownCtx))
@@ -108,15 +105,21 @@ type identityHTTPListener struct {
 	server *http.Server
 }
 
-func identityHTTPListeners(cfg config.Config, identityServer *saasassembly.Service) []identityHTTPListener {
+func identityHTTPListeners(cfg config.Config, identityServer *saasassembly.Service, observability *processhost.Host) []identityHTTPListener {
+	wrap := func(group string, handler http.Handler) http.Handler {
+		if observability == nil {
+			return handler
+		}
+		return observability.Handler(group, handler)
+	}
 	if cfg.IsProduction() {
 		return []identityHTTPListener{
-			{group: "public", server: newIdentityHTTPServer(cfg.HTTPPublicAddr, identityServer.PublicRoutes(), cfg)},
-			{group: "management", server: newIdentityHTTPServer(cfg.HTTPManagementAddr, identityServer.ManagementRoutes(), cfg)},
-			{group: "operations", server: newIdentityHTTPServer(cfg.HTTPOpsAddr, identityServer.OperationsRoutes(), cfg)},
+			{group: "public", server: newIdentityHTTPServer(cfg.HTTPPublicAddr, wrap("public", identityServer.PublicRoutes()), cfg)},
+			{group: "management", server: newIdentityHTTPServer(cfg.HTTPManagementAddr, wrap("management", identityServer.ManagementRoutes()), cfg)},
+			{group: "ops", server: newIdentityHTTPServer(cfg.HTTPOpsAddr, wrap("ops", identityServer.OperationsRoutes()), cfg)},
 		}
 	}
-	return []identityHTTPListener{{group: "development", server: newIdentityHTTPServer(cfg.HTTPAddr(), identityServer.DevelopmentRoutes(), cfg)}}
+	return []identityHTTPListener{{group: "development", server: newIdentityHTTPServer(cfg.HTTPAddr(), wrap("public", identityServer.DevelopmentRoutes()), cfg)}}
 }
 
 func newIdentityHTTPServer(address string, handler http.Handler, cfg config.Config) *http.Server {
