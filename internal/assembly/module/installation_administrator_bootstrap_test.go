@@ -7,12 +7,12 @@ import (
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	identitymodulehost "github.com/domainry/domainry-identity-sdk/modulehost"
 	auditapplication "github.com/domainry/domainry-identity/internal/application/auditbinding"
-	"github.com/domainry/domainry-identity/internal/assembly"
+	identitycomposition "github.com/domainry/domainry-identity/internal/composition"
 	identitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity"
 )
 
 func TestInstallationAdministratorBootstrapRejectsZeroValueAuthStore(t *testing.T) {
-	binding := &moduleBinding{runtime: &assembly.Core{
+	binding := &moduleBinding{runtime: &identitycomposition.Core{
 		IdentityStore: &identitypersistence.SQLIdentityStore{},
 		Audit:         auditapplication.NewAuditApplicationService(nil),
 	}}

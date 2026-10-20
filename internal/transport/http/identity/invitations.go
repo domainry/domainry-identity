@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/domainry/domainry-foundation/apperror"
-	"github.com/domainry/domainry-identity/credentialemail"
+	"github.com/domainry/domainry-identity/internal/domain/auth/contract/credentialemail"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 

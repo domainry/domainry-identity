@@ -1,4 +1,4 @@
-package assembly
+package composition
 
 import (
 	auditmodule "github.com/domainry/domainry-audit/module"

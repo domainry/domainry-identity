@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/domainry/domainry-identity/credentialemail"
 	authcontract "github.com/domainry/domainry-identity/internal/domain/auth/contract"
+	"github.com/domainry/domainry-identity/internal/domain/auth/contract/credentialemail"
 	authrepository "github.com/domainry/domainry-identity/internal/domain/auth/repository"
 )
 

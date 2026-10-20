@@ -22,6 +22,7 @@ func TestDomainPackagesDoNotDependOnOuterLayers(t *testing.T) {
 		"github.com/domainry/domainry-identity/internal/adapter",
 		"github.com/domainry/domainry-identity/internal/application",
 		"github.com/domainry/domainry-identity/internal/assembly",
+		"github.com/domainry/domainry-identity/internal/composition",
 		"github.com/domainry/domainry-identity/internal/infrastructure",
 		"github.com/domainry/domainry-identity/internal/platform",
 		"github.com/domainry/domainry-identity/internal/transport",

@@ -1,4 +1,4 @@
-package assembly
+package composition
 
 import (
 	"context"
@@ -12,13 +12,13 @@ import (
 	"github.com/domainry/domainry-foundation/modulehttp"
 	"github.com/domainry/domainry-foundation/requestcontext"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
-	"github.com/domainry/domainry-identity/credentialemail"
 	identitysdkadapter "github.com/domainry/domainry-identity/internal/adapter/identitysdk"
 	auditapplication "github.com/domainry/domainry-identity/internal/application/auditbinding"
 	auditrepository "github.com/domainry/domainry-identity/internal/application/auditbinding"
 	authapplication "github.com/domainry/domainry-identity/internal/application/auth"
 	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
 	metadataapplication "github.com/domainry/domainry-identity/internal/application/metadata"
+	"github.com/domainry/domainry-identity/internal/domain/auth/contract/credentialemail"
 	authpolicy "github.com/domainry/domainry-identity/internal/domain/auth/policy"
 	definitionmodel "github.com/domainry/domainry-identity/internal/domain/definition/model"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"

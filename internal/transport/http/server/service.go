@@ -21,7 +21,7 @@ import (
 	identityauthoring "github.com/domainry/domainry-identity/internal/application/authoring"
 	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
 	portabilityapplication "github.com/domainry/domainry-identity/internal/application/portability"
-	"github.com/domainry/domainry-identity/internal/assembly"
+	identitycomposition "github.com/domainry/domainry-identity/internal/composition"
 	definitionmodel "github.com/domainry/domainry-identity/internal/domain/definition/model"
 	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
@@ -40,7 +40,7 @@ import (
 )
 
 type Server struct {
-	core                         *assembly.Core
+	core                         *identitycomposition.Core
 	routes                       http.Handler
 	actions                      *identityapplication.IdentityActionRegistry
 	exposures                    *routeExposureResolver
@@ -122,7 +122,7 @@ func NewWithStore(ctx context.Context, cfg config.Config, store *database.Identi
 		_ = store.CloseContext(context.Background())
 		return nil, fmt.Errorf("prepare Identity schema: %w", err)
 	}
-	core, err := assembly.New(ctx, cfg, store, assembly.Options{
+	core, err := identitycomposition.New(ctx, cfg, store, identitycomposition.Options{
 		Clock: options.Clock, WorkspaceID: cfg.IdentityWorkspaceID,
 		AuditFactory: options.AuditFactory, MetadataFactory: options.MetadataFactory,
 		ModuleProviders: append([]actioncontract.Provider(nil), options.ModuleProviders...),
@@ -207,7 +207,7 @@ func runtimeActionUsageCredentialID(cfg config.Config) (string, error) {
 	return credentialID, nil
 }
 
-func newHTTPServer(ctx context.Context, cfg config.Config, core *assembly.Core) (*Server, error) {
+func newHTTPServer(ctx context.Context, cfg config.Config, core *identitycomposition.Core) (*Server, error) {
 	if core == nil || core.IdentityActions == nil {
 		return nil, fmt.Errorf("Identity core and Action registry are required")
 	}
@@ -508,7 +508,7 @@ func embeddedAuthRouteInventory(resolver *routeExposureResolver, authRoutes, bro
 
 // NewWithCore assembles the HTTP classes over an already-opened embedded
 // Identity core. The caller remains the sole lifecycle owner of core.
-func NewWithCore(ctx context.Context, cfg config.Config, core *assembly.Core) (*Server, error) {
+func NewWithCore(ctx context.Context, cfg config.Config, core *identitycomposition.Core) (*Server, error) {
 	if core == nil {
 		return nil, errors.New("Identity HTTP server requires a core")
 	}

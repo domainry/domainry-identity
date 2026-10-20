@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	identitysdk "github.com/domainry/domainry-identity-sdk"
-	identityassembly "github.com/domainry/domainry-identity/internal/assembly"
+	identitycomposition "github.com/domainry/domainry-identity/internal/composition"
 	definitionmodel "github.com/domainry/domainry-identity/internal/domain/definition/model"
 	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
@@ -58,7 +58,7 @@ func TestHandlerDeliveryModuleAcceptsRuntimeStagedProfileWithinBoundTransaction(
 	if _, err := store.DB().ExecContext(t.Context(), `CREATE TABLE employee_profile (id TEXT NOT NULL, workspace_id TEXT NOT NULL, identity_user_id TEXT, employment_status TEXT, PRIMARY KEY (workspace_id, id))`); err != nil {
 		t.Fatal(err)
 	}
-	core, err := identityassembly.NewWithManifest(t.Context(), cfg, store, manifest, testAssemblyOptions(identityassembly.Options{WorkspaceID: cfg.IdentityWorkspaceID}))
+	core, err := identitycomposition.NewWithManifest(t.Context(), cfg, store, manifest, testAssemblyOptions(identitycomposition.Options{WorkspaceID: cfg.IdentityWorkspaceID}))
 	if err != nil {
 		t.Fatal(err)
 	}

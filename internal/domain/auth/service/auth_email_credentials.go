@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/domainry/domainry-foundation/apperror"
-	"github.com/domainry/domainry-identity/credentialemail"
+	"github.com/domainry/domainry-identity/internal/domain/auth/contract/credentialemail"
 	authmodel "github.com/domainry/domainry-identity/internal/domain/auth/model"
 	authrepository "github.com/domainry/domainry-identity/internal/domain/auth/repository"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"

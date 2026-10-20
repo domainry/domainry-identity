@@ -21,6 +21,7 @@ import (
 	identitycontracttest "github.com/domainry/domainry-identity-sdk/contracttest"
 	identityhttpapi "github.com/domainry/domainry-identity-sdk/httpapi"
 	identitymodulehost "github.com/domainry/domainry-identity-sdk/modulehost"
+	organizationunit "github.com/domainry/domainry-identity-sdk/organizationunit"
 	identitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity"
 	identitymodule "github.com/domainry/domainry-identity/module"
 	ormsqlite "github.com/domainry/domainry-orm/sqlite"
@@ -864,9 +865,9 @@ func TestFactoryEmbeddedOrganizationUnitDeliveryRollsBackWithHostTransaction(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	embedded, ok := binding.(identitymodule.EmbeddedOrganizationUnitDeliveryBinding)
+	embedded, ok := binding.(organizationunit.EmbeddedBinding)
 	if !ok {
-		t.Fatal("Factory binding omitted EmbeddedOrganizationUnitDeliveryBinding")
+		t.Fatal("Factory binding omitted organizationunit.EmbeddedBinding")
 	}
 	mismatchTransaction, err := ormsqlite.NewProfile().BeginWrite(t.Context(), db)
 	if err != nil {
@@ -877,9 +878,9 @@ func TestFactoryEmbeddedOrganizationUnitDeliveryRollsBackWithHostTransaction(t *
 		_ = mismatchTransaction.Rollback(t.Context())
 		t.Fatal(err)
 	}
-	if _, err := mismatchDelivery.ResolveOrganizationUnit(t.Context(), identitymodule.OrganizationUnitResolveRequest{
-		ContractVersion: identitymodule.OrganizationUnitDeliveryContractVersionV1, AccessToken: otherSession.AccessToken,
-		OrganizationID: "company-a", NodeType: identitymodule.OrganizationUnitDepartment,
+	if _, err := mismatchDelivery.ResolveOrganizationUnit(t.Context(), organizationunit.ResolveRequest{
+		ContractVersion: organizationunit.DeliveryContractVersionV1, AccessToken: otherSession.AccessToken,
+		OrganizationID: "company-a", NodeType: organizationunit.NodeTypeDepartment,
 	}); err == nil {
 		_ = mismatchTransaction.Rollback(t.Context())
 		t.Fatal("cross-application token was accepted")
@@ -909,13 +910,13 @@ func TestFactoryEmbeddedOrganizationUnitDeliveryRollsBackWithHostTransaction(t *
 		_ = hostTransaction.Rollback(t.Context())
 		t.Fatal(err)
 	}
-	created, err := delivery.CreateOrganizationUnit(t.Context(), identitymodule.OrganizationUnitDeliveryRequest{
-		ContractVersion: identitymodule.OrganizationUnitDeliveryContractVersionV1,
+	created, err := delivery.CreateOrganizationUnit(t.Context(), organizationunit.DeliveryRequest{
+		ContractVersion: organizationunit.DeliveryContractVersionV1,
 		AccessToken:     session.AccessToken,
 		IdempotencyKey:  "factory-department-rollback",
-		Organization: identitymodule.OrganizationUnitCreateCandidate{
+		Organization: organizationunit.CreateCandidate{
 			OrganizationID: "factory-department", Code: "FACTORY-DEPARTMENT", Name: "Factory Department",
-			NodeType: identitymodule.OrganizationUnitDepartment, ParentOrganizationID: "company-a", ExpectedVersion: 0,
+			NodeType: organizationunit.NodeTypeDepartment, ParentOrganizationID: "company-a", ExpectedVersion: 0,
 		},
 	})
 	if err != nil || created.Organization.Path != "/company-a/factory-department" {

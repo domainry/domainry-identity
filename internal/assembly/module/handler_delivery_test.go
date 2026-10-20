@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	identitysdk "github.com/domainry/domainry-identity-sdk"
+	organizationunit "github.com/domainry/domainry-identity-sdk/organizationunit"
 	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
-	organizationunit "github.com/domainry/domainry-identity/organizationunit"
 	ormsqlite "github.com/domainry/domainry-orm/sqlite"
 	_ "modernc.org/sqlite"
 )

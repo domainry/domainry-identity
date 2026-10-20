@@ -1,4 +1,4 @@
-package assembly
+package composition
 
 import (
 	"database/sql"
@@ -12,12 +12,12 @@ import (
 	"github.com/domainry/domainry-foundation/apperror"
 	"github.com/domainry/domainry-foundation/requestcontext"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
+	organizationunit "github.com/domainry/domainry-identity-sdk/organizationunit"
 	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
 	identitytransaction "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/transaction"
 	"github.com/domainry/domainry-identity/internal/platform/config"
-	organizationunit "github.com/domainry/domainry-identity/organizationunit"
 )
 
 func TestOrganizationUnitDeliveryCreatesRealDepartmentWithAtomicScopedReplay(t *testing.T) {

@@ -1,4 +1,4 @@
-package assembly
+package composition
 
 import (
 	"encoding/json"

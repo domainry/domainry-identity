@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	identitysdk "github.com/domainry/domainry-identity-sdk"
+	organizationunit "github.com/domainry/domainry-identity-sdk/organizationunit"
 	identitytransaction "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/transaction"
-	organizationunit "github.com/domainry/domainry-identity/organizationunit"
 )
 
 type moduleOrganizationUnitDelivery struct {

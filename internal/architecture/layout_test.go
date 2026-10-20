@@ -11,6 +11,22 @@ import (
 	"testing"
 )
 
+func TestRepositoryRootContainsOnlyEntrypoints(t *testing.T) {
+	entries, err := os.ReadDir(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	allowed := map[string]bool{"cmd": true, "docs": true, "internal": true, "module": true}
+	for _, entry := range entries {
+		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+		if !allowed[entry.Name()] {
+			t.Errorf("unreviewed Identity root directory %q", entry.Name())
+		}
+	}
+}
+
 func TestIdentityUsesInternalLayeredLayout(t *testing.T) {
 	root := filepath.Clean(filepath.Join("..", ".."))
 	for _, required := range []string{
@@ -20,6 +36,7 @@ func TestIdentityUsesInternalLayeredLayout(t *testing.T) {
 		"internal/domain/identity/repository",
 		"internal/domain/identity/service",
 		"internal/adapter/identitysdk",
+		"internal/composition",
 		"internal/assembly/module",
 		"internal/assembly/saas",
 		"internal/transport/http/module",
@@ -34,6 +51,22 @@ func TestIdentityUsesInternalLayeredLayout(t *testing.T) {
 	} {
 		if info, err := os.Stat(filepath.Join(root, required)); err != nil || !info.IsDir() {
 			t.Errorf("required Identity boundary %q is missing", required)
+		}
+	}
+}
+
+func TestAssemblyContainsOnlyDeploymentModes(t *testing.T) {
+	entries, err := os.ReadDir("../assembly")
+	if err != nil {
+		t.Fatal(err)
+	}
+	allowed := map[string]bool{"module": true, "saas": true}
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+		if !entry.IsDir() || !allowed[entry.Name()] {
+			t.Errorf("internal/assembly contains non-deployment entry %q", entry.Name())
 		}
 	}
 }

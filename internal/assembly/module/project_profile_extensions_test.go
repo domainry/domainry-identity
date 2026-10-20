@@ -4,17 +4,17 @@ import (
 	"testing"
 
 	identitysdk "github.com/domainry/domainry-identity-sdk"
-	identityassembly "github.com/domainry/domainry-identity/internal/assembly"
+	identitycomposition "github.com/domainry/domainry-identity/internal/composition"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	metadataservice "github.com/domainry/domainry-identity/internal/domain/metadata/service"
 )
 
 func TestProjectProfileExtensionPublisherOverlaysSourceMetadataAndDeepCopies(t *testing.T) {
-	metadata := identityassembly.NewMetadataRuntime(metadataservice.SchemaSnapshotState{IdentityProfileExtensions: []identitymodel.IdentityProfileExtension{
+	metadata := identitycomposition.NewMetadataRuntime(metadataservice.SchemaSnapshotState{IdentityProfileExtensions: []identitymodel.IdentityProfileExtension{
 		{ObjectKey: "employee_profile", IdentityRelationField: "old_identity_user_id", BusinessIdentity: identitymodel.BusinessIdentityBinding{Key: "employee"}},
 		{ObjectKey: "identity_owned_profile", IdentityRelationField: "identity_user_id", BusinessIdentity: identitymodel.BusinessIdentityBinding{Key: "identity_owned"}},
 	}})
-	binding := &moduleBinding{runtime: &identityassembly.Core{MetadataRuntime: metadata}}
+	binding := &moduleBinding{runtime: &identitycomposition.Core{MetadataRuntime: metadata}}
 	source := []identitysdk.ProjectProfileExtension{{
 		ObjectKey: "employee_profile", IdentityRelationField: "identity_user_id", Cardinality: "one_to_one",
 		BusinessIdentity: identitysdk.ProjectBusinessIdentityBinding{Key: "employee", ActiveStatusValues: []string{"active"}, Claims: []identitysdk.ProjectProfileClaimBinding{{ClaimKey: "store_code", FieldKey: "store_code"}}},
@@ -44,8 +44,8 @@ func TestProjectProfileExtensionPublisherOverlaysSourceMetadataAndDeepCopies(t *
 }
 
 func TestProjectProfileExtensionPublisherRejectsDuplicateObjects(t *testing.T) {
-	metadata := identityassembly.NewMetadataRuntime(metadataservice.SchemaSnapshotState{})
-	binding := &moduleBinding{runtime: &identityassembly.Core{MetadataRuntime: metadata}}
+	metadata := identitycomposition.NewMetadataRuntime(metadataservice.SchemaSnapshotState{})
+	binding := &moduleBinding{runtime: &identitycomposition.Core{MetadataRuntime: metadata}}
 	err := binding.ProjectProfileExtensionPublisher().PublishProjectProfileExtensions(t.Context(), []identitysdk.ProjectProfileExtension{{ObjectKey: "employee_profile"}, {ObjectKey: " employee_profile "}})
 	if err == nil || len(metadata.Schema().IdentityProfileExtensions) != 0 {
 		t.Fatalf("duplicate publication error=%v schema=%#v", err, metadata.Schema().IdentityProfileExtensions)

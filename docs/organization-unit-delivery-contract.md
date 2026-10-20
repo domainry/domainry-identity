@@ -6,10 +6,9 @@ tree. It is not generic organization management CRUD and does not contain any
 CRM, M1, department-table, or quota-specific behavior.
 
 The V1 contract is
-`domainry-identity-organization-unit-delivery-v1`. Its source-owned Go surface
-is `github.com/domainry/domainry-identity/organizationunit`; the public
-`github.com/domainry/domainry-identity/module` facade aliases the same request,
-result, permission, and interface types.
+`domainry-identity-organization-unit-delivery-v1`. Its only public Go surface
+is `github.com/domainry/domainry-identity-sdk/organizationunit`; the Identity
+implementation repository does not publish a second alias package.
 
 ## Operations and types
 
@@ -152,7 +151,7 @@ the projection from becoming an organization-ID or hierarchy oracle.
 
 ## Verification map
 
-- `organizationunit/organization_unit_delivery_test.go`
+- `domainry-identity-sdk/organizationunit`
 - `internal/application/identity/identity_organization_unit_delivery_scope_test.go`
 - `internal/infrastructure/persistence/database/identity/identity_organization_unit_delivery_dialect_test.go`
 - `internal/infrastructure/persistence/database/schema/organization_unit_delivery_migration_test.go`

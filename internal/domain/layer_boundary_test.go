@@ -16,6 +16,7 @@ func TestApplicationPackagesDoNotDependOnOuterAdapters(t *testing.T) {
 	assertProductionImportsExclude(t, filepath.Join(internalRoot, "application"), []string{
 		"github.com/domainry/domainry-identity/internal/adapter",
 		"github.com/domainry/domainry-identity/internal/assembly",
+		"github.com/domainry/domainry-identity/internal/composition",
 		"github.com/domainry/domainry-identity/internal/infrastructure",
 		"github.com/domainry/domainry-identity/internal/transport",
 	})
@@ -25,6 +26,7 @@ func TestIdentitySDKAdapterDoesNotChooseInfrastructure(t *testing.T) {
 	internalRoot := identityInternalRoot(t)
 	assertProductionImportsExclude(t, filepath.Join(internalRoot, "adapter", "identitysdk"), []string{
 		"github.com/domainry/domainry-identity/internal/assembly",
+		"github.com/domainry/domainry-identity/internal/composition",
 		"github.com/domainry/domainry-identity/internal/infrastructure",
 		"github.com/domainry/domainry-identity/internal/transport",
 	})

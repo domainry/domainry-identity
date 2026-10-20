@@ -18,7 +18,7 @@ import (
 	auditapplication "github.com/domainry/domainry-identity/internal/application/auditbinding"
 	identityapplicationinternal "github.com/domainry/domainry-identity/internal/application/identity"
 	portabilityapplication "github.com/domainry/domainry-identity/internal/application/portability"
-	"github.com/domainry/domainry-identity/internal/assembly"
+	identitycomposition "github.com/domainry/domainry-identity/internal/composition"
 	authpolicy "github.com/domainry/domainry-identity/internal/domain/auth/policy"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	identityservice "github.com/domainry/domainry-identity/internal/domain/identity/service"
@@ -115,7 +115,7 @@ func (factory *Factory) OpenBootstrapWithDatabase(ctx context.Context, applicati
 	}
 	authStore := authpersistence.NewAuthStoreWithKeyProvider(identityStore, store.SecretKeyProvider(), store.IdempotencyMetrics(ctx))
 	inner := &moduleBinding{
-		runtime:                   &assembly.Core{Store: store, Manifest: manifest, IdentityStore: identityStore, Identity: identityApp, IdentityActions: identityActions, AuthStore: authStore},
+		runtime:                   &identitycomposition.Core{Store: store, Manifest: manifest, IdentityStore: identityStore, Identity: identityApp, IdentityActions: identityActions, AuthStore: authStore},
 		application:               identitysdk.ApplicationRef{ApplicationKey: applicationKey},
 		initialCredentialRotation: initialCredentialRotationPolicyFromConfig(cfg.AuthInitialCredentialRotationRequired),
 	}
@@ -203,7 +203,7 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 			cfg.IdentityBrowserApplicationKey = string(application.ApplicationKey)
 		}
 	}
-	identityRuntime, err := assembly.NewWithManifest(ctx, cfg, store, manifest, assembly.Options{
+	identityRuntime, err := identitycomposition.NewWithManifest(ctx, cfg, store, manifest, identitycomposition.Options{
 		WorkspaceResolver:  workspaceResolver,
 		Clock:              factory.Options.Clock,
 		CredentialEmail:    factory.Options.CredentialEmail,
@@ -426,7 +426,7 @@ func (resolver moduleBusinessProfileResolver) ResolveIdentityBusinessProfiles(ct
 
 type moduleBinding struct {
 	identitysdk.Binding
-	runtime                   *assembly.Core
+	runtime                   *identitycomposition.Core
 	application               identitysdk.ApplicationRef
 	adapters                  []identityhttpapi.Adapter
 	portability               *identityPortabilityDataExchangeProvider

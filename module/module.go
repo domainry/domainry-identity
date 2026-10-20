@@ -8,43 +8,21 @@ import (
 	"github.com/domainry/domainry-foundation/schemaownership"
 	identitysdkadapter "github.com/domainry/domainry-identity/internal/adapter/identitysdk"
 	moduleassembly "github.com/domainry/domainry-identity/internal/assembly/module"
+	credentialemail "github.com/domainry/domainry-identity/internal/domain/auth/contract/credentialemail"
 	databaseschema "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/schema"
-	organizationunit "github.com/domainry/domainry-identity/organizationunit"
 )
 
 const IdentityPortabilityProviderKey = moduleassembly.IdentityPortabilityProviderKey
 
 type Options = moduleassembly.Options
 type Factory = moduleassembly.Factory
+type CredentialEmailMessage = credentialemail.Message
+type CredentialEmailDelivery = credentialemail.Delivery
 
 const MigrationOwner = databaseschema.MigrationOwner
 
 func SchemaOwnership() []schemaownership.Table { return databaseschema.SchemaOwnership() }
 func OwnedTables() []string                    { return schemaownership.Names(SchemaOwnership()) }
-
-// Organization-unit delivery aliases keep the public module facade thin while
-// exposing the optional in-process capability to embedding Runtime versions.
-type OrganizationUnitNodeType = organizationunit.NodeType
-type OrganizationUnitCreateCandidate = organizationunit.CreateCandidate
-type OrganizationUnitDeliveryRequest = organizationunit.DeliveryRequest
-type DeliveredOrganizationUnit = organizationunit.DeliveredOrganizationUnit
-type OrganizationUnitDeliveryResult = organizationunit.DeliveryResult
-type OrganizationUnitResolveRequest = organizationunit.ResolveRequest
-type OrganizationUnitDelivery = organizationunit.Delivery
-type OrganizationUnitDeliveryUnitOfWorkBinder = organizationunit.UnitOfWorkBinder
-type EmbeddedOrganizationUnitDeliveryBinding = organizationunit.EmbeddedBinding
-
-const (
-	OrganizationUnitDeliveryContractVersionV1 = organizationunit.DeliveryContractVersionV1
-	OrganizationUnitDeliveryCreatePermission  = organizationunit.DeliveryCreatePermission
-	OrganizationUnitDeliveryResolvePermission = organizationunit.DeliveryResolvePermission
-	OrganizationUnitCompany                   = organizationunit.NodeTypeCompany
-	OrganizationUnitRegion                    = organizationunit.NodeTypeRegion
-	OrganizationUnitStore                     = organizationunit.NodeTypeStore
-	OrganizationUnitDepartment                = organizationunit.NodeTypeDepartment
-	OrganizationUnitTeam                      = organizationunit.NodeTypeTeam
-	OrganizationUnitWarehouse                 = organizationunit.NodeTypeWarehouse
-)
 
 func OptionsFromEnvironment() Options { return moduleassembly.OptionsFromEnvironment() }
 

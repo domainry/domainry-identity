@@ -5,9 +5,9 @@ import (
 	"net/http"
 
 	identitysdk "github.com/domainry/domainry-identity-sdk"
+	organizationunit "github.com/domainry/domainry-identity-sdk/organizationunit"
 	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
-	organizationunit "github.com/domainry/domainry-identity/organizationunit"
 )
 
 type sdkOrganizationUnitDelivery struct {

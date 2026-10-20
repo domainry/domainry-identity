@@ -9,7 +9,7 @@ import (
 
 	auditsdk "github.com/domainry/domainry-audit-sdk"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
-	"github.com/domainry/domainry-identity/credentialemail"
+	"github.com/domainry/domainry-identity/internal/domain/auth/contract/credentialemail"
 	manifestmodel "github.com/domainry/domainry-identity/internal/domain/manifest/model"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 	metadatasdk "github.com/domainry/domainry-metadata-sdk"
