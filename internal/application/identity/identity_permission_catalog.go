@@ -542,16 +542,16 @@ func (service *IdentityPermissionCatalogApplicationService) resolveActionUsages(
 	}
 	request, err := actioncontract.NewPermissionUsageRequest(queries)
 	if err != nil {
-		logging.FromContext(ctx).Warn("identity_action_usage_query_invalid", logging.Fields(map[string]any{"error": err.Error()})...)
+		logging.RecordFailure(ctx, "identity_action_usage_query_invalid", err, logging.Failure{Stage: "permission_usage_query"})
 		return resolved
 	}
 	snapshot, err := provider.provider.QueryPermissionUsages(ctx, request)
 	if err != nil {
-		logging.FromContext(ctx).Warn("identity_action_usage_query_unavailable", logging.Fields(map[string]any{"error": err.Error()})...)
+		logging.RecordFailure(ctx, "identity_action_usage_query_unavailable", err, logging.Failure{Stage: "permission_usage_query", Dependency: "permission_usage_provider", Retryable: true})
 		return resolved
 	}
 	if err := snapshot.ValidateFor(request); err != nil {
-		logging.FromContext(ctx).Warn("identity_action_usage_snapshot_invalid", logging.Fields(map[string]any{"error": err.Error()})...)
+		logging.RecordFailure(ctx, "identity_action_usage_snapshot_invalid", err, logging.Failure{Stage: "permission_usage_response", Dependency: "permission_usage_provider"})
 		return resolved
 	}
 	for _, owner := range snapshot.Owners {

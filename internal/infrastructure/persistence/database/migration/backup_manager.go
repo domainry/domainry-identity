@@ -100,7 +100,7 @@ func (manager *BackupManager) EnsureForExistingData(ctx context.Context, cfg con
 		}
 		manager.backupID = policy.BackupIDPrefix + checksum[:16]
 		logging.FromContext(ctx).Info(
-			"database migration backup created",
+			"database_migration_backup_created",
 			zap.String("backup_id", manager.backupID),
 			zap.String("database_engine", policy.EvidenceEngine),
 		)

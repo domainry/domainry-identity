@@ -21,6 +21,8 @@ github.com/domainry/domainry-data-exchange-sdk v0.3.12 h1:C3zF3X+zxzRjidR9oSA5/L
 github.com/domainry/domainry-data-exchange-sdk v0.3.12/go.mod h1:BLhcXNYX5j2isM6sf7iZJzAeQn8LkBb1CS2+zqaj42o=
 github.com/domainry/domainry-foundation v0.2.8 h1:1nV6HkG2DcobBEaSdwP7cVOzU8UEAVymXFqxkKGqHno=
 github.com/domainry/domainry-foundation v0.2.8/go.mod h1:nCw272N/NTkHfJNWvAGL8vZybUtOpgw3ZyCIshRSqF4=
+github.com/domainry/domainry-foundation v0.2.9 h1:6W2EveLotmAEotfjfSyS5Ldh2EwMwhZ7AsnRypcoKOA=
+github.com/domainry/domainry-foundation v0.2.9/go.mod h1:nCw272N/NTkHfJNWvAGL8vZybUtOpgw3ZyCIshRSqF4=
 github.com/domainry/domainry-identity-sdk v0.1.26 h1:Bf7MMVUdYyutojuHHfj3ga5wo5fHLI2mH6CYNZTha1k=
 github.com/domainry/domainry-identity-sdk v0.1.26/go.mod h1:0QapTgC0Shl63uBZAdIAQ49BPB2cB31C4RrkQX6eiEw=
 github.com/domainry/domainry-metadata v0.1.21 h1:T1ZMDLEnp3H9mCyUB04f88a+rz1moTf6nBTZDnxegR4=

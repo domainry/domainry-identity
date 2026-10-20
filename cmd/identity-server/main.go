@@ -6,11 +6,13 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 
+	"github.com/domainry/domainry-foundation/logging"
 	"github.com/domainry/domainry-foundation/processhost"
 	saasassembly "github.com/domainry/domainry-identity/internal/assembly/saas"
 	"github.com/domainry/domainry-identity/internal/platform/config"
@@ -59,7 +61,16 @@ func serve() (runErr error) {
 	if err != nil {
 		return fmt.Errorf("initialize logger: %w", err)
 	}
-	defer func() { runErr = observability.Finish(context.Background(), nil, runErr) }()
+	started := false
+	startupFailure := logging.Failure{Stage: "configuration_load"}
+	defer func() {
+		if !started && runErr != nil {
+			observability.StartFailed(context.Background(), runErr, startupFailure)
+			runErr = errors.Join(runErr, observability.Close(context.Background(), nil))
+			return
+		}
+		runErr = observability.Finish(context.Background(), nil, runErr)
+	}()
 
 	cfg, _, err := config.Load()
 	if err != nil {
@@ -69,17 +80,27 @@ func serve() (runErr error) {
 	if err := cfg.ValidateSaaSDeployment(); err != nil {
 		return fmt.Errorf("validate SaaS deployment: %w", err)
 	}
+	startupFailure = logging.Failure{Stage: "module_assembly"}
 	identityServer, err := saasassembly.Open(lifecycleCtx, cfg)
 	if err != nil {
 		return fmt.Errorf("initialize Identity backend: %w", err)
 	}
 
 	listeners := identityHTTPListeners(cfg, identityServer, observability)
+	startupFailure = logging.Failure{Stage: "listener_bind", Dependency: "http_listener"}
+	for index := range listeners {
+		listeners[index].listener, err = net.Listen("tcp", listeners[index].server.Addr)
+		if err != nil {
+			closeIdentityListenerSockets(listeners)
+			return errors.Join(err, identityServer.Close(context.Background()))
+		}
+	}
 	serveErr := make(chan error, len(listeners))
+	started = true
 	observability.Started(lifecycleCtx, map[string]any{"listener_count": len(listeners)})
 	for _, listener := range listeners {
 		listener := listener
-		go func() { serveErr <- listener.server.ListenAndServe() }()
+		go func() { serveErr <- listener.server.Serve(listener.listener) }()
 	}
 
 	select {
@@ -101,8 +122,17 @@ func serve() (runErr error) {
 }
 
 type identityHTTPListener struct {
-	group  string
-	server *http.Server
+	group    string
+	server   *http.Server
+	listener net.Listener
+}
+
+func closeIdentityListenerSockets(listeners []identityHTTPListener) {
+	for _, listener := range listeners {
+		if listener.listener != nil {
+			_ = listener.listener.Close()
+		}
+	}
 }
 
 func identityHTTPListeners(cfg config.Config, identityServer *saasassembly.Service, observability *processhost.Host) []identityHTTPListener {
