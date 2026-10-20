@@ -90,7 +90,9 @@ func exchangeStandardOIDC(ctx context.Context, providerKey, code string, config 
 		return authmodel.AuthExternalIdentityAssertion{}, fmt.Errorf("oidc access token binding invalid")
 	}
 	var raw map[string]any
-	_ = verified.Claims(&raw)
+	if err := verified.Claims(&raw); err != nil {
+		return authmodel.AuthExternalIdentityAssertion{}, fmt.Errorf("oidc id_token claim projection invalid")
+	}
 	claims := claimsFromMap(raw)
 	if discovered.UserInfoEndpoint() != "" {
 		userInfo, userInfoErr := discovered.UserInfo(providerContext, oauth2.StaticTokenSource(token))
@@ -101,10 +103,11 @@ func exchangeStandardOIDC(ctx context.Context, providerKey, code string, config 
 			return authmodel.AuthExternalIdentityAssertion{}, fmt.Errorf("oidc userinfo subject mismatch")
 		}
 		var userInfoClaims map[string]any
-		if userInfo.Claims(&userInfoClaims) == nil {
-			for key, value := range claimsFromMap(userInfoClaims) {
-				claims[key] = value
-			}
+		if err := userInfo.Claims(&userInfoClaims); err != nil {
+			return authmodel.AuthExternalIdentityAssertion{}, fmt.Errorf("oidc userinfo claims invalid")
+		}
+		for key, value := range claimsFromMap(userInfoClaims) {
+			claims[key] = value
 		}
 	}
 	claims["issuer"] = verified.Issuer

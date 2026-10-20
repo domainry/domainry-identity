@@ -188,7 +188,7 @@ func (s *Service) executeManaged(ctx context.Context, principal identitymodel.Pr
 	encoded, marshalErr := json.Marshal(value)
 	if marshalErr != nil {
 		ownerErr = apperror.New(apperror.KindInternal, "backend.authoring.result_invalid", marshalErr, nil)
-		encoded, _ = json.Marshal(outcome{ErrorKind: apperror.KindInternal, ErrorCode: "backend.authoring.result_invalid"})
+		encoded = []byte(`{"error_kind":"internal","error_code":"backend.authoring.result_invalid"}`)
 	}
 	status := idempotency.StatusSucceeded
 	if ownerErr != nil {

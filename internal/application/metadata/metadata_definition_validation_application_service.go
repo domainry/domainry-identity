@@ -151,7 +151,11 @@ func (s *MetadataApplicationService) ValidateMetadataDefinitionPayload(ctx conte
 			return req, err
 		}
 		action.EffectSet = nil
-		req.Payload, _ = json.Marshal(action)
+		encoded, err := json.Marshal(action)
+		if err != nil {
+			return req, badRequest("backend.action.definition_invalid")
+		}
+		req.Payload = encoded
 		return req, nil
 	case "identity_profile_binding":
 		var binding identitymodel.IdentityProfileExtension
@@ -161,7 +165,11 @@ func (s *MetadataApplicationService) ValidateMetadataDefinitionPayload(ctx conte
 		if binding.Cardinality == "" {
 			binding.Cardinality = "one_to_one"
 		}
-		req.Payload, _ = json.Marshal(binding)
+		encoded, err := json.Marshal(binding)
+		if err != nil {
+			return req, badRequest("backend.identity.profile_binding_invalid")
+		}
+		req.Payload = encoded
 		snapshot := s.runtime.Schema()
 		bindings := make([]identitymodel.IdentityProfileExtension, 0, len(snapshot.IdentityProfileExtensions)+1)
 		for _, current := range snapshot.IdentityProfileExtensions {
