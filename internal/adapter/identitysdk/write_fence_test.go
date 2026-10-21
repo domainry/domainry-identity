@@ -3,7 +3,6 @@ package identitysdkadapter
 import (
 	"context"
 	"errors"
-	"net/http"
 	"testing"
 	"time"
 
@@ -39,18 +38,18 @@ func (clock fixedSDKClock) Now() time.Time { return clock.now }
 
 func TestSDKMutationFenceFailsClosedForFrozenAndUnavailableWorkspaces(t *testing.T) {
 	for name, fixture := range map[string]struct {
-		fence  mutationFenceStub
-		code   string
-		status int
+		fence mutationFenceStub
+		code  string
+		class identitysdk.ErrorClass
 	}{
-		"frozen":      {fence: mutationFenceStub{frozen: true}, code: "identity.workspace_writes_frozen", status: http.StatusLocked},
-		"unavailable": {fence: mutationFenceStub{err: errors.New("database unavailable")}, code: "identity.write_fence_unavailable", status: http.StatusServiceUnavailable},
+		"frozen":      {fence: mutationFenceStub{frozen: true}, code: "identity.workspace_writes_frozen", class: identitysdk.ErrorClassConflict},
+		"unavailable": {fence: mutationFenceStub{err: errors.New("database unavailable")}, code: "identity.write_fence_unavailable", class: identitysdk.ErrorClassUnavailable},
 	} {
 		t.Run(name, func(t *testing.T) {
 			binding := &sdkBinding{mutationFence: fixture.fence}
 			err := binding.requireMutableWorkspace(t.Context(), "workspace-a")
 			var sdkError *identitysdk.Error
-			if !errors.As(err, &sdkError) || sdkError.Code != fixture.code || sdkError.StatusCode != fixture.status {
+			if !errors.As(err, &sdkError) || sdkError.Code != fixture.code || sdkError.Class != fixture.class {
 				t.Fatalf("error=%#v", err)
 			}
 		})

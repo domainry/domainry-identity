@@ -2,7 +2,6 @@ package identitysdkadapter
 
 import (
 	"context"
-	"net/http"
 	"strings"
 
 	identitysdk "github.com/domainry/domainry-identity-sdk"
@@ -16,11 +15,11 @@ type sdkPrincipalResolver struct{ binding *sdkBinding }
 func (adapter sdkPrincipalResolver) resolve(ctx context.Context, request identitysdk.PrincipalResolutionRequest) (identitysdk.PrincipalResolution, error) {
 	request.RoleKey, request.SessionRoleKey = strings.TrimSpace(request.RoleKey), strings.TrimSpace(request.SessionRoleKey)
 	if request.SessionRoleKey != "" && (request.RoleKey != "" || request.Workload != nil) {
-		return identitysdk.PrincipalResolution{}, &identitysdk.Error{StatusCode: http.StatusBadRequest, Code: "identity.principal_role_selection_invalid"}
+		return identitysdk.PrincipalResolution{}, &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.principal_role_selection_invalid"}
 	}
 	scope, ok := identityscope.ScopeFromContext(ctx)
 	if !ok {
-		return identitysdk.PrincipalResolution{}, &identitysdk.Error{Code: "identity.application_scope_required"}
+		return identitysdk.PrincipalResolution{}, &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.application_scope_required"}
 	}
 	identity, workspaceContext, err := (sdkProjection{binding: adapter.binding}).scoped(ctx)
 	if err != nil {
@@ -43,7 +42,7 @@ func (adapter sdkPrincipalResolver) resolve(ctx context.Context, request identit
 				assigned = assigned || role.Key == request.SessionRoleKey
 			}
 			if !assigned {
-				return identitysdk.PrincipalResolution{}, &identitysdk.Error{StatusCode: http.StatusForbidden, Code: "identity.session_role_unavailable"}
+				return identitysdk.PrincipalResolution{}, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.session_role_unavailable"}
 			}
 			roleKey = request.SessionRoleKey
 		}
@@ -73,36 +72,36 @@ func (adapter sdkPrincipalResolver) resolveWorkflowWorkload(ctx context.Context,
 }) (identitysdk.PrincipalResolution, error) {
 	scope, ok := identityscope.ScopeFromContext(ctx)
 	if !ok {
-		return identitysdk.PrincipalResolution{}, &identitysdk.Error{Code: "identity.application_scope_required"}
+		return identitysdk.PrincipalResolution{}, &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.application_scope_required"}
 	}
 	workload := request.Workload
 	workflowKey := strings.TrimSpace(workload.WorkflowKey)
 	subjectID := identitysdk.WorkflowWorkloadSubjectID(workflowKey)
 	if subjectID == "" || request.SubjectID != subjectID || strings.TrimSpace(request.RoleKey) == "" || strings.TrimSpace(workload.DefinitionVersionID) == "" || workload.DefinitionVersion <= 0 || strings.TrimSpace(workload.ReleaseDigest) == "" {
-		return identitysdk.PrincipalResolution{}, &identitysdk.Error{StatusCode: http.StatusBadRequest, Code: "identity.workflow_workload_resolution_invalid"}
+		return identitysdk.PrincipalResolution{}, &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.workflow_workload_resolution_invalid"}
 	}
 	binding, found, err := identity.WorkflowWorkloadBinding(ctx, string(scope.ApplicationKey), workflowKey)
 	if err != nil {
 		return identitysdk.PrincipalResolution{}, sdkBoundaryError(err)
 	}
 	if !found || binding.Status != identitysdk.WorkflowWorkloadBindingActive {
-		return identitysdk.PrincipalResolution{}, &identitysdk.Error{StatusCode: http.StatusNotFound, Code: "identity.workflow_workload_not_found"}
+		return identitysdk.PrincipalResolution{}, &identitysdk.Error{Class: identitysdk.ErrorClassNotFound, Code: "identity.workflow_workload_not_found"}
 	}
 	if binding.RoleKey != strings.TrimSpace(request.RoleKey) {
-		return identitysdk.PrincipalResolution{}, &identitysdk.Error{StatusCode: http.StatusForbidden, Code: "identity.workflow_workload_role_mismatch"}
+		return identitysdk.PrincipalResolution{}, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.workflow_workload_role_mismatch"}
 	}
 	if binding.DefinitionVersionID != strings.TrimSpace(workload.DefinitionVersionID) || binding.DefinitionVersion != workload.DefinitionVersion {
-		return identitysdk.PrincipalResolution{}, &identitysdk.Error{StatusCode: http.StatusForbidden, Code: "identity.workflow_workload_version_mismatch"}
+		return identitysdk.PrincipalResolution{}, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.workflow_workload_version_mismatch"}
 	}
 	if binding.ReleaseID != strings.TrimSpace(workload.ReleaseID) || binding.ReleaseDigest != strings.TrimSpace(workload.ReleaseDigest) {
-		return identitysdk.PrincipalResolution{}, &identitysdk.Error{StatusCode: http.StatusForbidden, Code: "identity.workflow_workload_release_digest_mismatch"}
+		return identitysdk.PrincipalResolution{}, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.workflow_workload_release_digest_mismatch"}
 	}
 	principal, err := identity.BuildWorkflowWorkloadPrincipal(ctx, binding)
 	if err != nil {
 		return identitysdk.PrincipalResolution{}, sdkBoundaryError(err)
 	}
 	if !principal.Known {
-		return identitysdk.PrincipalResolution{}, &identitysdk.Error{StatusCode: http.StatusForbidden, Code: "identity.workflow_workload_role_unavailable"}
+		return identitysdk.PrincipalResolution{}, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.workflow_workload_role_unavailable"}
 	}
 	snapshot, err := adapter.binding.access.SnapshotWorkflowWorkload(ctx, principal)
 	if err != nil {

@@ -24,7 +24,7 @@ func (binding *moduleBinding) StoreOrganizationDeliveryUnitOfWorkBinder() identi
 func (binder moduleStoreOrganizationDeliveryBinder) BindStoreOrganizationDeliveryUnitOfWork(transaction identitysdk.EmbeddedTransaction) (identitysdk.StoreOrganizationDelivery, error) {
 	tx, ok := embeddedTransactionExecutor(transaction)
 	if !ok {
-		return nil, &identitysdk.Error{Code: "identity.store_organization_delivery_transaction_required"}
+		return nil, &identitysdk.Error{Class: identitysdk.ErrorClassInternal, Code: "identity.store_organization_delivery_transaction_required"}
 	}
 	return moduleStoreOrganizationDelivery{binding: binder.binding, tx: tx}, nil
 }
@@ -55,18 +55,18 @@ func (adapter moduleStoreOrganizationDelivery) ListStoreOrganizations(ctx contex
 
 func (adapter moduleStoreOrganizationDelivery) provider(ctx context.Context, accessToken string) (identitysdk.StoreOrganizationDelivery, error) {
 	if adapter.binding == nil || adapter.binding.runtime == nil || adapter.binding.runtime.Auth == nil || adapter.binding.runtime.Binding == nil || adapter.tx == nil {
-		return nil, &identitysdk.Error{Code: "identity.store_organization_delivery_unavailable"}
+		return nil, &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.store_organization_delivery_unavailable"}
 	}
 	claims, err := adapter.binding.runtime.Auth.VerifyAccessToken(ctx, strings.TrimSpace(accessToken))
 	if err != nil {
 		return nil, err
 	}
 	if !adapter.binding.acceptsWorkspace(ctx, claims.WorkspaceID) || claims.Audience != string(adapter.binding.application.ApplicationKey) {
-		return nil, &identitysdk.Error{Code: "identity.store_organization_delivery_application_scope_mismatch"}
+		return nil, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.store_organization_delivery_application_scope_mismatch"}
 	}
 	binding, ok := adapter.binding.runtime.Binding.(identitysdk.StoreOrganizationDeliveryBinding)
 	if !ok || binding.StoreOrganizationDelivery() == nil {
-		return nil, &identitysdk.Error{Code: "identity.store_organization_delivery_unavailable"}
+		return nil, &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.store_organization_delivery_unavailable"}
 	}
 	return binding.StoreOrganizationDelivery(), nil
 }

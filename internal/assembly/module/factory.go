@@ -53,20 +53,20 @@ func (factory *Factory) OpenWithDatabase(ctx context.Context, application identi
 // or ordinary Identity Binding before the host commits the first Workspace.
 func (factory *Factory) OpenBootstrapWithDatabase(ctx context.Context, applicationKey identitysdk.ApplicationKey, handle identitysdk.DatabaseHandle) (identitysdk.BootstrapBinding, error) {
 	if ctx == nil {
-		return nil, &identitysdk.Error{Code: "identity.context_required"}
+		return nil, &identitysdk.Error{Class: identitysdk.ErrorClassInternal, Code: "identity.context_required"}
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, &identitysdk.Error{StatusCode: http.StatusServiceUnavailable, Code: "identity.context_unavailable", Cause: err}
+		return nil, &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.context_unavailable", Cause: err}
 	}
 	if !applicationKey.Valid() {
-		return nil, &identitysdk.Error{Code: "identity.module_application_scope_required"}
+		return nil, &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.module_application_scope_required"}
 	}
 	if handle.Migrations == nil {
-		return nil, &identitysdk.Error{Code: "identity.module_migration_registrar_required"}
+		return nil, &identitysdk.Error{Class: identitysdk.ErrorClassInternal, Code: "identity.module_migration_registrar_required"}
 	}
 	db, valid := handle.Pool.(*sql.DB)
 	if !valid || db == nil {
-		return nil, &identitysdk.Error{Code: "identity.module_database_required"}
+		return nil, &identitysdk.Error{Class: identitysdk.ErrorClassInternal, Code: "identity.module_database_required"}
 	}
 	cfg, _, err := loadModuleConfig(factory.Options)
 	if err != nil {
@@ -124,13 +124,13 @@ func (factory *Factory) OpenBootstrapWithDatabase(ctx context.Context, applicati
 
 func (factory *Factory) open(ctx context.Context, application identitysdk.ApplicationRef, handle *identitysdk.DatabaseHandle) (identitysdk.Binding, error) {
 	if ctx == nil {
-		return nil, &identitysdk.Error{Code: "identity.context_required"}
+		return nil, &identitysdk.Error{Class: identitysdk.ErrorClassInternal, Code: "identity.context_required"}
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, &identitysdk.Error{StatusCode: http.StatusServiceUnavailable, Code: "identity.context_unavailable", Cause: err}
+		return nil, &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.context_unavailable", Cause: err}
 	}
 	if !application.WorkspaceID.Valid() || !application.ApplicationKey.Valid() {
-		return nil, &identitysdk.Error{Code: "identity.module_application_scope_required"}
+		return nil, &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.module_application_scope_required"}
 	}
 	cfg, _, err := loadModuleConfig(factory.Options)
 	if err != nil {
@@ -146,11 +146,11 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 		store, err = database.OpenContext(ctx, cfg)
 	} else {
 		if handle.Migrations == nil {
-			return nil, &identitysdk.Error{Code: "identity.module_migration_registrar_required"}
+			return nil, &identitysdk.Error{Class: identitysdk.ErrorClassInternal, Code: "identity.module_migration_registrar_required"}
 		}
 		db, valid := handle.Pool.(*sql.DB)
 		if !valid || db == nil {
-			return nil, &identitysdk.Error{Code: "identity.module_database_required"}
+			return nil, &identitysdk.Error{Class: identitysdk.ErrorClassInternal, Code: "identity.module_database_required"}
 		}
 		cfg.DatabaseDriver = handle.Driver
 		cfg.DatabaseSchema = handle.Schema
@@ -223,7 +223,7 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 	if handle != nil && handle.WorkspaceIdentityUsageAuthority != nil {
 		if len(handle.WorkspaceIdentityUsageCursorKey) != 32 {
 			_ = identityRuntime.CloseContext(ctx)
-			return nil, &identitysdk.Error{Code: "identity.workspace_usage_cursor_key_required"}
+			return nil, &identitysdk.Error{Class: identitysdk.ErrorClassInternal, Code: "identity.workspace_usage_cursor_key_required"}
 		}
 		workspaceUsage = identityapplicationinternal.NewIdentityWorkspaceUsageApplicationService(identityapplicationinternal.IdentityWorkspaceUsageDependencies{
 			ApplicationKey: string(application.ApplicationKey),
@@ -236,7 +236,7 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 	binding := identityRuntime.Binding
 	if binding == nil {
 		_ = identityRuntime.CloseContext(ctx)
-		return nil, &identitysdk.Error{Code: "identity.module_binding_unavailable"}
+		return nil, &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.module_binding_unavailable"}
 	}
 	var scopedBinding identitysdk.Binding
 	if workspaceResolver != nil {

@@ -37,7 +37,7 @@ func (adapter sdkExternalAccounts) StartExternalAccountLink(ctx context.Context,
 	workspaceID := identitysdk.WorkspaceID(claims.WorkspaceID)
 	application := identitysdk.ApplicationRef{WorkspaceID: workspaceID, ApplicationKey: request.ApplicationKey}
 	if !application.ApplicationKey.Valid() {
-		return identitysdk.ProviderChallenge{}, &identitysdk.Error{Code: "identity.application_scope_invalid"}
+		return identitysdk.ProviderChallenge{}, &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.application_scope_invalid"}
 	}
 	flowContext := requestcontext.WithWorkspaceID(ctx, claims.WorkspaceID)
 	if err := adapter.binding.requireMutableWorkspace(flowContext, workspaceID); err != nil {
@@ -46,7 +46,7 @@ func (adapter sdkExternalAccounts) StartExternalAccountLink(ctx context.Context,
 	if found, err := adapter.binding.applicationRegistered(flowContext, application); err != nil {
 		return identitysdk.ProviderChallenge{}, sdkBoundaryError(err)
 	} else if !found {
-		return identitysdk.ProviderChallenge{}, &identitysdk.Error{Code: "identity.application_not_registered"}
+		return identitysdk.ProviderChallenge{}, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.application_not_registered"}
 	}
 	if err := adapter.binding.validateApplicationRedirect(flowContext, application, request.ReturnURL); err != nil {
 		return identitysdk.ProviderChallenge{}, sdkBoundaryError(err)

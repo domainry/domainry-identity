@@ -139,7 +139,7 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 		t.Fatal("out-of-order remote permission snapshot was accepted")
 	} else {
 		var sdkError *identity.Error
-		if !errors.As(err, &sdkError) || sdkError.StatusCode != http.StatusConflict || sdkError.Code != "identity.permission_snapshot_stale" {
+		if !errors.As(err, &sdkError) || sdkError.Class != identity.ErrorClassConflict || sdkError.Code != "identity.permission_snapshot_stale" {
 			t.Fatalf("stale remote permission error=%#v", err)
 		}
 	}
@@ -151,7 +151,7 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 		t.Fatal("remote permission owner conflict was accepted")
 	} else {
 		var sdkError *identity.Error
-		if !errors.As(err, &sdkError) || sdkError.StatusCode != http.StatusConflict || sdkError.Code != "identity.permission_owner_conflict" {
+		if !errors.As(err, &sdkError) || sdkError.Class != identity.ErrorClassConflict || sdkError.Code != "identity.permission_owner_conflict" {
 			t.Fatalf("remote permission owner conflict error=%#v", err)
 		}
 	}
@@ -163,7 +163,7 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 		t.Fatal("service credential published an owner outside its configured scope")
 	} else {
 		var sdkError *identity.Error
-		if !errors.As(err, &sdkError) || sdkError.StatusCode != http.StatusForbidden || sdkError.Code != "identity.permission_source_owner_forbidden" {
+		if !errors.As(err, &sdkError) || sdkError.Class != identity.ErrorClassForbidden || sdkError.Code != "identity.permission_source_owner_forbidden" {
 			t.Fatalf("forbidden permission owner error=%#v", err)
 		}
 	}
@@ -171,7 +171,7 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 		t.Fatal("service credential read an owner snapshot outside its configured scope")
 	} else {
 		var sdkError *identity.Error
-		if !errors.As(err, &sdkError) || sdkError.StatusCode != http.StatusForbidden || sdkError.Code != "identity.permission_source_owner_forbidden" {
+		if !errors.As(err, &sdkError) || sdkError.Class != identity.ErrorClassForbidden || sdkError.Code != "identity.permission_source_owner_forbidden" {
 			t.Fatalf("forbidden permission source snapshot error=%#v", err)
 		}
 	}

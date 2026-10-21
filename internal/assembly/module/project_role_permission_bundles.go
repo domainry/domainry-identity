@@ -17,13 +17,13 @@ import (
 // product; direct administrator selections remain guarded by the HTTP API.
 func (binding *moduleBinding) PublishProjectRolePermissionBundle(ctx context.Context, request identitysdk.ProjectRolePermissionBundleRequest) (identitysdk.ProjectRolePermissionBundleReceipt, error) {
 	if binding == nil || binding.runtime == nil || binding.runtime.Metadata == nil || binding.runtime.PermissionCatalog == nil {
-		return identitysdk.ProjectRolePermissionBundleReceipt{}, &identitysdk.Error{Code: "identity.project_role_permission_bundle_unavailable"}
+		return identitysdk.ProjectRolePermissionBundleReceipt{}, &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.project_role_permission_bundle_unavailable"}
 	}
 	if err := request.ValidateContract(); err != nil {
 		return identitysdk.ProjectRolePermissionBundleReceipt{}, err
 	}
 	if request.Application != binding.application {
-		return identitysdk.ProjectRolePermissionBundleReceipt{}, &identitysdk.Error{Code: "identity.project_role_permission_bundle_scope_mismatch"}
+		return identitysdk.ProjectRolePermissionBundleReceipt{}, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.project_role_permission_bundle_scope_mismatch"}
 	}
 
 	workspaceID := strings.TrimSpace(string(request.Application.WorkspaceID))
@@ -38,7 +38,7 @@ func (binding *moduleBinding) PublishProjectRolePermissionBundle(ctx context.Con
 		return identitysdk.ProjectRolePermissionBundleReceipt{}, err
 	}
 	if !found {
-		return identitysdk.ProjectRolePermissionBundleReceipt{}, &identitysdk.Error{Code: "identity.project_role_permission_bundle_role_not_found", Params: map[string]string{"role_key": roleKey}}
+		return identitysdk.ProjectRolePermissionBundleReceipt{}, &identitysdk.Error{Class: identitysdk.ErrorClassNotFound, Code: "identity.project_role_permission_bundle_role_not_found", Params: map[string]string{"role_key": roleKey}}
 	}
 
 	permissionKeys := make([]string, 0, len(request.Permissions))
@@ -76,7 +76,7 @@ func (binding *moduleBinding) PublishProjectRolePermissionBundle(ctx context.Con
 	}
 	permissions, valid := identitymodel.NormalizeRolePermissions(permissions)
 	if !valid {
-		return identitysdk.ProjectRolePermissionBundleReceipt{}, &identitysdk.Error{Code: "identity.project_role_permission_bundle_invalid"}
+		return identitysdk.ProjectRolePermissionBundleReceipt{}, &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.project_role_permission_bundle_invalid"}
 	}
 	if added == 0 && updatedCount == 0 {
 		return identitysdk.ProjectRolePermissionBundleReceipt{RoleKey: roleKey, PermissionCount: len(permissions), SchemaVersion: revision.SchemaVersion, SchemaHash: revision.SchemaHash}, nil

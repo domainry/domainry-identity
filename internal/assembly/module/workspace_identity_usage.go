@@ -21,7 +21,7 @@ type moduleWorkspaceIdentityUsageBinder struct {
 
 func (binder moduleWorkspaceIdentityUsageBinder) AuthorizeWorkspaceIdentityUsage(ctx context.Context, request identitysdk.WorkspaceIdentityUsageAuthorizationRequest) (identitysdk.WorkspaceIdentityUsageAuthorization, error) {
 	if binder.binding == nil || binder.binding.workspaceUsage == nil {
-		return identitysdk.WorkspaceIdentityUsageAuthorization{}, &identitysdk.Error{Code: "identity.workspace_usage_authority_required"}
+		return identitysdk.WorkspaceIdentityUsageAuthorization{}, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.workspace_usage_authority_required"}
 	}
 	grant, err := binder.binding.workspaceUsage.Authorize(ctx, request.AccessToken)
 	if err != nil {
@@ -37,17 +37,17 @@ func (binding *moduleBinding) WorkspaceIdentityUsageUnitOfWorkBinder() identitys
 func (binder moduleWorkspaceIdentityUsageBinder) BindWorkspaceIdentityUsageUnitOfWork(transaction identitysdk.EmbeddedTransaction) (identitysdk.WorkspaceIdentityUsageAggregate, error) {
 	tx, ok := embeddedTransactionExecutor(transaction)
 	if !ok {
-		return nil, &identitysdk.Error{Code: "identity.workspace_usage_transaction_required"}
+		return nil, &identitysdk.Error{Class: identitysdk.ErrorClassInternal, Code: "identity.workspace_usage_transaction_required"}
 	}
 	if binder.binding == nil || binder.binding.workspaceUsage == nil {
-		return nil, &identitysdk.Error{Code: "identity.workspace_usage_authority_required"}
+		return nil, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.workspace_usage_authority_required"}
 	}
 	return moduleWorkspaceIdentityUsage{binding: binder.binding, tx: tx}, nil
 }
 
 func (adapter moduleWorkspaceIdentityUsage) ListWorkspaceIdentityUsage(ctx context.Context, request identitysdk.WorkspaceIdentityUsageRequest) (identitysdk.WorkspaceIdentityUsagePage, error) {
 	if adapter.binding == nil || adapter.binding.workspaceUsage == nil || adapter.tx == nil {
-		return identitysdk.WorkspaceIdentityUsagePage{}, &identitysdk.Error{Code: "identity.workspace_usage_unavailable"}
+		return identitysdk.WorkspaceIdentityUsagePage{}, &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.workspace_usage_unavailable"}
 	}
 	page, err := adapter.binding.workspaceUsage.List(identitytransaction.WithExecutor(ctx, adapter.tx), identityapplication.IdentityWorkspaceUsageRequest{
 		ContractVersion: request.ContractVersion,
@@ -78,7 +78,7 @@ func (adapter moduleWorkspaceIdentityUsage) ListWorkspaceIdentityUsage(ctx conte
 
 func (adapter moduleWorkspaceIdentityUsage) ResolveWorkspaceIdentityUsage(ctx context.Context, request identitysdk.WorkspaceIdentityUsageResolveRequest) (identitysdk.WorkspaceIdentityUsage, error) {
 	if adapter.binding == nil || adapter.binding.workspaceUsage == nil || adapter.tx == nil {
-		return identitysdk.WorkspaceIdentityUsage{}, &identitysdk.Error{Code: "identity.workspace_usage_unavailable"}
+		return identitysdk.WorkspaceIdentityUsage{}, &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.workspace_usage_unavailable"}
 	}
 	item, err := adapter.binding.workspaceUsage.Resolve(identitytransaction.WithExecutor(ctx, adapter.tx), identityapplication.IdentityWorkspaceUsageResolveRequest{
 		ContractVersion: request.ContractVersion,

@@ -89,10 +89,7 @@ func (h *httpSupport) writeError(w http.ResponseWriter, r *http.Request, status 
 func (h *httpSupport) writeServiceError(w http.ResponseWriter, r *http.Request, err error) {
 	var sdkError *identitysdk.Error
 	if errors.As(err, &sdkError) {
-		status := sdkError.StatusCode
-		if status == 0 {
-			status = http.StatusBadRequest
-		}
+		status := applicationErrorHTTPStatus(apperror.KindOf(sdkError))
 		details := make(map[string]string, len(sdkError.Params))
 		for key, value := range sdkError.Params {
 			details[key] = value
@@ -100,22 +97,27 @@ func (h *httpSupport) writeServiceError(w http.ResponseWriter, r *http.Request, 
 		httpresponse.WriteError(w, r, httpresponse.Failure{Status: status, Code: sdkError.Code, Message: sdkError.Message, Params: details, Cause: err})
 		return
 	}
-	status := http.StatusInternalServerError
-	switch apperror.KindOf(err) {
-	case apperror.KindBadRequest:
-		status = http.StatusBadRequest
-	case apperror.KindForbidden:
-		status = http.StatusForbidden
-	case apperror.KindNotFound:
-		status = http.StatusNotFound
-	case apperror.KindConflict:
-		status = http.StatusConflict
-	case apperror.KindRateLimited:
-		status = http.StatusTooManyRequests
-	case apperror.KindUnavailable:
-		status = http.StatusServiceUnavailable
-	}
+	status := applicationErrorHTTPStatus(apperror.KindOf(err))
 	httpresponse.WriteError(w, r, httpresponse.Failure{Status: status, Code: apperror.CodeOf(err), Params: apperror.ParamsOf(err), Cause: err})
+}
+
+func applicationErrorHTTPStatus(kind apperror.ErrorKind) int {
+	switch kind {
+	case apperror.KindBadRequest:
+		return http.StatusBadRequest
+	case apperror.KindForbidden:
+		return http.StatusForbidden
+	case apperror.KindNotFound:
+		return http.StatusNotFound
+	case apperror.KindConflict:
+		return http.StatusConflict
+	case apperror.KindRateLimited:
+		return http.StatusTooManyRequests
+	case apperror.KindUnavailable:
+		return http.StatusServiceUnavailable
+	default:
+		return http.StatusInternalServerError
+	}
 }
 
 func (h *httpSupport) decodeJSON(w http.ResponseWriter, r *http.Request, value any) bool {

@@ -19,7 +19,7 @@ func (binding *sdkBinding) HandlerDelivery() identitysdk.HandlerDelivery {
 
 func (adapter sdkHandlerDelivery) DeliverIdentity(ctx context.Context, request identitysdk.HandlerDeliveryRequest) (identitysdk.HandlerDeliveryResult, error) {
 	if adapter.binding == nil || adapter.binding.handlerDelivery == nil {
-		return identitysdk.HandlerDeliveryResult{}, &identitysdk.Error{Code: "identity.handler_delivery_unavailable"}
+		return identitysdk.HandlerDeliveryResult{}, &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.handler_delivery_unavailable"}
 	}
 	scoped, scopeErr := adapter.binding.forToken(ctx, request.AccessToken)
 	if scopeErr != nil {
@@ -45,7 +45,7 @@ func (adapter sdkHandlerDelivery) DeliverIdentity(ctx context.Context, request i
 
 func (adapter sdkHandlerDelivery) ResolveBoundIdentity(ctx context.Context, request identitysdk.HandlerBoundIdentityRequest) (identitysdk.HandlerBoundIdentity, error) {
 	if adapter.binding == nil || adapter.binding.handlerDelivery == nil {
-		return identitysdk.HandlerBoundIdentity{}, &identitysdk.Error{Code: "identity.handler_delivery_unavailable"}
+		return identitysdk.HandlerBoundIdentity{}, &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.handler_delivery_unavailable"}
 	}
 	scoped, scopeErr := adapter.binding.forToken(ctx, request.AccessToken)
 	if scopeErr != nil {

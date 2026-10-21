@@ -667,7 +667,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		t.Fatal("embedded binding accepted a stale permission snapshot")
 	} else {
 		var sdkError *identitysdk.Error
-		if !errors.As(err, &sdkError) || sdkError.StatusCode != http.StatusConflict || sdkError.Code != "identity.permission_snapshot_stale" {
+		if !errors.As(err, &sdkError) || sdkError.Class != identitysdk.ErrorClassConflict || sdkError.Code != "identity.permission_snapshot_stale" {
 			t.Fatalf("embedded stale snapshot error=%#v", err)
 		}
 	}
@@ -676,7 +676,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		t.Fatal("embedded binding accepted a permission owner conflict")
 	} else {
 		var sdkError *identitysdk.Error
-		if !errors.As(err, &sdkError) || sdkError.StatusCode != http.StatusConflict || sdkError.Code != "identity.permission_owner_conflict" {
+		if !errors.As(err, &sdkError) || sdkError.Class != identitysdk.ErrorClassConflict || sdkError.Code != "identity.permission_owner_conflict" {
 			t.Fatalf("embedded permission owner conflict error=%#v", err)
 		}
 	}

@@ -28,11 +28,11 @@ func (binding *moduleBinding) InstallationAdministratorBootstrap() identitymodul
 
 func (binding *moduleBinding) BootstrapInstallationAdministratorV1(ctx context.Context, request identitymodulehost.InstallationAdministratorBootstrapRequest, transaction identitymodulehost.Transaction) (identitymodulehost.InstallationAdministratorBootstrapReceipt, error) {
 	if binding == nil || binding.runtime == nil || binding.runtime.IdentityStore == nil || !binding.runtime.AuthStore.Ready() || binding.runtime.Audit == nil {
-		return identitymodulehost.InstallationAdministratorBootstrapReceipt{}, installationAdministratorError("identity.installation_administrator_bootstrap_unavailable", nil)
+		return identitymodulehost.InstallationAdministratorBootstrapReceipt{}, installationAdministratorError(identitysdk.ErrorClassUnavailable, "identity.installation_administrator_bootstrap_unavailable", nil)
 	}
 	tx, ok := embeddedTransactionExecutor(transaction)
 	if !ok {
-		return identitymodulehost.InstallationAdministratorBootstrapReceipt{}, installationAdministratorError("identity.installation_administrator_transaction_required", nil)
+		return identitymodulehost.InstallationAdministratorBootstrapReceipt{}, installationAdministratorError(identitysdk.ErrorClassInternal, "identity.installation_administrator_transaction_required", nil)
 	}
 	request = normalizeInstallationAdministratorRequest(request)
 	if err := validateInstallationAdministratorRequest(request); err != nil {
@@ -45,21 +45,21 @@ func (binding *moduleBinding) BootstrapInstallationAdministratorV1(ctx context.C
 	}
 	if found {
 		if stored.RequestFingerprint != fingerprint || stored.ContractVersion != request.ContractVersion || stored.ContractHash != request.ContractHash {
-			return identitymodulehost.InstallationAdministratorBootstrapReceipt{}, installationAdministratorError("identity.installation_administrator_idempotency_conflict", nil)
+			return identitymodulehost.InstallationAdministratorBootstrapReceipt{}, installationAdministratorError(identitysdk.ErrorClassConflict, "identity.installation_administrator_idempotency_conflict", nil)
 		}
 		return installationAdministratorReceipt(stored, true), nil
 	}
 	if exists, err := binding.runtime.IdentityStore.InstallationAdministratorBootstrapReceiptExistsWithExecutor(ctx, tx, request.WorkspaceID); err != nil {
 		return identitymodulehost.InstallationAdministratorBootstrapReceipt{}, fmt.Errorf("inspect installation administrator receipt: %w", err)
 	} else if exists {
-		return identitymodulehost.InstallationAdministratorBootstrapReceipt{}, installationAdministratorError("identity.installation_administrator_already_exists", nil)
+		return identitymodulehost.InstallationAdministratorBootstrapReceipt{}, installationAdministratorError(identitysdk.ErrorClassConflict, "identity.installation_administrator_already_exists", nil)
 	}
 	companyID, occupied, err := binding.runtime.IdentityStore.InstallationAdministratorBootstrapStateWithExecutor(ctx, tx, request.WorkspaceID, request.LoginID)
 	if err != nil {
 		return identitymodulehost.InstallationAdministratorBootstrapReceipt{}, fmt.Errorf("inspect installation administrator state: %w", err)
 	}
 	if occupied {
-		return identitymodulehost.InstallationAdministratorBootstrapReceipt{}, installationAdministratorError("identity.installation_administrator_already_exists", nil)
+		return identitymodulehost.InstallationAdministratorBootstrapReceipt{}, installationAdministratorError(identitysdk.ErrorClassConflict, "identity.installation_administrator_already_exists", nil)
 	}
 	userID, err := installationAdministratorUserID()
 	if err != nil {
@@ -105,11 +105,11 @@ func (binding *moduleBinding) BootstrapInstallationAdministratorV1(ctx context.C
 
 func (binding *moduleBinding) CompleteInstallationAdministratorBootstrapV1(ctx context.Context, completion identitymodulehost.InstallationAdministratorBootstrapCompletion) error {
 	if binding == nil || binding.runtime == nil || binding.runtime.IdentityStore == nil {
-		return installationAdministratorError("identity.installation_administrator_bootstrap_unavailable", nil)
+		return installationAdministratorError(identitysdk.ErrorClassUnavailable, "identity.installation_administrator_bootstrap_unavailable", nil)
 	}
 	completion.WorkspaceID, completion.ReceiptID = strings.TrimSpace(completion.WorkspaceID), strings.TrimSpace(completion.ReceiptID)
 	if _, err := identitymodel.NewWorkspaceID(completion.WorkspaceID); err != nil || completion.ReceiptID == "" {
-		return installationAdministratorError("identity.installation_administrator_completion_invalid", err)
+		return installationAdministratorError(identitysdk.ErrorClassBadRequest, "identity.installation_administrator_completion_invalid", err)
 	}
 	switch completion.Outcome {
 	case identitysdk.WorkspaceIdentityBootstrapTransactionRolledBack:
@@ -123,7 +123,7 @@ func (binding *moduleBinding) CompleteInstallationAdministratorBootstrapV1(ctx c
 		}
 		if !found {
 			binding.discardWorkspaceBootstrapCredential(completion.ReceiptID)
-			return installationAdministratorError("identity.installation_administrator_credential_not_committed", nil)
+			return installationAdministratorError(identitysdk.ErrorClassConflict, "identity.installation_administrator_credential_not_committed", nil)
 		}
 		binding.bootstrapMu.Lock()
 		credential, available := binding.bootstrapCredentials[completion.ReceiptID]
@@ -132,35 +132,35 @@ func (binding *moduleBinding) CompleteInstallationAdministratorBootstrapV1(ctx c
 		}
 		binding.bootstrapMu.Unlock()
 		if !available || credential.workspaceID != completion.WorkspaceID || credential.loginID != receipt.LoginID {
-			return installationAdministratorError("identity.installation_administrator_credential_unavailable", nil)
+			return installationAdministratorError(identitysdk.ErrorClassUnavailable, "identity.installation_administrator_credential_unavailable", nil)
 		}
 		return nil
 	default:
-		return installationAdministratorError("identity.installation_administrator_completion_invalid", nil)
+		return installationAdministratorError(identitysdk.ErrorClassBadRequest, "identity.installation_administrator_completion_invalid", nil)
 	}
 }
 
 func (binding *moduleBinding) ClaimInstallationAdministratorCredentialV1(ctx context.Context, claim identitymodulehost.InstallationAdministratorCredentialClaim) (identitymodulehost.InstallationAdministratorOneTimeCredential, error) {
 	if binding == nil || binding.runtime == nil || binding.runtime.IdentityStore == nil {
-		return identitymodulehost.InstallationAdministratorOneTimeCredential{}, installationAdministratorError("identity.installation_administrator_bootstrap_unavailable", nil)
+		return identitymodulehost.InstallationAdministratorOneTimeCredential{}, installationAdministratorError(identitysdk.ErrorClassUnavailable, "identity.installation_administrator_bootstrap_unavailable", nil)
 	}
 	claim.WorkspaceID, claim.ReceiptID = strings.TrimSpace(claim.WorkspaceID), strings.TrimSpace(claim.ReceiptID)
 	binding.bootstrapMu.Lock()
 	defer binding.bootstrapMu.Unlock()
 	credential, available := binding.bootstrapCredentials[claim.ReceiptID]
 	if !available || credential.workspaceID != claim.WorkspaceID || !credential.committed {
-		return identitymodulehost.InstallationAdministratorOneTimeCredential{}, installationAdministratorError("identity.installation_administrator_credential_unavailable", nil)
+		return identitymodulehost.InstallationAdministratorOneTimeCredential{}, installationAdministratorError(identitysdk.ErrorClassUnavailable, "identity.installation_administrator_credential_unavailable", nil)
 	}
 	receipt, found, err := binding.runtime.IdentityStore.GetCommittedInstallationAdministratorBootstrapReceipt(ctx, claim.WorkspaceID, claim.ReceiptID)
 	if err != nil || !found {
-		return identitymodulehost.InstallationAdministratorOneTimeCredential{}, installationAdministratorError("identity.installation_administrator_credential_not_committed", err)
+		return identitymodulehost.InstallationAdministratorOneTimeCredential{}, installationAdministratorError(identitysdk.ErrorClassConflict, "identity.installation_administrator_credential_not_committed", err)
 	}
 	if receipt.CredentialClaimedAt != "" {
-		return identitymodulehost.InstallationAdministratorOneTimeCredential{}, installationAdministratorError("identity.installation_administrator_credential_already_claimed", nil)
+		return identitymodulehost.InstallationAdministratorOneTimeCredential{}, installationAdministratorError(identitysdk.ErrorClassConflict, "identity.installation_administrator_credential_already_claimed", nil)
 	}
 	claimed, err := binding.runtime.IdentityStore.MarkInstallationAdministratorCredentialClaimed(ctx, claim.WorkspaceID, claim.ReceiptID)
 	if err != nil || !claimed {
-		return identitymodulehost.InstallationAdministratorOneTimeCredential{}, installationAdministratorError("identity.installation_administrator_credential_already_claimed", err)
+		return identitymodulehost.InstallationAdministratorOneTimeCredential{}, installationAdministratorError(identitysdk.ErrorClassConflict, "identity.installation_administrator_credential_already_claimed", err)
 	}
 	delete(binding.bootstrapCredentials, claim.ReceiptID)
 	credential.timer.Stop()
@@ -171,7 +171,7 @@ func (binding *moduleBinding) ClaimInstallationAdministratorCredentialV1(ctx con
 
 func (binding *moduleBinding) AcknowledgeInstallationAdministratorCredentialDeliveryV1(ctx context.Context, acknowledgment identitymodulehost.InstallationAdministratorCredentialDeliveryAcknowledgment) error {
 	if binding == nil || binding.runtime == nil || binding.runtime.IdentityStore == nil {
-		return installationAdministratorError("identity.installation_administrator_bootstrap_unavailable", nil)
+		return installationAdministratorError(identitysdk.ErrorClassUnavailable, "identity.installation_administrator_bootstrap_unavailable", nil)
 	}
 	marked, err := binding.runtime.IdentityStore.MarkInstallationAdministratorCredentialDelivered(ctx, strings.TrimSpace(acknowledgment.WorkspaceID), strings.TrimSpace(acknowledgment.ReceiptID))
 	if err != nil {
@@ -180,7 +180,7 @@ func (binding *moduleBinding) AcknowledgeInstallationAdministratorCredentialDeli
 	if !marked {
 		receipt, found, lookupErr := binding.runtime.IdentityStore.GetCommittedInstallationAdministratorBootstrapReceipt(ctx, acknowledgment.WorkspaceID, acknowledgment.ReceiptID)
 		if lookupErr != nil || !found || receipt.CredentialDeliveredAt == "" {
-			return installationAdministratorError("identity.installation_administrator_delivery_acknowledgment_invalid", lookupErr)
+			return installationAdministratorError(identitysdk.ErrorClassBadRequest, "identity.installation_administrator_delivery_acknowledgment_invalid", lookupErr)
 		}
 	}
 	return nil
@@ -195,13 +195,13 @@ func normalizeInstallationAdministratorRequest(request identitymodulehost.Instal
 
 func validateInstallationAdministratorRequest(request identitymodulehost.InstallationAdministratorBootstrapRequest) error {
 	if request.ContractVersion != identitymodulehost.CurrentInstallationAdministratorBootstrapContractVersion || request.ContractHash != identitymodulehost.CurrentInstallationAdministratorBootstrapContractHash {
-		return installationAdministratorError("identity.installation_administrator_contract_unsupported", nil)
+		return installationAdministratorError(identitysdk.ErrorClassBadRequest, "identity.installation_administrator_contract_unsupported", nil)
 	}
 	if _, err := identitymodel.NewWorkspaceID(request.WorkspaceID); err != nil {
-		return installationAdministratorError("identity.installation_administrator_request_invalid", err)
+		return installationAdministratorError(identitysdk.ErrorClassBadRequest, "identity.installation_administrator_request_invalid", err)
 	}
 	if err := identitysdk.ValidateIdentifier("invocation_id", request.InvocationID); err != nil || strings.Contains(request.InvocationID, "/") || request.LoginID == "" || request.Name == "" {
-		return installationAdministratorError("identity.installation_administrator_request_invalid", err)
+		return installationAdministratorError(identitysdk.ErrorClassBadRequest, "identity.installation_administrator_request_invalid", err)
 	}
 	return nil
 }
@@ -229,8 +229,8 @@ func installationAdministratorReceipt(stored identitypersistence.InstallationAdm
 	}
 }
 
-func installationAdministratorError(code string, cause error) *identitysdk.Error {
-	return &identitysdk.Error{Code: code, Cause: cause}
+func installationAdministratorError(class identitysdk.ErrorClass, code string, cause error) *identitysdk.Error {
+	return &identitysdk.Error{Class: class, Code: code, Cause: cause}
 }
 
 var _ identitysdk.EmbeddedInstallationAdministratorBootstrapBinding = (*moduleBinding)(nil)

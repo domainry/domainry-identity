@@ -3,7 +3,6 @@ package identitysdkadapter
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"strings"
 	"time"
 
@@ -25,31 +24,31 @@ func (adapter sdkApplicationServiceVerifier) Verify(ctx context.Context, request
 // source application and exact credential rotation have both been validated.
 func (binding *sdkBinding) IssueApplicationServiceToken(ctx context.Context, request identitysdk.ExchangeApplicationServiceTokenRequest, credentialID string) (identitysdk.ApplicationServiceToken, error) {
 	if binding == nil || binding.auth == nil || !request.Application.WorkspaceID.Valid() || !request.Application.ApplicationKey.Valid() || !request.Audience.Valid() || strings.TrimSpace(credentialID) == "" || len(request.Grants) == 0 {
-		return identitysdk.ApplicationServiceToken{}, &identitysdk.Error{StatusCode: http.StatusBadRequest, Code: "identity.application_service_exchange_invalid"}
+		return identitysdk.ApplicationServiceToken{}, &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.application_service_exchange_invalid"}
 	}
 	registered, err := binding.applicationRegistered(ctx, identitysdk.ApplicationRef{WorkspaceID: request.Application.WorkspaceID, ApplicationKey: request.Application.ApplicationKey})
 	if err != nil {
 		return identitysdk.ApplicationServiceToken{}, sdkBoundaryError(err)
 	}
 	if !registered {
-		return identitysdk.ApplicationServiceToken{}, &identitysdk.Error{StatusCode: http.StatusForbidden, Code: "identity.application_service_source_not_registered"}
+		return identitysdk.ApplicationServiceToken{}, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.application_service_source_not_registered"}
 	}
 	registered, err = binding.applicationRegistered(ctx, identitysdk.ApplicationRef{WorkspaceID: request.Application.WorkspaceID, ApplicationKey: request.Audience})
 	if err != nil {
 		return identitysdk.ApplicationServiceToken{}, sdkBoundaryError(err)
 	}
 	if !registered {
-		return identitysdk.ApplicationServiceToken{}, &identitysdk.Error{StatusCode: http.StatusForbidden, Code: "identity.application_service_audience_not_registered"}
+		return identitysdk.ApplicationServiceToken{}, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.application_service_audience_not_registered"}
 	}
 	grants := make([]authmodel.AuthServiceGrant, 0, len(request.Grants))
 	seen := map[string]struct{}{}
 	for _, grant := range request.Grants {
 		key := string(grant.Resource) + "\x00" + string(grant.Action)
 		if !grant.Valid() {
-			return identitysdk.ApplicationServiceToken{}, &identitysdk.Error{StatusCode: http.StatusBadRequest, Code: "identity.application_service_grant_invalid"}
+			return identitysdk.ApplicationServiceToken{}, &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.application_service_grant_invalid"}
 		}
 		if _, duplicate := seen[key]; duplicate {
-			return identitysdk.ApplicationServiceToken{}, &identitysdk.Error{StatusCode: http.StatusBadRequest, Code: "identity.application_service_grant_duplicate"}
+			return identitysdk.ApplicationServiceToken{}, &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.application_service_grant_duplicate"}
 		}
 		seen[key] = struct{}{}
 		grants = append(grants, authmodel.AuthServiceGrant{Resource: string(grant.Resource), Action: string(grant.Action)})
@@ -67,7 +66,7 @@ func (binding *sdkBinding) IssueApplicationServiceToken(ctx context.Context, req
 
 func (binding *sdkBinding) VerifyApplicationServiceToken(ctx context.Context, request identitysdk.VerifyApplicationServiceTokenRequest) (identitysdk.ApplicationServicePrincipal, error) {
 	if binding == nil || binding.auth == nil || strings.TrimSpace(request.AccessToken) == "" || !request.Audience.Valid() || !request.Grant.Valid() {
-		return identitysdk.ApplicationServicePrincipal{}, &identitysdk.Error{StatusCode: http.StatusBadRequest, Code: "identity.application_service_verify_invalid"}
+		return identitysdk.ApplicationServicePrincipal{}, &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.application_service_verify_invalid"}
 	}
 	claims, err := binding.auth.VerifyApplicationServiceToken(ctx, request.AccessToken, string(request.Audience), string(request.Grant.Resource), string(request.Grant.Action))
 	if err != nil {

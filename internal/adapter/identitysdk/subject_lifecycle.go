@@ -6,7 +6,6 @@ import (
 	"github.com/domainry/domainry-foundation/requestcontext"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	privacy "github.com/domainry/domainry-identity/internal/domain/privacy"
-	"net/http"
 	"strings"
 )
 
@@ -26,16 +25,16 @@ type sdkSystemSubjects struct{ binding *sdkBinding }
 
 func (adapter sdkSystemSubjects) validate(ctx context.Context, workspaceID, subjectID string) error {
 	if adapter.binding.subjects == nil {
-		return &identitysdk.Error{StatusCode: http.StatusNotImplemented, Code: "identity.subject_lifecycle_unavailable"}
+		return &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.subject_lifecycle_unavailable"}
 	}
 	if !identitysdk.WorkspaceID(workspaceID).Valid() || workspaceID != requestcontext.WorkspaceID(ctx) {
-		return &identitysdk.Error{StatusCode: http.StatusForbidden, Code: "auth.workspace_mismatch"}
+		return &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "auth.workspace_mismatch"}
 	}
 	if strings.TrimSpace(subjectID) == "" {
-		return &identitysdk.Error{StatusCode: http.StatusBadRequest, Code: "identity.subject_id_invalid"}
+		return &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.subject_id_invalid"}
 	}
 	if !adapter.binding.subjects.SubjectLifecyclePersistenceBound() {
-		return &identitysdk.Error{StatusCode: http.StatusServiceUnavailable, Code: "identity.subject_lifecycle_persistence_unbound"}
+		return &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.subject_lifecycle_persistence_unbound"}
 	}
 	return nil
 }
@@ -58,11 +57,11 @@ func (adapter sdkSystemSubjects) EraseSubjectForRequest(ctx context.Context, req
 	var holds []privacy.LegalHold
 	if len(request.LegalHolds) > 0 {
 		if err := json.Unmarshal(request.LegalHolds, &holds); err != nil {
-			return nil, &identitysdk.Error{StatusCode: http.StatusBadRequest, Code: "identity.subject_legal_holds_invalid"}
+			return nil, &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.subject_legal_holds_invalid"}
 		}
 	}
 	if len(holds) > 0 {
-		return nil, &identitysdk.Error{StatusCode: http.StatusConflict, Code: "identity.subject_legal_hold"}
+		return nil, &identitysdk.Error{Class: identitysdk.ErrorClassConflict, Code: "identity.subject_legal_hold"}
 	}
 	return adapter.binding.subjects.EraseSubjectForRequest(ctx, request.RequestID, request.WorkspaceID, request.SubjectID, holds)
 }

@@ -24,18 +24,18 @@ func (binding *moduleBinding) HandlerDeliveryUnitOfWorkBinder() identitysdk.Hand
 
 func (adapter moduleHandlerDelivery) DeliverIdentity(ctx context.Context, request identitysdk.HandlerDeliveryRequest) (identitysdk.HandlerDeliveryResult, error) {
 	if adapter.binding == nil || adapter.binding.runtime == nil || adapter.binding.runtime.Auth == nil || adapter.binding.runtime.Binding == nil {
-		return identitysdk.HandlerDeliveryResult{}, &identitysdk.Error{Code: "identity.handler_delivery_unavailable"}
+		return identitysdk.HandlerDeliveryResult{}, &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.handler_delivery_unavailable"}
 	}
 	claims, err := adapter.binding.runtime.Auth.VerifyAccessToken(ctx, strings.TrimSpace(request.AccessToken))
 	if err != nil {
 		return identitysdk.HandlerDeliveryResult{}, err
 	}
 	if !adapter.binding.acceptsWorkspace(ctx, claims.WorkspaceID) || claims.Audience != string(adapter.binding.application.ApplicationKey) {
-		return identitysdk.HandlerDeliveryResult{}, &identitysdk.Error{Code: "identity.handler_delivery_application_scope_mismatch"}
+		return identitysdk.HandlerDeliveryResult{}, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.handler_delivery_application_scope_mismatch"}
 	}
 	provider, ok := adapter.binding.runtime.Binding.(identitysdk.HandlerDeliveryBinding)
 	if !ok || provider.HandlerDelivery() == nil {
-		return identitysdk.HandlerDeliveryResult{}, &identitysdk.Error{Code: "identity.handler_delivery_unavailable"}
+		return identitysdk.HandlerDeliveryResult{}, &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.handler_delivery_unavailable"}
 	}
 	if adapter.tx != nil {
 		ctx = identitytransaction.WithExecutor(ctx, adapter.tx)
@@ -49,25 +49,25 @@ func (adapter moduleHandlerDelivery) DeliverIdentity(ctx context.Context, reques
 func (binder moduleHandlerDeliveryBinder) BindHandlerDeliveryUnitOfWork(transaction identitysdk.EmbeddedTransaction) (identitysdk.HandlerDelivery, error) {
 	tx, ok := embeddedTransactionExecutor(transaction)
 	if !ok {
-		return nil, &identitysdk.Error{Code: "identity.handler_delivery_transaction_required"}
+		return nil, &identitysdk.Error{Class: identitysdk.ErrorClassInternal, Code: "identity.handler_delivery_transaction_required"}
 	}
 	return moduleHandlerDelivery{binding: binder.binding, tx: tx}, nil
 }
 
 func (adapter moduleHandlerDelivery) ResolveBoundIdentity(ctx context.Context, request identitysdk.HandlerBoundIdentityRequest) (identitysdk.HandlerBoundIdentity, error) {
 	if adapter.binding == nil || adapter.binding.runtime == nil || adapter.binding.runtime.Auth == nil || adapter.binding.runtime.Binding == nil {
-		return identitysdk.HandlerBoundIdentity{}, &identitysdk.Error{Code: "identity.handler_delivery_unavailable"}
+		return identitysdk.HandlerBoundIdentity{}, &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.handler_delivery_unavailable"}
 	}
 	claims, err := adapter.binding.runtime.Auth.VerifyAccessToken(ctx, strings.TrimSpace(request.AccessToken))
 	if err != nil {
 		return identitysdk.HandlerBoundIdentity{}, err
 	}
 	if !adapter.binding.acceptsWorkspace(ctx, claims.WorkspaceID) || claims.Audience != string(adapter.binding.application.ApplicationKey) {
-		return identitysdk.HandlerBoundIdentity{}, &identitysdk.Error{Code: "identity.handler_delivery_application_scope_mismatch"}
+		return identitysdk.HandlerBoundIdentity{}, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.handler_delivery_application_scope_mismatch"}
 	}
 	provider, ok := adapter.binding.runtime.Binding.(identitysdk.HandlerDeliveryBinding)
 	if !ok || provider.HandlerDelivery() == nil {
-		return identitysdk.HandlerBoundIdentity{}, &identitysdk.Error{Code: "identity.handler_delivery_unavailable"}
+		return identitysdk.HandlerBoundIdentity{}, &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.handler_delivery_unavailable"}
 	}
 	if adapter.tx != nil {
 		ctx = identitytransaction.WithExecutor(ctx, adapter.tx)

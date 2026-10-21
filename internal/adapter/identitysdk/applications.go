@@ -14,7 +14,7 @@ func (adapter sdkApplications) Register(ctx context.Context, request identitysdk
 		return identitysdk.ApplicationRegistrationReceipt{}, sdkBoundaryError(err)
 	}
 	if adapter.binding == nil || adapter.binding.applications == nil {
-		return identitysdk.ApplicationRegistrationReceipt{}, &identitysdk.Error{Code: "identity.application_registry_unavailable"}
+		return identitysdk.ApplicationRegistrationReceipt{}, &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.application_registry_unavailable"}
 	}
 	applications, err := adapter.binding.scopedApplications(ctx, request.Application)
 	if err != nil {

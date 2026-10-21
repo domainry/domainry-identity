@@ -18,12 +18,12 @@ func registerSubjectLifecycleRoutes(registrar RouteRegistrar, binding identitysd
 				return
 			}
 			if request.WorkspaceID != string(scope.WorkspaceID) {
-				support.writeServiceError(w, r, &identitysdk.Error{StatusCode: http.StatusForbidden, Code: "auth.workspace_mismatch"})
+				support.writeServiceError(w, r, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "auth.workspace_mismatch"})
 				return
 			}
 			subjects, ok := binding.(identitysdk.SystemSubjectBinding)
 			if !ok || subjects.SystemSubjects() == nil {
-				support.writeServiceError(w, r, &identitysdk.Error{StatusCode: http.StatusNotImplemented, Code: "identity.subject_lifecycle_unavailable"})
+				support.writeServiceError(w, r, &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.subject_lifecycle_unavailable"})
 				return
 			}
 			ctx := runtimeApplicationContext(r, scope)

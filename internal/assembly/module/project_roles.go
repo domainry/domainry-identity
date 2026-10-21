@@ -16,10 +16,10 @@ import (
 
 func (binding *moduleBinding) PublishProjectRoles(ctx context.Context, catalog identitysdk.ProjectRoleCatalog) (identitysdk.ProjectRoleCatalogReceipt, error) {
 	if binding == nil || binding.runtime == nil || binding.runtime.Identity == nil || binding.runtime.IdentityStore == nil || binding.runtime.MetadataRuntime == nil {
-		return identitysdk.ProjectRoleCatalogReceipt{}, &identitysdk.Error{Code: "identity.project_role_catalog_unavailable"}
+		return identitysdk.ProjectRoleCatalogReceipt{}, &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.project_role_catalog_unavailable"}
 	}
 	if catalog.Application.WorkspaceID != binding.application.WorkspaceID || catalog.Application.ApplicationKey != binding.application.ApplicationKey {
-		return identitysdk.ProjectRoleCatalogReceipt{}, &identitysdk.Error{Code: "identity.project_role_catalog_scope_mismatch"}
+		return identitysdk.ProjectRoleCatalogReceipt{}, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.project_role_catalog_scope_mismatch"}
 	}
 	projectObjects := []definitionmodel.ObjectSchema{}
 	if err := decodeProjectRolePolicy(catalog.Objects, &projectObjects); err != nil {
@@ -74,16 +74,16 @@ func (binding *moduleBinding) PublishProjectRoles(ctx context.Context, catalog i
 // organizations, assignments, and credentials are persisted.
 func (binding *moduleBinding) BindBootstrapProjectRoleCatalog(ctx context.Context, catalog identitysdk.ProjectRoleCatalog) error {
 	if binding == nil || binding.runtime == nil || binding.runtime.Identity == nil || binding.runtime.IdentityStore == nil {
-		return &identitysdk.Error{Code: "identity.bootstrap_project_role_catalog_unavailable"}
+		return &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.bootstrap_project_role_catalog_unavailable"}
 	}
 	if ctx == nil {
-		return &identitysdk.Error{Code: "identity.context_required"}
+		return &identitysdk.Error{Class: identitysdk.ErrorClassInternal, Code: "identity.context_required"}
 	}
 	if err := ctx.Err(); err != nil {
-		return &identitysdk.Error{Code: "identity.context_unavailable", Cause: err}
+		return &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.context_unavailable", Cause: err}
 	}
 	if catalog.Application.WorkspaceID != "" || catalog.Application.ApplicationKey != binding.application.ApplicationKey {
-		return &identitysdk.Error{Code: "identity.bootstrap_project_role_catalog_scope_mismatch"}
+		return &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.bootstrap_project_role_catalog_scope_mismatch"}
 	}
 	projectObjects := []definitionmodel.ObjectSchema{}
 	if err := decodeProjectRolePolicy(catalog.Objects, &projectObjects); err != nil {
@@ -130,7 +130,7 @@ func projectRoleDefinitions(inputs []identitysdk.ProjectRoleDefinition) ([]ident
 			return nil, err
 		}
 		if seen[definition.Key] {
-			return nil, &identitysdk.Error{Code: "identity.project_role_duplicate"}
+			return nil, &identitysdk.Error{Class: identitysdk.ErrorClassConflict, Code: "identity.project_role_duplicate"}
 		}
 		seen[definition.Key] = true
 		definitions = append(definitions, definition)
@@ -141,7 +141,7 @@ func projectRoleDefinitions(inputs []identitysdk.ProjectRoleDefinition) ([]ident
 func projectRoleDefinition(input identitysdk.ProjectRoleDefinition) (identitymodel.RoleSchema, error) {
 	key, name := strings.TrimSpace(input.Key), strings.TrimSpace(input.Name)
 	if key == "" || name == "" {
-		return identitymodel.RoleSchema{}, &identitysdk.Error{Code: "identity.project_role_invalid"}
+		return identitymodel.RoleSchema{}, &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.project_role_invalid"}
 	}
 	definition := identitymodel.RoleSchema{
 		Key: key, Name: name,
@@ -154,14 +154,14 @@ func projectRoleDefinition(input identitysdk.ProjectRoleDefinition) (identitymod
 	for _, permission := range input.Permissions {
 		key := strings.TrimSpace(permission.PermissionKey)
 		if err := permission.Validate(); key == "" || err != nil {
-			return identitymodel.RoleSchema{}, &identitysdk.Error{Code: "identity.project_role_permission_invalid"}
+			return identitymodel.RoleSchema{}, &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.project_role_permission_invalid"}
 		}
 		definition.Permissions = append(definition.Permissions, identitymodel.RolePermission{PermissionKey: key, DataScope: permission.DataScope, DataPolicy: permission.DataPolicy, AuditDenial: permission.AuditDenial})
 	}
 	if normalized, valid := identitymodel.NormalizeRolePermissions(definition.Permissions); valid {
 		definition.Permissions = normalized
 	} else {
-		return identitymodel.RoleSchema{}, &identitysdk.Error{Code: "identity.project_role_permission_invalid"}
+		return identitymodel.RoleSchema{}, &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.project_role_permission_invalid"}
 	}
 	if err := decodeProjectRolePolicy(input.FieldPermissions, &definition.FieldPermissions); err != nil {
 		return identitymodel.RoleSchema{}, err
@@ -183,7 +183,7 @@ func decodeProjectRolePolicy(raw json.RawMessage, target any) error {
 		return nil
 	}
 	if err := json.Unmarshal(raw, target); err != nil {
-		return &identitysdk.Error{Code: "identity.project_role_policy_invalid", Cause: err}
+		return &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.project_role_policy_invalid", Cause: err}
 	}
 	return nil
 }

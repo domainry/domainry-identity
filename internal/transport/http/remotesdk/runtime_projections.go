@@ -70,7 +70,7 @@ func registerRuntimeProjectionRoutes(registrar RouteRegistrar, binding identitys
 		}
 		resolver, ok := binding.Projection().(identitysdk.DisplayNameProjection)
 		if !ok {
-			support.writeServiceError(w, r, &identitysdk.Error{Code: "identity.display_name_projection_unavailable"})
+			support.writeServiceError(w, r, &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.display_name_projection_unavailable"})
 			return
 		}
 		result, err := resolver.ResolveDisplayNames(runtimeApplicationContext(r, scope), request)

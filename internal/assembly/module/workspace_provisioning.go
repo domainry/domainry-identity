@@ -20,17 +20,17 @@ import (
 
 func (binding *moduleBinding) ProvisionWorkspaceIdentity(ctx context.Context, request identitysdk.WorkspaceIdentityProvisionRequest, transaction identitysdk.EmbeddedTransaction) (identitysdk.WorkspaceIdentityProvisionResult, error) {
 	if binding == nil || binding.runtime == nil || binding.runtime.Identity == nil || binding.runtime.IdentityStore == nil || binding.runtime.IdentityActions == nil {
-		return identitysdk.WorkspaceIdentityProvisionResult{}, &identitysdk.Error{Code: "identity.workspace_provisioning_unavailable"}
+		return identitysdk.WorkspaceIdentityProvisionResult{}, &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.workspace_provisioning_unavailable"}
 	}
 	tx, ok := embeddedTransactionExecutor(transaction)
 	if !ok {
-		return identitysdk.WorkspaceIdentityProvisionResult{}, &identitysdk.Error{Code: "identity.workspace_provisioning_transaction_required"}
+		return identitysdk.WorkspaceIdentityProvisionResult{}, &identitysdk.Error{Class: identitysdk.ErrorClassInternal, Code: "identity.workspace_provisioning_transaction_required"}
 	}
 	request.WorkspaceID = strings.TrimSpace(request.WorkspaceID)
 	request.AdminLoginID = strings.ToLower(strings.TrimSpace(request.AdminLoginID))
 	request.AdminName = strings.TrimSpace(request.AdminName)
 	if _, err := identitymodel.NewWorkspaceID(request.WorkspaceID); err != nil || request.AdminLoginID == "" || request.AdminName == "" {
-		return identitysdk.WorkspaceIdentityProvisionResult{}, &identitysdk.Error{Code: "identity.workspace_provisioning_invalid", Cause: err}
+		return identitysdk.WorkspaceIdentityProvisionResult{}, &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.workspace_provisioning_invalid", Cause: err}
 	}
 	password := request.InitialPassword
 	if password == "" {
@@ -40,7 +40,7 @@ func (binding *moduleBinding) ProvisionWorkspaceIdentity(ctx context.Context, re
 			return identitysdk.WorkspaceIdentityProvisionResult{}, err
 		}
 	} else if !validBootstrapInitialPassword(password) {
-		return identitysdk.WorkspaceIdentityProvisionResult{}, &identitysdk.Error{Code: "identity.workspace_provisioning_initial_password_invalid"}
+		return identitysdk.WorkspaceIdentityProvisionResult{}, &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.workspace_provisioning_initial_password_invalid"}
 	}
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
@@ -179,15 +179,15 @@ func acceptanceFixtures(request identitysdk.WorkspaceIdentityProvisionRequest, r
 
 func (binding *moduleBinding) ProvisionWorkspaceAcceptanceFixtures(ctx context.Context, request identitysdk.WorkspaceAcceptanceFixtureRequest, transaction identitysdk.EmbeddedTransaction) error {
 	if binding == nil || binding.runtime == nil || binding.runtime.Identity == nil || binding.runtime.IdentityStore == nil {
-		return &identitysdk.Error{Code: "identity.workspace_acceptance_fixture_unavailable"}
+		return &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.workspace_acceptance_fixture_unavailable"}
 	}
 	tx, ok := embeddedTransactionExecutor(transaction)
 	if !ok {
-		return &identitysdk.Error{Code: "identity.workspace_provisioning_transaction_required"}
+		return &identitysdk.Error{Class: identitysdk.ErrorClassInternal, Code: "identity.workspace_provisioning_transaction_required"}
 	}
 	request.WorkspaceID = strings.TrimSpace(request.WorkspaceID)
 	if _, err := identitymodel.NewWorkspaceID(request.WorkspaceID); err != nil {
-		return &identitysdk.Error{Code: "identity.workspace_acceptance_fixture_invalid", Cause: err}
+		return &identitysdk.Error{Class: identitysdk.ErrorClassInternal, Code: "identity.workspace_acceptance_fixture_invalid", Cause: err}
 	}
 	if len(request.Organizations) == 0 && len(request.Actors) == 0 {
 		return nil
@@ -233,6 +233,7 @@ func acceptanceFixtureInvalid(kind string, index int, field, reason string, valu
 		}
 	}
 	return &identitysdk.Error{
+		Class:   identitysdk.ErrorClassInternal,
 		Code:    "identity.workspace_acceptance_fixture_invalid",
 		Message: fmt.Sprintf("%s[%d].%s reason=%s", kind, index, field, reason),
 		Params:  params,
@@ -248,15 +249,15 @@ func acceptanceReportingPath(userID, managerUserID string) string {
 
 func (binding *moduleBinding) ReconcileWorkspaceRoles(ctx context.Context, request identitysdk.WorkspaceRoleReconcileRequest, transaction identitysdk.EmbeddedTransaction) (identitysdk.WorkspaceRoleReconcileResult, error) {
 	if binding == nil || binding.runtime == nil || binding.runtime.Identity == nil || binding.runtime.IdentityStore == nil {
-		return identitysdk.WorkspaceRoleReconcileResult{}, &identitysdk.Error{Code: "identity.workspace_role_reconciliation_unavailable"}
+		return identitysdk.WorkspaceRoleReconcileResult{}, &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.workspace_role_reconciliation_unavailable"}
 	}
 	tx, ok := embeddedTransactionExecutor(transaction)
 	if !ok {
-		return identitysdk.WorkspaceRoleReconcileResult{}, &identitysdk.Error{Code: "identity.workspace_provisioning_transaction_required"}
+		return identitysdk.WorkspaceRoleReconcileResult{}, &identitysdk.Error{Class: identitysdk.ErrorClassInternal, Code: "identity.workspace_provisioning_transaction_required"}
 	}
 	workspaceID := strings.TrimSpace(request.WorkspaceID)
 	if _, err := identitymodel.NewWorkspaceID(workspaceID); err != nil {
-		return identitysdk.WorkspaceRoleReconcileResult{}, &identitysdk.Error{Code: "identity.workspace_provisioning_invalid", Cause: err}
+		return identitysdk.WorkspaceRoleReconcileResult{}, &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.workspace_provisioning_invalid", Cause: err}
 	}
 	roles := binding.provisionedWorkspaceRoles(workspaceID)
 	if err := binding.runtime.IdentityStore.UpsertIdentityRolesWithExecutor(ctx, tx, workspaceID, roles); err != nil {

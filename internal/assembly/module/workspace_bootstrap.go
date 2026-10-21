@@ -58,11 +58,11 @@ type workspaceBootstrapRoleCatalog struct {
 // phase response contains only a non-secret receipt.
 func (binding *moduleBinding) BootstrapWorkspaceIdentity(ctx context.Context, request identitysdk.WorkspaceIdentityBootstrapRequest, transaction identitysdk.EmbeddedTransaction) (identitysdk.WorkspaceIdentityBootstrapReceipt, error) {
 	if binding == nil || binding.runtime == nil || binding.runtime.Identity == nil || binding.runtime.IdentityStore == nil || binding.runtime.IdentityActions == nil {
-		return identitysdk.WorkspaceIdentityBootstrapReceipt{}, bootstrapError("identity.workspace_bootstrap_unavailable", nil)
+		return identitysdk.WorkspaceIdentityBootstrapReceipt{}, bootstrapError(identitysdk.ErrorClassUnavailable, "identity.workspace_bootstrap_unavailable", nil)
 	}
 	tx, ok := embeddedTransactionExecutor(transaction)
 	if !ok {
-		return identitysdk.WorkspaceIdentityBootstrapReceipt{}, bootstrapError("identity.workspace_bootstrap_transaction_required", nil)
+		return identitysdk.WorkspaceIdentityBootstrapReceipt{}, bootstrapError(identitysdk.ErrorClassInternal, "identity.workspace_bootstrap_transaction_required", nil)
 	}
 	request = normalizeWorkspaceBootstrapRequest(request)
 	roleCatalog := binding.workspaceBootstrapRoleCatalogSnapshot()
@@ -78,19 +78,19 @@ func (binding *moduleBinding) BootstrapWorkspaceIdentity(ctx context.Context, re
 	if found {
 		if stored.RequestFingerprint != fingerprint || stored.ContractVersion != request.ContractVersion || stored.ContractHash != request.ContractHash ||
 			stored.RoleCatalogSHA256 != roleCatalog.sha256 || stored.InitialWorkspaceAdministratorRoleKey != roleCatalog.initialWorkspaceAdministratorRoleKey {
-			return identitysdk.WorkspaceIdentityBootstrapReceipt{}, bootstrapError("identity.workspace_bootstrap_idempotency_conflict", nil)
+			return identitysdk.WorkspaceIdentityBootstrapReceipt{}, bootstrapError(identitysdk.ErrorClassConflict, "identity.workspace_bootstrap_idempotency_conflict", nil)
 		}
 		return workspaceBootstrapReceipt(stored, true), nil
 	}
 	if exists, err := binding.runtime.IdentityStore.WorkspaceIdentityBootstrapReceiptExistsWithExecutor(ctx, tx, request.WorkspaceID); err != nil {
 		return identitysdk.WorkspaceIdentityBootstrapReceipt{}, fmt.Errorf("inspect workspace bootstrap receipt: %w", err)
 	} else if exists {
-		return identitysdk.WorkspaceIdentityBootstrapReceipt{}, bootstrapError("identity.workspace_bootstrap_already_completed", nil)
+		return identitysdk.WorkspaceIdentityBootstrapReceipt{}, bootstrapError(identitysdk.ErrorClassConflict, "identity.workspace_bootstrap_already_completed", nil)
 	}
 	if exists, err := binding.runtime.IdentityStore.WorkspaceIdentityBootstrapStateExistsWithExecutor(ctx, tx, request.WorkspaceID); err != nil {
 		return identitysdk.WorkspaceIdentityBootstrapReceipt{}, fmt.Errorf("inspect workspace bootstrap state: %w", err)
 	} else if exists {
-		return identitysdk.WorkspaceIdentityBootstrapReceipt{}, bootstrapError("identity.workspace_bootstrap_state_conflict", nil)
+		return identitysdk.WorkspaceIdentityBootstrapReceipt{}, bootstrapError(identitysdk.ErrorClassConflict, "identity.workspace_bootstrap_state_conflict", nil)
 	}
 
 	password := request.InitialAdminPassword
@@ -197,12 +197,12 @@ func (binding *moduleBinding) BootstrapWorkspaceIdentity(ctx context.Context, re
 // claimable; all pending secrets also expire after a short bounded lifetime.
 func (binding *moduleBinding) CompleteWorkspaceIdentityBootstrap(ctx context.Context, completion identitysdk.WorkspaceIdentityBootstrapCompletion) error {
 	if binding == nil || binding.runtime == nil || binding.runtime.IdentityStore == nil {
-		return bootstrapError("identity.workspace_bootstrap_unavailable", nil)
+		return bootstrapError(identitysdk.ErrorClassUnavailable, "identity.workspace_bootstrap_unavailable", nil)
 	}
 	completion.WorkspaceID = strings.TrimSpace(completion.WorkspaceID)
 	completion.ReceiptID = strings.TrimSpace(completion.ReceiptID)
 	if _, err := identitymodel.NewWorkspaceID(completion.WorkspaceID); err != nil || completion.ReceiptID == "" {
-		return bootstrapError("identity.workspace_bootstrap_completion_invalid", err)
+		return bootstrapError(identitysdk.ErrorClassBadRequest, "identity.workspace_bootstrap_completion_invalid", err)
 	}
 	switch completion.Outcome {
 	case identitysdk.WorkspaceIdentityBootstrapTransactionRolledBack:
@@ -216,7 +216,7 @@ func (binding *moduleBinding) CompleteWorkspaceIdentityBootstrap(ctx context.Con
 		}
 		if !found {
 			binding.discardWorkspaceBootstrapCredential(completion.ReceiptID)
-			return bootstrapError("identity.workspace_bootstrap_credential_not_committed", nil)
+			return bootstrapError(identitysdk.ErrorClassConflict, "identity.workspace_bootstrap_credential_not_committed", nil)
 		}
 		binding.bootstrapMu.Lock()
 		credential, available := binding.bootstrapCredentials[completion.ReceiptID]
@@ -225,11 +225,11 @@ func (binding *moduleBinding) CompleteWorkspaceIdentityBootstrap(ctx context.Con
 		}
 		binding.bootstrapMu.Unlock()
 		if !available || credential.workspaceID != completion.WorkspaceID || receipt.InitialAdminLoginID != credential.loginID {
-			return bootstrapError("identity.workspace_bootstrap_credential_unavailable", nil)
+			return bootstrapError(identitysdk.ErrorClassUnavailable, "identity.workspace_bootstrap_credential_unavailable", nil)
 		}
 		return nil
 	default:
-		return bootstrapError("identity.workspace_bootstrap_completion_invalid", nil)
+		return bootstrapError(identitysdk.ErrorClassBadRequest, "identity.workspace_bootstrap_completion_invalid", nil)
 	}
 }
 
@@ -238,38 +238,38 @@ func (binding *moduleBinding) CompleteWorkspaceIdentityBootstrap(ctx context.Con
 // an uncommitted or rolled-back receipt can never release a credential.
 func (binding *moduleBinding) ClaimWorkspaceIdentityBootstrapCredential(ctx context.Context, claim identitysdk.WorkspaceIdentityBootstrapCredentialClaim) (identitysdk.WorkspaceIdentityBootstrapOneTimeCredential, error) {
 	if binding == nil || binding.runtime == nil || binding.runtime.IdentityStore == nil {
-		return identitysdk.WorkspaceIdentityBootstrapOneTimeCredential{}, bootstrapError("identity.workspace_bootstrap_unavailable", nil)
+		return identitysdk.WorkspaceIdentityBootstrapOneTimeCredential{}, bootstrapError(identitysdk.ErrorClassUnavailable, "identity.workspace_bootstrap_unavailable", nil)
 	}
 	claim.WorkspaceID = strings.TrimSpace(claim.WorkspaceID)
 	claim.ReceiptID = strings.TrimSpace(claim.ReceiptID)
 	if _, err := identitymodel.NewWorkspaceID(claim.WorkspaceID); err != nil || claim.ReceiptID == "" {
-		return identitysdk.WorkspaceIdentityBootstrapOneTimeCredential{}, bootstrapError("identity.workspace_bootstrap_credential_claim_invalid", err)
+		return identitysdk.WorkspaceIdentityBootstrapOneTimeCredential{}, bootstrapError(identitysdk.ErrorClassBadRequest, "identity.workspace_bootstrap_credential_claim_invalid", err)
 	}
 	binding.bootstrapMu.Lock()
 	defer binding.bootstrapMu.Unlock()
 	credential, available := binding.bootstrapCredentials[claim.ReceiptID]
 	if !available || credential.workspaceID != claim.WorkspaceID {
-		return identitysdk.WorkspaceIdentityBootstrapOneTimeCredential{}, bootstrapError("identity.workspace_bootstrap_credential_unavailable", nil)
+		return identitysdk.WorkspaceIdentityBootstrapOneTimeCredential{}, bootstrapError(identitysdk.ErrorClassUnavailable, "identity.workspace_bootstrap_credential_unavailable", nil)
 	}
 	if !credential.committed {
-		return identitysdk.WorkspaceIdentityBootstrapOneTimeCredential{}, bootstrapError("identity.workspace_bootstrap_completion_required", nil)
+		return identitysdk.WorkspaceIdentityBootstrapOneTimeCredential{}, bootstrapError(identitysdk.ErrorClassConflict, "identity.workspace_bootstrap_completion_required", nil)
 	}
 	receipt, found, err := binding.runtime.IdentityStore.GetCommittedWorkspaceIdentityBootstrapReceipt(ctx, claim.WorkspaceID, claim.ReceiptID)
 	if err != nil {
 		return identitysdk.WorkspaceIdentityBootstrapOneTimeCredential{}, fmt.Errorf("load committed workspace bootstrap receipt: %w", err)
 	}
 	if !found {
-		return identitysdk.WorkspaceIdentityBootstrapOneTimeCredential{}, bootstrapError("identity.workspace_bootstrap_credential_not_committed", nil)
+		return identitysdk.WorkspaceIdentityBootstrapOneTimeCredential{}, bootstrapError(identitysdk.ErrorClassConflict, "identity.workspace_bootstrap_credential_not_committed", nil)
 	}
 	if receipt.CredentialClaimedAt != "" {
-		return identitysdk.WorkspaceIdentityBootstrapOneTimeCredential{}, bootstrapError("identity.workspace_bootstrap_credential_already_claimed", nil)
+		return identitysdk.WorkspaceIdentityBootstrapOneTimeCredential{}, bootstrapError(identitysdk.ErrorClassConflict, "identity.workspace_bootstrap_credential_already_claimed", nil)
 	}
 	claimed, err := binding.runtime.IdentityStore.MarkWorkspaceIdentityBootstrapCredentialClaimed(ctx, claim.WorkspaceID, claim.ReceiptID)
 	if err != nil {
 		return identitysdk.WorkspaceIdentityBootstrapOneTimeCredential{}, fmt.Errorf("claim workspace bootstrap credential: %w", err)
 	}
 	if !claimed {
-		return identitysdk.WorkspaceIdentityBootstrapOneTimeCredential{}, bootstrapError("identity.workspace_bootstrap_credential_already_claimed", nil)
+		return identitysdk.WorkspaceIdentityBootstrapOneTimeCredential{}, bootstrapError(identitysdk.ErrorClassConflict, "identity.workspace_bootstrap_credential_already_claimed", nil)
 	}
 	delete(binding.bootstrapCredentials, claim.ReceiptID)
 	credential.timer.Stop()
@@ -337,13 +337,13 @@ func normalizeWorkspaceBootstrapRequest(request identitysdk.WorkspaceIdentityBoo
 
 func validateWorkspaceBootstrapRequest(request identitysdk.WorkspaceIdentityBootstrapRequest, roleCatalog workspaceBootstrapRoleCatalog) error {
 	if request.ContractVersion != identitysdk.WorkspaceIdentityBootstrapContractVersion || request.ContractHash != identitysdk.WorkspaceIdentityBootstrapContractHash {
-		return bootstrapError("identity.workspace_bootstrap_contract_unsupported", nil)
+		return bootstrapError(identitysdk.ErrorClassBadRequest, "identity.workspace_bootstrap_contract_unsupported", nil)
 	}
 	if len(roleCatalog.roles) == 0 || roleCatalog.sha256 == "" || roleCatalog.initialWorkspaceAdministratorRoleKey == "" {
-		return bootstrapError("identity.workspace_bootstrap_role_catalog_unavailable", nil)
+		return bootstrapError(identitysdk.ErrorClassUnavailable, "identity.workspace_bootstrap_role_catalog_unavailable", nil)
 	}
 	if _, err := identitymodel.NewWorkspaceID(request.WorkspaceID); err != nil {
-		return bootstrapError("identity.workspace_bootstrap_invalid", err)
+		return bootstrapError(identitysdk.ErrorClassBadRequest, "identity.workspace_bootstrap_invalid", err)
 	}
 	identifiers := map[string]string{
 		"invocation_id": request.InvocationID, "company_id": request.CompanyID,
@@ -351,20 +351,20 @@ func validateWorkspaceBootstrapRequest(request identitysdk.WorkspaceIdentityBoot
 	}
 	for field, value := range identifiers {
 		if err := identitysdk.ValidateIdentifier(field, value); err != nil || strings.Contains(value, "/") {
-			return &identitysdk.Error{Code: "identity.workspace_bootstrap_invalid", Cause: err, Params: map[string]string{"field": field}}
+			return &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.workspace_bootstrap_invalid", Cause: err, Params: map[string]string{"field": field}}
 		}
 	}
 	values := []string{request.CompanyCode, request.CompanyName, request.FirstStoreCode, request.FirstStoreName, request.InitialAdminLoginID, request.InitialAdminName}
 	for _, value := range values {
 		if value == "" {
-			return bootstrapError("identity.workspace_bootstrap_invalid", nil)
+			return bootstrapError(identitysdk.ErrorClassBadRequest, "identity.workspace_bootstrap_invalid", nil)
 		}
 	}
 	if request.CompanyID == request.FirstStoreID || strings.EqualFold(request.CompanyCode, request.FirstStoreCode) {
-		return bootstrapError("identity.workspace_bootstrap_invalid", nil)
+		return bootstrapError(identitysdk.ErrorClassBadRequest, "identity.workspace_bootstrap_invalid", nil)
 	}
 	if request.InitialAdminPassword == "" || len(request.InitialAdminPassword) > 72 {
-		return &identitysdk.Error{Code: "identity.workspace_bootstrap_invalid", Params: map[string]string{"field": "initial_admin_password"}}
+		return &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.workspace_bootstrap_invalid", Params: map[string]string{"field": "initial_admin_password"}}
 	}
 	return nil
 }
@@ -408,7 +408,7 @@ func workspaceBootstrapRoles(workspaceID string, catalog workspaceBootstrapRoleC
 	for _, definition := range catalog.roles {
 		key, label := strings.TrimSpace(definition.Key), strings.TrimSpace(definition.Name)
 		if key == "" || label == "" {
-			return nil, &identitysdk.Error{Code: "identity.workspace_bootstrap_role_catalog_invalid"}
+			return nil, &identitysdk.Error{Class: identitysdk.ErrorClassInternal, Code: "identity.workspace_bootstrap_role_catalog_invalid"}
 		}
 		roles = append(roles, identitymodel.IdentityRole{
 			ID: identitypersistence.WorkspaceRoleID(workspaceID, key), Key: key, Label: label,
@@ -421,7 +421,7 @@ func workspaceBootstrapRoles(workspaceID string, catalog workspaceBootstrapRoleC
 func newWorkspaceBootstrapRoleCatalog(inputs []identitysdk.ProjectRoleDefinition, definitions []identitymodel.RoleSchema, initialAdministratorRoleKey string) (workspaceBootstrapRoleCatalog, error) {
 	initialAdministratorRoleKey = strings.TrimSpace(initialAdministratorRoleKey)
 	if initialAdministratorRoleKey == "" {
-		return workspaceBootstrapRoleCatalog{}, &identitysdk.Error{Code: "identity.workspace_bootstrap_initial_administrator_role_required"}
+		return workspaceBootstrapRoleCatalog{}, &identitysdk.Error{Class: identitysdk.ErrorClassInternal, Code: "identity.workspace_bootstrap_initial_administrator_role_required"}
 	}
 	selected := make([]identitymodel.RoleSchema, 0, len(definitions))
 	for _, definition := range definitions {
@@ -429,7 +429,7 @@ func newWorkspaceBootstrapRoleCatalog(inputs []identitysdk.ProjectRoleDefinition
 			continue
 		}
 		if !workspaceBootstrapProvisionableHumanRole(definition) {
-			return workspaceBootstrapRoleCatalog{}, &identitysdk.Error{Code: "identity.workspace_bootstrap_role_catalog_invalid", Params: map[string]string{"role_key": definition.Key}}
+			return workspaceBootstrapRoleCatalog{}, &identitysdk.Error{Class: identitysdk.ErrorClassInternal, Code: "identity.workspace_bootstrap_role_catalog_invalid", Params: map[string]string{"role_key": definition.Key}}
 		}
 		selected = append(selected, definition)
 	}
@@ -442,10 +442,10 @@ func newWorkspaceBootstrapRoleCatalog(inputs []identitysdk.ProjectRoleDefinition
 		}
 	}
 	if administrator == nil {
-		return workspaceBootstrapRoleCatalog{}, &identitysdk.Error{Code: "identity.workspace_bootstrap_initial_administrator_role_missing", Params: map[string]string{"role_key": initialAdministratorRoleKey}}
+		return workspaceBootstrapRoleCatalog{}, &identitysdk.Error{Class: identitysdk.ErrorClassInternal, Code: "identity.workspace_bootstrap_initial_administrator_role_missing", Params: map[string]string{"role_key": initialAdministratorRoleKey}}
 	}
 	if !workspaceBootstrapInitialAdministratorRole(*administrator) {
-		return workspaceBootstrapRoleCatalog{}, &identitysdk.Error{Code: "identity.workspace_bootstrap_initial_administrator_role_invalid", Params: map[string]string{"role_key": initialAdministratorRoleKey}}
+		return workspaceBootstrapRoleCatalog{}, &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.workspace_bootstrap_initial_administrator_role_invalid", Params: map[string]string{"role_key": initialAdministratorRoleKey}}
 	}
 	digestCatalog := identitysdk.ProjectRoleCatalog{Roles: inputs, InitialWorkspaceAdministratorRoleKey: initialAdministratorRoleKey}
 	digest, err := identitysdk.WorkspaceBootstrapProjectRoleCatalogSHA256(digestCatalog)
@@ -500,8 +500,8 @@ func injectWorkspaceBootstrapFailure(injector identitysdk.WorkspaceProvisionFail
 	return nil
 }
 
-func bootstrapError(code string, cause error) *identitysdk.Error {
-	return &identitysdk.Error{Code: code, Cause: cause}
+func bootstrapError(class identitysdk.ErrorClass, code string, cause error) *identitysdk.Error {
+	return &identitysdk.Error{Class: class, Code: code, Cause: cause}
 }
 
 var _ identitysdk.WorkspaceIdentityBootstrap = (*moduleBinding)(nil)
@@ -518,35 +518,35 @@ func newBootstrapBinding(inner *moduleBinding) identitysdk.BootstrapBinding {
 
 func (binding *bootstrapBinding) BootstrapWorkspaceIdentity(ctx context.Context, request identitysdk.WorkspaceIdentityBootstrapRequest, transaction identitysdk.EmbeddedTransaction) (identitysdk.WorkspaceIdentityBootstrapReceipt, error) {
 	if binding == nil {
-		return identitysdk.WorkspaceIdentityBootstrapReceipt{}, bootstrapError("identity.workspace_bootstrap_unavailable", nil)
+		return identitysdk.WorkspaceIdentityBootstrapReceipt{}, bootstrapError(identitysdk.ErrorClassUnavailable, "identity.workspace_bootstrap_unavailable", nil)
 	}
 	return binding.inner.BootstrapWorkspaceIdentity(ctx, request, transaction)
 }
 
 func (binding *bootstrapBinding) ClaimWorkspaceIdentityBootstrapCredential(ctx context.Context, claim identitysdk.WorkspaceIdentityBootstrapCredentialClaim) (identitysdk.WorkspaceIdentityBootstrapOneTimeCredential, error) {
 	if binding == nil {
-		return identitysdk.WorkspaceIdentityBootstrapOneTimeCredential{}, bootstrapError("identity.workspace_bootstrap_unavailable", nil)
+		return identitysdk.WorkspaceIdentityBootstrapOneTimeCredential{}, bootstrapError(identitysdk.ErrorClassUnavailable, "identity.workspace_bootstrap_unavailable", nil)
 	}
 	return binding.inner.ClaimWorkspaceIdentityBootstrapCredential(ctx, claim)
 }
 
 func (binding *bootstrapBinding) CompleteWorkspaceIdentityBootstrap(ctx context.Context, completion identitysdk.WorkspaceIdentityBootstrapCompletion) error {
 	if binding == nil {
-		return bootstrapError("identity.workspace_bootstrap_unavailable", nil)
+		return bootstrapError(identitysdk.ErrorClassUnavailable, "identity.workspace_bootstrap_unavailable", nil)
 	}
 	return binding.inner.CompleteWorkspaceIdentityBootstrap(ctx, completion)
 }
 
 func (binding *bootstrapBinding) BindBootstrapProjectRoleCatalog(ctx context.Context, catalog identitysdk.ProjectRoleCatalog) error {
 	if binding == nil {
-		return bootstrapError("identity.workspace_bootstrap_unavailable", nil)
+		return bootstrapError(identitysdk.ErrorClassUnavailable, "identity.workspace_bootstrap_unavailable", nil)
 	}
 	return binding.inner.BindBootstrapProjectRoleCatalog(ctx, catalog)
 }
 
 func (binding *bootstrapBinding) BindOperationsPersistence() error {
 	if binding == nil || binding.inner == nil {
-		return bootstrapError("identity.workspace_bootstrap_unavailable", nil)
+		return bootstrapError(identitysdk.ErrorClassUnavailable, "identity.workspace_bootstrap_unavailable", nil)
 	}
 	return binding.inner.BindOperationsPersistence()
 }

@@ -15,7 +15,7 @@ func (adapter sdkPermissions) Reconcile(ctx context.Context, request identitysdk
 		return identitysdk.PermissionReconcileReceipt{}, sdkBoundaryError(err)
 	}
 	if adapter.binding == nil || adapter.binding.permissions == nil || adapter.binding.applications == nil {
-		return identitysdk.PermissionReconcileReceipt{}, &identitysdk.Error{Code: "identity.permission_registry_unavailable"}
+		return identitysdk.PermissionReconcileReceipt{}, &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.permission_registry_unavailable"}
 	}
 	workspaceID := string(request.Application.WorkspaceID)
 	if err := adapter.binding.requireMutableWorkspace(ctx, request.Application.WorkspaceID); err != nil {
@@ -26,7 +26,7 @@ func (adapter sdkPermissions) Reconcile(ctx context.Context, request identitysdk
 		return identitysdk.PermissionReconcileReceipt{}, sdkBoundaryError(err)
 	}
 	if !registered {
-		return identitysdk.PermissionReconcileReceipt{}, &identitysdk.Error{Code: "identity.application_not_registered"}
+		return identitysdk.PermissionReconcileReceipt{}, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.application_not_registered"}
 	}
 	sourceOwner := strings.TrimSpace(request.SourceOwner)
 	definitions := make([]identitymodel.IdentityPermissionDefinitionRecord, len(request.Definitions))
@@ -68,7 +68,7 @@ func (adapter sdkPermissions) CurrentSourceSnapshot(ctx context.Context, request
 		return identitysdk.PermissionSourceSnapshot{}, sdkBoundaryError(err)
 	}
 	if adapter.binding == nil || adapter.binding.permissions == nil || adapter.binding.applications == nil {
-		return identitysdk.PermissionSourceSnapshot{}, &identitysdk.Error{Code: "identity.permission_snapshot_reader_unavailable"}
+		return identitysdk.PermissionSourceSnapshot{}, &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.permission_snapshot_reader_unavailable"}
 	}
 	workspaceID := string(request.Application.WorkspaceID)
 	registered, err := adapter.binding.applicationRegistered(ctx, request.Application)
@@ -76,7 +76,7 @@ func (adapter sdkPermissions) CurrentSourceSnapshot(ctx context.Context, request
 		return identitysdk.PermissionSourceSnapshot{}, sdkBoundaryError(err)
 	}
 	if !registered {
-		return identitysdk.PermissionSourceSnapshot{}, &identitysdk.Error{Code: "identity.application_not_registered"}
+		return identitysdk.PermissionSourceSnapshot{}, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.application_not_registered"}
 	}
 	sourceOwner := strings.TrimSpace(request.SourceOwner)
 	catalog, err := adapter.binding.permissions.ForWorkspace(workspaceID)

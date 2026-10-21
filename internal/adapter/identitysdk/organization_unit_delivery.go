@@ -2,7 +2,6 @@ package identitysdkadapter
 
 import (
 	"context"
-	"net/http"
 
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	organizationunit "github.com/domainry/domainry-identity-sdk/organizationunit"
@@ -67,7 +66,7 @@ func sdkDeliveredOrganizationUnit(value identitymodel.IdentityDeliveredOrganizat
 }
 
 func organizationUnitDeliveryUnavailableError() *identitysdk.Error {
-	return &identitysdk.Error{StatusCode: http.StatusInternalServerError, Code: "backend.identity.organization_unit_delivery_unavailable"}
+	return &identitysdk.Error{Class: identitysdk.ErrorClassInternal, Code: "backend.identity.organization_unit_delivery_unavailable"}
 }
 
 var _ organizationunit.Delivery = sdkOrganizationUnitDelivery{}

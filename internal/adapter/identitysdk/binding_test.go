@@ -2,7 +2,6 @@ package identitysdkadapter
 
 import (
 	"errors"
-	"net/http"
 	"reflect"
 	"testing"
 	"time"
@@ -19,11 +18,11 @@ func TestSDKBoundaryNormalizesDomainErrors(t *testing.T) {
 	if err := sdkBoundaryError(domainError); !errors.As(err, &sdkError) {
 		t.Fatalf("boundary error type=%T value=%v", err, err)
 	}
-	if sdkError.StatusCode != http.StatusForbidden || sdkError.Code != "auth.invalid_credentials" || sdkError.Params["attempt"] != "login" || !errors.Is(sdkError, domainError) {
+	if sdkError.Class != identitysdk.ErrorClassForbidden || sdkError.Code != "auth.invalid_credentials" || sdkError.Params["attempt"] != "login" || !errors.Is(sdkError, domainError) {
 		t.Fatalf("sdk error=%#v", sdkError)
 	}
 	contractError := &identitysdk.Error{Code: "identity.permission_definition_invalid"}
-	if err := sdkBoundaryError(contractError); !errors.As(err, &sdkError) || sdkError.StatusCode != http.StatusBadRequest || sdkError == contractError {
+	if err := sdkBoundaryError(contractError); !errors.As(err, &sdkError) || sdkError.Class != identitysdk.ErrorClassBadRequest || sdkError == contractError {
 		t.Fatalf("contract error=%#v original=%#v", sdkError, contractError)
 	}
 	if sdkBoundaryError(nil) != nil {

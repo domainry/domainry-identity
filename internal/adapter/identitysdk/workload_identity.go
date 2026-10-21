@@ -2,7 +2,6 @@ package identitysdkadapter
 
 import (
 	"context"
-	"net/http"
 	"strings"
 
 	identitysdk "github.com/domainry/domainry-identity-sdk"
@@ -14,7 +13,7 @@ type sdkWorkflowWorkloads struct{ binding *sdkBinding }
 
 func (adapter sdkWorkflowWorkloads) ApplyWorkflowWorkloadBindings(ctx context.Context, request identitysdk.ApplyWorkflowWorkloadBindingsRequest) (identitysdk.ApplyWorkflowWorkloadBindingsResult, error) {
 	if adapter.binding == nil || adapter.binding.identity == nil {
-		return identitysdk.ApplyWorkflowWorkloadBindingsResult{}, &identitysdk.Error{StatusCode: http.StatusNotImplemented, Code: "identity.workflow_workload_unavailable"}
+		return identitysdk.ApplyWorkflowWorkloadBindingsResult{}, &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.workflow_workload_unavailable"}
 	}
 	if err := request.Validate(); err != nil {
 		return identitysdk.ApplyWorkflowWorkloadBindingsResult{}, err
@@ -24,7 +23,7 @@ func (adapter sdkWorkflowWorkloads) ApplyWorkflowWorkloadBindings(ctx context.Co
 		return identitysdk.ApplyWorkflowWorkloadBindingsResult{}, sdkBoundaryError(err)
 	}
 	if !registered {
-		return identitysdk.ApplyWorkflowWorkloadBindingsResult{}, &identitysdk.Error{StatusCode: http.StatusForbidden, Code: "identity.application_not_registered"}
+		return identitysdk.ApplyWorkflowWorkloadBindingsResult{}, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.application_not_registered"}
 	}
 	scoped, workspaceContext, err := (sdkProjection{binding: adapter.binding}).scoped(identityscope.WithScope(ctx, request.Application))
 	if err != nil {
@@ -62,13 +61,13 @@ func (adapter sdkWorkflowWorkloads) GetWorkflowWorkloadBinding(ctx context.Conte
 		return identitysdk.WorkflowWorkloadBinding{}, sdkBoundaryError(err)
 	}
 	if !found || binding.Status != identitysdk.WorkflowWorkloadBindingActive {
-		return identitysdk.WorkflowWorkloadBinding{}, &identitysdk.Error{StatusCode: http.StatusNotFound, Code: "identity.workflow_workload_not_found"}
+		return identitysdk.WorkflowWorkloadBinding{}, &identitysdk.Error{Class: identitysdk.ErrorClassNotFound, Code: "identity.workflow_workload_not_found"}
 	}
 	if binding.DefinitionVersionID != strings.TrimSpace(request.DefinitionVersionID) {
-		return identitysdk.WorkflowWorkloadBinding{}, &identitysdk.Error{StatusCode: http.StatusForbidden, Code: "identity.workflow_workload_version_mismatch"}
+		return identitysdk.WorkflowWorkloadBinding{}, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.workflow_workload_version_mismatch"}
 	}
 	if binding.ReleaseDigest != strings.TrimSpace(request.ReleaseDigest) {
-		return identitysdk.WorkflowWorkloadBinding{}, &identitysdk.Error{StatusCode: http.StatusForbidden, Code: "identity.workflow_workload_release_digest_mismatch"}
+		return identitysdk.WorkflowWorkloadBinding{}, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.workflow_workload_release_digest_mismatch"}
 	}
 	return sdkWorkflowWorkloadBinding(request.Application, binding), nil
 }

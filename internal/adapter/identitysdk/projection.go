@@ -42,7 +42,7 @@ func (adapter sdkProjection) ResolveDisplayNames(ctx context.Context, request id
 	userIDs := sdkDisplayNameIDSet(request.UserIDs)
 	organizationUnitIDs := sdkDisplayNameIDSet(request.OrganizationUnitIDs)
 	if len(userIDs) > 1000 || len(organizationUnitIDs) > 1000 {
-		return identitysdk.DisplayNameResult{}, &identitysdk.Error{Code: "identity.display_name_query_too_large"}
+		return identitysdk.DisplayNameResult{}, &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.display_name_query_too_large"}
 	}
 	result := identitysdk.DisplayNameResult{Users: []identitysdk.DisplayName{}, OrganizationUnits: []identitysdk.DisplayName{}}
 	users, organizationUnits, err := identity.ResolveProjectionDisplayNames(workspaceContext, sdkDisplayNameIDs(userIDs), sdkDisplayNameIDs(organizationUnitIDs))
@@ -142,17 +142,17 @@ func (adapter sdkProjection) ListUserRoleAssignments(ctx context.Context, reques
 
 func (adapter sdkProjection) scoped(ctx context.Context) (*identityapplication.IdentityApplicationService, context.Context, error) {
 	if adapter.binding == nil || adapter.binding.identity == nil {
-		return nil, ctx, &identitysdk.Error{Code: "identity.projection_unavailable"}
+		return nil, ctx, &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.projection_unavailable"}
 	}
 	scope, ok := identityscope.ScopeFromContext(ctx)
 	if !ok {
-		return nil, ctx, &identitysdk.Error{Code: "identity.application_scope_required"}
+		return nil, ctx, &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.application_scope_required"}
 	}
 	application := identitysdk.ApplicationRef{WorkspaceID: scope.WorkspaceID, ApplicationKey: scope.ApplicationKey}
 	if found, err := adapter.binding.applicationRegistered(ctx, application); err != nil {
 		return nil, ctx, sdkBoundaryError(err)
 	} else if !found {
-		return nil, ctx, &identitysdk.Error{Code: "identity.application_not_registered"}
+		return nil, ctx, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.application_not_registered"}
 	}
 	identity, err := adapter.binding.identity.ForWorkspace(string(scope.WorkspaceID))
 	if err != nil {

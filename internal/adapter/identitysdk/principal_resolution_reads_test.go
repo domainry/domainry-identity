@@ -3,7 +3,6 @@ package identitysdkadapter
 import (
 	"context"
 	"errors"
-	"net/http"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -218,7 +217,7 @@ func TestSDKPrincipalResolutionChecksRevocationAfterProjectionIO(t *testing.T) {
 				}
 			} else {
 				var coded *identitysdk.Error
-				if !errors.As(err, &coded) || coded.StatusCode != http.StatusConflict || coded.Code != "identity.authorization_revision_stale" {
+				if !errors.As(err, &coded) || coded.Class != identitysdk.ErrorClassConflict || coded.Code != "identity.authorization_revision_stale" {
 					t.Fatalf("changed authorization was accepted: %v", err)
 				}
 			}

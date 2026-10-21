@@ -19,7 +19,7 @@ func (binding *sdkBinding) StoreOrganizationDelivery() identitysdk.StoreOrganiza
 
 func (adapter sdkStoreOrganizationDelivery) DeliverStoreOrganization(ctx context.Context, request identitysdk.StoreOrganizationDeliveryRequest) (identitysdk.StoreOrganizationDeliveryResult, error) {
 	if adapter.binding == nil || adapter.binding.storeOrganizations == nil {
-		return identitysdk.StoreOrganizationDeliveryResult{}, &identitysdk.Error{Code: "identity.store_organization_delivery_unavailable"}
+		return identitysdk.StoreOrganizationDeliveryResult{}, &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.store_organization_delivery_unavailable"}
 	}
 	scoped, scopeErr := adapter.binding.forToken(ctx, request.AccessToken)
 	if scopeErr != nil {
@@ -46,7 +46,7 @@ func (adapter sdkStoreOrganizationDelivery) DeliverStoreOrganization(ctx context
 
 func (adapter sdkStoreOrganizationDelivery) ResolveStoreOrganization(ctx context.Context, request identitysdk.StoreOrganizationResolveRequest) (identitysdk.StoreOrganization, error) {
 	if adapter.binding == nil || adapter.binding.storeOrganizations == nil {
-		return identitysdk.StoreOrganization{}, &identitysdk.Error{Code: "identity.store_organization_delivery_unavailable"}
+		return identitysdk.StoreOrganization{}, &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.store_organization_delivery_unavailable"}
 	}
 	scoped, scopeErr := adapter.binding.forToken(ctx, request.AccessToken)
 	if scopeErr != nil {
@@ -62,7 +62,7 @@ func (adapter sdkStoreOrganizationDelivery) ResolveStoreOrganization(ctx context
 
 func (adapter sdkStoreOrganizationDelivery) ListStoreOrganizations(ctx context.Context, request identitysdk.StoreOrganizationListRequest) (identitysdk.StoreOrganizationPage, error) {
 	if adapter.binding == nil || adapter.binding.storeOrganizations == nil {
-		return identitysdk.StoreOrganizationPage{}, &identitysdk.Error{Code: "identity.store_organization_delivery_unavailable"}
+		return identitysdk.StoreOrganizationPage{}, &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.store_organization_delivery_unavailable"}
 	}
 	scoped, scopeErr := adapter.binding.forToken(ctx, request.AccessToken)
 	if scopeErr != nil {

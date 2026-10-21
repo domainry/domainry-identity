@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"net/http"
 	"sync"
 
 	identitysdk "github.com/domainry/domainry-identity-sdk"
@@ -68,7 +67,7 @@ func BeginPrincipalReadScope(ctx context.Context) (context.Context, func() error
 				return err
 			}
 			if fresh.AccessBundle.AuthorizationRevision != previous.AccessBundle.AuthorizationRevision {
-				return &identitysdk.Error{StatusCode: http.StatusUnauthorized, Code: "identity.authorization_revision_stale"}
+				return &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.authorization_revision_stale"}
 			}
 		}
 		return ctx.Err()
