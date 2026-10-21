@@ -520,6 +520,17 @@ func (binding *moduleBinding) ChallengeAuthentication() identitysdk.ChallengeAut
 	return challenge.ChallengeAuthentication()
 }
 
+func (binding *moduleBinding) ExternalAccounts() identitysdk.ExternalAccountManager {
+	if binding == nil || binding.Binding == nil {
+		return nil
+	}
+	externalAccounts, ok := binding.Binding.(identitysdk.ExternalAccountBinding)
+	if !ok {
+		return nil
+	}
+	return externalAccounts.ExternalAccounts()
+}
+
 func (binding *moduleBinding) WorkflowWorkloads() identitysdk.WorkflowWorkloadIdentity {
 	if binding == nil {
 		return nil

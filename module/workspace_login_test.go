@@ -211,16 +211,25 @@ func assertFederatedLoginResolvesLinkedWorkspace(t *testing.T, mounted http.Hand
 		t.Fatalf("configure Feishu provider status=%d body=%s", setupResponse.Code, setupResponse.Body.String())
 	}
 
-	bindRequest := httptest.NewRequest(http.MethodPost, "/auth/external-accounts/feishu/bind", strings.NewReader(`{"subject":"feishu-user-b"}`))
-	bindRequest.Header.Set("Content-Type", "application/json")
-	bindRequest.Header.Set("Authorization", "Bearer "+linkedAccessToken)
-	bindResponse := httptest.NewRecorder()
-	mounted.ServeHTTP(bindResponse, bindRequest)
-	if bindResponse.Code != http.StatusCreated {
-		t.Fatalf("bind Workspace B Feishu account status=%d body=%s", bindResponse.Code, bindResponse.Body.String())
+	const returnURL = "http://localhost:3100/auth/callback"
+	linkRequest := httptest.NewRequest(http.MethodPost, "/auth/external-accounts/feishu/link/start", strings.NewReader(`{"return_url":"`+returnURL+`"}`))
+	linkRequest.Header.Set("Content-Type", "application/json")
+	linkRequest.Header.Set("Authorization", "Bearer "+linkedAccessToken)
+	linkRequest.Header.Set("X-Workspace-ID", "workspace-b")
+	linkResponse := httptest.NewRecorder()
+	mounted.ServeHTTP(linkResponse, linkRequest)
+	var linkStarted struct {
+		State string `json:"state"`
+	}
+	if err := json.Unmarshal(linkResponse.Body.Bytes(), &linkStarted); err != nil || linkResponse.Code != http.StatusOK || linkStarted.State == "" {
+		t.Fatalf("link Workspace B Feishu account status=%d body=%s err=%v", linkResponse.Code, linkResponse.Body.String(), err)
+	}
+	linkCallback := httptest.NewRecorder()
+	mounted.ServeHTTP(linkCallback, httptest.NewRequest(http.MethodGet, "/auth/providers/feishu/callback?code=provider-code&state="+url.QueryEscape(linkStarted.State), nil))
+	if linkCallback.Code != http.StatusSeeOther {
+		t.Fatalf("link callback status=%d body=%s", linkCallback.Code, linkCallback.Body.String())
 	}
 
-	const returnURL = "http://localhost:3100/auth/callback"
 	startRequest := httptest.NewRequest(http.MethodPost, "/auth/providers/feishu/start", strings.NewReader(`{"return_url":"`+returnURL+`"}`))
 	startRequest.Header.Set("Content-Type", "application/json")
 	startResponse := httptest.NewRecorder()

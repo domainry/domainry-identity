@@ -285,7 +285,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		"GET /auth/providers/{provider}/setup-check":            identityhttpapi.ExposureManagement,
 		"PUT /auth/providers/{provider}/setup":                  identityhttpapi.ExposureManagement,
 		"GET /auth/external-accounts":                           identityhttpapi.ExposurePublic,
-		"POST /auth/external-accounts/{provider}/bind":          identityhttpapi.ExposurePublic,
+		"POST /auth/external-accounts/{provider}/link/start":    identityhttpapi.ExposurePublic,
 		"DELETE /auth/external-accounts/{provider}/{accountID}": identityhttpapi.ExposurePublic,
 		"GET /auth/me":                                          identityhttpapi.ExposurePublic,
 		"PATCH /auth/me":                                        identityhttpapi.ExposurePublic,
@@ -618,34 +618,28 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		t.Fatalf("provider setup-check did not reach handler: status=%d body=%s", setupCheck.Code, setupCheck.Body.String())
 	}
 
-	unauthenticatedBind := httptest.NewRecorder()
-	unauthenticatedBindRequest := httptest.NewRequest(http.MethodPost, "/auth/external-accounts/wechat_mini_program/bind", strings.NewReader(`{"subject":"wechat-subject"}`))
-	unauthenticatedBindRequest.Header.Set("Content-Type", "application/json")
-	mounted.ServeHTTP(unauthenticatedBind, unauthenticatedBindRequest)
-	if unauthenticatedBind.Code != http.StatusForbidden && unauthenticatedBind.Code != http.StatusUnauthorized {
-		t.Fatalf("unauthenticated external-account bind status=%d body=%s", unauthenticatedBind.Code, unauthenticatedBind.Body.String())
+	unauthenticatedLink := httptest.NewRecorder()
+	unauthenticatedLinkRequest := httptest.NewRequest(http.MethodPost, "/auth/external-accounts/wechat_mini_program/link/start", strings.NewReader(`{"return_url":"http://localhost:3100/auth/callback"}`))
+	unauthenticatedLinkRequest.Header.Set("Content-Type", "application/json")
+	mounted.ServeHTTP(unauthenticatedLink, unauthenticatedLinkRequest)
+	if unauthenticatedLink.Code != http.StatusForbidden && unauthenticatedLink.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated external-account link status=%d body=%s", unauthenticatedLink.Code, unauthenticatedLink.Body.String())
 	}
 
-	bind := httptest.NewRecorder()
-	bindRequest := httptest.NewRequest(http.MethodPost, "/auth/external-accounts/wechat_mini_program/bind", strings.NewReader(`{"subject":"wechat-subject"}`))
-	bindRequest.Header.Set("Content-Type", "application/json")
-	bindRequest.Header.Set("Authorization", "Bearer "+adminSession.AccessToken)
-	mounted.ServeHTTP(bind, bindRequest)
-	if bind.Code != http.StatusCreated {
-		t.Fatalf("external-account bind status=%d body=%s", bind.Code, bind.Body.String())
-	}
-	var boundAccount struct {
-		ID string `json:"id"`
-	}
-	if err := json.Unmarshal(bind.Body.Bytes(), &boundAccount); err != nil || boundAccount.ID == "" {
-		t.Fatalf("decode bound account=%#v err=%v body=%s", boundAccount, err, bind.Body.String())
+	link := httptest.NewRecorder()
+	linkRequest := httptest.NewRequest(http.MethodPost, "/auth/external-accounts/wechat_mini_program/link/start", strings.NewReader(`{"return_url":"http://localhost:3100/auth/callback"}`))
+	linkRequest.Header.Set("Content-Type", "application/json")
+	linkRequest.Header.Set("Authorization", "Bearer "+adminSession.AccessToken)
+	mounted.ServeHTTP(link, linkRequest)
+	if link.Code != http.StatusBadRequest || !strings.Contains(link.Body.String(), "auth.external_account_link_not_supported") {
+		t.Fatalf("unverified provider link status=%d body=%s", link.Code, link.Body.String())
 	}
 
 	list := httptest.NewRecorder()
 	listRequest := httptest.NewRequest(http.MethodGet, "/auth/external-accounts", nil)
 	listRequest.Header.Set("Authorization", "Bearer "+adminSession.AccessToken)
 	mounted.ServeHTTP(list, listRequest)
-	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), "wechat-subject") {
+	if list.Code != http.StatusOK || strings.Contains(list.Body.String(), "wechat-subject") {
 		t.Fatalf("external-account list status=%d body=%s", list.Code, list.Body.String())
 	}
 
@@ -653,16 +647,8 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	publicExchangeRequest := httptest.NewRequest(http.MethodPost, "/auth/providers/wechat_mini_program/exchange", strings.NewReader(`{"workspace_id":"workspace-primary","application_key":"orders-runtime","code":"wx-code"}`))
 	publicExchangeRequest.Header.Set("Content-Type", "application/json")
 	mounted.ServeHTTP(publicExchange, publicExchangeRequest)
-	if publicExchange.Code != http.StatusOK {
-		t.Fatalf("bound public provider exchange status=%d body=%s", publicExchange.Code, publicExchange.Body.String())
-	}
-
-	unbind := httptest.NewRecorder()
-	unbindRequest := httptest.NewRequest(http.MethodDelete, "/auth/external-accounts/wechat_mini_program/"+boundAccount.ID, nil)
-	unbindRequest.Header.Set("Authorization", "Bearer "+adminSession.AccessToken)
-	mounted.ServeHTTP(unbind, unbindRequest)
-	if unbind.Code != http.StatusOK {
-		t.Fatalf("external-account unbind status=%d body=%s", unbind.Code, unbind.Body.String())
+	if publicExchange.Code != http.StatusForbidden || !strings.Contains(publicExchange.Body.String(), "auth.external_account_unlinked") {
+		t.Fatalf("unlinked public provider exchange status=%d body=%s", publicExchange.Code, publicExchange.Body.String())
 	}
 	managementAdapter := adapters[1]
 	response := httptest.NewRecorder()
