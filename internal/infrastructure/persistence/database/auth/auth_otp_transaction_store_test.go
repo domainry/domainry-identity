@@ -67,6 +67,42 @@ func TestOTPTransactionEnforcesDeliveryCooldownAcrossRequests(t *testing.T) {
 	}
 }
 
+func TestOTPDeliveryClaimDoesNotDependOnConflictRowsAffected(t *testing.T) {
+	store := openStoreForGeneratedListTest(t)
+	defer store.Close()
+	if err := store.EnsureSchema(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	identityStore, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceEngine())
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository := NewAuthStoreWithKeyProvider(identityStore, store.SecretKeyProvider())
+	now := time.Date(2026, 10, 21, 3, 0, 0, 0, time.UTC)
+	challenge := func(state string) authmodel.AuthProviderChallenge {
+		return authmodel.AuthProviderChallenge{
+			WorkspaceID: "workspace-primary", Provider: "email_credential", Purpose: "password_recovery",
+			State: state, Email: "owner@example.test", Code: "123456",
+			CreatedAt: now.Format(time.RFC3339Nano), ExpiresAt: now.Add(10 * time.Minute).Format(time.RFC3339Nano),
+		}
+	}
+	created, err := repository.CreateAuthOTPTransaction(t.Context(), challenge("first-state"), "same-recovery-email", now.Add(time.Minute), now)
+	if err != nil || !created {
+		t.Fatalf("first claim created=%v err=%v", created, err)
+	}
+	created, err = repository.CreateAuthOTPTransaction(t.Context(), challenge("second-state"), "same-recovery-email", now.Add(time.Minute), now)
+	if err != nil || created {
+		t.Fatalf("duplicate claim created=%v err=%v", created, err)
+	}
+	var transactions int
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _identity_auth_login_transactions WHERE subject_key_hash = ?`, "same-recovery-email").Scan(&transactions); err != nil {
+		t.Fatal(err)
+	}
+	if transactions != 1 {
+		t.Fatalf("duplicate cooldown claim persisted %d challenges", transactions)
+	}
+}
+
 func TestOTPTransactionPurposeAndSubjectMismatchDoesNotConsumeChallenge(t *testing.T) {
 	store := openStoreForGeneratedListTest(t)
 	defer store.Close()

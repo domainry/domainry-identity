@@ -9,7 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/domainry/domainry-foundation/mutation"
 	authmodel "github.com/domainry/domainry-identity/internal/domain/auth/model"
+	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/failure"
 	identitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity"
 	"github.com/domainry/domainry-orm/query"
 )
@@ -176,19 +178,19 @@ func (s AuthStore) claimAuthOTPDelivery(ctx context.Context, tx *sql.Tx, workspa
 	}
 	insert, insertArgs, buildErr := query.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_auth_otp_delivery_limits", workspaceID).
 		Columns("subject_key_hash", "provider_key", "next_allowed_at", "created_at", "updated_at").
-		Values(subjectKeyHash, provider, nextMillis, nowMillis, nowMillis).OnConflictDoNothing("workspace_id", "subject_key_hash").Build()
+		Values(subjectKeyHash, provider, nextMillis, nowMillis, nowMillis).Build()
 	if buildErr != nil {
 		return false, buildErr
 	}
-	result, err = tx.ExecContext(ctx, insert, insertArgs...)
+	_, err = tx.ExecContext(ctx, insert, insertArgs...)
 	if err != nil {
+		conflict := failure.ConstraintError(err, "auth_otp_delivery_limit", subjectKeyHash, mutation.MutationConflictUnique)
+		if mutation.IsMutationConflict(conflict, mutation.MutationConflictUnique) {
+			return false, nil
+		}
 		return false, err
 	}
-	changed, err := result.RowsAffected()
-	if err != nil {
-		return false, err
-	}
-	return changed == 1, nil
+	return true, nil
 }
 
 func (s AuthStore) ConsumeAuthLoginTransaction(ctx context.Context, workspaceID, provider, state string, now time.Time) (authmodel.AuthProviderChallenge, bool, error) {
