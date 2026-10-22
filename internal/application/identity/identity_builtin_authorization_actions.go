@@ -64,7 +64,7 @@ func IdentityBuiltinAuthorizationActions() []identitymodel.IdentityActionDefinit
 		authPrincipalAction("auth.role_options.list", "角色选项", "列出", "GET", "/auth/role-options", "列出当前用户角色选项"),
 		authPrincipalAction("auth.role_requests.list", "角色申请", "列出", "GET", "/auth/role-requests", "列出当前用户角色申请"),
 		authPrincipalAction("auth.role_requests.create", "角色申请", "创建", "POST", "/auth/role-requests", "创建当前用户角色申请"),
-		principalAction("identity.effective_menus.get", "有效菜单", "获取", "GET", "/identity/effective-menus", "获取当前用户有效菜单"),
+		authPrincipalAction("identity.effective_menus.get", "有效菜单", "获取", "GET", "/identity/effective-menus", "获取当前用户有效菜单"),
 
 		permissionAction("identity.organization_units.list", "组织机构管理", "列出", "GET", "/identity/organization-units", "列出组织机构", organizationUnits),
 		permissionAction("identity.organization_units.get", "组织机构管理", "查看", "GET", "/identity/organization-units/{organizationUnitID}", "查看组织机构", nil),

@@ -82,6 +82,11 @@ func TestStandaloneAuthorizationSliceRegistryOwnsCompleteRouteAndPermissionMatri
 			t.Fatalf("Action %q binding=%v found=%v want=%q", key, definition.HTTP, found, binding)
 		}
 	}
+	effectiveMenus, found := registry.Definition("identity.effective_menus.get")
+	if !found || effectiveMenus.Authorization.Strategy != actioncontract.AuthorizationAuthenticated || effectiveMenus.Permission != nil ||
+		len(effectiveMenus.Exposures) != 1 || effectiveMenus.Exposures[0] != actioncontract.ExposurePublic {
+		t.Fatalf("effective menus must be public-listener, authenticated, and principal-scoped: found=%v action=%+v", found, effectiveMenus)
+	}
 	permissions := registry.OwnedPermissionDefinitions(IdentityBuiltinAuthorizationOwner)
 	if len(permissions) != 100 {
 		t.Fatalf("owned permission count=%d want=100", len(permissions))
