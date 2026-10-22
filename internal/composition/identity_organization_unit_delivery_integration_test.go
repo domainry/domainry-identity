@@ -196,13 +196,13 @@ func TestOrganizationUnitDeliveryCreatesRealDepartmentWithAtomicScopedReplay(t *
 	if _, err := delivery.CreateOrganizationUnit(t.Context(), scopedCreate); err != nil {
 		t.Fatalf("scoped parent create: %v", err)
 	}
-	if _, err := delivery.ResolveOrganizationUnit(t.Context(), organizationunit.ResolveRequest{
+	support, err := delivery.ResolveOrganizationUnit(t.Context(), organizationunit.ResolveRequest{
 		ContractVersion: organizationunit.DeliveryContractVersionV1, AccessToken: scoped.AccessToken,
 		OrganizationID: "department-support", NodeType: organizationunit.NodeTypeDepartment,
-	}); apperror.CodeOf(err) != "auth.authorization_stale" {
-		t.Fatalf("stale authorization revision error=%v", err)
+	})
+	if err != nil || support.OrganizationUnitID != "department-support" {
+		t.Fatalf("new child must be visible without replacing the operator's token: support=%+v err=%v", support, err)
 	}
-	scoped = login("scoped_organization_unit_operator@example.com")
 	outOfScope := scopedCreate
 	outOfScope.AccessToken = scoped.AccessToken
 	outOfScope.IdempotencyKey = "department-other-create-1"

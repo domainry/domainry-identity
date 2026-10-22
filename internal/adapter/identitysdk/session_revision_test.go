@@ -69,7 +69,11 @@ func TestCurrentSessionInvalidatesCachedAuthorizationBeforeTTL(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			key := identityprincipal.CacheKey{WorkspaceID: verified.WorkspaceID, SubjectID: verified.SubjectID, AuthorizationRevision: verified.AuthorizationRevision, TokenID: verified.TokenID}
+			current, err := binding.Authentication().CurrentSession(ctx, identitysdk.CurrentSessionRequest{AccessToken: login.AccessToken})
+			if err != nil {
+				t.Fatal(err)
+			}
+			key := identityprincipal.CacheKey{WorkspaceID: verified.WorkspaceID, SubjectID: verified.SubjectID, AuthorizationRevision: verified.AuthorizationRevision, ScopeRevision: current.ScopeRevision, TokenID: verified.TokenID}
 			entry, found, err := cache.Get(ctx, key, time.Now())
 			if err != nil || !found || time.Until(entry.ExpiresAt) < time.Minute {
 				t.Fatalf("normal five-minute cache was not primed: found=%v err=%v", found, err)
@@ -147,5 +151,75 @@ func TestCurrentSessionInvalidatesCachedAuthorizationBeforeTTL(t *testing.T) {
 				t.Fatalf("refresh retained old department: %s", after.OrgID)
 			}
 		})
+	}
+}
+
+func TestDepartmentTreeChangesRefreshScopeWithoutRevokingUserSession(t *testing.T) {
+	f := newPrincipalReadFixture(t)
+	ctx := requestcontext.WithWorkspaceID(f.ctx, "workspace-primary")
+	for _, id := range []string{"department-a", "department-b"} {
+		if err := f.repo.UpsertIdentityOrganizationUnit(ctx, "workspace-primary", identitymodel.IdentityOrganizationUnit{OrganizationUnitID: id, Code: id, Name: id, NodeType: identitymodel.IdentityOrganizationUnitDepartment, Status: identitymodel.IdentityStatusActive}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := f.repo.UpsertIdentityUser(ctx, "workspace-primary", identitymodel.IdentityUser{UserID: "subject", Name: "subject", Email: "subject@example.test", OrgID: "department-a", Status: identitymodel.IdentityStatusActive}); err != nil {
+		t.Fatal(err)
+	}
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte("SessionTest1!"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authStore := authpersistence.NewAuthStore(f.repo.SQLIdentityStore)
+	if err := authStore.UpsertIdentityCredential(ctx, "workspace-primary", identitymodel.IdentityCredential{UserID: "subject", PasswordHash: string(passwordHash)}); err != nil {
+		t.Fatal(err)
+	}
+	auth := authapplication.NewAuthApplicationService(f.identity, authStore, "session-revision-test-secret", "", time.Hour, 24*time.Hour, 5, time.Minute, time.Minute, 3, authpolicy.AuthPasswordPolicy{})
+	if err := auth.ConfigureTokenMetadata("https://identity.example.test", "principal-test"); err != nil {
+		t.Fatal(err)
+	}
+	binding := f.resolver.binding
+	binding.auth = auth
+	binding.descriptor = identitysdk.Descriptor{Issuer: "https://identity.example.test", Audience: "principal-test"}
+	resolver, err := identityprincipal.NewResolver(binding, identityprincipal.Options{Cache: identityprincipal.NewMemoryCache()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	login, err := auth.LoginForApplication(ctx, "workspace-primary", "subject@example.test", "SessionTest1!", "principal-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := resolver.Authenticate(ctx, login.AccessToken)
+	if err != nil || len(before.OrgScopeIDs) != 1 {
+		t.Fatalf("initial scope=%v err=%v", before.OrgScopeIDs, err)
+	}
+	parent := "department-a"
+	child := identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "department-child", Code: "child", Name: "Child", NodeType: identitymodel.IdentityOrganizationUnitDepartment, ParentID: &parent, Status: identitymodel.IdentityStatusActive}
+	if err := f.repo.UpsertIdentityOrganizationUnit(ctx, "workspace-primary", child); err != nil {
+		t.Fatal(err)
+	}
+	afterCreate, err := resolver.Authenticate(ctx, login.AccessToken)
+	if err != nil || afterCreate.AuthorizationRevision != before.AuthorizationRevision || len(afterCreate.OrgScopeIDs) != 2 {
+		t.Fatalf("new child revoked token or reused old scope: revision=%s scope=%v err=%v", afterCreate.AuthorizationRevision, afterCreate.OrgScopeIDs, err)
+	}
+	parent = "department-b"
+	child.ParentID = &parent
+	if err := f.repo.UpsertIdentityOrganizationUnit(ctx, "workspace-primary", child); err != nil {
+		t.Fatal(err)
+	}
+	afterMove, err := resolver.Authenticate(ctx, login.AccessToken)
+	if err != nil || afterMove.AuthorizationRevision != before.AuthorizationRevision || len(afterMove.OrgScopeIDs) != 1 || afterMove.OrgScopeIDs[0] != "department-a" {
+		t.Fatalf("moved child retained cached access or revoked token: revision=%s scope=%v err=%v", afterMove.AuthorizationRevision, afterMove.OrgScopeIDs, err)
+	}
+	user, found, err := f.repo.GetIdentityUser(ctx, "workspace-primary", "subject")
+	if err != nil || !found {
+		t.Fatalf("subject lookup found=%v err=%v", found, err)
+	}
+	user.Name = "Updated display name"
+	if err := f.repo.UpsertIdentityUser(ctx, "workspace-primary", user); err != nil {
+		t.Fatal(err)
+	}
+	afterProfileEdit, err := resolver.Authenticate(ctx, login.AccessToken)
+	if err != nil || afterProfileEdit.AuthorizationRevision != before.AuthorizationRevision {
+		t.Fatalf("display-name edit revoked an unchanged permission grant: revision=%s err=%v", afterProfileEdit.AuthorizationRevision, err)
 	}
 }

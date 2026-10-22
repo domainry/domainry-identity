@@ -350,6 +350,9 @@ func (s *Store) ListIdentityProfileBindingEvents(ctx context.Context, workspaceI
 		out = append(out, event)
 	}
 	sort.Slice(out, func(i, j int) bool {
+		if out[i].BindingVersion != out[j].BindingVersion {
+			return out[i].BindingVersion < out[j].BindingVersion
+		}
 		leftCreatedAt, rightCreatedAt := timevalue.Millis(out[i].CreatedAt), timevalue.Millis(out[j].CreatedAt)
 		if leftCreatedAt == rightCreatedAt {
 			return out[i].AuditEventID < out[j].AuditEventID

@@ -34,9 +34,8 @@ func (s *AuthDomainService) Me(ctx context.Context, accessToken string) (authpro
 	if !principal.Known || principal.AuthorizationRevision == "" {
 		return authprojection.AuthMeResponse{}, forbidden("auth.user_disabled")
 	}
-	// Permissions and their revision must come from the same current principal.
-	// Returning the JWT's issuance revision would let resource servers keep an
-	// obsolete AccessBundle after a department, role, or permission change.
+	// Permissions, their bearer revision, and the independently changing scope
+	// revision must come from the same current principal.
 	permissions := identitymodel.RolePermissionKeys(principal.Role.Permissions)
 	slices.Sort(permissions)
 	permissions = slices.Compact(permissions)
@@ -50,6 +49,7 @@ func (s *AuthDomainService) Me(ctx context.Context, accessToken string) (authpro
 		DefaultRole:           identitypolicy.SelectDefaultRole(roles),
 		Permissions:           permissions,
 		AuthorizationRevision: principal.AuthorizationRevision,
+		ScopeRevision:         principal.ScopeRevision,
 		MustChangePassword:    mustChangePassword,
 	}, nil
 }

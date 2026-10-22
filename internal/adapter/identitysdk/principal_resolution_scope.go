@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"slices"
 	"sync"
 
 	identitysdk "github.com/domainry/domainry-identity-sdk"
@@ -66,7 +67,10 @@ func BeginPrincipalReadScope(ctx context.Context) (context.Context, func() error
 			if err != nil {
 				return err
 			}
-			if fresh.AccessBundle.AuthorizationRevision != previous.AccessBundle.AuthorizationRevision {
+			if fresh.AccessBundle.AuthorizationRevision != previous.AccessBundle.AuthorizationRevision ||
+				!slices.Equal(fresh.AccessBundle.Subject.OrgScopeIDs, previous.AccessBundle.Subject.OrgScopeIDs) ||
+				!slices.Equal(fresh.AccessBundle.Subject.SupportOrgScopeIDs, previous.AccessBundle.Subject.SupportOrgScopeIDs) ||
+				!slices.Equal(fresh.AccessBundle.Subject.ReportingScopeUserIDs, previous.AccessBundle.Subject.ReportingScopeUserIDs) {
 				return &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.authorization_revision_stale"}
 			}
 		}

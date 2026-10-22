@@ -32,6 +32,7 @@ type Principal struct {
 	ActiveBusinessProfile *BusinessProfileReference
 	BusinessClaims        map[string]BusinessClaimValue
 	AuthorizationRevision string
+	ScopeRevision         string
 	AutomationDepth       int
 	VisitedRuleKeys       []string
 }

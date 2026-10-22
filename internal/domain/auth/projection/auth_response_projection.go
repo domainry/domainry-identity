@@ -9,6 +9,7 @@ type AuthMeResponse struct {
 	DefaultRole           string               `json:"default_role"`
 	Permissions           []string             `json:"permissions"`
 	AuthorizationRevision string               `json:"authorization_revision"`
+	ScopeRevision         string               `json:"scope_revision"`
 	MustChangePassword    bool                 `json:"must_change_password"`
 }
 

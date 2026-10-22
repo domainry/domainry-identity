@@ -10,7 +10,7 @@ require (
 	github.com/domainry/domainry-audit-sdk v0.1.16
 	github.com/domainry/domainry-data-exchange-sdk v0.3.15
 	github.com/domainry/domainry-foundation v0.2.12
-	github.com/domainry/domainry-identity-sdk v0.1.32
+	github.com/domainry/domainry-identity-sdk v0.1.33
 	github.com/domainry/domainry-metadata v0.1.33
 	github.com/domainry/domainry-metadata-sdk v0.1.14
 	github.com/go-sql-driver/mysql v1.10.0

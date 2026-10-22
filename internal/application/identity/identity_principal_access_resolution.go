@@ -53,7 +53,7 @@ func (s *IdentityEffectiveAccessApplicationService) ResolvePrincipalAccess(ctx c
 	if err != nil {
 		return empty, err
 	}
-	if !current.Known || current.AuthorizationRevision != facts.Principal.AuthorizationRevision {
+	if !current.Known || current.AuthorizationRevision != facts.Principal.AuthorizationRevision || current.ScopeRevision != facts.Principal.ScopeRevision {
 		return empty, &apperror.AppError{Kind: apperror.KindConflict, Code: "identity.authorization_revision_stale"}
 	}
 	return IdentityPrincipalAccessResolution{Principal: facts.Principal, User: facts.User, Roles: facts.EffectiveRoles, Snapshot: snapshot}, nil

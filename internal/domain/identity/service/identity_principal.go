@@ -112,7 +112,8 @@ func (s *IdentityDomainService) buildPrincipal(ctx context.Context, userID strin
 		published.Permissions = identityFilterGuardrailDeniedPermissions(published)
 		role = published
 	}
-	authorizationRevision := identityAuthorizationRevision(user, orgScopeIDs, supportOrgScopeIDs, reportingScopeUserIDs, activeAssignments, activeIdentityRoles, role, identityPermissionStateFingerprint(s.PermissionDefinitions()))
+	authorizationRevision := identityAuthorizationRevision(user, activeAssignments, activeIdentityRoles, role, identityPermissionStateFingerprint(s.PermissionDefinitions()))
+	scopeRevision := identityScopeRevision(orgScopeIDs, supportOrgScopeIDs, reportingScopeUserIDs)
 	return identitymodel.Principal{
 		UserID:                user.UserID,
 		WorkspaceID:           s.workspace,
@@ -125,6 +126,7 @@ func (s *IdentityDomainService) buildPrincipal(ctx context.Context, userID strin
 		Role:                  role,
 		Known:                 true,
 		AuthorizationRevision: authorizationRevision,
+		ScopeRevision:         scopeRevision,
 	}, nil
 }
 
@@ -223,7 +225,8 @@ func (s *IdentityDomainService) buildPrincipalForRole(ctx context.Context, userI
 	identityCanonicalizeEffectiveRole(&published)
 	published.Permissions = s.identityFilterExecutablePermissions(published.Permissions)
 	published.Permissions = identityFilterGuardrailDeniedPermissions(published)
-	authorizationRevision := identityAuthorizationRevision(user, orgScopeIDs, supportOrgScopeIDs, reportingScopeUserIDs, []identitymodel.IdentityUserRoleAssignment{activeAssignment}, []identitymodel.IdentityRole{identityRole}, published, identityPermissionStateFingerprint(s.PermissionDefinitions()))
+	authorizationRevision := identityAuthorizationRevision(user, []identitymodel.IdentityUserRoleAssignment{activeAssignment}, []identitymodel.IdentityRole{identityRole}, published, identityPermissionStateFingerprint(s.PermissionDefinitions()))
+	scopeRevision := identityScopeRevision(orgScopeIDs, supportOrgScopeIDs, reportingScopeUserIDs)
 	return identitymodel.Principal{
 		UserID:                user.UserID,
 		WorkspaceID:           s.workspace,
@@ -236,6 +239,7 @@ func (s *IdentityDomainService) buildPrincipalForRole(ctx context.Context, userI
 		Role:                  published,
 		Known:                 true,
 		AuthorizationRevision: authorizationRevision,
+		ScopeRevision:         scopeRevision,
 	}, nil
 }
 
@@ -258,23 +262,36 @@ func (s *IdentityDomainService) identityFilterExecutablePermissions(grants []ide
 	return identityCanonicalRolePermissions(filtered)
 }
 
-func identityAuthorizationRevision(user identitymodel.IdentityUser, orgScopeIDs, supportOrgScopeIDs, reportingScopeUserIDs []string, assignments []identitymodel.IdentityUserRoleAssignment, roles []identitymodel.IdentityRole, role identitymodel.RoleSchema, permissionStateFingerprint string) string {
+func identityAuthorizationRevision(user identitymodel.IdentityUser, assignments []identitymodel.IdentityUserRoleAssignment, roles []identitymodel.IdentityRole, role identitymodel.RoleSchema, permissionStateFingerprint string) string {
 	sort.Slice(assignments, func(left, right int) bool {
 		return identityCanonicalJSON(assignments[left]) < identityCanonicalJSON(assignments[right])
 	})
 	sort.Slice(roles, func(left, right int) bool {
 		return identityCanonicalJSON(roles[left]) < identityCanonicalJSON(roles[right])
 	})
+	type authorizationUser struct {
+		UserID       string                            `json:"user_id"`
+		Status       identitymodel.IdentityStatus      `json:"status"`
+		OrgID        string                            `json:"org_id"`
+		SupportOrgID string                            `json:"support_org_id"`
+		AccountType  identitymodel.IdentityAccountType `json:"account_type"`
+	}
 	encoded, _ := json.Marshal(struct {
-		User                  identitymodel.IdentityUser                 `json:"user"`
-		OrgScopeIDs           []string                                   `json:"org_scope_ids"`
-		SupportOrgScopeIDs    []string                                   `json:"support_org_scope_ids"`
-		ReportingScopeUserIDs []string                                   `json:"reporting_scope_user_ids"`
-		Assignments           []identitymodel.IdentityUserRoleAssignment `json:"assignments"`
-		Roles                 []identitymodel.IdentityRole               `json:"roles"`
-		EffectiveRole         identitymodel.RoleSchema                   `json:"effective_role"`
-		PermissionState       string                                     `json:"permission_state"`
-	}{user, orgScopeIDs, supportOrgScopeIDs, reportingScopeUserIDs, assignments, roles, role, permissionStateFingerprint})
+		User            authorizationUser                          `json:"user"`
+		Assignments     []identitymodel.IdentityUserRoleAssignment `json:"assignments"`
+		Roles           []identitymodel.IdentityRole               `json:"roles"`
+		EffectiveRole   identitymodel.RoleSchema                   `json:"effective_role"`
+		PermissionState string                                     `json:"permission_state"`
+	}{User: authorizationUser{user.UserID, user.Status, user.OrgID, user.SupportOrgID, user.AccountType}, Assignments: assignments, Roles: roles, EffectiveRole: role, PermissionState: permissionStateFingerprint})
+	return fmt.Sprintf("%x", sha256.Sum256(encoded))
+}
+
+func identityScopeRevision(orgScopeIDs, supportOrgScopeIDs, reportingScopeUserIDs []string) string {
+	encoded, _ := json.Marshal(struct {
+		OrgScopeIDs           []string `json:"org_scope_ids"`
+		SupportOrgScopeIDs    []string `json:"support_org_scope_ids"`
+		ReportingScopeUserIDs []string `json:"reporting_scope_user_ids"`
+	}{orgScopeIDs, supportOrgScopeIDs, reportingScopeUserIDs})
 	return fmt.Sprintf("%x", sha256.Sum256(encoded))
 }
 
