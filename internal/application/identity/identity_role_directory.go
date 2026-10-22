@@ -47,7 +47,7 @@ func (s *IdentityApplicationService) RoleDirectory(ctx context.Context) ([]RoleD
 			unique[permission.PermissionKey] = true
 		}
 		users := map[string]bool{}
-		for id := range members[role.ID] {
+		for id := range members[role.RoleID] {
 			users[id] = true
 		}
 		for id := range members[role.Key] {

@@ -52,11 +52,11 @@ func (r *roleGovernanceFaultRepository) ListIdentityUserRoleAssignments(ctx cont
 
 func TestRoleGovernanceDetailComposesPublishedAuthorities(t *testing.T) {
 	repository := &identityScopedRepository{
-		roles: []identitymodel.IdentityRole{{ID: "role-1", Key: "sales", Label: "Sales", Status: identitymodel.IdentityStatusActive}},
+		roles: []identitymodel.IdentityRole{{RoleID: "role-1", Key: "sales", Label: "Sales", Status: identitymodel.IdentityStatusActive}},
 		menus: []identitymodel.IdentityMenu{
-			{ID: "menu-orders", Key: "orders", Label: "Orders"},
-			{ID: "menu-reports-id", Key: "reports", Label: "Reports"},
-			{ID: "menu-other", Key: "other", Label: "Other"},
+			{MenuID: "menu-orders", Key: "orders", Label: "Orders"},
+			{MenuID: "menu-reports-id", Key: "reports", Label: "Reports"},
+			{MenuID: "menu-other", Key: "other", Label: "Other"},
 		},
 		roleMenus: []identitymodel.IdentityRoleMenuAssignment{{RoleID: "role-1", MenuID: "menu-orders"}, {RoleID: "role-1", MenuID: "reports"}},
 		assignments: []identitymodel.IdentityUserRoleAssignment{
@@ -106,7 +106,7 @@ func TestRoleGovernanceDetailComposesPublishedAuthorities(t *testing.T) {
 	if len(detail.Permissions) != 1 || detail.Permissions[0].PermissionKey != "order.read" || detail.Permissions[0].DataScope != identitymodel.IdentityDataScopeOrg || len(detail.FieldPermissions) != 1 || len(detail.ExportRules) != 1 {
 		t.Fatalf("authorization projection = %#v", detail)
 	}
-	if len(detail.Menus) != 2 || detail.Menus[0].ID != "menu-orders" || len(detail.Members) != 2 {
+	if len(detail.Menus) != 2 || detail.Menus[0].MenuID != "menu-orders" || len(detail.Members) != 2 {
 		t.Fatalf("menus/members = %#v / %#v", detail.Menus, detail.Members)
 	}
 }
@@ -140,7 +140,7 @@ func TestRoleGovernanceDetailPropagatesProjectionFailures(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			repository := &roleGovernanceFaultRepository{
-				identityScopedRepository: &identityScopedRepository{roles: []identitymodel.IdentityRole{{ID: "role-1", Key: "sales"}}},
+				identityScopedRepository: &identityScopedRepository{roles: []identitymodel.IdentityRole{{RoleID: "role-1", Key: "sales"}}},
 				failRoleCall:             test.failRoleCall, failRoleMenus: test.failRoleMenus, failMenus: test.failMenus, failUserRoles: test.failUserRoles,
 			}
 			service := NewIdentityApplicationService(repository, nil)

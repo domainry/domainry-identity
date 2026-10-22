@@ -25,20 +25,20 @@ func TestDisableIdentityAccountRevokesSessionsAtomicallyAndPreservesBusinessFact
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpsertIdentityUser(t.Context(), "workspace-primary", identitymodel.IdentityUser{ID: "user-1", Name: "Dual Identity", WorkerNo: "E-1", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive, Status: identitymodel.IdentityStatusActive}); err != nil {
+	if err := store.UpsertIdentityUser(t.Context(), "workspace-primary", identitymodel.IdentityUser{UserID: "user-1", Name: "Dual Identity", WorkerNo: "E-1", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive, Status: identitymodel.IdentityStatusActive}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := identityStore.DB().ExecContext(t.Context(), `INSERT INTO _identity_profile_bindings
-		(id, workspace_id, binding_key, object_key, profile_id, identity_user_id, status, version, created_at, updated_at)
-		VALUES ('binding-1','workspace-primary','member','member_profile','member-1','user-1','active',1,1,1)`); err != nil {
+		(workspace_id, binding_key, object_key, profile_id, identity_user_id, status, version, created_at, updated_at)
+		VALUES ('workspace-primary','member','member_profile','member-1','user-1','active',1,1,1)`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := identityStore.DB().ExecContext(t.Context(), `INSERT INTO _identity_auth_refresh_tokens
-		(id, workspace_id, user_id, session_id, token_hash, expires_at, created_at, updated_at)
+		(workspace_id, user_id, session_id, token_hash, expires_at, created_at, updated_at)
 		VALUES
-		('token-b','workspace-primary','user-1','b-console-session','hash-b',32503680000000,1,1),
-		('token-c','workspace-primary','user-1','c-portal-session','hash-c',32503680000000,1,1),
-		('token-other','workspace-primary','other-user','other-session','hash-other',32503680000000,1,1)`); err != nil {
+		('workspace-primary','user-1','b-console-session','hash-b',32503680000000,1,1),
+		('workspace-primary','user-1','c-portal-session','hash-c',32503680000000,1,1),
+		('workspace-primary','other-user','other-session','hash-other',32503680000000,1,1)`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := identityStore.DB().ExecContext(t.Context(), `CREATE TRIGGER fail_account_session_revoke BEFORE UPDATE ON _identity_auth_refresh_tokens
@@ -68,7 +68,7 @@ func assertIdentityAccountDisableState(t *testing.T, store *persistence.Identity
 	t.Helper()
 	var gotUser, gotBinding string
 	var activeTargetSessions, revokedTargetSessions, revokedOtherSessions int
-	if err := store.DB().QueryRow(`SELECT status FROM _identity_users WHERE id='user-1'`).Scan(&gotUser); err != nil {
+	if err := store.DB().QueryRow(`SELECT status FROM _identity_users WHERE user_id='user-1'`).Scan(&gotUser); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.DB().QueryRow(`SELECT
@@ -78,10 +78,10 @@ func assertIdentityAccountDisableState(t *testing.T, store *persistence.Identity
 		t.Fatal(err)
 	}
 	if err := store.DB().QueryRow(`SELECT COUNT(*) FROM _identity_auth_refresh_tokens
-		WHERE id='token-other' AND revoked_at <> 0`).Scan(&revokedOtherSessions); err != nil {
+		WHERE token_hash='hash-other' AND revoked_at <> 0`).Scan(&revokedOtherSessions); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.DB().QueryRow(`SELECT status FROM _identity_profile_bindings WHERE id='binding-1'`).Scan(&gotBinding); err != nil {
+	if err := store.DB().QueryRow(`SELECT status FROM _identity_profile_bindings WHERE workspace_id='workspace-primary' AND binding_key='member' AND object_key='member_profile' AND profile_id='member-1'`).Scan(&gotBinding); err != nil {
 		t.Fatal(err)
 	}
 	wantActive, wantRevoked := 2, 0

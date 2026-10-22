@@ -45,12 +45,16 @@ func TestTOTPEnrollmentEncryptionPurposeScopeReplayAndDisable(t *testing.T) {
 	if err != nil || state.Enabled {
 		t.Fatalf("pending enrollment enabled: %+v %v", state, err)
 	}
-	statement, args, err := query.NewWorkspaceSelectBuilder(repository.store.SQLRenderer(), "_identity_mfa_factors", "workspace-primary").Columns("totp_secret").Where(query.Equal("id", totpFactorID("workspace-primary", "totp-user"))).Build()
+	statement, args, err := query.NewWorkspaceSelectBuilder(repository.store.SQLRenderer(), "_identity_mfa_factors", "workspace-primary").
+		Columns("mfa_factor_id", "totp_secret").
+		Where(query.And(query.Equal("user_id", "totp-user"), query.Equal("factor_type", "totp"), query.Equal("provider", authmodel.TOTPProvider))).
+		Limit(1).
+		Build()
 	if err != nil {
 		t.Fatal(err)
 	}
-	var envelope string
-	if err := repository.db.QueryRowContext(t.Context(), statement, args...).Scan(&envelope); err != nil {
+	var factorID, envelope string
+	if err := repository.db.QueryRowContext(t.Context(), statement, args...).Scan(&factorID, &envelope); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(envelope, "GEZDGNBV") || strings.Contains(envelope, "12345678901234567890") {
@@ -91,7 +95,7 @@ func TestTOTPEnrollmentEncryptionPurposeScopeReplayAndDisable(t *testing.T) {
 		t.Fatal("same step reused on another challenge")
 	}
 	// Administrative revocation immediately invalidates outstanding challenges.
-	if err := repository.RevokeIdentityMFAFactor(t.Context(), "workspace-primary", "totp-user", totpFactorID("workspace-primary", "totp-user")); err != nil {
+	if err := repository.RevokeIdentityMFAFactor(t.Context(), "workspace-primary", "totp-user", factorID); err != nil {
 		t.Fatal(err)
 	}
 	state, err = repository.TOTPFactorState(t.Context(), "workspace-primary", "totp-user")

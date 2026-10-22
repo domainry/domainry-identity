@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/domainry/domainry-foundation/apperror"
+	"github.com/domainry/domainry-foundation/entityid"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	identityrepository "github.com/domainry/domainry-identity/internal/domain/identity/repository"
 	identitydatascope "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/datascope"
@@ -64,7 +65,7 @@ func (s *Store) CreateIdentityAccessReview(ctx context.Context, review identitym
 	if err != nil {
 		return err
 	}
-	if strings.TrimSpace(review.ID) == "" || strings.TrimSpace(review.CreatedBy) == "" || len(review.Items) == 0 {
+	if strings.TrimSpace(review.ReviewID) == "" || strings.TrimSpace(review.CreatedBy) == "" || len(review.Items) == 0 {
 		return fmt.Errorf("identity access review is invalid")
 	}
 	tx, err := s.backend.DB().BeginTx(ctx, nil)
@@ -73,8 +74,8 @@ func (s *Store) CreateIdentityAccessReview(ctx context.Context, review identitym
 	}
 	defer tx.Rollback()
 	statement, arguments, err := query.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_access_reviews", workspaceID).
-		Columns("id", "period_start", "period_end", "due_at", "status", "created_by", "created_at", "updated_at").
-		Values(review.ID, timevalue.Millis(review.PeriodStart), timevalue.Millis(review.PeriodEnd), timevalue.Millis(review.DueAt), review.Status, review.CreatedBy, timevalue.Millis(review.CreatedAt), timevalue.Millis(review.UpdatedAt)).Build()
+		Columns("review_id", "period_start", "period_end", "due_at", "status", "created_by", "created_at", "updated_at").
+		Values(review.ReviewID, timevalue.Millis(review.PeriodStart), timevalue.Millis(review.PeriodEnd), timevalue.Millis(review.DueAt), review.Status, review.CreatedBy, timevalue.Millis(review.CreatedAt), timevalue.Millis(review.UpdatedAt)).Build()
 	if err != nil {
 		return fmt.Errorf("build identity access review insert: %w", err)
 	}
@@ -82,12 +83,12 @@ func (s *Store) CreateIdentityAccessReview(ctx context.Context, review identitym
 		return normalizeAccessReviewCreateError(err)
 	}
 	items := query.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_access_review_items", workspaceID).
-		Columns("id", "review_id", "user_id", "role_id", "role_key", "binding_key", "profile_id", "risk_level", "priority", "priority_reasons_json", "last_used_at", "status", "decision", "replacement_role_id", "expires_at", "reviewer_id", "reason", "decided_at", "version", "created_at", "updated_at")
+		Columns("review_item_id", "review_id", "user_id", "role_id", "role_key", "binding_key", "profile_id", "risk_level", "priority", "priority_reasons_json", "last_used_at", "status", "decision", "replacement_role_id", "expires_at", "reviewer_id", "reason", "decided_at", "version", "created_at", "updated_at")
 	for _, item := range review.Items {
 
 		priorityReasonsJSON, _ := json.Marshal(item.PriorityReasons)
 		items.Values(
-			item.ID, review.ID, item.UserID, item.RoleID, item.RoleKey,
+			item.ReviewItemID, review.ReviewID, item.UserID, item.RoleID, item.RoleKey,
 			nullIfBlank(item.BindingKey), nullIfBlank(item.ProfileID),
 			item.RiskLevel, item.Priority, string(priorityReasonsJSON), timevalue.Millis(item.LastUsedAt),
 			item.Status, nullIfBlank(string(item.Decision)), nullIfBlank(item.ReplacementRoleID),
@@ -104,12 +105,23 @@ func (s *Store) CreateIdentityAccessReview(ctx context.Context, review identitym
 	return tx.Commit()
 }
 
-func (s *Store) CreateIdentityAccessReviewWithinDataScope(ctx context.Context, review identitymodel.IdentityAccessReview, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
+func (s *Store) CreateIdentityAccessReviewWithinDataScope(ctx context.Context, review identitymodel.IdentityAccessReview, scope identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityAccessReview, bool, error) {
+	// Return the persisted values, including database-assigned row identities.
+	// Copy items so a rolled-back write cannot mutate the caller's input.
+	review.Items = append([]identitymodel.IdentityAccessReviewItem(nil), review.Items...)
+	created, err := s.createReviewWithinDataScope(ctx, &review, scope)
+	if err != nil || !created {
+		return identitymodel.IdentityAccessReview{}, created, err
+	}
+	return review, true, nil
+}
+
+func (s *Store) createReviewWithinDataScope(ctx context.Context, review *identitymodel.IdentityAccessReview, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
 	workspaceID, err := identityWorkspaceID(review.WorkspaceID)
 	if err != nil {
 		return false, err
 	}
-	if strings.TrimSpace(review.ID) == "" || strings.TrimSpace(review.CreatedBy) == "" || len(review.Items) == 0 {
+	if strings.TrimSpace(review.ReviewID) == "" || strings.TrimSpace(review.CreatedBy) == "" || len(review.Items) == 0 {
 		return false, fmt.Errorf("identity access review is invalid")
 	}
 	tx, err := s.backend.DB().BeginTx(ctx, nil)
@@ -118,19 +130,19 @@ func (s *Store) CreateIdentityAccessReviewWithinDataScope(ctx context.Context, r
 	}
 	defer tx.Rollback()
 	statement, arguments, err := query.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_access_reviews", workspaceID).
-		Columns("id", "period_start", "period_end", "due_at", "status", "created_by", "created_at", "updated_at").
-		Values(review.ID, timevalue.Millis(review.PeriodStart), timevalue.Millis(review.PeriodEnd), timevalue.Millis(review.DueAt), review.Status, review.CreatedBy, timevalue.Millis(review.CreatedAt), timevalue.Millis(review.UpdatedAt)).Build()
+		Columns("review_id", "period_start", "period_end", "due_at", "status", "created_by", "created_at", "updated_at").
+		Values(review.ReviewID, timevalue.Millis(review.PeriodStart), timevalue.Millis(review.PeriodEnd), timevalue.Millis(review.DueAt), review.Status, review.CreatedBy, timevalue.Millis(review.CreatedAt), timevalue.Millis(review.UpdatedAt)).Build()
 	if err != nil {
 		return false, fmt.Errorf("build identity access review insert: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
 		return false, normalizeAccessReviewCreateError(err)
 	}
-	columns := []string{"workspace_id", "id", "review_id", "user_id", "role_id", "role_key", "binding_key", "profile_id", "risk_level", "priority", "priority_reasons_json", "last_used_at", "status", "decision", "replacement_role_id", "expires_at", "reviewer_id", "reason", "decided_at", "version", "created_at", "updated_at"}
+	columns := []string{"workspace_id", "review_item_id", "review_id", "user_id", "role_id", "role_key", "binding_key", "profile_id", "risk_level", "priority", "priority_reasons_json", "last_used_at", "status", "decision", "replacement_role_id", "expires_at", "reviewer_id", "reason", "decided_at", "version", "created_at", "updated_at"}
 	for _, item := range review.Items {
 		priorityReasonsJSON, _ := json.Marshal(item.PriorityReasons)
 		values := []any{
-			workspaceID, item.ID, review.ID, item.UserID, item.RoleID, item.RoleKey,
+			workspaceID, item.ReviewItemID, review.ReviewID, item.UserID, item.RoleID, item.RoleKey,
 			nullIfBlank(item.BindingKey), nullIfBlank(item.ProfileID), item.RiskLevel, item.Priority,
 			string(priorityReasonsJSON), timevalue.Millis(item.LastUsedAt), item.Status, nullIfBlank(string(item.Decision)),
 			nullIfBlank(item.ReplacementRoleID), timevalue.Millis(item.ExpiresAt), nullIfBlank(item.ReviewerID),
@@ -140,9 +152,9 @@ func (s *Store) CreateIdentityAccessReviewWithinDataScope(ctx context.Context, r
 		for index := range values {
 			projections[index] = query.Project(query.Value(values[index]))
 		}
-		predicates := []query.Predicate{query.Equal("id", item.UserID)}
+		predicates := []query.Predicate{query.Equal("user_id", item.UserID)}
 		if !scope.Unrestricted {
-			predicates = append(predicates, identitydatascope.UserPredicate(scope, query.Column("id"), query.Column("org_id")))
+			predicates = append(predicates, identitydatascope.UserPredicate(scope, query.Column("user_id"), query.Column("org_id")))
 		}
 		source := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_users", workspaceID).
 			Projections(projections...).Where(query.And(predicates...)).Limit(1)
@@ -163,10 +175,57 @@ func (s *Store) CreateIdentityAccessReviewWithinDataScope(ctx context.Context, r
 			return false, nil
 		}
 	}
+	if err := s.loadCreatedReviewIDs(ctx, tx, review); err != nil {
+		return false, err
+	}
 	if err := tx.Commit(); err != nil {
 		return false, err
 	}
 	return true, nil
+}
+
+func (s *Store) loadCreatedReviewIDs(ctx context.Context, tx *sql.Tx, review *identitymodel.IdentityAccessReview) error {
+	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_access_reviews", review.WorkspaceID).
+		Columns("id").Where(query.Equal("review_id", review.ReviewID)).Build()
+	if err != nil {
+		return err
+	}
+	if err := tx.QueryRowContext(ctx, statement, arguments...).Scan(&review.ID); err != nil {
+		return fmt.Errorf("read created access review identity: %w", err)
+	}
+	statement, arguments, err = query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_access_review_items", review.WorkspaceID).
+		Columns("id", "review_item_id").Where(query.Equal("review_id", review.ReviewID)).Build()
+	if err != nil {
+		return err
+	}
+	rows, err := tx.QueryContext(ctx, statement, arguments...)
+	if err != nil {
+		return fmt.Errorf("read created access review item identities: %w", err)
+	}
+	defer rows.Close()
+	ids := make(map[string]int64, len(review.Items))
+	for rows.Next() {
+		var id int64
+		var itemID string
+		if err := rows.Scan(&id, &itemID); err != nil {
+			return err
+		}
+		ids[itemID] = id
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if review.ID <= 0 || len(ids) != len(review.Items) {
+		return fmt.Errorf("created access review identities are incomplete")
+	}
+	for index := range review.Items {
+		id := ids[review.Items[index].ReviewItemID]
+		if id <= 0 {
+			return fmt.Errorf("created access review item identity is missing")
+		}
+		review.Items[index].ID = id
+	}
+	return rows.Close()
 }
 
 func normalizeAccessReviewCreateError(err error) error {
@@ -190,7 +249,7 @@ func (s *Store) ListIdentityAccessReviewsWithinDataScope(ctx context.Context, wo
 		return nil, err
 	}
 	builder := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_access_reviews", workspaceID).
-		Columns("id", "period_start", "period_end", "due_at", "status", "created_by", "created_at", "updated_at").
+		Columns("id", "review_id", "period_start", "period_end", "due_at", "status", "created_by", "created_at", "updated_at").
 		OrderBy(query.Descending("created_at"), query.Ascending("id"))
 	predicates := []query.Predicate{}
 	if status = strings.TrimSpace(status); status != "" {
@@ -199,7 +258,7 @@ func (s *Store) ListIdentityAccessReviewsWithinDataScope(ctx context.Context, wo
 	if !scope.Unrestricted {
 		predicates = append(predicates, query.Exists("_identity_access_review_items", query.And(
 			query.Equal("workspace_id", workspaceID),
-			query.EqualExpressions(query.Column("review_id"), query.TableColumn("_identity_access_reviews", "id")),
+			query.EqualExpressions(query.Column("review_id"), query.TableColumn("_identity_access_reviews", "review_id")),
 			identitydatascope.UserExists(workspaceID, query.TableColumn("_identity_access_review_items", "user_id"), scope),
 		)))
 	}
@@ -219,7 +278,7 @@ func (s *Store) ListIdentityAccessReviewsWithinDataScope(ctx context.Context, wo
 		var review identitymodel.IdentityAccessReview
 		var reviewStatus string
 		var periodStart, periodEnd, dueAt, createdAt, updatedAt int64
-		if err := rows.Scan(&review.ID, &periodStart, &periodEnd, &dueAt, &reviewStatus, &review.CreatedBy, &createdAt, &updatedAt); err != nil {
+		if err := rows.Scan(&review.ID, &review.ReviewID, &periodStart, &periodEnd, &dueAt, &reviewStatus, &review.CreatedBy, &createdAt, &updatedAt); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -233,7 +292,7 @@ func (s *Store) ListIdentityAccessReviewsWithinDataScope(ctx context.Context, wo
 		return nil, err
 	}
 	for index := range out {
-		items, err := s.ListItemsWithinDataScope(ctx, workspaceID, out[index].ID, scope)
+		items, err := s.ListItemsWithinDataScope(ctx, workspaceID, out[index].ReviewID, scope)
 		if err != nil {
 			return nil, err
 		}
@@ -382,7 +441,7 @@ func (s *Store) ApplyIdentityAccessReviewDecision(ctx context.Context, mutation 
 	}
 	item.Status, item.Decision, item.ReplacementRoleID, item.ExpiresAt = "decided", mutation.Request.Decision, strings.TrimSpace(mutation.Request.ReplacementRoleID), strings.TrimSpace(mutation.Request.ExpiresAt)
 	item.ReviewerID, item.Reason, item.DecidedAt, item.UpdatedAt, item.Version = mutation.ReviewerID, strings.TrimSpace(mutation.Request.Reason), now, now, item.Version+1
-	itemPredicates := []query.Predicate{query.Equal("id", item.ID), query.Equal("status", "pending"), query.Equal("version", mutation.Request.ExpectedVersion)}
+	itemPredicates := []query.Predicate{query.Equal("review_item_id", item.ReviewItemID), query.Equal("status", "pending"), query.Equal("version", mutation.Request.ExpectedVersion)}
 	if scopedDecision && !decisionScope.filter.Unrestricted {
 		itemPredicates = append(itemPredicates, identitydatascope.UserExists(workspaceID, query.TableColumn("_identity_access_review_items", "user_id"), decisionScope.filter))
 	}
@@ -418,16 +477,20 @@ func (s *Store) ApplyIdentityAccessReviewDecision(ctx context.Context, mutation 
 		reviewStatus = identitymodel.IdentityAccessReviewCompleted
 	}
 	statement, arguments, err = query.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_access_reviews", workspaceID).
-		Set("status", reviewStatus).Set("updated_at", timevalue.Millis(now)).Where(query.Equal("id", item.ReviewID)).Build()
+		Set("status", reviewStatus).Set("updated_at", timevalue.Millis(now)).Where(query.Equal("review_id", item.ReviewID)).Build()
 	if err != nil {
 		return identitymodel.IdentityAccessReviewDecisionReceipt{}, fmt.Errorf("build identity access review status update: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
 		return identitymodel.IdentityAccessReviewDecisionReceipt{}, err
 	}
+	operationID, err := entityid.Derive("op", "identity.access-review-decision", workspaceID, item.ReviewItemID, mutation.Request.IdempotencyKey)
+	if err != nil {
+		return identitymodel.IdentityAccessReviewDecisionReceipt{}, err
+	}
 	receipt := identitymodel.IdentityAccessReviewDecisionReceipt{
-		ID:          identityID("identity_access_review_receipt", workspaceID, item.ID, mutation.Request.IdempotencyKey),
-		WorkspaceID: workspaceID, ItemID: item.ID, IdempotencyKey: mutation.Request.IdempotencyKey,
+		OperationID: operationID,
+		WorkspaceID: workspaceID, ItemID: item.ReviewItemID, IdempotencyKey: mutation.Request.IdempotencyKey,
 		RequestFingerprint: mutation.RequestFingerprint, Item: item, CreatedAt: now,
 	}
 
@@ -441,8 +504,8 @@ func (s *Store) ApplyIdentityAccessReviewDecision(ctx context.Context, mutation 
 		reason = "decide identity access review item"
 	}
 	if err := operationreceipt.InsertSucceeded(ctx, tx, s.backend.SQLRenderer(), operationreceipt.Succeeded{
-		ID: receipt.ID, WorkspaceID: workspaceID, Owner: accessReviewOperationOwner, Kind: accessReviewOperationKind,
-		ActionKey: "identity.access_review_items.decide", ResourceType: "identity_access_review_item", ResourceID: item.ID,
+		OperationID: receipt.OperationID, WorkspaceID: workspaceID, Owner: accessReviewOperationOwner, Kind: accessReviewOperationKind,
+		ActionKey: "identity.access_review_items.decide", ResourceType: "identity_access_review_item", ResourceID: item.ReviewItemID,
 		IdempotencyKey: receipt.IdempotencyKey, RequestFingerprint: receipt.RequestFingerprint, RequestedBy: mutation.ReviewerID,
 		Reason: reason, ResultJSON: resultJSON, RelatedIDsJSON: relatedIDsJSON, CompletedAt: receipt.CreatedAt,
 	}); err != nil {
@@ -502,7 +565,7 @@ func (s *Store) ListItemsWithinDataScope(ctx context.Context, workspaceID, revie
 		predicates = append(predicates, identitydatascope.UserExists(workspaceID, query.TableColumn("_identity_access_review_items", "user_id"), scope))
 	}
 	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_access_review_items", workspaceID).
-		Columns("id").Where(query.And(predicates...)).OrderBy(query.Ascending("id")).Build()
+		Columns("review_item_id").Where(query.And(predicates...)).OrderBy(query.Ascending("id")).Build()
 	if err != nil {
 		return nil, fmt.Errorf("build identity access review item identifiers: %w", err)
 	}
@@ -544,12 +607,12 @@ func (s *Store) LoadItemWithinDataScope(ctx context.Context, queryer Queryer, wo
 }
 
 func (s *Store) loadItem(ctx context.Context, queryer Queryer, workspaceID, itemID string, scope identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityAccessReviewItem, bool, error) {
-	predicates := []query.Predicate{query.Equal("id", itemID)}
+	predicates := []query.Predicate{query.Equal("review_item_id", itemID)}
 	if !scope.Unrestricted {
 		predicates = append(predicates, identitydatascope.UserExists(workspaceID, query.TableColumn("_identity_access_review_items", "user_id"), scope))
 	}
 	statement, arguments, buildErr := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_access_review_items", workspaceID).
-		Columns("id", "review_id", "user_id", "role_id", "role_key", "binding_key", "profile_id", "risk_level", "priority", "priority_reasons_json", "last_used_at", "status", "decision", "replacement_role_id", "expires_at", "reviewer_id", "reason", "decided_at", "version", "created_at", "updated_at").
+		Columns("id", "review_item_id", "review_id", "user_id", "role_id", "role_key", "binding_key", "profile_id", "risk_level", "priority", "priority_reasons_json", "last_used_at", "status", "decision", "replacement_role_id", "expires_at", "reviewer_id", "reason", "decided_at", "version", "created_at", "updated_at").
 		Where(query.And(predicates...)).Build()
 	if buildErr != nil {
 		return identitymodel.IdentityAccessReviewItem{}, false, buildErr
@@ -560,7 +623,7 @@ func (s *Store) loadItem(ctx context.Context, queryer Queryer, workspaceID, item
 	var bindingKey, profileID, decision, replacementRoleID, reviewerID, reason sql.NullString
 	var lastUsedAt, expiresAt, decidedAt, createdAt, updatedAt int64
 	err := queryer.QueryRowContext(ctx, statement, arguments...).Scan(
-		&item.ID, &item.ReviewID, &item.UserID, &item.RoleID, &item.RoleKey, &bindingKey, &profileID,
+		&item.ID, &item.ReviewItemID, &item.ReviewID, &item.UserID, &item.RoleID, &item.RoleKey, &bindingKey, &profileID,
 		&riskLevel, &item.Priority, &priorityReasonsJSON, &lastUsedAt, &item.Status, &decision, &replacementRoleID, &expiresAt, &reviewerID, &reason, &decidedAt,
 		&item.Version, &createdAt, &updatedAt,
 	)
@@ -597,7 +660,7 @@ func (s *Store) loadReceipt(ctx context.Context, queryer Queryer, workspaceID, i
 	if err != nil {
 		return identitymodel.IdentityAccessReviewDecisionReceipt{}, false, err
 	}
-	if receipt.ID != operation.ID || receipt.WorkspaceID != workspaceID || receipt.ItemID != itemID ||
+	if receipt.OperationID != operation.OperationID || receipt.WorkspaceID != workspaceID || receipt.ItemID != itemID ||
 		receipt.IdempotencyKey != idempotencyKey || operation.ResourceID != itemID {
 		return identitymodel.IdentityAccessReviewDecisionReceipt{}, false, fmt.Errorf("identity shared access review operation scope mismatch")
 	}
@@ -661,13 +724,13 @@ func (s *Store) LoadAssignment(ctx context.Context, queryer Queryer, workspaceID
 
 func (s *Store) LoadRole(ctx context.Context, queryer Queryer, workspaceID, roleID string) (identitymodel.IdentityRole, bool, error) {
 	statement, arguments, buildErr := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_roles", workspaceID).
-		Columns("id", "role_key", "label", "description", "status").Where(query.Equal("id", roleID)).Build()
+		Columns("id", "role_id", "role_key", "label", "description", "status").Where(query.Equal("role_id", roleID)).Build()
 	if buildErr != nil {
 		return identitymodel.IdentityRole{}, false, buildErr
 	}
 	var role identitymodel.IdentityRole
 	var status string
-	err := queryer.QueryRowContext(ctx, statement, arguments...).Scan(&role.ID, &role.Key, &role.Label, &role.Description, &status)
+	err := queryer.QueryRowContext(ctx, statement, arguments...).Scan(&role.ID, &role.RoleID, &role.Key, &role.Label, &role.Description, &status)
 	if errors.Is(err, sql.ErrNoRows) {
 		return identitymodel.IdentityRole{}, false, nil
 	}
@@ -684,11 +747,6 @@ func identityWorkspaceID(value string) (string, error) {
 		return "", err
 	}
 	return workspace.String(), nil
-}
-
-func identityID(parts ...string) string {
-	value := strings.Join(parts, "_")
-	return strings.NewReplacer(".", "_", ":", "_", "/", "_").Replace(value)
 }
 
 func nullIfBlank(value string) any {

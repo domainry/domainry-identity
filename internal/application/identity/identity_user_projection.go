@@ -114,7 +114,7 @@ func (s *IdentityApplicationService) searchUserProjection(ctx context.Context, q
 	}
 	userIDs := make([]string, 0, len(users.Items))
 	for _, user := range users.Items {
-		userIDs = append(userIDs, user.ID)
+		userIDs = append(userIDs, user.UserID)
 	}
 	var facts identitymodel.IdentityUserProjectionFacts
 	if repository, ok := scoped.Repository().(identityrepository.IdentityUserProjectionFactsRepository); ok {
@@ -146,7 +146,7 @@ func (s *IdentityApplicationService) searchUserProjection(ctx context.Context, q
 	}
 	roleByID := make(map[string]identitymodel.IdentityRole, len(roles))
 	for _, role := range roles {
-		roleByID[role.ID] = role
+		roleByID[role.RoleID] = role
 	}
 	assignmentsByUser := make(map[string][]identitymodel.IdentityUserRoleAssignment)
 	for _, assignment := range facts.RoleAssignments {
@@ -163,17 +163,17 @@ func (s *IdentityApplicationService) searchUserProjection(ctx context.Context, q
 	items := make([]IdentityUserProjectionEntry, 0, len(users.Items))
 	for _, user := range users.Items {
 		entry := IdentityUserProjectionEntry{
-			User: user, Security: securitySummaries[user.ID],
+			User: user, Security: securitySummaries[user.UserID],
 			Roles: []IdentityUserProjectionRoleSummary{}, IdentityBadges: []IdentityUserProjectionBadge{},
 		}
-		for _, assignment := range assignmentsByUser[user.ID] {
+		for _, assignment := range assignmentsByUser[user.UserID] {
 			role := roleByID[assignment.RoleID]
 			entry.Roles = append(entry.Roles, IdentityUserProjectionRoleSummary{
 				ID: assignment.RoleID, Key: role.Key, Label: role.Label,
 				Source: assignment.Source, Status: assignment.Status,
 			})
 		}
-		for _, binding := range bindingsByUser[user.ID] {
+		for _, binding := range bindingsByUser[user.UserID] {
 			if binding.Status == identitymodel.IdentityProfileBindingUnlinked {
 				continue
 			}

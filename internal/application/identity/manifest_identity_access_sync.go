@@ -12,14 +12,14 @@ import (
 func syncManifestIdentityMenus(ctx context.Context, identityStore identityrepository.IdentitySeedRepository, desired []identitymodel.IdentityMenu) error {
 	workspaceID := manifestIdentityWorkspaceID(ctx)
 	for _, menu := range desired {
-		if strings.TrimSpace(menu.ID) == "" {
+		if strings.TrimSpace(menu.MenuID) == "" {
 			continue
 		}
 		if menu.Status == "" {
 			menu.Status = identitymodel.IdentityStatusActive
 		}
 		if err := identityStore.UpsertIdentityMenu(ctx, workspaceID, menu); err != nil {
-			return fmt.Errorf("sync identity menu %s: %w", menu.ID, err)
+			return fmt.Errorf("sync identity menu %s: %w", menu.MenuID, err)
 		}
 	}
 	return nil
@@ -35,15 +35,15 @@ func syncManifestIdentityRoleMenus(ctx context.Context, identityStore identityre
 		menuIDsByRole[assignment.RoleID] = append(menuIDsByRole[assignment.RoleID], assignment.MenuID)
 	}
 	for _, role := range desiredRoles {
-		if strings.TrimSpace(role.ID) == "" {
+		if strings.TrimSpace(role.RoleID) == "" {
 			continue
 		}
 		menuSet := map[string]bool{}
-		for _, menuID := range menuIDsByRole[role.ID] {
+		for _, menuID := range menuIDsByRole[role.RoleID] {
 			menuSet[menuID] = true
 		}
-		if err := identityStore.SetIdentityRoleMenus(ctx, workspaceID, role.ID, sortedKeys(menuSet)); err != nil {
-			return fmt.Errorf("sync identity role menus %s: %w", role.ID, err)
+		if err := identityStore.SetIdentityRoleMenus(ctx, workspaceID, role.RoleID, sortedKeys(menuSet)); err != nil {
+			return fmt.Errorf("sync identity role menus %s: %w", role.RoleID, err)
 		}
 	}
 	return nil
@@ -54,7 +54,7 @@ func syncManifestIdentityMenuRetirements(ctx context.Context, identityStore iden
 	desiredIDs := map[string]bool{}
 	desiredRoutes := map[string]bool{}
 	for _, menu := range desired {
-		if id := strings.TrimSpace(menu.ID); id != "" {
+		if id := strings.TrimSpace(menu.MenuID); id != "" {
 			desiredIDs[id] = true
 		}
 		if route := strings.TrimSpace(menu.Route); route != "" {
@@ -76,12 +76,12 @@ func syncManifestIdentityMenuRetirements(ctx context.Context, identityStore iden
 		return err
 	}
 	for _, menu := range menus {
-		if desiredIDs[menu.ID] || assigned[menu.ID] || menu.Status != identitymodel.IdentityStatusActive || !desiredRoutes[strings.TrimSpace(menu.Route)] {
+		if desiredIDs[menu.MenuID] || assigned[menu.MenuID] || menu.Status != identitymodel.IdentityStatusActive || !desiredRoutes[strings.TrimSpace(menu.Route)] {
 			continue
 		}
 		menu.Status = identitymodel.IdentityStatusDisabled
 		if err := identityStore.UpsertIdentityMenu(ctx, workspaceID, menu); err != nil {
-			return fmt.Errorf("retire identity menu %s: %w", menu.ID, err)
+			return fmt.Errorf("retire identity menu %s: %w", menu.MenuID, err)
 		}
 	}
 	return nil

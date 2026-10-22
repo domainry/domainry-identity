@@ -70,8 +70,8 @@ func TestAuthStoreTransactionAndRowsFailures(t *testing.T) {
 	base := authFailureBase(t)
 	wantErr := errors.New("injected auth store failure")
 	credential := identitymodel.IdentityCredential{UserID: "user", PasswordHash: "hash"}
-	account := identitymodel.IdentityExternalAccount{ID: "account", UserID: "user", Provider: "oidc", ProviderSubject: "subject"}
-	factor := identitymodel.IdentityMFAFactor{ID: "factor", UserID: "user", Type: "totp", Status: "active", VerifiedAt: "now"}
+	account := identitymodel.IdentityExternalAccount{ExternalAccountID: "account", UserID: "user", Provider: "oidc", ProviderSubject: "subject"}
+	factor := identitymodel.IdentityMFAFactor{MFAFactorID: "factor", UserID: "user", Type: "totp", Status: "active", VerifiedAt: "now"}
 
 	for _, test := range []struct {
 		name  string
@@ -197,12 +197,12 @@ func TestAuthProjectionSecurityFactsAndMFAValidationEdges(t *testing.T) {
 		t.Fatalf("facts=%#v err=%v", facts, err)
 	}
 
-	valid := identitymodel.IdentityMFAFactor{ID: "factor", UserID: "user", Type: "totp", Status: "active"}
+	valid := identitymodel.IdentityMFAFactor{MFAFactorID: "factor", UserID: "user", Type: "totp", Status: "active"}
 	for name, factor := range map[string]identitymodel.IdentityMFAFactor{
 		"id":     {UserID: valid.UserID, Type: valid.Type, Status: valid.Status},
-		"user":   {ID: valid.ID, Type: valid.Type, Status: valid.Status},
-		"type":   {ID: valid.ID, UserID: valid.UserID, Status: valid.Status},
-		"status": {ID: valid.ID, UserID: valid.UserID, Type: valid.Type},
+		"user":   {MFAFactorID: valid.MFAFactorID, Type: valid.Type, Status: valid.Status},
+		"type":   {MFAFactorID: valid.MFAFactorID, UserID: valid.UserID, Status: valid.Status},
+		"status": {MFAFactorID: valid.MFAFactorID, UserID: valid.UserID, Type: valid.Type},
 	} {
 		if err := base.UpsertIdentityMFAFactor(t.Context(), "workspace-primary", factor); err == nil {
 			t.Fatalf("MFA factor missing %s was accepted", name)
@@ -232,7 +232,7 @@ func authMutationRow(status, fingerprint string, expires time.Time, token int64)
 	if status == "processing" {
 		status = "started"
 	}
-	return []driver.Value{"receipt", "workspace-primary", "reset", "identity_user", "user", "key", fingerprint, "actor", status, "{}", "worker", expires.UTC().UnixMilli(), token, "", int64(0), expires.UTC().UnixMilli(), expires.UTC().UnixMilli()}
+	return []driver.Value{int64(1), "receipt", "workspace-primary", "reset", "identity_user", "user", "key", fingerprint, "actor", status, "{}", "worker", expires.UTC().UnixMilli(), token, "", int64(0), expires.UTC().UnixMilli(), expires.UTC().UnixMilli()}
 }
 
 type authMutationQueryStep struct {

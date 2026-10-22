@@ -60,7 +60,7 @@ type IdentityProfileBindingMutation struct {
 }
 
 type IdentityProfileBindingReceipt struct {
-	ID                 string                          `json:"id"`
+	OperationID        string                          `json:"operation_id"`
 	WorkspaceID        string                          `json:"workspace_id"`
 	BindingKey         string                          `json:"binding_key"`
 	ObjectKey          string                          `json:"object_key"`
@@ -74,7 +74,7 @@ type IdentityProfileBindingReceipt struct {
 }
 
 type IdentityProfileBindingEvent struct {
-	ID             string                          `json:"id"`
+	AuditEventID   string                          `json:"audit_event_id"`
 	OperationID    string                          `json:"-"`
 	CausationID    string                          `json:"-"`
 	WorkspaceID    string                          `json:"workspace_id"`

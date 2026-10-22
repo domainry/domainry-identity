@@ -28,7 +28,7 @@ func TestExternalLoginPropagatesRepositoryFailures(t *testing.T) {
 
 	t.Run("linked identity lookup", func(t *testing.T) {
 		auth, identityRepository, authRepository := newFaultAuthDomainService()
-		authRepository.accounts = []identitymodel.IdentityExternalAccount{{ID: "external", UserID: "user", Provider: "oidc", ProviderSubject: "subject"}}
+		authRepository.accounts = []identitymodel.IdentityExternalAccount{{ExternalAccountID: "external", UserID: "user", Provider: "oidc", ProviderSubject: "subject"}}
 		identityRepository.listUsersErr = fault
 		_, err := auth.ExternalLogin(t.Context(), "workspace-primary", assertion, true)
 		assertExternalAuthFault(t, err, fault)
@@ -36,7 +36,7 @@ func TestExternalLoginPropagatesRepositoryFailures(t *testing.T) {
 
 	t.Run("linked identity missing", func(t *testing.T) {
 		auth, _, authRepository := newFaultAuthDomainService()
-		authRepository.accounts = []identitymodel.IdentityExternalAccount{{ID: "external", UserID: "missing", Provider: "oidc", ProviderSubject: "subject"}}
+		authRepository.accounts = []identitymodel.IdentityExternalAccount{{ExternalAccountID: "external", UserID: "missing", Provider: "oidc", ProviderSubject: "subject"}}
 		if _, err := auth.ExternalLogin(t.Context(), "workspace-primary", assertion, true); err == nil {
 			t.Fatal("expected a missing linked identity to be rejected")
 		}
@@ -105,13 +105,6 @@ func TestExternalIdentityCreationPropagatesRepositoryFailures(t *testing.T) {
 	assertion := authmodel.AuthExternalIdentityAssertion{Provider: "oidc", Subject: "subject", Email: "subject@example.com"}
 	policy := authmodel.AuthExternalLoginPolicy{AutoCreateUsers: true, DefaultRoleKey: "sales"}
 
-	t.Run("identity collision lookup", func(t *testing.T) {
-		auth, identityRepository, _ := newFaultAuthDomainService()
-		identityRepository.listUsersErr = fault
-		_, err := auth.createExternalIdentityUser(t.Context(), assertion, policy)
-		assertExternalAuthFault(t, err, fault)
-	})
-
 	t.Run("identity write", func(t *testing.T) {
 		auth, identityRepository, _ := newFaultAuthDomainService()
 		identityRepository.upsertUserErr = fault
@@ -140,7 +133,7 @@ func TestExternalIdentityPrivilegedDefaultRoleIsIgnored(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve privileged default role: %v", err)
 	}
-	if ok || role.ID != "" {
+	if ok || role.RoleID != "" {
 		t.Fatalf("privileged default role must not be automatically assigned: %#v", role)
 	}
 }
@@ -154,19 +147,19 @@ func assertExternalAuthFault(t *testing.T, err error, fault error) {
 
 func activeExternalIdentityUser(id string, email string) identitymodel.IdentityUser {
 	return identitymodel.IdentityUser{
-		ID: id, Name: id, Email: email, Status: identitymodel.IdentityStatusActive,
+		UserID: id, Name: id, Email: email, Status: identitymodel.IdentityStatusActive,
 	}
 }
 
 func newFaultAuthDomainService() (*AuthDomainService, *faultExternalIdentityRepository, *faultExternalAuthRepository) {
 	identityRepository := &faultExternalIdentityRepository{
 		organizationUnits: []identitymodel.IdentityOrganizationUnit{
-			{ID: "company", Name: "Company", Path: "/company", Status: identitymodel.IdentityStatusActive},
-			{ID: "dept_sales", Name: "Sales", Path: "/sales", Status: identitymodel.IdentityStatusActive},
+			{OrganizationUnitID: "company", Name: "Company", Path: "/company", Status: identitymodel.IdentityStatusActive},
+			{OrganizationUnitID: "dept_sales", Name: "Sales", Path: "/sales", Status: identitymodel.IdentityStatusActive},
 		},
 		roles: []identitymodel.IdentityRole{
-			{ID: "role-sales", Key: "sales", Label: "Sales", Status: identitymodel.IdentityStatusActive},
-			{ID: "role-admin", Key: "admin", Label: "Admin", Status: identitymodel.IdentityStatusActive},
+			{RoleID: "role-sales", Key: "sales", Label: "Sales", Status: identitymodel.IdentityStatusActive},
+			{RoleID: "role-admin", Key: "admin", Label: "Admin", Status: identitymodel.IdentityStatusActive},
 		},
 		roleDefinitions: map[string]identitymodel.RoleSchema{
 			"sales": {Key: "sales", Name: "Sales"},
@@ -219,7 +212,7 @@ func (r *faultExternalIdentityRepository) UserByLogin(ctx context.Context, login
 		return identitymodel.IdentityUser{}, false, err
 	}
 	for _, user := range users {
-		if user.ID == login || strings.EqualFold(user.Email, login) || user.Phone == login {
+		if user.UserID == login || strings.EqualFold(user.Email, login) || user.Phone == login {
 			return user, true, nil
 		}
 	}
@@ -238,7 +231,7 @@ func (r *faultExternalIdentityRepository) ActiveRolesForUser(ctx context.Context
 	result := []identitymodel.IdentityRole{}
 	for _, assignment := range assignments {
 		for _, role := range roles {
-			if role.ID == assignment.RoleID && role.Status != identitymodel.IdentityStatusDisabled {
+			if role.RoleID == assignment.RoleID && role.Status != identitymodel.IdentityStatusDisabled {
 				result = append(result, role)
 			}
 		}
@@ -274,7 +267,7 @@ func (r *faultExternalIdentityRepository) ResolvePrincipal(ctx context.Context, 
 	if err != nil {
 		return identitymodel.Principal{}, err
 	}
-	principal := identitymodel.Principal{Known: true, UserID: user.ID}
+	principal := identitymodel.Principal{Known: true, UserID: user.UserID}
 	if len(roles) > 0 {
 		principal.Role, _ = r.PublishedRoleDefinition(ctx, roles[0].Key)
 	}
@@ -293,7 +286,7 @@ func (r *faultExternalIdentityRepository) GetIdentityUser(_ context.Context, use
 		return identitymodel.IdentityUser{}, false, r.listUsersErr
 	}
 	for _, user := range r.users {
-		if user.ID == userID {
+		if user.UserID == userID {
 			return user, true, nil
 		}
 	}
@@ -309,7 +302,7 @@ func (r *faultExternalIdentityRepository) UpsertIdentityUser(_ context.Context, 
 		return r.upsertUserErr
 	}
 	for index := range r.users {
-		if r.users[index].ID == user.ID {
+		if r.users[index].UserID == user.UserID {
 			r.users[index] = user
 			return nil
 		}
@@ -418,7 +411,7 @@ func (r *faultExternalAuthRepository) revokeLogicalSessions(userID, sessionID st
 		}
 		token.RevokedAt, token.LastUsedAt = revokedAt, revokedAt
 		changed[token.SessionID] = struct{}{}
-		r.revokedRefreshTokens = append(r.revokedRefreshTokens, token.ID)
+		r.revokedRefreshTokens = append(r.revokedRefreshTokens, token.TokenHash)
 	}
 	return len(changed)
 }
@@ -561,11 +554,11 @@ func (r *faultExternalAuthRepository) RotateAuthRefreshToken(_ context.Context, 
 		return false, r.revokeRefreshTokenErr
 	}
 	for index := range r.refreshTokens {
-		if r.refreshTokens[index].ID != tokenID || r.refreshTokens[index].RevokedAt != "" {
+		if r.refreshTokens[index].TokenHash != tokenID || r.refreshTokens[index].RevokedAt != "" {
 			continue
 		}
 		r.refreshTokens[index].RevokedAt = revokedAt
-		r.refreshTokens[index].ReplacedByID = replacement.ID
+		r.refreshTokens[index].ReplacedByHash = replacement.TokenHash
 		r.revokedRefreshTokens = append(r.revokedRefreshTokens, tokenID)
 		if !r.discardRefreshTokens {
 			r.refreshTokens = append(r.refreshTokens, replacement)

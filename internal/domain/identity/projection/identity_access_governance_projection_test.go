@@ -12,8 +12,8 @@ import (
 func TestIdentityAccessReverseIndexAndGovernanceReportsAreDeterministic(t *testing.T) {
 	expires := "2026-07-24T00:00:00Z"
 	roles := []identitymodel.IdentityRole{
-		{ID: "reader-id", Key: "reader"},
-		{ID: "empty-id", Key: "empty"},
+		{RoleID: "reader-id", Key: "reader"},
+		{RoleID: "empty-id", Key: "empty"},
 	}
 	definitions := []identitymodel.RoleSchema{{Key: "reader", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "order.read", "order.export")}}
 	assignments := []identitymodel.IdentityUserRoleAssignment{
@@ -47,7 +47,7 @@ func TestIdentityRoleChangeImpactCoversUsersProfilesSensitiveFieldsAndHighRiskAc
 	impact := IdentityPreviewRoleChange(
 		identitymodel.IdentityRoleChangeImpactRequest{RoleKey: "operator", Role: next},
 		current,
-		identitymodel.IdentityRole{ID: "operator-id", Key: "operator"},
+		identitymodel.IdentityRole{RoleID: "operator-id", Key: "operator"},
 		[]identitymodel.IdentityUserRoleAssignment{
 			{UserID: "employee", RoleID: "operator-id"},
 			{UserID: "member", RoleID: "operator-id", BindingKey: "member"},

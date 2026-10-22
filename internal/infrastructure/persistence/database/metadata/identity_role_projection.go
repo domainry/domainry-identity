@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/domainry/domainry-foundation/entityid"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/timevalue"
@@ -66,9 +67,13 @@ func (r MetadataStore) applyIdentityRoleProjectionMutation(ctx context.Context, 
 		if affected != 0 {
 			return fmt.Errorf("role projection projection %s is not unique", roleKey)
 		}
+		roleID, err := entityid.New("role")
+		if err != nil {
+			return fmt.Errorf("generate role projection id: %w", err)
+		}
 		statement, arguments, err = query.NewWorkspaceInsertBuilder(r.store.SQLRenderer, "_identity_roles", workspaceID.String()).
-			Columns("id", "role_key", "label", "description", "status", "created_at", "updated_at").
-			Values(roleKey, roleKey, label, strings.TrimSpace(role.Description), string(identitymodel.IdentityStatusActive), timevalue.Millis(now), timevalue.Millis(now)).Build()
+			Columns("role_id", "role_key", "label", "description", "status", "created_at", "updated_at").
+			Values(roleID, roleKey, label, strings.TrimSpace(role.Description), string(identitymodel.IdentityStatusActive), timevalue.Millis(now), timevalue.Millis(now)).Build()
 		if err != nil {
 			return fmt.Errorf("build role projection projection %s insert: %w", roleKey, err)
 		}

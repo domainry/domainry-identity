@@ -49,16 +49,16 @@ func (s *IdentityDomainService) publishedRoleForIdentifier(ctx context.Context, 
 }
 
 func (s *IdentityDomainService) UpsertMenu(ctx context.Context, menu identitymodel.IdentityMenu) error {
-	menu.ID = strings.TrimSpace(menu.ID)
+	menu.MenuID = strings.TrimSpace(menu.MenuID)
 	menu.Key = strings.TrimSpace(menu.Key)
 	menu.ParentID = strings.TrimSpace(menu.ParentID)
-	if menu.ID == "" {
-		menu.ID = menu.Key
+	if menu.MenuID == "" {
+		menu.MenuID = menu.Key
 	}
 	if menu.Key == "" {
-		menu.Key = menu.ID
+		menu.Key = menu.MenuID
 	}
-	if menu.ID == "" {
+	if menu.MenuID == "" {
 		return badRequest("backend.identity.menu_id_key_required")
 	}
 	if menu.Label == "" {
@@ -72,28 +72,28 @@ func (s *IdentityDomainService) UpsertMenu(ctx context.Context, menu identitymod
 		return err
 	}
 	for _, existing := range menus {
-		if existing.ID != menu.ID && strings.EqualFold(strings.TrimSpace(existing.Key), menu.Key) {
+		if existing.MenuID != menu.MenuID && strings.EqualFold(strings.TrimSpace(existing.Key), menu.Key) {
 			return badRequest("backend.identity.menu_key_exists", "menu", menu.Key)
 		}
 	}
 	if menu.ParentID != "" {
-		if menu.ParentID == menu.ID {
-			return badRequest("backend.identity.menu_parent_self", "menu", menu.ID)
+		if menu.ParentID == menu.MenuID {
+			return badRequest("backend.identity.menu_parent_self", "menu", menu.MenuID)
 		}
 		byID := make(map[string]identitymodel.IdentityMenu, len(menus)+1)
 		for _, existing := range menus {
-			byID[existing.ID] = existing
+			byID[existing.MenuID] = existing
 		}
-		byID[menu.ID] = menu
+		byID[menu.MenuID] = menu
 		_, ok := byID[menu.ParentID]
 		if !ok {
 			return badRequest("backend.identity.menu_parent_not_found", "parent_id", menu.ParentID)
 		}
-		seen := map[string]bool{menu.ID: true}
+		seen := map[string]bool{menu.MenuID: true}
 		cursor := menu.ParentID
 		for cursor != "" {
 			if seen[cursor] {
-				return badRequest("backend.identity.menu_parent_cycle", "menu", menu.ID)
+				return badRequest("backend.identity.menu_parent_cycle", "menu", menu.MenuID)
 			}
 			seen[cursor] = true
 			parent, ok := byID[cursor]
@@ -115,12 +115,12 @@ func (s *IdentityDomainService) RemoveMenu(ctx context.Context, menuID string) (
 	byID := make(map[string]identitymodel.IdentityMenu, len(menus))
 	var target identitymodel.IdentityMenu
 	for _, menu := range menus {
-		byID[menu.ID] = menu
-		if menu.ID == menuID || menu.Key == menuID {
+		byID[menu.MenuID] = menu
+		if menu.MenuID == menuID || menu.Key == menuID {
 			target = menu
 		}
 	}
-	if target.ID == "" {
+	if target.MenuID == "" {
 		return nil, notFound("backend.identity.menu_not_found", "menu", menuID)
 	}
 	deleted := []string{}
@@ -129,7 +129,7 @@ func (s *IdentityDomainService) RemoveMenu(ctx context.Context, menuID string) (
 	collectChildrenFirst = func(parentID string) {
 		for _, menu := range menus {
 			if strings.TrimSpace(menu.ParentID) == parentID {
-				collectChildrenFirst(menu.ID)
+				collectChildrenFirst(menu.MenuID)
 			}
 		}
 		menu := byID[parentID]
@@ -137,7 +137,7 @@ func (s *IdentityDomainService) RemoveMenu(ctx context.Context, menuID string) (
 		deleteMenus = append(deleteMenus, menu)
 		delete(byID, parentID)
 	}
-	collectChildrenFirst(target.ID)
+	collectChildrenFirst(target.MenuID)
 	atomic, ok := s.repo.(identityrepository.IdentityAtomicMutationRepository)
 	if !ok {
 		return nil, fmt.Errorf("backend.identity.atomic_mutation_repository_unavailable")
@@ -160,7 +160,7 @@ func (s *IdentityDomainService) SetRoleMenus(ctx context.Context, roleID string,
 	}
 	known := map[string]bool{}
 	for _, menu := range menus {
-		known[menu.ID] = true
+		known[menu.MenuID] = true
 		known[menu.Key] = true
 	}
 	for _, menuID := range menuIDs {

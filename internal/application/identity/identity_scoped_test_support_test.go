@@ -50,7 +50,7 @@ func (r *identityScopedRepository) ListIdentityProfileBindingsByUser(context.Con
 }
 func (r *identityScopedRepository) GetIdentityUser(_ context.Context, _, id string) (identitymodel.IdentityUser, bool, error) {
 	for _, user := range r.users {
-		if user.ID == id {
+		if user.UserID == id {
 			return user, true, nil
 		}
 	}
@@ -58,7 +58,7 @@ func (r *identityScopedRepository) GetIdentityUser(_ context.Context, _, id stri
 }
 func (r *identityScopedRepository) GetIdentityUserWithinDataScope(_ context.Context, _ string, id string, scope identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityUser, bool, error) {
 	for _, user := range r.users {
-		if user.ID == id && identityScopedTestUserMatches(user, scope) {
+		if user.UserID == id && identityScopedTestUserMatches(user, scope) {
 			return user, true, nil
 		}
 	}
@@ -69,7 +69,7 @@ func (r *identityScopedRepository) UpsertIdentityUser(context.Context, string, i
 }
 func (r *identityScopedRepository) CreateIdentityUser(_ context.Context, _ string, user identitymodel.IdentityUser) error {
 	for _, existing := range r.users {
-		if existing.ID == user.ID {
+		if existing.UserID == user.UserID {
 			return errors.New("identity user already exists")
 		}
 	}
@@ -83,7 +83,7 @@ func (r *identityScopedRepository) UpdateIdentityUsersWithinDataScopeAtomically(
 	for _, update := range users {
 		matched := false
 		for _, existing := range r.users {
-			if existing.ID == update.ID && identityScopedTestUserMatches(existing, scope) {
+			if existing.UserID == update.UserID && identityScopedTestUserMatches(existing, scope) {
 				matched = true
 				break
 			}
@@ -94,7 +94,7 @@ func (r *identityScopedRepository) UpdateIdentityUsersWithinDataScopeAtomically(
 	}
 	for _, update := range users {
 		for index := range r.users {
-			if r.users[index].ID == update.ID {
+			if r.users[index].UserID == update.UserID {
 				r.users[index] = update
 			}
 		}
@@ -109,7 +109,7 @@ func (r *identityScopedRepository) SetIdentityUserStatus(context.Context, string
 }
 func (r *identityScopedRepository) RemoveIdentityUserWithinDataScope(_ context.Context, _ string, userID string, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
 	for index, user := range r.users {
-		if user.ID == userID && identityScopedTestUserMatches(user, scope) {
+		if user.UserID == userID && identityScopedTestUserMatches(user, scope) {
 			r.users = append(r.users[:index], r.users[index+1:]...)
 			return true, nil
 		}
@@ -118,7 +118,7 @@ func (r *identityScopedRepository) RemoveIdentityUserWithinDataScope(_ context.C
 }
 func (r *identityScopedRepository) SetIdentityUserStatusWithinDataScope(_ context.Context, _ string, userID string, status identitymodel.IdentityStatus, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
 	for index, user := range r.users {
-		if user.ID == userID && identityScopedTestUserMatches(user, scope) {
+		if user.UserID == userID && identityScopedTestUserMatches(user, scope) {
 			r.users[index].Status = status
 			return true, nil
 		}
@@ -132,7 +132,7 @@ func identityScopedTestUserMatches(user identitymodel.IdentityUser, scope identi
 		return true
 	}
 	for _, userID := range scope.OwnerUserIDs {
-		if user.ID == userID {
+		if user.UserID == userID {
 			return true
 		}
 	}
@@ -160,7 +160,7 @@ func (r *identityScopedRepository) AssignIdentityUserRole(context.Context, strin
 }
 func (r *identityScopedRepository) AssignIdentityUserRoleWithinDataScope(_ context.Context, _ string, assignment identitymodel.IdentityUserRoleAssignment, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
 	for _, user := range r.users {
-		if user.ID == assignment.UserID && identityScopedTestUserMatches(user, scope) {
+		if user.UserID == assignment.UserID && identityScopedTestUserMatches(user, scope) {
 			r.assignments = append(r.assignments, assignment)
 			return true, nil
 		}
@@ -172,7 +172,7 @@ func (r *identityScopedRepository) RemoveIdentityUserRole(context.Context, strin
 }
 func (r *identityScopedRepository) RemoveIdentityUserRoleWithinDataScope(_ context.Context, _ string, userID, roleID string, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
 	for _, user := range r.users {
-		if user.ID != userID || !identityScopedTestUserMatches(user, scope) {
+		if user.UserID != userID || !identityScopedTestUserMatches(user, scope) {
 			continue
 		}
 		for index := range r.assignments {
@@ -191,7 +191,7 @@ func (r *identityScopedRepository) ListIdentityUserRoleAssignments(context.Conte
 func (r *identityScopedRepository) ListIdentityUserRoleAssignmentsWithinDataScope(_ context.Context, _ string, userID string, scope identitymodel.IdentityDataScopeFilter) ([]identitymodel.IdentityUserRoleAssignment, error) {
 	allowed := map[string]bool{}
 	for _, user := range r.users {
-		allowed[user.ID] = identityScopedTestUserMatches(user, scope)
+		allowed[user.UserID] = identityScopedTestUserMatches(user, scope)
 	}
 	out := []identitymodel.IdentityUserRoleAssignment{}
 	for _, assignment := range r.assignments {
@@ -203,7 +203,7 @@ func (r *identityScopedRepository) ListIdentityUserRoleAssignmentsWithinDataScop
 }
 func (r *identityScopedRepository) UpsertIdentityUserWithRoleAssignmentsWithinDataScopeAtomically(_ context.Context, _ string, user identitymodel.IdentityUser, assignments []identitymodel.IdentityUserRoleAssignment, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
 	for index, existing := range r.users {
-		if existing.ID == user.ID && identityScopedTestUserMatches(existing, scope) {
+		if existing.UserID == user.UserID && identityScopedTestUserMatches(existing, scope) {
 			r.users[index] = user
 			r.assignments = append([]identitymodel.IdentityUserRoleAssignment(nil), assignments...)
 			return true, nil
@@ -224,7 +224,7 @@ func (r *identityScopedRepository) ApplyIdentityEntitlementBatch(_ context.Conte
 		r.receipts = map[string]identitymodel.IdentityEntitlementBatchReceipt{}
 	}
 	receipt := identitymodel.IdentityEntitlementBatchReceipt{
-		ID: "receipt-" + mutation.IdempotencyKey, WorkspaceID: mutation.WorkspaceID, ActorID: mutation.ActorID,
+		OperationID: "receipt-" + mutation.IdempotencyKey, WorkspaceID: mutation.WorkspaceID, ActorID: mutation.ActorID,
 		IdempotencyKey: mutation.IdempotencyKey, RequestFingerprint: mutation.RequestFingerprint, Items: mutation.Items, CreatedAt: "now",
 	}
 	r.assignments = append(r.assignments, mutation.Assignments...)
@@ -242,21 +242,30 @@ func (r *identityScopedRepository) CreateIdentityAccessReview(_ context.Context,
 	return nil
 }
 
-func (r *identityScopedRepository) CreateIdentityAccessReviewWithinDataScope(_ context.Context, review identitymodel.IdentityAccessReview, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
+func (r *identityScopedRepository) CreateIdentityAccessReviewWithinDataScope(_ context.Context, review identitymodel.IdentityAccessReview, scope identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityAccessReview, bool, error) {
 	for _, item := range review.Items {
 		allowed := false
 		for _, user := range r.users {
-			if user.ID == item.UserID && identityScopedTestUserMatches(user, scope) {
+			if user.UserID == item.UserID && identityScopedTestUserMatches(user, scope) {
 				allowed = true
 				break
 			}
 		}
 		if !allowed {
-			return false, nil
+			return identitymodel.IdentityAccessReview{}, false, nil
 		}
 	}
+	review.ID = int64(len(r.reviews) + 1)
+	var nextItemID int64 = 1
+	for _, previous := range r.reviews {
+		nextItemID += int64(len(previous.Items))
+	}
+	review.Items = append([]identitymodel.IdentityAccessReviewItem(nil), review.Items...)
+	for index := range review.Items {
+		review.Items[index].ID = nextItemID + int64(index)
+	}
 	r.reviews = append(r.reviews, review)
-	return true, nil
+	return review, true, nil
 }
 
 func (r *identityScopedRepository) ListIdentityAccessReviews(_ context.Context, _ string, status string) ([]identitymodel.IdentityAccessReview, error) {
@@ -272,7 +281,7 @@ func (r *identityScopedRepository) ListIdentityAccessReviews(_ context.Context, 
 func (r *identityScopedRepository) ListIdentityAccessReviewsWithinDataScope(_ context.Context, _ string, status string, scope identitymodel.IdentityDataScopeFilter) ([]identitymodel.IdentityAccessReview, error) {
 	allowed := map[string]bool{}
 	for _, user := range r.users {
-		allowed[user.ID] = identityScopedTestUserMatches(user, scope)
+		allowed[user.UserID] = identityScopedTestUserMatches(user, scope)
 	}
 	out := []identitymodel.IdentityAccessReview{}
 	for _, review := range r.reviews {
@@ -296,7 +305,7 @@ func (r *identityScopedRepository) ListIdentityAccessReviewsWithinDataScope(_ co
 func (r *identityScopedRepository) GetIdentityAccessReviewItem(_ context.Context, _ string, itemID string) (identitymodel.IdentityAccessReviewItem, bool, error) {
 	for _, review := range r.reviews {
 		for _, item := range review.Items {
-			if item.ID == itemID {
+			if item.ReviewItemID == itemID {
 				return item, true, nil
 			}
 		}
@@ -310,7 +319,7 @@ func (r *identityScopedRepository) GetIdentityAccessReviewItemWithinDataScope(ct
 		return item, found, err
 	}
 	for _, user := range r.users {
-		if user.ID == item.UserID && identityScopedTestUserMatches(user, scope) {
+		if user.UserID == item.UserID && identityScopedTestUserMatches(user, scope) {
 			return item, true, nil
 		}
 	}
@@ -341,7 +350,7 @@ func (r *identityScopedRepository) ApplyIdentityAccessReviewDecision(_ context.C
 	item, _, _ := r.GetIdentityAccessReviewItem(context.Background(), mutation.WorkspaceID, mutation.ItemID)
 	item.Status, item.Decision, item.ReviewerID, item.Reason, item.Version = "decided", mutation.Request.Decision, mutation.ReviewerID, mutation.Request.Reason, item.Version+1
 	receipt := identitymodel.IdentityAccessReviewDecisionReceipt{
-		ID: "receipt-" + mutation.Request.IdempotencyKey, WorkspaceID: mutation.WorkspaceID, ItemID: mutation.ItemID,
+		OperationID: "receipt-" + mutation.Request.IdempotencyKey, WorkspaceID: mutation.WorkspaceID, ItemID: mutation.ItemID,
 		IdempotencyKey: mutation.Request.IdempotencyKey, RequestFingerprint: mutation.RequestFingerprint, Item: item, CreatedAt: "now",
 	}
 	r.reviewReceipts[key] = receipt
@@ -363,7 +372,7 @@ func (r *identityScopedRepository) ListIdentityRoleRequests(context.Context, str
 func (r *identityScopedRepository) ListIdentityRoleRequestsWithinDataScope(_ context.Context, _ string, status, userID string, scope identitymodel.IdentityDataScopeFilter) ([]identitymodel.IdentityRoleRequest, error) {
 	allowed := map[string]bool{}
 	for _, user := range r.users {
-		allowed[user.ID] = identityScopedTestUserMatches(user, scope)
+		allowed[user.UserID] = identityScopedTestUserMatches(user, scope)
 	}
 	out := []identitymodel.IdentityRoleRequest{}
 	for _, request := range r.requests {
@@ -375,11 +384,11 @@ func (r *identityScopedRepository) ListIdentityRoleRequestsWithinDataScope(_ con
 }
 func (r *identityScopedRepository) ApplyIdentityRoleRequestDecisionWithinDataScope(_ context.Context, _ string, request identitymodel.IdentityRoleRequest, assignments []identitymodel.IdentityUserRoleAssignment, expectedStatus string, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
 	for _, user := range r.users {
-		if user.ID != request.UserID || !identityScopedTestUserMatches(user, scope) {
+		if user.UserID != request.UserID || !identityScopedTestUserMatches(user, scope) {
 			continue
 		}
 		for index := range r.requests {
-			if r.requests[index].ID == request.ID && r.requests[index].Status == expectedStatus {
+			if r.requests[index].RoleRequestID == request.RoleRequestID && r.requests[index].Status == expectedStatus {
 				r.requests[index] = request
 				r.assignments = append(r.assignments, assignments...)
 				return true, nil

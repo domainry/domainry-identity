@@ -141,8 +141,8 @@ func TestUserCredentialBatchProvisioning(t *testing.T) {
 	fault := errors.New("batch credential fault")
 	users := []identitymodel.IdentityUser{
 		activeExternalIdentityUser("active", "active@example.com"),
-		{ID: "disabled", Status: identitymodel.IdentityStatusDisabled},
-		{ID: " ", Status: identitymodel.IdentityStatusActive},
+		{UserID: "disabled", Status: identitymodel.IdentityStatusDisabled},
+		{UserID: " ", Status: identitymodel.IdentityStatusActive},
 	}
 
 	t.Run("nil repository", func(t *testing.T) {
@@ -190,10 +190,10 @@ func TestPasswordLoginAndMutationLifecycle(t *testing.T) {
 		if err != nil || session.AccessToken == "" {
 			t.Fatalf("login: session=%#v err=%v", session, err)
 		}
-		if err := auth.ChangePassword(t.Context(), "workspace-primary", user.ID, password, newPassword); err != nil {
+		if err := auth.ChangePassword(t.Context(), "workspace-primary", user.UserID, password, newPassword); err != nil {
 			t.Fatalf("change password: %v", err)
 		}
-		if bcrypt.CompareHashAndPassword([]byte(authRepository.credentials[user.ID].PasswordHash), []byte(newPassword)) != nil {
+		if bcrypt.CompareHashAndPassword([]byte(authRepository.credentials[user.UserID].PasswordHash), []byte(newPassword)) != nil {
 			t.Fatal("new password was not persisted")
 		}
 	})
@@ -269,9 +269,9 @@ func TestPasswordMutationFailuresAndReset(t *testing.T) {
 
 	for _, request := range []struct{ userID, current, next string }{
 		{current: password, next: newPassword},
-		{userID: user.ID, next: newPassword},
-		{userID: user.ID, current: password},
-		{userID: user.ID, current: password, next: "weak"},
+		{userID: user.UserID, next: newPassword},
+		{userID: user.UserID, current: password},
+		{userID: user.UserID, current: password, next: "weak"},
 	} {
 		if err := auth.ChangePassword(t.Context(), "workspace-primary", request.userID, request.current, request.next); err == nil {
 			t.Fatalf("invalid password change must fail: %#v", request)
@@ -279,22 +279,22 @@ func TestPasswordMutationFailuresAndReset(t *testing.T) {
 	}
 
 	authRepository.getCredentialErr = fault
-	assertExternalAuthFault(t, auth.ChangePassword(t.Context(), "workspace-primary", user.ID, password, newPassword), fault)
+	assertExternalAuthFault(t, auth.ChangePassword(t.Context(), "workspace-primary", user.UserID, password, newPassword), fault)
 	authRepository.getCredentialErr = nil
-	delete(authRepository.credentials, user.ID)
-	if err := auth.ChangePassword(t.Context(), "workspace-primary", user.ID, password, newPassword); err == nil {
+	delete(authRepository.credentials, user.UserID)
+	if err := auth.ChangePassword(t.Context(), "workspace-primary", user.UserID, password, newPassword); err == nil {
 		t.Fatal("missing credential must fail")
 	}
-	authRepository.credentials[user.ID] = passwordCredential(t, user.ID, password)
-	credential := authRepository.credentials[user.ID]
+	authRepository.credentials[user.UserID] = passwordCredential(t, user.UserID, password)
+	credential := authRepository.credentials[user.UserID]
 	credential.LockedUntil = time.Now().UTC().Add(time.Hour).Format(time.RFC3339)
-	authRepository.credentials[user.ID] = credential
-	if err := auth.ChangePassword(t.Context(), "workspace-primary", user.ID, password, newPassword); err == nil {
+	authRepository.credentials[user.UserID] = credential
+	if err := auth.ChangePassword(t.Context(), "workspace-primary", user.UserID, password, newPassword); err == nil {
 		t.Fatal("locked credential must fail")
 	}
 	credential.LockedUntil = ""
-	authRepository.credentials[user.ID] = credential
-	if err := auth.ChangePassword(t.Context(), "workspace-primary", user.ID, "wrong", newPassword); err == nil {
+	authRepository.credentials[user.UserID] = credential
+	if err := auth.ChangePassword(t.Context(), "workspace-primary", user.UserID, "wrong", newPassword); err == nil {
 		t.Fatal("incorrect current password must fail")
 	}
 
@@ -302,31 +302,31 @@ func TestPasswordMutationFailuresAndReset(t *testing.T) {
 		userID, password string
 	}{
 		{password: newPassword},
-		{userID: user.ID},
-		{userID: user.ID, password: "weak"},
+		{userID: user.UserID},
+		{userID: user.UserID, password: "weak"},
 	} {
 		if err := auth.ResetPassword(t.Context(), "workspace-primary", request.userID, request.password, true); err == nil {
 			t.Fatalf("invalid reset must fail: %#v", request)
 		}
 	}
 	identityRepository.listUsersErr = fault
-	assertExternalAuthFault(t, auth.ResetPassword(t.Context(), "workspace-primary", user.ID, newPassword, true), fault)
+	assertExternalAuthFault(t, auth.ResetPassword(t.Context(), "workspace-primary", user.UserID, newPassword, true), fault)
 	identityRepository.listUsersErr = nil
 	identityRepository.users = nil
-	if err := auth.ResetPassword(t.Context(), "workspace-primary", user.ID, newPassword, true); err == nil {
+	if err := auth.ResetPassword(t.Context(), "workspace-primary", user.UserID, newPassword, true); err == nil {
 		t.Fatal("missing reset user must fail")
 	}
 	user.Status = identitymodel.IdentityStatusDisabled
 	identityRepository.users = []identitymodel.IdentityUser{user}
-	if err := auth.ResetPassword(t.Context(), "workspace-primary", user.ID, newPassword, true); err == nil {
+	if err := auth.ResetPassword(t.Context(), "workspace-primary", user.UserID, newPassword, true); err == nil {
 		t.Fatal("disabled reset user must fail")
 	}
 	user.Status = identitymodel.IdentityStatusActive
 	identityRepository.users = []identitymodel.IdentityUser{user}
-	if err := auth.ResetPassword(t.Context(), "workspace-primary", user.ID, newPassword, true); err != nil {
+	if err := auth.ResetPassword(t.Context(), "workspace-primary", user.UserID, newPassword, true); err != nil {
 		t.Fatalf("reset active user: %v", err)
 	}
-	if !authRepository.credentials[user.ID].MustChangePassword {
+	if !authRepository.credentials[user.UserID].MustChangePassword {
 		t.Fatal("reset must preserve the requested change-password flag")
 	}
 }

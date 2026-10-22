@@ -78,15 +78,15 @@ func TestIdentityDomainConstructionAndPermissionCatalogEdges(t *testing.T) {
 }
 
 func TestIdentityListAndEffectiveMenuFailureWindows(t *testing.T) {
-	role := identitymodel.IdentityRole{ID: "role", Status: identitymodel.IdentityStatusActive}
+	role := identitymodel.IdentityRole{RoleID: "role", Status: identitymodel.IdentityStatusActive}
 	for _, test := range []struct {
 		name       string
 		repository *identityPermissionMenuRepository
 	}{
 		{name: "role assignments", repository: &identityPermissionMenuRepository{roleAssignmentErr: errIdentityOrganizationUnitUserEdge}},
-		{name: "roles", repository: &identityPermissionMenuRepository{roleAssignments: []identitymodel.IdentityUserRoleAssignment{{UserID: "user", RoleID: role.ID}}, roleErr: errIdentityOrganizationUnitUserEdge}},
-		{name: "menus", repository: &identityPermissionMenuRepository{roleAssignments: []identitymodel.IdentityUserRoleAssignment{{UserID: "user", RoleID: role.ID}}, roles: []identitymodel.IdentityRole{role}, menuErr: errIdentityOrganizationUnitUserEdge}},
-		{name: "menu assignments", repository: &identityPermissionMenuRepository{roleAssignments: []identitymodel.IdentityUserRoleAssignment{{UserID: "user", RoleID: role.ID}}, roles: []identitymodel.IdentityRole{role}, menuAssignmentErr: errIdentityOrganizationUnitUserEdge}},
+		{name: "roles", repository: &identityPermissionMenuRepository{roleAssignments: []identitymodel.IdentityUserRoleAssignment{{UserID: "user", RoleID: role.RoleID}}, roleErr: errIdentityOrganizationUnitUserEdge}},
+		{name: "menus", repository: &identityPermissionMenuRepository{roleAssignments: []identitymodel.IdentityUserRoleAssignment{{UserID: "user", RoleID: role.RoleID}}, roles: []identitymodel.IdentityRole{role}, menuErr: errIdentityOrganizationUnitUserEdge}},
+		{name: "menu assignments", repository: &identityPermissionMenuRepository{roleAssignments: []identitymodel.IdentityUserRoleAssignment{{UserID: "user", RoleID: role.RoleID}}, roles: []identitymodel.IdentityRole{role}, menuAssignmentErr: errIdentityOrganizationUnitUserEdge}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if _, err := identityPermissionMenuService(test.repository).EffectiveMenus(t.Context(), "user"); !errors.Is(err, errIdentityOrganizationUnitUserEdge) {
@@ -101,7 +101,7 @@ func TestIdentityListAndEffectiveMenuFailureWindows(t *testing.T) {
 		t.Fatalf("list menus error=%v", err)
 	}
 	repository.menuErr = nil
-	repository.menus = []identitymodel.IdentityMenu{{ID: "root"}}
+	repository.menus = []identitymodel.IdentityMenu{{MenuID: "root"}}
 	if values, err := service.ListMenus(t.Context()); err != nil || len(values) != 1 {
 		t.Fatalf("menus=%+v err=%v", values, err)
 	}
@@ -115,28 +115,28 @@ func TestIdentityListAndEffectiveMenuFailureWindows(t *testing.T) {
 }
 
 func TestIdentityEffectiveMenusVisibilityParentAndSortEdges(t *testing.T) {
-	role := identitymodel.IdentityRole{ID: "role", Status: identitymodel.IdentityStatusActive}
+	role := identitymodel.IdentityRole{RoleID: "role", Status: identitymodel.IdentityStatusActive}
 	repository := &identityPermissionMenuRepository{
-		roleAssignments: []identitymodel.IdentityUserRoleAssignment{{UserID: "user", RoleID: role.ID}},
-		roles:           []identitymodel.IdentityRole{role, {ID: "disabled-role", Status: identitymodel.IdentityStatusDisabled}},
+		roleAssignments: []identitymodel.IdentityUserRoleAssignment{{UserID: "user", RoleID: role.RoleID}},
+		roles:           []identitymodel.IdentityRole{role, {RoleID: "disabled-role", Status: identitymodel.IdentityStatusDisabled}},
 		menus: []identitymodel.IdentityMenu{
-			{ID: "root", Key: "root", Status: identitymodel.IdentityStatusActive, SortOrder: 2},
-			{ID: "child", Key: "child", ParentID: "root", SortOrder: 1},
-			{ID: "sibling", Key: "sibling", ParentID: "missing-parent", Status: identitymodel.IdentityStatusActive, SortOrder: 1},
-			{ID: "self", Key: "self", ParentID: "self", Status: identitymodel.IdentityStatusActive, SortOrder: 3},
-			{ID: "blank-key", Key: "", Status: identitymodel.IdentityStatusActive, SortOrder: 4},
-			{ID: "disabled", Key: "disabled", Status: identitymodel.IdentityStatusDisabled},
-			{ID: "", Key: "key-only", Status: identitymodel.IdentityStatusActive},
+			{MenuID: "root", Key: "root", Status: identitymodel.IdentityStatusActive, SortOrder: 2},
+			{MenuID: "child", Key: "child", ParentID: "root", SortOrder: 1},
+			{MenuID: "sibling", Key: "sibling", ParentID: "missing-parent", Status: identitymodel.IdentityStatusActive, SortOrder: 1},
+			{MenuID: "self", Key: "self", ParentID: "self", Status: identitymodel.IdentityStatusActive, SortOrder: 3},
+			{MenuID: "blank-key", Key: "", Status: identitymodel.IdentityStatusActive, SortOrder: 4},
+			{MenuID: "disabled", Key: "disabled", Status: identitymodel.IdentityStatusDisabled},
+			{MenuID: "", Key: "key-only", Status: identitymodel.IdentityStatusActive},
 		},
 		menuAssignments: []identitymodel.IdentityRoleMenuAssignment{
-			{RoleID: role.ID, MenuID: "child"},
-			{RoleID: role.ID, MenuID: "root"},
-			{RoleID: role.ID, MenuID: "root"},
-			{RoleID: role.ID, MenuID: "sibling"},
-			{RoleID: role.ID, MenuID: "self"},
-			{RoleID: role.ID, MenuID: "missing"},
-			{RoleID: role.ID, MenuID: "key-only"},
-			{RoleID: role.ID, MenuID: "disabled"},
+			{RoleID: role.RoleID, MenuID: "child"},
+			{RoleID: role.RoleID, MenuID: "root"},
+			{RoleID: role.RoleID, MenuID: "root"},
+			{RoleID: role.RoleID, MenuID: "sibling"},
+			{RoleID: role.RoleID, MenuID: "self"},
+			{RoleID: role.RoleID, MenuID: "missing"},
+			{RoleID: role.RoleID, MenuID: "key-only"},
+			{RoleID: role.RoleID, MenuID: "disabled"},
 		},
 	}
 	menus, err := identityPermissionMenuService(repository).EffectiveMenus(t.Context(), "user")
@@ -146,7 +146,7 @@ func TestIdentityEffectiveMenusVisibilityParentAndSortEdges(t *testing.T) {
 	want := []string{"sibling", "root", "child", "self"}
 	got := make([]string, 0, len(menus))
 	for _, menu := range menus {
-		got = append(got, menu.ID)
+		got = append(got, menu.MenuID)
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("menu IDs=%v want=%v menus=%+v", got, want, menus)
@@ -154,18 +154,18 @@ func TestIdentityEffectiveMenusVisibilityParentAndSortEdges(t *testing.T) {
 }
 
 func TestIdentityEffectiveMenusOrdersCyclicLeftoversOnce(t *testing.T) {
-	role := identitymodel.IdentityRole{ID: "role", Status: identitymodel.IdentityStatusActive}
+	role := identitymodel.IdentityRole{RoleID: "role", Status: identitymodel.IdentityStatusActive}
 	repository := &identityPermissionMenuRepository{
-		roleAssignments: []identitymodel.IdentityUserRoleAssignment{{UserID: "user", RoleID: role.ID}},
+		roleAssignments: []identitymodel.IdentityUserRoleAssignment{{UserID: "user", RoleID: role.RoleID}},
 		roles:           []identitymodel.IdentityRole{role},
 		menus: []identitymodel.IdentityMenu{
-			{ID: "cycle-a", Key: "a", ParentID: "cycle-b", Status: identitymodel.IdentityStatusActive, SortOrder: 1},
-			{ID: "cycle-b", Key: "b", ParentID: "cycle-a", Status: identitymodel.IdentityStatusActive, SortOrder: 1},
+			{MenuID: "cycle-a", Key: "a", ParentID: "cycle-b", Status: identitymodel.IdentityStatusActive, SortOrder: 1},
+			{MenuID: "cycle-b", Key: "b", ParentID: "cycle-a", Status: identitymodel.IdentityStatusActive, SortOrder: 1},
 		},
-		menuAssignments: []identitymodel.IdentityRoleMenuAssignment{{RoleID: role.ID, MenuID: "cycle-a"}},
+		menuAssignments: []identitymodel.IdentityRoleMenuAssignment{{RoleID: role.RoleID, MenuID: "cycle-a"}},
 	}
 	menus, err := identityPermissionMenuService(repository).EffectiveMenus(t.Context(), "user")
-	if err != nil || len(menus) != 2 || menus[0].ID == menus[1].ID {
+	if err != nil || len(menus) != 2 || menus[0].MenuID == menus[1].MenuID {
 		t.Fatalf("menus=%+v error=%v", menus, err)
 	}
 }

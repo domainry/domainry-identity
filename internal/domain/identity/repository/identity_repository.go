@@ -157,7 +157,7 @@ type IdentityAccessReviewRepository interface {
 // IdentityAccessReviewDataScopeRepository treats every review item as a user
 // entitlement and therefore scopes it through the item's persisted user.
 type IdentityAccessReviewDataScopeRepository interface {
-	CreateIdentityAccessReviewWithinDataScope(context.Context, identitymodel.IdentityAccessReview, identitymodel.IdentityDataScopeFilter) (bool, error)
+	CreateIdentityAccessReviewWithinDataScope(context.Context, identitymodel.IdentityAccessReview, identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityAccessReview, bool, error)
 	ListIdentityAccessReviewsWithinDataScope(context.Context, string, string, identitymodel.IdentityDataScopeFilter) ([]identitymodel.IdentityAccessReview, error)
 	GetIdentityAccessReviewItemWithinDataScope(context.Context, string, string, identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityAccessReviewItem, bool, error)
 	GetIdentityAccessReviewDecisionReceiptWithinDataScope(context.Context, string, string, string, identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityAccessReviewDecisionReceipt, bool, error)
@@ -193,7 +193,7 @@ type IdentityHandlerDeliveryRepository interface {
 type IdentityStoreOrganizationDeliveryRepository interface {
 	GetIdentityStoreOrganizationDeliveryReceipt(context.Context, string, string) (identitymodel.IdentityStoreOrganizationDeliveryReceipt, bool, error)
 	GetIdentityStoreOrganizationState(context.Context, string, string) (identitymodel.IdentityStoreOrganizationState, bool, error)
-	ListIdentityStoreOrganizationsPage(context.Context, string, identitymodel.IdentityDataScopeFilter, string, int) ([]identitymodel.IdentityStoreOrganization, error)
+	ListIdentityStoreOrganizationsPage(context.Context, string, identitymodel.IdentityDataScopeFilter, int64, int) ([]identitymodel.IdentityStoreOrganization, error)
 	ExecuteIdentityStoreOrganizationDelivery(context.Context, identitymodel.IdentityStoreOrganizationDeliveryMutation) (identitymodel.IdentityStoreOrganizationDeliveryReceipt, error)
 }
 

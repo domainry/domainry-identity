@@ -12,7 +12,7 @@ import (
 
 func TestPrepareEntitlementBatchValidatesFinalConflictsAndTreatsWorkspaceCapabilityAsOrdinaryGrant(t *testing.T) {
 	repository, service := identityRolesFixture()
-	repository.users = append(repository.users, identitymodel.IdentityUser{ID: "admin-2", Status: identitymodel.IdentityStatusActive})
+	repository.users = append(repository.users, identitymodel.IdentityUser{UserID: "admin-2", Status: identitymodel.IdentityStatusActive})
 	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{
 		{Key: "member", AssignmentMode: identitymodel.IdentityRoleAssignmentManual, ConflictRoleKeys: []string{"viewer"}},
 		{Key: "viewer", AssignmentMode: identitymodel.IdentityRoleAssignmentManual},

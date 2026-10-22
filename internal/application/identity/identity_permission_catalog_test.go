@@ -95,7 +95,6 @@ func TestPermissionDefinitionAndSnapshotHashesAreCanonical(t *testing.T) {
 		t.Fatal(err)
 	}
 	definition.Enabled = false
-	definition.ID = "database-row"
 	definition.UpdatedAt = "later"
 	second, err := IdentityPermissionDefinitionHash(definition)
 	if err != nil || first != second {

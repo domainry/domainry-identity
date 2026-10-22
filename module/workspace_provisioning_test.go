@@ -124,7 +124,7 @@ func TestInstallationAdministratorBootstrapIsEmbeddedAtomicAuditedAndFirstOnly(t
 		t.Fatalf("installation administrator operation resource=%q reference=%q status=%q result=%s", operationResourceID, operationReference, operationStatus, operationResult)
 	}
 	var roleKey, orgID string
-	if err := db.QueryRowContext(t.Context(), `SELECT role.role_key, user.org_id FROM _identity_users user JOIN _identity_user_role_assignments assignment ON assignment.workspace_id=user.workspace_id AND assignment.user_id=user.id JOIN _identity_roles role ON role.workspace_id=assignment.workspace_id AND role.id=assignment.role_id WHERE user.workspace_id=? AND user.id=?`, request.WorkspaceID, receipt.UserID).Scan(&roleKey, &orgID); err != nil {
+	if err := db.QueryRowContext(t.Context(), `SELECT role.role_key, user.org_id FROM _identity_users user JOIN _identity_user_role_assignments assignment ON assignment.workspace_id=user.workspace_id AND assignment.user_id=user.user_id JOIN _identity_roles role ON role.workspace_id=assignment.workspace_id AND role.role_id=assignment.role_id WHERE user.workspace_id=? AND user.user_id=?`, request.WorkspaceID, receipt.UserID).Scan(&roleKey, &orgID); err != nil {
 		t.Fatal(err)
 	}
 	if roleKey != identitymodulehost.InstallationAdministratorRoleKey || orgID != workspaceRequest.CompanyID {
@@ -292,7 +292,7 @@ func TestWorkspaceIdentityBootstrapMaterializesM1RolesAndAssignsExplicitAdminist
 		t.Fatalf("M1 materialized roles=%q", got)
 	}
 	var assigned, persistedResult string
-	if err := db.QueryRowContext(t.Context(), `SELECT role.role_key FROM _identity_user_role_assignments assignment JOIN _identity_roles role ON role.workspace_id=assignment.workspace_id AND role.id=assignment.role_id WHERE assignment.workspace_id=? AND assignment.user_id=?`, request.WorkspaceID, request.InitialAdminUserID).Scan(&assigned); err != nil {
+	if err := db.QueryRowContext(t.Context(), `SELECT role.role_key FROM _identity_user_role_assignments assignment JOIN _identity_roles role ON role.workspace_id=assignment.workspace_id AND role.role_id=assignment.role_id WHERE assignment.workspace_id=? AND assignment.user_id=?`, request.WorkspaceID, request.InitialAdminUserID).Scan(&assigned); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.QueryRowContext(t.Context(), `SELECT result_json FROM _operations WHERE workspace_id=? AND owner='identity' AND kind='identity.workspace_bootstrap'`, request.WorkspaceID).Scan(&persistedResult); err != nil {
@@ -333,7 +333,7 @@ func TestWorkspaceIdentityBootstrapMaterializesProvisionedBusinessProfileRoleWit
 	completeWorkspaceIdentityBootstrap(t, bootstrap, receipt, identitysdk.WorkspaceIdentityBootstrapTransactionCommitted)
 	assertIdentityRowCount(t, db, "_identity_roles", request.WorkspaceID, 2)
 	var assigned string
-	if err := db.QueryRowContext(t.Context(), `SELECT role.role_key FROM _identity_user_role_assignments assignment JOIN _identity_roles role ON role.workspace_id=assignment.workspace_id AND role.id=assignment.role_id WHERE assignment.workspace_id=?`, request.WorkspaceID).Scan(&assigned); err != nil {
+	if err := db.QueryRowContext(t.Context(), `SELECT role.role_key FROM _identity_user_role_assignments assignment JOIN _identity_roles role ON role.workspace_id=assignment.workspace_id AND role.role_id=assignment.role_id WHERE assignment.workspace_id=?`, request.WorkspaceID).Scan(&assigned); err != nil {
 		t.Fatal(err)
 	}
 	if assigned != "admin" {
@@ -498,8 +498,8 @@ func TestWorkspaceIdentityBootstrapFailsClosedForMissingRoleAndPreexistingCrossW
 
 	complete, completeDB := openWorkspaceIdentityBootstrapCatalog(t, m1WorkspaceBootstrapRoleCatalog())
 	cross := workspaceIdentityBootstrapRequest("workspace-cross-parent", "cross-parent")
-	if _, err := completeDB.ExecContext(t.Context(), `INSERT INTO _identity_organization_units (id, workspace_id, code, name, node_type, parent_id, path, ancestor_ids, depth, sort_order, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		"orphan-store", cross.WorkspaceID, "ORPHAN", "Orphan", "store", "company-from-another-workspace", "/company-from-another-workspace/orphan-store", `["company-from-another-workspace"]`, 1, 0, "active", "now", "now"); err != nil {
+	if _, err := completeDB.ExecContext(t.Context(), `INSERT INTO _identity_organization_units (organization_unit_id, workspace_id, code, name, node_type, parent_id, path, ancestor_ids, depth, sort_order, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"orphan-store", cross.WorkspaceID, "ORPHAN", "Orphan", "store", "company-from-another-workspace", "/company-from-another-workspace/orphan-store", `["company-from-another-workspace"]`, 1, 0, "active", int64(1), int64(1)); err != nil {
 		t.Fatal(err)
 	}
 	crossTx := beginBootstrapTx(t, completeDB)
@@ -662,7 +662,7 @@ func beginBootstrapTx(t *testing.T, db *sql.DB) *sql.Tx {
 
 func assertBootstrapOrganizationGraph(t *testing.T, db *sql.DB, request identitysdk.WorkspaceIdentityBootstrapRequest) {
 	t.Helper()
-	rows, err := db.QueryContext(t.Context(), `SELECT id, node_type, COALESCE(parent_id, ''), path, ancestor_ids, depth, status FROM _identity_organization_units WHERE workspace_id = ? ORDER BY depth, id`, request.WorkspaceID)
+	rows, err := db.QueryContext(t.Context(), `SELECT organization_unit_id, node_type, COALESCE(parent_id, ''), path, ancestor_ids, depth, status FROM _identity_organization_units WHERE workspace_id = ? ORDER BY depth, id`, request.WorkspaceID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -683,7 +683,7 @@ func assertBootstrapOrganizationGraph(t *testing.T, db *sql.DB, request identity
 		t.Fatalf("organizations=%#v", items)
 	}
 	var orgID, accountType, status string
-	if err := db.QueryRowContext(t.Context(), `SELECT org_id, account_type, status FROM _identity_users WHERE workspace_id = ? AND id = ?`, request.WorkspaceID, request.InitialAdminUserID).Scan(&orgID, &accountType, &status); err != nil {
+	if err := db.QueryRowContext(t.Context(), `SELECT org_id, account_type, status FROM _identity_users WHERE workspace_id = ? AND user_id = ?`, request.WorkspaceID, request.InitialAdminUserID).Scan(&orgID, &accountType, &status); err != nil {
 		t.Fatal(err)
 	}
 	if orgID != request.CompanyID || accountType != "human" || status != "active" {

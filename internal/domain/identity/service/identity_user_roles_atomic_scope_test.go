@@ -11,7 +11,7 @@ import (
 func TestUpsertUserWithRolesRejectsForgedRequestOrganizationScope(t *testing.T) {
 	repository, service := identityRolesFixture()
 	repository.users = []identitymodel.IdentityUser{{
-		ID: "user-1", Name: "Existing", Email: "existing@example.com", AccountType: identitymodel.IdentityAccountHuman,
+		UserID: "user-1", Name: "Existing", Email: "existing@example.com", AccountType: identitymodel.IdentityAccountHuman,
 		OrgID: "outside", Status: identitymodel.IdentityStatusActive, Version: 4,
 	}}
 	actor := identitymodel.Principal{
@@ -22,7 +22,7 @@ func TestUpsertUserWithRolesRejectsForgedRequestOrganizationScope(t *testing.T) 
 		)},
 	}
 	request := identitymodel.IdentityUser{
-		ID: "user-1", Name: "Existing", Email: "existing@example.com", AccountType: identitymodel.IdentityAccountHuman,
+		UserID: "user-1", Name: "Existing", Email: "existing@example.com", AccountType: identitymodel.IdentityAccountHuman,
 		OrgID: "organizationUnit", Status: identitymodel.IdentityStatusActive, Version: 4,
 	}
 
@@ -30,7 +30,7 @@ func TestUpsertUserWithRolesRejectsForgedRequestOrganizationScope(t *testing.T) 
 	if apperror.CodeOf(err) != "backend.identity.data_scope_denied" {
 		t.Fatalf("forged request organization authorized: err=%v", err)
 	}
-	if repository.reconciledUser.ID != "" {
+	if repository.reconciledUser.UserID != "" {
 		t.Fatalf("unauthorized target was persisted: %#v", repository.reconciledUser)
 	}
 }

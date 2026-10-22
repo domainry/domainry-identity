@@ -35,7 +35,7 @@ func (s *IdentityDomainService) ReconcileSystemManagedBusinessRoles(ctx context.
 				continue
 			}
 			if err := s.assignSystemManagedRole(ctx, identitymodel.IdentityUserRoleAssignment{
-				UserID: userID, RoleID: role.ID, BindingKey: bindingKey, ProfileID: profileID,
+				UserID: userID, RoleID: role.RoleID, BindingKey: bindingKey, ProfileID: profileID,
 			}, true); err != nil {
 				return err
 			}

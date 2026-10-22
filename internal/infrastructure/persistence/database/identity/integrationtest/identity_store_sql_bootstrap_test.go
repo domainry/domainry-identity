@@ -31,17 +31,17 @@ func TestSQLIdentityUserReportingTreeReparentPersistsDescendantPaths(t *testing.
 		t.Fatal(err)
 	}
 	for _, user := range []identitymodel.IdentityUser{
-		{ID: "manager-a", Name: "Manager A", Email: "manager-a@example.com", Status: identitymodel.IdentityStatusActive},
-		{ID: "manager-b", Name: "Manager B", Email: "manager-b@example.com", Status: identitymodel.IdentityStatusActive},
-		{ID: "employee", Name: "Employee", Email: "employee@example.com", ManagerUserID: "manager-a", Status: identitymodel.IdentityStatusActive},
-		{ID: "report", Name: "Report", Email: "report@example.com", ManagerUserID: "employee", Status: identitymodel.IdentityStatusActive},
+		{UserID: "manager-a", Name: "Manager A", Email: "manager-a@example.com", Status: identitymodel.IdentityStatusActive},
+		{UserID: "manager-b", Name: "Manager B", Email: "manager-b@example.com", Status: identitymodel.IdentityStatusActive},
+		{UserID: "employee", Name: "Employee", Email: "employee@example.com", ManagerUserID: "manager-a", Status: identitymodel.IdentityStatusActive},
+		{UserID: "report", Name: "Report", Email: "report@example.com", ManagerUserID: "employee", Status: identitymodel.IdentityStatusActive},
 	} {
 		if err := service.UpsertUser(t.Context(), user); err != nil {
-			t.Fatalf("upsert %s: %v", user.ID, err)
+			t.Fatalf("upsert %s: %v", user.UserID, err)
 		}
 	}
 	if err := service.UpsertUser(t.Context(), identitymodel.IdentityUser{
-		ID: "employee", Name: "Employee", Email: "employee@example.com", ManagerUserID: "manager-b", Status: identitymodel.IdentityStatusActive,
+		UserID: "employee", Name: "Employee", Email: "employee@example.com", ManagerUserID: "manager-b", Status: identitymodel.IdentityStatusActive,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestSQLIdentityUserReportingTreeReparentPersistsDescendantPaths(t *testing.
 	}
 	byID := map[string]identitymodel.IdentityUser{}
 	for _, user := range users {
-		byID[user.ID] = user
+		byID[user.UserID] = user
 	}
 	if employee := byID["employee"]; employee.ManagerUserID != "manager-b" || employee.ReportingPath != "/manager-b/employee" {
 		t.Fatalf("employee reporting facts not persisted: %#v", employee)
@@ -77,8 +77,8 @@ func TestApplyIdentityBootstrapAtomicallyRollsBackPartialGraph(t *testing.T) {
 	err = identityStore.ApplyIdentityBootstrapAtomically(
 		t.Context(),
 		"workspace-primary",
-		[]identitymodel.IdentityOrganizationUnit{{ID: "people", Name: "People", Path: "/people", Status: identitymodel.IdentityStatusActive}},
-		[]identitymodel.IdentityUser{{ID: "employee", Name: "Employee", Email: "employee@example.com", OrgID: "people", WorkerNo: "E-1", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive, Status: identitymodel.IdentityStatusActive}},
+		[]identitymodel.IdentityOrganizationUnit{{OrganizationUnitID: "people", Name: "People", Path: "/people", Status: identitymodel.IdentityStatusActive}},
+		[]identitymodel.IdentityUser{{UserID: "employee", Name: "Employee", Email: "employee@example.com", OrgID: "people", WorkerNo: "E-1", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive, Status: identitymodel.IdentityStatusActive}},
 		[]identitymodel.IdentityUserRoleAssignment{{UserID: "employee", RoleID: ""}},
 	)
 	if err == nil {
@@ -110,13 +110,13 @@ func TestApplyIdentityBootstrapAtomicallyPersistsUserRole(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := identityStore.UpsertIdentityRole(t.Context(), "workspace-primary", identitymodel.IdentityRole{ID: "operator", Key: "operator", Label: "Operator", Status: identitymodel.IdentityStatusActive}); err != nil {
+	if err := identityStore.UpsertIdentityRole(t.Context(), "workspace-primary", identitymodel.IdentityRole{RoleID: "operator", Key: "operator", Label: "Operator", Status: identitymodel.IdentityStatusActive}); err != nil {
 		t.Fatal(err)
 	}
 	err = identityStore.ApplyIdentityBootstrapAtomically(
 		t.Context(), "workspace-primary",
-		[]identitymodel.IdentityOrganizationUnit{{ID: "people", Name: "People", Path: "/people", Status: identitymodel.IdentityStatusActive}},
-		[]identitymodel.IdentityUser{{ID: "employee", Name: "Employee", Email: "employee@example.com", OrgID: "people", WorkerNo: "E-1", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive, Status: identitymodel.IdentityStatusActive}},
+		[]identitymodel.IdentityOrganizationUnit{{OrganizationUnitID: "people", Name: "People", Path: "/people", Status: identitymodel.IdentityStatusActive}},
+		[]identitymodel.IdentityUser{{UserID: "employee", Name: "Employee", Email: "employee@example.com", OrgID: "people", WorkerNo: "E-1", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive, Status: identitymodel.IdentityStatusActive}},
 		[]identitymodel.IdentityUserRoleAssignment{{UserID: "employee", RoleID: "operator"}},
 	)
 	if err != nil {

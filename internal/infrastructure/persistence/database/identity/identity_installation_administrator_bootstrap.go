@@ -23,7 +23,7 @@ const (
 )
 
 type InstallationAdministratorBootstrapReceipt struct {
-	ID                    string `json:"id"`
+	OperationID           string `json:"operation_id"`
 	WorkspaceID           string `json:"workspace_id"`
 	InvocationID          string `json:"invocation_id"`
 	RequestFingerprint    string `json:"request_fingerprint"`
@@ -37,7 +37,7 @@ type InstallationAdministratorBootstrapReceipt struct {
 }
 
 type installationAdministratorBootstrapReceiptJSON struct {
-	ID                    string `json:"id"`
+	OperationID           string `json:"operation_id"`
 	WorkspaceID           string `json:"workspace_id"`
 	InvocationID          string `json:"invocation_id"`
 	RequestFingerprint    string `json:"request_fingerprint"`
@@ -52,7 +52,7 @@ type installationAdministratorBootstrapReceiptJSON struct {
 
 func (value InstallationAdministratorBootstrapReceipt) MarshalJSON() ([]byte, error) {
 	return json.Marshal(installationAdministratorBootstrapReceiptJSON{
-		ID: value.ID, WorkspaceID: value.WorkspaceID, InvocationID: value.InvocationID, RequestFingerprint: value.RequestFingerprint,
+		OperationID: value.OperationID, WorkspaceID: value.WorkspaceID, InvocationID: value.InvocationID, RequestFingerprint: value.RequestFingerprint,
 		ContractVersion: value.ContractVersion, ContractHash: value.ContractHash, UserID: value.UserID, LoginID: value.LoginID,
 		CredentialClaimedAt: timeMillis(value.CredentialClaimedAt), CredentialDeliveredAt: timeMillis(value.CredentialDeliveredAt), CreatedAt: timeMillis(value.CreatedAt),
 	})
@@ -64,7 +64,7 @@ func (value *InstallationAdministratorBootstrapReceipt) UnmarshalJSON(raw []byte
 		return err
 	}
 	*value = InstallationAdministratorBootstrapReceipt{
-		ID: stored.ID, WorkspaceID: stored.WorkspaceID, InvocationID: stored.InvocationID, RequestFingerprint: stored.RequestFingerprint,
+		OperationID: stored.OperationID, WorkspaceID: stored.WorkspaceID, InvocationID: stored.InvocationID, RequestFingerprint: stored.RequestFingerprint,
 		ContractVersion: stored.ContractVersion, ContractHash: stored.ContractHash, UserID: stored.UserID, LoginID: stored.LoginID,
 		CredentialClaimedAt: timeString(stored.CredentialClaimedAt), CredentialDeliveredAt: timeString(stored.CredentialDeliveredAt), CreatedAt: timeString(stored.CreatedAt),
 	}
@@ -113,7 +113,7 @@ func (s *SQLIdentityStore) InstallationAdministratorBootstrapStateWithExecutor(c
 	}
 	roleID := WorkspaceRoleID(workspaceID, installationAdministratorRoleKey)
 	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.sqlRenderer(), "_identity_roles", workspaceID).
-		Columns("id").Where(query.And(query.Equal("id", roleID), query.Equal("role_key", installationAdministratorRoleKey), query.Equal("status", "active"))).Limit(1).Build()
+		Columns("role_id").Where(query.And(query.Equal("role_id", roleID), query.Equal("role_key", installationAdministratorRoleKey), query.Equal("status", "active"))).Limit(1).Build()
 	if err != nil {
 		return "", false, err
 	}
@@ -136,7 +136,7 @@ func (s *SQLIdentityStore) InstallationAdministratorBootstrapStateWithExecutor(c
 		return "", false, fmt.Errorf("installation Workspace must have exactly one active company")
 	}
 	statement, arguments, err = query.NewWorkspaceSelectBuilder(s.sqlRenderer(), "_identity_organization_units", workspaceID).
-		Columns("id").Where(companyPredicate).Limit(1).Build()
+		Columns("organization_unit_id").Where(companyPredicate).Limit(1).Build()
 	if err != nil {
 		return "", false, err
 	}
@@ -175,7 +175,7 @@ func (s *SQLIdentityStore) InsertInstallationAdministratorWithExecutor(ctx conte
 		return fmt.Errorf("create installation administrator: %w", err)
 	}
 	if err := s.writeIdentityUserRoleAssignment(ctx, execer, workspaceID, identitymodel.IdentityUserRoleAssignment{
-		UserID: user.ID, RoleID: WorkspaceRoleID(workspaceID, installationAdministratorRoleKey),
+		UserID: user.UserID, RoleID: WorkspaceRoleID(workspaceID, installationAdministratorRoleKey),
 		Source: "installation_administrator_bootstrap_v1", Status: "active",
 	}); err != nil {
 		return fmt.Errorf("assign installation administrator role: %w", err)
@@ -194,7 +194,7 @@ func (s *SQLIdentityStore) InsertInstallationAdministratorWithExecutor(ctx conte
 	metadataJSON, _ := json.Marshal(map[string]string{"contract_version": receipt.ContractVersion, "contract_hash": receipt.ContractHash})
 	relatedIDsJSON, _ := json.Marshal([]string{receipt.UserID})
 	if err := operationreceipt.InsertSucceeded(ctx, execer, s.sqlRenderer(), operationreceipt.Succeeded{
-		ID: receipt.ID, WorkspaceID: workspaceID, Owner: installationAdministratorOperationOwner, Kind: installationAdministratorOperationKind,
+		OperationID: receipt.OperationID, WorkspaceID: workspaceID, Owner: installationAdministratorOperationOwner, Kind: installationAdministratorOperationKind,
 		ActionKey: "identity.installation_administrator.bootstrap", ResourceType: "identity_user", ResourceID: receipt.UserID,
 		IdempotencyKey: installationAdministratorOperationIdempotencyKey, RequestFingerprint: receipt.RequestFingerprint,
 		RequestedBy: "identity.installation_administrator_bootstrap", Reason: "bootstrap installation administrator", Reference: receipt.InvocationID,
@@ -268,7 +268,7 @@ func decodeInstallationAdministratorBootstrapReceipt(operation operationreceipt.
 	if err := json.Unmarshal(operation.ResultJSON, &receipt); err != nil {
 		return InstallationAdministratorBootstrapReceipt{}, false, fmt.Errorf("decode installation administrator bootstrap operation: %w", err)
 	}
-	if receipt.ID != operation.ID || receipt.WorkspaceID != workspaceID || receipt.UserID != operation.ResourceID ||
+	if receipt.OperationID != operation.OperationID || receipt.WorkspaceID != workspaceID || receipt.UserID != operation.ResourceID ||
 		receipt.InvocationID != operation.Reference || receipt.RequestFingerprint != operation.RequestFingerprint || receipt.CreatedAt != operation.CreatedAt {
 		return InstallationAdministratorBootstrapReceipt{}, false, fmt.Errorf("identity shared installation administrator operation scope mismatch")
 	}

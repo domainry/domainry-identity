@@ -238,8 +238,8 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 	if !ok {
 		t.Fatal("remote subject lifecycle unavailable")
 	}
-	erase := identity.SubjectErasureRequest{WorkspaceID: "workspace-primary", SubjectID: session.User.ID, RequestID: "erase-http-admin"}
-	if _, err = ownerDB.ExecContext(t.Context(), `INSERT INTO _subject_requests(id,workspace_id,request_type,kind,status,subject_id,resolved_identity,updated_at,payload_json) VALUES(?,?,'subject_request','erase','executing',?,?,?,'{}')`, erase.RequestID, erase.WorkspaceID, erase.SubjectID, erase.SubjectID, time.Now().UTC().UnixMilli()); err != nil {
+	erase := identity.SubjectErasureRequest{WorkspaceID: "workspace-primary", SubjectID: session.User.UserID, RequestID: "erase-http-admin"}
+	if _, err = ownerDB.ExecContext(t.Context(), `INSERT INTO _subject_requests(request_id,workspace_id,request_type,kind,status,subject_id,resolved_identity,updated_at,payload_json) VALUES(?,?,'subject_request','erase','executing',?,?,?,'{}')`, erase.RequestID, erase.WorkspaceID, erase.SubjectID, erase.SubjectID, time.Now().UTC().UnixMilli()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = ownerDB.ExecContext(t.Context(), `INSERT INTO _subject_steps(workspace_id,request_id,owner,operation,payload_json,completed_at) VALUES(?,?,'lifecycle','erase_fence','{}',?)`, erase.WorkspaceID, erase.RequestID, time.Now().UTC().UnixMilli()); err != nil {

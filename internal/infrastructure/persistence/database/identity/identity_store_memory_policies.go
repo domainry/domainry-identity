@@ -18,13 +18,13 @@ func (s *MemoryIdentityStore) RemoveIdentityMenusAtomically(_ context.Context, w
 	defer s.mu.Unlock()
 	removed := map[string]bool{}
 	for _, menu := range menus {
-		if _, ok := s.menus[prefix+menu.ID]; !ok {
-			return fmt.Errorf("menu not found: %s", menu.ID)
+		if _, ok := s.menus[prefix+menu.MenuID]; !ok {
+			return fmt.Errorf("menu not found: %s", menu.MenuID)
 		}
-		removed[menu.ID], removed[menu.Key] = true, true
+		removed[menu.MenuID], removed[menu.Key] = true, true
 	}
 	for _, menu := range menus {
-		delete(s.menus, prefix+menu.ID)
+		delete(s.menus, prefix+menu.MenuID)
 	}
 	for roleID, menuIDs := range s.roleMenus {
 		if !strings.HasPrefix(roleID, prefix) {
@@ -65,15 +65,15 @@ func (s *MemoryIdentityStore) ListIdentityMenus(ctx context.Context, workspaceID
 }
 
 func (s *MemoryIdentityStore) UpsertIdentityMenu(ctx context.Context, workspaceID string, menu identitymodel.IdentityMenu) error {
-	key, err := identityWorkspaceKey(workspaceID, menu.ID)
+	key, err := identityWorkspaceKey(workspaceID, menu.MenuID)
 	if err != nil {
 		return err
 	}
-	if menu.ID == "" {
+	if menu.MenuID == "" {
 		return fmt.Errorf("menu id is required")
 	}
 	if menu.Key == "" {
-		menu.Key = menu.ID
+		menu.Key = menu.MenuID
 	}
 	if menu.Status == "" {
 		menu.Status = identitymodel.IdentityStatusActive
@@ -103,7 +103,7 @@ func (s *MemoryIdentityStore) RemoveIdentityMenu(ctx context.Context, workspaceI
 		}
 		filtered := make([]string, 0, len(menuIDs))
 		for _, assigned := range menuIDs {
-			if assigned != menu.ID && assigned != menu.Key {
+			if assigned != menu.MenuID && assigned != menu.Key {
 				filtered = append(filtered, assigned)
 			}
 		}

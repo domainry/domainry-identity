@@ -58,7 +58,7 @@ func TestPrincipalRecoveryMatchesBearerAndRestrictsExplicitRole(t *testing.T) {
 	var onboardingID string
 	for _, role := range roles {
 		if role.Key == "member_onboarding" {
-			onboardingID = role.ID
+			onboardingID = role.RoleID
 		}
 	}
 	if onboardingID == "" {
@@ -69,7 +69,7 @@ func TestPrincipalRecoveryMatchesBearerAndRestrictsExplicitRole(t *testing.T) {
 		t.Fatal(err)
 	}
 	statement, arguments, err := query.NewWorkspaceInsertBuilder(renderer, "_identity_user_role_assignments", request.WorkspaceID).
-		Columns("id", "user_id", "role_id", "source", "status", "created_at", "updated_at").Values("onboarding-assignment", request.InitialAdminUserID, onboardingID, "manual", "active", time.Now().UTC().UnixMilli(), time.Now().UTC().UnixMilli()).Build()
+		Columns("user_id", "role_id", "source", "status", "created_at", "updated_at").Values(request.InitialAdminUserID, onboardingID, "manual", "active", time.Now().UTC().UnixMilli(), time.Now().UTC().UnixMilli()).Build()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +121,7 @@ func TestPrincipalRecoveryMatchesBearerAndRestrictsExplicitRole(t *testing.T) {
 	if _, err := binding.Principals().Resolve(ctx, identitysdk.PrincipalResolutionRequest{SubjectID: identitysdk.SubjectID(request.InitialAdminUserID), RoleKey: "member", SessionRoleKey: "member"}); err == nil {
 		t.Fatal("ambiguous role selection accepted")
 	}
-	statement, arguments, err = query.NewWorkspaceUpdateBuilder(renderer, "_identity_user_role_assignments", request.WorkspaceID).Set("status", "revoked").Where(query.Equal("id", "onboarding-assignment")).Build()
+	statement, arguments, err = query.NewWorkspaceUpdateBuilder(renderer, "_identity_user_role_assignments", request.WorkspaceID).Set("status", "revoked").Where(query.And(query.Equal("user_id", request.InitialAdminUserID), query.Equal("role_id", onboardingID))).Build()
 	if err != nil {
 		t.Fatal(err)
 	}

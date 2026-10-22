@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/domainry/domainry-foundation/apperror"
+	"github.com/domainry/domainry-foundation/entityid"
 	"github.com/domainry/domainry-foundation/idempotency"
 	authapplication "github.com/domainry/domainry-identity/internal/application/auth"
 	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
@@ -125,9 +126,9 @@ func (r *authPasswordRepository) RevokeAuthRefreshToken(_ context.Context, _ str
 		return r.refreshErr
 	}
 	for index := range r.refreshes {
-		if r.refreshes[index].ID == tokenID {
+		if r.refreshes[index].TokenHash == tokenID {
 			r.refreshes[index].RevokedAt = revokedAt
-			r.refreshes[index].ReplacedByID = replacedByID
+			r.refreshes[index].ReplacedByHash = replacedByID
 		}
 	}
 	return nil
@@ -138,11 +139,11 @@ func (r *authPasswordRepository) RotateAuthRefreshToken(_ context.Context, _ str
 		return false, r.refreshErr
 	}
 	for index := range r.refreshes {
-		if r.refreshes[index].ID != tokenID || r.refreshes[index].RevokedAt != "" {
+		if r.refreshes[index].TokenHash != tokenID || r.refreshes[index].RevokedAt != "" {
 			continue
 		}
 		r.refreshes[index].RevokedAt = revokedAt
-		r.refreshes[index].ReplacedByID = replacement.ID
+		r.refreshes[index].ReplacedByHash = replacement.TokenHash
 		r.refreshes = append(r.refreshes, replacement)
 		return true, nil
 	}
@@ -260,7 +261,7 @@ func (r *authPasswordRepository) CompleteAuthMutation(_ context.Context, _ strin
 
 func (r *authExternalIdentityRepository) UpsertIdentityUser(_ context.Context, _ string, user identitymodel.IdentityUser) error {
 	for index := range r.users {
-		if r.users[index].ID == user.ID {
+		if r.users[index].UserID == user.UserID {
 			r.users[index] = user
 			return nil
 		}
@@ -279,7 +280,7 @@ func (r *authExternalIdentityRepository) UpsertIdentityUsersAtomically(ctx conte
 }
 
 func (*authExternalIdentityRepository) ListIdentityOrganizationUnits(context.Context, string) ([]identitymodel.IdentityOrganizationUnit, error) {
-	return []identitymodel.IdentityOrganizationUnit{{ID: "company", Name: "Company", Status: identitymodel.IdentityStatusActive}}, nil
+	return []identitymodel.IdentityOrganizationUnit{{OrganizationUnitID: "company", Name: "Company", Status: identitymodel.IdentityStatusActive}}, nil
 }
 
 func (r *authExternalIdentityRepository) AssignIdentityUserRole(_ context.Context, _ string, assignment identitymodel.IdentityUserRoleAssignment) error {
@@ -290,10 +291,10 @@ func (r *authExternalIdentityRepository) AssignIdentityUserRole(_ context.Contex
 func newAuthPasswordHandler(t *testing.T) (*AuthHandler, *authExternalIdentityRepository, *authPasswordRepository, *authExternalHandlerCapture, *identitymodel.Principal) {
 	t.Helper()
 	identityRepository := &authExternalIdentityRepository{
-		users: []identitymodel.IdentityUser{{ID: "user-1", Name: "User One", Email: "user@example.com", Status: identitymodel.IdentityStatusActive}},
+		users: []identitymodel.IdentityUser{{UserID: "user-1", Name: "User One", Email: "user@example.com", Status: identitymodel.IdentityStatusActive}},
 		roles: []identitymodel.IdentityRole{
-			{ID: "role-viewer", Key: "viewer", Label: "Viewer", Status: identitymodel.IdentityStatusActive},
-			{ID: "role-customer", Key: "customer", Label: "Customer", Status: identitymodel.IdentityStatusActive},
+			{RoleID: "role-viewer", Key: "viewer", Label: "Viewer", Status: identitymodel.IdentityStatusActive},
+			{RoleID: "role-customer", Key: "customer", Label: "Customer", Status: identitymodel.IdentityStatusActive},
 		},
 		assignments: []identitymodel.IdentityUserRoleAssignment{{UserID: "user-1", RoleID: "role-viewer"}},
 	}
@@ -376,7 +377,7 @@ func TestPasswordSessionHandlersLoginGuestRefreshAndLogout(t *testing.T) {
 	loginResponse := httptest.NewRecorder()
 	handler.authLogin(loginResponse, surfaceRequest("/auth/login", `{"workspace_id":" workspace-a ","email":" user@example.com ","password":"Password1!"}`, "admin_console"))
 	var loginSession authmodel.AuthSession
-	if loginResponse.Code != http.StatusOK || json.Unmarshal(loginResponse.Body.Bytes(), &loginSession) != nil || loginSession.User.ID != "user-1" || loginSession.RefreshToken == "" || !loginSession.MustChangePassword ||
+	if loginResponse.Code != http.StatusOK || json.Unmarshal(loginResponse.Body.Bytes(), &loginSession) != nil || loginSession.User.UserID != "user-1" || loginSession.RefreshToken == "" || !loginSession.MustChangePassword ||
 		!slices.Contains(loginSession.Permissions, "records.read") ||
 		repository.loginUserID != "user-1" {
 		t.Fatalf("login status=%d session=%#v loginUser=%q body=%s", loginResponse.Code, loginSession, repository.loginUserID, loginResponse.Body.String())
@@ -390,7 +391,7 @@ func TestPasswordSessionHandlersLoginGuestRefreshAndLogout(t *testing.T) {
 	var refreshed authmodel.AuthSession
 	if refreshResponse.Code != http.StatusOK || json.Unmarshal(refreshResponse.Body.Bytes(), &refreshed) != nil || refreshed.RefreshToken == "" || refreshed.RefreshToken == loginSession.RefreshToken || !refreshed.MustChangePassword ||
 		!slices.Contains(refreshed.Permissions, "records.read") ||
-		repository.refreshes[0].RevokedAt == "" || repository.refreshes[0].ReplacedByID == "" {
+		repository.refreshes[0].RevokedAt == "" || repository.refreshes[0].ReplacedByHash == "" {
 		t.Fatalf("refresh status=%d session=%#v refreshes=%#v body=%s", refreshResponse.Code, refreshed, repository.refreshes, refreshResponse.Body.String())
 	}
 	if cookies := refreshResponse.Header().Values("Set-Cookie"); len(cookies) != 0 {
@@ -405,7 +406,8 @@ func TestPasswordSessionHandlersLoginGuestRefreshAndLogout(t *testing.T) {
 
 	guestResponse := httptest.NewRecorder()
 	handler.authGuest(guestResponse, surfaceRequest("/auth/guest", `{"workspace_id":"workspace-a"}`, "consumer_portal"))
-	if guestResponse.Code != http.StatusOK || !strings.Contains(guestResponse.Body.String(), `"id":"guest_customer"`) || identities.users[len(identities.users)-1].ID != "guest_customer" || identities.assignments[len(identities.assignments)-1].RoleID != "role-customer" {
+	guestUserID := identities.users[len(identities.users)-1].UserID
+	if guestResponse.Code != http.StatusOK || entityid.Validate("user", guestUserID) != nil || !strings.Contains(guestResponse.Body.String(), `"user_id":"`+guestUserID+`"`) || identities.assignments[len(identities.assignments)-1].RoleID != "role-customer" {
 		t.Fatalf("guest status=%d users=%#v assignments=%#v body=%s", guestResponse.Code, identities.users, identities.assignments, guestResponse.Body.String())
 	}
 }
@@ -502,7 +504,7 @@ func TestPasswordLoginAcceptsMissingAndUnknownSurfaceContext(t *testing.T) {
 func TestPasswordSessionRevocationEdges(t *testing.T) {
 	handler, _, _, _, _ := newAuthPasswordHandler(t)
 	request := func() *http.Request { return httptest.NewRequest(http.MethodPost, "/auth/login", nil) }
-	session := authmodel.AuthSession{WorkspaceID: "workspace-a", User: authmodel.AuthUser{ID: "user-1"}, RefreshToken: "refresh"}
+	session := authmodel.AuthSession{WorkspaceID: "workspace-a", User: authmodel.AuthUser{UserID: "user-1"}, RefreshToken: "refresh"}
 	handler.revokeSession(request(), session)
 	externalOnly := *handler
 	externalOnly.passwords = nil

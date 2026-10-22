@@ -10,12 +10,12 @@ import (
 func TestManualServiceRoleRequiresActiveServiceAccount(t *testing.T) {
 	repository, domain := identityRolesFixture()
 	repository.roles = append(repository.roles, identitymodel.IdentityRole{
-		ID: "open-api-id", Key: "open_api_service", Label: "Open API", Status: identitymodel.IdentityStatusActive,
+		RoleID: "open-api-id", Key: "open_api_service", Label: "Open API", Status: identitymodel.IdentityStatusActive,
 	})
 	repository.users = append(repository.users,
-		identitymodel.IdentityUser{ID: "service-1", AccountType: identitymodel.IdentityAccountService, Status: identitymodel.IdentityStatusActive},
-		identitymodel.IdentityUser{ID: "human-1", AccountType: identitymodel.IdentityAccountHuman, Status: identitymodel.IdentityStatusActive},
-		identitymodel.IdentityUser{ID: "disabled-service", AccountType: identitymodel.IdentityAccountService, Status: identitymodel.IdentityStatusDisabled},
+		identitymodel.IdentityUser{UserID: "service-1", AccountType: identitymodel.IdentityAccountService, Status: identitymodel.IdentityStatusActive},
+		identitymodel.IdentityUser{UserID: "human-1", AccountType: identitymodel.IdentityAccountHuman, Status: identitymodel.IdentityStatusActive},
+		identitymodel.IdentityUser{UserID: "disabled-service", AccountType: identitymodel.IdentityAccountService, Status: identitymodel.IdentityStatusDisabled},
 	)
 	domain.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{
 		Key: "open_api_service", Name: "Open API", Audience: identitymodel.IdentityRoleAudienceService,

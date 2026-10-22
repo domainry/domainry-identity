@@ -15,7 +15,7 @@ import (
 
 const InsertBatchSize = 40
 
-var columns = []string{"id", "workspace_id", "user_id", "role_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason", "expires_at", "created_at", "updated_at"}
+var columns = []string{"workspace_id", "user_id", "role_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason", "expires_at", "created_at", "updated_at"}
 
 type Backend interface {
 	DB() *sql.DB
@@ -83,12 +83,12 @@ func (s Store) UpsertWithExecutorWithinDataScope(ctx context.Context, execer Exe
 	if err != nil {
 		return false, err
 	}
-	predicates := []query.Predicate{query.Equal("id", assignment.UserID)}
+	predicates := []query.Predicate{query.Equal("user_id", assignment.UserID)}
 	if !scope.Unrestricted {
-		predicates = append(predicates, identitydatascope.UserPredicate(scope, query.Column("id"), query.Column("org_id")))
+		predicates = append(predicates, identitydatascope.UserPredicate(scope, query.Column("user_id"), query.Column("org_id")))
 	}
 	candidate, candidateArguments, err := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_users", workspaceID).
-		Columns("id").Where(query.And(predicates...)).Build()
+		Columns("user_id").Where(query.And(predicates...)).Build()
 	if err != nil {
 		return false, fmt.Errorf("build scoped identity user-role assignment candidate: %w", err)
 	}
@@ -106,7 +106,7 @@ func (s Store) UpsertWithExecutorWithinDataScope(ctx context.Context, execer Exe
 	source := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_users", workspaceID).
 		Projections(projections...).Where(query.And(predicates...)).Limit(1)
 	insert := query.NewInsertBuilder(s.backend.SQLRenderer(), "_identity_user_role_assignments").Columns(columns...).FromSelect(source)
-	s.backend.ApplyUpsert(insert, []string{"workspace_id", "id"}, columns[2:]...)
+	s.backend.ApplyUpsert(insert, []string{"workspace_id", "user_id", "role_id"}, columns[3:]...)
 	statement, arguments, err := insert.Build()
 	if err != nil {
 		return false, fmt.Errorf("build scoped identity user-role assignment upsert: %w", err)
@@ -155,14 +155,14 @@ func (s Store) UpsertBatch(ctx context.Context, execer Execer, workspaceID strin
 }
 
 func (s Store) write(ctx context.Context, execer Execer, workspaceID string, assignments []identitymodel.IdentityUserRoleAssignment) error {
-	insertColumns := append([]string{columns[0]}, columns[2:]...)
+	insertColumns := columns[1:]
 	insert := query.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_user_role_assignments", workspaceID).Columns(insertColumns...)
 	now := s.now()
 	for _, assignment := range assignments {
 		allValues := values(workspaceID, assignment, now)
-		insert.Values(append([]any{allValues[0]}, allValues[2:]...)...)
+		insert.Values(allValues[1:]...)
 	}
-	s.backend.ApplyUpsert(insert, []string{"workspace_id", "id"}, insertColumns[1:]...)
+	s.backend.ApplyUpsert(insert, []string{"workspace_id", "user_id", "role_id"}, insertColumns[2:]...)
 	statement, arguments, err := insert.Build()
 	if err != nil {
 		return fmt.Errorf("build identity user-role assignment upsert: %w", err)
@@ -194,7 +194,7 @@ func values(workspaceID string, assignment identitymodel.IdentityUserRoleAssignm
 	if createdAt == "" {
 		createdAt = now
 	}
-	return []any{identifier("identity_user_role", workspaceID, assignment.UserID, assignment.RoleID), workspaceID, assignment.UserID, assignment.RoleID,
+	return []any{workspaceID, assignment.UserID, assignment.RoleID,
 		nullIfBlank(assignment.BindingKey), nullIfBlank(assignment.ProfileID), assignment.Source, assignment.Status,
 		timevalue.Millis(assignment.ValidFrom), timevalue.Millis(assignment.ValidUntil), nullIfBlank(assignment.GrantedBy), nullIfBlank(assignment.GrantReason),
 		nullIfBlank(assignment.RevokedBy), timevalue.Millis(assignment.RevokedAt), nullIfBlank(assignment.RevokeReason), timevalue.Millis(nullableString(assignment.ExpiresAt)), timevalue.Millis(createdAt), timevalue.Millis(now)}
@@ -206,11 +206,6 @@ func workspaceIdentifier(value string) (string, error) {
 		return "", err
 	}
 	return workspace.String(), nil
-}
-
-func identifier(parts ...string) string {
-	value := strings.Join(parts, "_")
-	return strings.NewReplacer(".", "_", ":", "_", "/", "_").Replace(value)
 }
 
 func nullIfBlank(value string) any {

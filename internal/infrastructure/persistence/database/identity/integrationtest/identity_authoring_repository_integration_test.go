@@ -30,7 +30,7 @@ func TestIdentityAuthoringRepositoryUsesSharedLeasedOperations(t *testing.T) {
 	repository := identitypersistence.NewIdentityAuthoringRepository(store)
 	now := time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC)
 	candidate := identityauthoring.Receipt{
-		ID: "authoring-1", WorkspaceID: "workspace-primary", UseCase: "identity.roles.update",
+		OperationID: "authoring-1", WorkspaceID: "workspace-primary", UseCase: "identity.roles.update",
 		ResourceType: "identity_role", TargetID: "role-1", ActorID: "admin-1",
 		IdempotencyKey: "authoring-key", RequestFingerprint: "fingerprint-1", Status: idempotency.StatusProcessing,
 		LeaseOwner: "worker-1", LeaseExpiresAt: now.Add(time.Second), FencingToken: 1, CreatedAt: now, UpdatedAt: now,
@@ -61,13 +61,13 @@ func TestIdentityAuthoringRepositoryUsesSharedLeasedOperations(t *testing.T) {
 		t.Fatalf("reclaimed=%#v err=%v", reclaimed, err)
 	}
 	if _, err := repository.Complete(t.Context(), identityauthoring.Completion{
-		ReceiptID: candidate.ID, WorkspaceID: candidate.WorkspaceID, LeaseOwner: candidate.LeaseOwner,
+		OperationID: candidate.OperationID, WorkspaceID: candidate.WorkspaceID, LeaseOwner: candidate.LeaseOwner,
 		FencingToken: candidate.FencingToken, Status: idempotency.StatusSucceeded, Result: []byte(`{"ok":true}`), CompletedAt: now.Add(3 * time.Second),
 	}); !errors.Is(err, identityauthoring.ErrLeaseLost) {
 		t.Fatalf("stale authoring completion error=%v", err)
 	}
 	completed, err := repository.Complete(t.Context(), identityauthoring.Completion{
-		ReceiptID: reclaimed.Receipt.ID, WorkspaceID: reclaimed.Receipt.WorkspaceID, LeaseOwner: reclaimed.Receipt.LeaseOwner,
+		OperationID: reclaimed.Receipt.OperationID, WorkspaceID: reclaimed.Receipt.WorkspaceID, LeaseOwner: reclaimed.Receipt.LeaseOwner,
 		FencingToken: reclaimed.Receipt.FencingToken, Status: idempotency.StatusSucceeded, Result: []byte(`{"ok":true}`), CompletedAt: now.Add(3 * time.Second),
 	})
 	if err != nil || completed.Status != idempotency.StatusSucceeded {

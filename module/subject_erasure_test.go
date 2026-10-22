@@ -82,7 +82,7 @@ func TestSubjectErasureThroughModuleRevokesSessionsAndPreservesReceipt(t *testin
 		t.Fatalf("unbound shared Lifecycle persistence error=%v", err)
 	}
 	bindSharedSubjectLifecycle(t, binding)
-	if _, err = db.ExecContext(ctx, `INSERT INTO _subject_requests(id,workspace_id,request_type,kind,status,subject_id,resolved_identity,updated_at,payload_json) VALUES(?,?,'subject_request','erase','executing',?,?,?,'{}')`, erase.RequestID, erase.WorkspaceID, erase.SubjectID, erase.SubjectID, time.Now().UTC().UnixMilli()); err != nil {
+	if _, err = db.ExecContext(ctx, `INSERT INTO _subject_requests(request_id,workspace_id,request_type,kind,status,subject_id,resolved_identity,updated_at,payload_json) VALUES(?,?,'subject_request','erase','executing',?,?,?,'{}')`, erase.RequestID, erase.WorkspaceID, erase.SubjectID, erase.SubjectID, time.Now().UTC().UnixMilli()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = db.ExecContext(ctx, `INSERT INTO _subject_steps(workspace_id,request_id,owner,operation,payload_json,completed_at) VALUES(?,?,'lifecycle','erase_fence','{}',?)`, erase.WorkspaceID, erase.RequestID, time.Now().UTC().UnixMilli()); err != nil {
@@ -138,7 +138,7 @@ func TestSubjectErasureThroughModuleRevokesSessionsAndPreservesReceipt(t *testin
 		t.Fatalf("legacy Identity erasure receipt table count %d: %v", count, err)
 	}
 	var version int64
-	if err = db.QueryRowContext(ctx, `SELECT version FROM _identity_users WHERE workspace_id=? AND id=?`, erase.WorkspaceID, erase.SubjectID).Scan(&version); err != nil {
+	if err = db.QueryRowContext(ctx, `SELECT version FROM _identity_users WHERE workspace_id=? AND user_id=?`, erase.WorkspaceID, erase.SubjectID).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
 	next := erase
@@ -147,7 +147,7 @@ func TestSubjectErasureThroughModuleRevokesSessionsAndPreservesReceipt(t *testin
 		t.Fatal("second erasure request bypassed the shared Lifecycle fence")
 	}
 	var nextVersion int64
-	if err = db.QueryRowContext(ctx, `SELECT version FROM _identity_users WHERE workspace_id=? AND id=?`, erase.WorkspaceID, erase.SubjectID).Scan(&nextVersion); err != nil || nextVersion != version {
+	if err = db.QueryRowContext(ctx, `SELECT version FROM _identity_users WHERE workspace_id=? AND user_id=?`, erase.WorkspaceID, erase.SubjectID).Scan(&nextVersion); err != nil || nextVersion != version {
 		t.Fatalf("tombstone changed on retry: %d %d %v", version, nextVersion, err)
 	}
 }

@@ -2,42 +2,35 @@ package auth
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"time"
 
 	"github.com/domainry/domainry-foundation/apperror"
+	"github.com/domainry/domainry-foundation/entityid"
 	authmodel "github.com/domainry/domainry-identity/internal/domain/auth/model"
 	authpolicy "github.com/domainry/domainry-identity/internal/domain/auth/policy"
 	"github.com/domainry/domainry-orm/query"
 )
-
-func totpFactorID(workspaceID, userID string) string {
-	digest := sha256.Sum256([]byte(workspaceID + "\x00" + userID))
-	return "totp_" + hex.EncodeToString(digest[:20])
-}
 
 func (s AuthStore) TOTPFactorState(ctx context.Context, workspaceID, userID string) (authmodel.TOTPFactorState, error) {
 	workspaceID, err := authWorkspaceID(workspaceID)
 	if err != nil {
 		return authmodel.TOTPFactorState{}, err
 	}
-	id := totpFactorID(workspaceID, userID)
 	statement, args, err := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_mfa_factors", workspaceID).
-		Columns("totp_secret", "provider_ref").Where(query.And(query.Equal("id", id), query.Equal("user_id", userID), query.Equal("provider", authmodel.TOTPProvider), query.Equal("status", "active"), query.NotEqual("verified_at", int64(0)))).Build()
+		Columns("mfa_factor_id", "totp_secret", "provider_ref").Where(query.And(query.Equal("user_id", userID), query.Equal("factor_type", "totp"), query.Equal("provider", authmodel.TOTPProvider), query.Equal("status", "active"), query.NotEqual("verified_at", int64(0)))).Build()
 	if err != nil {
 		return authmodel.TOTPFactorState{}, err
 	}
-	var envelope, generation string
-	if err := s.db.QueryRowContext(ctx, statement, args...).Scan(&envelope, &generation); err != nil {
+	var factorID, envelope, generation string
+	if err := s.db.QueryRowContext(ctx, statement, args...).Scan(&factorID, &envelope, &generation); err != nil {
 		if err == sql.ErrNoRows {
 			return authmodel.TOTPFactorState{}, nil
 		}
 		return authmodel.TOTPFactorState{}, err
 	}
-	plain, err := s.totpSecrets.Decrypt(ctx, workspaceID, id, envelope)
+	plain, err := s.totpSecrets.Decrypt(ctx, workspaceID, factorID, envelope)
 	if err != nil {
 		return authmodel.TOTPFactorState{}, err
 	}
@@ -53,12 +46,11 @@ func (s AuthStore) CreateTOTPEnrollment(ctx context.Context, challenge authmodel
 	if err != nil {
 		return err
 	}
-	id := totpFactorID(ws, challenge.UserID)
-	plain, err := json.Marshal(secret)
+	candidateID, err := entityid.New("mfa")
 	if err != nil {
 		return err
 	}
-	envelope, err := s.totpSecrets.Encrypt(ctx, ws, id, plain)
+	plain, err := json.Marshal(secret)
 	if err != nil {
 		return err
 	}
@@ -70,18 +62,32 @@ func (s AuthStore) CreateTOTPEnrollment(ctx context.Context, challenge authmodel
 	// A single stable row per user prevents concurrent enrollments from creating
 	// two active factors. Replacement of an active binding requires revocation.
 	insert, args, err := query.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_mfa_factors", ws).
-		Columns("id", "user_id", "factor_type", "label", "provider", "status", "created_at", "updated_at").
-		Values(id, challenge.UserID, "totp", "验证码应用", authmodel.TOTPProvider, "pending", now, now).OnConflictDoNothing("workspace_id", "id").Build()
+		Columns("mfa_factor_id", "user_id", "factor_type", "label", "provider", "status", "created_at", "updated_at").
+		Values(candidateID, challenge.UserID, "totp", "验证码应用", authmodel.TOTPProvider, "pending", now, now).
+		OnConflictDoNothing("workspace_id", "user_id", "factor_type", "provider").Build()
 	if err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, insert, args...); err != nil {
 		return err
 	}
+	lookup, lookupArgs, err := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_mfa_factors", ws).
+		Columns("mfa_factor_id").Where(query.And(query.Equal("user_id", challenge.UserID), query.Equal("factor_type", "totp"), query.Equal("provider", authmodel.TOTPProvider))).Limit(1).Build()
+	if err != nil {
+		return err
+	}
+	var factorID string
+	if err := tx.QueryRowContext(ctx, lookup, lookupArgs...).Scan(&factorID); err != nil {
+		return err
+	}
+	envelope, err := s.totpSecrets.Encrypt(ctx, ws, factorID, plain)
+	if err != nil {
+		return err
+	}
 	update, args, err := query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_mfa_factors", ws).
 		Set("totp_secret", envelope).Set("provider_ref", challenge.RequestID).Set("status", "pending").Set("verified_at", int64(0)).
 		Set("totp_step", -1).Set("updated_at", now).
-		Where(query.And(query.Equal("id", id), query.Equal("user_id", challenge.UserID), query.NotEqual("status", "active"))).Build()
+		Where(query.And(query.Equal("mfa_factor_id", factorID), query.Equal("user_id", challenge.UserID), query.NotEqual("status", "active"))).Build()
 	if err != nil {
 		return err
 	}
@@ -109,22 +115,21 @@ func (s AuthStore) verifyTOTPFactor(ctx context.Context, tx *sql.Tx, challenge a
 	if userID == "" || challenge.RequestID == "" {
 		return false, nil
 	}
-	id := totpFactorID(ws, userID)
 	status := "active"
 	if challenge.Purpose == authmodel.TOTPEnrollmentPurpose {
 		status = "pending"
 	}
-	predicate := query.And(query.Equal("id", id), query.Equal("user_id", userID), query.Equal("provider", authmodel.TOTPProvider), query.Equal("status", status), query.Equal("provider_ref", challenge.RequestID))
+	predicate := query.And(query.Equal("user_id", userID), query.Equal("factor_type", "totp"), query.Equal("provider", authmodel.TOTPProvider), query.Equal("status", status), query.Equal("provider_ref", challenge.RequestID))
 	statement, args, err := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_mfa_factors", ws).
-		Columns("totp_secret", "totp_step", "totp_failures", "totp_locked_until").Where(predicate).Build()
+		Columns("mfa_factor_id", "totp_secret", "totp_step", "totp_failures", "totp_locked_until").Where(predicate).Build()
 	if err != nil {
 		return false, err
 	}
-	var envelope string
+	var factorID, envelope string
 	var step int64
 	var failures int
 	var lockedUntil int64
-	if err := tx.QueryRowContext(ctx, statement, args...).Scan(&envelope, &step, &failures, &lockedUntil); err != nil {
+	if err := tx.QueryRowContext(ctx, statement, args...).Scan(&factorID, &envelope, &step, &failures, &lockedUntil); err != nil {
 		if err == sql.ErrNoRows {
 			return false, nil
 		}
@@ -135,7 +140,7 @@ func (s AuthStore) verifyTOTPFactor(ctx context.Context, tx *sql.Tx, challenge a
 			return false, nil
 		}
 	}
-	plain, err := s.totpSecrets.Decrypt(ctx, ws, id, envelope)
+	plain, err := s.totpSecrets.Decrypt(ctx, ws, factorID, envelope)
 	if err != nil {
 		return false, err
 	}

@@ -44,7 +44,7 @@ func TestGeneratedIdentityAdminSeedKeepsGovernanceAuditMenuAssigned(t *testing.T
 	assignmentFound := false
 	adminAssignments := 0
 	for _, menu := range seed.Menus {
-		menuFound = menuFound || menu.ID == "system_audit" && menu.Route == "/admin/system/audit"
+		menuFound = menuFound || menu.MenuID == "system_audit" && menu.Route == "/admin/system/audit"
 	}
 	for _, assignment := range seed.RoleMenus {
 		assignmentFound = assignmentFound || assignment.RoleID == "admin" && assignment.MenuID == "system_audit"

@@ -59,9 +59,9 @@ func (r *accessReviewFaultRepository) CreateIdentityAccessReview(ctx context.Con
 	return r.identityScopedRepository.CreateIdentityAccessReview(ctx, review)
 }
 
-func (r *accessReviewFaultRepository) CreateIdentityAccessReviewWithinDataScope(ctx context.Context, review identitymodel.IdentityAccessReview, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
+func (r *accessReviewFaultRepository) CreateIdentityAccessReviewWithinDataScope(ctx context.Context, review identitymodel.IdentityAccessReview, scope identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityAccessReview, bool, error) {
 	if r.createErr != nil {
-		return false, r.createErr
+		return identitymodel.IdentityAccessReview{}, false, r.createErr
 	}
 	return r.identityScopedRepository.CreateIdentityAccessReviewWithinDataScope(ctx, review, scope)
 }
@@ -130,10 +130,10 @@ func (r *accessReviewFaultRepository) ApplyIdentityAccessReviewDecisionWithinDat
 
 func TestAccessReviewCreatesPrioritizedPeriodicQueueAndAuditsDecisionsOnce(t *testing.T) {
 	repository := &identityScopedRepository{
-		users: []identitymodel.IdentityUser{{ID: "user-1", Status: identitymodel.IdentityStatusActive}, {ID: "admin-1", Status: identitymodel.IdentityStatusActive}},
+		users: []identitymodel.IdentityUser{{UserID: "user-1", Status: identitymodel.IdentityStatusActive}, {UserID: "admin-1", Status: identitymodel.IdentityStatusActive}},
 		roles: []identitymodel.IdentityRole{
-			{ID: "role-admin", Key: "admin", Status: identitymodel.IdentityStatusActive},
-			{ID: "role-reader", Key: "reader", Status: identitymodel.IdentityStatusActive},
+			{RoleID: "role-admin", Key: "admin", Status: identitymodel.IdentityStatusActive},
+			{RoleID: "role-reader", Key: "reader", Status: identitymodel.IdentityStatusActive},
 		},
 		assignments: []identitymodel.IdentityUserRoleAssignment{
 			{UserID: "user-1", RoleID: "role-reader", Status: "active", CreatedAt: "2025-01-01T00:00:00Z"},
@@ -168,7 +168,7 @@ func TestAccessReviewCreatesPrioritizedPeriodicQueueAndAuditsDecisionsOnce(t *te
 		Role: identitymodel.RoleSchema{Permissions: identityAccessReviewTestPermissions(), GrantableRoleKeys: []string{"*"}},
 	})
 	review, err := service.CreateReview(t.Context(), identitymodel.IdentityAccessReviewCreateRequest{
-		ID: "quarter-2", PeriodStart: "2026-04-01T00:00:00Z", PeriodEnd: "2026-06-30T00:00:00Z", DueAt: "2026-07-31T00:00:00Z",
+		PeriodStart: "2026-04-01T00:00:00Z", PeriodEnd: "2026-06-30T00:00:00Z", DueAt: "2026-07-31T00:00:00Z",
 	}, actor)
 	if err != nil {
 		t.Fatal(err)
@@ -205,11 +205,11 @@ func TestAccessReviewCreatesPrioritizedPeriodicQueueAndAuditsDecisionsOnce(t *te
 	request := identitymodel.IdentityAccessReviewDecisionRequest{
 		Decision: identitymodel.IdentityAccessReviewKeep, Reason: "still required", ExpectedVersion: 1, IdempotencyKey: "keep-reader",
 	}
-	receipt, err := service.Decide(t.Context(), readerItem.ID, request, actor)
+	receipt, err := service.Decide(t.Context(), readerItem.ReviewItemID, request, actor)
 	if err != nil || receipt.Replayed || receipt.Item.Decision != identitymodel.IdentityAccessReviewKeep {
 		t.Fatalf("receipt=%#v err=%v", receipt, err)
 	}
-	replay, err := service.Decide(t.Context(), readerItem.ID, request, actor)
+	replay, err := service.Decide(t.Context(), readerItem.ReviewItemID, request, actor)
 	if err != nil || !replay.Replayed {
 		t.Fatalf("replay=%#v err=%v", replay, err)
 	}
@@ -220,12 +220,12 @@ func TestAccessReviewCreatesPrioritizedPeriodicQueueAndAuditsDecisionsOnce(t *te
 
 func TestAccessReviewDecisionTreatsWorkspaceCapabilityAsOrdinaryExactGrantAndValidatesShape(t *testing.T) {
 	repository := &identityScopedRepository{
-		users:       []identitymodel.IdentityUser{{ID: "admin-1", Status: identitymodel.IdentityStatusActive}},
-		roles:       []identitymodel.IdentityRole{{ID: "role-admin", Key: "admin", Status: identitymodel.IdentityStatusActive}},
+		users:       []identitymodel.IdentityUser{{UserID: "admin-1", Status: identitymodel.IdentityStatusActive}},
+		roles:       []identitymodel.IdentityRole{{RoleID: "role-admin", Key: "admin", Status: identitymodel.IdentityStatusActive}},
 		assignments: []identitymodel.IdentityUserRoleAssignment{{UserID: "admin-1", RoleID: "role-admin", Status: "active"}},
 		reviews: []identitymodel.IdentityAccessReview{{
-			ID: "review", Status: identitymodel.IdentityAccessReviewOpen,
-			Items: []identitymodel.IdentityAccessReviewItem{{ID: "item", ReviewID: "review", UserID: "admin-1", RoleID: "role-admin", RoleKey: "admin", Status: "pending", Version: 1}},
+			ReviewID: "review", Status: identitymodel.IdentityAccessReviewOpen,
+			Items: []identitymodel.IdentityAccessReviewItem{{ReviewItemID: "item", ReviewID: "review", UserID: "admin-1", RoleID: "role-admin", RoleKey: "admin", Status: "pending", Version: 1}},
 		}},
 	}
 	identity := NewIdentityApplicationService(repository, nil)
@@ -377,15 +377,15 @@ func TestAccessReviewPriorityAssignmentAndReductionEdgeOutcomes(t *testing.T) {
 func TestAccessReviewCreateValidationAndDependencyFailures(t *testing.T) {
 	now := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
 	valid := identitymodel.IdentityAccessReviewCreateRequest{
-		ID: "review", PeriodStart: "2026-04-01T00:00:00Z", PeriodEnd: "2026-06-30T00:00:00Z", DueAt: "2026-07-31T00:00:00Z",
+		PeriodStart: "2026-04-01T00:00:00Z", PeriodEnd: "2026-06-30T00:00:00Z", DueAt: "2026-07-31T00:00:00Z",
 	}
 	actor := identityAllowAllRoleAssignments(identitymodel.Principal{
 		Known: true, UserID: "reviewer", WorkspaceID: "workspace",
 		Role: identitymodel.RoleSchema{Permissions: identityAccessReviewTestPermissions(), GrantableRoleKeys: []string{"*"}},
 	})
 	base := &identityScopedRepository{
-		users: []identitymodel.IdentityUser{{ID: "user", Status: identitymodel.IdentityStatusActive}},
-		roles: []identitymodel.IdentityRole{{ID: "role", Key: "reader", Status: identitymodel.IdentityStatusActive}},
+		users: []identitymodel.IdentityUser{{UserID: "user", Status: identitymodel.IdentityStatusActive}},
+		roles: []identitymodel.IdentityRole{{RoleID: "role", Key: "reader", Status: identitymodel.IdentityStatusActive}},
 		assignments: []identitymodel.IdentityUserRoleAssignment{{
 			UserID: "user", RoleID: "role", Status: "active", CreatedAt: now.Format(time.RFC3339),
 		}},
@@ -401,7 +401,6 @@ func TestAccessReviewCreateValidationAndDependencyFailures(t *testing.T) {
 		name   string
 		mutate func(*identitymodel.IdentityAccessReviewCreateRequest)
 	}{
-		{name: "blank id", mutate: func(r *identitymodel.IdentityAccessReviewCreateRequest) { r.ID = " " }},
 		{name: "invalid start", mutate: func(r *identitymodel.IdentityAccessReviewCreateRequest) { r.PeriodStart = "invalid" }},
 		{name: "invalid end", mutate: func(r *identitymodel.IdentityAccessReviewCreateRequest) { r.PeriodEnd = "invalid" }},
 		{name: "invalid due", mutate: func(r *identitymodel.IdentityAccessReviewCreateRequest) { r.DueAt = "invalid" }},
@@ -445,10 +444,10 @@ func TestAccessReviewCreateValidationAndDependencyFailures(t *testing.T) {
 	}
 
 	inactive := &identityScopedRepository{
-		users: []identitymodel.IdentityUser{{ID: "one"}, {ID: "two"}, {ID: "three"}},
+		users: []identitymodel.IdentityUser{{UserID: "one"}, {UserID: "two"}, {UserID: "three"}},
 		roles: []identitymodel.IdentityRole{
-			{ID: "inactive-role", Key: "inactive", Status: "inactive"},
-			{ID: "active-role", Key: "active", Status: identitymodel.IdentityStatusActive},
+			{RoleID: "inactive-role", Key: "inactive", Status: "inactive"},
+			{RoleID: "active-role", Key: "active", Status: identitymodel.IdentityStatusActive},
 		},
 		assignments: []identitymodel.IdentityUserRoleAssignment{
 			{UserID: "one", RoleID: "inactive-role"},
@@ -460,8 +459,8 @@ func TestAccessReviewCreateValidationAndDependencyFailures(t *testing.T) {
 		t.Fatalf("empty review error=%v", err)
 	}
 	samePriority := &identityScopedRepository{
-		users: []identitymodel.IdentityUser{{ID: "user-a"}, {ID: "user-b"}},
-		roles: []identitymodel.IdentityRole{{ID: "role", Key: "reader", Status: identitymodel.IdentityStatusActive}},
+		users: []identitymodel.IdentityUser{{UserID: "user-a"}, {UserID: "user-b"}},
+		roles: []identitymodel.IdentityRole{{RoleID: "role", Key: "reader", Status: identitymodel.IdentityStatusActive}},
 		assignments: []identitymodel.IdentityUserRoleAssignment{
 			{UserID: "user-b", RoleID: "role", Status: "active", CreatedAt: now.Format(time.RFC3339)},
 			{UserID: "user-a", RoleID: "role", Status: "active", CreatedAt: now.Format(time.RFC3339)},
@@ -484,14 +483,14 @@ func TestAccessReviewListScopeAndDecisionEdgeOutcomes(t *testing.T) {
 		Role: identitymodel.RoleSchema{Permissions: identityAccessReviewTestPermissions(), GrantableRoleKeys: []string{"*"}},
 	})
 	base := &identityScopedRepository{
-		users: []identitymodel.IdentityUser{{ID: "user", Status: identitymodel.IdentityStatusActive}},
+		users: []identitymodel.IdentityUser{{UserID: "user", Status: identitymodel.IdentityStatusActive}},
 		roles: []identitymodel.IdentityRole{
-			{ID: "current", Key: "current", Status: identitymodel.IdentityStatusActive},
-			{ID: "reduced", Key: "reduced", Status: identitymodel.IdentityStatusActive},
+			{RoleID: "current", Key: "current", Status: identitymodel.IdentityStatusActive},
+			{RoleID: "reduced", Key: "reduced", Status: identitymodel.IdentityStatusActive},
 		},
 		assignments: []identitymodel.IdentityUserRoleAssignment{{UserID: "user", RoleID: "current", Status: "active"}},
-		reviews: []identitymodel.IdentityAccessReview{{ID: "review", Status: identitymodel.IdentityAccessReviewOpen, Items: []identitymodel.IdentityAccessReviewItem{{
-			ID: "item", ReviewID: "review", UserID: "user", RoleID: "current", RoleKey: "current", Status: "pending", Version: 1,
+		reviews: []identitymodel.IdentityAccessReview{{ReviewID: "review", Status: identitymodel.IdentityAccessReviewOpen, Items: []identitymodel.IdentityAccessReviewItem{{
+			ReviewItemID: "item", ReviewID: "review", UserID: "user", RoleID: "current", RoleKey: "current", Status: "pending", Version: 1,
 		}}}},
 	}
 	fault := &accessReviewFaultRepository{identityScopedRepository: base}
@@ -614,12 +613,12 @@ func TestAccessReviewListScopeAndDecisionEdgeOutcomes(t *testing.T) {
 		t.Fatalf("reduction list error=%v", err)
 	}
 	fault.listRolesErr = nil
-	base.roles = append(base.roles, identitymodel.IdentityRole{ID: "undefined", Key: "undefined", Status: identitymodel.IdentityStatusActive})
+	base.roles = append(base.roles, identitymodel.IdentityRole{RoleID: "undefined", Key: "undefined", Status: identitymodel.IdentityStatusActive})
 	reduction.ReplacementRoleID, reduction.IdempotencyKey = "undefined", "reduce-undefined"
 	if _, err := service.Decide(t.Context(), "item", reduction, actor); apperror.CodeOf(err) != "backend.identity.role_not_found" {
 		t.Fatalf("undefined replacement=%v", err)
 	}
-	base.roles = append(base.roles, identitymodel.IdentityRole{ID: "expanded", Key: "expanded", Status: identitymodel.IdentityStatusActive})
+	base.roles = append(base.roles, identitymodel.IdentityRole{RoleID: "expanded", Key: "expanded", Status: identitymodel.IdentityStatusActive})
 	identity.ReplaceRoleDefinitions([]identitymodel.RoleSchema{
 		{Key: "current", Permissions: identityTestRolePermissions("read", "write"), RiskLevel: identitymodel.IdentityRoleRiskElevated},
 		{Key: "reduced", Permissions: identityTestRolePermissions("read"), RiskLevel: identitymodel.IdentityRoleRiskNormal},

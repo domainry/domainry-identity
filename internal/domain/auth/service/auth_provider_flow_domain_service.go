@@ -102,7 +102,7 @@ func (s *AuthProviderFlowDomainService) StartExternalAccountLinkForApplication(c
 	if !found || user.Status != identitymodel.IdentityStatusActive {
 		return authprojection.AuthProviderStartResponse{}, forbidden("auth.user_disabled")
 	}
-	return s.auth.BeginProviderLinkForApplication(ctx, workspaceID, user.ID, provider, config.AuthURL, config.ClientID, config.RedirectURL, config.Scope, applicationKey, returnURL)
+	return s.auth.BeginProviderLinkForApplication(ctx, workspaceID, user.UserID, provider, config.AuthURL, config.ClientID, config.RedirectURL, config.Scope, applicationKey, returnURL)
 }
 
 func (s *AuthProviderFlowDomainService) LoginWithPasswordOutcome(ctx context.Context, workspaceID, login, password, applicationKey string) (authmodel.AuthenticationOutcome, error) {
@@ -110,12 +110,12 @@ func (s *AuthProviderFlowDomainService) LoginWithPasswordOutcome(ctx context.Con
 	if err != nil {
 		return authmodel.AuthenticationOutcome{}, err
 	}
-	totp, err := s.auth.totpState(ctx, workspaceID, user.ID)
+	totp, err := s.auth.totpState(ctx, workspaceID, user.UserID)
 	if err != nil {
 		return authmodel.AuthenticationOutcome{}, err
 	}
 	if totp.Enabled && s.totpLoginMFAWhenEnrolled {
-		result, err := s.auth.beginTOTPChallenge(ctx, workspaceID, user.ID, applicationKey, authmodel.AuthChallengePurposeLoginMFA, totp.Generation, []string{"pwd"})
+		result, err := s.auth.beginTOTPChallenge(ctx, workspaceID, user.UserID, applicationKey, authmodel.AuthChallengePurposeLoginMFA, totp.Generation, []string{"pwd"})
 		if err != nil {
 			return authmodel.AuthenticationOutcome{}, err
 		}
@@ -127,7 +127,7 @@ func (s *AuthProviderFlowDomainService) LoginWithPasswordOutcome(ctx context.Con
 		session, err := s.auth.issueSessionForAudienceWithAuthentication(ctx, workspaceID, user, applicationKey, passwordAuthenticationContext())
 		return authenticatedOutcome(session), err
 	}
-	factors, err := repository.ListIdentityMFAFactors(ctx, workspaceID, user.ID)
+	factors, err := repository.ListIdentityMFAFactors(ctx, workspaceID, user.UserID)
 	if err != nil {
 		return authmodel.AuthenticationOutcome{}, err
 	}
@@ -147,7 +147,7 @@ func (s *AuthProviderFlowDomainService) LoginWithPasswordOutcome(ctx context.Con
 		return authenticatedOutcome(session), err
 	}
 	if totp.Enabled {
-		result, err := s.auth.beginTOTPChallenge(ctx, workspaceID, user.ID, applicationKey, authmodel.AuthChallengePurposeLoginMFA, totp.Generation, []string{"pwd"})
+		result, err := s.auth.beginTOTPChallenge(ctx, workspaceID, user.UserID, applicationKey, authmodel.AuthChallengePurposeLoginMFA, totp.Generation, []string{"pwd"})
 		if err != nil {
 			return authmodel.AuthenticationOutcome{}, err
 		}
@@ -157,7 +157,7 @@ func (s *AuthProviderFlowDomainService) LoginWithPasswordOutcome(ctx context.Con
 	if !available || strings.TrimSpace(user.Phone) == "" {
 		return authmodel.AuthenticationOutcome{}, forbidden("auth.mfa_factor_unavailable")
 	}
-	result, err := s.auth.BeginOTPChallenge(ctx, workspaceID, config.Key, user.Phone, applicationKey, authmodel.AuthChallengePurposeLoginMFA, user.ID, []string{"pwd"})
+	result, err := s.auth.BeginOTPChallenge(ctx, workspaceID, config.Key, user.Phone, applicationKey, authmodel.AuthChallengePurposeLoginMFA, user.UserID, []string{"pwd"})
 	if err != nil {
 		return authmodel.AuthenticationOutcome{}, err
 	}
@@ -224,12 +224,12 @@ func (s *AuthProviderFlowDomainService) BeginActionAssurance(ctx context.Context
 	if !found || user.Status != identitymodel.IdentityStatusActive {
 		return authprojection.AuthProviderStartResponse{}, forbidden("auth.user_disabled")
 	}
-	totp, err := s.auth.totpState(ctx, workspaceID, user.ID)
+	totp, err := s.auth.totpState(ctx, workspaceID, user.UserID)
 	if err != nil {
 		return authprojection.AuthProviderStartResponse{}, err
 	}
 	if totp.Enabled {
-		return s.auth.beginTOTPChallenge(ctx, workspaceID, user.ID, "", authmodel.AuthChallengePurposeAction, totp.Generation, nil)
+		return s.auth.beginTOTPChallenge(ctx, workspaceID, user.UserID, "", authmodel.AuthChallengePurposeAction, totp.Generation, nil)
 	}
 	if strings.TrimSpace(user.Phone) == "" {
 		return authprojection.AuthProviderStartResponse{}, forbidden("auth.mfa_factor_unavailable")
@@ -238,7 +238,7 @@ func (s *AuthProviderFlowDomainService) BeginActionAssurance(ctx context.Context
 	if !ok {
 		return authprojection.AuthProviderStartResponse{}, forbidden("auth.mfa_factor_unavailable")
 	}
-	factors, err := repository.ListIdentityMFAFactors(ctx, workspaceID, user.ID)
+	factors, err := repository.ListIdentityMFAFactors(ctx, workspaceID, user.UserID)
 	if err != nil {
 		return authprojection.AuthProviderStartResponse{}, err
 	}
@@ -246,7 +246,7 @@ func (s *AuthProviderFlowDomainService) BeginActionAssurance(ctx context.Context
 	if !required || !available {
 		return authprojection.AuthProviderStartResponse{}, forbidden("auth.mfa_factor_unavailable")
 	}
-	result, err := s.auth.BeginOTPChallenge(ctx, workspaceID, config.Key, user.Phone, "", authmodel.AuthChallengePurposeAction, user.ID, nil)
+	result, err := s.auth.BeginOTPChallenge(ctx, workspaceID, config.Key, user.Phone, "", authmodel.AuthChallengePurposeAction, user.UserID, nil)
 	if err != nil {
 		return authprojection.AuthProviderStartResponse{}, err
 	}
@@ -459,7 +459,7 @@ func (s *AuthProviderFlowDomainService) ExchangeAndCompleteCallbackWithChallenge
 		if err != nil {
 			return authmodel.AuthSession{}, challenge, err
 		}
-		if result.User.ID != challenge.UserID {
+		if result.User.UserID != challenge.UserID {
 			return authmodel.AuthSession{}, challenge, forbidden("auth.external_account_link_user_mismatch")
 		}
 		return result, challenge, nil

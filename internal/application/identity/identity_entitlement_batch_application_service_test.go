@@ -25,10 +25,10 @@ func (r *entitlementBatchFaultRepository) GetIdentityEntitlementBatchReceiptWith
 
 func TestApplyEntitlementBatchValidatesThenPersistsAndReplaysReceipt(t *testing.T) {
 	repository := &identityScopedRepository{
-		users: []identitymodel.IdentityUser{{ID: "target", Status: identitymodel.IdentityStatusActive}},
+		users: []identitymodel.IdentityUser{{UserID: "target", Status: identitymodel.IdentityStatusActive}},
 		roles: []identitymodel.IdentityRole{
-			{ID: "role-1", Key: "reader", Status: identitymodel.IdentityStatusActive},
-			{ID: "role-2", Key: "writer", Status: identitymodel.IdentityStatusActive},
+			{RoleID: "role-1", Key: "reader", Status: identitymodel.IdentityStatusActive},
+			{RoleID: "role-2", Key: "writer", Status: identitymodel.IdentityStatusActive},
 		},
 	}
 	service := NewIdentityApplicationService(repository, nil)
@@ -64,8 +64,8 @@ func TestApplyEntitlementBatchValidatesThenPersistsAndReplaysReceipt(t *testing.
 
 func TestApplyEntitlementBatchRejectsInvalidBoundariesAndPropagatesFailures(t *testing.T) {
 	base := &identityScopedRepository{
-		users: []identitymodel.IdentityUser{{ID: "target", Status: identitymodel.IdentityStatusActive}},
-		roles: []identitymodel.IdentityRole{{ID: "role", Key: "reader", Status: identitymodel.IdentityStatusActive}},
+		users: []identitymodel.IdentityUser{{UserID: "target", Status: identitymodel.IdentityStatusActive}},
+		roles: []identitymodel.IdentityRole{{RoleID: "role", Key: "reader", Status: identitymodel.IdentityStatusActive}},
 	}
 	service := NewIdentityApplicationService(base, nil)
 	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{Key: "reader", AssignmentMode: identitymodel.IdentityRoleAssignmentManual}})

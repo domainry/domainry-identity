@@ -89,7 +89,7 @@ func sdkStoreOrganizationDeliveryResult(value identitymodel.IdentityStoreOrganiz
 
 func sdkStoreOrganization(value identitymodel.IdentityStoreOrganization) identitysdk.StoreOrganization {
 	return identitysdk.StoreOrganization{
-		ID: value.ID, Code: value.Code, Name: value.Name, Status: value.Status, ParentOrganizationID: value.ParentOrganizationID,
+		ID: value.ID, OrganizationUnitID: value.OrganizationUnitID, Code: value.Code, Name: value.Name, Status: value.Status, ParentOrganizationID: value.ParentOrganizationID,
 		Path: value.Path, AncestorIDs: append([]string(nil), value.AncestorIDs...), Depth: value.Depth, SortOrder: value.SortOrder, Version: value.Version,
 	}
 }

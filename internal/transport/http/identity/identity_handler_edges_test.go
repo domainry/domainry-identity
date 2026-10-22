@@ -111,7 +111,7 @@ func TestEffectiveMenusRejectsUnknownPrincipalAndPropagatesServiceError(t *testi
 }
 
 func TestIdentityOrganizationUnitHandlers(t *testing.T) {
-	repository := &identityHTTPRepository{organizationUnits: []identitymodel.IdentityOrganizationUnit{{ID: "organizationUnit-1", Name: "Sales"}}}
+	repository := &identityHTTPRepository{organizationUnits: []identitymodel.IdentityOrganizationUnit{{OrganizationUnitID: "organizationUnit-1", Name: "Sales"}}}
 	handler, response := newIdentityHTTPHandler(repository)
 	w, request := identityRoleRequest(http.MethodGet, "/identity/organization-units", "", nil)
 	handler.listIdentityOrganizationUnits(w, request)
@@ -128,16 +128,16 @@ func TestIdentityOrganizationUnitHandlers(t *testing.T) {
 		wantStatus int
 		wantID     string
 	}{
-		{name: "create", call: handler.createIdentityOrganizationUnit, body: `{"id":"organizationUnit-2","code":"FINANCE","name":"Finance","node_type":"department"}`, wantStatus: http.StatusCreated, wantID: "organizationUnit-2"},
-		{name: "update path id", call: handler.updateIdentityOrganizationUnit, body: `{"id":"body-id","code":"OPS","name":"Operations","node_type":"department"}`, pathValues: map[string]string{"organizationUnitID": " organizationUnit-3 "}, wantStatus: http.StatusOK, wantID: "organizationUnit-3"},
-		{name: "update body id", call: handler.updateIdentityOrganizationUnit, body: `{"id":"body-id","code":"OPS","name":"Operations","node_type":"department"}`, pathValues: map[string]string{"organizationUnitID": " "}, wantStatus: http.StatusOK, wantID: "body-id"},
+		{name: "create", call: handler.createIdentityOrganizationUnit, body: `{"organization_unit_id":"organizationUnit-2","code":"FINANCE","name":"Finance","node_type":"department"}`, wantStatus: http.StatusCreated, wantID: "organizationUnit-2"},
+		{name: "update path id", call: handler.updateIdentityOrganizationUnit, body: `{"organization_unit_id":"body-id","code":"OPS","name":"Operations","node_type":"department"}`, pathValues: map[string]string{"organizationUnitID": " organizationUnit-3 "}, wantStatus: http.StatusOK, wantID: "organizationUnit-3"},
+		{name: "update body id", call: handler.updateIdentityOrganizationUnit, body: `{"organization_unit_id":"body-id","code":"OPS","name":"Operations","node_type":"department"}`, pathValues: map[string]string{"organizationUnitID": " "}, wantStatus: http.StatusOK, wantID: "body-id"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			response.status, response.value, response.err = 0, nil, nil
 			w, request := identityRoleRequest(http.MethodPost, "/identity/organization-units/test", test.body, test.pathValues)
 			test.call(w, request)
-			if response.status != test.wantStatus || repository.lastOrganizationUnit.ID != test.wantID {
+			if response.status != test.wantStatus || repository.lastOrganizationUnit.OrganizationUnitID != test.wantID {
 				t.Fatalf("status=%d organizationUnit=%+v err=%v", response.status, repository.lastOrganizationUnit, response.err)
 			}
 		})
@@ -172,10 +172,10 @@ func TestIdentityOrganizationUnitHandlersRejectDecodeAndRepositoryFailures(t *te
 		}},
 		{name: "create", repo: &identityHTTPRepository{upsertOrganizationUnitErr: errIdentityHTTPTest}, call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) {
 			h.createIdentityOrganizationUnit(w, r)
-		}, body: `{"id":"organizationUnit-1","code":"SALES","name":"Sales","node_type":"department"}`},
+		}, body: `{"organization_unit_id":"organizationUnit-1","code":"SALES","name":"Sales","node_type":"department"}`},
 		{name: "update", repo: &identityHTTPRepository{upsertOrganizationUnitErr: errIdentityHTTPTest}, call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) {
 			h.updateIdentityOrganizationUnit(w, r)
-		}, body: `{"id":"organizationUnit-1","code":"SALES","name":"Sales","node_type":"department"}`},
+		}, body: `{"organization_unit_id":"organizationUnit-1","code":"SALES","name":"Sales","node_type":"department"}`},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			handler, response := newIdentityHTTPHandler(test.repo)
@@ -205,13 +205,13 @@ func TestIdentityOrganizationUnitOwnerControlledAuthoringCurrentResource(t *test
 		},
 		{
 			name:       "create current match",
-			repository: &identityHTTPRepository{organizationUnits: []identitymodel.IdentityOrganizationUnit{{ID: "organizationUnit-1", Name: "Existing"}}},
+			repository: &identityHTTPRepository{organizationUnits: []identitymodel.IdentityOrganizationUnit{{OrganizationUnitID: "organizationUnit-1", Name: "Existing"}}},
 			wantStatus: http.StatusCreated, wantUpserts: 1,
 		},
 		{
 			name: "create current miss",
 			repository: &identityHTTPRepository{
-				organizationUnits:             []identitymodel.IdentityOrganizationUnit{{ID: "organizationUnit-other", Name: "Other"}},
+				organizationUnits:             []identitymodel.IdentityOrganizationUnit{{OrganizationUnitID: "organizationUnit-other", Name: "Other"}},
 				storeOrganizationUnitOnUpsert: true,
 			},
 			expected:   "empty",
@@ -227,14 +227,14 @@ func TestIdentityOrganizationUnitOwnerControlledAuthoringCurrentResource(t *test
 		{
 			name:       "update current match",
 			update:     true,
-			repository: &identityHTTPRepository{organizationUnits: []identitymodel.IdentityOrganizationUnit{{ID: "organizationUnit-1", Name: "Existing"}}},
+			repository: &identityHTTPRepository{organizationUnits: []identitymodel.IdentityOrganizationUnit{{OrganizationUnitID: "organizationUnit-1", Name: "Existing"}}},
 			wantStatus: http.StatusOK, wantUpserts: 1,
 		},
 		{
 			name:   "update current miss",
 			update: true,
 			repository: &identityHTTPRepository{
-				organizationUnits:             []identitymodel.IdentityOrganizationUnit{{ID: "organizationUnit-other", Name: "Other"}},
+				organizationUnits:             []identitymodel.IdentityOrganizationUnit{{OrganizationUnitID: "organizationUnit-other", Name: "Other"}},
 				storeOrganizationUnitOnUpsert: true,
 			},
 			expected:   "empty",
@@ -269,7 +269,7 @@ func TestIdentityOrganizationUnitOwnerControlledAuthoringCurrentResource(t *test
 			w, request := identityRoleRequest(
 				http.MethodPost,
 				"/identity/organization-units/organizationUnit-1",
-				`{"id":"organizationUnit-1","code":"CHANGED","name":"Changed","node_type":"department"}`,
+				`{"organization_unit_id":"organizationUnit-1","code":"CHANGED","name":"Changed","node_type":"department"}`,
 				map[string]string{"organizationUnitID": "organizationUnit-1"},
 			)
 			request.Header.Set("Builder-Task-ID", "task-1")

@@ -40,7 +40,7 @@ func TestCurrentSessionIdentity(t *testing.T) {
 		user := activeExternalIdentityUser("user", "user@example.com")
 		user.Status = identitymodel.IdentityStatusDisabled
 		identityRepository.users = []identitymodel.IdentityUser{user}
-		if _, err := auth.Me(t.Context(), validIdentityAccessToken(t, auth, user.ID, "workspace-primary")); err == nil {
+		if _, err := auth.Me(t.Context(), validIdentityAccessToken(t, auth, user.UserID, "workspace-primary")); err == nil {
 			t.Fatal("expected disabled session identity")
 		}
 	})
@@ -95,7 +95,7 @@ func TestCurrentSessionIdentity(t *testing.T) {
 		if err != nil {
 			t.Fatalf("resolve current session identity: %v", err)
 		}
-		if response.User.ID != "user" || response.User.Locale != "en-US" || response.User.Version != 1 || response.DefaultRole != "sales" || !response.MustChangePassword || len(response.Permissions) != 2 || response.Permissions[0] != "identity.users.list" || response.AuthorizationRevision != "current-revision" {
+		if response.User.UserID != "user" || response.User.Locale != "en-US" || response.User.Version != 1 || response.DefaultRole != "sales" || !response.MustChangePassword || len(response.Permissions) != 2 || response.Permissions[0] != "identity.users.list" || response.AuthorizationRevision != "current-revision" {
 			t.Fatalf("unexpected current identity: %#v", response)
 		}
 	})
@@ -115,13 +115,13 @@ func TestIssueSessionForUserCoversLookupStatusAndCredentialFailures(t *testing.T
 	user := activeExternalIdentityUser("user", "user@example.com")
 	user.Status = identitymodel.IdentityStatusDisabled
 	identities.users = []identitymodel.IdentityUser{user}
-	if _, err := auth.IssueSessionForUser(t.Context(), "workspace", user.ID); err == nil {
+	if _, err := auth.IssueSessionForUser(t.Context(), "workspace", user.UserID); err == nil {
 		t.Fatal("disabled user session issued")
 	}
 	user.Status = identitymodel.IdentityStatusActive
 	identities.users = []identitymodel.IdentityUser{user}
 	repository.getCredentialErr = errors.New("credential")
-	if _, err := auth.IssueSessionForUser(t.Context(), "workspace", user.ID); !errors.Is(err, repository.getCredentialErr) {
+	if _, err := auth.IssueSessionForUser(t.Context(), "workspace", user.UserID); !errors.Is(err, repository.getCredentialErr) {
 		t.Fatalf("credential error=%v", err)
 	}
 }

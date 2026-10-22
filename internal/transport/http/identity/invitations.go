@@ -42,12 +42,12 @@ func (h *IdentityHandler) inviteIdentityUser(w http.ResponseWriter, r *http.Requ
 		h.writeServiceError(w, r, err)
 		return
 	}
-	user.ID = strings.TrimSpace(user.ID)
+	user.UserID = strings.TrimSpace(user.UserID)
 	if err := h.users.CreateUserWithinDataScope(r.Context(), user, principal, "identity.users.invite"); err != nil {
 		h.writeServiceError(w, r, err)
 		return
 	}
-	persisted, found, err := h.users.UserByIDWithinDataScope(r.Context(), user.ID, principal, "identity.users.invite")
+	persisted, found, err := h.users.UserByIDWithinDataScope(r.Context(), user.UserID, principal, "identity.users.invite")
 	if err != nil {
 		h.writeServiceError(w, r, err)
 		return
@@ -56,7 +56,7 @@ func (h *IdentityHandler) inviteIdentityUser(w http.ResponseWriter, r *http.Requ
 		h.writeError(w, r, http.StatusInternalServerError, "backend.identity.user_not_found")
 		return
 	}
-	receipt, err := security.SendPasswordInvitation(r.Context(), principal.WorkspaceID, user.ID)
+	receipt, err := security.SendPasswordInvitation(r.Context(), principal.WorkspaceID, user.UserID)
 	response := identityEmailInvitationResponse{IdentityUser: persisted, Invitation: receipt}
 	if err != nil {
 		// Keep the created account visible and explicitly retryable. Pretending
@@ -64,7 +64,7 @@ func (h *IdentityHandler) inviteIdentityUser(w http.ResponseWriter, r *http.Requ
 		response.Invitation.Status = "failed"
 		response.DeliveryError = apperror.CodeOf(err)
 	}
-	h.appendIdentityMutationAudit(r, "identity_user_invited", "identity_user", user.ID, "Created user with email password-setup invitation", map[string]any{"delivery_status": response.Invitation.Status})
+	h.appendIdentityMutationAudit(r, "identity_user_invited", "identity_user", user.UserID, "Created user with email password-setup invitation", map[string]any{"delivery_status": response.Invitation.Status})
 	w.Header().Set("Cache-Control", "no-store")
 	h.writeJSON(w, http.StatusCreated, response)
 }
@@ -85,12 +85,12 @@ func (h *IdentityHandler) resendIdentityInvitation(w http.ResponseWriter, r *htt
 		h.writeError(w, r, http.StatusServiceUnavailable, "auth.credential_email_unavailable")
 		return
 	}
-	receipt, err := security.SendPasswordInvitation(r.Context(), principal.WorkspaceID, user.ID)
+	receipt, err := security.SendPasswordInvitation(r.Context(), principal.WorkspaceID, user.UserID)
 	if err != nil {
 		h.writeServiceError(w, r, err)
 		return
 	}
-	h.appendIdentityMutationAudit(r, "identity_user_invitation_resent", "identity_user", user.ID, "Sent replacement one-time password-setup link", nil)
+	h.appendIdentityMutationAudit(r, "identity_user_invitation_resent", "identity_user", user.UserID, "Sent replacement one-time password-setup link", nil)
 	w.Header().Set("Cache-Control", "no-store")
 	h.writeJSON(w, http.StatusOK, receipt)
 }

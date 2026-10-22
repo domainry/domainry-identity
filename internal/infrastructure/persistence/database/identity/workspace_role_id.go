@@ -1,14 +1,15 @@
 package identity
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"strings"
+	"github.com/domainry/domainry-foundation/entityid"
 )
 
 func workspaceRoleID(workspaceID, roleKey string) string {
-	sum := sha256.Sum256([]byte(strings.TrimSpace(workspaceID) + "\x00role\x00" + strings.TrimSpace(roleKey)))
-	return "role_" + hex.EncodeToString(sum[:12])
+	value, err := entityid.Derive("role", "identity.workspace-role", workspaceID, roleKey)
+	if err != nil {
+		return ""
+	}
+	return value
 }
 
 // WorkspaceRoleID exposes the stable Identity-owned materialized role ID to

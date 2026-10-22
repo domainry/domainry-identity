@@ -54,7 +54,7 @@ func (r *MemoryRepository) Complete(_ context.Context, completion Completion) (R
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for key, current := range r.receipts {
-		if current.ID != completion.ReceiptID || current.WorkspaceID != completion.WorkspaceID {
+		if current.OperationID != completion.OperationID || current.WorkspaceID != completion.WorkspaceID {
 			continue
 		}
 		if current.Status != idempotency.StatusProcessing || current.LeaseOwner != completion.LeaseOwner || current.FencingToken != completion.FencingToken {

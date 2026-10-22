@@ -15,7 +15,8 @@ func (s MetadataStore) insertMetadataChangeAudit(ctx context.Context, tx *sql.Tx
 	if binding == nil || binding.PreparedAppender() == nil {
 		return fmt.Errorf("Audit module binding is unavailable")
 	}
-	return binding.PreparedAppender().AppendPreparedWithin(ctx, identityauditmodule.NewTransaction(tx), event)
+	_, err := binding.PreparedAppender().AppendPreparedWithin(ctx, identityauditmodule.NewTransaction(tx), event)
+	return err
 }
 
 func metadataMutationValueOrDefault(value, fallback string) string {

@@ -223,7 +223,7 @@ func (s *IdentityDomainService) PublishedGuardrails(_ context.Context) []identit
 func (s *IdentityDomainService) publishedRoleDefinition(role identitymodel.IdentityRole) (identitymodel.RoleSchema, bool) {
 	s.roleMu.RLock()
 	defer s.roleMu.RUnlock()
-	for _, key := range []string{strings.TrimSpace(role.Key), strings.TrimSpace(role.ID)} {
+	for _, key := range []string{strings.TrimSpace(role.Key), strings.TrimSpace(role.RoleID)} {
 		if key == "" {
 			continue
 		}
@@ -338,7 +338,7 @@ func (s *IdentityDomainService) EffectiveMenus(ctx context.Context, userID strin
 	}
 	roleIDs := map[string]struct{}{}
 	for _, role := range roles {
-		roleIDs[role.ID] = struct{}{}
+		roleIDs[role.RoleID] = struct{}{}
 	}
 	if len(roleIDs) == 0 {
 		return []identitymodel.IdentityMenu{}, nil
@@ -350,7 +350,7 @@ func (s *IdentityDomainService) EffectiveMenus(ctx context.Context, userID strin
 	menuByID := map[string]identitymodel.IdentityMenu{}
 	for _, menu := range menus {
 		if menu.Status == "" || menu.Status == identitymodel.IdentityStatusActive {
-			menuByID[menu.ID] = menu
+			menuByID[menu.MenuID] = menu
 			if strings.TrimSpace(menu.Key) != "" {
 				menuByID[menu.Key] = menu
 			}
@@ -359,20 +359,20 @@ func (s *IdentityDomainService) EffectiveMenus(ctx context.Context, userID strin
 	selected := map[string]identitymodel.IdentityMenu{}
 	addMenuAndParents := func(menuID string) {
 		menu, ok := menuByID[strings.TrimSpace(menuID)]
-		if !ok || menu.ID == "" {
+		if !ok || menu.MenuID == "" {
 			return
 		}
 		for {
-			if _, exists := selected[menu.ID]; exists {
+			if _, exists := selected[menu.MenuID]; exists {
 				return
 			}
-			selected[menu.ID] = menu
+			selected[menu.MenuID] = menu
 			parentID := strings.TrimSpace(menu.ParentID)
 			if parentID == "" {
 				return
 			}
 			parent, ok := menuByID[parentID]
-			if !ok || parent.ID == menu.ID {
+			if !ok || parent.MenuID == menu.MenuID {
 				return
 			}
 			menu = parent
@@ -399,7 +399,7 @@ func (s *IdentityDomainService) EffectiveMenus(ctx context.Context, userID strin
 	roots := make([]identitymodel.IdentityMenu, 0, len(selected))
 	for _, menu := range selected {
 		parentID := strings.TrimSpace(menu.ParentID)
-		if _, parentSelected := selected[parentID]; parentID == "" || !parentSelected || parentID == menu.ID {
+		if _, parentSelected := selected[parentID]; parentID == "" || !parentSelected || parentID == menu.MenuID {
 			roots = append(roots, menu)
 			continue
 		}
@@ -413,12 +413,12 @@ func (s *IdentityDomainService) EffectiveMenus(ctx context.Context, userID strin
 	visited := make(map[string]bool, len(selected))
 	var appendTree func(identitymodel.IdentityMenu)
 	appendTree = func(menu identitymodel.IdentityMenu) {
-		if visited[menu.ID] {
+		if visited[menu.MenuID] {
 			return
 		}
-		visited[menu.ID] = true
+		visited[menu.MenuID] = true
 		out = append(out, menu)
-		for _, child := range children[menu.ID] {
+		for _, child := range children[menu.MenuID] {
 			appendTree(child)
 		}
 	}
@@ -427,7 +427,7 @@ func (s *IdentityDomainService) EffectiveMenus(ctx context.Context, userID strin
 	}
 	leftovers := make([]identitymodel.IdentityMenu, 0)
 	for _, menu := range selected {
-		if !visited[menu.ID] {
+		if !visited[menu.MenuID] {
 			leftovers = append(leftovers, menu)
 		}
 	}

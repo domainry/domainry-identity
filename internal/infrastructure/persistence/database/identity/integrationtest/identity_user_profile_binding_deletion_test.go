@@ -29,28 +29,28 @@ func TestIdentityUserDeletionEnumeratesAndBlocksBoundProfiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	user := identitymodel.IdentityUser{ID: "member-user", Name: "Member", Email: "member@example.com", Status: identitymodel.IdentityStatusActive}
+	user := identitymodel.IdentityUser{UserID: "member-user", Name: "Member", Email: "member@example.com", Status: identitymodel.IdentityStatusActive}
 	if err := service.UpsertUser(t.Context(), user); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := identityStore.DB().ExecContext(t.Context(), `INSERT INTO _identity_profile_bindings
-		(id, workspace_id, binding_key, object_key, profile_id, identity_user_id, status, version, created_at, updated_at)
-		VALUES ('binding-1', 'workspace-primary', 'member', 'member_profile', 'member-1', 'member-user', 'active', 1, 1, 1)`); err != nil {
+		(workspace_id, binding_key, object_key, profile_id, identity_user_id, status, version, created_at, updated_at)
+		VALUES ('workspace-primary', 'member', 'member_profile', 'member-1', 'member-user', 'active', 1, 1, 1)`); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.RemoveUser(t.Context(), user.ID); apperror.CodeOf(err) != "backend.identity.user_profile_bindings_exist" {
+	if err := service.RemoveUser(t.Context(), user.UserID); apperror.CodeOf(err) != "backend.identity.user_profile_bindings_exist" {
 		t.Fatalf("bound user deletion error=%v", err)
 	}
-	if _, found, err := repository.GetIdentityUser(t.Context(), "workspace-primary", user.ID); err != nil || !found {
+	if _, found, err := repository.GetIdentityUser(t.Context(), "workspace-primary", user.UserID); err != nil || !found {
 		t.Fatalf("blocked deletion removed account: found=%v err=%v", found, err)
 	}
-	if _, err := identityStore.DB().ExecContext(t.Context(), `UPDATE _identity_profile_bindings SET identity_user_id = NULL, status = 'unlinked' WHERE id = 'binding-1'`); err != nil {
+	if _, err := identityStore.DB().ExecContext(t.Context(), `UPDATE _identity_profile_bindings SET identity_user_id = NULL, status = 'unlinked' WHERE workspace_id = 'workspace-primary' AND object_key = 'member_profile' AND profile_id = 'member-1'`); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.RemoveUser(t.Context(), user.ID); err != nil {
+	if err := service.RemoveUser(t.Context(), user.UserID); err != nil {
 		t.Fatalf("unbound user deletion: %v", err)
 	}
-	if _, found, err := repository.GetIdentityUser(t.Context(), "workspace-primary", user.ID); err != nil || found {
+	if _, found, err := repository.GetIdentityUser(t.Context(), "workspace-primary", user.UserID); err != nil || found {
 		t.Fatalf("deleted account found=%v err=%v", found, err)
 	}
 }

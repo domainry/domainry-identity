@@ -38,7 +38,7 @@ func (r *profileBindingHTTPRepository) ExecuteIdentityProfileBindingMutation(_ c
 		ProfileID: mutation.ProfileID, IdentityUserID: mutation.IdentityUserID, Status: identitymodel.IdentityProfileBindingActive, Version: mutation.ExpectedVersion + 1,
 	}
 	r.found = true
-	return identitymodel.IdentityProfileBindingReceipt{ID: "receipt", BindingKey: mutation.BindingKey, ObjectKey: mutation.ObjectKey, ProfileID: mutation.ProfileID, Operation: mutation.Operation, Binding: r.binding}, nil
+	return identitymodel.IdentityProfileBindingReceipt{OperationID: "receipt", BindingKey: mutation.BindingKey, ObjectKey: mutation.ObjectKey, ProfileID: mutation.ProfileID, Operation: mutation.Operation, Binding: r.binding}, nil
 }
 func (*profileBindingHTTPRepository) ListIdentityProfileBindingEvents(context.Context, string, string, string) ([]identitymodel.IdentityProfileBindingEvent, error) {
 	return nil, nil
@@ -53,7 +53,7 @@ func (profileBindingHTTPRecords) GetIdentityProfileBindingRecord(context.Context
 type profileBindingHTTPIdentity struct{}
 
 func (profileBindingHTTPIdentity) FindUser(_ context.Context, userID string) (identitymodel.IdentityUser, bool, error) {
-	return identitymodel.IdentityUser{ID: userID, Status: identitymodel.IdentityStatusActive}, true, nil
+	return identitymodel.IdentityUser{UserID: userID, Status: identitymodel.IdentityStatusActive}, true, nil
 }
 
 type profileBindingHTTPResponse struct {

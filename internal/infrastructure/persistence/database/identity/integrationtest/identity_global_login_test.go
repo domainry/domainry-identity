@@ -25,11 +25,11 @@ func TestUserTableRejectsGlobalLoginDuplicatesOnCreateAndUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := identitymodel.IdentityUser{ID: "user-a", Name: "Admin A", Email: " Admin@Example.Test ", Status: identitymodel.IdentityStatusActive}
+	a := identitymodel.IdentityUser{UserID: "user-a", Name: "Admin A", Email: " Admin@Example.Test ", Status: identitymodel.IdentityStatusActive}
 	if err := store.UpsertIdentityUser(t.Context(), "workspace-a", a); err != nil {
 		t.Fatal(err)
 	}
-	b := identitymodel.IdentityUser{ID: "user-b", Name: "Admin B", Email: "admin@example.test", Status: identitymodel.IdentityStatusActive}
+	b := identitymodel.IdentityUser{UserID: "user-b", Name: "Admin B", Email: "admin@example.test", Status: identitymodel.IdentityStatusActive}
 	if err := store.CreateIdentityUser(t.Context(), "workspace-b", b); apperror.CodeOf(err) != "identity.login_name_conflict" {
 		t.Fatalf("duplicate create: %v", err)
 	}
@@ -44,11 +44,11 @@ func TestUserTableRejectsGlobalLoginDuplicatesOnCreateAndUpdate(t *testing.T) {
 	if err := store.UpsertIdentityUser(t.Context(), "workspace-b", b); apperror.CodeOf(err) != "identity.login_name_conflict" {
 		t.Fatalf("duplicate update: %v", err)
 	}
-	unchanged, found, err := store.GetIdentityUser(t.Context(), "workspace-b", b.ID)
+	unchanged, found, err := store.GetIdentityUser(t.Context(), "workspace-b", b.UserID)
 	if err != nil || !found || unchanged.Email != "unique@example.test" {
 		t.Fatal("failed update changed B")
 	}
-	unchanged, found, err = store.GetIdentityUser(t.Context(), "workspace-a", a.ID)
+	unchanged, found, err = store.GetIdentityUser(t.Context(), "workspace-a", a.UserID)
 	if err != nil || !found || unchanged.Name != a.Name {
 		t.Fatal("failed upsert changed A")
 	}

@@ -44,11 +44,11 @@ func TestAuthSessionStateRevocationConcurrencyAndRestartPersistence(t *testing.T
 	store, repository := open()
 	now := time.Now().UTC()
 	tokens := []identitymodel.AuthRefreshToken{
-		{ID: "current", UserID: "user", SessionID: "session-current", TokenHash: "current", ExpiresAt: now.Add(time.Hour).Format(time.RFC3339)},
-		{ID: "other-a", UserID: "user", SessionID: "session-other", TokenHash: "other-a", ExpiresAt: now.Add(time.Hour).Format(time.RFC3339)},
-		{ID: "other-b", UserID: "user", SessionID: "session-other", TokenHash: "other-b", ExpiresAt: now.Add(time.Hour).Format(time.RFC3339)},
-		{ID: "other-user", UserID: "other-user", SessionID: "session-foreign", TokenHash: "foreign", ExpiresAt: now.Add(time.Hour).Format(time.RFC3339)},
-		{ID: "expired", UserID: "user", SessionID: "session-expired", TokenHash: "expired", ExpiresAt: now.Add(-time.Minute).Format(time.RFC3339)},
+		{UserID: "user", SessionID: "session-current", TokenHash: "current", ExpiresAt: now.Add(time.Hour).Format(time.RFC3339)},
+		{UserID: "user", SessionID: "session-other", TokenHash: "other-a", ExpiresAt: now.Add(time.Hour).Format(time.RFC3339)},
+		{UserID: "user", SessionID: "session-other", TokenHash: "other-b", ExpiresAt: now.Add(time.Hour).Format(time.RFC3339)},
+		{UserID: "other-user", SessionID: "session-foreign", TokenHash: "foreign", ExpiresAt: now.Add(time.Hour).Format(time.RFC3339)},
+		{UserID: "user", SessionID: "session-expired", TokenHash: "expired", ExpiresAt: now.Add(-time.Minute).Format(time.RFC3339)},
 	}
 	for _, token := range tokens {
 		if err := repository.CreateAuthRefreshToken(t.Context(), "workspace-a", token); err != nil {
@@ -126,7 +126,7 @@ func TestRefreshTokenRotationIsAtomicUnderConcurrency(t *testing.T) {
 	}
 	repository := NewAuthStore(identity)
 	now := time.Now().UTC()
-	old := identitymodel.AuthRefreshToken{ID: "old", UserID: "user", SessionID: "session", TokenHash: "old-hash", ExpiresAt: now.Add(time.Hour).Format(time.RFC3339)}
+	old := identitymodel.AuthRefreshToken{UserID: "user", SessionID: "session", TokenHash: "old-hash", ExpiresAt: now.Add(time.Hour).Format(time.RFC3339)}
 	if err := repository.CreateAuthRefreshToken(t.Context(), "workspace-primary", old); err != nil {
 		t.Fatal(err)
 	}
@@ -136,8 +136,8 @@ func TestRefreshTokenRotationIsAtomicUnderConcurrency(t *testing.T) {
 		wait.Add(1)
 		go func() {
 			defer wait.Done()
-			replacement := identitymodel.AuthRefreshToken{ID: fmt.Sprintf("new-%d", index), UserID: "user", SessionID: "session", TokenHash: fmt.Sprintf("hash-%d", index), ExpiresAt: now.Add(time.Hour).Format(time.RFC3339)}
-			rotated, rotateErr := repository.RotateAuthRefreshToken(t.Context(), "workspace-primary", old.ID, now.Format(time.RFC3339), replacement)
+			replacement := identitymodel.AuthRefreshToken{UserID: "user", SessionID: "session", TokenHash: fmt.Sprintf("hash-%d", index), ExpiresAt: now.Add(time.Hour).Format(time.RFC3339)}
+			rotated, rotateErr := repository.RotateAuthRefreshToken(t.Context(), "workspace-primary", old.TokenHash, now.Format(time.RFC3339), replacement)
 			if rotateErr != nil {
 				t.Errorf("rotate: %v", rotateErr)
 				return
@@ -233,14 +233,14 @@ func TestAuthStoreContractAndCancellation(t *testing.T) {
 	if err != nil || !found || loaded.PasswordHash != credential.PasswordHash {
 		t.Fatalf("credential=%#v found=%v err=%v", loaded, found, err)
 	}
-	token := identitymodel.AuthRefreshToken{ID: "refresh-context", UserID: credential.UserID, SessionID: "session-context", TokenHash: "token-context", ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339)}
+	token := identitymodel.AuthRefreshToken{UserID: credential.UserID, SessionID: "session-context", TokenHash: "token-context", ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339)}
 	if err := repository.CreateAuthRefreshToken(t.Context(), "workspace-primary", token); err != nil {
 		t.Fatalf("create refresh token: %v", err)
 	}
 	if tokens, err := repository.ListAuthRefreshTokensForUser(t.Context(), "workspace-primary", credential.UserID); err != nil || len(tokens) != 1 {
 		t.Fatalf("tokens=%#v err=%v", tokens, err)
 	}
-	account := identitymodel.IdentityExternalAccount{ID: "external-context", UserID: credential.UserID, Provider: "oidc", ProviderSubject: "subject-context"}
+	account := identitymodel.IdentityExternalAccount{ExternalAccountID: "external-context", UserID: credential.UserID, Provider: "oidc", ProviderSubject: "subject-context"}
 	if err := repository.UpsertIdentityExternalAccount(t.Context(), "workspace-primary", account); err != nil {
 		t.Fatalf("upsert external account: %v", err)
 	}
@@ -288,8 +288,8 @@ func TestAuthStoreWorkspaceIsolationContract(t *testing.T) {
 	}
 
 	expiresAt := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
-	tokenA := identitymodel.AuthRefreshToken{ID: "refresh-a", UserID: credentialA.UserID, SessionID: "session-a", TokenHash: "shared-token-hash", ExpiresAt: expiresAt}
-	tokenB := identitymodel.AuthRefreshToken{ID: "refresh-b", UserID: credentialB.UserID, SessionID: "session-b", TokenHash: "shared-token-hash", ExpiresAt: expiresAt}
+	tokenA := identitymodel.AuthRefreshToken{UserID: credentialA.UserID, SessionID: "session-a", TokenHash: "shared-token-hash", ExpiresAt: expiresAt}
+	tokenB := identitymodel.AuthRefreshToken{UserID: credentialB.UserID, SessionID: "session-b", TokenHash: "shared-token-hash", ExpiresAt: expiresAt}
 	if err := repository.CreateAuthRefreshToken(t.Context(), "workspace-a", tokenA); err != nil {
 		t.Fatalf("create workspace A token: %v", err)
 	}
@@ -303,14 +303,14 @@ func TestAuthStoreWorkspaceIsolationContract(t *testing.T) {
 		t.Fatalf("ambiguous global refresh workspace=%q found=%v err=%v", workspaceID, found, err)
 	}
 	loadedA, found, err := repository.GetAuthRefreshTokenByHash(t.Context(), "workspace-a", tokenA.TokenHash)
-	if err != nil || !found || loadedA.ID != tokenA.ID {
+	if err != nil || !found || loadedA.TokenHash != tokenA.TokenHash {
 		t.Fatalf("workspace A token=%#v found=%v err=%v", loadedA, found, err)
 	}
 	loadedB, found, err := repository.GetAuthRefreshTokenByHash(t.Context(), "workspace-b", tokenB.TokenHash)
-	if err != nil || !found || loadedB.ID != tokenB.ID {
+	if err != nil || !found || loadedB.TokenHash != tokenB.TokenHash {
 		t.Fatalf("workspace B token=%#v found=%v err=%v", loadedB, found, err)
 	}
-	if err := repository.RevokeAuthRefreshToken(t.Context(), "workspace-b", tokenA.ID, "2026-07-19T01:00:00Z", ""); err != nil {
+	if err := repository.RevokeAuthRefreshToken(t.Context(), "workspace-b", tokenA.TokenHash, "2026-07-19T01:00:00Z", ""); err != nil {
 		t.Fatalf("cross-workspace revoke: %v", err)
 	}
 	loadedA, found, err = repository.GetAuthRefreshTokenByHash(t.Context(), "workspace-a", tokenA.TokenHash)
@@ -318,8 +318,8 @@ func TestAuthStoreWorkspaceIsolationContract(t *testing.T) {
 		t.Fatalf("cross-workspace revoke changed workspace A token: %#v found=%v err=%v", loadedA, found, err)
 	}
 
-	accountA := identitymodel.IdentityExternalAccount{ID: "external-a", UserID: credentialA.UserID, Provider: "oidc", ProviderSubject: "shared-subject"}
-	accountB := identitymodel.IdentityExternalAccount{ID: "external-b", UserID: credentialB.UserID, Provider: "oidc", ProviderSubject: "workspace-b-subject"}
+	accountA := identitymodel.IdentityExternalAccount{ExternalAccountID: "external-a", UserID: credentialA.UserID, Provider: "oidc", ProviderSubject: "shared-subject"}
+	accountB := identitymodel.IdentityExternalAccount{ExternalAccountID: "external-b", UserID: credentialB.UserID, Provider: "oidc", ProviderSubject: "workspace-b-subject"}
 	if err := repository.UpsertIdentityExternalAccount(t.Context(), "workspace-a", accountA); err != nil {
 		t.Fatalf("upsert workspace A account: %v", err)
 	}
@@ -327,7 +327,7 @@ func TestAuthStoreWorkspaceIsolationContract(t *testing.T) {
 		t.Fatalf("global external account workspace=%q found=%v err=%v", workspaceID, found, err)
 	}
 	duplicate := accountB
-	duplicate.ID = "external-ambiguous"
+	duplicate.ExternalAccountID = "external-ambiguous"
 	duplicate.ProviderSubject = accountA.ProviderSubject
 	if err := repository.UpsertIdentityExternalAccount(t.Context(), "workspace-b", duplicate); err != nil {
 		t.Fatalf("upsert ambiguous provider subject: %v", err)
@@ -342,7 +342,7 @@ func TestAuthStoreWorkspaceIsolationContract(t *testing.T) {
 		t.Fatalf("workspace B external account workspace=%q found=%v err=%v", workspaceID, found, err)
 	}
 	sameWorkspaceDuplicate := accountB
-	sameWorkspaceDuplicate.ID = "external-b-duplicate"
+	sameWorkspaceDuplicate.ExternalAccountID = "external-b-duplicate"
 	if err := repository.UpsertIdentityExternalAccount(t.Context(), "workspace-b", sameWorkspaceDuplicate); err != nil {
 		t.Fatalf("upsert same-Workspace ambiguous provider subject: %v", err)
 	}
@@ -350,14 +350,14 @@ func TestAuthStoreWorkspaceIsolationContract(t *testing.T) {
 		t.Fatalf("same-Workspace ambiguous external account workspace=%q found=%v err=%v", workspaceID, found, err)
 	}
 	accountsA, err := repository.ListIdentityExternalAccounts(t.Context(), "workspace-a", "")
-	if err != nil || len(accountsA) != 1 || accountsA[0].ID != accountA.ID {
+	if err != nil || len(accountsA) != 1 || accountsA[0].ExternalAccountID != accountA.ExternalAccountID {
 		t.Fatalf("workspace A accounts=%#v err=%v", accountsA, err)
 	}
-	if err := repository.RemoveIdentityExternalAccount(t.Context(), "workspace-b", accountA.ID); err != nil {
+	if err := repository.RemoveIdentityExternalAccount(t.Context(), "workspace-b", accountA.ExternalAccountID); err != nil {
 		t.Fatalf("cross-workspace account removal: %v", err)
 	}
 	accountsA, err = repository.ListIdentityExternalAccounts(t.Context(), "workspace-a", credentialA.UserID)
-	if err != nil || len(accountsA) != 1 || accountsA[0].ID != accountA.ID {
+	if err != nil || len(accountsA) != 1 || accountsA[0].ExternalAccountID != accountA.ExternalAccountID {
 		t.Fatalf("cross-workspace removal changed workspace A account: %#v err=%v", accountsA, err)
 	}
 }
@@ -374,7 +374,7 @@ func TestAuthStoreMFAFactorLifecycleAndWorkspaceIsolation(t *testing.T) {
 	}
 	repository := NewAuthStore(identity)
 	factor := identitymodel.IdentityMFAFactor{
-		ID: "factor-a", UserID: "user-a", Type: "webauthn", Label: "Security key",
+		MFAFactorID: "factor-a", UserID: "user-a", Type: "webauthn", Label: "Security key",
 		Provider: "oidc", ProviderRef: "provider-factor-a", Status: "active",
 		VerifiedAt: "2026-07-25T00:00:00Z", LastUsedAt: "2026-07-25T01:00:00Z",
 	}
@@ -396,10 +396,10 @@ func TestAuthStoreMFAFactorLifecycleAndWorkspaceIsolation(t *testing.T) {
 	if err != nil || len(factors) != 1 || factors[0].Label != "Renamed key" {
 		t.Fatalf("updated factors=%#v err=%v", factors, err)
 	}
-	if err := repository.RevokeIdentityMFAFactor(t.Context(), "workspace-b", "user-a", factor.ID); err == nil {
+	if err := repository.RevokeIdentityMFAFactor(t.Context(), "workspace-b", "user-a", factor.MFAFactorID); err == nil {
 		t.Fatal("cross-workspace factor revoke succeeded")
 	}
-	if err := repository.RevokeIdentityMFAFactor(t.Context(), "workspace-a", "user-a", factor.ID); err != nil {
+	if err := repository.RevokeIdentityMFAFactor(t.Context(), "workspace-a", "user-a", factor.MFAFactorID); err != nil {
 		t.Fatal(err)
 	}
 	factors, err = repository.ListIdentityMFAFactors(t.Context(), "workspace-a", "user-a")

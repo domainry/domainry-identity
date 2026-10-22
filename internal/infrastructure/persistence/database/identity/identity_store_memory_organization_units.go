@@ -29,7 +29,7 @@ func (s *MemoryIdentityStore) ListIdentityOrganizationUnits(ctx context.Context,
 		rightParent := identityOrganizationUnitParentID(out[j].ParentID)
 		if leftParent == rightParent {
 			if out[i].SortOrder == out[j].SortOrder {
-				return out[i].ID < out[j].ID
+				return out[i].OrganizationUnitID < out[j].OrganizationUnitID
 			}
 			return out[i].SortOrder < out[j].SortOrder
 		}
@@ -52,7 +52,7 @@ func (s *MemoryIdentityStore) ListIdentityOrganizationUnitsWithinDataScope(ctx c
 	}
 	result := make([]identitymodel.IdentityOrganizationUnit, 0, len(items))
 	for _, item := range items {
-		if _, ok := allowed[item.ID]; ok {
+		if _, ok := allowed[item.OrganizationUnitID]; ok {
 			result = append(result, item)
 		}
 	}
@@ -65,7 +65,7 @@ func (s *MemoryIdentityStore) GetIdentityOrganizationUnitWithinDataScope(ctx con
 		return identitymodel.IdentityOrganizationUnit{}, false, err
 	}
 	for _, item := range items {
-		if item.ID == strings.TrimSpace(organizationUnitID) {
+		if item.OrganizationUnitID == strings.TrimSpace(organizationUnitID) {
 			return item, true, nil
 		}
 	}
@@ -86,11 +86,11 @@ func (s *MemoryIdentityStore) UpsertIdentityOrganizationUnit(ctx context.Context
 func (s *MemoryIdentityStore) UpsertIdentityOrganizationUnitsAtomically(_ context.Context, workspaceID string, organizationUnits []identitymodel.IdentityOrganizationUnit) error {
 	prepared := make(map[string]identitymodel.IdentityOrganizationUnit, len(organizationUnits))
 	for _, organizationUnit := range organizationUnits {
-		key, err := identityWorkspaceKey(workspaceID, organizationUnit.ID)
+		key, err := identityWorkspaceKey(workspaceID, organizationUnit.OrganizationUnitID)
 		if err != nil {
 			return err
 		}
-		if organizationUnit.ID == "" {
+		if organizationUnit.OrganizationUnitID == "" {
 			return fmt.Errorf("organization unit id is required")
 		}
 		if organizationUnit.Status == "" {
@@ -120,13 +120,13 @@ func (s *MemoryIdentityStore) UpsertIdentityOrganizationUnitsWithinDataScopeAtom
 		existing := map[string]bool{}
 		existingParent := map[string]string{}
 		for _, item := range current {
-			existing[item.ID] = true
-			existingParent[item.ID] = identityOrganizationUnitParentID(item.ParentID)
+			existing[item.OrganizationUnitID] = true
+			existingParent[item.OrganizationUnitID] = identityOrganizationUnitParentID(item.ParentID)
 		}
 		for _, item := range organizationUnits {
 			parentID := identityOrganizationUnitParentID(item.ParentID)
-			parentChanged := !existing[item.ID] || existingParent[item.ID] != parentID
-			if existing[item.ID] && !allowed[item.ID] || parentChanged && (parentID == "" || !allowed[parentID]) {
+			parentChanged := !existing[item.OrganizationUnitID] || existingParent[item.OrganizationUnitID] != parentID
+			if existing[item.OrganizationUnitID] && !allowed[item.OrganizationUnitID] || parentChanged && (parentID == "" || !allowed[parentID]) {
 				return false, nil
 			}
 		}

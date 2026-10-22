@@ -82,12 +82,12 @@ func (s *IdentityEffectiveAccessApplicationService) PreviewRoleChange(ctx contex
 	}
 	var projectionRole identitymodel.IdentityRole
 	for _, role := range roles {
-		if role.Key == roleKey || role.ID == roleKey {
+		if role.Key == roleKey || role.RoleID == roleKey {
 			projectionRole = role
 			break
 		}
 	}
-	if projectionRole.ID == "" {
+	if projectionRole.RoleID == "" {
 		return identitymodel.IdentityRoleChangeImpact{}, &apperror.AppError{Kind: apperror.KindNotFound, Code: "backend.identity.role_not_found"}
 	}
 	current, _ := scoped.PublishedRoleDefinition(workspaceContext, roleKey)
@@ -141,8 +141,8 @@ func (s *IdentityEffectiveAccessApplicationService) SnapshotWorkflowWorkload(_ c
 		principal.Role.Audience != identitymodel.IdentityRoleAudienceService || principal.Role.AssignmentMode != identitymodel.IdentityRoleAssignmentSystemManaged {
 		return identitymodel.IdentityEffectiveAccessSnapshot{}, internalError("build workflow workload access snapshot", nil)
 	}
-	role := identitymodel.IdentityRole{ID: principal.Role.Key, Key: principal.Role.Key, Label: principal.Role.Name, Status: identitymodel.IdentityStatusActive}
-	assignment := identitymodel.IdentityUserRoleAssignment{UserID: principal.UserID, RoleID: role.ID, Source: "workflow_release", Status: "active"}
+	role := identitymodel.IdentityRole{RoleID: principal.Role.Key, Key: principal.Role.Key, Label: principal.Role.Name, Status: identitymodel.IdentityStatusActive}
+	assignment := identitymodel.IdentityUserRoleAssignment{UserID: principal.UserID, RoleID: role.RoleID, Source: "workflow_release", Status: "active"}
 	return identityprojection.IdentityBuildEffectiveAccessSnapshot(identityprojection.IdentityEffectiveAccessProjectionInput{
 		Principal: principal, Assignments: []identitymodel.IdentityUserRoleAssignment{assignment}, ProjectionRoles: []identitymodel.IdentityRole{role}, RoleDefinitions: []identitymodel.RoleSchema{principal.Role},
 		Objects: scopedEffectiveAccessObjects(s.dependencies.Objects),
@@ -197,7 +197,7 @@ func (s *IdentityEffectiveAccessApplicationService) snapshotFromPrincipalContext
 		selected := make(map[string]bool)
 		for _, role := range roles {
 			if role.Key == principal.Role.Key {
-				selected[role.ID] = true
+				selected[role.RoleID] = true
 			}
 		}
 		filtered := make([]identitymodel.IdentityUserRoleAssignment, 0, len(assignments))

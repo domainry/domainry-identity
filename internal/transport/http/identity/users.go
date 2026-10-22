@@ -91,7 +91,7 @@ func (h *IdentityHandler) getIdentityUser(w http.ResponseWriter, r *http.Request
 		h.writeError(w, r, http.StatusNotFound, "backend.identity.user_not_found")
 		return
 	}
-	h.writeIdentityAuthoringResource(w, r, "identity.user", user.ID, user)
+	h.writeIdentityAuthoringResource(w, r, "identity.user", user.UserID, user)
 }
 
 func (h *IdentityHandler) createIdentityUser(w http.ResponseWriter, r *http.Request) {
@@ -99,13 +99,13 @@ func (h *IdentityHandler) createIdentityUser(w http.ResponseWriter, r *http.Requ
 	if !h.decodeJSON(w, r, &user) {
 		return
 	}
-	user.ID = strings.TrimSpace(user.ID)
+	user.UserID = strings.TrimSpace(user.UserID)
 	principal := h.principal(r)
 	if err := h.users.CreateUserWithinDataScope(r.Context(), user, principal, "identity.users.create"); err != nil {
 		h.writeServiceError(w, r, err)
 		return
 	}
-	persisted, found, err := h.users.UserByIDWithinDataScope(r.Context(), user.ID, principal, "identity.users.create")
+	persisted, found, err := h.users.UserByIDWithinDataScope(r.Context(), user.UserID, principal, "identity.users.create")
 	if err != nil {
 		h.writeServiceError(w, r, err)
 		return
@@ -115,31 +115,31 @@ func (h *IdentityHandler) createIdentityUser(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if persisted.AccountType == identitymodel.IdentityAccountService || persisted.AccountType == identitymodel.IdentityAccountAutomation {
-		h.appendIdentityMutationAudit(r, "identity_user_created", "identity_user", user.ID, "Created non-human identity account", map[string]any{"account_type": persisted.AccountType, "status": persisted.Status})
+		h.appendIdentityMutationAudit(r, "identity_user_created", "identity_user", user.UserID, "Created non-human identity account", map[string]any{"account_type": persisted.AccountType, "status": persisted.Status})
 		h.writeJSON(w, http.StatusCreated, identityUserProvisioningResponse{IdentityUser: persisted})
 		return
 	}
 	if h.userSecurity == nil {
-		_ = h.users.RemoveUser(r.Context(), user.ID)
+		_ = h.users.RemoveUser(r.Context(), user.UserID)
 		h.writeServiceError(w, r, apperror.New(
 			apperror.KindInternal,
 			"backend.identity.initial_credential_issuer_unavailable",
 			nil,
-			map[string]string{"user": user.ID},
+			map[string]string{"user": user.UserID},
 		))
 		return
 	}
 	initialPassword, err := h.userSecurity.IssueInitialPassword(
 		r.Context(),
 		h.principal(r).WorkspaceID,
-		user.ID,
+		user.UserID,
 	)
 	if err != nil {
-		_ = h.users.RemoveUser(r.Context(), user.ID)
+		_ = h.users.RemoveUser(r.Context(), user.UserID)
 		h.writeServiceError(w, r, err)
 		return
 	}
-	h.appendIdentityMutationAudit(r, "identity_user_created", "identity_user", user.ID, "Created identity user", map[string]any{"email": user.Email, "status": user.Status})
+	h.appendIdentityMutationAudit(r, "identity_user_created", "identity_user", user.UserID, "Created identity user", map[string]any{"email": user.Email, "status": user.Status})
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Pragma", "no-cache")
 	h.writeJSON(w, http.StatusCreated, identityUserProvisioningResponse{
@@ -154,18 +154,18 @@ func (h *IdentityHandler) updateIdentityUser(w http.ResponseWriter, r *http.Requ
 	if !h.decodeJSON(w, r, &user) {
 		return
 	}
-	user.ID = valueOrDefault(strings.TrimSpace(r.PathValue("userID")), user.ID)
+	user.UserID = valueOrDefault(strings.TrimSpace(r.PathValue("userID")), user.UserID)
 	principal := h.principal(r)
-	result, err := h.executeIdentityAuthoringUpsert(r.Context(), "identity.user", user.ID, r.Header.Get("Builder-Task-ID"), r.Header.Get("Idempotency-Key"), r.Header.Get("Expected-Schema-Hash"), user, principal,
+	result, err := h.executeIdentityAuthoringUpsert(r.Context(), "identity.user", user.UserID, r.Header.Get("Builder-Task-ID"), r.Header.Get("Idempotency-Key"), r.Header.Get("Expected-Schema-Hash"), user, principal,
 		func(ctx context.Context) (any, bool, error) {
-			return h.users.UserByIDWithinDataScope(ctx, user.ID, principal, "identity.users.update")
+			return h.users.UserByIDWithinDataScope(ctx, user.UserID, principal, "identity.users.update")
 		},
 		func(ctx context.Context) (any, error) {
 			if executeErr := h.users.UpdateUserWithinDataScope(ctx, user, principal, "identity.users.update"); executeErr != nil {
 				return nil, executeErr
 			}
-			h.appendIdentityMutationAudit(r, "identity_user_updated", "identity_user", user.ID, "Updated identity user", map[string]any{"email": user.Email, "status": user.Status})
-			persisted, found, readErr := h.users.UserByIDWithinDataScope(ctx, user.ID, principal, "identity.users.update")
+			h.appendIdentityMutationAudit(r, "identity_user_updated", "identity_user", user.UserID, "Updated identity user", map[string]any{"email": user.Email, "status": user.Status})
+			persisted, found, readErr := h.users.UserByIDWithinDataScope(ctx, user.UserID, principal, "identity.users.update")
 			if readErr != nil {
 				return nil, readErr
 			}

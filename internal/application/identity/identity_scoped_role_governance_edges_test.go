@@ -12,13 +12,13 @@ import (
 func TestAssignUserRoleGovernedCoversRiskAndGrantCeilingPolicies(t *testing.T) {
 	ctx := requestcontext.WithWorkspaceID(t.Context(), "workspace")
 	base := &identityScopedRepository{
-		users: []identitymodel.IdentityUser{{ID: "target", Status: identitymodel.IdentityStatusActive}, {ID: "actor", Status: identitymodel.IdentityStatusActive}},
+		users: []identitymodel.IdentityUser{{UserID: "target", Status: identitymodel.IdentityStatusActive}, {UserID: "actor", Status: identitymodel.IdentityStatusActive}},
 		roles: []identitymodel.IdentityRole{
-			{ID: "normal", Key: "normal", Status: identitymodel.IdentityStatusActive},
-			{ID: "blank-risk", Key: "blank-risk", Status: identitymodel.IdentityStatusActive},
-			{ID: "elevated", Key: "elevated", Status: identitymodel.IdentityStatusActive},
-			{ID: "privileged", Key: "privileged", Status: identitymodel.IdentityStatusActive},
-			{ID: "unpublished", Key: "unpublished", Status: identitymodel.IdentityStatusActive},
+			{RoleID: "normal", Key: "normal", Status: identitymodel.IdentityStatusActive},
+			{RoleID: "blank-risk", Key: "blank-risk", Status: identitymodel.IdentityStatusActive},
+			{RoleID: "elevated", Key: "elevated", Status: identitymodel.IdentityStatusActive},
+			{RoleID: "privileged", Key: "privileged", Status: identitymodel.IdentityStatusActive},
+			{RoleID: "unpublished", Key: "unpublished", Status: identitymodel.IdentityStatusActive},
 		},
 	}
 	repository := &effectiveAccessFaultRepository{identityScopedRepository: base}
@@ -94,17 +94,17 @@ func TestValidateRoleMenusCoversRoleMenuAndRoutePolicies(t *testing.T) {
 	ctx := requestcontext.WithWorkspaceID(t.Context(), "workspace")
 	base := &identityScopedRepository{
 		roles: []identitymodel.IdentityRole{
-			{ID: "role", Key: "role", Status: identitymodel.IdentityStatusActive},
-			{ID: "unpublished", Key: "unpublished", Status: identitymodel.IdentityStatusActive},
+			{RoleID: "role", Key: "role", Status: identitymodel.IdentityStatusActive},
+			{RoleID: "unpublished", Key: "unpublished", Status: identitymodel.IdentityStatusActive},
 		},
 		menus: []identitymodel.IdentityMenu{
-			{ID: "header", Key: "header", Status: identitymodel.IdentityStatusActive},
-			{ID: "account", Key: "account", Route: "/admin/security/accounts", Status: identitymodel.IdentityStatusActive},
-			{ID: "unknown-route", Key: "unknown-route", Route: "/admin/not-registered", Status: identitymodel.IdentityStatusActive},
-			{ID: "business-members", Key: "business-members", Route: "business.members", Status: identitymodel.IdentityStatusActive},
-			{ID: "literal-business-path", Key: "literal-business-path", Route: "/business/members", Status: identitymodel.IdentityStatusActive},
-			{ID: "disabled", Key: "disabled", Status: identitymodel.IdentityStatusDisabled},
-			{ID: "deleted", Key: "deleted", Status: identitymodel.IdentityStatusDeleted},
+			{MenuID: "header", Key: "header", Status: identitymodel.IdentityStatusActive},
+			{MenuID: "account", Key: "account", Route: "/admin/security/accounts", Status: identitymodel.IdentityStatusActive},
+			{MenuID: "unknown-route", Key: "unknown-route", Route: "/admin/not-registered", Status: identitymodel.IdentityStatusActive},
+			{MenuID: "business-members", Key: "business-members", Route: "business.members", Status: identitymodel.IdentityStatusActive},
+			{MenuID: "literal-business-path", Key: "literal-business-path", Route: "/business/members", Status: identitymodel.IdentityStatusActive},
+			{MenuID: "disabled", Key: "disabled", Status: identitymodel.IdentityStatusDisabled},
+			{MenuID: "deleted", Key: "deleted", Status: identitymodel.IdentityStatusDeleted},
 		},
 	}
 	repository := &effectiveAccessFaultRepository{identityScopedRepository: base}

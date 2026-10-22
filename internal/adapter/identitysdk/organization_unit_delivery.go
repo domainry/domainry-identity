@@ -59,7 +59,7 @@ func sdkOrganizationUnitDeliveryResult(value identitymodel.IdentityOrganizationU
 
 func sdkDeliveredOrganizationUnit(value identitymodel.IdentityDeliveredOrganizationUnit) organizationunit.DeliveredOrganizationUnit {
 	return organizationunit.DeliveredOrganizationUnit{
-		ID: value.ID, Code: value.Code, Name: value.Name, NodeType: organizationunit.NodeType(value.NodeType), Status: value.Status,
+		ID: value.ID, OrganizationUnitID: value.OrganizationUnitID, Code: value.Code, Name: value.Name, NodeType: organizationunit.NodeType(value.NodeType), Status: value.Status,
 		ParentOrganizationID: value.ParentOrganizationID, Path: value.Path, AncestorIDs: append([]string(nil), value.AncestorIDs...),
 		Depth: value.Depth, SortOrder: value.SortOrder, Version: value.Version,
 	}

@@ -29,16 +29,16 @@ func identityGovernanceTestService(repository identityrepository.IdentityReposit
 
 func TestIdentityGovernanceValidationReportsEveryReferenceShape(t *testing.T) {
 	repository := &identityScopedRepository{
-		roles: []identitymodel.IdentityRole{{ID: "existing", Key: "duplicate"}},
+		roles: []identitymodel.IdentityRole{{RoleID: "existing", Key: "duplicate"}},
 		menus: []identitymodel.IdentityMenu{
-			{ID: "root", Key: "root"},
-			{ID: "ancestor", Key: "ancestor", ParentID: "candidate"},
-			{ID: "other", Key: "duplicate-menu"},
+			{MenuID: "root", Key: "root"},
+			{MenuID: "ancestor", Key: "ancestor", ParentID: "candidate"},
+			{MenuID: "other", Key: "duplicate-menu"},
 		},
 	}
 	service := identityGovernanceTestService(repository)
 	role := identitymodel.IdentityRole{
-		ID: "candidate", Key: " DUPLICATE ",
+		RoleID: "candidate", Key: " DUPLICATE ",
 	}
 	permissions := []identitymodel.RolePermission{
 		{PermissionKey: "order.read", DataScope: identitymodel.IdentityDataScopeAll},
@@ -52,7 +52,7 @@ func TestIdentityGovernanceValidationReportsEveryReferenceShape(t *testing.T) {
 		{Resource: "order", Field: "missing", Visible: true},
 		{Resource: "missing", Field: "amount", Visible: true},
 	}
-	menu := identitymodel.IdentityMenu{ID: "candidate", Key: " duplicate-menu ", ParentID: "ancestor"}
+	menu := identitymodel.IdentityMenu{MenuID: "candidate", Key: " duplicate-menu ", ParentID: "ancestor"}
 	result, err := service.Validate(t.Context(), identitycontract.IdentityGovernanceValidationRequest{
 		Role:             &role,
 		RoleID:           "missing-role",
@@ -97,12 +97,12 @@ func TestIdentityGovernanceValidationReportsEveryReferenceShape(t *testing.T) {
 
 func TestIdentityGovernanceValidationAcceptsCanonicalConfiguration(t *testing.T) {
 	repository := &identityScopedRepository{
-		roles: []identitymodel.IdentityRole{{ID: "role", Key: "role"}},
-		menus: []identitymodel.IdentityMenu{{ID: "root", Key: "root"}},
+		roles: []identitymodel.IdentityRole{{RoleID: "role", Key: "role"}},
+		menus: []identitymodel.IdentityMenu{{MenuID: "root", Key: "root"}},
 	}
 	service := identityGovernanceTestService(repository)
-	role := identitymodel.IdentityRole{ID: "role", Key: "role"}
-	menu := identitymodel.IdentityMenu{ID: "child", Key: "child", ParentID: "root"}
+	role := identitymodel.IdentityRole{RoleID: "role", Key: "role"}
+	menu := identitymodel.IdentityMenu{MenuID: "child", Key: "child", ParentID: "root"}
 	result, err := service.Validate(t.Context(), identitycontract.IdentityGovernanceValidationRequest{Role: &role, RoleID: "role", Permissions: identityTestRolePermissions("order.read"), FieldPermissions: []identitymodel.IdentityFieldPermission{{Resource: "order", Field: "amount", Visible: true}}, Menu: &menu, MenuIDs: []string{"root"}}, identityGovernanceTestPrincipal())
 	if err != nil || !result.Valid || len(result.Errors) != 0 {
 		t.Fatalf("result=%#v err=%v", result, err)
@@ -111,10 +111,10 @@ func TestIdentityGovernanceValidationAcceptsCanonicalConfiguration(t *testing.T)
 
 func TestIdentityOwnerAuthoringExamplesUseRealGovernanceValidator(t *testing.T) {
 	repository := &identityScopedRepository{
-		roles:             []identitymodel.IdentityRole{{ID: "role", Key: "role"}, {ID: "sales_role", Key: "sales_role"}},
-		users:             []identitymodel.IdentityUser{{ID: "sales_manager", Name: "Sales Manager", Email: "sales.manager@example.com", Status: identitymodel.IdentityStatusActive}},
-		organizationUnits: []identitymodel.IdentityOrganizationUnit{{ID: "company", Name: "Company", Status: identitymodel.IdentityStatusActive}, {ID: "sales", Name: "Sales", Status: identitymodel.IdentityStatusActive}},
-		menus:             []identitymodel.IdentityMenu{{ID: "root", Key: "root"}, {ID: "orders", Key: "orders"}, {ID: "reports", Key: "reports"}},
+		roles:             []identitymodel.IdentityRole{{RoleID: "role", Key: "role"}, {RoleID: "sales_role", Key: "sales_role"}},
+		users:             []identitymodel.IdentityUser{{UserID: "sales_manager", Name: "Sales Manager", Email: "sales.manager@example.com", Status: identitymodel.IdentityStatusActive}},
+		organizationUnits: []identitymodel.IdentityOrganizationUnit{{OrganizationUnitID: "company", Name: "Company", Status: identitymodel.IdentityStatusActive}, {OrganizationUnitID: "sales", Name: "Sales", Status: identitymodel.IdentityStatusActive}},
+		menus:             []identitymodel.IdentityMenu{{MenuID: "root", Key: "root"}, {MenuID: "orders", Key: "orders"}, {MenuID: "reports", Key: "reports"}},
 	}
 	service := identityGovernanceTestService(repository)
 	principal := identityGovernanceTestPrincipal()
@@ -233,19 +233,19 @@ func decodeIdentityAuthoringExample(t *testing.T, value map[string]any, target a
 
 func TestIdentityGovernanceValidationIncludesConfigurationSections(t *testing.T) {
 	repository := &identityScopedRepository{
-		organizationUnits: []identitymodel.IdentityOrganizationUnit{{ID: "organizationUnit", Name: "OrganizationUnit"}},
-		users:             []identitymodel.IdentityUser{{ID: "user", Name: "User", Email: "user@example.com"}},
-		roles:             []identitymodel.IdentityRole{{ID: "role", Key: "role"}, {ID: "other", Key: "other"}},
-		menus:             []identitymodel.IdentityMenu{{ID: "menu", Key: "menu"}},
+		organizationUnits: []identitymodel.IdentityOrganizationUnit{{OrganizationUnitID: "organizationUnit", Name: "OrganizationUnit"}},
+		users:             []identitymodel.IdentityUser{{UserID: "user", Name: "User", Email: "user@example.com"}},
+		roles:             []identitymodel.IdentityRole{{RoleID: "role", Key: "role"}, {RoleID: "other", Key: "other"}},
+		menus:             []identitymodel.IdentityMenu{{MenuID: "menu", Key: "menu"}},
 	}
 	service := identityGovernanceTestService(repository)
-	user := identitymodel.IdentityUser{ID: "user", Name: "User", Email: "user@example.com"}
-	organizationUnit := identitymodel.IdentityOrganizationUnit{ID: "organizationUnit", Name: "OrganizationUnit"}
+	user := identitymodel.IdentityUser{UserID: "user", Name: "User", Email: "user@example.com"}
+	organizationUnit := identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "organizationUnit", Name: "OrganizationUnit"}
 	assignment := identitymodel.IdentityUserRoleAssignment{UserID: "user", RoleID: "role"}
 	role := identitymodel.IdentityRole{
-		ID: "role", Key: "role",
+		RoleID: "role", Key: "role",
 	}
-	menu := identitymodel.IdentityMenu{ID: "menu", Key: "menu"}
+	menu := identitymodel.IdentityMenu{MenuID: "menu", Key: "menu"}
 	result, err := service.Validate(t.Context(), identitycontract.IdentityGovernanceValidationRequest{
 		User: &user, OrganizationUnit: &organizationUnit, RoleAssignment: &assignment, Role: &role, Menu: &menu,
 		FieldPermissions: []identitymodel.IdentityFieldPermission{{Resource: "", Field: ""}, {Resource: "order", Field: "", Editable: true}, {Resource: "order", Field: "amount", Visible: true, Editable: true}},
@@ -296,11 +296,11 @@ func (r identityGovernanceStageFaultRepository) ListIdentityMenus(ctx context.Co
 }
 
 func TestIdentityGovernanceValidationPropagatesEveryConfigurationReadFailure(t *testing.T) {
-	base := &identityScopedRepository{users: []identitymodel.IdentityUser{{ID: "user"}}, roles: []identitymodel.IdentityRole{{ID: "role"}}}
-	user := identitymodel.IdentityUser{ID: "user", Name: "User", Email: "user@example.com"}
-	organizationUnit := identitymodel.IdentityOrganizationUnit{ID: "organizationUnit", Name: "OrganizationUnit"}
+	base := &identityScopedRepository{users: []identitymodel.IdentityUser{{UserID: "user"}}, roles: []identitymodel.IdentityRole{{RoleID: "role"}}}
+	user := identitymodel.IdentityUser{UserID: "user", Name: "User", Email: "user@example.com"}
+	organizationUnit := identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "organizationUnit", Name: "OrganizationUnit"}
 	assignment := identitymodel.IdentityUserRoleAssignment{UserID: "user", RoleID: "role"}
-	menu := identitymodel.IdentityMenu{ID: "menu", Key: "menu"}
+	menu := identitymodel.IdentityMenu{MenuID: "menu", Key: "menu"}
 	tests := []struct {
 		stage   string
 		request identitycontract.IdentityGovernanceValidationRequest
@@ -364,13 +364,13 @@ func TestIdentityGovernanceConvenienceValidatorsReturnFirstStructuredError(t *te
 }
 
 func TestIdentityGovernanceMenuParentEdges(t *testing.T) {
-	service := identityGovernanceTestService(&identityScopedRepository{menus: []identitymodel.IdentityMenu{{ID: "root", Key: "root"}}})
+	service := identityGovernanceTestService(&identityScopedRepository{menus: []identitymodel.IdentityMenu{{MenuID: "root", Key: "root"}}})
 	principal := identityGovernanceTestPrincipal()
 	for name, menu := range map[string]identitymodel.IdentityMenu{
-		"self":         {ID: "self", Key: "self", ParentID: "self"},
-		"missing":      {ID: "child", Key: "child", ParentID: "missing"},
+		"self":         {MenuID: "self", Key: "self", ParentID: "self"},
+		"missing":      {MenuID: "child", Key: "child", ParentID: "missing"},
 		"id fallback":  {Key: "key-only"},
-		"key fallback": {ID: "id-only"},
+		"key fallback": {MenuID: "id-only"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := service.Validate(t.Context(), identitycontract.IdentityGovernanceValidationRequest{Menu: &menu}, principal)
@@ -395,7 +395,7 @@ func (identityGovernanceRoleFaultRepository) ListIdentityMenus(context.Context, 
 
 func TestIdentityGovernanceRoleValidationPropagatesRepositoryFailure(t *testing.T) {
 	service := identityGovernanceTestService(identityGovernanceRoleFaultRepository{})
-	role := identitymodel.IdentityRole{ID: "role", Key: "role"}
+	role := identitymodel.IdentityRole{RoleID: "role", Key: "role"}
 	_, err := service.Validate(t.Context(), identitycontract.IdentityGovernanceValidationRequest{Role: &role}, identityGovernanceTestPrincipal())
 	if !errors.Is(err, errIdentitySeedTest) {
 		t.Fatalf("repository failure was hidden: %v", err)

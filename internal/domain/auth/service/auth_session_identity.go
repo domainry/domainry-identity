@@ -23,11 +23,11 @@ func (s *AuthDomainService) Me(ctx context.Context, accessToken string) (authpro
 	if !ok || user.Status != identitymodel.IdentityStatusActive {
 		return authprojection.AuthMeResponse{}, forbidden("auth.user_disabled")
 	}
-	roles, err := s.identity.ActiveRolesForUser(ctx, user.ID)
+	roles, err := s.identity.ActiveRolesForUser(ctx, user.UserID)
 	if err != nil {
 		return authprojection.AuthMeResponse{}, err
 	}
-	principal, err := s.authorization.ResolvePrincipal(ctx, user.ID)
+	principal, err := s.authorization.ResolvePrincipal(ctx, user.UserID)
 	if err != nil {
 		return authprojection.AuthMeResponse{}, err
 	}
@@ -40,7 +40,7 @@ func (s *AuthDomainService) Me(ctx context.Context, accessToken string) (authpro
 	permissions := identitymodel.RolePermissionKeys(principal.Role.Permissions)
 	slices.Sort(permissions)
 	permissions = slices.Compact(permissions)
-	mustChangePassword, err := s.RequiresPasswordChange(ctx, claims.WorkspaceID, user.ID)
+	mustChangePassword, err := s.RequiresPasswordChange(ctx, claims.WorkspaceID, user.UserID)
 	if err != nil {
 		return authprojection.AuthMeResponse{}, err
 	}

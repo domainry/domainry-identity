@@ -30,21 +30,21 @@ func TestAccessReviewDecisionIsAtomicAuditableAndIdempotent(t *testing.T) {
 		t.Fatalf("unbound shared Operations error=%v", err)
 	}
 	bindSharedOperations(t, store)
-	if err := store.UpsertIdentityUser(t.Context(), "workspace-primary", identitymodel.IdentityUser{ID: "user-1", Name: "User", Status: identitymodel.IdentityStatusActive}); err != nil {
+	if err := store.UpsertIdentityUser(t.Context(), "workspace-primary", identitymodel.IdentityUser{UserID: "user-1", Name: "User", Status: identitymodel.IdentityStatusActive}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpsertIdentityRole(t.Context(), "workspace-primary", identitymodel.IdentityRole{ID: "role-1", Key: "privileged", Label: "Privileged", Status: identitymodel.IdentityStatusActive}); err != nil {
+	if err := store.UpsertIdentityRole(t.Context(), "workspace-primary", identitymodel.IdentityRole{RoleID: "role-1", Key: "privileged", Label: "Privileged", Status: identitymodel.IdentityStatusActive}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.AssignIdentityUserRole(t.Context(), "workspace-primary", identitymodel.IdentityUserRoleAssignment{UserID: "user-1", RoleID: "role-1", Source: "manual", Status: "active", GrantedBy: "admin"}); err != nil {
 		t.Fatal(err)
 	}
 	review := identitymodel.IdentityAccessReview{
-		ID: "review-1", WorkspaceID: "workspace-primary", PeriodStart: "2026-01-01T00:00:00Z", PeriodEnd: "2026-03-31T00:00:00Z",
+		ReviewID: "review-1", WorkspaceID: "workspace-primary", PeriodStart: "2026-01-01T00:00:00Z", PeriodEnd: "2026-03-31T00:00:00Z",
 		DueAt: "2026-04-15T00:00:00Z", Status: identitymodel.IdentityAccessReviewOpen, CreatedBy: "admin",
 		CreatedAt: "2026-04-01T00:00:00Z", UpdatedAt: "2026-04-01T00:00:00Z",
 		Items: []identitymodel.IdentityAccessReviewItem{{
-			ID: "item-1", ReviewID: "review-1", UserID: "user-1", RoleID: "role-1", RoleKey: "privileged",
+			ReviewItemID: "item-1", ReviewID: "review-1", UserID: "user-1", RoleID: "role-1", RoleKey: "privileged",
 			RiskLevel: identitymodel.IdentityRoleRiskPrivileged, Priority: "critical", Status: "pending", Version: 1,
 			CreatedAt: "2026-04-01T00:00:00Z", UpdatedAt: "2026-04-01T00:00:00Z",
 		}},
@@ -53,7 +53,7 @@ func TestAccessReviewDecisionIsAtomicAuditableAndIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	var periodStart, periodEnd int64
-	if err := identityStore.DB().QueryRowContext(t.Context(), `SELECT period_start,period_end FROM _identity_access_reviews WHERE id=?`, review.ID).Scan(&periodStart, &periodEnd); err != nil {
+	if err := identityStore.DB().QueryRowContext(t.Context(), `SELECT period_start,period_end FROM _identity_access_reviews WHERE review_id=?`, review.ReviewID).Scan(&periodStart, &periodEnd); err != nil {
 		t.Fatal(err)
 	}
 	start, _ := time.Parse(time.RFC3339, review.PeriodStart)
@@ -93,7 +93,7 @@ func TestAccessReviewDecisionIsAtomicAuditableAndIdempotent(t *testing.T) {
 		t.Fatalf("receipt=%#v err=%v", receipt, err)
 	}
 	replay, err := store.ApplyIdentityAccessReviewDecision(t.Context(), mutation)
-	if err != nil || !replay.Replayed || replay.ID != receipt.ID {
+	if err != nil || !replay.Replayed || replay.OperationID != receipt.OperationID {
 		t.Fatalf("replay=%#v err=%v", replay, err)
 	}
 	reused := mutation
@@ -135,9 +135,9 @@ func TestAccessReviewStoreValidatesInputsAndSupportsEveryDecisionShape(t *testin
 
 	for _, invalid := range []identitymodel.IdentityAccessReview{
 		{WorkspaceID: ""},
-		{WorkspaceID: "workspace-primary", CreatedBy: "admin", Items: []identitymodel.IdentityAccessReviewItem{{ID: "item"}}},
-		{WorkspaceID: "workspace-primary", ID: "review", Items: []identitymodel.IdentityAccessReviewItem{{ID: "item"}}},
-		{WorkspaceID: "workspace-primary", ID: "review", CreatedBy: "admin"},
+		{WorkspaceID: "workspace-primary", CreatedBy: "admin", Items: []identitymodel.IdentityAccessReviewItem{{ReviewItemID: "item"}}},
+		{WorkspaceID: "workspace-primary", ReviewID: "review", Items: []identitymodel.IdentityAccessReviewItem{{ReviewItemID: "item"}}},
+		{WorkspaceID: "workspace-primary", ReviewID: "review", CreatedBy: "admin"},
 	} {
 		if err := store.CreateIdentityAccessReview(t.Context(), invalid); err == nil {
 			t.Fatalf("invalid review was accepted: %#v", invalid)
@@ -160,8 +160,8 @@ func TestAccessReviewStoreValidatesInputsAndSupportsEveryDecisionShape(t *testin
 	}
 
 	for _, role := range []identitymodel.IdentityRole{
-		{ID: "role-current", Key: "current", Label: "Current", Status: identitymodel.IdentityStatusActive},
-		{ID: "role-reduced", Key: "reduced", Label: "Reduced", Status: identitymodel.IdentityStatusActive},
+		{RoleID: "role-current", Key: "current", Label: "Current", Status: identitymodel.IdentityStatusActive},
+		{RoleID: "role-reduced", Key: "reduced", Label: "Reduced", Status: identitymodel.IdentityStatusActive},
 	} {
 		if err := store.UpsertIdentityRole(t.Context(), "workspace-primary", role); err != nil {
 			t.Fatal(err)
@@ -169,7 +169,7 @@ func TestAccessReviewStoreValidatesInputsAndSupportsEveryDecisionShape(t *testin
 	}
 	userIDs := []string{"keep", "expiry", "reduce", "missing-revoke", "missing-expiry", "missing-reduce", "bad-replacement", "same-replacement", "unknown", "version"}
 	for _, userID := range userIDs {
-		if err := store.UpsertIdentityUser(t.Context(), "workspace-primary", identitymodel.IdentityUser{ID: userID, Name: userID, Status: identitymodel.IdentityStatusActive}); err != nil {
+		if err := store.UpsertIdentityUser(t.Context(), "workspace-primary", identitymodel.IdentityUser{UserID: userID, Name: userID, Status: identitymodel.IdentityStatusActive}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -183,13 +183,13 @@ func TestAccessReviewStoreValidatesInputsAndSupportsEveryDecisionShape(t *testin
 	items := make([]identitymodel.IdentityAccessReviewItem, 0, len(userIDs))
 	for _, userID := range userIDs {
 		items = append(items, identitymodel.IdentityAccessReviewItem{
-			ID: "item-" + userID, ReviewID: "review-shapes", UserID: userID, RoleID: "role-current", RoleKey: "current",
+			ReviewItemID: "item-" + userID, ReviewID: "review-shapes", UserID: userID, RoleID: "role-current", RoleKey: "current",
 			RiskLevel: identitymodel.IdentityRoleRiskNormal, Priority: "normal", PriorityReasons: []string{},
 			Status: "pending", Version: 1, CreatedAt: "2026-04-01T00:00:00Z", UpdatedAt: "2026-04-01T00:00:00Z",
 		})
 	}
 	review := identitymodel.IdentityAccessReview{
-		ID: "review-shapes", WorkspaceID: "workspace-primary", PeriodStart: "2026-01-01T00:00:00Z", PeriodEnd: "2026-03-31T00:00:00Z",
+		ReviewID: "review-shapes", WorkspaceID: "workspace-primary", PeriodStart: "2026-01-01T00:00:00Z", PeriodEnd: "2026-03-31T00:00:00Z",
 		DueAt: "2026-04-15T00:00:00Z", Status: identitymodel.IdentityAccessReviewOpen, CreatedBy: "admin",
 		CreatedAt: "2026-04-01T00:00:00Z", UpdatedAt: "2026-04-01T00:00:00Z", Items: items,
 	}

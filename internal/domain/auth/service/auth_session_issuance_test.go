@@ -44,12 +44,12 @@ func TestSessionIssuance(t *testing.T) {
 
 	t.Run("success with active roles", func(t *testing.T) {
 		auth, identityRepository, authRepository := newFaultAuthDomainService()
-		identityRepository.roleAssignments = []identitymodel.IdentityUserRoleAssignment{{UserID: user.ID, RoleID: "role-sales"}}
+		identityRepository.roleAssignments = []identitymodel.IdentityUserRoleAssignment{{UserID: user.UserID, RoleID: "role-sales"}}
 		auth.authorization = &faultSessionAuthorization{
 			permissions: []string{"runtime.operations.list_operations", "identity.users.list"},
 		}
 		authRepository.credentials = map[string]identitymodel.IdentityCredential{
-			user.ID: {UserID: user.ID, MustChangePassword: true},
+			user.UserID: {UserID: user.UserID, MustChangePassword: true},
 		}
 		session, err := auth.issueSession(t.Context(), "workspace-primary", user)
 		if err != nil {

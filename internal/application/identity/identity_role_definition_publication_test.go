@@ -69,7 +69,7 @@ func roleDefinitionPublicationCatalog(t *testing.T) *IdentityPermissionCatalogAp
 }
 
 func TestRolePermissionPublishRequiresOnlyItsExactAction(t *testing.T) {
-	repository := &identityScopedRepository{roles: []identitymodel.IdentityRole{{ID: "reviewer", Key: "reviewer", Label: "Reviewer", Status: identitymodel.IdentityStatusActive}}}
+	repository := &identityScopedRepository{roles: []identitymodel.IdentityRole{{RoleID: "reviewer", Key: "reviewer", Label: "Reviewer", Status: identitymodel.IdentityStatusActive}}}
 	publisher := &roleDefinitionPublisherSpy{}
 	service := NewIdentityRoleDefinitionPublicationService(NewIdentityApplicationService(repository, nil), roleDefinitionPublicationCatalog(t), publisher)
 	principal := identitymodel.Principal{Known: true, WorkspaceID: "workspace-primary", Role: identitymodel.RoleSchema{Permissions: identityTestRolePermissions(identitycontract.IdentityActionRolePermissionsPublish)}}
@@ -94,7 +94,7 @@ func TestRolePermissionPublishRequiresOnlyItsExactAction(t *testing.T) {
 }
 
 func TestRolePermissionPublishPreservesExistingBundledPermission(t *testing.T) {
-	repository := &identityScopedRepository{roles: []identitymodel.IdentityRole{{ID: "reviewer", Key: "reviewer", Label: "Reviewer", Status: identitymodel.IdentityStatusActive}}}
+	repository := &identityScopedRepository{roles: []identitymodel.IdentityRole{{RoleID: "reviewer", Key: "reviewer", Label: "Reviewer", Status: identitymodel.IdentityStatusActive}}}
 	bundled := identitycontract.IdentityOrganizationUnitDeliveryResolvePermission
 	publisher := &roleDefinitionPublisherSpy{currentRole: identitymodel.RoleSchema{Permissions: identityTestRolePermissions(bundled)}}
 	service := NewIdentityRoleDefinitionPublicationService(NewIdentityApplicationService(repository, nil), roleDefinitionPublicationCatalog(t), publisher)
@@ -113,7 +113,7 @@ func TestRolePermissionPublishPreservesExistingBundledPermission(t *testing.T) {
 }
 
 func TestRolePermissionPublishCannotRewriteExistingBundledPermissionScope(t *testing.T) {
-	repository := &identityScopedRepository{roles: []identitymodel.IdentityRole{{ID: "reviewer", Key: "reviewer", Label: "Reviewer", Status: identitymodel.IdentityStatusActive}}}
+	repository := &identityScopedRepository{roles: []identitymodel.IdentityRole{{RoleID: "reviewer", Key: "reviewer", Label: "Reviewer", Status: identitymodel.IdentityStatusActive}}}
 	bundled := identitycontract.IdentityOrganizationUnitDeliveryResolvePermission
 	publisher := &roleDefinitionPublisherSpy{currentRole: identitymodel.RoleSchema{Permissions: identityTestScopedRolePermissions(identitymodel.IdentityDataScopeOwner, bundled)}}
 	service := NewIdentityRoleDefinitionPublicationService(NewIdentityApplicationService(repository, nil), roleDefinitionPublicationCatalog(t), publisher)

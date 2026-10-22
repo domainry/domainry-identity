@@ -26,7 +26,7 @@ func TestRoleRequestDecisionIsAtomicAcrossEveryEntitlementAndRequestState(t *tes
 		t.Fatal(err)
 	}
 	request, err := store.CreateIdentityRoleRequest(t.Context(), "workspace-primary", identitymodel.IdentityRoleRequest{
-		ID: "request-1", UserID: "target", RequestedBy: "maker", RoleIDs: []string{"role-1", "role-2", "role-3"}, Status: "pending",
+		RoleRequestID: "request-1", UserID: "target", RequestedBy: "maker", RoleIDs: []string{"role-1", "role-2", "role-3"}, Status: "pending",
 	})
 	if err != nil {
 		t.Fatal(err)

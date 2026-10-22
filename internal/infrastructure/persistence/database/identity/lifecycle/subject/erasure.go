@@ -26,7 +26,7 @@ const (
 )
 
 func (s *Store) sharedSubjectFenceRequests(workspaceID, requestID, subjectID string) *query.SelectBuilder {
-	requestIDs := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), sharedSubjectRequestsTable, workspaceID).Columns("id").Where(query.And(
+	requestIDs := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), sharedSubjectRequestsTable, workspaceID).Columns("request_id").Where(query.And(
 		query.NotEqual("request_type", "external_erasure"),
 		query.Equal("kind", "erase"),
 		query.Equal("resolved_identity", subjectID),
@@ -179,7 +179,7 @@ func (s *Store) EraseSubjectForRequest(ctx context.Context, requestID, workspace
 		return nil, err
 	}
 	statement, args, err := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_users", workspaceID).
-		Projections(coalescedIdentityProjections("phone", "status")...).Where(query.Equal("id", userID)).Build()
+		Projections(coalescedIdentityProjections("phone", "status")...).Where(query.Equal("user_id", userID)).Build()
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +211,7 @@ func (s *Store) EraseSubjectForRequest(ctx context.Context, requestID, workspace
 		for _, column := range []string{"login_name_key", "org_id", "support_org_id", "manager_user_id", "start_date", "end_date"} {
 			update.Set(column, nil)
 		}
-		statement, args, err = update.Where(query.Equal("id", userID)).Build()
+		statement, args, err = update.Where(query.Equal("user_id", userID)).Build()
 		if err != nil {
 			return nil, err
 		}
@@ -286,10 +286,14 @@ func (s *Store) redactSubjectReceipts(ctx context.Context, tx *sql.Tx, workspace
 		if err != nil {
 			return err
 		}
-		type replacement struct{ id, raw string }
+		type replacement struct {
+			id  int64
+			raw string
+		}
 		var replacements []replacement
 		for rows.Next() {
-			var id, raw string
+			var id int64
+			var raw string
 			if err = rows.Scan(&id, &raw); err != nil {
 				rows.Close()
 				return err
@@ -339,15 +343,15 @@ func redactSubjectResult(value any, workspaceID, userID string) bool {
 			}
 		}
 	case map[string]any:
-		if item["id"] == userID {
+		if item["user_id"] == userID {
 			// A source-owned user snapshot is reduced to its tombstone. Preserve
-			// version and ID for callers checking the original delivery receipt.
+			// version and business ID for callers checking the original delivery receipt.
 			version := item["version"]
 			for key := range item {
 				delete(item, key)
 			}
 			anon := identitypolicy.IdentityAnonymizedSubject(workspaceID, userID)
-			item["id"], item["name"], item["email"], item["status"] = userID, anon.Name, anon.Email, "erased"
+			item["user_id"], item["name"], item["email"], item["status"] = userID, anon.Name, anon.Email, "erased"
 			if version != nil {
 				item["version"] = version
 			}

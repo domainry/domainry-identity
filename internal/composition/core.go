@@ -173,7 +173,8 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 	workspaceID := workspace.String()
 	workspaceCtx := requestcontext.WithWorkspaceID(ctx, workspaceID)
 	seed := identityapplication.FromManifest(manifest)
-	if err := identityapplication.SyncIdentitySeeds(workspaceCtx, metadataStore, identityStore, manifest, seed, identitymodel.NewSystemScope(identitymodel.SystemScopeInstallation, "bootstrap Identity admin data")); err != nil {
+	seed, err = identityapplication.SyncIdentitySeeds(workspaceCtx, metadataStore, identityStore, manifest, seed, identitymodel.NewSystemScope(identitymodel.SystemScopeInstallation, "bootstrap Identity admin data"))
+	if err != nil {
 		return fail(fmt.Errorf("synchronize Identity bootstrap: %w", err))
 	}
 

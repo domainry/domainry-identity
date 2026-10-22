@@ -145,12 +145,12 @@ func (s *AuthProviderFlowApplicationService) IssueAuthorizationCode(ctx context.
 func (s *AuthProviderFlowApplicationService) appendAuthenticationSuccess(ctx context.Context, method, provider, applicationKey string, session authmodel.AuthSession) error {
 	requestID, ctx := authenticationRequestID(ctx)
 	principal := identitymodel.Principal{
-		Known: true, WorkspaceID: session.WorkspaceID, UserID: session.User.ID,
+		Known: true, WorkspaceID: session.WorkspaceID, UserID: session.User.UserID,
 		Role: identitymodel.RoleSchema{Key: session.DefaultRole}, RequestID: requestID, CorrelationID: requestcontext.CorrelationID(ctx),
 	}
 	return s.appendAuthenticationAudit(ctx, AuthenticationAuditRequest{
 		IdempotencyKey: authenticationAuditIdempotencyKey("auth_login_succeeded", requestID),
-		Event:          "auth_login_succeeded", ObjectKey: "identity_login", RecordID: session.User.ID,
+		Event:          "auth_login_succeeded", ObjectKey: "identity_login", RecordID: session.User.UserID,
 		Principal: principal, Summary: "Authentication succeeded",
 		Metadata: authenticationMetadata(method, provider, applicationKey, "success", "authentication_completed", ""),
 	})

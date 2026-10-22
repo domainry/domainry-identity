@@ -26,13 +26,13 @@ func NewIdentityConfigurationDomainService(repository identityrepository.Identit
 }
 
 func (s *IdentityConfigurationDomainService) ValidateUserConfiguration(ctx context.Context, user identitymodel.IdentityUser) ([]identitycontract.IdentityGovernanceValidationIssue, error) {
-	user.ID, user.Name = strings.TrimSpace(user.ID), strings.TrimSpace(user.Name)
+	user.UserID, user.Name = strings.TrimSpace(user.UserID), strings.TrimSpace(user.Name)
 	user.Email = strings.ToLower(strings.TrimSpace(user.Email))
 	issues := make([]identitycontract.IdentityGovernanceValidationIssue, 0)
-	if user.ID == "" {
-		issues = append(issues, identityConfigurationIssue("user.id", "backend.identity.user_required", "identity.user", map[string]string{"actual": user.ID}))
-	} else if strings.Contains(user.ID, "/") {
-		issues = append(issues, identityConfigurationIssue("user.id", "backend.identity.user_path_unsafe", "identity.user", map[string]string{"actual": user.ID}))
+	if user.UserID == "" {
+		issues = append(issues, identityConfigurationIssue("user.user_id", "backend.identity.user_required", "identity.user", map[string]string{"actual": user.UserID}))
+	} else if strings.Contains(user.UserID, "/") {
+		issues = append(issues, identityConfigurationIssue("user.user_id", "backend.identity.user_path_unsafe", "identity.user", map[string]string{"actual": user.UserID}))
 	}
 	if user.Name == "" {
 		issues = append(issues, identityConfigurationIssue("user.name", "backend.identity.user_name_required", "identity.user", map[string]string{"actual": user.Name}))
@@ -73,7 +73,7 @@ func (s *IdentityConfigurationDomainService) ValidateUserConfiguration(ctx conte
 		}
 		unitsByID := make(map[string]identitymodel.IdentityOrganizationUnit, len(units))
 		for _, unit := range units {
-			unitsByID[strings.TrimSpace(unit.ID)] = unit
+			unitsByID[strings.TrimSpace(unit.OrganizationUnitID)] = unit
 		}
 		if _, found := unitsByID[organizationUnitID]; organizationUnitID != "" && !found {
 			issues = append(issues, identityConfigurationIssue("user.org_id", "backend.identity.organization_unit_not_found", "identity.user", map[string]string{"actual": organizationUnitID}))
@@ -93,18 +93,18 @@ func (s *IdentityConfigurationDomainService) ValidateUserConfiguration(ctx conte
 	}
 	managerUserID := strings.TrimSpace(user.ManagerUserID)
 	if managerUserID != "" {
-		if managerUserID == user.ID {
+		if managerUserID == user.UserID {
 			issues = append(issues, identityConfigurationIssue("user.manager_user_id", "backend.identity.user_manager_self_reference", "identity.user", map[string]string{"actual": managerUserID}))
 		} else {
 			byID := make(map[string]identitymodel.IdentityUser, len(users))
 			for _, existing := range users {
-				byID[existing.ID] = existing
+				byID[existing.UserID] = existing
 			}
 			manager, found := byID[managerUserID]
 			if !found || manager.Status != identitymodel.IdentityStatusActive || manager.WorkStatus == identitymodel.IdentityWorkTerminated {
 				issues = append(issues, identityConfigurationIssue("user.manager_user_id", "backend.identity.user_manager_invalid", "identity.user", map[string]string{"actual": managerUserID}))
 			} else {
-				visited := map[string]bool{user.ID: true}
+				visited := map[string]bool{user.UserID: true}
 				for cursor := managerUserID; cursor != ""; {
 					if visited[cursor] {
 						issues = append(issues, identityConfigurationIssue("user.manager_user_id", "backend.identity.user_reporting_cycle", "identity.user", map[string]string{"actual": managerUserID}))
@@ -128,7 +128,7 @@ func (s *IdentityConfigurationDomainService) ValidateUserConfiguration(ctx conte
 func validateUserUniqueness(user identitymodel.IdentityUser, users []identitymodel.IdentityUser) []identitycontract.IdentityGovernanceValidationIssue {
 	issues := []identitycontract.IdentityGovernanceValidationIssue{}
 	for _, existing := range users {
-		if existing.ID == user.ID {
+		if existing.UserID == user.UserID {
 			continue
 		}
 		if user.Email != "" && strings.EqualFold(strings.TrimSpace(existing.Email), user.Email) {
@@ -142,10 +142,10 @@ func validateUserUniqueness(user identitymodel.IdentityUser, users []identitymod
 }
 
 func (s *IdentityConfigurationDomainService) ValidateOrganizationUnitConfiguration(ctx context.Context, organizationUnit identitymodel.IdentityOrganizationUnit) ([]identitycontract.IdentityGovernanceValidationIssue, error) {
-	organizationUnit.ID, organizationUnit.Code, organizationUnit.Name = strings.TrimSpace(organizationUnit.ID), strings.TrimSpace(organizationUnit.Code), strings.TrimSpace(organizationUnit.Name)
+	organizationUnit.OrganizationUnitID, organizationUnit.Code, organizationUnit.Name = strings.TrimSpace(organizationUnit.OrganizationUnitID), strings.TrimSpace(organizationUnit.Code), strings.TrimSpace(organizationUnit.Name)
 	issues := []identitycontract.IdentityGovernanceValidationIssue{}
-	if organizationUnit.ID == "" {
-		issues = append(issues, identityConfigurationIssue("organization_unit.id", "backend.identity.org_id_required", "identity.organization_unit", map[string]string{"actual": organizationUnit.ID}))
+	if organizationUnit.OrganizationUnitID == "" {
+		issues = append(issues, identityConfigurationIssue("organization_unit.organization_unit_id", "backend.identity.org_id_required", "identity.organization_unit", map[string]string{"actual": organizationUnit.OrganizationUnitID}))
 	}
 	if organizationUnit.Code == "" {
 		issues = append(issues, identityConfigurationIssue("organization_unit.code", "backend.identity.organization_unit_code_required", "identity.organization_unit", nil))
@@ -165,10 +165,10 @@ func (s *IdentityConfigurationDomainService) ValidateOrganizationUnitConfigurati
 	}
 	issues = append(issues, validateOrganizationUnitParent(organizationUnit, organizationUnits)...)
 	for _, existing := range organizationUnits {
-		if existing.ID != organizationUnit.ID && identityConfigurationParentID(existing.ParentID) == identityConfigurationParentID(organizationUnit.ParentID) && strings.EqualFold(strings.TrimSpace(existing.Name), organizationUnit.Name) {
+		if existing.OrganizationUnitID != organizationUnit.OrganizationUnitID && identityConfigurationParentID(existing.ParentID) == identityConfigurationParentID(organizationUnit.ParentID) && strings.EqualFold(strings.TrimSpace(existing.Name), organizationUnit.Name) {
 			issues = append(issues, identityConfigurationIssue("organization_unit.name", "backend.identity.organization_unit_name_exists", "identity.organization_unit", map[string]string{"actual": organizationUnit.Name}))
 		}
-		if existing.ID != organizationUnit.ID && strings.EqualFold(strings.TrimSpace(existing.Code), organizationUnit.Code) {
+		if existing.OrganizationUnitID != organizationUnit.OrganizationUnitID && strings.EqualFold(strings.TrimSpace(existing.Code), organizationUnit.Code) {
 			issues = append(issues, identityConfigurationIssue("organization_unit.code", "backend.identity.organization_unit_code_exists", "identity.organization_unit", map[string]string{"actual": organizationUnit.Code}))
 		}
 	}
@@ -180,23 +180,23 @@ func validateOrganizationUnitParent(organizationUnit identitymodel.IdentityOrgan
 	if parentID == "" {
 		return nil
 	}
-	if parentID == organizationUnit.ID {
+	if parentID == organizationUnit.OrganizationUnitID {
 		return []identitycontract.IdentityGovernanceValidationIssue{identityConfigurationIssue("organization_unit.parent_id", "backend.identity.organization_unit_parent_self", "identity.organization_unit", map[string]string{"actual": parentID})}
 	}
 	byID := make(map[string]identitymodel.IdentityOrganizationUnit, len(organizationUnits))
 	for _, existing := range organizationUnits {
-		byID[existing.ID] = existing
+		byID[existing.OrganizationUnitID] = existing
 	}
 	parent, exists := byID[parentID]
 	if !exists {
 		return []identitycontract.IdentityGovernanceValidationIssue{identityConfigurationIssue("organization_unit.parent_id", "backend.identity.parent_organization_unit_not_found", "identity.organization_unit", map[string]string{"actual": parentID})}
 	}
-	seen := map[string]bool{organizationUnit.ID: true}
+	seen := map[string]bool{organizationUnit.OrganizationUnitID: true}
 	for {
-		if seen[parent.ID] {
+		if seen[parent.OrganizationUnitID] {
 			return []identitycontract.IdentityGovernanceValidationIssue{identityConfigurationIssue("organization_unit.parent_id", "backend.identity.organization_unit_cycle", "identity.organization_unit", map[string]string{"actual": parentID})}
 		}
-		seen[parent.ID] = true
+		seen[parent.OrganizationUnitID] = true
 		nextID := identityConfigurationParentID(parent.ParentID)
 		if nextID == "" {
 			return nil
@@ -256,7 +256,7 @@ func (s *IdentityConfigurationDomainService) identityRoleByID(ctx context.Contex
 		return identitymodel.IdentityRole{}, false, err
 	}
 	for _, role := range roles {
-		if role.ID == roleID {
+		if role.RoleID == roleID {
 			return role, true, nil
 		}
 	}

@@ -37,7 +37,7 @@ func (s *AuthDomainService) RefreshForApplication(ctx context.Context, workspace
 		return authmodel.AuthSession{}, forbidden("identity.application_mismatch")
 	}
 	if strings.TrimSpace(session.RevokedAt) != "" {
-		if strings.TrimSpace(session.ReplacedByID) != "" {
+		if strings.TrimSpace(session.ReplacedByHash) != "" {
 			if _, revokeErr := s.identityStore.RevokeAuthRefreshTokensForUser(ctx, workspaceID, session.UserID, time.Now().UTC().Format(time.RFC3339)); revokeErr != nil {
 				return authmodel.AuthSession{}, revokeErr
 			}
@@ -62,7 +62,7 @@ func (s *AuthDomainService) RefreshForApplication(ctx context.Context, workspace
 	if !ok {
 		return authmodel.AuthSession{}, internalError("atomic refresh token rotation is unavailable", nil)
 	}
-	rotated, err := rotator.RotateAuthRefreshToken(ctx, workspaceID, session.ID, time.Now().UTC().Format(time.RFC3339), replacement)
+	rotated, err := rotator.RotateAuthRefreshToken(ctx, workspaceID, session.TokenHash, time.Now().UTC().Format(time.RFC3339), replacement)
 	if err != nil {
 		return authmodel.AuthSession{}, err
 	}
@@ -99,5 +99,5 @@ func (s *AuthDomainService) LogoutForApplication(ctx context.Context, workspaceI
 		_, err = sessions.RevokeAuthSession(ctx, workspaceID, session.UserID, session.SessionID, time.Now().UTC().Format(time.RFC3339))
 		return err
 	}
-	return s.identityStore.RevokeAuthRefreshToken(ctx, workspaceID, session.ID, time.Now().UTC().Format(time.RFC3339), "")
+	return s.identityStore.RevokeAuthRefreshToken(ctx, workspaceID, session.TokenHash, time.Now().UTC().Format(time.RFC3339), "")
 }

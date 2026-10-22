@@ -31,10 +31,10 @@ func TestSystemManagedBusinessRoleReconciliationPersistsInSQLite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := repository.UpsertIdentityUser(t.Context(), "workspace-primary", identitymodel.IdentityUser{ID: "user-1", Name: "Member", Email: "member@example.com", Status: identitymodel.IdentityStatusActive}); err != nil {
+	if err := repository.UpsertIdentityUser(t.Context(), "workspace-primary", identitymodel.IdentityUser{UserID: "user-1", Name: "Member", Email: "member@example.com", Status: identitymodel.IdentityStatusActive}); err != nil {
 		t.Fatal(err)
 	}
-	if err := repository.UpsertIdentityRole(t.Context(), "workspace-primary", identitymodel.IdentityRole{ID: "member-role", Key: "member", Label: "Member", Status: identitymodel.IdentityStatusActive}); err != nil {
+	if err := repository.UpsertIdentityRole(t.Context(), "workspace-primary", identitymodel.IdentityRole{RoleID: "member-role", Key: "member", Label: "Member", Status: identitymodel.IdentityStatusActive}); err != nil {
 		t.Fatal(err)
 	}
 	service, err := identityservice.NewIdentityDomainService(repository, nil).ForWorkspace("workspace-primary")

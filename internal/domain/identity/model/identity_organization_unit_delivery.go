@@ -19,7 +19,8 @@ type IdentityOrganizationUnitDeliveryMutation struct {
 }
 
 type IdentityDeliveredOrganizationUnit struct {
-	ID                   string                       `json:"id"`
+	ID                   int64                        `json:"id"`
+	OrganizationUnitID   string                       `json:"organization_unit_id"`
 	Code                 string                       `json:"code"`
 	Name                 string                       `json:"name"`
 	NodeType             IdentityOrganizationUnitType `json:"node_type"`

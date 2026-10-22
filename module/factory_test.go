@@ -394,8 +394,8 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	for _, role := range roles {
 		if role.Key == "project_viewer" {
 			foundProjectRole = true
-			if want := identitypersistence.WorkspaceRoleID(string(application.WorkspaceID), role.Key); role.ID != want {
-				t.Fatalf("project role ID=%q want=%q", role.ID, want)
+			if want := identitypersistence.WorkspaceRoleID(string(application.WorkspaceID), role.Key); role.RoleID != want {
+				t.Fatalf("project role ID=%q want=%q", role.RoleID, want)
 			}
 		}
 	}
@@ -464,7 +464,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	defer probeDB.Close()
 	for _, table := range []string{"_identity_users", "_identity_user_role_assignments"} {
 		var count int
-		if err := probeDB.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM "+table+" WHERE workspace_id=? AND "+map[string]string{"_identity_users": "id", "_identity_user_role_assignments": "user_id"}[table]+"=?", "workspace-primary", "workflow:customer_sync").Scan(&count); err != nil || count != 0 {
+		if err := probeDB.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM "+table+" WHERE workspace_id=? AND "+map[string]string{"_identity_users": "user_id", "_identity_user_role_assignments": "user_id"}[table]+"=?", "workspace-primary", "workflow:customer_sync").Scan(&count); err != nil || count != 0 {
 			t.Fatalf("workflow workload leaked into %s: count=%d err=%v", table, count, err)
 		}
 	}
@@ -581,7 +581,11 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		t.Fatalf("embedded host registry usage was not projected: %#v", projectedPermissions)
 	}
 	reset := httptest.NewRecorder()
-	resetRequest := httptest.NewRequest(http.MethodPost, "/auth/reset-password", strings.NewReader(`{"user_id":"admin","new_password":"Domainry@2026","must_change_password":false}`))
+	resetBody, err := json.Marshal(map[string]any{"user_id": adminSession.User.UserID, "new_password": "Domainry@2026", "must_change_password": false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resetRequest := httptest.NewRequest(http.MethodPost, "/auth/reset-password", strings.NewReader(string(resetBody)))
 	resetRequest.Header.Set("Content-Type", "application/json")
 	resetRequest.Header.Set("Authorization", "Bearer "+adminSession.AccessToken)
 	resetRequest.Header.Set("Idempotency-Key", "reset-missing-user")
@@ -831,8 +835,8 @@ func TestFactoryEmbeddedOrganizationUnitDeliveryRollsBackWithHostTransaction(t *
 	if _, err := binding.Applications().Register(t.Context(), identitysdk.ApplicationRegistration{Application: application}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ExecContext(t.Context(), `INSERT INTO _identity_organization_units (id, workspace_id, code, name, sibling_key, node_type, parent_id, path, ancestor_ids, depth, sort_order, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		"company-a", "workspace-primary", "COMPANY-A", "Company A", "company-a-sibling-key", "company", nil, "/company-a", "[]", 0, 0, "active", "now", "now"); err != nil {
+	if _, err := db.ExecContext(t.Context(), `INSERT INTO _identity_organization_units (organization_unit_id, workspace_id, code, name, sibling_key, node_type, parent_id, path, ancestor_ids, depth, sort_order, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"company-a", "workspace-primary", "COMPANY-A", "Company A", "company-a-sibling-key", "company", nil, "/company-a", "[]", 0, 0, "active", int64(1), int64(1)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -915,7 +919,7 @@ func TestFactoryEmbeddedOrganizationUnitDeliveryRollsBackWithHostTransaction(t *
 	for _, check := range []struct {
 		table, column, value string
 	}{
-		{table: "_identity_organization_units", column: "id", value: "factory-department"},
+		{table: "_identity_organization_units", column: "organization_unit_id", value: "factory-department"},
 		{table: "_operations", column: "idempotency_key", value: "factory-department-rollback"},
 		{table: "_audit_events", column: "record_id", value: "factory-department"},
 	} {
@@ -947,12 +951,12 @@ func TestEmbeddedWorkspaceIdentityUsageJoinsHostTransactionAndAuditsReleasedPage
 		t.Fatal(err)
 	}
 	defer binding.Close(t.Context())
-	if _, err := db.ExecContext(t.Context(), `INSERT INTO _identity_users (id, workspace_id, name, email, account_type, reporting_path, status, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		"secondary-service", "workspace-secondary", "Service", "service@example.test", "service", "/secondary-service", "active", 1, "now", "now"); err != nil {
+	if _, err := db.ExecContext(t.Context(), `INSERT INTO _identity_users (user_id, workspace_id, name, email, account_type, reporting_path, status, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"secondary-service", "workspace-secondary", "Service", "service@example.test", "service", "/secondary-service", "active", 1, int64(1), int64(1)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ExecContext(t.Context(), `INSERT INTO _identity_users (id, workspace_id, name, email, account_type, reporting_path, status, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		"secondary-automation", "workspace-secondary", "Automation", "automation@example.test", "automation", "/secondary-automation", "disabled", 1, "now", "now"); err != nil {
+	if _, err := db.ExecContext(t.Context(), `INSERT INTO _identity_users (user_id, workspace_id, name, email, account_type, reporting_path, status, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"secondary-automation", "workspace-secondary", "Automation", "automation@example.test", "automation", "/secondary-automation", "disabled", 1, int64(1), int64(1)); err != nil {
 		t.Fatal(err)
 	}
 	embedded, ok := binding.(identitysdk.EmbeddedWorkspaceIdentityUsageBinding)

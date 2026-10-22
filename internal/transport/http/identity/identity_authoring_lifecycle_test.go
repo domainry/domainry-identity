@@ -51,9 +51,9 @@ func TestIdentityAuthoringLifecycleCoversLookupMissesAndFailures(t *testing.T) {
 	} {
 		t.Run(test.name+" miss", func(t *testing.T) {
 			repository := &identityHTTPRepository{
-				organizationUnits: []identitymodel.IdentityOrganizationUnit{{ID: "other"}},
-				roles:             []identitymodel.IdentityRole{{ID: "other"}},
-				menus:             []identitymodel.IdentityMenu{{ID: "other"}},
+				organizationUnits: []identitymodel.IdentityOrganizationUnit{{OrganizationUnitID: "other"}},
+				roles:             []identitymodel.IdentityRole{{RoleID: "other"}},
+				menus:             []identitymodel.IdentityMenu{{MenuID: "other"}},
 			}
 			handler, response := newIdentityHTTPHandler(repository)
 			request := httptest.NewRequest(http.MethodGet, "/identity/missing", nil)
@@ -99,9 +99,9 @@ func (*identityAuthoringAuditRepository) ListAuditOptions(context.Context, strin
 
 func TestIdentityAuthoringLifecycleReadsResourcesAndAuditRevisions(t *testing.T) {
 	repository := &identityHTTPRepository{
-		organizationUnits: []identitymodel.IdentityOrganizationUnit{{ID: "sales", Name: "Sales"}},
-		roles:             []identitymodel.IdentityRole{{ID: "manager", Key: "manager", Label: "Manager", Status: identitymodel.IdentityStatusActive}},
-		menus:             []identitymodel.IdentityMenu{{ID: "orders", Key: "orders", Label: "Orders", Status: identitymodel.IdentityStatusActive}},
+		organizationUnits: []identitymodel.IdentityOrganizationUnit{{OrganizationUnitID: "sales", Name: "Sales"}},
+		roles:             []identitymodel.IdentityRole{{RoleID: "manager", Key: "manager", Label: "Manager", Status: identitymodel.IdentityStatusActive}},
+		menus:             []identitymodel.IdentityMenu{{MenuID: "orders", Key: "orders", Label: "Orders", Status: identitymodel.IdentityStatusActive}},
 	}
 	handler, response := newIdentityHTTPHandler(repository)
 
@@ -129,9 +129,9 @@ func TestIdentityAuthoringLifecycleReadsResourcesAndAuditRevisions(t *testing.T)
 	}
 
 	handler.audit = auditapplication.NewAuditApplicationService(&identityAuthoringAuditRepository{events: []auditmodel.AuditEvent{
-		{ID: "revision-1", WorkspaceID: "workspace-1", Event: "identity_role_updated", ObjectKey: "identity_role", RecordID: "manager"},
-		{ID: "ignored-event", WorkspaceID: "workspace-1", Event: "identity_role_permissions_updated", ObjectKey: "identity_role", RecordID: "manager"},
-		{ID: "ignored-resource", WorkspaceID: "workspace-1", Event: "identity_role_updated", ObjectKey: "identity_role", RecordID: "other"},
+		{AuditEventID: "revision-1", WorkspaceID: "workspace-1", Event: "identity_role_updated", ObjectKey: "identity_role", RecordID: "manager"},
+		{AuditEventID: "ignored-event", WorkspaceID: "workspace-1", Event: "identity_role_permissions_updated", ObjectKey: "identity_role", RecordID: "manager"},
+		{AuditEventID: "ignored-resource", WorkspaceID: "workspace-1", Event: "identity_role_updated", ObjectKey: "identity_role", RecordID: "other"},
 	}})
 	handler.principal = func(*http.Request) identitymodel.Principal {
 		return identitymodel.Principal{Known: true, UserID: "reviewer-1", WorkspaceID: "workspace-1", Role: identitymodel.RoleSchema{Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "audit.governance.read")}}
@@ -153,13 +153,13 @@ func TestIdentityAuthoringLifecycleReadsResourcesAndAuditRevisions(t *testing.T)
 
 func TestIdentityAuthoringVersionsEnforceExactTargetDataScope(t *testing.T) {
 	repository := &identityHTTPRepository{users: []identitymodel.IdentityUser{
-		{ID: "reviewer-1", OrgID: "sales", Status: identitymodel.IdentityStatusActive},
-		{ID: "other-user", OrgID: "finance", Status: identitymodel.IdentityStatusActive},
+		{UserID: "reviewer-1", OrgID: "sales", Status: identitymodel.IdentityStatusActive},
+		{UserID: "other-user", OrgID: "finance", Status: identitymodel.IdentityStatusActive},
 	}}
 	handler, response := newIdentityHTTPHandler(repository)
 	handler.audit = auditapplication.NewAuditApplicationService(&identityAuthoringAuditRepository{events: []auditmodel.AuditEvent{
-		{ID: "self-version", WorkspaceID: "workspace-1", Event: "identity_user_updated", ObjectKey: "identity_user", RecordID: "reviewer-1"},
-		{ID: "foreign-version", WorkspaceID: "workspace-1", Event: "identity_user_updated", ObjectKey: "identity_user", RecordID: "other-user"},
+		{AuditEventID: "self-version", WorkspaceID: "workspace-1", Event: "identity_user_updated", ObjectKey: "identity_user", RecordID: "reviewer-1"},
+		{AuditEventID: "foreign-version", WorkspaceID: "workspace-1", Event: "identity_user_updated", ObjectKey: "identity_user", RecordID: "other-user"},
 	}})
 	handler.principal = func(*http.Request) identitymodel.Principal {
 		return identitymodel.Principal{Known: true, UserID: "reviewer-1", WorkspaceID: "workspace-1", Role: identitymodel.RoleSchema{Permissions: []identitymodel.RolePermission{
@@ -187,7 +187,7 @@ func TestIdentityAuthoringVersionsEnforceExactTargetDataScope(t *testing.T) {
 }
 
 func TestIdentityAuthoringLeafValidatorsAcceptCapabilityPayloads(t *testing.T) {
-	repository := &identityHTTPRepository{roles: []identitymodel.IdentityRole{{ID: "manager", Key: "manager", Label: "Manager", Status: identitymodel.IdentityStatusActive}}}
+	repository := &identityHTTPRepository{roles: []identitymodel.IdentityRole{{RoleID: "manager", Key: "manager", Label: "Manager", Status: identitymodel.IdentityStatusActive}}}
 	handler, response := newIdentityHTTPHandler(repository)
 
 	tests := []struct {

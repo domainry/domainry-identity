@@ -359,9 +359,9 @@ func (adapter sdkAuthentication) CurrentSession(ctx context.Context, request ide
 	}
 	roles := make([]identitysdk.Role, 0, len(me.Roles))
 	for _, role := range me.Roles {
-		roles = append(roles, identitysdk.Role{ID: role.ID, Key: role.Key, Label: role.Label})
+		roles = append(roles, identitysdk.Role{RoleID: role.RoleID, Key: role.Key, Label: role.Label})
 	}
-	return identitysdk.SessionView{SessionID: identitysdk.SessionID(claims.SessionID), WorkspaceID: identitysdk.WorkspaceID(claims.WorkspaceID), SubjectID: identitysdk.SubjectID(claims.Subject), AuthorizationRevision: identitysdk.AuthorizationRevision(me.AuthorizationRevision), User: identitysdk.User{ID: me.User.ID, Name: me.User.Name, Email: me.User.Email, Locale: me.User.Locale, Version: me.User.Version, Status: string(me.User.Status)}, Roles: roles, DefaultRole: me.DefaultRole, Permissions: append([]string(nil), me.Permissions...), MustChangePassword: me.MustChangePassword}, nil
+	return identitysdk.SessionView{SessionID: identitysdk.SessionID(claims.SessionID), WorkspaceID: identitysdk.WorkspaceID(claims.WorkspaceID), SubjectID: identitysdk.SubjectID(claims.Subject), AuthorizationRevision: identitysdk.AuthorizationRevision(me.AuthorizationRevision), User: identitysdk.User{UserID: me.User.UserID, Name: me.User.Name, Email: me.User.Email, Locale: me.User.Locale, Version: me.User.Version, Status: string(me.User.Status)}, Roles: roles, DefaultRole: me.DefaultRole, Permissions: append([]string(nil), me.Permissions...), MustChangePassword: me.MustChangePassword}, nil
 }
 
 type sdkTokenVerifier struct{ binding *sdkBinding }
@@ -588,9 +588,9 @@ func sdkBoundaryError(err error) error {
 func sdkAuthSession(session authmodel.AuthSession) identitysdk.AuthSession {
 	roles := make([]identitysdk.Role, 0, len(session.Roles))
 	for _, role := range session.Roles {
-		roles = append(roles, identitysdk.Role{ID: role.ID, Key: role.Key, Label: role.Label})
+		roles = append(roles, identitysdk.Role{RoleID: role.RoleID, Key: role.Key, Label: role.Label})
 	}
-	return identitysdk.AuthSession{SessionID: identitysdk.SessionID(session.SessionID), WorkspaceID: session.WorkspaceID, AccessToken: session.AccessToken, RefreshToken: session.RefreshToken, TokenType: session.TokenType, ExpiresAt: session.ExpiresAt, User: identitysdk.User{ID: session.User.ID, Name: session.User.Name, Email: session.User.Email, Locale: session.User.Locale, Version: session.User.Version, Status: string(session.User.Status)}, Roles: roles, DefaultRole: session.DefaultRole, Permissions: append([]string(nil), session.Permissions...), MustChangePassword: session.MustChangePassword, AuthenticationTime: session.AuthenticationTime, AuthenticationMethods: append([]string(nil), session.AuthenticationMethods...), AssuranceLevel: session.AssuranceLevel}
+	return identitysdk.AuthSession{SessionID: identitysdk.SessionID(session.SessionID), WorkspaceID: session.WorkspaceID, AccessToken: session.AccessToken, RefreshToken: session.RefreshToken, TokenType: session.TokenType, ExpiresAt: session.ExpiresAt, User: identitysdk.User{UserID: session.User.UserID, Name: session.User.Name, Email: session.User.Email, Locale: session.User.Locale, Version: session.User.Version, Status: string(session.User.Status)}, Roles: roles, DefaultRole: session.DefaultRole, Permissions: append([]string(nil), session.Permissions...), MustChangePassword: session.MustChangePassword, AuthenticationTime: session.AuthenticationTime, AuthenticationMethods: append([]string(nil), session.AuthenticationMethods...), AssuranceLevel: session.AssuranceLevel}
 }
 
 func sdkAuthenticationOutcome(outcome authmodel.AuthenticationOutcome) identitysdk.AuthenticationOutcome {

@@ -22,7 +22,7 @@ func (s *IdentityDomainService) UpsertUserWithRoles(
 	// The request body is mutation intent, not authorization evidence. Resolve
 	// the target through persisted user facts; this endpoint fails closed for a
 	// new ID instead of trusting a client-supplied organization.
-	if _, found, loadErr := s.UserByIDWithinDataScope(ctx, user.ID, actor, identitycontract.IdentityUserRoleAssignmentsAccountUpdatePermission); loadErr != nil {
+	if _, found, loadErr := s.UserByIDWithinDataScope(ctx, user.UserID, actor, identitycontract.IdentityUserRoleAssignmentsAccountUpdatePermission); loadErr != nil {
 		return loadErr
 	} else if !found {
 		return forbidden("backend.identity.data_scope_denied")
@@ -62,7 +62,7 @@ func (s *IdentityDomainService) PrepareUserWithExactRoles(
 	definitions := make([]identitymodel.RoleSchema, 0, len(assignments))
 	seen := map[string]bool{}
 	for _, assignment := range assignments {
-		assignment.UserID = user.ID
+		assignment.UserID = user.UserID
 		assignment.RoleID = strings.TrimSpace(assignment.RoleID)
 		if assignment.RoleID == "" || seen[assignment.RoleID] {
 			if assignment.RoleID == "" {
@@ -106,7 +106,7 @@ func (s *IdentityDomainService) PrepareUserWithExactRoles(
 		if risk == "" {
 			risk = identitymodel.IdentityRoleRiskNormal
 		}
-		if risk == identitymodel.IdentityRoleRiskPrivileged && actor.UserID == user.ID {
+		if risk == identitymodel.IdentityRoleRiskPrivileged && actor.UserID == user.UserID {
 			return identitymodel.IdentityUser{}, nil, forbidden("backend.identity.privileged_self_grant_denied")
 		}
 		if risk != identitymodel.IdentityRoleRiskNormal &&

@@ -14,9 +14,9 @@ func TestIdentityServiceSearchRolesAcrossRequestedFieldsAndPaginates(t *testing.
 	store := identitypersistence.NewMemoryIdentityStore()
 	identity, _ := identitybusiness.NewIdentityDomainService(store, nil).ForWorkspace("workspace-primary")
 	for _, role := range []identitymodel.IdentityRole{
-		{ID: "admin", Key: "admin", Label: "Admin"},
-		{ID: "finance-reviewer", Key: "finance_reviewer", Label: "Finance Reviewer"},
-		{ID: "sales-manager", Key: "sales_manager", Label: "Sales Manager"},
+		{RoleID: "admin", Key: "admin", Label: "Admin"},
+		{RoleID: "finance-reviewer", Key: "finance_reviewer", Label: "Finance Reviewer"},
+		{RoleID: "sales-manager", Key: "sales_manager", Label: "Sales Manager"},
 	} {
 		seedIdentityProjectionRole(t, store, "workspace-primary", role)
 	}
@@ -28,7 +28,7 @@ func TestIdentityServiceSearchRolesAcrossRequestedFieldsAndPaginates(t *testing.
 	if err != nil {
 		t.Fatalf("search roles by label: %v", err)
 	}
-	if byLabel.Total != 1 || len(byLabel.Items) != 1 || byLabel.Items[0].ID != "finance-reviewer" {
+	if byLabel.Total != 1 || len(byLabel.Items) != 1 || byLabel.Items[0].RoleID != "finance-reviewer" {
 		t.Fatalf("unexpected label search page: %#v", byLabel)
 	}
 
@@ -39,7 +39,7 @@ func TestIdentityServiceSearchRolesAcrossRequestedFieldsAndPaginates(t *testing.
 	if err != nil {
 		t.Fatalf("search roles by key: %v", err)
 	}
-	if byKey.Total != 1 || len(byKey.Items) != 1 || byKey.Items[0].ID != "sales-manager" {
+	if byKey.Total != 1 || len(byKey.Items) != 1 || byKey.Items[0].RoleID != "sales-manager" {
 		t.Fatalf("unexpected key search page: %#v", byKey)
 	}
 
@@ -47,7 +47,7 @@ func TestIdentityServiceSearchRolesAcrossRequestedFieldsAndPaginates(t *testing.
 	if err != nil {
 		t.Fatalf("paginate roles: %v", err)
 	}
-	if page.Total != 3 || len(page.Items) != 1 || page.Items[0].ID != "sales-manager" || page.PageSize != 2 || page.HasNext {
+	if page.Total != 3 || len(page.Items) != 1 || page.Items[0].RoleID != "sales-manager" || page.PageSize != 2 || page.HasNext {
 		t.Fatalf("unexpected pagination result: %#v", page)
 	}
 

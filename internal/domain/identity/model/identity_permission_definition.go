@@ -9,7 +9,6 @@ const (
 // configuration persisted by Identity. Executable Action bindings and their
 // governance metadata deliberately do not live in this record.
 type IdentityPermissionDefinitionRecord struct {
-	ID                 string `json:"id"`
 	WorkspaceID        string `json:"workspace_id"`
 	PermissionKey      string `json:"permission_key"`
 	ResourceKey        string `json:"resource_key"`

@@ -121,8 +121,8 @@ func (s *AuthDomainService) beginEmailCredential(ctx context.Context, workspace 
 		}
 	}
 	marker := ""
-	if user.ID != "" {
-		credential, found, readErr := s.identityStore.GetIdentityCredential(ctx, workspace, user.ID)
+	if user.UserID != "" {
+		credential, found, readErr := s.identityStore.GetIdentityCredential(ctx, workspace, user.UserID)
 		if readErr != nil {
 			return authmodel.AuthProviderChallenge{}, readErr
 		}
@@ -131,7 +131,7 @@ func (s *AuthDomainService) beginEmailCredential(ctx context.Context, workspace 
 			marker = hex.EncodeToString(digest[:])
 		}
 	}
-	challenge := authmodel.AuthProviderChallenge{WorkspaceID: workspace, Provider: EmailCredentialProvider, Purpose: purpose, Type: "email_credential", Status: authmodel.AuthChallengeStatusActive, UserID: user.ID, Email: strings.ToLower(strings.TrimSpace(email)), State: state, Code: code, Nonce: marker, CreatedAt: now.Format(time.RFC3339Nano), ExpiresAt: now.Add(lifetime).Format(time.RFC3339Nano), RetryAt: now.Add(s.otpResendCooldown).Format(time.RFC3339Nano)}
+	challenge := authmodel.AuthProviderChallenge{WorkspaceID: workspace, Provider: EmailCredentialProvider, Purpose: purpose, Type: "email_credential", Status: authmodel.AuthChallengeStatusActive, UserID: user.UserID, Email: strings.ToLower(strings.TrimSpace(email)), State: state, Code: code, Nonce: marker, CreatedAt: now.Format(time.RFC3339Nano), ExpiresAt: now.Add(lifetime).Format(time.RFC3339Nano), RetryAt: now.Add(s.otpResendCooldown).Format(time.RFC3339Nano)}
 	created, err := repository.CreateAuthOTPTransaction(ctx, challenge, s.otpDeliveryKey(workspace, EmailCredentialProvider, purpose+":"+challenge.Email), now.Add(s.otpResendCooldown), now)
 	if err != nil {
 		return authmodel.AuthProviderChallenge{}, err

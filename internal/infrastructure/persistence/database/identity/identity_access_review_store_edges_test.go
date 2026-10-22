@@ -8,12 +8,12 @@ import (
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
-var accessReviewOperationColumns = []string{"id", "resource_id", "request_fingerprint", "requested_by", "result_json", "created_at", "status"}
+var accessReviewOperationColumns = []string{"id", "operation_id", "resource_id", "request_fingerprint", "requested_by", "result_json", "created_at", "status"}
 
-const accessReviewReceiptJSON = `{"id":"receipt","workspace_id":"workspace","item_id":"item","idempotency_key":"key","request_fingerprint":"fingerprint","item":{"id":"item","created_at":1700000000000,"updated_at":1700000000000},"created_at":1700000000000}`
+const accessReviewReceiptJSON = `{"operation_id":"receipt","workspace_id":"workspace","item_id":"item","idempotency_key":"key","request_fingerprint":"fingerprint","item":{"review_item_id":"item","created_at":1700000000000,"updated_at":1700000000000},"created_at":1700000000000}`
 
 func accessReviewOperationRow(fingerprint, resultJSON string) []driver.Value {
-	return []driver.Value{"receipt", "item", fingerprint, "reviewer", resultJSON, int64(1_700_000_000_000), "succeeded"}
+	return []driver.Value{int64(1), "receipt", "item", fingerprint, "reviewer", resultJSON, int64(1_700_000_000_000), "succeeded"}
 }
 
 func scriptedAccessReviewOperations(state *identitySQLState) (*SQLIdentityStore, func()) {
@@ -24,7 +24,7 @@ func scriptedAccessReviewOperations(state *identitySQLState) (*SQLIdentityStore,
 
 func accessReviewItemColumns() []string {
 	return []string{
-		"id", "review_id", "user_id", "role_id", "role_key", "binding_key", "profile_id",
+		"id", "review_item_id", "review_id", "user_id", "role_id", "role_key", "binding_key", "profile_id",
 		"risk_level", "priority", "priority_reasons_json", "last_used_at", "status", "decision", "replacement_role_id",
 		"expires_at", "reviewer_id", "reason", "decided_at", "version", "created_at", "updated_at",
 	}
@@ -32,7 +32,7 @@ func accessReviewItemColumns() []string {
 
 func accessReviewItemRow(status string, version int64) []driver.Value {
 	return []driver.Value{
-		"item", "review", "user", "role", "role-key", nil, nil,
+		int64(1), "item", "review", "user", "role", "role-key", nil, nil,
 		"normal", int64(1), `["reason"]`, nil, status, nil, nil,
 		nil, nil, nil, nil, version, int64(1_700_000_000_000), int64(1_700_000_000_000),
 	}
@@ -60,8 +60,8 @@ func validAccessReviewMutation(decision identitymodel.IdentityAccessReviewDecisi
 
 func TestCreateIdentityAccessReviewFailureStages(t *testing.T) {
 	review := identitymodel.IdentityAccessReview{
-		ID: "review", WorkspaceID: "workspace", CreatedBy: "creator",
-		Items: []identitymodel.IdentityAccessReviewItem{{ID: "item", PriorityReasons: []string{"reason"}}},
+		ReviewID: "review", WorkspaceID: "workspace", CreatedBy: "creator",
+		Items: []identitymodel.IdentityAccessReviewItem{{ReviewItemID: "item", PriorityReasons: []string{"reason"}}},
 	}
 	store, closeDB := scriptedSQLIdentity(&identitySQLState{})
 	if err := store.CreateIdentityAccessReview(t.Context(), identitymodel.IdentityAccessReview{}); err == nil {
@@ -115,7 +115,7 @@ func TestIdentityAccessReviewLoaderEdges(t *testing.T) {
 		store, closeDB := scriptedSQLIdentity(state)
 		item, found, err := store.GetIdentityAccessReviewItem(t.Context(), "workspace", "item")
 		closeDB()
-		if err == nil && found && item.ID != "item" {
+		if err == nil && found && item.ReviewItemID != "item" {
 			t.Fatalf("item=%#v found=%v err=%v", item, found, err)
 		}
 	}
@@ -153,16 +153,16 @@ func TestIdentityAccessReviewAssignmentAndRoleLoaderEdges(t *testing.T) {
 			t.Fatalf("assignment=%#v", assignment)
 		}
 	}
-	roleColumns := []string{"id", "role_key", "label", "description", "status"}
+	roleColumns := []string{"id", "role_id", "role_key", "label", "description", "status"}
 	for _, state := range []*identitySQLState{
 		{},
 		{queryFailAt: 1, failure: errProfileBindingSQL},
-		{querySteps: []identitySQLQueryStep{{columns: roleColumns, rows: [][]driver.Value{{"role", "key", "Role", "", "active"}}}}},
+		{querySteps: []identitySQLQueryStep{{columns: roleColumns, rows: [][]driver.Value{{int64(1), "role", "key", "Role", "", "active"}}}}},
 	} {
 		store, closeDB := scriptedSQLIdentity(state)
 		role, found, err := store.loadIdentityAccessReviewRole(t.Context(), store.db, "workspace", "role")
 		closeDB()
-		if err == nil && found && role.ID != "role" {
+		if err == nil && found && role.RoleID != "role" {
 			t.Fatalf("role=%#v", role)
 		}
 	}

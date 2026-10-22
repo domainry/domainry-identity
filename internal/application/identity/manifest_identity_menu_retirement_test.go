@@ -27,12 +27,12 @@ func TestRetireRemovedPlatformIdentityMenusDeletesLegacyTree(t *testing.T) {
 		t.Fatalf("open identity store: %v", err)
 	}
 	for _, menu := range []identitymodel.IdentityMenu{
-		{ID: "org_permissions", Key: "org_permissions", Label: "Permissions", Status: identitymodel.IdentityStatusActive},
-		{ID: "legacy_child", Key: "legacy_child", Label: "Legacy child", ParentID: "org_permissions", Status: identitymodel.IdentityStatusActive},
-		{ID: "org_roles", Key: "org_roles", Label: "Roles", Status: identitymodel.IdentityStatusActive},
+		{MenuID: "org_permissions", Key: "org_permissions", Label: "Permissions", Status: identitymodel.IdentityStatusActive},
+		{MenuID: "legacy_child", Key: "legacy_child", Label: "Legacy child", ParentID: "org_permissions", Status: identitymodel.IdentityStatusActive},
+		{MenuID: "org_roles", Key: "org_roles", Label: "Roles", Status: identitymodel.IdentityStatusActive},
 	} {
 		if err := identityStore.UpsertIdentityMenu(t.Context(), "workspace-primary", menu); err != nil {
-			t.Fatalf("seed menu %s: %v", menu.ID, err)
+			t.Fatalf("seed menu %s: %v", menu.MenuID, err)
 		}
 	}
 	if err := retireRemovedPlatformIdentityMenus(requestcontext.WithWorkspaceID(t.Context(), "workspace-primary"), identityStore); err != nil {
@@ -42,7 +42,7 @@ func TestRetireRemovedPlatformIdentityMenusDeletesLegacyTree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list menus: %v", err)
 	}
-	if len(menus) != 1 || menus[0].ID != "org_roles" {
+	if len(menus) != 1 || menus[0].MenuID != "org_roles" {
 		t.Fatalf("expected only unrelated menu to remain, got %#v", menus)
 	}
 	reloaded, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceEngine())
@@ -53,7 +53,7 @@ func TestRetireRemovedPlatformIdentityMenusDeletesLegacyTree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list reloaded menus: %v", err)
 	}
-	if len(menus) != 1 || menus[0].ID != "org_roles" {
+	if len(menus) != 1 || menus[0].MenuID != "org_roles" {
 		t.Fatalf("retired menus must stay hidden after reload, got %#v", menus)
 	}
 }

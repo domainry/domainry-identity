@@ -22,7 +22,7 @@ func (adapter sdkExternalAccounts) ListExternalAccounts(ctx context.Context, req
 	result := make([]identitysdk.ExternalAccount, 0, len(accounts))
 	for _, account := range accounts {
 		result = append(result, identitysdk.ExternalAccount{
-			ID: account.ID, UserID: account.UserID, Provider: account.Provider, ProviderSubject: account.ProviderSubject,
+			ID: account.ID, ExternalAccountID: account.ExternalAccountID, UserID: account.UserID, Provider: account.Provider, ProviderSubject: account.ProviderSubject,
 			Email: account.Email, Phone: account.Phone, DisplayName: account.DisplayName, AvatarURL: account.AvatarURL, LinkedAt: account.LinkedAt,
 		})
 	}

@@ -20,9 +20,9 @@ func TestAuthUserAdministrationMutationsEnforcePersistedUserDataScope(t *testing
 	}
 	const workspaceID = "workspace-primary"
 	users := []identitymodel.IdentityUser{
-		{ID: "actor", Name: "Actor", Email: "actor@example.com", OrgID: "sales", Status: identitymodel.IdentityStatusActive},
-		{ID: "sales-peer", Name: "Sales Peer", Email: "sales@example.com", OrgID: "sales", Status: identitymodel.IdentityStatusActive},
-		{ID: "finance-peer", Name: "Finance Peer", Email: "finance@example.com", OrgID: "finance", Status: identitymodel.IdentityStatusActive},
+		{UserID: "actor", Name: "Actor", Email: "actor@example.com", OrgID: "sales", Status: identitymodel.IdentityStatusActive},
+		{UserID: "sales-peer", Name: "Sales Peer", Email: "sales@example.com", OrgID: "sales", Status: identitymodel.IdentityStatusActive},
+		{UserID: "finance-peer", Name: "Finance Peer", Email: "finance@example.com", OrgID: "finance", Status: identitymodel.IdentityStatusActive},
 	}
 	for _, user := range users {
 		if err := identityStore.UpsertIdentityUser(t.Context(), workspaceID, user); err != nil {
@@ -31,7 +31,7 @@ func TestAuthUserAdministrationMutationsEnforcePersistedUserDataScope(t *testing
 	}
 	repository := NewAuthStore(identityStore)
 	for _, user := range users {
-		if err := repository.UpsertIdentityCredential(t.Context(), workspaceID, identitymodel.IdentityCredential{UserID: user.ID, PasswordHash: "hash", PasswordUpdatedAt: "2026-09-03T00:00:00Z", FailedLoginCount: 3, LockedUntil: "2026-09-04T00:00:00Z"}); err != nil {
+		if err := repository.UpsertIdentityCredential(t.Context(), workspaceID, identitymodel.IdentityCredential{UserID: user.UserID, PasswordHash: "hash", PasswordUpdatedAt: "2026-09-03T00:00:00Z", FailedLoginCount: 3, LockedUntil: "2026-09-04T00:00:00Z"}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -73,7 +73,7 @@ func TestAuthUserAdministrationMutationsEnforcePersistedUserDataScope(t *testing
 		t.Fatalf("reset credential=%#v found=%t err=%v", resetCredential, found, err)
 	}
 
-	if err := repository.UpsertIdentityMFAFactor(t.Context(), workspaceID, identitymodel.IdentityMFAFactor{ID: "finance-factor", UserID: "finance-peer", Type: "totp", Status: "active"}); err != nil {
+	if err := repository.UpsertIdentityMFAFactor(t.Context(), workspaceID, identitymodel.IdentityMFAFactor{MFAFactorID: "finance-factor", UserID: "finance-peer", Type: "totp", Status: "active"}); err != nil {
 		t.Fatal(err)
 	}
 	if visible, found, err := repository.RevokeIdentityMFAFactorWithinDataScope(t.Context(), workspaceID, "finance-peer", "finance-factor", identitymodel.IdentityDataScopeFilter{OwnerOrgIDs: []string{"sales"}}); err != nil || visible || found {
@@ -86,8 +86,8 @@ func TestAuthUserAdministrationMutationsEnforcePersistedUserDataScope(t *testing
 
 	now := time.Date(2026, 9, 3, 12, 0, 0, 0, time.UTC)
 	for _, token := range []identitymodel.AuthRefreshToken{
-		{ID: "sales-token", UserID: "sales-peer", SessionID: "sales-session", TokenHash: "sales-hash", ExpiresAt: now.Add(time.Hour).Format(time.RFC3339)},
-		{ID: "finance-token", UserID: "finance-peer", SessionID: "finance-session", TokenHash: "finance-hash", ExpiresAt: now.Add(time.Hour).Format(time.RFC3339)},
+		{UserID: "sales-peer", SessionID: "sales-session", TokenHash: "sales-hash", ExpiresAt: now.Add(time.Hour).Format(time.RFC3339)},
+		{UserID: "finance-peer", SessionID: "finance-session", TokenHash: "finance-hash", ExpiresAt: now.Add(time.Hour).Format(time.RFC3339)},
 	} {
 		if err := repository.CreateAuthRefreshToken(t.Context(), workspaceID, token); err != nil {
 			t.Fatal(err)

@@ -15,14 +15,14 @@ func identityProjectionCountStep(total int64) identitySQLQueryStep {
 
 func identityProjectionUserColumns() []string {
 	return []string{
-		"id", "name", "given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale",
+		"id", "user_id", "name", "given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale",
 		"email", "phone", "account_type", "locale", "timezone", "org_id", "support_org_id", "manager_user_id", "reporting_path", "worker_no", "worker_type", "work_status", "start_date", "end_date", "status", "version", "created_at", "updated_at",
 	}
 }
 
 func identityProjectionUserRow() []driver.Value {
 	return []driver.Value{
-		"user", "User", "", "", "", "", "", "", "",
+		int64(1), "user", "User", "", "", "", "", "", "", "",
 		"user@example.test", "", "human", "en-US", "UTC", "store", "sales", nil, "/user", "E001", "employee", "active", "2026-01-01", nil, "active", int64(1), int64(1), int64(2),
 	}
 }
@@ -62,7 +62,7 @@ func TestSearchIdentityUsersRemainingSQLFailures(t *testing.T) {
 		{columns: identityProjectionUserColumns(), rows: [][]driver.Value{identityProjectionUserRow()}},
 	}})
 	page, err := store.SearchIdentityUsers(t.Context(), "workspace", query)
-	if err != nil || len(page.Items) != 1 || page.Items[0].ID != "user" || page.HasNext || page.Total != 3 {
+	if err != nil || len(page.Items) != 1 || page.Items[0].UserID != "user" || page.HasNext || page.Total != 3 {
 		t.Fatalf("user page=%#v error=%v", page, err)
 	}
 	closeDB()

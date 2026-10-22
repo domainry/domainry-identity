@@ -142,16 +142,16 @@ func TestUserSecurityProfileProjectsCredentialSessionsAndAccounts(t *testing.T) 
 		"user": {UserID: "user", PasswordHash: "credential-secret", FailedLoginCount: 3, LockedUntil: time.Now().Add(time.Hour).UTC().Format(time.RFC3339)},
 	}
 	repository.refreshTokens = []identitymodel.AuthRefreshToken{
-		{ID: "active", TokenHash: "refresh-secret", ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339)},
-		{ID: "revoked", ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339), RevokedAt: time.Now().UTC().Format(time.RFC3339)},
-		{ID: "expired", ExpiresAt: time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)},
-		{ID: "legacy-invalid-expiry", ExpiresAt: "not-a-time"},
+		{TokenHash: "refresh-secret", ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339)},
+		{TokenHash: "revoked", ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339), RevokedAt: time.Now().UTC().Format(time.RFC3339)},
+		{TokenHash: "expired", ExpiresAt: time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)},
+		{TokenHash: "legacy-invalid-expiry", ExpiresAt: "not-a-time"},
 	}
-	repository.accounts = []identitymodel.IdentityExternalAccount{{ID: "account", UserID: "user", Provider: "oidc", ProviderSubject: "provider-secret", Metadata: "metadata-secret"}}
+	repository.accounts = []identitymodel.IdentityExternalAccount{{ExternalAccountID: "account", UserID: "user", Provider: "oidc", ProviderSubject: "provider-secret", Metadata: "metadata-secret"}}
 	repository.mfaFactors = []identitymodel.IdentityMFAFactor{
-		{ID: "active-factor", UserID: "user", Type: "totp", Status: "active", VerifiedAt: time.Now().UTC().Format(time.RFC3339)},
-		{ID: "active-unverified-factor", UserID: "user", Type: "totp", Status: "active"},
-		{ID: "pending-factor", UserID: "user", Type: "webauthn", Status: "pending"},
+		{MFAFactorID: "active-factor", UserID: "user", Type: "totp", Status: "active", VerifiedAt: time.Now().UTC().Format(time.RFC3339)},
+		{MFAFactorID: "active-unverified-factor", UserID: "user", Type: "totp", Status: "active"},
+		{MFAFactorID: "pending-factor", UserID: "user", Type: "webauthn", Status: "pending"},
 	}
 
 	profile, err := auth.UserSecurityProfile(t.Context(), "workspace", " user ")
@@ -190,8 +190,8 @@ func TestMFAFactorAdministration(t *testing.T) {
 		}{
 			{"user required", " ", identitymodel.IdentityMFAFactor{}, "auth.user_required"},
 			{"factor id required", "user", identitymodel.IdentityMFAFactor{Type: "totp", VerifiedAt: "now"}, "auth.mfa_factor_id_required"},
-			{"factor type invalid", "user", identitymodel.IdentityMFAFactor{ID: "factor", Type: "sms", VerifiedAt: "now"}, "auth.mfa_factor_type_invalid"},
-			{"factor verification required", "user", identitymodel.IdentityMFAFactor{ID: "factor", Type: "totp"}, "auth.mfa_factor_not_verified"},
+			{"factor type invalid", "user", identitymodel.IdentityMFAFactor{MFAFactorID: "factor", Type: "sms", VerifiedAt: "now"}, "auth.mfa_factor_type_invalid"},
+			{"factor verification required", "user", identitymodel.IdentityMFAFactor{MFAFactorID: "factor", Type: "totp"}, "auth.mfa_factor_not_verified"},
 		} {
 			t.Run(test.name, func(t *testing.T) {
 				auth, _, _ := newUserAdministrationFixture()
@@ -202,19 +202,19 @@ func TestMFAFactorAdministration(t *testing.T) {
 
 	t.Run("register identity boundaries", func(t *testing.T) {
 		auth, identities, _ := newUserAdministrationFixture()
-		factor := identitymodel.IdentityMFAFactor{ID: "factor", Type: "webauthn", VerifiedAt: "now"}
+		factor := identitymodel.IdentityMFAFactor{MFAFactorID: "factor", Type: "webauthn", VerifiedAt: "now"}
 		identities.listUsersErr = fault
 		assertAuthCause(t, auth.RegisterVerifiedMFAFactor(t.Context(), "workspace", "user", factor), fault)
 		identities.listUsersErr = nil
 		assertAuthErrorCode(t, auth.RegisterVerifiedMFAFactor(t.Context(), "workspace", "user", factor), "backend.identity.user_not_found")
-		identities.users = []identitymodel.IdentityUser{{ID: "user", Status: identitymodel.IdentityStatusDisabled}}
+		identities.users = []identitymodel.IdentityUser{{UserID: "user", Status: identitymodel.IdentityStatusDisabled}}
 		assertAuthErrorCode(t, auth.RegisterVerifiedMFAFactor(t.Context(), "workspace", "user", factor), "auth.user_inactive")
 	})
 
 	t.Run("register success and persistence failure", func(t *testing.T) {
 		auth, identities, repository := newUserAdministrationFixture()
 		identities.users = []identitymodel.IdentityUser{activeExternalIdentityUser("user", "user@example.com")}
-		factor := identitymodel.IdentityMFAFactor{ID: "factor", Type: "external", Status: "pending", VerifiedAt: "now"}
+		factor := identitymodel.IdentityMFAFactor{MFAFactorID: "factor", Type: "external", Status: "pending", VerifiedAt: "now"}
 		repository.upsertMFAErr = fault
 		assertAuthCause(t, auth.RegisterVerifiedMFAFactor(t.Context(), "workspace", "user", factor), fault)
 		repository.upsertMFAErr = nil
@@ -235,7 +235,7 @@ func TestMFAFactorAdministration(t *testing.T) {
 		if err != nil || profile.MFAFactors == nil || profile.MFAEnabled {
 			t.Fatalf("profile=%#v err=%v", profile, err)
 		}
-		factor := identitymodel.IdentityMFAFactor{ID: "factor", Type: "totp", VerifiedAt: "now"}
+		factor := identitymodel.IdentityMFAFactor{MFAFactorID: "factor", Type: "totp", VerifiedAt: "now"}
 		assertAuthErrorCode(t, auth.RegisterVerifiedMFAFactor(t.Context(), "workspace", "user", factor), "auth.mfa_unavailable")
 		assertAuthErrorCode(t, auth.RevokeMFAFactor(t.Context(), "workspace", "user", "factor"), "auth.mfa_unavailable")
 	})
@@ -338,7 +338,7 @@ func TestForceLogoutUser(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		auth, identities, repository := newUserAdministrationFixture()
 		identities.users = []identitymodel.IdentityUser{activeExternalIdentityUser("user", "user@example.com")}
-		repository.refreshTokens = []identitymodel.AuthRefreshToken{{ID: "one"}, {ID: "two"}}
+		repository.refreshTokens = []identitymodel.AuthRefreshToken{{TokenHash: "one"}, {TokenHash: "two"}}
 		count, err := auth.ForceLogoutUser(t.Context(), "workspace", " user ")
 		if err != nil || count != 2 {
 			t.Fatalf("force logout: count=%d err=%v", count, err)

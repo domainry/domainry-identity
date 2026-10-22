@@ -50,19 +50,19 @@ func TestMemoryIdentityStoreRefreshTokenLifecycle(t *testing.T) {
 	store := NewMemoryIdentityStore()
 	invalid := []identitymodel.AuthRefreshToken{
 		{TokenHash: "hash", UserID: "user-1"},
-		{ID: "token-1", UserID: "user-1"},
-		{ID: "token-1", TokenHash: "hash"},
+		{TokenHash: "hash", SessionID: "session-1"},
+		{UserID: "user-1", SessionID: "session-1"},
 	}
 	for _, token := range invalid {
 		if err := store.createAuthRefreshToken(token); err == nil {
 			t.Fatalf("expected invalid token error for %#v", token)
 		}
 	}
-	token := identitymodel.AuthRefreshToken{ID: "token-1", TokenHash: "hash-1", UserID: "user-1", SessionID: "session-1"}
+	token := identitymodel.AuthRefreshToken{TokenHash: "hash-1", UserID: "user-1", SessionID: "session-1"}
 	if err := store.createAuthRefreshToken(token); err != nil {
 		t.Fatalf("create refresh token: %v", err)
 	}
-	if got, found, err := store.getAuthRefreshTokenByHash("hash-1"); err != nil || !found || got.ID != token.ID {
+	if got, found, err := store.getAuthRefreshTokenByHash("hash-1"); err != nil || !found || got.TokenHash != token.TokenHash {
 		t.Fatalf("token=%#v found=%t err=%v", got, found, err)
 	}
 	if _, found, err := store.getAuthRefreshTokenByHash("missing"); err != nil || found {
@@ -71,11 +71,11 @@ func TestMemoryIdentityStoreRefreshTokenLifecycle(t *testing.T) {
 	if err := store.revokeAuthRefreshToken("missing", "now", "replacement"); err != nil {
 		t.Fatalf("revoke missing token: %v", err)
 	}
-	if err := store.revokeAuthRefreshToken(token.ID, "2026-07-19T12:00:00Z", "token-2"); err != nil {
+	if err := store.revokeAuthRefreshToken(token.TokenHash, "2026-07-19T12:00:00Z", "token-2"); err != nil {
 		t.Fatalf("revoke token: %v", err)
 	}
 	got, _, _ := store.getAuthRefreshTokenByHash(token.TokenHash)
-	if got.RevokedAt == "" || got.LastUsedAt != got.RevokedAt || got.ReplacedByID != "token-2" {
+	if got.RevokedAt == "" || got.LastUsedAt != got.RevokedAt || got.ReplacedByHash != "token-2" {
 		t.Fatalf("revoked token=%#v", got)
 	}
 }
@@ -83,9 +83,9 @@ func TestMemoryIdentityStoreRefreshTokenLifecycle(t *testing.T) {
 func TestMemoryIdentityStoreRefreshTokensForUser(t *testing.T) {
 	store := NewMemoryIdentityStore()
 	for _, token := range []identitymodel.AuthRefreshToken{
-		{ID: "active-a", TokenHash: "hash-a", UserID: "user-a"},
-		{ID: "revoked-a", TokenHash: "hash-revoked", UserID: "user-a", RevokedAt: "earlier"},
-		{ID: "active-b", TokenHash: "hash-b", UserID: "user-b"},
+		{TokenHash: "hash-a", UserID: "user-a", SessionID: "session-a"},
+		{TokenHash: "hash-revoked", UserID: "user-a", SessionID: "session-revoked", RevokedAt: "earlier"},
+		{TokenHash: "hash-b", UserID: "user-b", SessionID: "session-b"},
 	} {
 		if err := store.createAuthRefreshToken(token); err != nil {
 			t.Fatal(err)
@@ -117,9 +117,9 @@ func TestMemoryIdentityStoreExternalAccountLifecycle(t *testing.T) {
 	store := NewMemoryIdentityStore()
 	invalid := []identitymodel.IdentityExternalAccount{
 		{UserID: "user-1", Provider: "oidc", ProviderSubject: "subject"},
-		{ID: "account-1", Provider: "oidc", ProviderSubject: "subject"},
-		{ID: "account-1", UserID: "user-1", ProviderSubject: "subject"},
-		{ID: "account-1", UserID: "user-1", Provider: "oidc"},
+		{ExternalAccountID: "account-1", Provider: "oidc", ProviderSubject: "subject"},
+		{ExternalAccountID: "account-1", UserID: "user-1", ProviderSubject: "subject"},
+		{ExternalAccountID: "account-1", UserID: "user-1", Provider: "oidc"},
 	}
 	for _, account := range invalid {
 		if err := store.upsertIdentityExternalAccount(account); err == nil {
@@ -127,9 +127,9 @@ func TestMemoryIdentityStoreExternalAccountLifecycle(t *testing.T) {
 		}
 	}
 	accounts := []identitymodel.IdentityExternalAccount{
-		{ID: "account-3", UserID: "user-2", Provider: "saml", ProviderSubject: "z"},
-		{ID: "account-2", UserID: "user-1", Provider: "oidc", ProviderSubject: "b"},
-		{ID: "account-1", UserID: "user-1", Provider: "oidc", ProviderSubject: "a"},
+		{ExternalAccountID: "account-3", UserID: "user-2", Provider: "saml", ProviderSubject: "z"},
+		{ExternalAccountID: "account-2", UserID: "user-1", Provider: "oidc", ProviderSubject: "b"},
+		{ExternalAccountID: "account-1", UserID: "user-1", Provider: "oidc", ProviderSubject: "a"},
 	}
 	for _, account := range accounts {
 		if err := store.upsertIdentityExternalAccount(account); err != nil {
@@ -137,7 +137,7 @@ func TestMemoryIdentityStoreExternalAccountLifecycle(t *testing.T) {
 		}
 	}
 	all, err := store.listIdentityExternalAccounts("")
-	if err != nil || len(all) != 3 || all[0].ID != "account-1" || all[1].ID != "account-2" || all[2].ID != "account-3" {
+	if err != nil || len(all) != 3 || all[0].ExternalAccountID != "account-1" || all[1].ExternalAccountID != "account-2" || all[2].ExternalAccountID != "account-3" {
 		t.Fatalf("all accounts=%#v err=%v", all, err)
 	}
 	filtered, err := store.listIdentityExternalAccounts("user-1")
@@ -155,7 +155,7 @@ func TestMemoryIdentityStoreExternalAccountLifecycle(t *testing.T) {
 		t.Fatalf("remove missing account: %v", err)
 	}
 	filtered, _ = store.listIdentityExternalAccounts("user-1")
-	if len(filtered) != 1 || filtered[0].ID != "account-1" {
+	if len(filtered) != 1 || filtered[0].ExternalAccountID != "account-1" {
 		t.Fatalf("remaining accounts=%#v", filtered)
 	}
 }

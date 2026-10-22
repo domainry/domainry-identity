@@ -8,9 +8,9 @@ func IdentityUserAuthoringCapability() authoringcontract.CapabilityAuthoringDefi
 	closed := identityBoolPointer(false)
 	input := &authoringcontract.CapabilityAuthoringSchema{
 		Schema: "https://json-schema.org/draft/2020-12/schema", Type: "object", AdditionalProperties: closed,
-		Required: []string{"id", "name", "email", "status"},
+		Required: []string{"user_id", "name", "email", "status"},
 		Properties: map[string]authoringcontract.CapabilityAuthoringSchema{
-			"id": {Type: "string", MinLength: identityIntPointer(1)}, "name": {Type: "string", MinLength: identityIntPointer(1)}, "email": {Type: "string", Format: "email", MinLength: identityIntPointer(1)},
+			"user_id": {Type: "string", MinLength: identityIntPointer(1)}, "name": {Type: "string", MinLength: identityIntPointer(1)}, "email": {Type: "string", Format: "email", MinLength: identityIntPointer(1)},
 			"given_name": {Type: "string"}, "middle_name": {Type: "string"}, "family_name": {Type: "string"},
 			"name_prefix": {Type: "string"}, "name_suffix": {Type: "string"}, "native_name": {Type: "string"}, "name_locale": {Type: "string"},
 			"phone": {Type: "string"}, "account_type": {Type: "string", Enum: []any{"human", "service", "automation"}, Default: "human"},
@@ -25,7 +25,7 @@ func IdentityUserAuthoringCapability() authoringcontract.CapabilityAuthoringDefi
 	return authoringcontract.CapabilityAuthoringDefinition{
 		Key: "identity.user", Status: "supported", Lifecycle: "immediate_audited_configuration",
 		Parameters: []authoringcontract.CapabilityAuthoringParameter{
-			{Key: "id", Type: "string", Required: true}, {Key: "name", Type: "string", Required: true}, {Key: "email", Type: "string", Format: "email", Required: true},
+			{Key: "user_id", Type: "string", Required: true}, {Key: "name", Type: "string", Required: true}, {Key: "email", Type: "string", Format: "email", Required: true},
 			{Key: "given_name", Type: "string"}, {Key: "middle_name", Type: "string"}, {Key: "family_name", Type: "string"},
 			{Key: "name_prefix", Type: "string"}, {Key: "name_suffix", Type: "string"}, {Key: "native_name", Type: "string"}, {Key: "name_locale", Type: "string"},
 			{Key: "phone", Type: "string"}, {Key: "account_type", Type: "string", Default: "human", Enum: []string{"human", "service", "automation"}},
@@ -39,7 +39,7 @@ func IdentityUserAuthoringCapability() authoringcontract.CapabilityAuthoringDefi
 		ValidationEndpoint: "POST /identity/users/{userID}/validate", ConfigurationRoutes: []string{"POST /identity/users", "PATCH /identity/users/{userID}", "GET /identity/users/{userID}", "GET /identity/users/{userID}/versions", "DELETE /identity/users/{userID}", "POST /identity/users/{userID}/disable", "POST /identity/users/{userID}/enable"},
 		ResourceOperations:       identityAuditedResourceOperations("POST /identity/users/{userID}/validate", "PATCH /identity/users/{userID}", "GET /identity/users/{userID}", "GET /identity/users/{userID}/versions", "DELETE /identity/users/{userID}"),
 		ResourceKeyPathParameter: "userID", InputSchema: input, OutputSchema: output,
-		OutputVariables: []authoringcontract.CapabilityAuthoringOutput{{Name: "user_id", JSONPointer: "/id", Type: "user_id", VisibleTo: "subsequent_capability_calls"}},
+		OutputVariables: []authoringcontract.CapabilityAuthoringOutput{{Name: "user_id", JSONPointer: "/user_id", Type: "user_id", VisibleTo: "subsequent_capability_calls"}},
 		ReferenceContracts: []authoringcontract.CapabilityAuthoringReference{
 			{Kind: "org_id", InputJSONPointer: "/org_id", ResolverEndpoint: "GET /capabilities/references/org_id"},
 			{Kind: "org_id", InputJSONPointer: "/support_org_id", ResolverEndpoint: "GET /capabilities/references/org_id"},
@@ -47,7 +47,7 @@ func IdentityUserAuthoringCapability() authoringcontract.CapabilityAuthoringDefi
 		},
 		Execution: identityManagementExecution([]string{"identity.user"}, "identity.user", "stable_user_id_upsert", "identity_user_updated"),
 		Errors: []authoringcontract.CapabilityAuthoringError{
-			{Code: "backend.identity.user_required", FieldPath: "id", MessageKey: "backend.identity.user_required"},
+			{Code: "backend.identity.user_required", FieldPath: "user_id", MessageKey: "backend.identity.user_required"},
 			{Code: "backend.identity.user_name_required", FieldPath: "name", MessageKey: "backend.identity.user_name_required"},
 			{Code: "backend.identity.user_email_required", FieldPath: "email", MessageKey: "backend.identity.user_email_required"},
 			{Code: "backend.identity.user_email_invalid", FieldPath: "email", ParameterKeys: []string{"actual", "expected"}, MessageKey: "backend.identity.user_email_invalid"},
@@ -60,40 +60,40 @@ func IdentityUserAuthoringCapability() authoringcontract.CapabilityAuthoringDefi
 			{Code: "backend.identity.user_reporting_cycle", FieldPath: "manager_user_id", ParameterKeys: []string{"actual"}, MessageKey: "backend.identity.user_reporting_cycle"},
 		},
 		Examples: []authoringcontract.CapabilityAuthoringExample{
-			{Name: "minimal_valid", Value: map[string]any{"id": "sales_rep", "name": "Sales Rep", "email": "sales.rep@example.com", "account_type": "human", "status": "active"}},
-			{Name: "representative", Value: map[string]any{"id": "sales_rep", "name": "Dr. María José Carreño Quiñones", "given_name": "María", "middle_name": "José", "family_name": "Carreño Quiñones", "name_prefix": "Dr.", "native_name": "마리아 카레뇨", "name_locale": "es-CO", "email": "sales.rep@example.com", "phone": "+1-555-0100", "account_type": "human", "locale": "es-CO", "timezone": "America/Bogota", "status": "active"}},
-			{Name: "invalid_with_repair", Value: map[string]any{"id": "sales_rep", "name": "Sales Rep", "email": "not-an-email", "status": "active"}, ExpectedErrorCodes: []string{"backend.identity.user_email_invalid"}},
+			{Name: "minimal_valid", Value: map[string]any{"user_id": "sales_rep", "name": "Sales Rep", "email": "sales.rep@example.com", "account_type": "human", "status": "active"}},
+			{Name: "representative", Value: map[string]any{"user_id": "sales_rep", "name": "Dr. María José Carreño Quiñones", "given_name": "María", "middle_name": "José", "family_name": "Carreño Quiñones", "name_prefix": "Dr.", "native_name": "마리아 카레뇨", "name_locale": "es-CO", "email": "sales.rep@example.com", "phone": "+1-555-0100", "account_type": "human", "locale": "es-CO", "timezone": "America/Bogota", "status": "active"}},
+			{Name: "invalid_with_repair", Value: map[string]any{"user_id": "sales_rep", "name": "Sales Rep", "email": "not-an-email", "status": "active"}, ExpectedErrorCodes: []string{"backend.identity.user_email_invalid"}},
 		}, Sources: identityManagementAuthoringSources("IdentityUser", "ValidateUserConfiguration"),
 	}
 }
 
 func IdentityOrganizationUnitAuthoringCapability() authoringcontract.CapabilityAuthoringDefinition {
 	closed := identityBoolPointer(false)
-	input := &authoringcontract.CapabilityAuthoringSchema{Schema: "https://json-schema.org/draft/2020-12/schema", Type: "object", AdditionalProperties: closed, Required: []string{"id", "code", "name", "node_type"}, Properties: map[string]authoringcontract.CapabilityAuthoringSchema{
-		"id": {Type: "string", MinLength: identityIntPointer(1)}, "code": {Type: "string", MinLength: identityIntPointer(1)}, "name": {Type: "string", MinLength: identityIntPointer(1)},
+	input := &authoringcontract.CapabilityAuthoringSchema{Schema: "https://json-schema.org/draft/2020-12/schema", Type: "object", AdditionalProperties: closed, Required: []string{"organization_unit_id", "code", "name", "node_type"}, Properties: map[string]authoringcontract.CapabilityAuthoringSchema{
+		"organization_unit_id": {Type: "string", MinLength: identityIntPointer(1)}, "code": {Type: "string", MinLength: identityIntPointer(1)}, "name": {Type: "string", MinLength: identityIntPointer(1)},
 		"node_type": {Type: "string", Enum: []any{"company", "region", "store", "department", "team", "warehouse"}}, "parent_id": {Type: "string"}, "sort_order": {Type: "integer"}, "status": {Type: "string", Enum: []any{"active", "disabled"}, Default: "active"},
 	}}
-	output := &authoringcontract.CapabilityAuthoringSchema{Schema: input.Schema, Type: "object", AdditionalProperties: closed, Required: []string{"id", "code", "name", "node_type", "path", "ancestor_ids", "depth", "sort_order", "status"}, Properties: map[string]authoringcontract.CapabilityAuthoringSchema{
-		"id": {Type: "string"}, "code": {Type: "string"}, "name": {Type: "string"}, "node_type": {Type: "string"}, "parent_id": {Type: "string"}, "path": {Type: "string"}, "ancestor_ids": {Type: "array", Items: &authoringcontract.CapabilityAuthoringSchema{Type: "string"}}, "depth": {Type: "integer"}, "sort_order": {Type: "integer"}, "status": {Type: "string", Enum: []any{"active", "disabled"}},
+	output := &authoringcontract.CapabilityAuthoringSchema{Schema: input.Schema, Type: "object", AdditionalProperties: closed, Required: []string{"id", "organization_unit_id", "code", "name", "node_type", "path", "ancestor_ids", "depth", "sort_order", "status"}, Properties: map[string]authoringcontract.CapabilityAuthoringSchema{
+		"id": {Type: "integer"}, "organization_unit_id": {Type: "string"}, "code": {Type: "string"}, "name": {Type: "string"}, "node_type": {Type: "string"}, "parent_id": {Type: "string"}, "path": {Type: "string"}, "ancestor_ids": {Type: "array", Items: &authoringcontract.CapabilityAuthoringSchema{Type: "string"}}, "depth": {Type: "integer"}, "sort_order": {Type: "integer"}, "status": {Type: "string", Enum: []any{"active", "disabled"}},
 	}}
 	return authoringcontract.CapabilityAuthoringDefinition{
 		Key: "identity.organization_unit", Status: "supported", Lifecycle: "immediate_audited_configuration",
-		Parameters:  []authoringcontract.CapabilityAuthoringParameter{{Key: "id", Type: "string", Required: true}, {Key: "code", Type: "string", Required: true}, {Key: "name", Type: "string", Required: true}, {Key: "node_type", Type: "string", Required: true, Enum: []string{"company", "region", "store", "department", "team", "warehouse"}}, {Key: "parent_id", Type: "string"}, {Key: "sort_order", Type: "integer"}, {Key: "status", Type: "string", Default: "active", Enum: []string{"active", "disabled"}}},
+		Parameters:  []authoringcontract.CapabilityAuthoringParameter{{Key: "organization_unit_id", Type: "string", Required: true}, {Key: "code", Type: "string", Required: true}, {Key: "name", Type: "string", Required: true}, {Key: "node_type", Type: "string", Required: true, Enum: []string{"company", "region", "store", "department", "team", "warehouse"}}, {Key: "parent_id", Type: "string"}, {Key: "sort_order", Type: "integer"}, {Key: "status", Type: "string", Default: "active", Enum: []string{"active", "disabled"}}},
 		AuditEvents: []string{"identity_organization_unit_created", "identity_organization_unit_updated"}, ValidationEndpoint: "POST /identity/organization-units/{organizationUnitID}/validate",
 		ConfigurationRoutes: []string{"POST /identity/organization-units", "PATCH /identity/organization-units/{organizationUnitID}", "GET /identity/organization-units/{organizationUnitID}", "GET /identity/organization-units/{organizationUnitID}/versions"}, ResourceKeyPathParameter: "organizationUnitID", InputSchema: input, OutputSchema: output,
 		ResourceOperations: identityAuditedResourceOperations("POST /identity/organization-units/{organizationUnitID}/validate", "PATCH /identity/organization-units/{organizationUnitID}", "GET /identity/organization-units/{organizationUnitID}", "GET /identity/organization-units/{organizationUnitID}/versions", ""),
-		OutputVariables:    []authoringcontract.CapabilityAuthoringOutput{{Name: "org_id", JSONPointer: "/id", Type: "org_id", VisibleTo: "subsequent_capability_calls"}},
+		OutputVariables:    []authoringcontract.CapabilityAuthoringOutput{{Name: "org_id", JSONPointer: "/organization_unit_id", Type: "org_id", VisibleTo: "subsequent_capability_calls"}},
 		ReferenceContracts: []authoringcontract.CapabilityAuthoringReference{{Kind: "org_id", InputJSONPointer: "/parent_id", ResolverEndpoint: "GET /capabilities/references/org_id"}},
 		Execution:          identityManagementExecution([]string{"identity.organization_unit"}, "identity.organization_unit", "stable_org_id_upsert", "identity_organization_unit_updated"),
 		Errors: []authoringcontract.CapabilityAuthoringError{
-			{Code: "backend.identity.org_id_required", FieldPath: "id", MessageKey: "backend.identity.org_id_required"}, {Code: "backend.identity.organization_unit_code_required", FieldPath: "code", MessageKey: "backend.identity.organization_unit_code_required"}, {Code: "backend.identity.organization_unit_name_required", FieldPath: "name", MessageKey: "backend.identity.organization_unit_name_required"},
+			{Code: "backend.identity.org_id_required", FieldPath: "organization_unit_id", MessageKey: "backend.identity.org_id_required"}, {Code: "backend.identity.organization_unit_code_required", FieldPath: "code", MessageKey: "backend.identity.organization_unit_code_required"}, {Code: "backend.identity.organization_unit_name_required", FieldPath: "name", MessageKey: "backend.identity.organization_unit_name_required"},
 			{Code: "backend.identity.organization_unit_name_exists", FieldPath: "name", ParameterKeys: []string{"actual"}, MessageKey: "backend.identity.organization_unit_name_exists"}, {Code: "backend.identity.parent_organization_unit_not_found", FieldPath: "parent_id", ParameterKeys: []string{"actual"}, MessageKey: "backend.identity.parent_organization_unit_not_found"},
 			{Code: "backend.identity.organization_unit_parent_self", FieldPath: "parent_id", ParameterKeys: []string{"actual"}, MessageKey: "backend.identity.organization_unit_parent_self"}, {Code: "backend.identity.organization_unit_cycle", FieldPath: "parent_id", ParameterKeys: []string{"actual"}, MessageKey: "backend.identity.organization_unit_cycle"},
 		},
 		Examples: []authoringcontract.CapabilityAuthoringExample{
-			{Name: "minimal_valid", Value: map[string]any{"id": "sales", "code": "SALES", "name": "Sales", "node_type": "department", "status": "active"}},
-			{Name: "representative", Value: map[string]any{"id": "east_store", "code": "EAST_STORE", "name": "East Store", "node_type": "store", "sort_order": 10, "status": "active"}},
-			{Name: "invalid_with_repair", Value: map[string]any{"id": "sales", "code": "SALES", "name": "Sales", "node_type": "department", "parent_id": "sales", "status": "active"}, ExpectedErrorCodes: []string{"backend.identity.organization_unit_parent_self"}},
+			{Name: "minimal_valid", Value: map[string]any{"organization_unit_id": "sales", "code": "SALES", "name": "Sales", "node_type": "department", "status": "active"}},
+			{Name: "representative", Value: map[string]any{"organization_unit_id": "east_store", "code": "EAST_STORE", "name": "East Store", "node_type": "store", "sort_order": 10, "status": "active"}},
+			{Name: "invalid_with_repair", Value: map[string]any{"organization_unit_id": "sales", "code": "SALES", "name": "Sales", "node_type": "department", "parent_id": "sales", "status": "active"}, ExpectedErrorCodes: []string{"backend.identity.organization_unit_parent_self"}},
 		}, Sources: identityManagementAuthoringSources("IdentityOrganizationUnit", "ValidateOrganizationUnitConfiguration"),
 	}
 }
@@ -132,8 +132,8 @@ func IdentityUserRoleAssignmentAuthoringCapability() authoringcontract.Capabilit
 }
 
 func identityUserOutputSchema(closed *bool) *authoringcontract.CapabilityAuthoringSchema {
-	return &authoringcontract.CapabilityAuthoringSchema{Schema: "https://json-schema.org/draft/2020-12/schema", Type: "object", AdditionalProperties: closed, Required: []string{"id", "name", "email", "account_type", "reporting_path", "status", "version", "created_at", "updated_at"}, Properties: map[string]authoringcontract.CapabilityAuthoringSchema{
-		"id": {Type: "string"}, "name": {Type: "string"},
+	return &authoringcontract.CapabilityAuthoringSchema{Schema: "https://json-schema.org/draft/2020-12/schema", Type: "object", AdditionalProperties: closed, Required: []string{"id", "user_id", "name", "email", "account_type", "reporting_path", "status", "version", "created_at", "updated_at"}, Properties: map[string]authoringcontract.CapabilityAuthoringSchema{
+		"id": {Type: "integer"}, "user_id": {Type: "string"}, "name": {Type: "string"},
 		"given_name": {Type: "string"}, "middle_name": {Type: "string"}, "family_name": {Type: "string"},
 		"name_prefix": {Type: "string"}, "name_suffix": {Type: "string"}, "native_name": {Type: "string"}, "name_locale": {Type: "string"},
 		"email": {Type: "string", Format: "email"}, "phone": {Type: "string"},

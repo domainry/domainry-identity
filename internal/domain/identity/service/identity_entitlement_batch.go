@@ -40,11 +40,11 @@ func (s *IdentityDomainService) PrepareIdentityEntitlementBatchForPermission(ctx
 	roleByID := make(map[string]identitymodel.IdentityRole, len(roles))
 	definitionByID := make(map[string]identitymodel.RoleSchema, len(roles))
 	for _, role := range roles {
-		roleByID[role.ID] = role
+		roleByID[role.RoleID] = role
 		if definition, published := s.publishedRoleDefinition(role); published {
-			definitionByID[role.ID] = definition
+			definitionByID[role.RoleID] = definition
 		} else {
-			definitionByID[role.ID] = identitymodel.RoleSchema{Key: valueOrDefault(role.Key, role.ID), Audience: identitymodel.IdentityRoleAudienceAny, AssignmentMode: identitymodel.IdentityRoleAssignmentManual, RiskLevel: identitymodel.IdentityRoleRiskNormal}
+			definitionByID[role.RoleID] = identitymodel.RoleSchema{Key: valueOrDefault(role.Key, role.RoleID), Audience: identitymodel.IdentityRoleAudienceAny, AssignmentMode: identitymodel.IdentityRoleAssignmentManual, RiskLevel: identitymodel.IdentityRoleRiskNormal}
 		}
 	}
 	final := make(map[string]identitymodel.IdentityUserRoleAssignment, len(current)+len(items))
@@ -101,7 +101,7 @@ func (s *IdentityDomainService) PrepareIdentityEntitlementBatchForPermission(ctx
 			}
 			existing, active := final[key]
 			if !active || !identityAssignmentActive(existing, now) {
-				return nil, nil, badRequest("backend.identity.entitlement_not_active", "role", role.ID)
+				return nil, nil, badRequest("backend.identity.entitlement_not_active", "role", role.RoleID)
 			}
 			assignment = existing
 			assignment.Status = "revoked"

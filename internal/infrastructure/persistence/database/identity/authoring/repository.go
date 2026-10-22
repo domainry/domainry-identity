@@ -46,7 +46,7 @@ func (r *Repository) Claim(ctx context.Context, candidate identityauthoring.Rece
 	relatedIDsJSON, _ := json.Marshal([]string{strings.TrimSpace(candidate.TargetID)})
 	insertErr := operationreceipt.InsertStarted(ctx, r.store.DB(), r.store.SQLRenderer(), operationreceipt.Started{
 		Leased: operationreceipt.Leased{
-			ID: candidate.ID, WorkspaceID: candidate.WorkspaceID, ActionKey: candidate.UseCase,
+			OperationID: candidate.OperationID, WorkspaceID: candidate.WorkspaceID, ActionKey: candidate.UseCase,
 			ResourceType: candidate.ResourceType, ResourceID: candidate.TargetID, IdempotencyKey: candidate.IdempotencyKey,
 			RequestFingerprint: candidate.RequestFingerprint, RequestedBy: candidate.ActorID,
 			ResultJSON: candidate.Result, LeaseOwner: candidate.LeaseOwner, LeaseExpiresAt: formatAuthoringTime(candidate.LeaseExpiresAt),
@@ -72,12 +72,12 @@ func (r *Repository) Claim(ctx context.Context, candidate identityauthoring.Rece
 	if decision != idempotency.DecisionAcquired {
 		return identityauthoring.Claim{Decision: decision, Receipt: current}, nil
 	}
-	candidate.ID = current.ID
+	candidate.OperationID = current.OperationID
 	candidate.CreatedAt = current.CreatedAt
 	candidate.FencingToken = current.FencingToken + 1
 	candidate.LeaseExpiresAt = candidate.UpdatedAt.Add(leaseTTL)
 	reclaimed, err := operationreceipt.ReclaimStarted(ctx, r.store.DB(), r.store.SQLRenderer(), operationreceipt.Reclaim{
-		WorkspaceID: candidate.WorkspaceID, ID: candidate.ID, RequestFingerprint: candidate.RequestFingerprint,
+		WorkspaceID: candidate.WorkspaceID, OperationID: candidate.OperationID, RequestFingerprint: candidate.RequestFingerprint,
 		LeaseOwner: candidate.LeaseOwner, LeaseExpiresAt: formatAuthoringTime(candidate.LeaseExpiresAt),
 		ExpectedToken: current.FencingToken, ExpiredAt: formatAuthoringTime(candidate.UpdatedAt), UpdatedAt: formatAuthoringTime(candidate.UpdatedAt),
 	})
@@ -114,7 +114,7 @@ func (r *Repository) Complete(ctx context.Context, completion identityauthoring.
 		errorCode = result.ErrorCode
 	}
 	completed, err := operationreceipt.CompleteLeased(ctx, r.store.DB(), r.store.SQLRenderer(), operationreceipt.Completion{
-		WorkspaceID: completion.WorkspaceID, ID: completion.ReceiptID, LeaseOwner: completion.LeaseOwner,
+		WorkspaceID: completion.WorkspaceID, OperationID: completion.OperationID, LeaseOwner: completion.LeaseOwner,
 		FencingToken: completion.FencingToken, Status: status, ResultJSON: completion.Result,
 		ErrorCode: errorCode, CompletedAt: formatAuthoringTime(completion.CompletedAt),
 	})
@@ -124,7 +124,7 @@ func (r *Repository) Complete(ctx context.Context, completion identityauthoring.
 	if !completed {
 		return identityauthoring.Receipt{}, identityauthoring.ErrLeaseLost
 	}
-	return r.findByID(ctx, completion.WorkspaceID, completion.ReceiptID)
+	return r.findByID(ctx, completion.WorkspaceID, completion.OperationID)
 }
 
 func (r *Repository) findByKey(ctx context.Context, workspaceID, key string) (identityauthoring.Receipt, bool, error) {
@@ -153,7 +153,7 @@ func identityAuthoringReceipt(operation operationreceipt.Leased) (identityauthor
 		return identityauthoring.Receipt{}, err
 	}
 	value := identityauthoring.Receipt{
-		ID: operation.ID, WorkspaceID: operation.WorkspaceID, UseCase: operation.ActionKey,
+		OperationID: operation.OperationID, WorkspaceID: operation.WorkspaceID, UseCase: operation.ActionKey,
 		ResourceType: operation.ResourceType, TargetID: operation.ResourceID, ActorID: operation.RequestedBy,
 		IdempotencyKey: operation.IdempotencyKey, RequestFingerprint: operation.RequestFingerprint, Status: status,
 		Result: operation.ResultJSON, LeaseOwner: operation.LeaseOwner, FencingToken: operation.FencingToken,

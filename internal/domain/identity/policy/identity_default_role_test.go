@@ -12,7 +12,7 @@ func TestDefaultRoleSelectionIsStableAndHasNoBusinessNamePriority(t *testing.T) 
 		want  string
 	}{
 		{name: "empty"},
-		{name: "empty key does not use role ID", roles: []identitymodel.IdentityRole{{ID: "admin"}}},
+		{name: "empty key does not use role ID", roles: []identitymodel.IdentityRole{{RoleID: "admin"}}},
 		{name: "business role names have no priority", roles: []identitymodel.IdentityRole{{Key: "owner"}, {Key: "admin"}, {Key: "accountant"}}, want: "accountant"},
 		{name: "input order does not select role", roles: []identitymodel.IdentityRole{{Key: "member_onboarding"}, {Key: "member"}}, want: "member"},
 	}

@@ -32,7 +32,7 @@ func TestManifestIdentitySeedBuildsOrganizationHierarchyAndBootstrapUsers(t *tes
 	}
 	var employeeFound bool
 	for _, user := range seed.Users {
-		if user.ID == "employee" {
+		if user.UserID == "employee" {
 			employeeFound = user.Name == "Employee" && user.Email == "employee@example.com" && user.OrgID == "people" && user.SupportOrgID == "company" && user.WorkerNo == "E002" && user.WorkStatus == identitymodel.IdentityWorkActive
 		}
 	}
@@ -71,7 +71,7 @@ func TestManifestIdentitySeedMaterializesOneDefaultUserForEveryDeclaredRole(t *t
 	seed := FromManifest(manifest)
 	users := map[string]bool{}
 	for _, user := range seed.Users {
-		users[user.ID] = true
+		users[user.UserID] = true
 	}
 	roleUsers := map[string]string{}
 	for _, assignment := range seed.UserRoles {
@@ -127,7 +127,7 @@ func TestGeneratedIdentityMenusDeclareValidParentChains(t *testing.T) {
 	byID := make(map[string]identitymodel.IdentityMenu, len(menus))
 	routes := map[string]bool{}
 	for _, menu := range menus {
-		byID[menu.ID] = menu
+		byID[menu.MenuID] = menu
 		if menu.Route != "" {
 			routes[menu.Route] = true
 		}
@@ -187,34 +187,46 @@ func (s loginSeedStore) GlobalLoginNameAvailable(_ context.Context, _, _, login 
 func TestManifestResyncDoesNotResurrectDeletedUsersOrRoles(t *testing.T) {
 	workspace := "workspace-primary"
 	ctx := requestcontext.WithWorkspaceID(t.Context(), workspace)
-	store := loginSeedStore{existing: map[string]identitymodel.IdentityUser{workspace + "/implicit": {ID: "implicit", Status: identitymodel.IdentityStatusDeleted}, workspace + "/declared": {ID: "declared", Status: identitymodel.IdentityStatusDeleted}}}
+	store := loginSeedStore{existing: map[string]identitymodel.IdentityUser{workspace + "/implicit": {UserID: "implicit", Status: identitymodel.IdentityStatusDeleted}, workspace + "/declared": {UserID: "declared", Status: identitymodel.IdentityStatusDeleted}}}
 	manifest := manifestmodel.ManifestSchema{IdentityBootstrap: &identitymodel.ManifestIdentityBootstrapSchema{Users: []identitymodel.ManifestIdentityUserSchema{{ID: "declared"}}}}
-	seed := Seed{Users: []identitymodel.IdentityUser{{ID: "implicit"}, {ID: "declared"}, {ID: "active"}}, UserRoles: []identitymodel.IdentityUserRoleAssignment{{UserID: "implicit", RoleID: "admin"}, {UserID: "declared", RoleID: "admin"}, {UserID: "active", RoleID: "sales"}}}
+	seed := Seed{Users: []identitymodel.IdentityUser{{UserID: "implicit"}, {UserID: "declared"}, {UserID: "active"}}, UserRoles: []identitymodel.IdentityUserRoleAssignment{{UserID: "implicit", RoleID: "admin"}, {UserID: "declared", RoleID: "admin"}, {UserID: "active", RoleID: "sales"}}}
 	got, err := preserveExistingImplicitSeedUsers(ctx, store, manifest, seed)
-	if err != nil || len(got.Users) != 1 || got.Users[0].ID != "active" || len(got.UserRoles) != 1 || got.UserRoles[0].UserID != "active" {
+	if err != nil || len(got.Users) != 1 || got.Users[0].UserID != "active" || len(got.UserRoles) != 1 || got.UserRoles[0].UserID != "active" {
 		t.Fatalf("resync restored archived accounts: %+v %v", got, err)
 	}
 }
 func TestGeneratedSeedLoginNamesAvoidGlobalDuplicatesAndSurviveResync(t *testing.T) {
-	seed := Seed{Users: []identitymodel.IdentityUser{{ID: "admin", Email: "admin@example.com"}}}
+	seed := Seed{Users: []identitymodel.IdentityUser{{UserID: "admin", Email: "admin@example.com"}}}
 	store := loginSeedStore{existing: map[string]identitymodel.IdentityUser{}, occupied: map[string]bool{}}
-	a, err := scopeGeneratedSeedLoginNames(t.Context(), store, manifestmodel.ManifestSchema{}, seed, "a")
+	seedA, err := materializeIdentitySeed("a", seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := scopeGeneratedSeedLoginNames(t.Context(), store, manifestmodel.ManifestSchema{}, seedA, "a")
 	if err != nil || a.Users[0].Email != "admin@example.com" {
 		t.Fatal("first seed login changed", err)
 	}
 	store.occupied[a.Users[0].Email] = true
-	b, err := scopeGeneratedSeedLoginNames(t.Context(), store, manifestmodel.ManifestSchema{}, seed, "b")
+	seedB, err := materializeIdentitySeed("b", seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := scopeGeneratedSeedLoginNames(t.Context(), store, manifestmodel.ManifestSchema{}, seedB, "b")
 	if err != nil || b.Users[0].Email == a.Users[0].Email {
 		t.Fatal("B reused A login", err)
 	}
-	store.existing["b/admin"] = b.Users[0]
+	store.existing["b/"+b.Users[0].UserID] = b.Users[0]
 	store.occupied[b.Users[0].Email] = true
-	again, err := scopeGeneratedSeedLoginNames(t.Context(), store, manifestmodel.ManifestSchema{}, seed, "b")
+	again, err := scopeGeneratedSeedLoginNames(t.Context(), store, manifestmodel.ManifestSchema{}, seedB, "b")
 	if err != nil || again.Users[0].Email != b.Users[0].Email {
 		t.Fatal("resync changed B login", err)
 	}
 	explicit := manifestmodel.ManifestSchema{Users: []identitymodel.ManifestIdentityUserSchema{{ID: "admin", Email: "admin@example.com"}}}
-	requested, err := scopeGeneratedSeedLoginNames(t.Context(), store, explicit, seed, "c")
+	seedC, err := materializeIdentitySeed("c", seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requested, err := scopeGeneratedSeedLoginNames(t.Context(), store, explicit, seedC, "c")
 	if err != nil || requested.Users[0].Email != "admin@example.com" {
 		t.Fatal("explicit input was silently renamed", err)
 	}

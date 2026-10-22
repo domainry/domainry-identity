@@ -33,7 +33,7 @@ type AuthServiceGrant struct {
 }
 
 type AuthUser struct {
-	ID      string                       `json:"id"`
+	UserID  string                       `json:"user_id"`
 	Name    string                       `json:"name"`
 	Email   string                       `json:"email"`
 	Locale  string                       `json:"locale"`
@@ -42,9 +42,9 @@ type AuthUser struct {
 }
 
 type AuthRole struct {
-	ID    string `json:"id"`
-	Key   string `json:"key"`
-	Label string `json:"label"`
+	RoleID string `json:"role_id"`
+	Key    string `json:"key"`
+	Label  string `json:"label"`
 }
 
 type AuthProviderChallenge struct {

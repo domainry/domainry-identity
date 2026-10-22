@@ -59,9 +59,9 @@ func TestActionAssuranceReceiptIsSignedShortLivedAndSubjectBound(t *testing.T) {
 func TestActionAssuranceChallengeCannotBeConsumedByLoginFlow(t *testing.T) {
 	auth, identities, repository := newUserAdministrationFixture()
 	identities.users = append(identities.users, identitymodel.IdentityUser{
-		ID: "user-a", Name: "Action User", Email: "action@example.test", Phone: "+8613800000000", Status: identitymodel.IdentityStatusActive,
+		UserID: "user-a", Name: "Action User", Email: "action@example.test", Phone: "+8613800000000", Status: identitymodel.IdentityStatusActive,
 	})
-	repository.mfaFactors = []identitymodel.IdentityMFAFactor{{ID: "factor-a", UserID: "user-a", Type: "otp", Provider: "sms", Status: "active", VerifiedAt: time.Now().UTC().Format(time.RFC3339)}}
+	repository.mfaFactors = []identitymodel.IdentityMFAFactor{{MFAFactorID: "factor-a", UserID: "user-a", Type: "otp", Provider: "sms", Status: "active", VerifiedAt: time.Now().UTC().Format(time.RFC3339)}}
 	providers := NewAuthProviderDomainService([]map[string]any{{
 		"key": "sms", "label": "SMS", "type": "otp", "enabled": true, "otp_provider": "mock",
 	}}, false)
@@ -88,7 +88,7 @@ func TestActionAssuranceChallengeCannotBeConsumedByLoginFlow(t *testing.T) {
 func TestActionAssuranceRequiresAnActiveVerifiedOTPFactor(t *testing.T) {
 	auth, identities, repository := newUserAdministrationFixture()
 	identities.users = append(identities.users, identitymodel.IdentityUser{
-		ID: "user-a", Name: "Action User", Phone: "+8613800000000", Status: identitymodel.IdentityStatusActive,
+		UserID: "user-a", Name: "Action User", Phone: "+8613800000000", Status: identitymodel.IdentityStatusActive,
 	})
 	providers := NewAuthProviderDomainService([]map[string]any{{
 		"key": "sms", "type": "otp", "enabled": true, "otp_provider": "mock",
@@ -96,11 +96,11 @@ func TestActionAssuranceRequiresAnActiveVerifiedOTPFactor(t *testing.T) {
 	flows := NewAuthProviderFlowDomainService(auth, providers)
 	for _, factor := range []identitymodel.IdentityMFAFactor{
 		{},
-		{ID: "unverified", UserID: "user-a", Type: "otp", Provider: "sms", Status: "active"},
-		{ID: "revoked", UserID: "user-a", Type: "otp", Provider: "sms", Status: "revoked", VerifiedAt: time.Now().UTC().Format(time.RFC3339)},
+		{MFAFactorID: "unverified", UserID: "user-a", Type: "otp", Provider: "sms", Status: "active"},
+		{MFAFactorID: "revoked", UserID: "user-a", Type: "otp", Provider: "sms", Status: "revoked", VerifiedAt: time.Now().UTC().Format(time.RFC3339)},
 	} {
 		repository.mfaFactors = nil
-		if factor.ID != "" {
+		if factor.MFAFactorID != "" {
 			repository.mfaFactors = []identitymodel.IdentityMFAFactor{factor}
 		}
 		if _, err := flows.BeginActionAssurance(t.Context(), "workspace-primary", "user-a"); err == nil {
@@ -113,10 +113,10 @@ func TestOTPAllowedPurposesSeparatePasswordLoginFromActionStepUp(t *testing.T) {
 	auth, identities, repository := newUserAdministrationFixture()
 	const password = "Password@2026"
 	identities.users = append(identities.users, identitymodel.IdentityUser{
-		ID: "user-a", Name: "Action User", Email: "action@example.test", Phone: "+8613800000000", Status: identitymodel.IdentityStatusActive,
+		UserID: "user-a", Name: "Action User", Email: "action@example.test", Phone: "+8613800000000", Status: identitymodel.IdentityStatusActive,
 	})
 	repository.credentials = map[string]identitymodel.IdentityCredential{"user-a": passwordCredential(t, "user-a", password)}
-	repository.mfaFactors = []identitymodel.IdentityMFAFactor{{ID: "factor-a", UserID: "user-a", Type: "otp", Provider: "sms", Status: "active", VerifiedAt: time.Now().UTC().Format(time.RFC3339)}}
+	repository.mfaFactors = []identitymodel.IdentityMFAFactor{{MFAFactorID: "factor-a", UserID: "user-a", Type: "otp", Provider: "sms", Status: "active", VerifiedAt: time.Now().UTC().Format(time.RFC3339)}}
 	providers := NewAuthProviderDomainService([]map[string]any{{
 		"key": "sms", "type": "otp", "enabled": true, "otp_provider": "mock", "allowed_purposes": []any{authmodel.AuthChallengePurposeAction},
 	}}, false)
@@ -136,8 +136,8 @@ func TestOTPAllowedPurposesSeparatePasswordLoginFromActionStepUp(t *testing.T) {
 
 func TestLoginOnlyOTPProviderCannotIssueActionChallenge(t *testing.T) {
 	auth, identities, repository := newUserAdministrationFixture()
-	identities.users = append(identities.users, identitymodel.IdentityUser{ID: "user-a", Phone: "+8613800000000", Status: identitymodel.IdentityStatusActive})
-	repository.mfaFactors = []identitymodel.IdentityMFAFactor{{ID: "factor-a", UserID: "user-a", Type: "otp", Provider: "sms", Status: "active", VerifiedAt: time.Now().UTC().Format(time.RFC3339)}}
+	identities.users = append(identities.users, identitymodel.IdentityUser{UserID: "user-a", Phone: "+8613800000000", Status: identitymodel.IdentityStatusActive})
+	repository.mfaFactors = []identitymodel.IdentityMFAFactor{{MFAFactorID: "factor-a", UserID: "user-a", Type: "otp", Provider: "sms", Status: "active", VerifiedAt: time.Now().UTC().Format(time.RFC3339)}}
 	providers := NewAuthProviderDomainService([]map[string]any{{
 		"key": "sms", "type": "otp", "enabled": true, "otp_provider": "mock", "allowed_purposes": []any{authmodel.AuthChallengePurposeLoginMFA},
 	}}, false)

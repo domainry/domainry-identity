@@ -31,7 +31,7 @@ type identityPermissionMenuRepository struct {
 }
 
 func TestPublishedRoleAuthorizationReadsUsePublishedRoleSchema(t *testing.T) {
-	role := identitymodel.IdentityRole{ID: "role", Key: "role", Status: identitymodel.IdentityStatusActive}
+	role := identitymodel.IdentityRole{RoleID: "role", Key: "role", Status: identitymodel.IdentityStatusActive}
 	repository := &identityPermissionMenuRepository{roles: []identitymodel.IdentityRole{role}}
 	service := identityPermissionMenuService(repository)
 	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{
@@ -132,8 +132,8 @@ func TestIdentityRoleAuthorizationListDelegates(t *testing.T) {
 }
 
 func TestIdentityUpsertMenuValidationAndPersistenceEdges(t *testing.T) {
-	root := identitymodel.IdentityMenu{ID: "root", Key: "root", Label: "Root", Status: identitymodel.IdentityStatusActive}
-	child := identitymodel.IdentityMenu{ID: "child", Key: "child", Label: "Child", ParentID: "root", Status: identitymodel.IdentityStatusActive}
+	root := identitymodel.IdentityMenu{MenuID: "root", Key: "root", Label: "Root", Status: identitymodel.IdentityStatusActive}
+	child := identitymodel.IdentityMenu{MenuID: "child", Key: "child", Label: "Child", ParentID: "root", Status: identitymodel.IdentityStatusActive}
 	for _, test := range []struct {
 		name       string
 		repository *identityPermissionMenuRepository
@@ -141,11 +141,11 @@ func TestIdentityUpsertMenuValidationAndPersistenceEdges(t *testing.T) {
 	}{
 		{name: "empty", repository: &identityPermissionMenuRepository{}, menu: identitymodel.IdentityMenu{}},
 		{name: "list", repository: &identityPermissionMenuRepository{menuErr: errIdentityOrganizationUnitUserEdge}, menu: root},
-		{name: "duplicate-key", repository: &identityPermissionMenuRepository{menus: []identitymodel.IdentityMenu{{ID: "other", Key: "ROOT"}}}, menu: root},
-		{name: "self-parent", repository: &identityPermissionMenuRepository{}, menu: identitymodel.IdentityMenu{ID: "root", Key: "root", ParentID: "root"}},
+		{name: "duplicate-key", repository: &identityPermissionMenuRepository{menus: []identitymodel.IdentityMenu{{MenuID: "other", Key: "ROOT"}}}, menu: root},
+		{name: "self-parent", repository: &identityPermissionMenuRepository{}, menu: identitymodel.IdentityMenu{MenuID: "root", Key: "root", ParentID: "root"}},
 		{name: "missing-parent", repository: &identityPermissionMenuRepository{}, menu: child},
-		{name: "cycle", repository: &identityPermissionMenuRepository{menus: []identitymodel.IdentityMenu{root, {ID: "parent", Key: "parent", ParentID: "child"}}}, menu: identitymodel.IdentityMenu{ID: "child", Key: "child", ParentID: "parent"}},
-		{name: "broken-ancestor", repository: &identityPermissionMenuRepository{menus: []identitymodel.IdentityMenu{{ID: "parent", Key: "parent", ParentID: "missing"}}}, menu: identitymodel.IdentityMenu{ID: "child", Key: "child", ParentID: "parent"}},
+		{name: "cycle", repository: &identityPermissionMenuRepository{menus: []identitymodel.IdentityMenu{root, {MenuID: "parent", Key: "parent", ParentID: "child"}}}, menu: identitymodel.IdentityMenu{MenuID: "child", Key: "child", ParentID: "parent"}},
+		{name: "broken-ancestor", repository: &identityPermissionMenuRepository{menus: []identitymodel.IdentityMenu{{MenuID: "parent", Key: "parent", ParentID: "missing"}}}, menu: identitymodel.IdentityMenu{MenuID: "child", Key: "child", ParentID: "parent"}},
 		{name: "write", repository: &identityPermissionMenuRepository{upsertMenuErr: errIdentityOrganizationUnitUserEdge}, menu: root},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -155,32 +155,32 @@ func TestIdentityUpsertMenuValidationAndPersistenceEdges(t *testing.T) {
 		})
 	}
 
-	for _, menu := range []identitymodel.IdentityMenu{{Key: "key-only"}, {ID: "id-only"}, {ID: "full", Key: "full", Label: "Label", Status: identitymodel.IdentityStatusDisabled}} {
+	for _, menu := range []identitymodel.IdentityMenu{{Key: "key-only"}, {MenuID: "id-only"}, {MenuID: "full", Key: "full", Label: "Label", Status: identitymodel.IdentityStatusDisabled}} {
 		repository := &identityPermissionMenuRepository{}
 		if err := identityPermissionMenuService(repository).UpsertMenu(t.Context(), menu); err != nil {
 			t.Fatal(err)
 		}
-		if repository.upsertedMenu.ID == "" || repository.upsertedMenu.Key == "" || repository.upsertedMenu.Label == "" || repository.upsertedMenu.Status == "" {
+		if repository.upsertedMenu.MenuID == "" || repository.upsertedMenu.Key == "" || repository.upsertedMenu.Label == "" || repository.upsertedMenu.Status == "" {
 			t.Fatalf("upserted menu=%+v", repository.upsertedMenu)
 		}
 	}
 	repository := &identityPermissionMenuRepository{menus: []identitymodel.IdentityMenu{root}}
-	if err := identityPermissionMenuService(repository).UpsertMenu(t.Context(), identitymodel.IdentityMenu{ID: "child", Key: "child", ParentID: "root"}); err != nil {
+	if err := identityPermissionMenuService(repository).UpsertMenu(t.Context(), identitymodel.IdentityMenu{MenuID: "child", Key: "child", ParentID: "root"}); err != nil {
 		t.Fatal(err)
 	}
-	repository = &identityPermissionMenuRepository{menus: []identitymodel.IdentityMenu{{ID: "same", Key: "old"}}}
-	if err := identityPermissionMenuService(repository).UpsertMenu(t.Context(), identitymodel.IdentityMenu{ID: "same", Key: "new"}); err != nil {
+	repository = &identityPermissionMenuRepository{menus: []identitymodel.IdentityMenu{{MenuID: "same", Key: "old"}}}
+	if err := identityPermissionMenuService(repository).UpsertMenu(t.Context(), identitymodel.IdentityMenu{MenuID: "same", Key: "new"}); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestIdentityMenuParentNoLongerCarriesProductSurface(t *testing.T) {
 	parent := identitymodel.IdentityMenu{
-		ID: "admin-root", Key: "admin-root",
+		MenuID: "admin-root", Key: "admin-root",
 	}
 	repository := &identityPermissionMenuRepository{menus: []identitymodel.IdentityMenu{parent}}
 	err := identityPermissionMenuService(repository).UpsertMenu(t.Context(), identitymodel.IdentityMenu{
-		ID: "ops-child", Key: "ops-child", ParentID: parent.ID,
+		MenuID: "ops-child", Key: "ops-child", ParentID: parent.MenuID,
 	})
 	if err != nil {
 		t.Fatalf("single-shell parent rejected: %v", err)
@@ -188,10 +188,10 @@ func TestIdentityMenuParentNoLongerCarriesProductSurface(t *testing.T) {
 }
 
 func TestIdentityRemoveAndAssignMenusEdges(t *testing.T) {
-	root := identitymodel.IdentityMenu{ID: "root", Key: "root"}
-	child := identitymodel.IdentityMenu{ID: "child", Key: "child-key", ParentID: "root"}
-	grandchild := identitymodel.IdentityMenu{ID: "grandchild", Key: "grandchild", ParentID: "child"}
-	role := identitymodel.IdentityRole{ID: "role"}
+	root := identitymodel.IdentityMenu{MenuID: "root", Key: "root"}
+	child := identitymodel.IdentityMenu{MenuID: "child", Key: "child-key", ParentID: "root"}
+	grandchild := identitymodel.IdentityMenu{MenuID: "grandchild", Key: "grandchild", ParentID: "child"}
+	role := identitymodel.IdentityRole{RoleID: "role"}
 
 	for _, test := range []struct {
 		name       string

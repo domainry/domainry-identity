@@ -21,7 +21,7 @@ func TestCurrentSessionInvalidatesCachedAuthorizationBeforeTTL(t *testing.T) {
 			f := newPrincipalReadFixture(t)
 			ctx := requestcontext.WithWorkspaceID(f.ctx, "workspace-primary")
 			for _, id := range []string{"department-a", "department-b"} {
-				if err := f.repo.UpsertIdentityOrganizationUnit(ctx, "workspace-primary", identitymodel.IdentityOrganizationUnit{ID: id, Code: id, Name: id, NodeType: identitymodel.IdentityOrganizationUnitDepartment, Status: identitymodel.IdentityStatusActive}); err != nil {
+				if err := f.repo.UpsertIdentityOrganizationUnit(ctx, "workspace-primary", identitymodel.IdentityOrganizationUnit{OrganizationUnitID: id, Code: id, Name: id, NodeType: identitymodel.IdentityOrganizationUnitDepartment, Status: identitymodel.IdentityStatusActive}); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -31,7 +31,7 @@ func TestCurrentSessionInvalidatesCachedAuthorizationBeforeTTL(t *testing.T) {
 			}
 			authStore := authpersistence.NewAuthStore(f.repo.SQLIdentityStore)
 			for _, id := range []string{"subject", "observer"} {
-				if err := f.repo.UpsertIdentityUser(ctx, "workspace-primary", identitymodel.IdentityUser{ID: id, Name: id, Email: id + "@example.test", OrgID: "department-a", Status: identitymodel.IdentityStatusActive}); err != nil {
+				if err := f.repo.UpsertIdentityUser(ctx, "workspace-primary", identitymodel.IdentityUser{UserID: id, Name: id, Email: id + "@example.test", OrgID: "department-a", Status: identitymodel.IdentityStatusActive}); err != nil {
 					t.Fatal(err)
 				}
 				if err := authStore.UpsertIdentityCredential(ctx, "workspace-primary", identitymodel.IdentityCredential{UserID: id, PasswordHash: string(passwordHash)}); err != nil {
@@ -92,7 +92,7 @@ func TestCurrentSessionInvalidatesCachedAuthorizationBeforeTTL(t *testing.T) {
 			case "assignment":
 				err = f.repo.RemoveIdentityUserRole(ctx, "workspace-primary", "subject", "writer-id")
 			case "role-disabled":
-				err = f.repo.UpsertIdentityRole(ctx, "workspace-primary", identitymodel.IdentityRole{ID: "writer-id", Key: "writer", Status: identitymodel.IdentityStatusDisabled})
+				err = f.repo.UpsertIdentityRole(ctx, "workspace-primary", identitymodel.IdentityRole{RoleID: "writer-id", Key: "writer", Status: identitymodel.IdentityStatusDisabled})
 			case "permission-disabled":
 				f.grants[1].Enabled = false
 				f.identity.ReplacePermissionDefinitions(f.grants)

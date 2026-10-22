@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/domainry/domainry-foundation/apperror"
+	"github.com/domainry/domainry-foundation/entityid"
 	authmodel "github.com/domainry/domainry-identity/internal/domain/auth/model"
 	authpolicy "github.com/domainry/domainry-identity/internal/domain/auth/policy"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
@@ -271,12 +272,12 @@ func TestExternalIdentitySuccessAndValidationEdges(t *testing.T) {
 	active := activeExternalIdentityUser("active", assertion.Email)
 	identities.users = []identitymodel.IdentityUser{active}
 	session, err := auth.ExternalLogin(t.Context(), "workspace-a", assertion, true)
-	if err != nil || session.User.ID != active.ID || len(repository.accounts) != 1 {
+	if err != nil || session.User.UserID != active.UserID || len(repository.accounts) != 1 {
 		t.Fatalf("verified-email login session=%+v accounts=%+v err=%v", session, repository.accounts, err)
 	}
-	repository.accounts = []identitymodel.IdentityExternalAccount{{ID: "linked", UserID: active.ID, Provider: "oidc", ProviderSubject: "subject"}}
+	repository.accounts = []identitymodel.IdentityExternalAccount{{ExternalAccountID: "linked", UserID: active.UserID, Provider: "oidc", ProviderSubject: "subject"}}
 	session, err = auth.ExternalLogin(t.Context(), "workspace-a", assertion, true)
-	if err != nil || session.User.ID != active.ID {
+	if err != nil || session.User.UserID != active.UserID {
 		t.Fatalf("linked login session=%+v err=%v", session, err)
 	}
 	identities.users[0].Status = identitymodel.IdentityStatusDisabled
@@ -287,7 +288,7 @@ func TestExternalIdentitySuccessAndValidationEdges(t *testing.T) {
 	if _, err := auth.ListExternalAccounts(t.Context(), "workspace-a", ""); err == nil {
 		t.Fatal("external accounts listed without user")
 	}
-	if accounts, err := auth.ListExternalAccounts(t.Context(), "workspace-a", active.ID); err != nil || len(accounts) == 0 {
+	if accounts, err := auth.ListExternalAccounts(t.Context(), "workspace-a", active.UserID); err != nil || len(accounts) == 0 {
 		t.Fatalf("external accounts=%+v err=%v", accounts, err)
 	}
 	identities.users = []identitymodel.IdentityUser{active}
@@ -296,8 +297,8 @@ func TestExternalIdentitySuccessAndValidationEdges(t *testing.T) {
 		assertion authmodel.AuthExternalIdentityAssertion
 	}{
 		{assertion: assertion},
-		{userID: active.ID, assertion: authmodel.AuthExternalIdentityAssertion{Subject: "subject"}},
-		{userID: active.ID, assertion: authmodel.AuthExternalIdentityAssertion{Provider: "oidc"}},
+		{userID: active.UserID, assertion: authmodel.AuthExternalIdentityAssertion{Subject: "subject"}},
+		{userID: active.UserID, assertion: authmodel.AuthExternalIdentityAssertion{Provider: "oidc"}},
 	} {
 		if _, err := auth.BindExternalAccount(t.Context(), "workspace-a", test.userID, test.assertion); err == nil {
 			t.Fatalf("invalid bind accepted: %+v", test)
@@ -306,34 +307,34 @@ func TestExternalIdentitySuccessAndValidationEdges(t *testing.T) {
 	if _, err := auth.BindExternalAccount(t.Context(), "workspace-a", "missing", assertion); err == nil {
 		t.Fatal("missing bind user accepted")
 	}
-	repository.accounts = []identitymodel.IdentityExternalAccount{{ID: "same", UserID: active.ID, Provider: "oidc", ProviderSubject: "subject"}}
-	account, err := auth.BindExternalAccount(t.Context(), "workspace-a", active.ID, assertion)
-	if err != nil || account.ID != "same" {
+	repository.accounts = []identitymodel.IdentityExternalAccount{{ExternalAccountID: "same", UserID: active.UserID, Provider: "oidc", ProviderSubject: "subject"}}
+	account, err := auth.BindExternalAccount(t.Context(), "workspace-a", active.UserID, assertion)
+	if err != nil || account.ExternalAccountID != "same" {
 		t.Fatalf("idempotent bind=%+v err=%v", account, err)
 	}
 	repository.accounts[0].UserID = "other"
-	if _, err := auth.BindExternalAccount(t.Context(), "workspace-a", active.ID, assertion); err == nil {
+	if _, err := auth.BindExternalAccount(t.Context(), "workspace-a", active.UserID, assertion); err == nil {
 		t.Fatal("cross-user external account rebound")
 	}
 	repository.accounts = nil
 	newAssertion := assertion
 	newAssertion.Subject = "new-subject"
-	if account, err := auth.BindExternalAccount(t.Context(), "workspace-a", active.ID, newAssertion); err != nil || account.ID == "" {
+	if account, err := auth.BindExternalAccount(t.Context(), "workspace-a", active.UserID, newAssertion); err != nil || account.ExternalAccountID == "" {
 		t.Fatalf("new external account=%+v err=%v", account, err)
 	}
 
 	removing := &removingAuthRepository{faultExternalAuthRepository: repository}
 	auth.identityStore = removing
-	for _, input := range [][3]string{{"", "oidc", "same"}, {active.ID, "", "same"}, {active.ID, "oidc", ""}} {
+	for _, input := range [][3]string{{"", "oidc", "same"}, {active.UserID, "", "same"}, {active.UserID, "oidc", ""}} {
 		if err := auth.UnbindExternalAccount(t.Context(), "workspace-a", input[0], input[1], input[2]); err == nil {
 			t.Fatalf("invalid unbind accepted: %v", input)
 		}
 	}
-	repository.accounts = []identitymodel.IdentityExternalAccount{{ID: "target", UserID: active.ID, Provider: "other", ProviderSubject: "subject"}, {ID: "target", UserID: active.ID, Provider: "oidc", ProviderSubject: "subject"}}
-	if err := auth.UnbindExternalAccount(t.Context(), "workspace-a", active.ID, "oidc", "target"); err != nil || removing.removed != "target" {
+	repository.accounts = []identitymodel.IdentityExternalAccount{{ExternalAccountID: "target", UserID: active.UserID, Provider: "other", ProviderSubject: "subject"}, {ExternalAccountID: "target", UserID: active.UserID, Provider: "oidc", ProviderSubject: "subject"}}
+	if err := auth.UnbindExternalAccount(t.Context(), "workspace-a", active.UserID, "oidc", "target"); err != nil || removing.removed != "target" {
 		t.Fatalf("unbind removed=%q err=%v", removing.removed, err)
 	}
-	if err := auth.UnbindExternalAccount(t.Context(), "workspace-a", active.ID, "oidc", "missing"); err == nil {
+	if err := auth.UnbindExternalAccount(t.Context(), "workspace-a", active.UserID, "oidc", "missing"); err == nil {
 		t.Fatal("missing external account unbound")
 	}
 	repository.accounts = []identitymodel.IdentityExternalAccount{{Provider: "other", ProviderSubject: "subject"}, {Provider: "oidc", ProviderSubject: "other"}, {Provider: "oidc", ProviderSubject: "subject"}}
@@ -362,19 +363,19 @@ func TestExternalIdentityCreationAndRoleMappingEdges(t *testing.T) {
 	created, err := auth.createExternalIdentityUser(t.Context(), authmodel.AuthExternalIdentityAssertion{
 		Provider: "OIDC", Subject: "Subject", Email: "new@example.test", DisplayName: "Named User",
 	}, authmodel.AuthExternalLoginPolicy{})
-	if err != nil || created.ID != "oidc_subject_1" || created.Name != "Named User" {
+	if err != nil || entityid.Validate("user", created.UserID) != nil || created.UserID == "oidc_subject" || created.Name != "Named User" {
 		t.Fatalf("collision create=%+v err=%v", created, err)
 	}
 	created, err = auth.createExternalIdentityUser(t.Context(), authmodel.AuthExternalIdentityAssertion{
 		Provider: "!!", Subject: "@@", Email: "fallback@example.test",
 	}, authmodel.AuthExternalLoginPolicy{})
-	if err != nil || created.ID != "external_user" || created.Name != "fallback@example.test" {
+	if err != nil || entityid.Validate("user", created.UserID) != nil || created.Name != "fallback@example.test" {
 		t.Fatalf("fallback create=%+v err=%v", created, err)
 	}
 	created, err = auth.createExternalIdentityUser(t.Context(), authmodel.AuthExternalIdentityAssertion{
 		Provider: "oidc", Subject: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyz0123456789", Email: "long@example.test",
 	}, authmodel.AuthExternalLoginPolicy{})
-	if err != nil || len(created.ID) != 64 {
+	if err != nil || entityid.Validate("user", created.UserID) != nil {
 		t.Fatalf("long create=%+v err=%v", created, err)
 	}
 	if _, err := auth.createExternalIdentityUser(t.Context(), authmodel.AuthExternalIdentityAssertion{Provider: "oidc", Subject: "brace{", Email: "brace@example.test"}, authmodel.AuthExternalLoginPolicy{}); err != nil {
@@ -382,9 +383,9 @@ func TestExternalIdentityCreationAndRoleMappingEdges(t *testing.T) {
 	}
 
 	identities.roles = []identitymodel.IdentityRole{
-		{ID: "disabled", Key: "disabled", Status: identitymodel.IdentityStatusDisabled},
-		{ID: "admin", Key: "admin", Status: identitymodel.IdentityStatusActive},
-		{ID: "sales", Key: "sales", Status: identitymodel.IdentityStatusActive},
+		{RoleID: "disabled", Key: "disabled", Status: identitymodel.IdentityStatusDisabled},
+		{RoleID: "admin", Key: "admin", Status: identitymodel.IdentityStatusActive},
+		{RoleID: "sales", Key: "sales", Status: identitymodel.IdentityStatusActive},
 	}
 	role, ok, err := auth.roleForExternalAssertion(t.Context(), authmodel.AuthExternalIdentityAssertion{Claims: map[string]string{"group": "seller"}}, authmodel.AuthExternalLoginPolicy{RoleMappings: []authmodel.AuthExternalRoleMapping{
 		{Claim: "group", Match: "seller", RoleKey: "missing"},
@@ -396,7 +397,7 @@ func TestExternalIdentityCreationAndRoleMappingEdges(t *testing.T) {
 		t.Fatalf("mapped role=%+v ok=%v err=%v", role, ok, err)
 	}
 	created, err = auth.createExternalIdentityUser(t.Context(), authmodel.AuthExternalIdentityAssertion{Provider: "oidc", Subject: "assigned", Email: "assigned@example.test", Claims: map[string]string{"group": "seller"}}, authmodel.AuthExternalLoginPolicy{RoleMappings: []authmodel.AuthExternalRoleMapping{{Claim: "group", Match: "seller", RoleKey: "sales"}}})
-	if err != nil || created.ID == "" {
+	if err != nil || created.UserID == "" {
 		t.Fatalf("assigned identity=%+v err=%v", created, err)
 	}
 }
@@ -405,8 +406,8 @@ func TestWeChatExternalLoginReusesOrphanAndSkipsBindingManagedDefaultRole(t *tes
 	auth, identities, repository := newFaultAuthDomainService()
 	assertion := authmodel.AuthExternalIdentityAssertion{Provider: "wechat_mini_program", Subject: "open-id", ProviderSubjectVerified: true}
 	placeholder := verifiedSubjectPlaceholderEmail(assertion.Provider, assertion.Subject)
-	identities.users = append(identities.users, identitymodel.IdentityUser{ID: "orphan", Name: placeholder, Email: placeholder, Status: identitymodel.IdentityStatusActive})
-	identities.roles = append(identities.roles, identitymodel.IdentityRole{ID: "member", Key: "member", Status: identitymodel.IdentityStatusActive})
+	identities.users = append(identities.users, identitymodel.IdentityUser{UserID: "orphan", Name: placeholder, Email: placeholder, Status: identitymodel.IdentityStatusActive})
+	identities.roles = append(identities.roles, identitymodel.IdentityRole{RoleID: "member", Key: "member", Status: identitymodel.IdentityStatusActive})
 	identities.roleDefinitions["member"] = identitymodel.RoleSchema{
 		Key: "member", Audience: identitymodel.IdentityRoleAudienceBusiness, RequiredBindingKey: "member", AssignmentMode: identitymodel.IdentityRoleAssignmentSystemManaged,
 	}
@@ -415,7 +416,7 @@ func TestWeChatExternalLoginReusesOrphanAndSkipsBindingManagedDefaultRole(t *tes
 	if err != nil {
 		t.Fatalf("recover verified wechat login: %v", err)
 	}
-	if session.User.ID != "orphan" || len(identities.users) != 1 {
+	if session.User.UserID != "orphan" || len(identities.users) != 1 {
 		t.Fatalf("orphan was not reused: session=%+v users=%+v", session.User, identities.users)
 	}
 	if len(identities.roleAssignments) != 0 {
@@ -441,10 +442,10 @@ func TestWeChatExternalLoginReusesOrphanAndSkipsBindingManagedDefaultRole(t *tes
 func TestLinkedExternalLoginBackfillsOnlySafeDefaultRole(t *testing.T) {
 	newFixture := func(definition identitymodel.RoleSchema) (*AuthDomainService, *faultExternalIdentityRepository, *faultExternalAuthRepository) {
 		auth, identities, repository := newFaultAuthDomainService()
-		identities.users = append(identities.users, identitymodel.IdentityUser{ID: "linked", Name: "Linked", Email: "linked@example.test", Status: identitymodel.IdentityStatusActive})
-		identities.roles = append(identities.roles, identitymodel.IdentityRole{ID: "default-role", Key: "default-role", Status: identitymodel.IdentityStatusActive})
+		identities.users = append(identities.users, identitymodel.IdentityUser{UserID: "linked", Name: "Linked", Email: "linked@example.test", Status: identitymodel.IdentityStatusActive})
+		identities.roles = append(identities.roles, identitymodel.IdentityRole{RoleID: "default-role", Key: "default-role", Status: identitymodel.IdentityStatusActive})
 		identities.roleDefinitions["default-role"] = definition
-		repository.accounts = append(repository.accounts, identitymodel.IdentityExternalAccount{ID: "external", UserID: "linked", Provider: "oidc", ProviderSubject: "subject"})
+		repository.accounts = append(repository.accounts, identitymodel.IdentityExternalAccount{ExternalAccountID: "external", UserID: "linked", Provider: "oidc", ProviderSubject: "subject"})
 		return auth, identities, repository
 	}
 

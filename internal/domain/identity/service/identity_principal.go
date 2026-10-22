@@ -44,7 +44,7 @@ func (s *IdentityDomainService) buildPrincipal(ctx context.Context, userID strin
 	if err != nil {
 		return identitymodel.Principal{}, err
 	}
-	orgScopeIDs, supportOrgScopeIDs, reportingScopeUserIDs, err := s.resolvePrincipalScopeIDs(ctx, user.ID, organizationUnitID, user.SupportOrgID)
+	orgScopeIDs, supportOrgScopeIDs, reportingScopeUserIDs, err := s.resolvePrincipalScopeIDs(ctx, user.UserID, organizationUnitID, user.SupportOrgID)
 	if err != nil {
 		return identitymodel.Principal{}, err
 	}
@@ -52,7 +52,7 @@ func (s *IdentityDomainService) buildPrincipal(ctx context.Context, userID strin
 	if len(supportOrgScopeIDs) == 0 {
 		supportOrgID = ""
 	}
-	assignments, err := s.repo.ListIdentityUserRoleAssignments(ctx, s.workspace, user.ID)
+	assignments, err := s.repo.ListIdentityUserRoleAssignments(ctx, s.workspace, user.UserID)
 	if err != nil {
 		return identitymodel.Principal{}, err
 	}
@@ -73,7 +73,7 @@ func (s *IdentityDomainService) buildPrincipal(ctx context.Context, userID strin
 		activeRoleIDs[assignment.RoleID] = struct{}{}
 		activeAssignments = append(activeAssignments, assignment)
 	}
-	s.capturePrincipalContext(facts, user.ID, activeAssignments, roles)
+	s.capturePrincipalContext(facts, user.UserID, activeAssignments, roles)
 	role := identitymodel.RoleSchema{
 		Key:  "identity_effective",
 		Name: "Identity Effective",
@@ -84,7 +84,7 @@ func (s *IdentityDomainService) buildPrincipal(ctx context.Context, userID strin
 		if identityRole.Status != "" && identityRole.Status != identitymodel.IdentityStatusActive {
 			continue
 		}
-		if _, ok := activeRoleIDs[identityRole.ID]; !ok {
+		if _, ok := activeRoleIDs[identityRole.RoleID]; !ok {
 			continue
 		}
 		published, ok := s.publishedRoleDefinition(identityRole)
@@ -114,7 +114,7 @@ func (s *IdentityDomainService) buildPrincipal(ctx context.Context, userID strin
 	}
 	authorizationRevision := identityAuthorizationRevision(user, orgScopeIDs, supportOrgScopeIDs, reportingScopeUserIDs, activeAssignments, activeIdentityRoles, role, identityPermissionStateFingerprint(s.PermissionDefinitions()))
 	return identitymodel.Principal{
-		UserID:                user.ID,
+		UserID:                user.UserID,
 		WorkspaceID:           s.workspace,
 		OrgID:                 organizationUnitID,
 		OrgScopeIDs:           orgScopeIDs,
@@ -159,7 +159,7 @@ func (s *IdentityDomainService) buildPrincipalForRole(ctx context.Context, userI
 	if err != nil {
 		return identitymodel.Principal{}, err
 	}
-	orgScopeIDs, supportOrgScopeIDs, reportingScopeUserIDs, err := s.resolvePrincipalScopeIDs(ctx, user.ID, organizationUnitID, user.SupportOrgID)
+	orgScopeIDs, supportOrgScopeIDs, reportingScopeUserIDs, err := s.resolvePrincipalScopeIDs(ctx, user.UserID, organizationUnitID, user.SupportOrgID)
 	if err != nil {
 		return identitymodel.Principal{}, err
 	}
@@ -167,7 +167,7 @@ func (s *IdentityDomainService) buildPrincipalForRole(ctx context.Context, userI
 	if len(supportOrgScopeIDs) == 0 {
 		supportOrgID = ""
 	}
-	userAssignments, err := s.repo.ListIdentityUserRoleAssignments(ctx, s.workspace, user.ID)
+	userAssignments, err := s.repo.ListIdentityUserRoleAssignments(ctx, s.workspace, user.UserID)
 	if err != nil {
 		return identitymodel.Principal{}, err
 	}
@@ -178,14 +178,14 @@ func (s *IdentityDomainService) buildPrincipalForRole(ctx context.Context, userI
 	var identityRole identitymodel.IdentityRole
 	found := false
 	for _, role := range roles {
-		if (role.Status == "" || role.Status == identitymodel.IdentityStatusActive) && (role.ID == roleKey || role.Key == roleKey) {
+		if (role.Status == "" || role.Status == identitymodel.IdentityStatusActive) && (role.RoleID == roleKey || role.Key == roleKey) {
 			identityRole = role
 			found = true
 			break
 		}
 	}
 	if !found {
-		return identitymodel.Principal{UserID: user.ID, Known: false}, nil
+		return identitymodel.Principal{UserID: user.UserID, Known: false}, nil
 	}
 	assigned := false
 	var activeAssignment identitymodel.IdentityUserRoleAssignment
@@ -198,7 +198,7 @@ func (s *IdentityDomainService) buildPrincipalForRole(ctx context.Context, userI
 		if facts != nil && active {
 			activeAssignments = append(activeAssignments, assignment)
 		}
-		if !assigned && assignment.RoleID == identityRole.ID && active {
+		if !assigned && assignment.RoleID == identityRole.RoleID && active {
 			assigned = true
 			activeAssignment = assignment
 			if facts == nil {
@@ -206,13 +206,13 @@ func (s *IdentityDomainService) buildPrincipalForRole(ctx context.Context, userI
 			}
 		}
 	}
-	s.capturePrincipalContext(facts, user.ID, activeAssignments, roles)
+	s.capturePrincipalContext(facts, user.UserID, activeAssignments, roles)
 	if !assigned {
-		return identitymodel.Principal{UserID: user.ID, Known: false}, nil
+		return identitymodel.Principal{UserID: user.UserID, Known: false}, nil
 	}
 	published, ok := s.publishedRoleDefinition(identityRole)
 	if !ok {
-		return identitymodel.Principal{UserID: user.ID, Known: false}, nil
+		return identitymodel.Principal{UserID: user.UserID, Known: false}, nil
 	}
 	published.Key = valueOrDefault(published.Key, identityRole.Key)
 	published.Name = valueOrDefault(published.Name, identityRole.Label)
@@ -225,7 +225,7 @@ func (s *IdentityDomainService) buildPrincipalForRole(ctx context.Context, userI
 	published.Permissions = identityFilterGuardrailDeniedPermissions(published)
 	authorizationRevision := identityAuthorizationRevision(user, orgScopeIDs, supportOrgScopeIDs, reportingScopeUserIDs, []identitymodel.IdentityUserRoleAssignment{activeAssignment}, []identitymodel.IdentityRole{identityRole}, published, identityPermissionStateFingerprint(s.PermissionDefinitions()))
 	return identitymodel.Principal{
-		UserID:                user.ID,
+		UserID:                user.UserID,
 		WorkspaceID:           s.workspace,
 		OrgID:                 organizationUnitID,
 		OrgScopeIDs:           orgScopeIDs,
@@ -311,7 +311,7 @@ func (s *IdentityDomainService) resolveUserOrganization(ctx context.Context, use
 		return "", "", err
 	}
 	for _, organizationUnit := range organizationUnits {
-		if strings.TrimSpace(organizationUnit.ID) == organizationUnitID &&
+		if strings.TrimSpace(organizationUnit.OrganizationUnitID) == organizationUnitID &&
 			(organizationUnit.Status == "" || organizationUnit.Status == identitymodel.IdentityStatusActive) {
 			return organizationUnitID, strings.TrimSpace(organizationUnit.Path), nil
 		}
@@ -332,7 +332,7 @@ func (s *IdentityDomainService) resolvePrincipalScopeIDs(ctx context.Context, us
 			return nil, nil, nil, err
 		}
 		for _, organizationUnit := range organizationUnits {
-			organizationUnitID := strings.TrimSpace(organizationUnit.ID)
+			organizationUnitID := strings.TrimSpace(organizationUnit.OrganizationUnitID)
 			if organizationUnitID == "" {
 				continue
 			}
@@ -362,10 +362,10 @@ func (s *IdentityDomainService) resolvePrincipalScopeIDs(ctx context.Context, us
 	reportingChildren := map[string][]string{}
 	for _, user := range users {
 		managerID := strings.TrimSpace(user.ManagerUserID)
-		if managerID == "" || strings.TrimSpace(user.ID) == "" {
+		if managerID == "" || strings.TrimSpace(user.UserID) == "" {
 			continue
 		}
-		reportingChildren[managerID] = append(reportingChildren[managerID], strings.TrimSpace(user.ID))
+		reportingChildren[managerID] = append(reportingChildren[managerID], strings.TrimSpace(user.UserID))
 	}
 	reportingScopeUserIDs := identityTreeScopeIDs(strings.TrimSpace(userID), reportingChildren)
 	return orgScopeIDs, supportOrgScopeIDs, reportingScopeUserIDs, nil

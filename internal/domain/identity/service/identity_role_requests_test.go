@@ -14,7 +14,7 @@ func TestIdentityCreateRoleRequestNormalizesAndDeduplicatesRoles(t *testing.T) {
 		UserID: " user-1 ", RoleIDs: []string{"member", " member-id ", "viewer"},
 		Provider: " oidc ", ProviderSubject: " subject ", Reason: " access needed ",
 	})
-	if err != nil || created.ID != "request-created" || created.UserID != "user-1" || created.Status != "pending" || len(created.RoleIDs) != 2 || created.RoleIDs[0] != "member-id" || created.RoleIDs[1] != "viewer-id" || created.Provider != "oidc" || created.ProviderSubject != "subject" || created.Reason != "access needed" {
+	if err != nil || created.RoleRequestID != "request-created" || created.UserID != "user-1" || created.Status != "pending" || len(created.RoleIDs) != 2 || created.RoleIDs[0] != "member-id" || created.RoleIDs[1] != "viewer-id" || created.Provider != "oidc" || created.ProviderSubject != "subject" || created.Reason != "access needed" {
 		t.Fatalf("created=%#v err=%v", created, err)
 	}
 	if len(repository.requests) != 1 {
@@ -57,7 +57,7 @@ func TestIdentityCreateRoleRequestRejectsInvalidUsersAndRoles(t *testing.T) {
 
 func TestIdentityApproveRoleRequestAssignsEveryRoleAndRecordsReview(t *testing.T) {
 	repository, service := identityRolesFixture()
-	repository.requests = []identitymodel.IdentityRoleRequest{{ID: "request-1", UserID: "user-1", RoleIDs: []string{"member-id", "viewer-id"}, Status: "pending"}}
+	repository.requests = []identitymodel.IdentityRoleRequest{{RoleRequestID: "request-1", UserID: "user-1", RoleIDs: []string{"member-id", "viewer-id"}, Status: "pending"}}
 	approved, err := service.ApproveRoleRequest(t.Context(), " request-1 ", " reviewer-1 ", " approved ")
 	if err != nil || approved.Status != "approved" || approved.ReviewedBy != "reviewer-1" || approved.ReviewNote != "approved" || approved.ReviewedAt == "" || approved.UpdatedAt == "" || len(repository.assigned) != 2 || repository.updatedRequest.Status != "approved" {
 		t.Fatalf("approved=%#v assigned=%#v persisted=%#v err=%v", approved, repository.assigned, repository.updatedRequest, err)
@@ -87,7 +87,7 @@ func TestIdentityApproveHighRiskRoleRequestRequiresIndependentAuthorizedReviewer
 				Key: "admin", AssignmentMode: identitymodel.IdentityRoleAssignmentRequestOnly, RiskLevel: identitymodel.IdentityRoleRiskPrivileged,
 			}})
 			repository.requests = []identitymodel.IdentityRoleRequest{{
-				ID: "request-1", UserID: "user-1", RequestedBy: "maker", RoleIDs: []string{"admin-id"}, Status: "pending",
+				RoleRequestID: "request-1", UserID: "user-1", RequestedBy: "maker", RoleIDs: []string{"admin-id"}, Status: "pending",
 			}}
 			approved, err := service.ApproveRoleRequest(t.Context(), "request-1", test.reviewerID, "reviewed", test.principal...)
 			if test.code != "" {
@@ -113,7 +113,7 @@ func TestIdentityApproveRoleRequestRejectsConflictingRolesWithinOneRequest(t *te
 		{Key: "viewer", AssignmentMode: identitymodel.IdentityRoleAssignmentRequestOnly},
 	})
 	repository.requests = []identitymodel.IdentityRoleRequest{{
-		ID: "request-1", UserID: "user-1", RequestedBy: "maker", RoleIDs: []string{"member-id", "viewer-id"}, Status: "pending",
+		RoleRequestID: "request-1", UserID: "user-1", RequestedBy: "maker", RoleIDs: []string{"member-id", "viewer-id"}, Status: "pending",
 	}}
 	if _, err := service.ApproveRoleRequest(t.Context(), "request-1", "checker", ""); apperror.CodeOf(err) != "backend.identity.role_conflict" {
 		t.Fatalf("conflicting request error=%v", err)
@@ -130,8 +130,8 @@ func TestIdentityApproveRoleRequestFailures(t *testing.T) {
 		code     string
 	}{
 		{"missing", nil, "backend.identity.role_request_not_found"},
-		{"not pending", []identitymodel.IdentityRoleRequest{{ID: "request-1", Status: "approved"}}, "backend.identity.role_request_not_pending"},
-		{"assignment fails", []identitymodel.IdentityRoleRequest{{ID: "request-1", UserID: "missing", RoleIDs: []string{"member-id"}, Status: "pending"}}, "backend.identity.user_not_found"},
+		{"not pending", []identitymodel.IdentityRoleRequest{{RoleRequestID: "request-1", Status: "approved"}}, "backend.identity.role_request_not_pending"},
+		{"assignment fails", []identitymodel.IdentityRoleRequest{{RoleRequestID: "request-1", UserID: "missing", RoleIDs: []string{"member-id"}, Status: "pending"}}, "backend.identity.user_not_found"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -148,7 +148,7 @@ func TestIdentityApproveRoleRequestFailures(t *testing.T) {
 		t.Fatalf("expected repository error, got %v", err)
 	}
 	repository, service = identityRolesFixture()
-	repository.requests = []identitymodel.IdentityRoleRequest{{ID: "request-1", UserID: "user-1", RoleIDs: []string{"member-id"}, Status: "pending"}}
+	repository.requests = []identitymodel.IdentityRoleRequest{{RoleRequestID: "request-1", UserID: "user-1", RoleIDs: []string{"member-id"}, Status: "pending"}}
 	repository.updateRequestErr = errIdentityRolesRepository
 	if _, err := service.ApproveRoleRequest(t.Context(), "request-1", "reviewer", ""); err != errIdentityRolesRepository {
 		t.Fatalf("expected update error, got %v", err)
@@ -157,17 +157,17 @@ func TestIdentityApproveRoleRequestFailures(t *testing.T) {
 
 func TestIdentityRejectRoleRequest(t *testing.T) {
 	repository, service := identityRolesFixture()
-	repository.requests = []identitymodel.IdentityRoleRequest{{ID: "request-1", UserID: "user-1", Status: "pending"}}
+	repository.requests = []identitymodel.IdentityRoleRequest{{RoleRequestID: "request-1", UserID: "user-1", Status: "pending"}}
 	rejected, err := service.RejectRoleRequest(t.Context(), "request-1", " reviewer ", " denied ")
 	if err != nil || rejected.Status != "rejected" || rejected.ReviewedBy != "reviewer" || rejected.ReviewNote != "denied" || repository.updatedRequest.Status != "rejected" {
 		t.Fatalf("rejected=%#v persisted=%#v err=%v", rejected, repository.updatedRequest, err)
 	}
-	for _, request := range []identitymodel.IdentityRoleRequest{{ID: "other", Status: "pending"}, {ID: "request-1", Status: "approved"}} {
+	for _, request := range []identitymodel.IdentityRoleRequest{{RoleRequestID: "other", Status: "pending"}, {RoleRequestID: "request-1", Status: "approved"}} {
 		repository, service = identityRolesFixture()
 		repository.requests = []identitymodel.IdentityRoleRequest{request}
 		_, err = service.RejectRoleRequest(t.Context(), "request-1", "reviewer", "")
 		want := "backend.identity.role_request_not_found"
-		if request.ID == "request-1" {
+		if request.RoleRequestID == "request-1" {
 			want = "backend.identity.role_request_not_pending"
 		}
 		if apperror.CodeOf(err) != want {
@@ -180,7 +180,7 @@ func TestIdentityRejectRoleRequest(t *testing.T) {
 		t.Fatalf("expected lookup error, got %v", err)
 	}
 	repository, service = identityRolesFixture()
-	repository.requests = []identitymodel.IdentityRoleRequest{{ID: "request-1", UserID: "user-1", Status: "pending"}}
+	repository.requests = []identitymodel.IdentityRoleRequest{{RoleRequestID: "request-1", UserID: "user-1", Status: "pending"}}
 	repository.updateRequestErr = errIdentityRolesRepository
 	if _, err := service.RejectRoleRequest(t.Context(), "request-1", "reviewer", ""); err != errIdentityRolesRepository {
 		t.Fatalf("expected update error, got %v", err)
@@ -189,15 +189,15 @@ func TestIdentityRejectRoleRequest(t *testing.T) {
 
 func TestIdentityRoleRequestLookupAndList(t *testing.T) {
 	repository, service := identityRolesFixture()
-	repository.requests = []identitymodel.IdentityRoleRequest{{ID: "request-1", UserID: "user-1", Status: "pending"}, {ID: "request-2", UserID: "user-2", Status: "approved"}}
+	repository.requests = []identitymodel.IdentityRoleRequest{{RoleRequestID: "request-1", UserID: "user-1", Status: "pending"}, {RoleRequestID: "request-2", UserID: "user-2", Status: "approved"}}
 	requests, err := service.ListRoleRequests(t.Context(), " pending ", " user-1 ")
-	if err != nil || len(requests) != 1 || requests[0].ID != "request-1" {
+	if err != nil || len(requests) != 1 || requests[0].RoleRequestID != "request-1" {
 		t.Fatalf("requests=%#v err=%v", requests, err)
 	}
 	if _, found, err := service.roleRequestByID(t.Context(), " "); err != nil || found {
 		t.Fatalf("empty lookup found=%v err=%v", found, err)
 	}
-	if request, found, err := service.roleRequestByID(t.Context(), "request-2"); err != nil || !found || request.ID != "request-2" {
+	if request, found, err := service.roleRequestByID(t.Context(), "request-2"); err != nil || !found || request.RoleRequestID != "request-2" {
 		t.Fatalf("request=%#v found=%v err=%v", request, found, err)
 	}
 }

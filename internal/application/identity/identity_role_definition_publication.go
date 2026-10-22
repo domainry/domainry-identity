@@ -205,11 +205,11 @@ func (service *IdentityRoleDefinitionPublicationService) Delete(ctx context.Cont
 		return err
 	}
 	for _, assignment := range assignments {
-		if strings.TrimSpace(assignment.RoleID) == role.ID || strings.TrimSpace(assignment.RoleID) == role.Key {
+		if strings.TrimSpace(assignment.RoleID) == role.RoleID || strings.TrimSpace(assignment.RoleID) == role.Key {
 			return &apperror.AppError{Kind: apperror.KindConflict, Code: "backend.identity.role_has_assignments", Params: map[string]string{"role": role.Key}}
 		}
 	}
-	menus, err := service.identity.ListRoleMenuAssignments(ctx, role.ID)
+	menus, err := service.identity.ListRoleMenuAssignments(ctx, role.RoleID)
 	if err != nil {
 		return err
 	}
@@ -317,9 +317,9 @@ func rolePermissionConfiguration(role identitymodel.IdentityRole, permissions []
 	assignments := make([]identitymodel.IdentityRolePermissionAssignment, 0, len(permissions))
 	normalized, _ := identitymodel.NormalizeRolePermissions(permissions)
 	for _, permission := range normalized {
-		assignments = append(assignments, identitymodel.IdentityRolePermissionAssignment{RoleID: role.ID, PermissionKey: permission.PermissionKey, DataScope: permission.DataScope, DataPolicy: permission.DataPolicy, AuditDenial: permission.AuditDenial})
+		assignments = append(assignments, identitymodel.IdentityRolePermissionAssignment{RoleID: role.RoleID, PermissionKey: permission.PermissionKey, DataScope: permission.DataScope, DataPolicy: permission.DataPolicy, AuditDenial: permission.AuditDenial})
 	}
-	return identitymodel.IdentityRolePermissionConfiguration{RoleID: role.ID, RoleKey: role.Key, Permissions: assignments, SchemaVersion: revision.SchemaVersion, SchemaHash: revision.SchemaHash}
+	return identitymodel.IdentityRolePermissionConfiguration{RoleID: role.RoleID, RoleKey: role.Key, Permissions: assignments, SchemaVersion: revision.SchemaVersion, SchemaHash: revision.SchemaHash}
 }
 
 func roleFieldPermissionConfiguration(role identitymodel.IdentityRole, values []identitymodel.FieldPermission, revision identitymodel.IdentityRoleDefinitionRevision) identitymodel.IdentityRoleFieldPermissionConfiguration {
@@ -329,7 +329,7 @@ func roleFieldPermissionConfiguration(role identitymodel.IdentityRole, values []
 			permissions = append(permissions, identitymodel.IdentityFieldPermission{Resource: resource, Field: field, Visible: value.Read, Editable: value.Write, Masked: value.Masked, Policies: value.Policies})
 		}
 	}
-	return identitymodel.IdentityRoleFieldPermissionConfiguration{RoleID: role.ID, RoleKey: role.Key, FieldPermissions: permissions, SchemaVersion: revision.SchemaVersion, SchemaHash: revision.SchemaHash}
+	return identitymodel.IdentityRoleFieldPermissionConfiguration{RoleID: role.RoleID, RoleKey: role.Key, FieldPermissions: permissions, SchemaVersion: revision.SchemaVersion, SchemaHash: revision.SchemaHash}
 }
 
 func rolePublicationUnavailable() error {

@@ -59,20 +59,22 @@ const (
 )
 
 type IdentityOrganizationUnit struct {
-	ID          string                       `json:"id"`
-	Code        string                       `json:"code"`
-	Name        string                       `json:"name"`
-	NodeType    IdentityOrganizationUnitType `json:"node_type"`
-	ParentID    *string                      `json:"parent_id,omitempty"`
-	Path        string                       `json:"path"`
-	AncestorIDs []string                     `json:"ancestor_ids"`
-	Depth       int                          `json:"depth"`
-	SortOrder   int                          `json:"sort_order"`
-	Status      IdentityStatus               `json:"status,omitempty"`
+	ID                 int64                        `json:"id"`
+	OrganizationUnitID string                       `json:"organization_unit_id"`
+	Code               string                       `json:"code"`
+	Name               string                       `json:"name"`
+	NodeType           IdentityOrganizationUnitType `json:"node_type"`
+	ParentID           *string                      `json:"parent_id,omitempty"`
+	Path               string                       `json:"path"`
+	AncestorIDs        []string                     `json:"ancestor_ids"`
+	Depth              int                          `json:"depth"`
+	SortOrder          int                          `json:"sort_order"`
+	Status             IdentityStatus               `json:"status,omitempty"`
 }
 
 type IdentityUser struct {
-	ID            string              `json:"id"`
+	ID            int64               `json:"id"`
+	UserID        string              `json:"user_id"`
 	Name          string              `json:"name"`
 	GivenName     string              `json:"given_name,omitempty"`
 	MiddleName    string              `json:"middle_name,omitempty"`
@@ -191,7 +193,8 @@ type IdentityActionPermissionUsage struct {
 }
 
 type IdentityRole struct {
-	ID          string         `json:"id"`
+	ID          int64          `json:"id"`
+	RoleID      string         `json:"role_id"`
 	Key         string         `json:"key"`
 	Label       string         `json:"label"`
 	Description string         `json:"description"`
@@ -207,7 +210,8 @@ type IdentityRolePage struct {
 }
 
 type IdentityMenu struct {
-	ID          string         `json:"id"`
+	ID          int64          `json:"id"`
+	MenuID      string         `json:"menu_id"`
 	Key         string         `json:"key"`
 	Label       string         `json:"label"`
 	Description string         `json:"description,omitempty"`
@@ -260,7 +264,8 @@ type IdentityUserRoleAssignmentPage struct {
 }
 
 type IdentityRoleRequest struct {
-	ID              string   `json:"id"`
+	ID              int64    `json:"id"`
+	RoleRequestID   string   `json:"role_request_id"`
 	UserID          string   `json:"user_id"`
 	RequestedBy     string   `json:"requested_by,omitempty"`
 	Provider        string   `json:"provider,omitempty"`
@@ -294,7 +299,6 @@ type IdentityCredential struct {
 }
 
 type AuthRefreshToken struct {
-	ID                    string   `json:"id"`
 	UserID                string   `json:"user_id"`
 	SessionID             string   `json:"session_id"`
 	Audience              string   `json:"audience"`
@@ -304,26 +308,28 @@ type AuthRefreshToken struct {
 	TokenHash             string   `json:"token_hash"`
 	ExpiresAt             string   `json:"expires_at"`
 	RevokedAt             string   `json:"revoked_at,omitempty"`
-	ReplacedByID          string   `json:"replaced_by_id,omitempty"`
+	ReplacedByHash        string   `json:"replaced_by_hash,omitempty"`
 	CreatedAt             string   `json:"created_at,omitempty"`
 	LastUsedAt            string   `json:"last_used_at,omitempty"`
 }
 
 type IdentityExternalAccount struct {
-	ID              string `json:"id"`
-	UserID          string `json:"user_id"`
-	Provider        string `json:"provider"`
-	ProviderSubject string `json:"provider_subject"`
-	Email           string `json:"email,omitempty"`
-	Phone           string `json:"phone,omitempty"`
-	DisplayName     string `json:"display_name,omitempty"`
-	AvatarURL       string `json:"avatar_url,omitempty"`
-	Metadata        string `json:"metadata,omitempty"`
-	LinkedAt        string `json:"linked_at,omitempty"`
+	ID                int64  `json:"id"`
+	ExternalAccountID string `json:"external_account_id"`
+	UserID            string `json:"user_id"`
+	Provider          string `json:"provider"`
+	ProviderSubject   string `json:"provider_subject"`
+	Email             string `json:"email,omitempty"`
+	Phone             string `json:"phone,omitempty"`
+	DisplayName       string `json:"display_name,omitempty"`
+	AvatarURL         string `json:"avatar_url,omitempty"`
+	Metadata          string `json:"metadata,omitempty"`
+	LinkedAt          string `json:"linked_at,omitempty"`
 }
 
 type IdentityMFAFactor struct {
-	ID          string `json:"id"`
+	ID          int64  `json:"id"`
+	MFAFactorID string `json:"mfa_factor_id"`
 	UserID      string `json:"user_id"`
 	Type        string `json:"type"`
 	Label       string `json:"label,omitempty"`

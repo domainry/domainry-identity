@@ -64,13 +64,13 @@ func TestResolvePrincipalScopeIDsDerivesActiveSupportOrganizationSubtree(t *test
 	disabledBranch := "sales-disabled"
 	repository := &identityOrganizationUnitUserRepository{
 		organizationUnits: []identitymodel.IdentityOrganizationUnit{
-			{ID: "support", Status: identitymodel.IdentityStatusActive},
-			{ID: supportRoot, Status: identitymodel.IdentityStatusActive},
-			{ID: "sales-east", ParentID: &supportRoot, Status: identitymodel.IdentityStatusActive},
-			{ID: disabledBranch, ParentID: &supportRoot, Status: identitymodel.IdentityStatusDisabled},
-			{ID: "hidden-below-disabled", ParentID: &disabledBranch, Status: identitymodel.IdentityStatusActive},
+			{OrganizationUnitID: "support", Status: identitymodel.IdentityStatusActive},
+			{OrganizationUnitID: supportRoot, Status: identitymodel.IdentityStatusActive},
+			{OrganizationUnitID: "sales-east", ParentID: &supportRoot, Status: identitymodel.IdentityStatusActive},
+			{OrganizationUnitID: disabledBranch, ParentID: &supportRoot, Status: identitymodel.IdentityStatusDisabled},
+			{OrganizationUnitID: "hidden-below-disabled", ParentID: &disabledBranch, Status: identitymodel.IdentityStatusActive},
 		},
-		users: []identitymodel.IdentityUser{{ID: "agent", Status: identitymodel.IdentityStatusActive}},
+		users: []identitymodel.IdentityUser{{UserID: "agent", Status: identitymodel.IdentityStatusActive}},
 	}
 	service := NewIdentityDomainService(repository, nil)
 	orgIDs, supportIDs, reportingIDs, err := service.resolvePrincipalScopeIDs(t.Context(), "agent", "support", supportRoot)

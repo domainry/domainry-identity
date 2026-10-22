@@ -2,7 +2,6 @@ package moduleassembly
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -10,6 +9,7 @@ import (
 	"strings"
 
 	auditcontract "github.com/domainry/domainry-audit-sdk/contract"
+	"github.com/domainry/domainry-foundation/entityid"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	identitymodulehost "github.com/domainry/domainry-identity-sdk/modulehost"
 	auditapplication "github.com/domainry/domainry-identity/internal/application/auditbinding"
@@ -74,12 +74,12 @@ func (binding *moduleBinding) BootstrapInstallationAdministratorV1(ctx context.C
 		return identitymodulehost.InstallationAdministratorBootstrapReceipt{}, fmt.Errorf("hash installation administrator credential: %w", err)
 	}
 	receipt := identitypersistence.InstallationAdministratorBootstrapReceipt{
-		ID:          identitypersistence.InstallationAdministratorBootstrapReceiptID(request.WorkspaceID, request.InvocationID),
+		OperationID: identitypersistence.InstallationAdministratorBootstrapReceiptID(request.WorkspaceID, request.InvocationID),
 		WorkspaceID: request.WorkspaceID, InvocationID: request.InvocationID, RequestFingerprint: fingerprint,
 		ContractVersion: request.ContractVersion, ContractHash: request.ContractHash, UserID: userID, LoginID: request.LoginID,
 	}
 	if err := binding.runtime.IdentityStore.InsertInstallationAdministratorWithExecutor(ctx, tx, request.WorkspaceID, identitymodel.IdentityUser{
-		ID: userID, Name: request.Name, Email: request.LoginID, AccountType: identitymodel.IdentityAccountHuman,
+		UserID: userID, Name: request.Name, Email: request.LoginID, AccountType: identitymodel.IdentityAccountHuman,
 		OrgID: companyID, ReportingPath: "/" + userID, Status: identitymodel.IdentityStatusActive,
 	}, receipt); err != nil {
 		return identitymodulehost.InstallationAdministratorBootstrapReceipt{}, err
@@ -99,7 +99,7 @@ func (binding *moduleBinding) BootstrapInstallationAdministratorV1(ctx context.C
 	}); err != nil {
 		return identitymodulehost.InstallationAdministratorBootstrapReceipt{}, fmt.Errorf("audit installation administrator issuance: %w", err)
 	}
-	binding.storeWorkspaceBootstrapCredential(receipt.ID, request.WorkspaceID, request.LoginID, []byte(password), true)
+	binding.storeWorkspaceBootstrapCredential(receipt.OperationID, request.WorkspaceID, request.LoginID, []byte(password), true)
 	return installationAdministratorReceipt(receipt, false), nil
 }
 
@@ -213,16 +213,12 @@ func installationAdministratorFingerprint(request identitymodulehost.Installatio
 }
 
 func installationAdministratorUserID() (string, error) {
-	buffer := make([]byte, 16)
-	if _, err := rand.Read(buffer); err != nil {
-		return "", fmt.Errorf("generate installation administrator identity: %w", err)
-	}
-	return "installation-admin-" + hex.EncodeToString(buffer), nil
+	return entityid.New("user")
 }
 
 func installationAdministratorReceipt(stored identitypersistence.InstallationAdministratorBootstrapReceipt, replayed bool) identitymodulehost.InstallationAdministratorBootstrapReceipt {
 	return identitymodulehost.InstallationAdministratorBootstrapReceipt{
-		ContractVersion: stored.ContractVersion, ContractHash: stored.ContractHash, ReceiptID: stored.ID,
+		ContractVersion: stored.ContractVersion, ContractHash: stored.ContractHash, ReceiptID: stored.OperationID,
 		InvocationID: stored.InvocationID, WorkspaceID: stored.WorkspaceID, UserID: stored.UserID,
 		LoginID: stored.LoginID, RoleKey: identitymodulehost.InstallationAdministratorRoleKey, Replayed: replayed,
 		CredentialClaimed: stored.CredentialClaimedAt != "", CredentialDelivered: stored.CredentialDeliveredAt != "",

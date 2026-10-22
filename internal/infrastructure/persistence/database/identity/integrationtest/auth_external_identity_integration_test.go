@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/domainry/domainry-foundation/entityid"
 	authmodel "github.com/domainry/domainry-identity/internal/domain/auth/model"
 	authpolicy "github.com/domainry/domainry-identity/internal/domain/auth/policy"
 	authdomain "github.com/domainry/domainry-identity/internal/domain/auth/service"
@@ -61,7 +62,7 @@ func TestExternalLoginCreatesLinksAndReusesIdentity(t *testing.T) {
 		t.Fatalf("expected non-privileged mapped role, got %#v", session.Roles)
 	}
 
-	accounts, err := auth.ListExternalAccounts(ctx, "workspace-primary", session.User.ID)
+	accounts, err := auth.ListExternalAccounts(ctx, "workspace-primary", session.User.UserID)
 	if err != nil {
 		t.Fatalf("list linked external accounts: %v", err)
 	}
@@ -73,11 +74,11 @@ func TestExternalLoginCreatesLinksAndReusesIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reuse linked external identity: %v", err)
 	}
-	if reused.User.ID != session.User.ID {
-		t.Fatalf("expected linked identity %q, got %q", session.User.ID, reused.User.ID)
+	if reused.User.UserID != session.User.UserID {
+		t.Fatalf("expected linked identity %q, got %q", session.User.UserID, reused.User.UserID)
 	}
 
-	user, ok, err := identity.UserByID(ctx, session.User.ID)
+	user, ok, err := identity.UserByID(ctx, session.User.UserID)
 	if err != nil || !ok {
 		t.Fatalf("load created external user: ok=%v err=%v", ok, err)
 	}
@@ -94,7 +95,7 @@ func TestExternalLoginLinksVerifiedEmailAndAppliesSafeRoleFallback(t *testing.T)
 	auth, identity, _ := newExternalAuthFixture(t)
 	ctx := t.Context()
 	if err := identity.UpsertUser(ctx, identitymodel.IdentityUser{
-		ID: "existing-user", Name: "Existing", Email: "existing@example.com", Status: identitymodel.IdentityStatusActive,
+		UserID: "existing-user", Name: "Existing", Email: "existing@example.com", Status: identitymodel.IdentityStatusActive,
 	}); err != nil {
 		t.Fatalf("seed existing user: %v", err)
 	}
@@ -105,7 +106,7 @@ func TestExternalLoginLinksVerifiedEmailAndAppliesSafeRoleFallback(t *testing.T)
 	if err != nil {
 		t.Fatalf("link existing user by email: %v", err)
 	}
-	if session.User.ID != "existing-user" {
+	if session.User.UserID != "existing-user" {
 		t.Fatalf("expected existing user link, got %#v", session.User)
 	}
 	if session.DefaultRole == "admin" {
@@ -113,7 +114,7 @@ func TestExternalLoginLinksVerifiedEmailAndAppliesSafeRoleFallback(t *testing.T)
 	}
 
 	if err := identity.UpsertUser(ctx, identitymodel.IdentityUser{
-		ID: "disabled-email", Name: "Disabled", Email: "disabled@example.com", Status: identitymodel.IdentityStatusDisabled,
+		UserID: "disabled-email", Name: "Disabled", Email: "disabled@example.com", Status: identitymodel.IdentityStatusDisabled,
 	}); err != nil {
 		t.Fatalf("seed disabled user: %v", err)
 	}
@@ -128,11 +129,11 @@ func TestExternalAccountBindingLifecycleAndConflicts(t *testing.T) {
 	auth, identity, _ := newExternalAuthFixture(t)
 	ctx := t.Context()
 	for _, user := range []identitymodel.IdentityUser{
-		{ID: "user-a", Name: "User A", Email: "a@example.com", Status: identitymodel.IdentityStatusActive},
-		{ID: "user-b", Name: "User B", Email: "b@example.com", Status: identitymodel.IdentityStatusActive},
+		{UserID: "user-a", Name: "User A", Email: "a@example.com", Status: identitymodel.IdentityStatusActive},
+		{UserID: "user-b", Name: "User B", Email: "b@example.com", Status: identitymodel.IdentityStatusActive},
 	} {
 		if err := identity.UpsertUser(ctx, user); err != nil {
-			t.Fatalf("seed user %s: %v", user.ID, err)
+			t.Fatalf("seed user %s: %v", user.UserID, err)
 		}
 	}
 
@@ -168,19 +169,19 @@ func TestExternalAccountBindingLifecycleAndConflicts(t *testing.T) {
 	if err := auth.UnbindExternalAccount(ctx, "workspace-primary", "user-a", "oidc", "missing"); err == nil {
 		t.Fatal("expected missing account unbind to fail")
 	}
-	if err := auth.UnbindExternalAccount(ctx, "workspace-primary", "", "oidc", account.ID); err == nil {
+	if err := auth.UnbindExternalAccount(ctx, "workspace-primary", "", "oidc", account.ExternalAccountID); err == nil {
 		t.Fatal("expected invalid unbind request to fail")
 	}
-	if err := auth.UnbindExternalAccount(ctx, "workspace-primary", "user-a", "", account.ID); err == nil {
+	if err := auth.UnbindExternalAccount(ctx, "workspace-primary", "user-a", "", account.ExternalAccountID); err == nil {
 		t.Fatal("expected blank unbind provider to fail")
 	}
 	if err := auth.UnbindExternalAccount(ctx, "workspace-primary", "user-a", "oidc", ""); err == nil {
 		t.Fatal("expected blank unbind account id to fail")
 	}
-	if err := auth.UnbindExternalAccount(ctx, "workspace-primary", "user-a", "saml", account.ID); err == nil {
+	if err := auth.UnbindExternalAccount(ctx, "workspace-primary", "user-a", "saml", account.ExternalAccountID); err == nil {
 		t.Fatal("expected mismatched provider unbind to fail")
 	}
-	if err := auth.UnbindExternalAccount(ctx, "workspace-primary", "user-a", "OIDC", account.ID); err != nil {
+	if err := auth.UnbindExternalAccount(ctx, "workspace-primary", "user-a", "OIDC", account.ExternalAccountID); err != nil {
 		t.Fatalf("unbind external account: %v", err)
 	}
 	accounts, err := auth.ListExternalAccounts(ctx, "workspace-primary", "user-a")
@@ -192,7 +193,7 @@ func TestExternalAccountBindingLifecycleAndConflicts(t *testing.T) {
 	}
 }
 
-func TestExternalLoginGeneratesStableSafeUserIdentifiers(t *testing.T) {
+func TestExternalLoginGeneratesCanonicalUserIdentifiers(t *testing.T) {
 	auth, identity, _ := newExternalAuthFixture(t)
 	ctx := t.Context()
 	longSubject := strings.Repeat("Long.Subject/", 10)
@@ -203,7 +204,7 @@ func TestExternalLoginGeneratesStableSafeUserIdentifiers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create long external identity: %v", err)
 	}
-	if len(first.User.ID) > 64 || first.User.Name != "long@example.com" {
+	if err := entityid.Validate("user", first.User.UserID); err != nil || first.User.Name != "long@example.com" {
 		t.Fatalf("unexpected normalized external user: %#v", first.User)
 	}
 	second, err := auth.ExternalLogin(ctx, "workspace-primary", authmodel.AuthExternalIdentityAssertion{Provider: "###", Subject: "###", Email: "fallback@example.com"}, true)
@@ -213,18 +214,18 @@ func TestExternalLoginGeneratesStableSafeUserIdentifiers(t *testing.T) {
 	if second.User.Name != "fallback@example.com" {
 		t.Fatalf("expected email name fallback, got %#v", second.User)
 	}
-	if second.User.ID != "external_user" {
-		t.Fatalf("expected safe identifier fallback, got %q", second.User.ID)
+	if err := entityid.Validate("user", second.User.UserID); err != nil || second.User.UserID == first.User.UserID {
+		t.Fatalf("expected a distinct canonical user identifier, got %q: %v", second.User.UserID, err)
 	}
-	if err := identity.UpsertUser(ctx, identitymodel.IdentityUser{ID: "oidc_collision", Name: "Collision", Email: "collision-seed@example.com", Status: identitymodel.IdentityStatusActive}); err != nil {
+	if err := identity.UpsertUser(ctx, identitymodel.IdentityUser{UserID: "oidc_collision", Name: "Collision", Email: "collision-seed@example.com", Status: identitymodel.IdentityStatusActive}); err != nil {
 		t.Fatalf("seed colliding identity: %v", err)
 	}
 	collision, err := auth.ExternalLoginWithPolicy(ctx, "workspace-primary", authmodel.AuthExternalIdentityAssertion{Provider: "oidc", Subject: "collision", Email: "collision@example.com"}, authmodel.AuthExternalLoginPolicy{AutoCreateUsers: true, DefaultRoleKey: "sales"})
 	if err != nil {
 		t.Fatalf("create identity after id collision: %v", err)
 	}
-	if collision.User.ID != "oidc_collision_1" || collision.DefaultRole != "sales" {
-		t.Fatalf("unexpected collision resolution or safe default role: %#v", collision)
+	if err := entityid.Validate("user", collision.User.UserID); err != nil || collision.User.UserID == "oidc_collision" || collision.DefaultRole != "sales" {
+		t.Fatalf("unexpected generated identifier or safe default role: %#v err=%v", collision, err)
 	}
 	if _, err := auth.ExternalLogin(ctx, "workspace-primary", authmodel.AuthExternalIdentityAssertion{Provider: "oidc", Subject: "{", Email: "brace@example.com"}, true); err != nil {
 		t.Fatalf("create identity containing non-identifier rune: %v", err)
@@ -235,13 +236,13 @@ func newExternalAuthFixture(t *testing.T) (*authdomain.AuthDomainService, *ident
 	t.Helper()
 	repository := identitypersistence.NewMemoryIdentityStore()
 	identity, _ := identitybusiness.NewIdentityDomainService(repository, []identitymodel.IdentityPermissionDefinition{currentPermission("identity.roles.list", "identity.roles", "list")}).ForWorkspace("workspace-primary")
-	if err := identity.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{ID: "dept_sales", Code: "dept_sales", NodeType: identitymodel.IdentityOrganizationUnitDepartment, Name: "Sales", Path: "/sales", Status: identitymodel.IdentityStatusActive}); err != nil {
+	if err := identity.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "dept_sales", Code: "dept_sales", NodeType: identitymodel.IdentityOrganizationUnitDepartment, Name: "Sales", Path: "/sales", Status: identitymodel.IdentityStatusActive}); err != nil {
 		t.Fatalf("seed sales organizationUnit: %v", err)
 	}
 	for _, role := range []identitymodel.IdentityRole{
-		{ID: "role-sales", Key: "sales", Label: "Sales", Status: identitymodel.IdentityStatusActive},
-		{ID: "role-admin", Key: "admin", Label: "Admin", Status: identitymodel.IdentityStatusActive},
-		{ID: "role-disabled", Key: "disabled", Label: "Disabled", Status: identitymodel.IdentityStatusDisabled},
+		{RoleID: "role-sales", Key: "sales", Label: "Sales", Status: identitymodel.IdentityStatusActive},
+		{RoleID: "role-admin", Key: "admin", Label: "Admin", Status: identitymodel.IdentityStatusActive},
+		{RoleID: "role-disabled", Key: "disabled", Label: "Disabled", Status: identitymodel.IdentityStatusDisabled},
 	} {
 		seedIdentityProjectionRole(t, repository, "workspace-primary", role)
 	}
@@ -283,9 +284,9 @@ func (r *externalAuthRepository) GetAuthRefreshTokenByHash(_ context.Context, _,
 
 func (r *externalAuthRepository) RevokeAuthRefreshToken(_ context.Context, _, tokenID, revokedAt, replacedByID string) error {
 	for hash, token := range r.refreshTokens {
-		if token.ID == tokenID {
+		if token.TokenHash == tokenID {
 			token.RevokedAt = revokedAt
-			token.ReplacedByID = replacedByID
+			token.ReplacedByHash = replacedByID
 			r.refreshTokens[hash] = token
 		}
 	}
@@ -325,7 +326,7 @@ func (r *externalAuthRepository) ListIdentityExternalAccounts(_ context.Context,
 }
 
 func (r *externalAuthRepository) UpsertIdentityExternalAccount(_ context.Context, _ string, account identitymodel.IdentityExternalAccount) error {
-	r.accounts[account.ID] = account
+	r.accounts[account.ExternalAccountID] = account
 	return nil
 }
 

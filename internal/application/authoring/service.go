@@ -159,7 +159,7 @@ func (s *Service) executeManaged(ctx context.Context, principal identitymodel.Pr
 	now := s.now().UTC()
 	leaseOwner := strings.TrimSpace(s.newID())
 	receipt := Receipt{
-		ID: authoringReceiptID(principal.WorkspaceID, key), WorkspaceID: strings.TrimSpace(principal.WorkspaceID), UseCase: useCase,
+		OperationID: authoringReceiptID(principal.WorkspaceID, key), WorkspaceID: strings.TrimSpace(principal.WorkspaceID), UseCase: useCase,
 		ResourceType: resourceType, TargetID: targetID, ActorID: strings.TrimSpace(principal.UserID), IdempotencyKey: key, RequestFingerprint: fingerprint,
 		Status: idempotency.StatusProcessing, LeaseOwner: leaseOwner, LeaseExpiresAt: now.Add(defaultLeaseTTL), FencingToken: 1,
 		CreatedAt: now, UpdatedAt: now,
@@ -195,13 +195,13 @@ func (s *Service) executeManaged(ctx context.Context, principal identitymodel.Pr
 		status = idempotency.StatusFailedTerminal
 	}
 	completed, completeErr := s.repository.Complete(ctx, Completion{
-		ReceiptID: claim.Receipt.ID, WorkspaceID: claim.Receipt.WorkspaceID, LeaseOwner: claim.Receipt.LeaseOwner,
+		OperationID: claim.Receipt.OperationID, WorkspaceID: claim.Receipt.WorkspaceID, LeaseOwner: claim.Receipt.LeaseOwner,
 		FencingToken: claim.Receipt.FencingToken, Status: status, Result: encoded, CompletedAt: s.now().UTC(),
 	})
 	if completeErr != nil {
 		return ExecutionResult{}, apperror.New(apperror.KindConflict, idempotency.ErrorCodeLeaseLost, completeErr, nil)
 	}
-	return ExecutionResult{Value: value.Value, OperationID: completed.ID, ResourceHash: value.ResourceHash}, ownerErr
+	return ExecutionResult{Value: value.Value, OperationID: completed.OperationID, ResourceHash: value.ResourceHash}, ownerErr
 }
 
 func replayResult(receipt Receipt) (ExecutionResult, error) {
@@ -220,7 +220,7 @@ func replayResult(receipt Receipt) (ExecutionResult, error) {
 			return ExecutionResult{}, apperror.New(apperror.KindInternal, "backend.authoring.receipt_result_invalid", err, nil)
 		}
 	}
-	result := ExecutionResult{Value: value, OperationID: receipt.ID, ResourceHash: stored.ResourceHash, Replayed: true}
+	result := ExecutionResult{Value: value, OperationID: receipt.OperationID, ResourceHash: stored.ResourceHash, Replayed: true}
 	if receipt.Status == idempotency.StatusFailedTerminal {
 		return result, apperror.New(stored.ErrorKind, stored.ErrorCode, nil, nil)
 	}

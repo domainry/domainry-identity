@@ -141,27 +141,27 @@ func TestAuthStoreDefaultAndValidationEdges(t *testing.T) {
 		t.Fatal("empty token accepted")
 	}
 	for _, invalid := range []identitymodel.AuthRefreshToken{
-		{ID: "id"},
-		{ID: "id", UserID: "user"},
-		{ID: "id", UserID: "user", SessionID: "session"},
-		{ID: "id", UserID: "user", SessionID: "session", TokenHash: "hash"},
+		{TokenHash: "hash"},
+		{TokenHash: "hash", UserID: "user"},
+		{TokenHash: "hash", UserID: "user", SessionID: "session"},
+		{TokenHash: "hash", UserID: "user", SessionID: "session"},
 	} {
 		if err := repository.CreateAuthRefreshToken(t.Context(), "workspace-primary", invalid); err == nil {
 			t.Fatalf("incomplete token accepted: %#v", invalid)
 		}
 	}
-	token := identitymodel.AuthRefreshToken{ID: "token", UserID: "user", SessionID: "session", TokenHash: "hash", ExpiresAt: time.Now().UTC().Add(time.Hour).Format(time.RFC3339)}
+	token := identitymodel.AuthRefreshToken{UserID: "user", SessionID: "session", TokenHash: "hash", ExpiresAt: time.Now().UTC().Add(time.Hour).Format(time.RFC3339)}
 	if err := repository.CreateAuthRefreshToken(t.Context(), "workspace-primary", token); err != nil {
 		t.Fatal(err)
 	}
-	token.ID, token.TokenHash, token.CreatedAt = "token-fixed", "hash-fixed", "created"
+	token.TokenHash, token.CreatedAt = "hash-fixed", "created"
 	if err := repository.CreateAuthRefreshToken(t.Context(), "workspace-primary", token); err != nil {
 		t.Fatal(err)
 	}
 	if _, found, err := repository.GetAuthRefreshTokenByHash(t.Context(), "workspace-primary", "missing"); err != nil || found {
 		t.Fatalf("missing found=%v err=%v", found, err)
 	}
-	if err := repository.RevokeAuthRefreshToken(t.Context(), "workspace-primary", token.ID, "", "replacement"); err != nil {
+	if err := repository.RevokeAuthRefreshToken(t.Context(), "workspace-primary", token.TokenHash, "", "replacement"); err != nil {
 		t.Fatal(err)
 	}
 	if count, err := repository.RevokeAuthRefreshTokensForUser(t.Context(), "workspace-primary", "user", ""); err != nil || count != 1 {
@@ -171,19 +171,19 @@ func TestAuthStoreDefaultAndValidationEdges(t *testing.T) {
 		t.Fatal("empty external account accepted")
 	}
 	for _, invalid := range []identitymodel.IdentityExternalAccount{
-		{ID: "id"},
-		{ID: "id", UserID: "user"},
-		{ID: "id", UserID: "user", Provider: "oidc"},
+		{ExternalAccountID: "id"},
+		{ExternalAccountID: "id", UserID: "user"},
+		{ExternalAccountID: "id", UserID: "user", Provider: "oidc"},
 	} {
 		if err := repository.UpsertIdentityExternalAccount(t.Context(), "workspace-primary", invalid); err == nil {
 			t.Fatalf("incomplete account accepted: %#v", invalid)
 		}
 	}
-	account := identitymodel.IdentityExternalAccount{ID: "account", UserID: "user", Provider: "oidc", ProviderSubject: "subject", Email: "e", Phone: "p", DisplayName: "d", AvatarURL: "a", Metadata: "m"}
+	account := identitymodel.IdentityExternalAccount{ExternalAccountID: "account", UserID: "user", Provider: "oidc", ProviderSubject: "subject", Email: "e", Phone: "p", DisplayName: "d", AvatarURL: "a", Metadata: "m"}
 	if err := repository.UpsertIdentityExternalAccount(t.Context(), "workspace-primary", account); err != nil {
 		t.Fatal(err)
 	}
-	account.ID, account.ProviderSubject, account.LinkedAt = "account-fixed", "subject-fixed", "linked"
+	account.ExternalAccountID, account.ProviderSubject, account.LinkedAt = "account-fixed", "subject-fixed", "linked"
 	if err := repository.UpsertIdentityExternalAccount(t.Context(), "workspace-primary", account); err != nil {
 		t.Fatal(err)
 	}

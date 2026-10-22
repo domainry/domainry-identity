@@ -49,7 +49,7 @@ func (s *IdentityDomainService) CreateRoleRequest(ctx context.Context, request i
 	}
 	assignable := map[string]identitymodel.IdentityRole{}
 	for _, role := range assignableRoles {
-		assignable[role.ID] = role
+		assignable[role.RoleID] = role
 		assignable[role.Key] = role
 	}
 	roleIDs := []string{}
@@ -60,11 +60,11 @@ func (s *IdentityDomainService) CreateRoleRequest(ctx context.Context, request i
 		if !ok {
 			return identitymodel.IdentityRoleRequest{}, badRequest("backend.identity.role_not_found", "role", roleID)
 		}
-		if seen[role.ID] {
+		if seen[role.RoleID] {
 			continue
 		}
-		seen[role.ID] = true
-		roleIDs = append(roleIDs, role.ID)
+		seen[role.RoleID] = true
+		roleIDs = append(roleIDs, role.RoleID)
 	}
 	if len(roleIDs) == 0 {
 		return identitymodel.IdentityRoleRequest{}, badRequest("backend.identity.role_required")
@@ -124,7 +124,7 @@ func (s *IdentityDomainService) ApproveRoleRequest(ctx context.Context, requestI
 		}
 		definition, published := s.publishedRoleDefinition(role)
 		if !published {
-			definition = identitymodel.RoleSchema{Key: valueOrDefault(role.Key, role.ID), Audience: identitymodel.IdentityRoleAudienceAny, AssignmentMode: identitymodel.IdentityRoleAssignmentManual}
+			definition = identitymodel.RoleSchema{Key: valueOrDefault(role.Key, role.RoleID), Audience: identitymodel.IdentityRoleAudienceAny, AssignmentMode: identitymodel.IdentityRoleAssignmentManual}
 		}
 		if definition.AssignmentMode == identitymodel.IdentityRoleAssignmentSystemManaged {
 			return identitymodel.IdentityRoleRequest{}, forbidden("backend.identity.system_managed_role_assignment_denied")
@@ -179,11 +179,11 @@ func (s *IdentityDomainService) ApproveRoleRequest(ctx context.Context, requestI
 		return identitymodel.IdentityRoleRequest{}, err
 	}
 	for _, role := range allRoles {
-		if _, exists := definitionsByRoleID[role.ID]; exists {
+		if _, exists := definitionsByRoleID[role.RoleID]; exists {
 			continue
 		}
 		if definition, published := s.publishedRoleDefinition(role); published {
-			definitionsByRoleID[role.ID] = definition
+			definitionsByRoleID[role.RoleID] = definition
 		}
 	}
 	final := make(map[string]identitymodel.IdentityUserRoleAssignment, len(currentAssignments)+len(assignments))
@@ -292,7 +292,7 @@ func (s *IdentityDomainService) roleRequestByID(ctx context.Context, requestID s
 		return identitymodel.IdentityRoleRequest{}, false, err
 	}
 	for _, request := range requests {
-		if request.ID == requestID {
+		if request.RoleRequestID == requestID {
 			return request, true, nil
 		}
 	}
@@ -309,7 +309,7 @@ func (s *IdentityDomainService) roleRequestByIDWithinDataScope(ctx context.Conte
 		return identitymodel.IdentityRoleRequest{}, false, err
 	}
 	for _, request := range requests {
-		if request.ID == requestID {
+		if request.RoleRequestID == requestID {
 			return request, true, nil
 		}
 	}
@@ -351,7 +351,7 @@ func (s *IdentityDomainService) RoleByID(ctx context.Context, roleID string) (id
 		return identitymodel.IdentityRole{}, false, err
 	}
 	for _, role := range roles {
-		if role.ID == roleID {
+		if role.RoleID == roleID {
 			return role, true, nil
 		}
 	}

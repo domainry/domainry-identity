@@ -213,7 +213,7 @@ func (store *WriteFenceStore) appendIdentityWriteFenceEvent(ctx context.Context,
 	if store.auditAppender == nil {
 		return fmt.Errorf("Identity Audit module binding is unavailable")
 	}
-	if err := store.auditAppender.AppendPreparedWithin(ctx, writeFenceAuditTransaction{tx: tx}, auditEvent); err != nil {
+	if _, err := store.auditAppender.AppendPreparedWithin(ctx, writeFenceAuditTransaction{tx: tx}, auditEvent); err != nil {
 		return fmt.Errorf("append Identity write-fence audit event: %w", err)
 	}
 	return nil

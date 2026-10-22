@@ -12,7 +12,7 @@ import (
 
 func TestIdentityPolicyReadHandlers(t *testing.T) {
 	repo := &identityHTTPRepository{
-		roles: []identitymodel.IdentityRole{{ID: "role-1", Key: "sales", Status: identitymodel.IdentityStatusActive}},
+		roles: []identitymodel.IdentityRole{{RoleID: "role-1", Key: "sales", Status: identitymodel.IdentityStatusActive}},
 	}
 	handler, response := newIdentityHTTPHandler(repo)
 	handler.policies.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{

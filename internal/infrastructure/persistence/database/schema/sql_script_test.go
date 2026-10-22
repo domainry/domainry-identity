@@ -170,9 +170,9 @@ func (scriptedSchemaStore) EnsureCompositePrimaryKey(context.Context, string, ..
 func (scriptedSchemaStore) MetadataIDColumnType() string { return "TEXT" }
 func (s scriptedSchemaStore) SchemaTypes() persistencedriver.SchemaTypes {
 	if s.Driver() == "mysql" {
-		return persistencedriver.SchemaTypes{Boolean: "BOOLEAN", FalseLiteral: "0", DefaultText: "VARCHAR(255)", DocumentText: "LONGTEXT", IndexedText: mysqlIndexedTextType, AuditCursorText: mysqlIndexedTextType}
+		return persistencedriver.SchemaTypes{AutoIncrementBigInt: "BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY", Boolean: "BOOLEAN", FalseLiteral: "0", DefaultText: "VARCHAR(255)", DocumentText: "LONGTEXT", IndexedText: mysqlIndexedTextType, AuditCursorText: mysqlIndexedTextType}
 	}
-	return persistencedriver.SchemaTypes{Boolean: "INTEGER", FalseLiteral: "0", DefaultText: "TEXT", DocumentText: "TEXT", IndexedText: "TEXT", AuditCursorText: "TEXT"}
+	return persistencedriver.SchemaTypes{AutoIncrementBigInt: "INTEGER PRIMARY KEY AUTOINCREMENT", Boolean: "INTEGER", FalseLiteral: "0", DefaultText: "TEXT", DocumentText: "TEXT", IndexedText: "TEXT", AuditCursorText: "TEXT"}
 }
 func (scriptedSchemaStore) ColumnDefinition(value string) string { return value }
 

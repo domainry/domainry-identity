@@ -65,7 +65,7 @@ func (r *identityOrganizationUnitUserRepository) UpsertIdentityOrganizationUnit(
 		return r.upsertOrganizationErr
 	}
 	for index := range r.organizationUnits {
-		if r.organizationUnits[index].ID == unit.ID {
+		if r.organizationUnits[index].OrganizationUnitID == unit.OrganizationUnitID {
 			r.organizationUnits[index] = unit
 			return nil
 		}
@@ -101,7 +101,7 @@ func (r *identityOrganizationUnitUserRepository) GetIdentityUser(_ context.Conte
 		return identitymodel.IdentityUser{}, false, r.listUserErr
 	}
 	for _, user := range r.users {
-		if user.ID == id {
+		if user.UserID == id {
 			return user, true, nil
 		}
 	}
@@ -114,7 +114,7 @@ func (r *identityOrganizationUnitUserRepository) UpsertIdentityUser(_ context.Co
 		return r.upsertUserErr
 	}
 	for index := range r.users {
-		if r.users[index].ID == user.ID {
+		if r.users[index].UserID == user.UserID {
 			r.users[index] = user
 			return nil
 		}

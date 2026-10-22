@@ -167,7 +167,7 @@ func (validator *IdentityGovernanceApplicationService) validateRoleReference(ctx
 		return nil, err
 	}
 	for _, role := range roles {
-		if role.ID == roleID {
+		if role.RoleID == roleID {
 			return nil, nil
 		}
 	}

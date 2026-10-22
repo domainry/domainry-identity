@@ -25,7 +25,7 @@ func (s *SQLIdentityStore) CreateIdentityAccessReview(ctx context.Context, revie
 	return s.accessReviewStore().CreateIdentityAccessReview(ctx, review)
 }
 
-func (s *SQLIdentityStore) CreateIdentityAccessReviewWithinDataScope(ctx context.Context, review identitymodel.IdentityAccessReview, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
+func (s *SQLIdentityStore) CreateIdentityAccessReviewWithinDataScope(ctx context.Context, review identitymodel.IdentityAccessReview, scope identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityAccessReview, bool, error) {
 	return s.accessReviewStore().CreateIdentityAccessReviewWithinDataScope(ctx, review, scope)
 }
 

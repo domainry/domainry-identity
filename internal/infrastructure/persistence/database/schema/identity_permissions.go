@@ -42,10 +42,9 @@ func ensureIdentityPermissionsSchema(ctx context.Context, store Store) error {
 }
 
 func identityPermissionsTableDefinition(renderer ormdialect.Renderer) *ormschema.TableBuilder {
-	return ormschema.NewTable(renderer, identityPermissionsTable).
+	return ormschema.NewTableWithRequiredColumns(renderer, identityPermissionsTable, ormschema.Column("id", ormschema.BigInt()).NotNull().AutoIncrement()).
 		IfNotExists().
 		Columns(
-			ormschema.Column("id", ormschema.TextKey(128)).NotNull(),
 			ormschema.Column("workspace_id", ormschema.TextKey(128)).NotNull(),
 			ormschema.Column("permission_key", ormschema.TextKey(255)).NotNull(),
 			ormschema.Column("resource_key", ormschema.TextKey(255)).NotNull(),
@@ -62,7 +61,7 @@ func identityPermissionsTableDefinition(renderer ormdialect.Renderer) *ormschema
 			ormschema.Column("created_at", ormschema.BigInt()).NotNull(),
 			ormschema.Column("updated_at", ormschema.BigInt()).NotNull(),
 		).
-		PrimaryKey("workspace_id", "id").
+		PrimaryKey("id").
 		Unique("workspace_id", "permission_key")
 }
 

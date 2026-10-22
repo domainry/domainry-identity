@@ -34,7 +34,8 @@ func TestIdentityProfileBindingStoreProvidesAtomicOptimisticIdempotentLifecycle(
 	}
 	if _, err := identityStore.DB().ExecContext(t.Context(), `CREATE TABLE member_profile (
 		workspace_id TEXT NOT NULL,
-		id TEXT PRIMARY KEY,
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		member_profile_id TEXT NOT NULL UNIQUE,
 		created_at BIGINT NOT NULL,
 		updated_at BIGINT NOT NULL,
 		identity_user TEXT,
@@ -46,12 +47,12 @@ func TestIdentityProfileBindingStoreProvidesAtomicOptimisticIdempotentLifecycle(
 		t.Fatal(err)
 	}
 	for _, profileID := range []string{"member-1", "member-2"} {
-		if _, err := identityStore.DB().ExecContext(t.Context(), `INSERT INTO member_profile (workspace_id, id, created_at, updated_at, identity_user, email) VALUES ('workspace-primary', ?, 0, 0, NULL, ?)`, profileID, profileID+"@example.com"); err != nil {
+		if _, err := identityStore.DB().ExecContext(t.Context(), `INSERT INTO member_profile (workspace_id, member_profile_id, created_at, updated_at, identity_user, email) VALUES ('workspace-primary', ?, 0, 0, NULL, ?)`, profileID, profileID+"@example.com"); err != nil {
 			t.Fatal(err)
 		}
 	}
 	store := identitypersistence.NewIdentityProfileBindingStore(identitySQLStoreForProfileBindingTest(t, identityStore))
-	if _, err := identityStore.DB().ExecContext(t.Context(), `INSERT INTO member_profile (workspace_id, id, created_at, updated_at, identity_user, email) VALUES ('workspace-primary', 'member-seeded', 0, 0, 'seed-user', 'seed@example.com')`); err != nil {
+	if _, err := identityStore.DB().ExecContext(t.Context(), `INSERT INTO member_profile (workspace_id, member_profile_id, created_at, updated_at, identity_user, email) VALUES ('workspace-primary', 'member-seeded', 0, 0, 'seed-user', 'seed@example.com')`); err != nil {
 		t.Fatal(err)
 	}
 	adopted, err := store.ExecuteIdentityProfileBindingMutation(t.Context(), profileBindingMutation("member-seeded", identitymodel.IdentityProfileBindingBind, "seed-user", 0, "adopt-seed"))
@@ -73,7 +74,7 @@ func TestIdentityProfileBindingStoreProvidesAtomicOptimisticIdempotentLifecycle(
 		t.Fatalf("invited=%#v err=%v", invited, err)
 	}
 	replayed, err := store.ExecuteIdentityProfileBindingMutation(t.Context(), mutation)
-	if err != nil || !replayed.Replayed || replayed.ID != invited.ID {
+	if err != nil || !replayed.Replayed || replayed.OperationID != invited.OperationID {
 		t.Fatalf("replayed=%#v err=%v", replayed, err)
 	}
 	reused := mutation
@@ -96,7 +97,7 @@ func TestIdentityProfileBindingStoreProvidesAtomicOptimisticIdempotentLifecycle(
 		t.Fatalf("loaded=%#v found=%v err=%v", loaded, found, err)
 	}
 	events, err := store.ListIdentityProfileBindingEvents(t.Context(), "workspace-primary", "member_profile", "member-1")
-	if err != nil || len(events) != 2 || events[0].OperationID != invited.ID || events[0].CausationID != "cause-invite-1" || events[1].Operation != identitymodel.IdentityProfileBindingClaim || events[1].Status != "pending" {
+	if err != nil || len(events) != 2 || events[0].OperationID != invited.OperationID || events[0].CausationID != "cause-invite-1" || events[1].Operation != identitymodel.IdentityProfileBindingClaim || events[1].Status != "pending" {
 		t.Fatalf("events=%#v err=%v", events, err)
 	}
 	var auditEvents int
@@ -123,7 +124,7 @@ func TestIdentityProfileBindingStoreProvidesAtomicOptimisticIdempotentLifecycle(
 	assertProfileBindingRole(t, identityStore, "user-1", "member-role", "revoked", "member", "member-1")
 	assertProfileBindingRole(t, identityStore, "user-2", "member-role", "active", "member", "member-1")
 	reboundReplay, err := store.ExecuteIdentityProfileBindingMutation(t.Context(), rebind)
-	if err != nil || !reboundReplay.Replayed || reboundReplay.ID != rebound.ID {
+	if err != nil || !reboundReplay.Replayed || reboundReplay.OperationID != rebound.OperationID {
 		t.Fatalf("rebind replay=%#v err=%v", reboundReplay, err)
 	}
 	if _, err := store.ExecuteIdentityProfileBindingMutation(t.Context(), profileBindingMutation("member-1", identitymodel.IdentityProfileBindingUnlink, "", 2, "stale")); apperror.CodeOf(err) != "backend.identity.profile_binding_version_conflict" {
@@ -138,7 +139,7 @@ func TestIdentityProfileBindingStoreProvidesAtomicOptimisticIdempotentLifecycle(
 	assertProfileBindingRecordUser(t, identityStore, "member-1", "")
 	assertProfileBindingRole(t, identityStore, "user-2", "member-role", "revoked", "member", "member-1")
 	unlinkedReplay, err := store.ExecuteIdentityProfileBindingMutation(t.Context(), unlinkMutation)
-	if err != nil || !unlinkedReplay.Replayed || unlinkedReplay.ID != unlinked.ID {
+	if err != nil || !unlinkedReplay.Replayed || unlinkedReplay.OperationID != unlinked.OperationID {
 		t.Fatalf("unlink replay=%#v err=%v", unlinkedReplay, err)
 	}
 	if _, err := store.ExecuteIdentityProfileBindingMutation(t.Context(), profileBindingMutation("member-1", identitymodel.IdentityProfileBindingUnlink, "", 4, "unlink-2")); apperror.CodeOf(err) != "backend.identity.profile_not_bound" {
@@ -187,7 +188,7 @@ func profileBindingMutation(profileID string, operation identitymodel.IdentityPr
 func assertProfileBindingRecordUser(t *testing.T, store *IdentityStore, profileID, expected string) {
 	t.Helper()
 	var actual string
-	if err := store.DB().QueryRowContext(t.Context(), `SELECT COALESCE(identity_user, '') FROM member_profile WHERE workspace_id = 'workspace-primary' AND id = ?`, profileID).Scan(&actual); err != nil {
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT COALESCE(identity_user, '') FROM member_profile WHERE workspace_id = 'workspace-primary' AND member_profile_id = ?`, profileID).Scan(&actual); err != nil {
 		t.Fatal(err)
 	}
 	if actual != expected {

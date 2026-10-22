@@ -12,8 +12,8 @@ import (
 
 func TestAcceptanceFixturesMaterializeRoleOrgReportingAndCredentialGraph(t *testing.T) {
 	roles := []identitymodel.IdentityRole{
-		{ID: "role-director", Key: "sales_director"},
-		{ID: "role-sales", Key: "sales_rep"},
+		{RoleID: "role-director", Key: "sales_director"},
+		{RoleID: "role-sales", Key: "sales_rep"},
 	}
 	request := identitysdk.WorkspaceIdentityProvisionRequest{
 		AcceptanceOrganizations: []identitysdk.WorkspaceAcceptanceOrganization{
@@ -33,7 +33,7 @@ func TestAcceptanceFixturesMaterializeRoleOrgReportingAndCredentialGraph(t *test
 	if len(organizations) != 2 || len(users) != 3 || len(assignments) != 3 || len(credentials) != 3 {
 		t.Fatalf("fixture graph organizations=%d users=%d assignments=%d credentials=%d", len(organizations), len(users), len(assignments), len(credentials))
 	}
-	if users[0].ID != "director" || users[0].OrgID != "" || users[0].ReportingPath != "/director" ||
+	if users[0].UserID != "director" || users[0].OrgID != "" || users[0].ReportingPath != "/director" ||
 		users[1].OrgID != "east" || users[1].ManagerUserID != "director" || users[1].ReportingPath != "/director/sales-east" ||
 		users[2].OrgID != "north" || users[2].ManagerUserID != "director" || users[2].ReportingPath != "/director/sales-north" {
 		t.Fatalf("user graph=%+v", users)
@@ -61,7 +61,7 @@ func TestAcceptanceFixturesRejectMissingManager(t *testing.T) {
 	_, _, _, _, err := acceptanceFixtures(identitysdk.WorkspaceIdentityProvisionRequest{
 		AcceptanceOrganizations: []identitysdk.WorkspaceAcceptanceOrganization{{ID: "east", Code: "east", Name: "East"}},
 		AcceptanceActors:        []identitysdk.WorkspaceAcceptanceActor{{ID: "sales", LoginID: "sales@example.test", Name: "Sales", RoleKey: "sales_rep", OrganizationID: "east", ManagerUserID: "missing", InitialPassword: "SalesPassword1!"}},
-	}, []identitymodel.IdentityRole{{ID: "role-sales", Key: "sales_rep"}})
+	}, []identitymodel.IdentityRole{{RoleID: "role-sales", Key: "sales_rep"}})
 	if err == nil {
 		t.Fatal("missing reporting-line manager was accepted")
 	}
@@ -71,7 +71,7 @@ func TestAcceptanceFixturesDiagnoseUnknownProjectRoleWithoutCredentialDisclosure
 	const secret = "DirectorPassword1!"
 	_, _, _, _, err := acceptanceFixtures(identitysdk.WorkspaceIdentityProvisionRequest{
 		AcceptanceActors: []identitysdk.WorkspaceAcceptanceActor{{ID: "director", LoginID: "director@example.test", Name: "Director", RoleKey: "sales_director", InitialPassword: secret}},
-	}, []identitymodel.IdentityRole{{ID: "role-admin", Key: "admin"}})
+	}, []identitymodel.IdentityRole{{RoleID: "role-admin", Key: "admin"}})
 	identityErr, ok := err.(*identitysdk.Error)
 	if !ok || identityErr.Code != "identity.workspace_acceptance_fixture_invalid" {
 		t.Fatalf("error=%T %v", err, err)
@@ -92,7 +92,7 @@ func TestAcceptanceFixturesDiagnosePasswordPolicyWithoutPasswordValue(t *testing
 	const secret = "weak-secret"
 	_, _, _, _, err := acceptanceFixtures(identitysdk.WorkspaceIdentityProvisionRequest{
 		AcceptanceActors: []identitysdk.WorkspaceAcceptanceActor{{ID: "sales", LoginID: "sales@example.test", Name: "Sales", RoleKey: "sales_rep", InitialPassword: secret}},
-	}, []identitymodel.IdentityRole{{ID: "role-sales", Key: "sales_rep"}})
+	}, []identitymodel.IdentityRole{{RoleID: "role-sales", Key: "sales_rep"}})
 	identityErr, ok := err.(*identitysdk.Error)
 	if !ok || identityErr.Params["field"] != "initial_password" || identityErr.Params["reason"] != "policy_violation" {
 		t.Fatalf("error=%T %v", err, err)

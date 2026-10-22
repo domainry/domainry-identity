@@ -22,8 +22,8 @@ func TestMemoryIdentityStoreUserBatchAndProfileBindingEdges(t *testing.T) {
 	}
 
 	users := []identitymodel.IdentityUser{
-		{ID: "user-1"},
-		{ID: "user-2", Status: identitymodel.IdentityStatusDisabled, AccountType: identitymodel.IdentityAccountService},
+		{UserID: "user-1"},
+		{UserID: "user-2", Status: identitymodel.IdentityStatusDisabled, AccountType: identitymodel.IdentityAccountService},
 	}
 	if err := store.UpsertIdentityUsersAtomically(t.Context(), "workspace-a", users); err != nil {
 		t.Fatal(err)
@@ -33,7 +33,7 @@ func TestMemoryIdentityStoreUserBatchAndProfileBindingEdges(t *testing.T) {
 		t.Fatalf("first=%#v found=%t err=%v", first, found, err)
 	}
 	if err := store.UpsertIdentityUsersAtomically(t.Context(), "workspace-a", []identitymodel.IdentityUser{{
-		ID: "user-1", Status: identitymodel.IdentityStatusDisabled, AccountType: identitymodel.IdentityAccountAutomation,
+		UserID: "user-1", Status: identitymodel.IdentityStatusDisabled, AccountType: identitymodel.IdentityAccountAutomation,
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -45,16 +45,16 @@ func TestMemoryIdentityStoreUserBatchAndProfileBindingEdges(t *testing.T) {
 
 func TestMemoryIdentityStoreUserRoleAssignmentAtomicEdges(t *testing.T) {
 	store := NewMemoryIdentityStore()
-	if err := store.UpsertIdentityUserWithRoleAssignmentsAtomically(t.Context(), "", identitymodel.IdentityUser{ID: "user-1"}, nil); err == nil {
+	if err := store.UpsertIdentityUserWithRoleAssignmentsAtomically(t.Context(), "", identitymodel.IdentityUser{UserID: "user-1"}, nil); err == nil {
 		t.Fatal("expected invalid workspace error")
 	}
 	if err := store.UpsertIdentityUserWithRoleAssignmentsAtomically(t.Context(), "workspace-a", identitymodel.IdentityUser{}, nil); err == nil {
 		t.Fatal("expected missing user id error")
 	}
-	if err := store.UpsertIdentityUserWithRoleAssignmentsAtomically(t.Context(), "workspace-a", identitymodel.IdentityUser{ID: "user-1"}, []identitymodel.IdentityUserRoleAssignment{{UserID: "other", RoleID: "role-a"}}); err == nil {
+	if err := store.UpsertIdentityUserWithRoleAssignmentsAtomically(t.Context(), "workspace-a", identitymodel.IdentityUser{UserID: "user-1"}, []identitymodel.IdentityUserRoleAssignment{{UserID: "other", RoleID: "role-a"}}); err == nil {
 		t.Fatal("expected mismatched user id error")
 	}
-	if err := store.UpsertIdentityUserWithRoleAssignmentsAtomically(t.Context(), "workspace-a", identitymodel.IdentityUser{ID: "user-1"}, []identitymodel.IdentityUserRoleAssignment{{UserID: "user-1"}}); err == nil {
+	if err := store.UpsertIdentityUserWithRoleAssignmentsAtomically(t.Context(), "workspace-a", identitymodel.IdentityUser{UserID: "user-1"}, []identitymodel.IdentityUserRoleAssignment{{UserID: "user-1"}}); err == nil {
 		t.Fatal("expected missing role id error")
 	}
 
@@ -62,7 +62,7 @@ func TestMemoryIdentityStoreUserRoleAssignmentAtomicEdges(t *testing.T) {
 		{UserID: "user-1", RoleID: "role-a"},
 		{UserID: "user-1", RoleID: "role-b", Source: "sync", Status: "disabled"},
 	}
-	if err := store.UpsertIdentityUserWithRoleAssignmentsAtomically(t.Context(), "workspace-a", identitymodel.IdentityUser{ID: "user-1"}, assignments); err != nil {
+	if err := store.UpsertIdentityUserWithRoleAssignmentsAtomically(t.Context(), "workspace-a", identitymodel.IdentityUser{UserID: "user-1"}, assignments); err != nil {
 		t.Fatal(err)
 	}
 	prefix, _ := identityWorkspacePrefix("workspace-a")
@@ -81,7 +81,7 @@ func TestMemoryIdentityStoreUserRoleAssignmentAtomicEdges(t *testing.T) {
 	store.userRoles[prefix+"other\x00role-x"] = identitymodel.IdentityUserRoleAssignment{UserID: "other", RoleID: "role-x"}
 	store.userRoles[otherPrefix+"user-1\x00role-y"] = identitymodel.IdentityUserRoleAssignment{UserID: "user-1", RoleID: "role-y"}
 	if err := store.UpsertIdentityUserWithRoleAssignmentsAtomically(t.Context(), "workspace-a", identitymodel.IdentityUser{
-		ID: "user-1", Status: identitymodel.IdentityStatusDisabled, AccountType: identitymodel.IdentityAccountService,
+		UserID: "user-1", Status: identitymodel.IdentityStatusDisabled, AccountType: identitymodel.IdentityAccountService,
 	}, []identitymodel.IdentityUserRoleAssignment{{UserID: "user-1", RoleID: "role-c"}}); err != nil {
 		t.Fatal(err)
 	}

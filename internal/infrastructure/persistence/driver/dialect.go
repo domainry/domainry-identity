@@ -81,12 +81,13 @@ type SchemaProfile interface {
 }
 
 type SchemaTypes struct {
-	Boolean         string
-	FalseLiteral    string
-	DefaultText     string
-	DocumentText    string
-	IndexedText     string
-	AuditCursorText string
+	AutoIncrementBigInt string
+	Boolean             string
+	FalseLiteral        string
+	DefaultText         string
+	DocumentText        string
+	IndexedText         string
+	AuditCursorText     string
 }
 
 type SchemaQuery struct {

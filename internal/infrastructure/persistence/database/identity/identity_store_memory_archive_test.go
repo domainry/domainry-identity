@@ -11,7 +11,7 @@ func TestMemoryArchiveRetainsTombstoneAndCannotResurrect(t *testing.T) {
 	ctx := t.Context()
 	ws := "workspace-primary"
 	scope := identitymodel.IdentityDataScopeFilter{Unrestricted: true}
-	if err := store.UpsertIdentityUser(ctx, ws, identitymodel.IdentityUser{ID: "user", Email: "user@example.test"}); err != nil {
+	if err := store.UpsertIdentityUser(ctx, ws, identitymodel.IdentityUser{UserID: "user", Email: "user@example.test"}); err != nil {
 		t.Fatal(err)
 	}
 	prefix, _ := identityWorkspacePrefix(ws)

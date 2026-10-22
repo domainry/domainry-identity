@@ -17,13 +17,13 @@ func scriptedProfileBindingStore(state *identitySQLState) (*IdentityProfileBindi
 	return NewIdentityProfileBindingStore(identityStore), closeDB
 }
 
-var profileBindingOperationColumns = []string{"id", "resource_id", "request_fingerprint", "requested_by", "result_json", "created_at", "status"}
+var profileBindingOperationColumns = []string{"id", "operation_id", "resource_id", "request_fingerprint", "requested_by", "result_json", "created_at", "status"}
 
 func profileBindingOperationRow(fingerprint, resultJSON string) []driver.Value {
-	return []driver.Value{"receipt", "profile", fingerprint, "actor", resultJSON, int64(1_700_000_000_000), "succeeded"}
+	return []driver.Value{int64(1), "receipt", "profile", fingerprint, "actor", resultJSON, int64(1_700_000_000_000), "succeeded"}
 }
 
-const profileBindingReceiptJSON = `{"id":"receipt","workspace_id":"workspace","binding_key":"member","object_key":"member_profile","profile_id":"profile","operation":"invite","idempotency_key":"key","request_fingerprint":"fingerprint","binding":{"status":"invited","created_at":1700000000000,"updated_at":1700000000000},"created_at":1700000000000}`
+const profileBindingReceiptJSON = `{"operation_id":"receipt","workspace_id":"workspace","binding_key":"member","object_key":"member_profile","profile_id":"profile","operation":"invite","idempotency_key":"key","request_fingerprint":"fingerprint","binding":{"status":"invited","created_at":1700000000000,"updated_at":1700000000000},"created_at":1700000000000}`
 
 func validProfileBindingMutation(operation identitymodel.IdentityProfileBindingOperation) identitymodel.IdentityProfileBindingMutation {
 	return identitymodel.IdentityProfileBindingMutation{

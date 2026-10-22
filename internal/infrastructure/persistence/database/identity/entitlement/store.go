@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/domainry/domainry-foundation/apperror"
+	"github.com/domainry/domainry-foundation/entityid"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	identitydatascope "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/datascope"
 	operationreceipt "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity/operationreceipt"
@@ -143,8 +144,12 @@ func (s Store) apply(ctx context.Context, mutation identitymodel.IdentityEntitle
 	} else if err := roleassignmentpersistence.New(s.backend, s.now).UpsertBatch(ctx, tx, workspaceID, mutation.Assignments); err != nil {
 		return identitymodel.IdentityEntitlementBatchReceipt{}, false, err
 	}
+	operationID, err := entityid.Derive("op", "identity.entitlement-batch", workspaceID, mutation.IdempotencyKey)
+	if err != nil {
+		return identitymodel.IdentityEntitlementBatchReceipt{}, false, err
+	}
 	receipt := identitymodel.IdentityEntitlementBatchReceipt{
-		ID:                 identifier("identity_entitlement_batch", workspaceID, mutation.IdempotencyKey),
+		OperationID:        operationID,
 		WorkspaceID:        workspaceID,
 		ActorID:            mutation.ActorID,
 		IdempotencyKey:     mutation.IdempotencyKey,
@@ -159,8 +164,8 @@ func (s Store) apply(ctx context.Context, mutation identitymodel.IdentityEntitle
 	}
 	relatedIDsJSON, _ := json.Marshal(entitlementRelatedIDs(receipt.Items))
 	if err := operationreceipt.InsertSucceeded(ctx, tx, s.backend.SQLRenderer(), operationreceipt.Succeeded{
-		ID: receipt.ID, WorkspaceID: workspaceID, Owner: entitlementOperationOwner, Kind: entitlementOperationKind,
-		ActionKey: "identity.entitlements.batch", ResourceType: "identity_entitlement_batch", ResourceID: receipt.ID,
+		OperationID: receipt.OperationID, WorkspaceID: workspaceID, Owner: entitlementOperationOwner, Kind: entitlementOperationKind,
+		ActionKey: "identity.entitlements.batch", ResourceType: "identity_entitlement_batch", ResourceID: receipt.OperationID,
 		IdempotencyKey: receipt.IdempotencyKey, RequestFingerprint: receipt.RequestFingerprint, RequestedBy: receipt.ActorID,
 		Reason: "apply identity entitlement batch", ResultJSON: resultJSON, RelatedIDsJSON: relatedIDsJSON, CompletedAt: receipt.CreatedAt,
 	}); err != nil {
@@ -183,12 +188,12 @@ func (s Store) receiptTargetsWithinDataScope(ctx context.Context, queryer identi
 			continue
 		}
 		seen[userID] = struct{}{}
-		predicates := []query.Predicate{query.Equal("id", userID)}
+		predicates := []query.Predicate{query.Equal("user_id", userID)}
 		if !scope.Unrestricted {
-			predicates = append(predicates, identitydatascope.UserPredicate(scope, query.Column("id"), query.Column("org_id")))
+			predicates = append(predicates, identitydatascope.UserPredicate(scope, query.Column("user_id"), query.Column("org_id")))
 		}
 		statement, arguments, err := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_users", workspaceID).
-			Columns("id").Where(query.And(predicates...)).Build()
+			Columns("user_id").Where(query.And(predicates...)).Build()
 		if err != nil {
 			return false, fmt.Errorf("build scoped entitlement receipt target: %w", err)
 		}
@@ -211,7 +216,7 @@ func (s Store) loadReceipt(ctx context.Context, queryer identityEntitlementRecei
 	if err != nil {
 		return identitymodel.IdentityEntitlementBatchReceipt{}, false, err
 	}
-	if receipt.ID != operation.ID || receipt.WorkspaceID != workspaceID || receipt.IdempotencyKey != idempotencyKey || receipt.ActorID != operation.RequestedBy {
+	if receipt.OperationID != operation.OperationID || receipt.WorkspaceID != workspaceID || receipt.IdempotencyKey != idempotencyKey || receipt.ActorID != operation.RequestedBy {
 		return identitymodel.IdentityEntitlementBatchReceipt{}, false, fmt.Errorf("identity shared entitlement operation scope mismatch")
 	}
 	receipt.RequestFingerprint = operation.RequestFingerprint
@@ -242,9 +247,4 @@ func workspaceIdentifier(value string) (string, error) {
 		return "", err
 	}
 	return workspace.String(), nil
-}
-
-func identifier(parts ...string) string {
-	value := strings.Join(parts, "_")
-	return strings.NewReplacer(".", "_", ":", "_", "/", "_").Replace(value)
 }

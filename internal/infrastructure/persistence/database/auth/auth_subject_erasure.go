@@ -99,7 +99,7 @@ func (s AuthStore) EraseSubjectLoginArtifacts(ctx context.Context, tx *sql.Tx, w
 			rows.Close()
 			return err
 		}
-		if session.User.ID == userID {
+		if session.User.UserID == userID {
 			codes = append(codes, code)
 		}
 	}

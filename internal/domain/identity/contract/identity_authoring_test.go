@@ -10,8 +10,8 @@ import (
 
 func TestIdentityUserAuthoringContractContainsAccountOrganizationAndPersonnelFields(t *testing.T) {
 	definition := IdentityUserAuthoringCapability()
-	wantInput := []string{"account_type", "email", "end_date", "family_name", "given_name", "id", "locale", "manager_user_id", "middle_name", "name", "name_locale", "name_prefix", "name_suffix", "native_name", "org_id", "phone", "start_date", "status", "support_org_id", "timezone", "work_status", "worker_no", "worker_type"}
-	wantOutput := append(append([]string(nil), wantInput...), "created_at", "reporting_path", "updated_at", "version")
+	wantInput := []string{"account_type", "email", "end_date", "family_name", "given_name", "locale", "manager_user_id", "middle_name", "name", "name_locale", "name_prefix", "name_suffix", "native_name", "org_id", "phone", "start_date", "status", "support_org_id", "timezone", "user_id", "work_status", "worker_no", "worker_type"}
+	wantOutput := append(append([]string(nil), wantInput...), "created_at", "id", "reporting_path", "updated_at", "version")
 	sort.Strings(wantOutput)
 	for label, expectation := range map[string]struct {
 		schema *authoringcontract.CapabilityAuthoringSchema
@@ -70,7 +70,7 @@ func TestIdentityRoleAuthoringContractsPublishExactHTTPShapes(t *testing.T) {
 		inputRequired []string
 		actual        func() string
 	}{
-		{definitionKey: "identity.role", inputRequired: []string{"id", "key", "label", "status"}, actual: func() string { return IdentityRoleAuthoringCapability().Key }},
+		{definitionKey: "identity.role", inputRequired: []string{"role_id", "key", "label", "status"}, actual: func() string { return IdentityRoleAuthoringCapability().Key }},
 		{definitionKey: "identity.role_permission", inputRequired: []string{"permission_keys"}, actual: func() string { return IdentityRolePermissionAuthoringCapability().Key }},
 	} {
 		if capability.actual() != capability.definitionKey {
@@ -112,7 +112,7 @@ func TestIdentityRoleAuthoringContractsPublishExactHTTPShapes(t *testing.T) {
 		value    func() authoringcontract.CapabilityAuthoringDefinition
 	}{
 		{key: "identity.role_field_permission", required: "field_permissions", value: IdentityRoleFieldPermissionAuthoringCapability},
-		{key: "identity.menu", required: "id", value: IdentityMenuAuthoringCapability},
+		{key: "identity.menu", required: "menu_id", value: IdentityMenuAuthoringCapability},
 		{key: "identity.role_menu_assignment", required: "menu_ids", value: IdentityRoleMenuAssignmentAuthoringCapability},
 		{key: "identity.user", required: "email", value: IdentityUserAuthoringCapability},
 		{key: "identity.organization_unit", required: "name", value: IdentityOrganizationUnitAuthoringCapability},

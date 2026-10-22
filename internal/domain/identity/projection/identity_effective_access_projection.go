@@ -35,7 +35,7 @@ func IdentityBuildEffectiveAccessSnapshot(input IdentityEffectiveAccessProjectio
 	}
 	roleByID := map[string]identitymodel.IdentityRole{}
 	for _, role := range input.ProjectionRoles {
-		roleByID[role.ID] = role
+		roleByID[role.RoleID] = role
 	}
 	definitionByKey := map[string]identitymodel.RoleSchema{}
 	for _, role := range input.RoleDefinitions {
@@ -50,7 +50,7 @@ func IdentityBuildEffectiveAccessSnapshot(input IdentityEffectiveAccessProjectio
 		role := roleByID[assignment.RoleID]
 		roleKey := strings.TrimSpace(role.Key)
 		if roleKey == "" {
-			roleKey = strings.TrimSpace(role.ID)
+			roleKey = strings.TrimSpace(role.RoleID)
 		}
 		source := identitymodel.IdentityGrantSource{
 			Type: "role_assignment", Key: assignment.RoleID, RoleID: assignment.RoleID, RoleKey: roleKey,
@@ -66,7 +66,7 @@ func IdentityBuildEffectiveAccessSnapshot(input IdentityEffectiveAccessProjectio
 		for _, key := range definition.PermissionSetKeys {
 			key = strings.TrimSpace(key)
 			snapshot.PermissionSetKeys = append(snapshot.PermissionSetKeys, key)
-			roleSources[roleKey] = append(roleSources[roleKey], identitymodel.IdentityGrantSource{Type: "permission_set", Key: key, RoleID: role.ID, RoleKey: roleKey, PermissionSetKey: key})
+			roleSources[roleKey] = append(roleSources[roleKey], identitymodel.IdentityGrantSource{Type: "permission_set", Key: key, RoleID: role.RoleID, RoleKey: roleKey, PermissionSetKey: key})
 		}
 		for _, groupKey := range definition.PermissionSetGroups {
 			groupKey = strings.TrimSpace(groupKey)
@@ -74,7 +74,7 @@ func IdentityBuildEffectiveAccessSnapshot(input IdentityEffectiveAccessProjectio
 			for _, setKey := range groupByKey[groupKey].PermissionSetKeys {
 				setKey = strings.TrimSpace(setKey)
 				snapshot.PermissionSetKeys = append(snapshot.PermissionSetKeys, setKey)
-				roleSources[roleKey] = append(roleSources[roleKey], identitymodel.IdentityGrantSource{Type: "permission_set_group", Key: groupKey, RoleID: role.ID, RoleKey: roleKey, PermissionSetKey: setKey, PermissionSetGroup: groupKey})
+				roleSources[roleKey] = append(roleSources[roleKey], identitymodel.IdentityGrantSource{Type: "permission_set_group", Key: groupKey, RoleID: role.RoleID, RoleKey: roleKey, PermissionSetKey: setKey, PermissionSetGroup: groupKey})
 			}
 		}
 		snapshot.GuardrailKeys = append(snapshot.GuardrailKeys, definition.GuardrailKeys...)
@@ -105,7 +105,7 @@ func IdentityBuildEffectiveAccessSnapshot(input IdentityEffectiveAccessProjectio
 		}
 	}
 	for _, menu := range input.Menus {
-		if menuIDs[menu.ID] && (menu.Status == "" || menu.Status == identitymodel.IdentityStatusActive) {
+		if menuIDs[menu.MenuID] && (menu.Status == "" || menu.Status == identitymodel.IdentityStatusActive) {
 			snapshot.Menus = append(snapshot.Menus, menu)
 		}
 	}

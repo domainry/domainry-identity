@@ -37,7 +37,7 @@ func (s *MemoryIdentityStore) listIdentityUsers(ctx context.Context, workspaceID
 		}
 		out = append(out, cloneIdentityUser(value))
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	sort.Slice(out, func(i, j int) bool { return out[i].UserID < out[j].UserID })
 	return out, nil
 }
 
@@ -72,7 +72,7 @@ func identityUserMatchesDataScope(user identitymodel.IdentityUser, scope identit
 		return true
 	}
 	for _, userID := range scope.OwnerUserIDs {
-		if user.ID == userID {
+		if user.UserID == userID {
 			return true
 		}
 	}
@@ -85,11 +85,11 @@ func identityUserMatchesDataScope(user identitymodel.IdentityUser, scope identit
 }
 
 func (s *MemoryIdentityStore) UpsertIdentityUser(ctx context.Context, workspaceID string, user identitymodel.IdentityUser) error {
-	key, err := identityWorkspaceKey(workspaceID, user.ID)
+	key, err := identityWorkspaceKey(workspaceID, user.UserID)
 	if err != nil {
 		return err
 	}
-	if user.ID == "" {
+	if user.UserID == "" {
 		return fmt.Errorf("user id is required")
 	}
 	if user.Status == "" {
@@ -117,11 +117,11 @@ func (s *MemoryIdentityStore) UpsertIdentityUser(ctx context.Context, workspaceI
 }
 
 func (s *MemoryIdentityStore) CreateIdentityUser(_ context.Context, workspaceID string, user identitymodel.IdentityUser) error {
-	key, err := identityWorkspaceKey(workspaceID, user.ID)
+	key, err := identityWorkspaceKey(workspaceID, user.UserID)
 	if err != nil {
 		return err
 	}
-	if strings.TrimSpace(user.ID) == "" {
+	if strings.TrimSpace(user.UserID) == "" {
 		return fmt.Errorf("user id is required")
 	}
 	if user.Status == "" {
@@ -133,7 +133,7 @@ func (s *MemoryIdentityStore) CreateIdentityUser(_ context.Context, workspaceID 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, exists := s.users[key]; exists {
-		return fmt.Errorf("identity user %q already exists", user.ID)
+		return fmt.Errorf("identity user %q already exists", user.UserID)
 	}
 	now := nowString()
 	user.Version, user.CreatedAt, user.UpdatedAt = 1, now, now
@@ -164,14 +164,14 @@ func (s *MemoryIdentityStore) UpsertIdentityUsersAtomically(ctx context.Context,
 		return err
 	}
 	for _, user := range users {
-		if user.ID == "" {
+		if user.UserID == "" {
 			return fmt.Errorf("user id is required")
 		}
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, user := range users {
-		if existing, ok := s.users[prefix+user.ID]; ok && (existing.Status == "erased" || existing.Status == identitymodel.IdentityStatusDeleted) {
+		if existing, ok := s.users[prefix+user.UserID]; ok && (existing.Status == "erased" || existing.Status == identitymodel.IdentityStatusDeleted) {
 			return fmt.Errorf("identity subject is erased")
 		}
 	}
@@ -183,7 +183,7 @@ func (s *MemoryIdentityStore) UpsertIdentityUsersAtomically(ctx context.Context,
 		if user.AccountType == "" {
 			user.AccountType = identitymodel.IdentityAccountHuman
 		}
-		key := prefix + user.ID
+		key := prefix + user.UserID
 		if existing, ok := s.users[key]; ok {
 			if existing.Status == "erased" || existing.Status == identitymodel.IdentityStatusDeleted {
 				return fmt.Errorf("identity subject is erased")
@@ -206,21 +206,21 @@ func (s *MemoryIdentityStore) UpdateIdentityUsersWithinDataScopeAtomically(_ con
 		return false, err
 	}
 	for _, user := range users {
-		if strings.TrimSpace(user.ID) == "" {
+		if strings.TrimSpace(user.UserID) == "" {
 			return false, fmt.Errorf("user id is required")
 		}
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, user := range users {
-		existing, ok := s.users[prefix+user.ID]
+		existing, ok := s.users[prefix+user.UserID]
 		if !ok || existing.Status == "erased" || existing.Status == identitymodel.IdentityStatusDeleted || !identityUserMatchesDataScope(existing, scope) {
 			return false, nil
 		}
 	}
 	now := nowString()
 	for _, user := range users {
-		existing := s.users[prefix+user.ID]
+		existing := s.users[prefix+user.UserID]
 		if user.Status == "" {
 			user.Status = identitymodel.IdentityStatusActive
 		}
@@ -230,7 +230,7 @@ func (s *MemoryIdentityStore) UpdateIdentityUsersWithinDataScopeAtomically(_ con
 		user.Version = existing.Version + 1
 		user.CreatedAt = existing.CreatedAt
 		user.UpdatedAt = now
-		s.users[prefix+user.ID] = cloneIdentityUser(user)
+		s.users[prefix+user.UserID] = cloneIdentityUser(user)
 	}
 	return true, nil
 }
@@ -245,11 +245,11 @@ func (s *MemoryIdentityStore) UpsertIdentityUserWithRoleAssignmentsAtomically(
 	if err != nil {
 		return err
 	}
-	if user.ID == "" {
+	if user.UserID == "" {
 		return fmt.Errorf("user id is required")
 	}
 	for _, assignment := range assignments {
-		if assignment.UserID != user.ID || assignment.RoleID == "" {
+		if assignment.UserID != user.UserID || assignment.RoleID == "" {
 			return fmt.Errorf("user id and role id are required")
 		}
 	}
@@ -262,7 +262,7 @@ func (s *MemoryIdentityStore) UpsertIdentityUserWithRoleAssignmentsAtomically(
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := nowString()
-	key := prefix + user.ID
+	key := prefix + user.UserID
 	if existing, ok := s.users[key]; ok {
 		if existing.Status == "erased" || existing.Status == identitymodel.IdentityStatusDeleted {
 			return fmt.Errorf("identity subject is erased")
@@ -276,7 +276,7 @@ func (s *MemoryIdentityStore) UpsertIdentityUserWithRoleAssignmentsAtomically(
 	user.UpdatedAt = now
 	s.users[key] = cloneIdentityUser(user)
 	for key, assignment := range s.userRoles {
-		if strings.HasPrefix(key, prefix) && assignment.UserID == user.ID {
+		if strings.HasPrefix(key, prefix) && assignment.UserID == user.UserID {
 			delete(s.userRoles, key)
 		}
 	}
@@ -303,17 +303,17 @@ func (s *MemoryIdentityStore) UpsertIdentityUserWithRoleAssignmentsWithinDataSco
 	if err != nil {
 		return false, err
 	}
-	if user.ID == "" {
+	if user.UserID == "" {
 		return false, fmt.Errorf("user id is required")
 	}
 	for _, assignment := range assignments {
-		if assignment.UserID != user.ID || assignment.RoleID == "" {
+		if assignment.UserID != user.UserID || assignment.RoleID == "" {
 			return false, fmt.Errorf("user id and role id are required")
 		}
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	key := prefix + user.ID
+	key := prefix + user.UserID
 	existing, found := s.users[key]
 	if !found || existing.Status == "erased" || existing.Status == identitymodel.IdentityStatusDeleted || !identityUserMatchesDataScope(existing, scope) {
 		return false, nil
@@ -327,7 +327,7 @@ func (s *MemoryIdentityStore) UpsertIdentityUserWithRoleAssignmentsWithinDataSco
 	now := nowString()
 	user.Version, user.CreatedAt, user.UpdatedAt = existing.Version+1, existing.CreatedAt, now
 	for assignmentKey, assignment := range s.userRoles {
-		if strings.HasPrefix(assignmentKey, prefix) && assignment.UserID == user.ID {
+		if strings.HasPrefix(assignmentKey, prefix) && assignment.UserID == user.UserID {
 			delete(s.userRoles, assignmentKey)
 		}
 	}

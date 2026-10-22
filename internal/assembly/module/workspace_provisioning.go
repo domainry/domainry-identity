@@ -52,7 +52,7 @@ func (binding *moduleBinding) ProvisionWorkspaceIdentity(ctx context.Context, re
 		return identitysdk.WorkspaceIdentityProvisionResult{}, err
 	}
 	admin := identitymodel.IdentityUser{
-		ID: "admin", Name: request.AdminName, Email: request.AdminLoginID,
+		UserID: "admin", Name: request.AdminName, Email: request.AdminLoginID,
 		AccountType: identitymodel.IdentityAccountHuman, Status: identitymodel.IdentityStatusActive,
 	}
 	if err := binding.runtime.IdentityStore.ProvisionWorkspaceIdentityWithExecutor(ctx, tx, request.WorkspaceID, admin, roles, organizations, users, assignments, identitypersistence.WorkspaceRoleID(request.WorkspaceID, "admin"), func(stage identitypersistence.WorkspaceIdentityProvisionStage) error {
@@ -106,7 +106,7 @@ func (binding *moduleBinding) ProvisionWorkspaceIdentity(ctx context.Context, re
 func acceptanceFixtures(request identitysdk.WorkspaceIdentityProvisionRequest, roles []identitymodel.IdentityRole) ([]identitymodel.IdentityOrganizationUnit, []identitymodel.IdentityUser, []identitymodel.IdentityUserRoleAssignment, []identitymodel.IdentityCredential, error) {
 	roleIDs := map[string]string{}
 	for _, role := range roles {
-		roleIDs[strings.TrimSpace(role.Key)] = role.ID
+		roleIDs[strings.TrimSpace(role.Key)] = role.RoleID
 	}
 	organizations := make([]identitymodel.IdentityOrganizationUnit, 0, len(request.AcceptanceOrganizations))
 	organizationIDs := map[string]bool{}
@@ -125,7 +125,7 @@ func acceptanceFixtures(request identitysdk.WorkspaceIdentityProvisionRequest, r
 			return nil, nil, nil, nil, acceptanceFixtureInvalid("organization", index, "name", "required", map[string]string{"organization_id": id})
 		}
 		organizationIDs[id] = true
-		organizations = append(organizations, identitymodel.IdentityOrganizationUnit{ID: id, Code: code, Name: name, NodeType: identitymodel.IdentityOrganizationUnitDepartment, Path: "/" + id, AncestorIDs: []string{}, Depth: 0, SortOrder: index, Status: identitymodel.IdentityStatusActive})
+		organizations = append(organizations, identitymodel.IdentityOrganizationUnit{OrganizationUnitID: id, Code: code, Name: name, NodeType: identitymodel.IdentityOrganizationUnitDepartment, Path: "/" + id, AncestorIDs: []string{}, Depth: 0, SortOrder: index, Status: identitymodel.IdentityStatusActive})
 	}
 	users := make([]identitymodel.IdentityUser, 0, len(request.AcceptanceActors))
 	assignments := make([]identitymodel.IdentityUserRoleAssignment, 0, len(request.AcceptanceActors))
@@ -165,13 +165,13 @@ func acceptanceFixtures(request identitysdk.WorkspaceIdentityProvisionRequest, r
 			return nil, nil, nil, nil, fmt.Errorf("hash acceptance actor password: %w", err)
 		}
 		userIDs[id] = true
-		users = append(users, identitymodel.IdentityUser{ID: id, Name: name, Email: loginID, AccountType: identitymodel.IdentityAccountHuman, OrgID: organizationID, ManagerUserID: managerUserID, ReportingPath: acceptanceReportingPath(id, managerUserID), Status: identitymodel.IdentityStatusActive})
+		users = append(users, identitymodel.IdentityUser{UserID: id, Name: name, Email: loginID, AccountType: identitymodel.IdentityAccountHuman, OrgID: organizationID, ManagerUserID: managerUserID, ReportingPath: acceptanceReportingPath(id, managerUserID), Status: identitymodel.IdentityStatusActive})
 		assignments = append(assignments, identitymodel.IdentityUserRoleAssignment{UserID: id, RoleID: roleID, Source: "runtime_acceptance_fixture", Status: "active"})
 		credentials = append(credentials, identitymodel.IdentityCredential{UserID: id, PasswordHash: string(passwordHash), MustChangePassword: false})
 	}
 	for index, user := range users {
 		if user.ManagerUserID != "" && !userIDs[user.ManagerUserID] {
-			return nil, nil, nil, nil, acceptanceFixtureInvalid("actor", index, "manager_user_id", "unknown", map[string]string{"actor_id": user.ID, "manager_user_id": user.ManagerUserID})
+			return nil, nil, nil, nil, acceptanceFixtureInvalid("actor", index, "manager_user_id", "unknown", map[string]string{"actor_id": user.UserID, "manager_user_id": user.ManagerUserID})
 		}
 	}
 	return organizations, users, assignments, credentials, nil
@@ -205,7 +205,7 @@ func (binding *moduleBinding) ProvisionWorkspaceAcceptanceFixtures(ctx context.C
 	}
 	roles := make([]identitymodel.IdentityRole, 0, len(requiredRoleIDs))
 	for _, role := range allRoles {
-		if requiredRoleIDs[role.ID] {
+		if requiredRoleIDs[role.RoleID] {
 			roles = append(roles, role)
 		}
 	}
@@ -278,10 +278,10 @@ func (binding *moduleBinding) provisionedWorkspaceRoles(workspaceID string) []id
 		if label == "" {
 			label = key
 		}
-		byKey[key] = identitymodel.IdentityRole{ID: identitypersistence.WorkspaceRoleID(workspaceID, key), Key: key, Label: label, Description: "Application-declared tenant login role", Status: identitymodel.IdentityStatusActive}
+		byKey[key] = identitymodel.IdentityRole{RoleID: identitypersistence.WorkspaceRoleID(workspaceID, key), Key: key, Label: label, Description: "Application-declared tenant login role", Status: identitymodel.IdentityStatusActive}
 	}
 	if _, found := byKey["admin"]; !found {
-		byKey["admin"] = identitymodel.IdentityRole{ID: identitypersistence.WorkspaceRoleID(workspaceID, "admin"), Key: "admin", Label: "Administrator", Description: "Tenant workspace administrator", Status: identitymodel.IdentityStatusActive}
+		byKey["admin"] = identitymodel.IdentityRole{RoleID: identitypersistence.WorkspaceRoleID(workspaceID, "admin"), Key: "admin", Label: "Administrator", Description: "Tenant workspace administrator", Status: identitymodel.IdentityStatusActive}
 	}
 	keys := make([]string, 0, len(byKey))
 	for key := range byKey {

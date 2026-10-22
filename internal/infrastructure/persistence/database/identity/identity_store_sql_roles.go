@@ -111,7 +111,7 @@ func (s *SQLIdentityStore) memoryRole(ctx context.Context, workspaceID, roleID s
 		return identitymodel.IdentityRole{}, false, err
 	}
 	for _, role := range roles {
-		if role.ID == roleID {
+		if role.RoleID == roleID {
 			return role, true, nil
 		}
 	}

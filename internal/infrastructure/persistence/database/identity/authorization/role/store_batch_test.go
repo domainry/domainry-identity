@@ -62,8 +62,8 @@ func TestRoleUpsertUsesMultiRowStatementAcrossDialects(t *testing.T) {
 			store := New(roleBatchRenderBackend{engine: test.engine, renderer: renderer}, func() string { return "now" })
 			execer := &roleBatchCaptureExecer{}
 			err = store.UpsertBatchWithExecutor(t.Context(), execer, "workspace-primary", []identitymodel.IdentityRole{
-				{ID: "role-one", Key: "one", Label: "One"},
-				{ID: "role-two", Key: "two", Label: "Two"},
+				{RoleID: "role-one", Key: "one", Label: "One"},
+				{RoleID: "role-two", Key: "two", Label: "Two"},
 			})
 			if err != nil {
 				t.Fatal(err)

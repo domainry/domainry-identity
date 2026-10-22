@@ -16,17 +16,17 @@ func TestIdentityServiceRemoveMenuDeletesDescendantsAndRoleAssignments(t *testin
 	identity.ReplaceRoleDefinitions([]identitymodel.RoleSchema{
 		{Key: "admin", Name: "Admin", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "identity.menus.delete")},
 	})
-	for _, role := range []identitymodel.IdentityRole{{ID: "admin", Key: "admin", Label: "Admin"}} {
+	for _, role := range []identitymodel.IdentityRole{{RoleID: "admin", Key: "admin", Label: "Admin"}} {
 		seedIdentityProjectionRole(t, store, "workspace-primary", role)
 	}
 	for _, menu := range []identitymodel.IdentityMenu{
-		{ID: "parent", Key: "parent-key", Label: "Parent"},
-		{ID: "child", Key: "child-key", Label: "Child", ParentID: "parent"},
-		{ID: "grandchild", Key: "grandchild-key", Label: "Grandchild", ParentID: "child"},
-		{ID: "sibling", Key: "sibling-key", Label: "Sibling"},
+		{MenuID: "parent", Key: "parent-key", Label: "Parent"},
+		{MenuID: "child", Key: "child-key", Label: "Child", ParentID: "parent"},
+		{MenuID: "grandchild", Key: "grandchild-key", Label: "Grandchild", ParentID: "child"},
+		{MenuID: "sibling", Key: "sibling-key", Label: "Sibling"},
 	} {
 		if err := identity.UpsertMenu(t.Context(), menu); err != nil {
-			t.Fatalf("upsert menu %s: %v", menu.ID, err)
+			t.Fatalf("upsert menu %s: %v", menu.MenuID, err)
 		}
 	}
 	if err := identity.SetRoleMenus(t.Context(), "admin", []string{"parent", "child-key", "grandchild", "sibling"}); err != nil {
@@ -44,7 +44,7 @@ func TestIdentityServiceRemoveMenuDeletesDescendantsAndRoleAssignments(t *testin
 	if err != nil {
 		t.Fatalf("list menus: %v", err)
 	}
-	if len(menus) != 1 || menus[0].ID != "sibling" {
+	if len(menus) != 1 || menus[0].MenuID != "sibling" {
 		t.Fatalf("deleted menus should not remain visible, got %#v", menus)
 	}
 	assignments, err := identity.ListRoleMenuAssignments(t.Context(), "admin")

@@ -44,7 +44,7 @@ func (s *Store) ResolveSubject(ctx context.Context, workspaceID, subjectType, su
 		return "", fmt.Errorf("unsupported subject type %s", subjectType)
 	}
 	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_users", workspaceID).
-		Columns("id").Where(query.Or(query.Equal("id", subjectID), query.Equal("email", subjectID))).Build()
+		Columns("user_id").Where(query.Or(query.Equal("user_id", subjectID), query.Equal("email", subjectID))).Build()
 	if err != nil {
 		return "", fmt.Errorf("build identity subject resolution query: %w", err)
 	}
@@ -61,9 +61,6 @@ func (s *Store) PreviewSubject(ctx context.Context, workspaceID, userID string) 
 	counts := map[string]int64{}
 	for name, table := range map[string]string{"users": "_identity_users", "credentials": "_identity_credentials", "external_accounts": "_identity_external_accounts", "mfa_factors": "_identity_mfa_factors", "refresh_tokens": "_identity_auth_refresh_tokens", "role_assignments": "_identity_user_role_assignments"} {
 		column := "user_id"
-		if table == "_identity_users" {
-			column = "id"
-		}
 		statement, arguments, err := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), table, workspaceID).
 			Projections(query.Project(query.CountAll())).Where(query.Equal(column, userID)).Build()
 		if err != nil {
@@ -80,12 +77,12 @@ func (s *Store) PreviewSubject(ctx context.Context, workspaceID, userID string) 
 }
 
 func (s *Store) ExportSubject(ctx context.Context, workspaceID, userID string) (json.RawMessage, error) {
-	stringColumns := []string{"id", "name", "given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale", "email", "phone", "account_type", "locale", "timezone", "org_id", "support_org_id", "manager_user_id", "reporting_path", "worker_no", "worker_type", "work_status", "start_date", "end_date", "status"}
+	stringColumns := []string{"user_id", "name", "given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale", "email", "phone", "account_type", "locale", "timezone", "org_id", "support_org_id", "manager_user_id", "reporting_path", "worker_no", "worker_type", "work_status", "start_date", "end_date", "status"}
 	projections := coalescedIdentityProjections(stringColumns...)
 	projections = append(projections, query.Project(query.Column("version")))
 	projections = append(projections, query.Project(query.Column("created_at")), query.Project(query.Column("updated_at")))
 	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_users", workspaceID).
-		Projections(projections...).Where(query.Equal("id", userID)).Build()
+		Projections(projections...).Where(query.Equal("user_id", userID)).Build()
 	if err != nil {
 		return nil, fmt.Errorf("build identity subject export query: %w", err)
 	}
@@ -98,7 +95,7 @@ func (s *Store) ExportSubject(ctx context.Context, workspaceID, userID string) (
 		return nil, err
 	}
 	payload := map[string]any{
-		"id": values[0], "name": values[1], "given_name": values[2], "middle_name": values[3], "family_name": values[4],
+		"user_id": values[0], "name": values[1], "given_name": values[2], "middle_name": values[3], "family_name": values[4],
 		"name_prefix": values[5], "name_suffix": values[6], "native_name": values[7], "name_locale": values[8],
 		"email": values[9], "phone": values[10], "account_type": values[11], "locale": values[12], "timezone": values[13],
 		"org_id": values[14], "support_org_id": values[15], "manager_user_id": values[16], "reporting_path": values[17],
@@ -127,14 +124,14 @@ func (s *Store) exportSubjectRelationships(ctx context.Context, workspaceID, use
 		columns []string
 		builder *query.SelectBuilder
 	}{
-		{"role_assignments", []string{"id", "role_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason"},
-			identityRelationshipSelect(s.store.SQLRenderer(), "_identity_user_role_assignments", workspaceID, []string{"id", "role_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason"}).Where(query.Equal("user_id", userID))},
-		{"profile_relations", []string{"id", "binding_key", "object_key", "profile_id", "status", "invitation_channel", "claim_proof_type"},
-			identityRelationshipSelect(s.store.SQLRenderer(), "_identity_profile_bindings", workspaceID, []string{"id", "binding_key", "object_key", "profile_id", "status", "invitation_channel", "claim_proof_type"}).Where(query.Equal("identity_user_id", userID))},
+		{"role_assignments", []string{"role_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason"},
+			identityRelationshipSelect(s.store.SQLRenderer(), "_identity_user_role_assignments", workspaceID, []string{"role_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason"}).Where(query.Equal("user_id", userID)).OrderBy(query.Ascending("role_id"))},
+		{"profile_relations", []string{"binding_key", "object_key", "profile_id", "status", "invitation_channel", "claim_proof_type"},
+			identityRelationshipSelect(s.store.SQLRenderer(), "_identity_profile_bindings", workspaceID, []string{"binding_key", "object_key", "profile_id", "status", "invitation_channel", "claim_proof_type"}).Where(query.Equal("identity_user_id", userID)).OrderBy(query.Ascending("binding_key"), query.Ascending("object_key"), query.Ascending("profile_id"))},
 	}
 	result := make(map[string]any, len(definitions))
 	for _, definition := range definitions {
-		statement, arguments, err := definition.builder.OrderBy(query.Ascending("id")).Build()
+		statement, arguments, err := definition.builder.Build()
 		if err != nil {
 			return nil, fmt.Errorf("build identity subject %s export query: %w", definition.key, err)
 		}

@@ -51,11 +51,11 @@ func (s *IdentityDomainService) PrepareOrganizationUnitForAtomicDelivery(ctx con
 		return identitymodel.IdentityOrganizationUnit{}, nil, err
 	}
 	for _, update := range updates {
-		if update.ID == strings.TrimSpace(organizationUnit.ID) {
+		if update.OrganizationUnitID == strings.TrimSpace(organizationUnit.OrganizationUnitID) {
 			root := update
 			related := make([]identitymodel.IdentityOrganizationUnit, 0, len(updates)-1)
 			for _, candidate := range updates {
-				if candidate.ID != root.ID {
+				if candidate.OrganizationUnitID != root.OrganizationUnitID {
 					related = append(related, candidate)
 				}
 			}
@@ -86,7 +86,7 @@ func (s *IdentityDomainService) UpsertOrganizationUnitWithinDataScope(ctx contex
 }
 
 func (s *IdentityDomainService) prepareOrganizationUnitUpsert(ctx context.Context, organizationUnit identitymodel.IdentityOrganizationUnit) ([]identitymodel.IdentityOrganizationUnit, error) {
-	organizationUnit.ID = strings.TrimSpace(organizationUnit.ID)
+	organizationUnit.OrganizationUnitID = strings.TrimSpace(organizationUnit.OrganizationUnitID)
 	organizationUnit.Code = strings.TrimSpace(organizationUnit.Code)
 	organizationUnit.Name = strings.TrimSpace(organizationUnit.Name)
 	issues, err := s.validation.ValidateOrganizationUnitConfiguration(ctx, organizationUnit)
@@ -105,7 +105,7 @@ func (s *IdentityDomainService) prepareOrganizationUnitUpsert(ctx context.Contex
 	}
 	byID := map[string]identitymodel.IdentityOrganizationUnit{}
 	for _, item := range organizationUnits {
-		byID[item.ID] = item
+		byID[item.OrganizationUnitID] = item
 	}
 	if organizationUnit.ParentID != nil {
 		parentID := strings.TrimSpace(*organizationUnit.ParentID)
@@ -118,7 +118,7 @@ func (s *IdentityDomainService) prepareOrganizationUnitUpsert(ctx context.Contex
 				return nil, badRequest("backend.identity.parent_organization_unit_not_found", "organization_unit", parentID)
 			}
 			for {
-				if parent.ID == organizationUnit.ID {
+				if parent.OrganizationUnitID == organizationUnit.OrganizationUnitID {
 					return nil, badRequest("backend.identity.organization_unit_cycle")
 				}
 				if parent.ParentID == nil || strings.TrimSpace(*parent.ParentID) == "" {
@@ -133,7 +133,7 @@ func (s *IdentityDomainService) prepareOrganizationUnitUpsert(ctx context.Contex
 		}
 	}
 	for _, existingOrganizationUnit := range organizationUnits {
-		if existingOrganizationUnit.ID == organizationUnit.ID {
+		if existingOrganizationUnit.OrganizationUnitID == organizationUnit.OrganizationUnitID {
 			continue
 		}
 		if identityParentID(existingOrganizationUnit.ParentID) == identityParentID(organizationUnit.ParentID) &&
@@ -151,11 +151,11 @@ func (s *IdentityDomainService) prepareOrganizationUnitUpsert(ctx context.Contex
 func identityOrganizationUnitSubtreeUpdates(root identitymodel.IdentityOrganizationUnit, existing []identitymodel.IdentityOrganizationUnit) ([]identitymodel.IdentityOrganizationUnit, error) {
 	byID := make(map[string]identitymodel.IdentityOrganizationUnit, len(existing)+1)
 	for _, item := range existing {
-		byID[item.ID] = item
+		byID[item.OrganizationUnitID] = item
 	}
 	// Hierarchy facts are owned by Identity and are never accepted from callers.
 	root.Path, root.AncestorIDs, root.Depth = "", nil, 0
-	byID[root.ID] = root
+	byID[root.OrganizationUnitID] = root
 
 	children := make(map[string][]string, len(byID))
 	for id, item := range byID {
@@ -184,7 +184,7 @@ func identityOrganizationUnitSubtreeUpdates(root identitymodel.IdentityOrganizat
 		visiting[id] = true
 		parentID := identityParentID(item.ParentID)
 		if parentID == "" {
-			item.Path = "/" + item.ID
+			item.Path = "/" + item.OrganizationUnitID
 			item.AncestorIDs = []string{}
 			item.Depth = 0
 		} else {
@@ -192,9 +192,9 @@ func identityOrganizationUnitSubtreeUpdates(root identitymodel.IdentityOrganizat
 			if err != nil {
 				return identitymodel.IdentityOrganizationUnit{}, err
 			}
-			item.AncestorIDs = append(append([]string{}, parent.AncestorIDs...), parent.ID)
+			item.AncestorIDs = append(append([]string{}, parent.AncestorIDs...), parent.OrganizationUnitID)
 			item.Depth = len(item.AncestorIDs)
-			item.Path = strings.TrimRight(parent.Path, "/") + "/" + item.ID
+			item.Path = strings.TrimRight(parent.Path, "/") + "/" + item.OrganizationUnitID
 		}
 		visiting[id] = false
 		derived[id] = item
@@ -202,7 +202,7 @@ func identityOrganizationUnitSubtreeUpdates(root identitymodel.IdentityOrganizat
 	}
 
 	updates := make([]identitymodel.IdentityOrganizationUnit, 0, len(byID))
-	queue := []string{root.ID}
+	queue := []string{root.OrganizationUnitID}
 	seen := map[string]bool{}
 	for len(queue) > 0 {
 		id := queue[0]
@@ -220,7 +220,7 @@ func identityOrganizationUnitSubtreeUpdates(root identitymodel.IdentityOrganizat
 	}
 	sort.Slice(updates, func(left, right int) bool {
 		if updates[left].Depth == updates[right].Depth {
-			return updates[left].ID < updates[right].ID
+			return updates[left].OrganizationUnitID < updates[right].OrganizationUnitID
 		}
 		return updates[left].Depth < updates[right].Depth
 	})
@@ -263,7 +263,7 @@ func (s *IdentityDomainService) UserByLogin(ctx context.Context, login string) (
 		return identitymodel.IdentityUser{}, false, err
 	}
 	for _, user := range users {
-		if strings.ToLower(strings.TrimSpace(user.ID)) == login || strings.ToLower(strings.TrimSpace(user.Email)) == login {
+		if strings.ToLower(strings.TrimSpace(user.UserID)) == login || strings.ToLower(strings.TrimSpace(user.Email)) == login {
 			return user, true, nil
 		}
 	}
@@ -271,7 +271,7 @@ func (s *IdentityDomainService) UserByLogin(ctx context.Context, login string) (
 }
 
 func (s *IdentityDomainService) UpsertUser(ctx context.Context, user identitymodel.IdentityUser) error {
-	existing, hadExisting, err := s.repo.GetIdentityUser(ctx, s.workspace, strings.TrimSpace(user.ID))
+	existing, hadExisting, err := s.repo.GetIdentityUser(ctx, s.workspace, strings.TrimSpace(user.UserID))
 	if err != nil {
 		return err
 	}
@@ -291,14 +291,14 @@ func (s *IdentityDomainService) UpsertUser(ctx context.Context, user identitymod
 }
 
 func (s *IdentityDomainService) CreateUserWithinDataScope(ctx context.Context, user identitymodel.IdentityUser, actor identitymodel.Principal, permissionKey string) error {
-	user.ID = strings.TrimSpace(user.ID)
-	if user.ID == "" {
+	user.UserID = strings.TrimSpace(user.UserID)
+	if user.UserID == "" {
 		return badRequest("backend.identity.user_required", "user", "")
 	}
-	if _, found, err := s.repo.GetIdentityUser(ctx, s.workspace, user.ID); err != nil {
+	if _, found, err := s.repo.GetIdentityUser(ctx, s.workspace, user.UserID); err != nil {
 		return err
 	} else if found {
-		return conflict("backend.identity.user_already_exists", "user", user.ID)
+		return conflict("backend.identity.user_already_exists", "user", user.UserID)
 	}
 	filter := identitycontract.IdentityPermissionDataScopeFilter(actor, permissionKey)
 	if !filter.Unrestricted {
@@ -312,7 +312,7 @@ func (s *IdentityDomainService) CreateUserWithinDataScope(ctx context.Context, u
 		}
 		trustedOrg := false
 		for _, unit := range organizationUnits {
-			if unit.ID == user.OrgID {
+			if unit.OrganizationUnitID == user.OrgID {
 				trustedOrg = true
 				break
 			}
@@ -343,18 +343,18 @@ func identityStringValueIn(values []string, expected string) bool {
 }
 
 func (s *IdentityDomainService) UpdateUserWithinDataScope(ctx context.Context, user identitymodel.IdentityUser, actor identitymodel.Principal, permissionKey string) error {
-	user.ID = strings.TrimSpace(user.ID)
+	user.UserID = strings.TrimSpace(user.UserID)
 	filter := identitycontract.IdentityPermissionDataScopeFilter(actor, permissionKey)
 	dataRepository, ok := s.repo.(identityrepository.IdentityUserDataScopeRepository)
 	if !ok {
 		return internalError("identity user data-scope repository unavailable", nil)
 	}
-	existing, found, err := dataRepository.GetIdentityUserWithinDataScope(ctx, s.workspace, user.ID, filter)
+	existing, found, err := dataRepository.GetIdentityUserWithinDataScope(ctx, s.workspace, user.UserID, filter)
 	if err != nil {
 		return err
 	}
 	if !found {
-		return notFound("backend.identity.user_not_found", "user", user.ID)
+		return notFound("backend.identity.user_not_found", "user", user.UserID)
 	}
 	user, err = s.prepareUser(ctx, user)
 	if err != nil {
@@ -377,13 +377,13 @@ func (s *IdentityDomainService) UpdateUserWithinDataScope(ctx context.Context, u
 		return err
 	}
 	if !updated {
-		return notFound("backend.identity.user_not_found", "user", user.ID)
+		return notFound("backend.identity.user_not_found", "user", user.UserID)
 	}
 	return nil
 }
 
 func (s *IdentityDomainService) prepareUser(ctx context.Context, user identitymodel.IdentityUser) (identitymodel.IdentityUser, error) {
-	user.ID = strings.TrimSpace(user.ID)
+	user.UserID = strings.TrimSpace(user.UserID)
 	user.Name = strings.TrimSpace(user.Name)
 	user.GivenName = strings.TrimSpace(user.GivenName)
 	user.MiddleName = strings.TrimSpace(user.MiddleName)
@@ -425,7 +425,7 @@ func (s *IdentityDomainService) prepareUser(ctx context.Context, user identitymo
 		return identitymodel.IdentityUser{}, err
 	}
 	for _, existing := range users {
-		if existing.ID != user.ID {
+		if existing.UserID != user.UserID {
 			continue
 		}
 		if strings.TrimSpace(user.Locale) == "" {
@@ -443,19 +443,19 @@ func (s *IdentityDomainService) prepareUser(ctx context.Context, user identitymo
 		user.Version = 1
 	}
 	for _, existing := range users {
-		if existing.ID != user.ID && strings.EqualFold(strings.TrimSpace(existing.Email), user.Email) {
+		if existing.UserID != user.UserID && strings.EqualFold(strings.TrimSpace(existing.Email), user.Email) {
 			return identitymodel.IdentityUser{}, badRequest("backend.identity.user_email_exists", "email", user.Email)
 		}
 	}
-	user.ReportingPath = "/" + user.ID
+	user.ReportingPath = "/" + user.UserID
 	if user.ManagerUserID != "" {
 		byID := make(map[string]identitymodel.IdentityUser, len(users))
 		for _, existing := range users {
-			byID[existing.ID] = existing
+			byID[existing.UserID] = existing
 		}
 		managerPath := identityUserReportingPath(user.ManagerUserID, byID)
 		if managerPath != "" {
-			user.ReportingPath = strings.TrimRight(managerPath, "/") + "/" + user.ID
+			user.ReportingPath = strings.TrimRight(managerPath, "/") + "/" + user.UserID
 		}
 	}
 	user.Phone = strings.TrimSpace(user.Phone)
@@ -466,7 +466,7 @@ func (s *IdentityDomainService) prepareUser(ctx context.Context, user identitymo
 // reporting-path projections that must move with it. The caller persists the
 // returned set in one transaction with its other Identity-owned effects.
 func (s *IdentityDomainService) PrepareUserForAtomicDelivery(ctx context.Context, user identitymodel.IdentityUser) (identitymodel.IdentityUser, []identitymodel.IdentityUser, error) {
-	existing, found, err := s.repo.GetIdentityUser(ctx, s.workspace, strings.TrimSpace(user.ID))
+	existing, found, err := s.repo.GetIdentityUser(ctx, s.workspace, strings.TrimSpace(user.UserID))
 	if err != nil {
 		return identitymodel.IdentityUser{}, nil, err
 	}
@@ -490,7 +490,7 @@ func identityUserReportingPath(userID string, users map[string]identitymodel.Ide
 		if !found {
 			break
 		}
-		path = append(path, user.ID)
+		path = append(path, user.UserID)
 		cursor = strings.TrimSpace(user.ManagerUserID)
 	}
 	for left, right := 0, len(path)-1; left < right; left, right = left+1, right-1 {
@@ -619,7 +619,7 @@ func (s *IdentityDomainService) removeUser(ctx context.Context, userID string, f
 	}
 	for _, user := range users {
 		if strings.TrimSpace(user.ManagerUserID) == userID {
-			return conflict("backend.identity.user_direct_reports_exist", "user", userID, "direct_report", user.ID)
+			return conflict("backend.identity.user_direct_reports_exist", "user", userID, "direct_report", user.UserID)
 		}
 	}
 	if filter.Unrestricted {
@@ -732,7 +732,7 @@ func (s *IdentityDomainService) userByID(ctx context.Context, userID string) (id
 		return identitymodel.IdentityUser{}, false, err
 	}
 	for _, user := range users {
-		if user.ID == userID {
+		if user.UserID == userID {
 			return user, true, nil
 		}
 	}

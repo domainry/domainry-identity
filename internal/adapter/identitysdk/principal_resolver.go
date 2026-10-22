@@ -111,8 +111,8 @@ func (adapter sdkPrincipalResolver) resolveWorkflowWorkload(ctx context.Context,
 	result := identitysdk.Principal{
 		ContractVersion: identitysdk.PrincipalContextContractVersion, Known: true, WorkspaceID: principal.WorkspaceID, UserID: principal.UserID, RoleKey: principal.Role.Key,
 		AuthorizationRevision: principal.AuthorizationRevision, Permissions: identitymodel.RolePermissionKeys(principal.Role.Permissions), AccessBundle: &bundle,
-		User:     sdkProjectionUser(identitymodel.IdentityUser{ID: principal.UserID, Name: workflowKey, AccountType: identitymodel.IdentityAccountService, Status: identitymodel.IdentityStatusActive}),
-		Roles:    []identitysdk.Role{sdkProjectionRole(identitymodel.IdentityRole{ID: principal.Role.Key, Key: principal.Role.Key, Label: principal.Role.Name, Status: identitymodel.IdentityStatusActive})},
+		User:     sdkProjectionUser(identitymodel.IdentityUser{UserID: principal.UserID, Name: workflowKey, AccountType: identitymodel.IdentityAccountService, Status: identitymodel.IdentityStatusActive}),
+		Roles:    []identitysdk.Role{sdkProjectionRole(identitymodel.IdentityRole{RoleID: principal.Role.Key, Key: principal.Role.Key, Label: principal.Role.Name, Status: identitymodel.IdentityStatusActive})},
 		Workload: &identitysdk.WorkflowWorkloadPrincipalContext{WorkflowKey: workflowKey, DefinitionVersionID: workload.DefinitionVersionID, DefinitionVersion: workload.DefinitionVersion, ReleaseID: workload.ReleaseID, ReleaseDigest: workload.ReleaseDigest, TaskID: strings.TrimSpace(workload.TaskID), SourceEventID: strings.TrimSpace(workload.SourceEventID), InitiatorSubjectID: workload.InitiatorSubjectID},
 	}
 	return identitysdk.PrincipalResolution{Principal: result, AccessBundle: bundle}, nil

@@ -26,15 +26,15 @@ func TestSQLArchivePreservesHistoryRevokesAccessAndCannotBeReactivated(t *testin
 		t.Fatal(err)
 	}
 	scope := identitymodel.IdentityDataScopeFilter{Unrestricted: true}
-	for _, ws := range []string{"workspace-primary", "workspace-other"} {
-		if err := store.UpsertIdentityUser(t.Context(), ws, identitymodel.IdentityUser{ID: "departed", Name: "Retained Name", Email: "departed-" + ws + "@example.test", OrgID: "dept", Status: identitymodel.IdentityStatusActive}); err != nil {
+	for _, fixture := range []struct{ workspaceID, userID string }{{"workspace-primary", "departed"}, {"workspace-other", "other-departed"}} {
+		if err := store.UpsertIdentityUser(t.Context(), fixture.workspaceID, identitymodel.IdentityUser{UserID: fixture.userID, Name: "Retained Name", Email: "departed-" + fixture.workspaceID + "@example.test", OrgID: "dept", Status: identitymodel.IdentityStatusActive}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	// Raw SQL below is fixture/fault-injection evidence, never production DML.
 	for _, statement := range []string{
-		`INSERT INTO _identity_profile_bindings (id,workspace_id,binding_key,object_key,profile_id,identity_user_id,status,version,created_at,updated_at) VALUES ('binding','workspace-primary','member','member_profile','history-1','departed','active',1,1,1)`,
-		`INSERT INTO _identity_auth_refresh_tokens (id,workspace_id,user_id,session_id,token_hash,expires_at,created_at,updated_at) VALUES ('token','workspace-primary','departed','session','hash',32503680000000,1,1)`,
+		`INSERT INTO _identity_profile_bindings (workspace_id,binding_key,object_key,profile_id,identity_user_id,status,version,created_at,updated_at) VALUES ('workspace-primary','member','member_profile','history-1','departed','active',1,1,1)`,
+		`INSERT INTO _identity_auth_refresh_tokens (workspace_id,user_id,session_id,token_hash,expires_at,created_at,updated_at) VALUES ('workspace-primary','departed','session','hash',32503680000000,1,1)`,
 		`CREATE TRIGGER fail_archive_session BEFORE UPDATE ON _identity_auth_refresh_tokens BEGIN SELECT RAISE(ABORT,'injected archive failure'); END`,
 	} {
 		if _, err := db.DB().ExecContext(t.Context(), statement); err != nil {
@@ -65,12 +65,12 @@ func TestSQLArchivePreservesHistoryRevokesAccessAndCannotBeReactivated(t *testin
 	if err != nil || !found || user.Status != identitymodel.IdentityStatusDeleted || user.Name != "Retained Name" {
 		t.Fatalf("history identity lost: %+v %v", user, err)
 	}
-	other, _, _ := store.GetIdentityUser(t.Context(), "workspace-other", "departed")
+	other, _, _ := store.GetIdentityUser(t.Context(), "workspace-other", "other-departed")
 	if other.Status != identitymodel.IdentityStatusActive {
 		t.Fatal("other workspace affected")
 	}
 	var binding string
-	if err := db.DB().QueryRow(`SELECT status FROM _identity_profile_bindings WHERE id='binding'`).Scan(&binding); err != nil || binding != "active" {
+	if err := db.DB().QueryRow(`SELECT status FROM _identity_profile_bindings WHERE workspace_id='workspace-primary' AND binding_key='member' AND object_key='member_profile' AND profile_id='history-1'`).Scan(&binding); err != nil || binding != "active" {
 		t.Fatal("business identity changed")
 	}
 	page, err := store.SearchIdentityUsersWithinDataScope(t.Context(), "workspace-primary", identitymodel.IdentityListQuery{PageSize: 10}, scope)

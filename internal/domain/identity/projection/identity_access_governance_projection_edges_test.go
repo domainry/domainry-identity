@@ -11,7 +11,7 @@ import (
 
 func TestIdentityAccessReverseIndexEdgeInputs(t *testing.T) {
 	index := IdentityBuildAccessReverseIndex(
-		[]identitymodel.IdentityRole{{ID: "fallback", Key: " "}, {ID: "known", Key: "role"}},
+		[]identitymodel.IdentityRole{{RoleID: "fallback", Key: " "}, {RoleID: "known", Key: "role"}},
 		[]identitymodel.RoleSchema{{
 			Key: "role", Permissions: []identitymodel.RolePermission{
 				{PermissionKey: " ", DataScope: identitymodel.IdentityDataScopeAll},
@@ -43,9 +43,9 @@ func TestIdentityGovernanceReportsEdgeInputs(t *testing.T) {
 	past := now.Add(-time.Hour).Format(time.RFC3339)
 	invalid := "invalid"
 	roles := []identitymodel.IdentityRole{
-		{ID: "published", Key: "published"},
-		{ID: "unpublished", Key: "unpublished"},
-		{ID: "fallback", Key: " "},
+		{RoleID: "published", Key: "published"},
+		{RoleID: "unpublished", Key: "unpublished"},
+		{RoleID: "fallback", Key: " "},
 	}
 	assignments := []identitymodel.IdentityUserRoleAssignment{
 		{UserID: "active", RoleID: "published", Status: string(identitymodel.IdentityStatusActive)},
@@ -109,7 +109,7 @@ func TestIdentityRoleChangeImpactEdgeInputs(t *testing.T) {
 			{PermissionKey: "account.old", DataScope: identitymodel.IdentityDataScopeAll},
 			{PermissionKey: " ", DataScope: identitymodel.IdentityDataScopeAll},
 		}},
-		identitymodel.IdentityRole{ID: "role-id"},
+		identitymodel.IdentityRole{RoleID: "role-id"},
 		[]identitymodel.IdentityUserRoleAssignment{
 			{UserID: "wrong", RoleID: "other"},
 			{UserID: "inactive", RoleID: "role-id", Status: string(identitymodel.IdentityStatusDisabled)},

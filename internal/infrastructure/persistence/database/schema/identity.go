@@ -12,7 +12,8 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 	defaultText, identityIndexText := types.DefaultText, types.IndexedText
 	tables := map[string][]string{
 		"_identity_organization_units": {
-			"id " + text + " PRIMARY KEY",
+			"id " + types.AutoIncrementBigInt,
+			"organization_unit_id " + text + " NOT NULL",
 			"workspace_id " + text + " NOT NULL",
 			"code " + text + " NOT NULL",
 			"name TEXT NOT NULL",
@@ -31,7 +32,8 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"updated_at BIGINT NOT NULL",
 		},
 		"_identity_users": {
-			"id " + text + " PRIMARY KEY",
+			"id " + types.AutoIncrementBigInt,
+			"user_id " + text + " NOT NULL",
 			"workspace_id " + text + " NOT NULL",
 			"name TEXT NOT NULL",
 			"given_name TEXT NOT NULL DEFAULT ''",
@@ -62,7 +64,8 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"updated_at BIGINT NOT NULL",
 		},
 		"_identity_roles": {
-			"id " + text + " PRIMARY KEY",
+			"id " + types.AutoIncrementBigInt,
+			"role_id " + text + " NOT NULL",
 			"workspace_id " + text + " NOT NULL",
 			"role_key " + text + " NOT NULL",
 			"label TEXT NOT NULL",
@@ -72,7 +75,8 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"updated_at BIGINT NOT NULL",
 		},
 		"_identity_role_requests": {
-			"id " + text + " PRIMARY KEY",
+			"id " + types.AutoIncrementBigInt,
+			"role_request_id " + text + " NOT NULL",
 			"workspace_id " + text + " NOT NULL",
 			"user_id " + text + " NOT NULL",
 			"requested_by " + text,
@@ -88,7 +92,7 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"review_note TEXT",
 		},
 		"_identity_user_role_assignments": {
-			"id " + text + " PRIMARY KEY",
+			"id " + types.AutoIncrementBigInt,
 			"workspace_id " + text + " NOT NULL",
 			"user_id " + text + " NOT NULL",
 			"role_id " + text + " NOT NULL",
@@ -108,7 +112,7 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"updated_at BIGINT NOT NULL",
 		},
 		"_identity_workflow_workload_bindings": {
-			"id " + text + " PRIMARY KEY",
+			"id " + types.AutoIncrementBigInt,
 			"workspace_id " + text + " NOT NULL",
 			"application_key " + text + " NOT NULL",
 			"subject_id " + text + " NOT NULL",
@@ -127,7 +131,8 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"deactivated_at BIGINT NOT NULL DEFAULT 0",
 		},
 		"_identity_access_reviews": {
-			"id " + text + " PRIMARY KEY",
+			"id " + types.AutoIncrementBigInt,
+			"review_id " + text + " NOT NULL",
 			"workspace_id " + text + " NOT NULL",
 			"period_start BIGINT NOT NULL",
 			"period_end BIGINT NOT NULL",
@@ -138,7 +143,8 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"updated_at BIGINT NOT NULL",
 		},
 		"_identity_access_review_items": {
-			"id " + text + " PRIMARY KEY",
+			"id " + types.AutoIncrementBigInt,
+			"review_item_id " + text + " NOT NULL",
 			"workspace_id " + text + " NOT NULL",
 			"review_id " + text + " NOT NULL",
 			"user_id " + text + " NOT NULL",
@@ -162,7 +168,8 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"updated_at BIGINT NOT NULL",
 		},
 		"_identity_menus": {
-			"id " + text + " PRIMARY KEY",
+			"id " + types.AutoIncrementBigInt,
+			"menu_id " + text + " NOT NULL",
 			"workspace_id " + text + " NOT NULL",
 			"menu_key " + text + " NOT NULL",
 			"label TEXT NOT NULL",
@@ -176,7 +183,7 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"updated_at BIGINT NOT NULL",
 		},
 		"_identity_role_menu_assignments": {
-			"id " + text + " PRIMARY KEY",
+			"id " + types.AutoIncrementBigInt,
 			"workspace_id " + text + " NOT NULL",
 			"role_id " + text + " NOT NULL",
 			"menu_id " + text + " NOT NULL",
@@ -184,7 +191,8 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"updated_at BIGINT NOT NULL",
 		},
 		"_identity_credentials": {
-			"user_id " + text + " PRIMARY KEY",
+			"id " + types.AutoIncrementBigInt,
+			"user_id " + text + " NOT NULL",
 			"workspace_id " + text + " NOT NULL",
 			"password_hash TEXT NOT NULL",
 			"password_updated_at BIGINT NOT NULL",
@@ -196,7 +204,7 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"updated_at BIGINT NOT NULL",
 		},
 		"_identity_auth_refresh_tokens": {
-			"id " + text + " PRIMARY KEY",
+			"id " + types.AutoIncrementBigInt,
 			"workspace_id " + text + " NOT NULL",
 			"user_id " + text + " NOT NULL",
 			"session_id " + text + " NOT NULL",
@@ -207,14 +215,15 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"token_hash " + identityIndexText + " NOT NULL",
 			"expires_at BIGINT NOT NULL",
 			"revoked_at BIGINT NOT NULL DEFAULT 0",
-			"replaced_by_id " + text,
+			"replaced_by_hash " + identityIndexText,
 			"last_used_at BIGINT NOT NULL DEFAULT 0",
 			"created_at BIGINT NOT NULL",
 			"updated_at BIGINT NOT NULL",
 		},
 		"_identity_auth_provider_credentials": {
+			"id " + types.AutoIncrementBigInt,
 			"workspace_id " + text + " NOT NULL",
-			"provider_key " + text + " PRIMARY KEY",
+			"provider_key " + text + " NOT NULL",
 			"configuration_json TEXT NOT NULL",
 			"secret_envelope TEXT NOT NULL",
 			"updated_by " + text + " NOT NULL",
@@ -222,7 +231,8 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"updated_at BIGINT NOT NULL",
 		},
 		"_identity_auth_login_transactions": {
-			"state_hash " + text + " PRIMARY KEY",
+			"id " + types.AutoIncrementBigInt,
+			"state_hash " + text + " NOT NULL",
 			"workspace_id " + text + " NOT NULL",
 			"provider_key " + text + " NOT NULL",
 			"subject_key_hash " + text,
@@ -238,7 +248,8 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"updated_at BIGINT NOT NULL",
 		},
 		"_identity_auth_otp_delivery_limits": {
-			"subject_key_hash " + text + " PRIMARY KEY",
+			"id " + types.AutoIncrementBigInt,
+			"subject_key_hash " + text + " NOT NULL",
 			"workspace_id " + text + " NOT NULL",
 			"provider_key " + text + " NOT NULL",
 			"next_allowed_at BIGINT NOT NULL",
@@ -246,14 +257,16 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"updated_at BIGINT NOT NULL",
 		},
 		"_identity_auth_assertion_replays": {
-			"replay_hash " + text + " PRIMARY KEY",
+			"id " + types.AutoIncrementBigInt,
+			"replay_hash " + text + " NOT NULL",
 			"workspace_id " + text + " NOT NULL",
 			"provider_key " + text + " NOT NULL",
 			"expires_at BIGINT NOT NULL",
 			"created_at BIGINT NOT NULL",
 		},
 		"_identity_auth_authorization_codes": {
-			"code_hash " + text + " PRIMARY KEY",
+			"id " + types.AutoIncrementBigInt,
+			"code_hash " + text + " NOT NULL",
 			"workspace_id " + text + " NOT NULL",
 			"application_key " + text + " NOT NULL",
 			"session_json TEXT NOT NULL",
@@ -263,7 +276,8 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"created_at BIGINT NOT NULL",
 		},
 		"_identity_external_accounts": {
-			"id " + text + " PRIMARY KEY",
+			"id " + types.AutoIncrementBigInt,
+			"external_account_id " + text + " NOT NULL",
 			"workspace_id " + text + " NOT NULL",
 			"user_id " + text + " NOT NULL",
 			"provider " + text + " NOT NULL",
@@ -278,7 +292,8 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"updated_at BIGINT NOT NULL",
 		},
 		"_identity_mfa_factors": {
-			"id " + text + " PRIMARY KEY",
+			"id " + types.AutoIncrementBigInt,
+			"mfa_factor_id " + text + " NOT NULL",
 			"workspace_id " + text + " NOT NULL",
 			"user_id " + text + " NOT NULL",
 			"factor_type " + text + " NOT NULL",
@@ -296,7 +311,7 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"updated_at BIGINT NOT NULL",
 		},
 		"_identity_profile_bindings": {
-			"id " + identityIndexText + " PRIMARY KEY",
+			"id " + types.AutoIncrementBigInt,
 			"workspace_id " + identityIndexText + " NOT NULL",
 			"binding_key " + identityIndexText + " NOT NULL",
 			"object_key " + identityIndexText + " NOT NULL",
@@ -311,9 +326,10 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 		},
 	}
 	// These final-schema tables use engine-provided physical types that
-	// domainry-orm cannot yet express as a custom ColumnType.
+	// domainry-orm cannot yet express as a custom ColumnType. Every definition
+	// carries its own dialect-specific auto-increment id primary key.
 	for _, table := range sortedSchemaTables(tables) {
-		if _, err := s.SchemaDB().ExecContext(ctx, "CREATE TABLE IF NOT EXISTS "+s.TableIdentifier(table)+" ("+workspaceScopedColumnDefinitions(s, tables[table])+")"); err != nil {
+		if _, err := s.SchemaDB().ExecContext(ctx, "CREATE TABLE IF NOT EXISTS "+s.TableIdentifier(table)+" ("+tableColumnDefinitions(s, table, tables[table])+")"); err != nil {
 			return fmt.Errorf("create %s: %w", table, err)
 		}
 	}
@@ -331,9 +347,6 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 	}
 	if err := s.CreateIndexIfMissing(ctx, "_identity_user_role_assignments", "idx_identity_user_roles_workspace_active_usage", false, "workspace_id", "status", "user_id"); err != nil {
 		return fmt.Errorf("create active human Identity Workspace role usage assignment index: %w", err)
-	}
-	if err := s.CreateIndexIfMissing(ctx, "_identity_workflow_workload_bindings", "uniq_identity_workflow_workload", true, "workspace_id", "application_key", "workflow_key"); err != nil {
-		return fmt.Errorf("create Identity workflow workload uniqueness index: %w", err)
 	}
 	if err := s.CreateIndexIfMissing(ctx, "_identity_workflow_workload_bindings", "idx_identity_workflow_workload_release", false, "workspace_id", "application_key", "release_digest", "status"); err != nil {
 		return fmt.Errorf("create Identity workflow workload release index: %w", err)
@@ -358,7 +371,7 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 		{table: "_identity_role_menu_assignments", name: "idx_identity_role_menus_menu", columns: []string{"workspace_id", "menu_id"}},
 		{table: "_identity_auth_refresh_tokens", name: "idx_auth_refresh_tokens_hash", columns: []string{"token_hash", "workspace_id"}},
 		{table: "_identity_auth_refresh_tokens", name: "idx_auth_refresh_tokens_user", columns: []string{"workspace_id", "user_id"}},
-		{table: "_identity_auth_refresh_tokens", name: "idx_auth_refresh_tokens_replaced_by", columns: []string{"workspace_id", "replaced_by_id"}},
+		{table: "_identity_auth_refresh_tokens", name: "idx_auth_refresh_tokens_replaced_by", columns: []string{"workspace_id", "replaced_by_hash"}},
 		{table: "_identity_auth_login_transactions", name: "idx_auth_login_transactions_state", columns: []string{"state_hash", "provider_key", "workspace_id"}},
 		{table: "_identity_auth_login_transactions", name: "idx_auth_login_transactions_subject", columns: []string{"workspace_id", "provider_key", "subject_key_hash", "challenge_status"}},
 		{table: "_identity_auth_assertion_replays", name: "idx_auth_assertion_replays_expiry", columns: []string{"workspace_id", "expires_at"}},
@@ -376,6 +389,26 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 		columns []string
 	}{
 		{table: "_identity_organization_units", name: "uniq_identity_organization_unit_code", columns: []string{"workspace_id", "code"}},
+		{table: "_identity_organization_units", name: "uniq_identity_organization_unit_id", columns: []string{"organization_unit_id"}},
+		{table: "_identity_users", name: "uniq_identity_user_id", columns: []string{"user_id"}},
+		{table: "_identity_roles", name: "uniq_identity_role_id", columns: []string{"role_id"}},
+		{table: "_identity_role_requests", name: "uniq_identity_role_request_id", columns: []string{"role_request_id"}},
+		{table: "_identity_access_reviews", name: "uniq_identity_access_review_id", columns: []string{"review_id"}},
+		{table: "_identity_access_review_items", name: "uniq_identity_access_review_item_id", columns: []string{"review_item_id"}},
+		{table: "_identity_menus", name: "uniq_identity_menu_id", columns: []string{"menu_id"}},
+		{table: "_identity_external_accounts", name: "uniq_identity_external_account_id", columns: []string{"external_account_id"}},
+		{table: "_identity_mfa_factors", name: "uniq_identity_mfa_factor_id", columns: []string{"mfa_factor_id"}},
+		{table: "_identity_mfa_factors", name: "uniq_identity_mfa_user_provider", columns: []string{"workspace_id", "user_id", "factor_type", "provider"}},
+		{table: "_identity_user_role_assignments", name: "uniq_identity_user_role_assignment", columns: []string{"workspace_id", "user_id", "role_id"}},
+		{table: "_identity_workflow_workload_bindings", name: "uniq_identity_workflow_workload", columns: []string{"workspace_id", "application_key", "workflow_key"}},
+		{table: "_identity_role_menu_assignments", name: "uniq_identity_role_menu_assignment", columns: []string{"workspace_id", "role_id", "menu_id"}},
+		{table: "_identity_credentials", name: "uniq_identity_credential_user", columns: []string{"workspace_id", "user_id"}},
+		{table: "_identity_auth_refresh_tokens", name: "uniq_identity_auth_refresh_token", columns: []string{"workspace_id", "token_hash"}},
+		{table: "_identity_auth_provider_credentials", name: "uniq_identity_auth_provider_credential", columns: []string{"workspace_id", "provider_key"}},
+		{table: "_identity_auth_login_transactions", name: "uniq_identity_auth_login_transaction", columns: []string{"workspace_id", "state_hash"}},
+		{table: "_identity_auth_otp_delivery_limits", name: "uniq_identity_auth_otp_delivery_limit", columns: []string{"workspace_id", "subject_key_hash"}},
+		{table: "_identity_auth_assertion_replays", name: "uniq_identity_auth_assertion_replay", columns: []string{"workspace_id", "replay_hash"}},
+		{table: "_identity_auth_authorization_codes", name: "uniq_identity_auth_authorization_code", columns: []string{"workspace_id", "code_hash"}},
 		{table: "_identity_organization_units", name: "uniq_identity_organization_unit_sibling_name", columns: []string{"workspace_id", "sibling_key"}},
 		{table: "_identity_profile_bindings", name: "uniq_identity_profile_binding_profile", columns: []string{"workspace_id", "object_key", "profile_id"}},
 		{table: "_identity_profile_bindings", name: "uniq_identity_profile_binding_user", columns: []string{"workspace_id", "binding_key", "identity_user_id"}},

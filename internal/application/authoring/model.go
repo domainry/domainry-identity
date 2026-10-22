@@ -11,7 +11,7 @@ import (
 // mutation. The business mutation stays in its owning Identity application;
 // this value only records concurrency and replay facts.
 type Receipt struct {
-	ID                 string
+	OperationID        string
 	WorkspaceID        string
 	UseCase            string
 	ResourceType       string
@@ -34,7 +34,7 @@ type Claim struct {
 }
 
 type Completion struct {
-	ReceiptID    string
+	OperationID  string
 	WorkspaceID  string
 	LeaseOwner   string
 	FencingToken int64

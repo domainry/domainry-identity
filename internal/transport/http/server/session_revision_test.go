@@ -70,7 +70,7 @@ func TestSessionRevisionThroughEmbeddedAndRemoteBindings(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := repo.UpsertIdentityOrganizationUnit(t.Context(), cfg.IdentityWorkspaceID, identitymodel.IdentityOrganizationUnit{ID: "moved-department", Code: "moved", Name: "Moved department", NodeType: identitymodel.IdentityOrganizationUnitDepartment, Status: identitymodel.IdentityStatusActive}); err != nil {
+			if err := repo.UpsertIdentityOrganizationUnit(t.Context(), cfg.IdentityWorkspaceID, identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "moved-department", Code: "moved", Name: "Moved department", NodeType: identitymodel.IdentityOrganizationUnitDepartment, Status: identitymodel.IdentityStatusActive}); err != nil {
 				t.Fatal(err)
 			}
 			user, found, err := repo.GetIdentityUser(t.Context(), cfg.IdentityWorkspaceID, before.UserID)

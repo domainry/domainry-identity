@@ -13,7 +13,7 @@ func (h *IdentityHandler) validateIdentityUserAuthoring(w http.ResponseWriter, r
 	if !h.decodeJSON(w, r, &user) {
 		return
 	}
-	user.ID = valueOrDefault(strings.TrimSpace(r.PathValue("userID")), user.ID)
+	user.UserID = valueOrDefault(strings.TrimSpace(r.PathValue("userID")), user.UserID)
 	if err := h.governance.ValidateUser(r.Context(), user, h.principal(r)); err != nil {
 		h.writeServiceError(w, r, err)
 		return
@@ -26,7 +26,7 @@ func (h *IdentityHandler) validateIdentityOrganizationUnitAuthoring(w http.Respo
 	if !h.decodeJSON(w, r, &organizationUnit) {
 		return
 	}
-	organizationUnit.ID = valueOrDefault(strings.TrimSpace(r.PathValue("organizationUnitID")), organizationUnit.ID)
+	organizationUnit.OrganizationUnitID = valueOrDefault(strings.TrimSpace(r.PathValue("organizationUnitID")), organizationUnit.OrganizationUnitID)
 	if err := h.governance.ValidateOrganizationUnit(r.Context(), organizationUnit, h.principal(r)); err != nil {
 		h.writeServiceError(w, r, err)
 		return
@@ -63,7 +63,7 @@ func (h *IdentityHandler) validateIdentityRoleAuthoring(w http.ResponseWriter, r
 	if !h.decodeJSON(w, r, &role) {
 		return
 	}
-	role.ID = valueOrDefault(strings.TrimSpace(r.PathValue("roleID")), role.ID)
+	role.RoleID = valueOrDefault(strings.TrimSpace(r.PathValue("roleID")), role.RoleID)
 	if err := h.governance.ValidateRole(r.Context(), role, h.principal(r)); err != nil {
 		h.writeServiceError(w, r, err)
 		return
@@ -122,7 +122,7 @@ func (h *IdentityHandler) validateIdentityMenuAuthoring(w http.ResponseWriter, r
 	if !h.decodeJSON(w, r, &menu) {
 		return
 	}
-	menu.ID = valueOrDefault(strings.TrimSpace(r.PathValue("menuID")), menu.ID)
+	menu.MenuID = valueOrDefault(strings.TrimSpace(r.PathValue("menuID")), menu.MenuID)
 	if err := h.governance.ValidateMenu(r.Context(), menu, h.principal(r)); err != nil {
 		h.writeServiceError(w, r, err)
 		return

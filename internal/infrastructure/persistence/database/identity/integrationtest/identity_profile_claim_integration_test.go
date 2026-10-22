@@ -23,7 +23,7 @@ type profileClaimSQLRecordReader struct {
 func (r profileClaimSQLRecordReader) GetIdentityProfileBindingRecord(ctx context.Context, workspaceID string, _ definitionmodel.ObjectSchema, profileID string) (map[string]any, bool, error) {
 	var identityUser sql.NullString
 	var email string
-	err := r.db.QueryRowContext(ctx, `SELECT identity_user, email FROM member_profile WHERE workspace_id = ? AND id = ?`, workspaceID, profileID).Scan(&identityUser, &email)
+	err := r.db.QueryRowContext(ctx, `SELECT identity_user, email FROM member_profile WHERE workspace_id = ? AND member_profile_id = ?`, workspaceID, profileID).Scan(&identityUser, &email)
 	if err == sql.ErrNoRows {
 		return nil, false, nil
 	}
@@ -43,11 +43,11 @@ func TestUnboundProfileCanBeClaimedAfterAccountRegistrationWithoutTrustingClient
 		t.Fatal(err)
 	}
 	if _, err := databaseStore.DB().ExecContext(t.Context(), `CREATE TABLE member_profile (
-		workspace_id TEXT NOT NULL, id TEXT PRIMARY KEY, identity_user TEXT, email TEXT NOT NULL, created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL
+		id INTEGER PRIMARY KEY AUTOINCREMENT, workspace_id TEXT NOT NULL, member_profile_id TEXT NOT NULL UNIQUE, identity_user TEXT, email TEXT NOT NULL, created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL
 	)`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := databaseStore.DB().ExecContext(t.Context(), `INSERT INTO member_profile VALUES ('workspace-primary', 'member-1', NULL, 'member@example.com', 0, 0)`); err != nil {
+	if _, err := databaseStore.DB().ExecContext(t.Context(), `INSERT INTO member_profile (workspace_id, member_profile_id, identity_user, email, created_at, updated_at) VALUES ('workspace-primary', 'member-1', NULL, 'member@example.com', 0, 0)`); err != nil {
 		t.Fatal(err)
 	}
 	identityStore, err := identitypersistence.NewSQLIdentityStore(t.Context(), databaseStore.DB(), databaseStore.PersistenceEngine())
@@ -58,8 +58,8 @@ func TestUnboundProfileCanBeClaimedAfterAccountRegistrationWithoutTrustingClient
 	bindSharedOperations(t, identityStore)
 	ctx := requestcontext.WithWorkspaceID(t.Context(), "workspace-primary")
 	for _, user := range []identitymodel.IdentityUser{
-		{ID: "registered-user", Email: "member@example.com", Status: identitymodel.IdentityStatusActive},
-		{ID: "competing-user", Email: "competitor@example.com", Status: identitymodel.IdentityStatusActive},
+		{UserID: "registered-user", Email: "member@example.com", Status: identitymodel.IdentityStatusActive},
+		{UserID: "competing-user", Email: "competitor@example.com", Status: identitymodel.IdentityStatusActive},
 	} {
 		if err := identityStore.UpsertIdentityUser(ctx, "workspace-primary", user); err != nil {
 			t.Fatal(err)

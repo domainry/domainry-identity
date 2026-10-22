@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/domainry/domainry-foundation/apperror"
+	"github.com/domainry/domainry-foundation/entityid"
 	"github.com/domainry/domainry-foundation/requestcontext"
 	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
@@ -47,12 +48,15 @@ func (s *IdentityAccessReviewApplicationService) CreateReview(ctx context.Contex
 	if err != nil {
 		return identitymodel.IdentityAccessReview{}, err
 	}
-	request.ID = strings.TrimSpace(request.ID)
 	periodStart, startErr := time.Parse(time.RFC3339, strings.TrimSpace(request.PeriodStart))
 	periodEnd, endErr := time.Parse(time.RFC3339, strings.TrimSpace(request.PeriodEnd))
 	dueAt, dueErr := time.Parse(time.RFC3339, strings.TrimSpace(request.DueAt))
-	if request.ID == "" || startErr != nil || endErr != nil || dueErr != nil || !periodStart.Before(periodEnd) || dueAt.Before(periodEnd) {
+	if startErr != nil || endErr != nil || dueErr != nil || !periodStart.Before(periodEnd) || dueAt.Before(periodEnd) {
 		return identitymodel.IdentityAccessReview{}, apperror.New(apperror.KindBadRequest, "backend.identity.access_review_period_invalid", nil, nil)
+	}
+	reviewID, err := entityid.New("review")
+	if err != nil {
+		return identitymodel.IdentityAccessReview{}, err
 	}
 	roles, err := scoped.ListRoles(workspaceContext)
 	if err != nil {
@@ -66,9 +70,9 @@ func (s *IdentityAccessReviewApplicationService) CreateReview(ctx context.Contex
 	roleByID := make(map[string]identitymodel.IdentityRole, len(roles))
 	definitionByID := make(map[string]identitymodel.RoleSchema, len(roles))
 	for _, role := range roles {
-		roleByID[role.ID] = role
+		roleByID[role.RoleID] = role
 		if definition, found := scoped.PublishedRoleDefinition(workspaceContext, role.Key); found {
-			definitionByID[role.ID] = definition
+			definitionByID[role.RoleID] = definition
 		}
 	}
 	items := make([]identitymodel.IdentityAccessReviewItem, 0, len(assignments))
@@ -94,9 +98,13 @@ func (s *IdentityAccessReviewApplicationService) CreateReview(ctx context.Contex
 			}
 		}
 		priority, priorityReasons := identityAccessReviewPriority(assignment, risk, lastUsedAt, lastUsedFound, now)
+		reviewItemID, idErr := entityid.New("revitem")
+		if idErr != nil {
+			return identitymodel.IdentityAccessReview{}, idErr
+		}
 		item := identitymodel.IdentityAccessReviewItem{
-			ID:       identityAccessReviewStableID("access-review-item", request.ID, assignment.UserID, assignment.RoleID),
-			ReviewID: request.ID, UserID: assignment.UserID, RoleID: assignment.RoleID, RoleKey: role.Key,
+			ReviewItemID: reviewItemID,
+			ReviewID:     reviewID, UserID: assignment.UserID, RoleID: assignment.RoleID, RoleKey: role.Key,
 			BindingKey: assignment.BindingKey, ProfileID: assignment.ProfileID,
 			RiskLevel: risk, Priority: priority, PriorityReasons: priorityReasons, LastUsedAt: lastUsedAt,
 			PermissionStates: identityAccessReviewPermissionStates(definition, scoped.PermissionDefinitions()),
@@ -112,21 +120,21 @@ func (s *IdentityAccessReviewApplicationService) CreateReview(ctx context.Contex
 		if leftRank != rightRank {
 			return leftRank < rightRank
 		}
-		return items[left].ID < items[right].ID
+		return items[left].ReviewItemID < items[right].ReviewItemID
 	})
 	review := identitymodel.IdentityAccessReview{
-		ID: request.ID, WorkspaceID: actor.WorkspaceID,
+		ReviewID: reviewID, WorkspaceID: actor.WorkspaceID,
 		PeriodStart: periodStart.UTC().Format(time.RFC3339), PeriodEnd: periodEnd.UTC().Format(time.RFC3339), DueAt: dueAt.UTC().Format(time.RFC3339),
 		Status: identitymodel.IdentityAccessReviewOpen, CreatedBy: actor.UserID, CreatedAt: now.Format(time.RFC3339), UpdatedAt: now.Format(time.RFC3339), Items: items,
 	}
-	created, err := repository.CreateIdentityAccessReviewWithinDataScope(workspaceContext, review, identitycontract.IdentityPermissionDataScopeFilter(actor, identitycontract.IdentityAccessReviewsCreatePermission))
+	review, created, err := repository.CreateIdentityAccessReviewWithinDataScope(workspaceContext, review, identitycontract.IdentityPermissionDataScopeFilter(actor, identitycontract.IdentityAccessReviewsCreatePermission))
 	if err != nil {
 		return identitymodel.IdentityAccessReview{}, err
 	}
 	if !created {
 		return identitymodel.IdentityAccessReview{}, apperror.New(apperror.KindForbidden, "backend.identity.data_scope_denied", nil, nil)
 	}
-	s.audit(workspaceContext, "identity_access_review_created", review.ID, actor, map[string]any{"item_count": len(items), "period_start": periodStart.UTC().UnixMilli(), "period_end": periodEnd.UTC().UnixMilli(), "due_at": dueAt.UTC().UnixMilli()})
+	s.audit(workspaceContext, "identity_access_review_created", review.ReviewID, actor, map[string]any{"item_count": len(items), "period_start": periodStart.UTC().UnixMilli(), "period_end": periodEnd.UTC().UnixMilli(), "due_at": dueAt.UTC().UnixMilli()})
 	return review, nil
 }
 
@@ -283,10 +291,10 @@ func (s *IdentityAccessReviewApplicationService) validateReducedRole(ctx context
 		if !found {
 			continue
 		}
-		if role.ID == item.RoleID {
+		if role.RoleID == item.RoleID {
 			currentDefinition = definition
 		}
-		if role.ID == request.ReplacementRoleID {
+		if role.RoleID == request.ReplacementRoleID {
 			replacementDefinition = definition
 		}
 	}

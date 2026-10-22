@@ -12,8 +12,8 @@ import (
 
 func TestIdentityRoleSnapshotPropagatesCurrentResolutionFailureAndKeepsRoleIsolation(t *testing.T) {
 	base := &identityScopedRepository{
-		users:       []identitymodel.IdentityUser{{ID: "target", Status: identitymodel.IdentityStatusActive}},
-		roles:       []identitymodel.IdentityRole{{ID: "reader-id", Key: "reader", Status: identitymodel.IdentityStatusActive}, {ID: "writer-id", Key: "writer", Status: identitymodel.IdentityStatusActive}},
+		users:       []identitymodel.IdentityUser{{UserID: "target", Status: identitymodel.IdentityStatusActive}},
+		roles:       []identitymodel.IdentityRole{{RoleID: "reader-id", Key: "reader", Status: identitymodel.IdentityStatusActive}, {RoleID: "writer-id", Key: "writer", Status: identitymodel.IdentityStatusActive}},
 		assignments: []identitymodel.IdentityUserRoleAssignment{{UserID: "target", RoleID: "reader-id", Source: "manual", Status: "active"}, {UserID: "target", RoleID: "writer-id", Source: "manual", Status: "active"}},
 	}
 	repository := &effectiveAccessFaultRepository{identityScopedRepository: base}
@@ -127,12 +127,12 @@ func (r *effectiveAccessFaultRepository) ListIdentityRoleMenuAssignments(ctx con
 
 func TestIdentityEffectiveAccessSnapshotAndExplainPublishStableGrantSources(t *testing.T) {
 	repository := &identityScopedRepository{
-		users: []identitymodel.IdentityUser{{ID: "target", Status: identitymodel.IdentityStatusActive}},
-		roles: []identitymodel.IdentityRole{{ID: "operator-id", Key: "operator", Label: "Operator", Status: identitymodel.IdentityStatusActive}},
+		users: []identitymodel.IdentityUser{{UserID: "target", Status: identitymodel.IdentityStatusActive}},
+		roles: []identitymodel.IdentityRole{{RoleID: "operator-id", Key: "operator", Label: "Operator", Status: identitymodel.IdentityStatusActive}},
 		assignments: []identitymodel.IdentityUserRoleAssignment{{
 			UserID: "target", RoleID: "operator-id", Source: "manual", ValidFrom: "2026-07-01T00:00:00Z",
 		}},
-		menus:     []identitymodel.IdentityMenu{{ID: "orders", Key: "orders", Status: identitymodel.IdentityStatusActive}},
+		menus:     []identitymodel.IdentityMenu{{MenuID: "orders", Key: "orders", Status: identitymodel.IdentityStatusActive}},
 		roleMenus: []identitymodel.IdentityRoleMenuAssignment{{RoleID: "operator-id", MenuID: "orders"}},
 	}
 	identity := NewIdentityApplicationService(repository, executableIdentityPermissionDefinitions("order.read"))
@@ -180,8 +180,8 @@ func TestIdentityEffectiveAccessSnapshotAndExplainPublishStableGrantSources(t *t
 
 func TestIdentityEffectiveAccessExplainResolvesNamespacedPermissionAndGrantSource(t *testing.T) {
 	repository := &identityScopedRepository{
-		users:       []identitymodel.IdentityUser{{ID: "target", Status: identitymodel.IdentityStatusActive}},
-		roles:       []identitymodel.IdentityRole{{ID: "operator-id", Key: "operator", Status: identitymodel.IdentityStatusActive}},
+		users:       []identitymodel.IdentityUser{{UserID: "target", Status: identitymodel.IdentityStatusActive}},
+		roles:       []identitymodel.IdentityRole{{RoleID: "operator-id", Key: "operator", Status: identitymodel.IdentityStatusActive}},
 		assignments: []identitymodel.IdentityUserRoleAssignment{{UserID: "target", RoleID: "operator-id", Source: "manual"}},
 	}
 	identity := NewIdentityApplicationService(repository, executableIdentityPermissionDefinitions("order.read"))
@@ -214,10 +214,10 @@ func TestIdentityEffectiveAccessRejectsCrossUserReaderWithoutGovernancePermissio
 
 func TestIdentityEffectiveAccessGovernanceSurfacesAndPreview(t *testing.T) {
 	base := &identityScopedRepository{
-		users: []identitymodel.IdentityUser{{ID: "target", Status: identitymodel.IdentityStatusActive}},
+		users: []identitymodel.IdentityUser{{UserID: "target", Status: identitymodel.IdentityStatusActive}},
 		roles: []identitymodel.IdentityRole{
-			{ID: "role-id", Key: "operator", Status: identitymodel.IdentityStatusActive},
-			{ID: "role-by-id", Key: "reader", Status: identitymodel.IdentityStatusActive},
+			{RoleID: "role-id", Key: "operator", Status: identitymodel.IdentityStatusActive},
+			{RoleID: "role-by-id", Key: "reader", Status: identitymodel.IdentityStatusActive},
 		},
 		assignments: []identitymodel.IdentityUserRoleAssignment{{UserID: "target", RoleID: "role-id", Source: "manual", Status: "active"}},
 	}
@@ -316,10 +316,10 @@ func TestIdentityEffectiveAccessGovernanceSurfacesAndPreview(t *testing.T) {
 func TestIdentityEffectiveAccessPropagatesRepositoryFailures(t *testing.T) {
 	expected := errors.New("injected")
 	base := &identityScopedRepository{
-		users:       []identitymodel.IdentityUser{{ID: "target", Status: identitymodel.IdentityStatusActive}},
-		roles:       []identitymodel.IdentityRole{{ID: "role", Key: "operator", Status: identitymodel.IdentityStatusActive}},
+		users:       []identitymodel.IdentityUser{{UserID: "target", Status: identitymodel.IdentityStatusActive}},
+		roles:       []identitymodel.IdentityRole{{RoleID: "role", Key: "operator", Status: identitymodel.IdentityStatusActive}},
 		assignments: []identitymodel.IdentityUserRoleAssignment{{UserID: "target", RoleID: "role", Status: "active"}},
-		menus:       []identitymodel.IdentityMenu{{ID: "menu", Key: "menu", Status: identitymodel.IdentityStatusActive}},
+		menus:       []identitymodel.IdentityMenu{{MenuID: "menu", Key: "menu", Status: identitymodel.IdentityStatusActive}},
 	}
 	repository := &effectiveAccessFaultRepository{identityScopedRepository: base, err: expected}
 	identity := NewIdentityApplicationService(repository, executableIdentityPermissionDefinitions("order.read"))

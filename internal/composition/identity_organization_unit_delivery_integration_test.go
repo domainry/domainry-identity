@@ -72,6 +72,9 @@ func TestOrganizationUnitDeliveryCreatesRealDepartmentWithAtomicScopedReplay(t *
 		return core, store
 	}
 	core, store := open()
+	companyAID := identityOrganizationUnitIDByCode(t, store.DB(), cfg.IdentityWorkspaceID, "COMPANY-A")
+	companyBID := identityOrganizationUnitIDByCode(t, store.DB(), cfg.IdentityWorkspaceID, "COMPANY-B")
+	companyDisabledID := identityOrganizationUnitIDByCode(t, store.DB(), cfg.IdentityWorkspaceID, "COMPANY-DISABLED")
 	application := identitysdk.ApplicationRef{WorkspaceID: identitysdk.WorkspaceID(cfg.IdentityWorkspaceID), ApplicationKey: identitysdk.ApplicationKey(cfg.AuthAudience)}
 	if _, err := core.Binding.Applications().Register(t.Context(), identitysdk.ApplicationRegistration{Application: application}); err != nil {
 		t.Fatal(err)
@@ -92,15 +95,15 @@ func TestOrganizationUnitDeliveryCreatesRealDepartmentWithAtomicScopedReplay(t *
 		ContractVersion: organizationunit.DeliveryContractVersionV1, AccessToken: operator.AccessToken, IdempotencyKey: "department-sales-create-1",
 		Organization: organizationunit.CreateCandidate{
 			OrganizationID: "department-sales", Code: "DEPARTMENT-SALES", Name: "Sales", NodeType: organizationunit.NodeTypeDepartment,
-			ParentOrganizationID: "company-a", SortOrder: 10, ExpectedVersion: 0,
+			ParentOrganizationID: companyAID, SortOrder: 10, ExpectedVersion: 0,
 		},
 	}
 	created, err := delivery.CreateOrganizationUnit(t.Context(), create)
-	if err != nil || created.Replayed || created.Organization.Version != 1 || created.Organization.NodeType != organizationunit.NodeTypeDepartment || created.Organization.Path != "/company-a/department-sales" || created.Organization.ParentOrganizationID != "company-a" {
+	if err != nil || created.Replayed || created.Organization.Version != 1 || created.Organization.NodeType != organizationunit.NodeTypeDepartment || created.Organization.Path != "/"+companyAID+"/department-sales" || created.Organization.ParentOrganizationID != companyAID {
 		t.Fatalf("created=%+v err=%v", created, err)
 	}
 	persisted, found, err := core.Identity.FindOrganizationUnit(requestcontext.WithWorkspaceID(t.Context(), cfg.IdentityWorkspaceID), "department-sales")
-	if err != nil || !found || persisted.NodeType != identitymodel.IdentityOrganizationUnitDepartment || persisted.ParentID == nil || *persisted.ParentID != "company-a" {
+	if err != nil || !found || persisted.NodeType != identitymodel.IdentityOrganizationUnitDepartment || persisted.ParentID == nil || *persisted.ParentID != companyAID {
 		t.Fatalf("persisted department=%+v found=%v err=%v", persisted, found, err)
 	}
 	replayed, err := delivery.CreateOrganizationUnit(t.Context(), create)
@@ -121,7 +124,7 @@ func TestOrganizationUnitDeliveryCreatesRealDepartmentWithAtomicScopedReplay(t *
 	concurrentReplayRequest.IdempotencyKey = "department-concurrent-replay"
 	concurrentReplayRequest.Organization = organizationunit.CreateCandidate{
 		OrganizationID: "department-concurrent", Code: "DEPARTMENT-CONCURRENT", Name: "Concurrent", NodeType: organizationunit.NodeTypeDepartment,
-		ParentOrganizationID: "company-a",
+		ParentOrganizationID: companyAID,
 	}
 	var concurrentResults [2]organizationunit.DeliveryResult
 	var concurrentErrors [2]error
@@ -143,9 +146,9 @@ func TestOrganizationUnitDeliveryCreatesRealDepartmentWithAtomicScopedReplay(t *
 
 	concurrentSiblingRequests := [2]organizationunit.DeliveryRequest{create, create}
 	concurrentSiblingRequests[0].IdempotencyKey = "department-sibling-a"
-	concurrentSiblingRequests[0].Organization = organizationunit.CreateCandidate{OrganizationID: "department-sibling-a", Code: "DEPARTMENT-SIBLING-A", Name: "Concurrent sibling", NodeType: organizationunit.NodeTypeDepartment, ParentOrganizationID: "company-a"}
+	concurrentSiblingRequests[0].Organization = organizationunit.CreateCandidate{OrganizationID: "department-sibling-a", Code: "DEPARTMENT-SIBLING-A", Name: "Concurrent sibling", NodeType: organizationunit.NodeTypeDepartment, ParentOrganizationID: companyAID}
 	concurrentSiblingRequests[1].IdempotencyKey = "department-sibling-b"
-	concurrentSiblingRequests[1].Organization = organizationunit.CreateCandidate{OrganizationID: "department-sibling-b", Code: "DEPARTMENT-SIBLING-B", Name: "concurrent SIBLING", NodeType: organizationunit.NodeTypeDepartment, ParentOrganizationID: "company-a"}
+	concurrentSiblingRequests[1].Organization = organizationunit.CreateCandidate{OrganizationID: "department-sibling-b", Code: "DEPARTMENT-SIBLING-B", Name: "concurrent SIBLING", NodeType: organizationunit.NodeTypeDepartment, ParentOrganizationID: companyAID}
 	var siblingResults [2]organizationunit.DeliveryResult
 	var siblingErrors [2]error
 	start = make(chan struct{})
@@ -161,7 +164,7 @@ func TestOrganizationUnitDeliveryCreatesRealDepartmentWithAtomicScopedReplay(t *
 	wait.Wait()
 	siblingSuccesses, siblingConflicts := 0, 0
 	for index, err := range siblingErrors {
-		if err == nil && siblingResults[index].Organization.ID != "" {
+		if err == nil && siblingResults[index].Organization.OrganizationUnitID != "" {
 			siblingSuccesses++
 			continue
 		}
@@ -177,7 +180,7 @@ func TestOrganizationUnitDeliveryCreatesRealDepartmentWithAtomicScopedReplay(t *
 		ContractVersion: organizationunit.DeliveryContractVersionV1, AccessToken: scoped.AccessToken,
 		OrganizationID: "department-sales", NodeType: organizationunit.NodeTypeDepartment,
 	})
-	if err != nil || resolved.ParentOrganizationID != "company-a" || resolved.Path != created.Organization.Path {
+	if err != nil || resolved.ParentOrganizationID != companyAID || resolved.Path != created.Organization.Path {
 		t.Fatalf("resolved=%+v err=%v", resolved, err)
 	}
 	if _, err := delivery.ResolveOrganizationUnit(t.Context(), organizationunit.ResolveRequest{
@@ -189,7 +192,7 @@ func TestOrganizationUnitDeliveryCreatesRealDepartmentWithAtomicScopedReplay(t *
 
 	scopedCreate := create
 	scopedCreate.AccessToken, scopedCreate.IdempotencyKey = scoped.AccessToken, "department-support-create-1"
-	scopedCreate.Organization = organizationunit.CreateCandidate{OrganizationID: "department-support", Code: "DEPARTMENT-SUPPORT", Name: "Support", NodeType: organizationunit.NodeTypeDepartment, ParentOrganizationID: "company-a"}
+	scopedCreate.Organization = organizationunit.CreateCandidate{OrganizationID: "department-support", Code: "DEPARTMENT-SUPPORT", Name: "Support", NodeType: organizationunit.NodeTypeDepartment, ParentOrganizationID: companyAID}
 	if _, err := delivery.CreateOrganizationUnit(t.Context(), scopedCreate); err != nil {
 		t.Fatalf("scoped parent create: %v", err)
 	}
@@ -203,7 +206,7 @@ func TestOrganizationUnitDeliveryCreatesRealDepartmentWithAtomicScopedReplay(t *
 	outOfScope := scopedCreate
 	outOfScope.AccessToken = scoped.AccessToken
 	outOfScope.IdempotencyKey = "department-other-create-1"
-	outOfScope.Organization = organizationunit.CreateCandidate{OrganizationID: "department-other", Code: "DEPARTMENT-OTHER", Name: "Other", NodeType: organizationunit.NodeTypeDepartment, ParentOrganizationID: "company-b"}
+	outOfScope.Organization = organizationunit.CreateCandidate{OrganizationID: "department-other", Code: "DEPARTMENT-OTHER", Name: "Other", NodeType: organizationunit.NodeTypeDepartment, ParentOrganizationID: companyBID}
 	if _, err := delivery.CreateOrganizationUnit(t.Context(), outOfScope); apperror.CodeOf(err) != "backend.identity.organization_unit_scope_denied" {
 		t.Fatalf("out-of-scope parent error=%v", err)
 	}
@@ -211,7 +214,7 @@ func TestOrganizationUnitDeliveryCreatesRealDepartmentWithAtomicScopedReplay(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := parentMutation.ExecContext(t.Context(), `UPDATE _identity_organization_units SET status = ? WHERE workspace_id = ? AND id = ?`, "disabled", cfg.IdentityWorkspaceID, "company-b"); err != nil {
+	if _, err := parentMutation.ExecContext(t.Context(), `UPDATE _identity_organization_units SET status = ? WHERE workspace_id = ? AND organization_unit_id = ?`, "disabled", cfg.IdentityWorkspaceID, companyBID); err != nil {
 		_ = parentMutation.Rollback()
 		t.Fatal(err)
 	}
@@ -228,7 +231,7 @@ func TestOrganizationUnitDeliveryCreatesRealDepartmentWithAtomicScopedReplay(t *
 	parentResult := make(chan lockedParentResult, 1)
 	go func() {
 		parent, found, lockErr := core.IdentityStore.LockIdentityOrganizationUnitDeliveryParent(
-			identitytransaction.WithExecutor(t.Context(), parentReader), cfg.IdentityWorkspaceID, "company-b",
+			identitytransaction.WithExecutor(t.Context(), parentReader), cfg.IdentityWorkspaceID, companyBID,
 		)
 		parentResult <- lockedParentResult{parent: parent, found: found, err: lockErr}
 	}()
@@ -255,31 +258,31 @@ func TestOrganizationUnitDeliveryCreatesRealDepartmentWithAtomicScopedReplay(t *
 	}
 	crudAttempt := create
 	crudAttempt.AccessToken, crudAttempt.IdempotencyKey = crudOnly.AccessToken, "generic-crud-bypass"
-	crudAttempt.Organization = organizationunit.CreateCandidate{OrganizationID: "department-crud-bypass", Code: "DEPARTMENT-CRUD-BYPASS", Name: "CRUD bypass", NodeType: organizationunit.NodeTypeDepartment, ParentOrganizationID: "company-a"}
+	crudAttempt.Organization = organizationunit.CreateCandidate{OrganizationID: "department-crud-bypass", Code: "DEPARTMENT-CRUD-BYPASS", Name: "CRUD bypass", NodeType: organizationunit.NodeTypeDepartment, ParentOrganizationID: companyAID}
 	if _, err := delivery.CreateOrganizationUnit(t.Context(), crudAttempt); apperror.CodeOf(err) != "backend.identity.organization_unit_scope_denied" {
 		t.Fatalf("generic CRUD permission reached delivery: %v", err)
 	}
 	invalidRoot := create
 	invalidRoot.IdempotencyKey = "company-child-invalid"
-	invalidRoot.Organization = organizationunit.CreateCandidate{OrganizationID: "company-child", Code: "COMPANY-CHILD", Name: "Company child", NodeType: organizationunit.NodeTypeCompany, ParentOrganizationID: "company-a"}
+	invalidRoot.Organization = organizationunit.CreateCandidate{OrganizationID: "company-child", Code: "COMPANY-CHILD", Name: "Company child", NodeType: organizationunit.NodeTypeCompany, ParentOrganizationID: companyAID}
 	if _, err := delivery.CreateOrganizationUnit(t.Context(), invalidRoot); apperror.CodeOf(err) != "backend.identity.organization_unit_type_invalid" {
 		t.Fatalf("company child error=%v", err)
 	}
 	invalidStore := create
 	invalidStore.IdempotencyKey = "store-child-invalid"
-	invalidStore.Organization = organizationunit.CreateCandidate{OrganizationID: "store-child", Code: "STORE-CHILD", Name: "Store child", NodeType: organizationunit.NodeTypeStore, ParentOrganizationID: "company-a"}
+	invalidStore.Organization = organizationunit.CreateCandidate{OrganizationID: "store-child", Code: "STORE-CHILD", Name: "Store child", NodeType: organizationunit.NodeTypeStore, ParentOrganizationID: companyAID}
 	if _, err := delivery.CreateOrganizationUnit(t.Context(), invalidStore); apperror.CodeOf(err) != "backend.identity.organization_unit_type_invalid" {
 		t.Fatalf("store child error=%v", err)
 	}
 	duplicateID := create
 	duplicateID.IdempotencyKey = "department-id-conflict"
-	duplicateID.Organization = organizationunit.CreateCandidate{OrganizationID: "department-sales", Code: "DEPARTMENT-SALES-OTHER", Name: "Sales other", NodeType: organizationunit.NodeTypeDepartment, ParentOrganizationID: "company-a"}
+	duplicateID.Organization = organizationunit.CreateCandidate{OrganizationID: "department-sales", Code: "DEPARTMENT-SALES-OTHER", Name: "Sales other", NodeType: organizationunit.NodeTypeDepartment, ParentOrganizationID: companyAID}
 	if _, err := delivery.CreateOrganizationUnit(t.Context(), duplicateID); apperror.CodeOf(err) != "backend.identity.organization_unit_version_conflict" {
 		t.Fatalf("existing ID version error=%v", err)
 	}
 	inactiveParent := create
 	inactiveParent.IdempotencyKey = "inactive-parent"
-	inactiveParent.Organization = organizationunit.CreateCandidate{OrganizationID: "department-inactive", Code: "DEPARTMENT-INACTIVE", Name: "Inactive", NodeType: organizationunit.NodeTypeDepartment, ParentOrganizationID: "company-disabled"}
+	inactiveParent.Organization = organizationunit.CreateCandidate{OrganizationID: "department-inactive", Code: "DEPARTMENT-INACTIVE", Name: "Inactive", NodeType: organizationunit.NodeTypeDepartment, ParentOrganizationID: companyDisabledID}
 	if _, err := delivery.CreateOrganizationUnit(t.Context(), inactiveParent); apperror.CodeOf(err) != "backend.identity.organization_unit_parent_invalid" {
 		t.Fatalf("inactive parent error=%v", err)
 	}
@@ -296,7 +299,7 @@ func TestOrganizationUnitDeliveryCreatesRealDepartmentWithAtomicScopedReplay(t *
 	}
 	rolledBack := create
 	rolledBack.IdempotencyKey = "department-rollback-create"
-	rolledBack.Organization = organizationunit.CreateCandidate{OrganizationID: "department-rollback", Code: "DEPARTMENT-ROLLBACK", Name: "Rollback", NodeType: organizationunit.NodeTypeDepartment, ParentOrganizationID: "company-a"}
+	rolledBack.Organization = organizationunit.CreateCandidate{OrganizationID: "department-rollback", Code: "DEPARTMENT-ROLLBACK", Name: "Rollback", NodeType: organizationunit.NodeTypeDepartment, ParentOrganizationID: companyAID}
 	if _, err := delivery.CreateOrganizationUnit(identitytransaction.WithExecutor(t.Context(), tx), rolledBack); err != nil {
 		_ = tx.Rollback()
 		t.Fatal(err)
@@ -315,9 +318,9 @@ func TestOrganizationUnitDeliveryCreatesRealDepartmentWithAtomicScopedReplay(t *
 	if err != nil || !restartReplay.Replayed || restartReplay.DeliveryID != created.DeliveryID {
 		t.Fatalf("restart replay=%+v err=%v", restartReplay, err)
 	}
-	parentID := "company-a"
+	parentID := companyAID
 	if err := core.Identity.UpsertOrganizationUnit(requestcontext.WithWorkspaceID(t.Context(), cfg.IdentityWorkspaceID), identitymodel.IdentityOrganizationUnit{
-		ID: "department-sales", Code: "DEPARTMENT-SALES", Name: "Externally changed", NodeType: identitymodel.IdentityOrganizationUnitDepartment,
+		OrganizationUnitID: "department-sales", Code: "DEPARTMENT-SALES", Name: "Externally changed", NodeType: identitymodel.IdentityOrganizationUnitDepartment,
 		ParentID: &parentID, SortOrder: 10, Status: identitymodel.IdentityStatusActive,
 	}); err != nil {
 		t.Fatal(err)
@@ -336,7 +339,7 @@ func assertOrganizationUnitDeliveryRowCounts(t *testing.T, db *sql.DB, workspace
 	checks := []struct {
 		table, column, value string
 	}{
-		{"_identity_organization_units", "id", organizationID},
+		{"_identity_organization_units", "organization_unit_id", organizationID},
 		{"_operations", "idempotency_key", idempotencyKey},
 		{"_audit_events", "record_id", organizationID},
 	}
@@ -349,4 +352,13 @@ func assertOrganizationUnitDeliveryRowCounts(t *testing.T, db *sql.DB, workspace
 			t.Fatalf("%s count=%d want=%d", check.table, count, want)
 		}
 	}
+}
+
+func identityOrganizationUnitIDByCode(t *testing.T, db *sql.DB, workspaceID, code string) string {
+	t.Helper()
+	var organizationUnitID string
+	if err := db.QueryRowContext(t.Context(), `SELECT organization_unit_id FROM _identity_organization_units WHERE workspace_id = ? AND code = ?`, workspaceID, code).Scan(&organizationUnitID); err != nil {
+		t.Fatal(err)
+	}
+	return organizationUnitID
 }

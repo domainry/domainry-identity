@@ -23,7 +23,7 @@ func (r identityProfileSystemRoleResolver) ResolveIdentityProfileSystemRoleIDs(c
 	for _, role := range roles {
 		definition, found := r.identity.PublishedRoleDefinition(ctx, role.Key)
 		if found && role.Status == identitymodel.IdentityStatusActive && definition.AssignmentMode == identitymodel.IdentityRoleAssignmentSystemManaged && strings.TrimSpace(definition.RequiredBindingKey) == strings.TrimSpace(bindingKey) {
-			roleIDs = append(roleIDs, role.ID)
+			roleIDs = append(roleIDs, role.RoleID)
 		}
 	}
 	return roleIDs, nil

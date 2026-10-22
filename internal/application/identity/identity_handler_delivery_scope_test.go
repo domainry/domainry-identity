@@ -69,12 +69,12 @@ func TestHandlerDeliveryPurposePermissionPreservesCanonicalOrganizationScopes(t 
 		desired   identitymodel.IdentityUser
 		want      bool
 	}{
-		{name: "all", principal: principal(identitymodel.IdentityDataScopeAll), current: identitymodel.IdentityUser{ID: "user", OrgID: "other"}, desired: identitymodel.IdentityUser{ID: "user", OrgID: "elsewhere"}, want: true},
-		{name: "org", principal: principal(identitymodel.IdentityDataScopeOrg), current: identitymodel.IdentityUser{ID: "user", OrgID: "hq"}, desired: identitymodel.IdentityUser{ID: "user", OrgID: "hq"}, want: true},
-		{name: "org move denied", principal: principal(identitymodel.IdentityDataScopeOrg), current: identitymodel.IdentityUser{ID: "user", OrgID: "hq"}, desired: identitymodel.IdentityUser{ID: "user", OrgID: "store-a"}},
-		{name: "org child", principal: principal(identitymodel.IdentityDataScopeOrgChild), current: identitymodel.IdentityUser{ID: "user", OrgID: "store-a"}, desired: identitymodel.IdentityUser{ID: "user", OrgID: "store-a"}, want: true},
-		{name: "target org", principal: principal(identitymodel.IdentityDataScopeTargetOrg), current: identitymodel.IdentityUser{ID: "user", OrgID: "customer-a-child"}, desired: identitymodel.IdentityUser{ID: "user", OrgID: "customer-a-child"}, want: true},
-		{name: "target org denied", principal: principal(identitymodel.IdentityDataScopeTargetOrg), current: identitymodel.IdentityUser{ID: "user", OrgID: "other"}, desired: identitymodel.IdentityUser{ID: "user", OrgID: "other"}},
+		{name: "all", principal: principal(identitymodel.IdentityDataScopeAll), current: identitymodel.IdentityUser{UserID: "user", OrgID: "other"}, desired: identitymodel.IdentityUser{UserID: "user", OrgID: "elsewhere"}, want: true},
+		{name: "org", principal: principal(identitymodel.IdentityDataScopeOrg), current: identitymodel.IdentityUser{UserID: "user", OrgID: "hq"}, desired: identitymodel.IdentityUser{UserID: "user", OrgID: "hq"}, want: true},
+		{name: "org move denied", principal: principal(identitymodel.IdentityDataScopeOrg), current: identitymodel.IdentityUser{UserID: "user", OrgID: "hq"}, desired: identitymodel.IdentityUser{UserID: "user", OrgID: "store-a"}},
+		{name: "org child", principal: principal(identitymodel.IdentityDataScopeOrgChild), current: identitymodel.IdentityUser{UserID: "user", OrgID: "store-a"}, desired: identitymodel.IdentityUser{UserID: "user", OrgID: "store-a"}, want: true},
+		{name: "target org", principal: principal(identitymodel.IdentityDataScopeTargetOrg), current: identitymodel.IdentityUser{UserID: "user", OrgID: "customer-a-child"}, desired: identitymodel.IdentityUser{UserID: "user", OrgID: "customer-a-child"}, want: true},
+		{name: "target org denied", principal: principal(identitymodel.IdentityDataScopeTargetOrg), current: identitymodel.IdentityUser{UserID: "user", OrgID: "other"}, desired: identitymodel.IdentityUser{UserID: "user", OrgID: "other"}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

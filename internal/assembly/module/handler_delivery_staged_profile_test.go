@@ -55,7 +55,7 @@ func TestHandlerDeliveryModuleAcceptsRuntimeStagedProfileWithinBoundTransaction(
 	if err := store.EnsureSchema(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.DB().ExecContext(t.Context(), `CREATE TABLE employee_profile (id TEXT NOT NULL, workspace_id TEXT NOT NULL, identity_user_id TEXT, employment_status TEXT, PRIMARY KEY (workspace_id, id))`); err != nil {
+	if _, err := store.DB().ExecContext(t.Context(), `CREATE TABLE employee_profile (id INTEGER PRIMARY KEY AUTOINCREMENT, workspace_id TEXT NOT NULL, employee_profile_id TEXT NOT NULL UNIQUE, identity_user_id TEXT, employment_status TEXT)`); err != nil {
 		t.Fatal(err)
 	}
 	core, err := identitycomposition.NewWithManifest(t.Context(), cfg, store, manifest, testAssemblyOptions(identitycomposition.Options{WorkspaceID: cfg.IdentityWorkspaceID}))
@@ -84,7 +84,7 @@ func TestHandlerDeliveryModuleAcceptsRuntimeStagedProfileWithinBoundTransaction(
 	}
 	request := identitysdk.HandlerDeliveryRequest{
 		ContractVersion: identitysdk.HandlerDeliveryContractVersionV1, AccessToken: session.AccessToken, IdempotencyKey: "employee-create-embedded",
-		User:           identitysdk.HandlerUserMutation{Operation: identitysdk.HandlerUserCreate, LoginMode: identitysdk.HandlerLoginNone, User: identitysdk.User{ID: "employee-1", Name: "Employee One", Email: "employee-1@example.test", AccountType: "human", Status: "active"}},
+		User:           identitysdk.HandlerUserMutation{Operation: identitysdk.HandlerUserCreate, LoginMode: identitysdk.HandlerLoginNone, User: identitysdk.User{UserID: "employee-1", Name: "Employee One", Email: "employee-1@example.test", AccountType: "human", Status: "active"}},
 		RoleKeys:       []string{"employee"},
 		ProfileBinding: &identitysdk.HandlerProfileBindingMutation{BindingKey: "employee_profile", ObjectKey: "employee_profile", ProfileID: "profile-1", EmbeddedProfileRecord: map[string]any{"employment_status": "active"}},
 	}

@@ -100,12 +100,12 @@ func TestHandlerDeliveryIsAtomicIdempotentGovernedAndRestartSafe(t *testing.T) {
 	create := identitysdk.HandlerDeliveryRequest{
 		ContractVersion: identitysdk.HandlerDeliveryContractVersionV1, AccessToken: handlerSession.AccessToken, IdempotencyKey: "employee-create-1",
 		User: identitysdk.HandlerUserMutation{Operation: identitysdk.HandlerUserCreate, LoginMode: identitysdk.HandlerLoginPassword, User: identitysdk.User{
-			ID: "employee-1", Name: "Employee One", Email: "employee-1@example.test", AccountType: "human", Status: "active",
+			UserID: "employee-1", Name: "Employee One", Email: "employee-1@example.test", AccountType: "human", Status: "active",
 		}}, RoleKeys: []string{"employee"},
 	}
 	missingLoginMode := create
 	missingLoginMode.IdempotencyKey, missingLoginMode.User.LoginMode = "missing-login-mode", ""
-	missingLoginMode.User.User.ID, missingLoginMode.User.User.Email = "missing-login-mode", "missing-login-mode@example.test"
+	missingLoginMode.User.User.UserID, missingLoginMode.User.User.Email = "missing-login-mode", "missing-login-mode@example.test"
 	if _, err := handler.DeliverIdentity(t.Context(), missingLoginMode); apperror.CodeOf(err) != "backend.identity.handler_delivery_login_mode_invalid" {
 		t.Fatalf("create accepted missing login mode: %v", err)
 	}
@@ -169,7 +169,7 @@ func TestHandlerDeliveryIsAtomicIdempotentGovernedAndRestartSafe(t *testing.T) {
 	}
 	staffWrite := create
 	staffWrite.AccessToken, staffWrite.IdempotencyKey = staffSession.AccessToken, "staff-write-attempt"
-	staffWrite.User.User.ID, staffWrite.User.User.Email = "staff-write", "staff-write@example.test"
+	staffWrite.User.User.UserID, staffWrite.User.User.Email = "staff-write", "staff-write@example.test"
 	if _, err := handler.DeliverIdentity(t.Context(), staffWrite); apperror.CodeOf(err) != "backend.identity.data_scope_denied" {
 		t.Fatalf("resolve-only staff grant reached HandlerDelivery write: %v", err)
 	}
@@ -179,7 +179,7 @@ func TestHandlerDeliveryIsAtomicIdempotentGovernedAndRestartSafe(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := core.Identity.CreateUserWithinDataScope(requestcontext.WithWorkspaceID(t.Context(), cfg.IdentityWorkspaceID), identitymodel.IdentityUser{
-		ID: "crud-bypass", Name: "CRUD bypass", Email: "crud-bypass@example.test", Status: identitymodel.IdentityStatusActive,
+		UserID: "crud-bypass", Name: "CRUD bypass", Email: "crud-bypass@example.test", Status: identitymodel.IdentityStatusActive,
 	}, narrowPrincipal, identitycontract.IdentityUsersCreatePermission); apperror.CodeOf(err) != "auth.permission_denied" {
 		t.Fatalf("purpose-specific Handler grant reached generic CRUD: %v", err)
 	}
@@ -190,12 +190,12 @@ func TestHandlerDeliveryIsAtomicIdempotentGovernedAndRestartSafe(t *testing.T) {
 		t.Fatal(err)
 	}
 	crudOnly := create
-	crudOnly.AccessToken, crudOnly.IdempotencyKey, crudOnly.User.User.ID, crudOnly.User.User.Email = crudSession.AccessToken, "crud-only-handler-attempt", "crud-only-user", "crud-only@example.test"
+	crudOnly.AccessToken, crudOnly.IdempotencyKey, crudOnly.User.User.UserID, crudOnly.User.User.Email = crudSession.AccessToken, "crud-only-handler-attempt", "crud-only-user", "crud-only@example.test"
 	if _, err := handler.DeliverIdentity(t.Context(), crudOnly); apperror.CodeOf(err) != "backend.identity.data_scope_denied" {
 		t.Fatalf("generic CRUD grant reached HandlerDelivery: %v", err)
 	}
 	ceiling := create
-	ceiling.IdempotencyKey, ceiling.User.User.ID, ceiling.User.User.Email = "role-ceiling-attempt", "role-ceiling-user", "role-ceiling@example.test"
+	ceiling.IdempotencyKey, ceiling.User.User.UserID, ceiling.User.User.Email = "role-ceiling-attempt", "role-ceiling-user", "role-ceiling@example.test"
 	ceiling.RoleKeys = []string{"organization_administrator"}
 	if _, err := handler.DeliverIdentity(t.Context(), ceiling); apperror.CodeOf(err) != "backend.identity.role_grant_ceiling_exceeded" {
 		t.Fatalf("HandlerDelivery bypassed role ceiling: %v", err)
@@ -208,7 +208,7 @@ func TestHandlerDeliveryIsAtomicIdempotentGovernedAndRestartSafe(t *testing.T) {
 
 	noLogin := create
 	noLogin.IdempotencyKey, noLogin.User.LoginMode = "employee-no-login", identitysdk.HandlerLoginNone
-	noLogin.User.User.ID, noLogin.User.User.Email, noLogin.User.User.Name = "employee-no-login", "employee-no-login@example.test", "No Login Employee"
+	noLogin.User.User.UserID, noLogin.User.User.Email, noLogin.User.User.Name = "employee-no-login", "employee-no-login@example.test", "No Login Employee"
 	noLoginResult, err := handler.DeliverIdentity(t.Context(), noLogin)
 	if err != nil || noLoginResult.InitialCredential != nil {
 		t.Fatalf("no-login result=%+v err=%v", noLoginResult, err)
@@ -223,7 +223,7 @@ func TestHandlerDeliveryIsAtomicIdempotentGovernedAndRestartSafe(t *testing.T) {
 	}
 	rolledBack := create
 	rolledBack.IdempotencyKey = "employee-rollback"
-	rolledBack.User.User.ID, rolledBack.User.User.Email, rolledBack.User.User.Name = "employee-rollback", "rollback@example.test", "Rollback"
+	rolledBack.User.User.UserID, rolledBack.User.User.Email, rolledBack.User.User.Name = "employee-rollback", "rollback@example.test", "Rollback"
 	if _, err := handler.DeliverIdentity(identitytransaction.WithExecutor(t.Context(), tx), rolledBack); err != nil {
 		_ = tx.Rollback()
 		t.Fatal(err)

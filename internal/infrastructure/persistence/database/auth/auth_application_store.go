@@ -2,14 +2,13 @@ package auth
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
 
+	"github.com/domainry/domainry-foundation/entityid"
 	authmodel "github.com/domainry/domainry-identity/internal/domain/auth/model"
 	identitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/transaction"
@@ -27,7 +26,7 @@ func (s AuthStore) GetAuthApplication(ctx context.Context, workspaceID, applicat
 		return authmodel.AuthApplicationRegistration{}, false, fmt.Errorf("authentication application key is required")
 	}
 	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_applications", workspaceID).
-		Columns("id", "workspace_id", "application_key", "redirect_urls_json", "status", "created_at", "updated_at").
+		Columns("id", "application_id", "workspace_id", "application_key", "redirect_urls_json", "status", "created_at", "updated_at").
 		Where(query.Equal("application_key", applicationKey)).Limit(1).Build()
 	if err != nil {
 		return authmodel.AuthApplicationRegistration{}, false, fmt.Errorf("build authentication application lookup: %w", err)
@@ -36,7 +35,7 @@ func (s AuthStore) GetAuthApplication(ctx context.Context, workspaceID, applicat
 	var redirects []byte
 	var createdAt, updatedAt int64
 	err = s.store.QueryIdentityRowContext(ctx, statement, arguments...).Scan(
-		&registration.ID, &registration.WorkspaceID, &registration.ApplicationKey, &redirects,
+		&registration.ID, &registration.ApplicationID, &registration.WorkspaceID, &registration.ApplicationKey, &redirects,
 		&registration.Status, &createdAt, &updatedAt,
 	)
 	if err == sql.ErrNoRows {
@@ -59,8 +58,8 @@ func (s AuthStore) UpsertAuthApplications(ctx context.Context, workspaceID strin
 		return err
 	}
 	type applicationRow struct {
-		id, applicationKey string
-		redirects          []byte
+		applicationID, applicationKey string
+		redirects                     []byte
 	}
 	rows := make([]applicationRow, len(registrations))
 	for index, registration := range registrations {
@@ -72,7 +71,11 @@ func (s AuthStore) UpsertAuthApplications(ctx context.Context, workspaceID strin
 		if marshalErr != nil {
 			return fmt.Errorf("encode authentication application redirects: %w", marshalErr)
 		}
-		rows[index] = applicationRow{id: authApplicationRowID(workspaceID, applicationKey), applicationKey: applicationKey, redirects: redirects}
+		applicationID, idErr := entityid.New("idapp")
+		if idErr != nil {
+			return fmt.Errorf("generate authentication application id: %w", idErr)
+		}
+		rows[index] = applicationRow{applicationID: applicationID, applicationKey: applicationKey, redirects: redirects}
 	}
 	const parametersPerRow = 7 // workspace_id plus the six explicit columns below.
 	ranges, err := (batch.Parameters{Max: s.store.MaxParameters(), PerItem: parametersPerRow}).Ranges(len(rows))
@@ -88,9 +91,9 @@ func (s AuthStore) UpsertAuthApplications(ctx context.Context, workspaceID strin
 	now := identitypersistence.TimeMillis(identitypersistence.NowString())
 	for _, batchRange := range ranges {
 		insert := query.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_applications", workspaceID).
-			Columns("id", "application_key", "redirect_urls_json", "status", "created_at", "updated_at")
+			Columns("application_id", "application_key", "redirect_urls_json", "status", "created_at", "updated_at")
 		for _, row := range rows[batchRange.Start:batchRange.End] {
-			insert.Values(row.id, row.applicationKey, row.redirects, authmodel.AuthApplicationActive, now, now)
+			insert.Values(row.applicationID, row.applicationKey, row.redirects, authmodel.AuthApplicationActive, now, now)
 		}
 		// Re-registration refreshes source-owned redirects while preserving the
 		// administrator-owned status of an existing application.
@@ -112,9 +115,4 @@ func (s AuthStore) AuthorizationRedirectRegistered(ctx context.Context, workspac
 		return false, err
 	}
 	return slices.Contains(registration.RedirectURLs, strings.TrimSpace(redirectURL)), nil
-}
-
-func authApplicationRowID(workspaceID, applicationKey string) string {
-	sum := sha256.Sum256([]byte(workspaceID + "\x00" + applicationKey))
-	return "application-" + hex.EncodeToString(sum[:16])
 }

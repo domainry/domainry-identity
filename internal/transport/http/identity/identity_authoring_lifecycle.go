@@ -31,7 +31,7 @@ func (h *IdentityHandler) getIdentityRole(w http.ResponseWriter, r *http.Request
 		return
 	}
 	for _, item := range items {
-		if item.ID == id {
+		if item.RoleID == id {
 			h.writeIdentityAuthoringResource(w, r, "identity.role", id, item)
 			return
 		}
@@ -47,7 +47,7 @@ func (h *IdentityHandler) getIdentityMenu(w http.ResponseWriter, r *http.Request
 		return
 	}
 	for _, item := range items {
-		if item.ID == id {
+		if item.MenuID == id {
 			h.writeIdentityAuthoringResource(w, r, "identity.menu", id, item)
 			return
 		}

@@ -22,10 +22,10 @@ func identityRoleRequest(method, target, body string, pathValues map[string]stri
 
 func TestIdentityRoleReadHandlers(t *testing.T) {
 	repo := &identityHTTPRepository{
-		users:       []identitymodel.IdentityUser{{ID: "user-1", Status: identitymodel.IdentityStatusActive}},
-		roles:       []identitymodel.IdentityRole{{ID: "role-1", Key: "sales", Label: "Sales"}},
+		users:       []identitymodel.IdentityUser{{UserID: "user-1", Status: identitymodel.IdentityStatusActive}},
+		roles:       []identitymodel.IdentityRole{{RoleID: "role-1", Key: "sales", Label: "Sales"}},
 		assignments: []identitymodel.IdentityUserRoleAssignment{{UserID: "user-1", RoleID: "role-1"}},
-		requests:    []identitymodel.IdentityRoleRequest{{ID: "request-1", UserID: "user-1", Status: "pending"}},
+		requests:    []identitymodel.IdentityRoleRequest{{RoleRequestID: "request-1", UserID: "user-1", Status: "pending"}},
 	}
 	handler, response := newIdentityHTTPHandler(repo)
 
@@ -110,8 +110,8 @@ func TestIdentityRoleReadHandlers(t *testing.T) {
 
 func TestIdentityRoleAssignmentMutationHandlers(t *testing.T) {
 	repo := &identityHTTPRepository{
-		users: []identitymodel.IdentityUser{{ID: "user-1", Status: identitymodel.IdentityStatusActive}},
-		roles: []identitymodel.IdentityRole{{ID: "role-1", Key: "sales", Label: "Sales", Status: identitymodel.IdentityStatusActive}},
+		users: []identitymodel.IdentityUser{{UserID: "user-1", Status: identitymodel.IdentityStatusActive}},
+		roles: []identitymodel.IdentityRole{{RoleID: "role-1", Key: "sales", Label: "Sales", Status: identitymodel.IdentityStatusActive}},
 	}
 	handler, response := newIdentityHTTPHandler(repo)
 	tests := []struct {
@@ -146,8 +146,8 @@ func TestIdentityRoleAssignmentMutationHandlers(t *testing.T) {
 
 func TestIdentityUserRoleAtomicReconcileHandler(t *testing.T) {
 	repo := &identityHTTPRepository{
-		users: []identitymodel.IdentityUser{{ID: "user-1", Email: "old@example.com", Status: identitymodel.IdentityStatusActive}},
-		roles: []identitymodel.IdentityRole{{ID: "role-1", Key: "sales", Label: "Sales", Status: identitymodel.IdentityStatusActive}},
+		users: []identitymodel.IdentityUser{{UserID: "user-1", Email: "old@example.com", Status: identitymodel.IdentityStatusActive}},
+		roles: []identitymodel.IdentityRole{{RoleID: "role-1", Key: "sales", Label: "Sales", Status: identitymodel.IdentityStatusActive}},
 	}
 	handler, response := newIdentityHTTPHandler(repo)
 	handler.principal = func(*http.Request) identitymodel.Principal {
@@ -157,7 +157,7 @@ func TestIdentityUserRoleAtomicReconcileHandler(t *testing.T) {
 		`{"user":{"name":"Updated","email":"updated@example.com","status":"active"},"assignments":[{"role_id":"role-1"}]}`,
 		map[string]string{"userID": " user-1 "})
 	handler.upsertIdentityUserWithRoles(w, request)
-	if response.status != http.StatusOK || response.err != nil || repo.lastUser.ID != "user-1" ||
+	if response.status != http.StatusOK || response.err != nil || repo.lastUser.UserID != "user-1" ||
 		len(repo.assignments) != 1 || repo.assignments[0].UserID != "user-1" {
 		t.Fatalf("response=%+v user=%+v assignments=%+v", response, repo.lastUser, repo.assignments)
 	}
@@ -174,15 +174,15 @@ func TestIdentityUserRoleAtomicReconcileHandler(t *testing.T) {
 
 func TestIdentityEntitlementBatchHandler(t *testing.T) {
 	repo := &identityHTTPRepository{
-		users: []identitymodel.IdentityUser{{ID: "user-1", Status: identitymodel.IdentityStatusActive}},
-		roles: []identitymodel.IdentityRole{{ID: "role-1", Key: "sales", Status: identitymodel.IdentityStatusActive}},
+		users: []identitymodel.IdentityUser{{UserID: "user-1", Status: identitymodel.IdentityStatusActive}},
+		roles: []identitymodel.IdentityRole{{RoleID: "role-1", Key: "sales", Status: identitymodel.IdentityStatusActive}},
 	}
 	handler, response := newIdentityHTTPHandler(repo)
 	w, request := identityRoleRequest(http.MethodPost, "/identity/entitlements/batch", `{"items":[{"operation":"grant","user_id":"user-1","role_id":"role-1","reason":"job"}]}`, nil)
 	request.Header.Set("Idempotency-Key", "batch-1")
 	handler.applyIdentityEntitlementBatch(w, request)
 	receipt, ok := response.value.(identitymodel.IdentityEntitlementBatchReceipt)
-	if response.status != http.StatusOK || !ok || receipt.ID == "" || len(repo.assignments) != 1 {
+	if response.status != http.StatusOK || !ok || receipt.OperationID == "" || len(repo.assignments) != 1 {
 		t.Fatalf("response status=%d value=%#v assignments=%#v err=%v", response.status, response.value, repo.assignments, response.err)
 	}
 }
@@ -198,9 +198,9 @@ func TestIdentityRoleRequestDecisionHandlers(t *testing.T) {
 	} {
 		t.Run(decision.name, func(t *testing.T) {
 			repo := &identityHTTPRepository{
-				users:    []identitymodel.IdentityUser{{ID: "user-1", Status: identitymodel.IdentityStatusActive}},
-				roles:    []identitymodel.IdentityRole{{ID: "role-1", Status: identitymodel.IdentityStatusActive}},
-				requests: []identitymodel.IdentityRoleRequest{{ID: "request-1", UserID: "user-1", RoleIDs: []string{"role-1"}, Status: "pending"}},
+				users:    []identitymodel.IdentityUser{{UserID: "user-1", Status: identitymodel.IdentityStatusActive}},
+				roles:    []identitymodel.IdentityRole{{RoleID: "role-1", Status: identitymodel.IdentityStatusActive}},
+				requests: []identitymodel.IdentityRoleRequest{{RoleRequestID: "request-1", UserID: "user-1", RoleIDs: []string{"role-1"}, Status: "pending"}},
 			}
 			handler, response := newIdentityHTTPHandler(repo)
 			w, request := identityRoleRequest(http.MethodPost, "/identity/role-requests/request-1/"+decision.name, `{"note":" reviewed "}`, map[string]string{"requestID": " request-1 "})
@@ -242,7 +242,7 @@ func TestIdentityRoleMutationServiceErrors(t *testing.T) {
 		body string
 		path map[string]string
 	}{
-		{name: "assign", repo: &identityHTTPRepository{users: []identitymodel.IdentityUser{{ID: "user-1", Status: identitymodel.IdentityStatusActive}}, roles: []identitymodel.IdentityRole{{ID: "role-1", Status: identitymodel.IdentityStatusActive}}, assignErr: errIdentityHTTPTest}, call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.assignIdentityUserRole(w, r) }, body: `{"role_id":"role-1"}`, path: map[string]string{"userID": "user-1"}},
+		{name: "assign", repo: &identityHTTPRepository{users: []identitymodel.IdentityUser{{UserID: "user-1", Status: identitymodel.IdentityStatusActive}}, roles: []identitymodel.IdentityRole{{RoleID: "role-1", Status: identitymodel.IdentityStatusActive}}, assignErr: errIdentityHTTPTest}, call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.assignIdentityUserRole(w, r) }, body: `{"role_id":"role-1"}`, path: map[string]string{"userID": "user-1"}},
 		{name: "remove assignment", repo: &identityHTTPRepository{removeAssignmentErr: errIdentityHTTPTest}, call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.removeIdentityUserRole(w, r) }, path: map[string]string{"userID": "user-1", "roleID": "role-1"}},
 		{name: "approve", repo: &identityHTTPRepository{}, call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.approveIdentityRoleRequest(w, r) }, path: map[string]string{"requestID": "missing"}},
 		{name: "reject", repo: &identityHTTPRepository{}, call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.rejectIdentityRoleRequest(w, r) }, path: map[string]string{"requestID": "missing"}},

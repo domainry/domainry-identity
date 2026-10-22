@@ -97,7 +97,7 @@ func TestIdentityUserActionsPropagateMissingUserErrors(t *testing.T) {
 }
 
 func TestIdentityUserActionsSuccess(t *testing.T) {
-	identityRepository := &identityHTTPRepository{users: []identitymodel.IdentityUser{{ID: "user-1"}}}
+	identityRepository := &identityHTTPRepository{users: []identitymodel.IdentityUser{{UserID: "user-1"}}}
 	handler, response := newIdentityHTTPHandler(identityRepository)
 	authRepository := &identityHTTPAuthRepository{credential: identitymodel.IdentityCredential{UserID: "user-1", FailedLoginCount: 2, LockedUntil: time.Now().UTC().Add(time.Hour).Format(time.RFC3339)}}
 	handler.userSecurity = authapplication.NewAuthApplicationService(identitydomain.NewIdentityDomainService(identityRepository, nil), authRepository, "test-secret", "", time.Minute, time.Hour, 3, time.Minute, time.Minute, 3, authpolicy.AuthPasswordPolicy{})

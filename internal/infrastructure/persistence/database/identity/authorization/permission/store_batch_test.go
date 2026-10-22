@@ -61,7 +61,7 @@ func TestPermissionReconcileUsesMultiRowUpsertAcrossDialects(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if strings.Count(statement, "), (") != 1 || len(arguments) != 32 {
+			if strings.Count(statement, "), (") != 1 || len(arguments) != 30 {
 				t.Fatalf("permission upsert is not one two-row batch: sql=%s args=%d", statement, len(arguments))
 			}
 			parts := strings.SplitN(statement, test.conflictMarker, 2)

@@ -50,10 +50,10 @@ func (adapter sdkProjection) ResolveDisplayNames(ctx context.Context, request id
 		return identitysdk.DisplayNameResult{}, sdkBoundaryError(err)
 	}
 	for _, user := range users {
-		result.Users = append(result.Users, sdkDisplayName(user.ID, user.Name))
+		result.Users = append(result.Users, sdkDisplayName(user.UserID, user.Name))
 	}
 	for _, organizationUnit := range organizationUnits {
-		result.OrganizationUnits = append(result.OrganizationUnits, sdkDisplayName(organizationUnit.ID, organizationUnit.Name))
+		result.OrganizationUnits = append(result.OrganizationUnits, sdkDisplayName(organizationUnit.OrganizationUnitID, organizationUnit.Name))
 	}
 	sort.Slice(result.Users, func(left, right int) bool { return result.Users[left].ID < result.Users[right].ID })
 	sort.Slice(result.OrganizationUnits, func(left, right int) bool {
@@ -163,7 +163,7 @@ func (adapter sdkProjection) scoped(ctx context.Context) (*identityapplication.I
 
 func sdkProjectionUser(value identitymodel.IdentityUser) identitysdk.User {
 	return identitysdk.User{
-		ID: value.ID, Name: value.Name, GivenName: value.GivenName, MiddleName: value.MiddleName, FamilyName: value.FamilyName,
+		ID: value.ID, UserID: value.UserID, Name: value.Name, GivenName: value.GivenName, MiddleName: value.MiddleName, FamilyName: value.FamilyName,
 		NamePrefix: value.NamePrefix, NameSuffix: value.NameSuffix, NativeName: value.NativeName, NameLocale: value.NameLocale,
 		Email: value.Email, Phone: value.Phone, AccountType: string(value.AccountType), Locale: value.Locale, Timezone: value.Timezone,
 		OrgID: value.OrgID, ManagerUserID: value.ManagerUserID, ReportingPath: value.ReportingPath,
@@ -175,13 +175,13 @@ func sdkProjectionUser(value identitymodel.IdentityUser) identitysdk.User {
 
 func sdkProjectionOrganizationUnit(value identitymodel.IdentityOrganizationUnit) identitysdk.OrganizationUnit {
 	return identitysdk.OrganizationUnit{
-		ID: value.ID, Code: value.Code, Name: value.Name, NodeType: string(value.NodeType), ParentID: value.ParentID,
+		ID: value.ID, OrganizationUnitID: value.OrganizationUnitID, Code: value.Code, Name: value.Name, NodeType: string(value.NodeType), ParentID: value.ParentID,
 		Path: value.Path, AncestorIDs: append([]string(nil), value.AncestorIDs...), Depth: value.Depth, SortOrder: value.SortOrder, Status: string(value.Status),
 	}
 }
 
 func sdkProjectionRole(value identitymodel.IdentityRole) identitysdk.Role {
-	return identitysdk.Role{ID: value.ID, Key: value.Key, Label: value.Label, Description: value.Description, Status: string(value.Status)}
+	return identitysdk.Role{ID: value.ID, RoleID: value.RoleID, Key: value.Key, Label: value.Label, Description: value.Description, Status: string(value.Status)}
 }
 
 func sdkProjectionRoleAssignment(value identitymodel.IdentityUserRoleAssignment) identitysdk.UserRoleAssignment {

@@ -28,24 +28,24 @@ func TestStoreOrganizationPageIsStableScopedAndBoundedInOneRepositoryQuery(t *te
 	store.BindOperationsPersistence()
 	companyA, companyB, division := "company-a", "company-b", "division-a"
 	units := []identitymodel.IdentityOrganizationUnit{
-		{ID: companyA, Code: "COMPANY-A", Name: "Company A", NodeType: identitymodel.IdentityOrganizationUnitCompany, Path: "/company-a", Status: identitymodel.IdentityStatusActive},
-		{ID: companyB, Code: "COMPANY-B", Name: "Company B", NodeType: identitymodel.IdentityOrganizationUnitCompany, Path: "/company-b", Status: identitymodel.IdentityStatusActive},
-		{ID: division, Code: "DIVISION-A", Name: "Division A", NodeType: identitymodel.IdentityOrganizationUnitDepartment, ParentID: &companyA, Path: "/company-a/division-a", AncestorIDs: []string{companyA}, Depth: 1, Status: identitymodel.IdentityStatusActive},
-		{ID: "store-a-01", Code: "STORE-A-01", Name: "Store A 01", NodeType: identitymodel.IdentityOrganizationUnitStore, ParentID: &companyA, Path: "/company-a/store-a-01", AncestorIDs: []string{companyA}, Depth: 1, Status: identitymodel.IdentityStatusActive},
-		{ID: "store-a-02", Code: "STORE-A-02", Name: "Store A 02", NodeType: identitymodel.IdentityOrganizationUnitStore, ParentID: &companyA, Path: "/company-a/store-a-02", AncestorIDs: []string{companyA}, Depth: 1, Status: identitymodel.IdentityStatusDisabled},
-		{ID: "store-b-01", Code: "STORE-B-01", Name: "Store B 01", NodeType: identitymodel.IdentityOrganizationUnitStore, ParentID: &companyB, Path: "/company-b/store-b-01", AncestorIDs: []string{companyB}, Depth: 1, Status: identitymodel.IdentityStatusActive},
+		{OrganizationUnitID: companyA, Code: "COMPANY-A", Name: "Company A", NodeType: identitymodel.IdentityOrganizationUnitCompany, Path: "/company-a", Status: identitymodel.IdentityStatusActive},
+		{OrganizationUnitID: companyB, Code: "COMPANY-B", Name: "Company B", NodeType: identitymodel.IdentityOrganizationUnitCompany, Path: "/company-b", Status: identitymodel.IdentityStatusActive},
+		{OrganizationUnitID: division, Code: "DIVISION-A", Name: "Division A", NodeType: identitymodel.IdentityOrganizationUnitDepartment, ParentID: &companyA, Path: "/company-a/division-a", AncestorIDs: []string{companyA}, Depth: 1, Status: identitymodel.IdentityStatusActive},
+		{OrganizationUnitID: "store-a-01", Code: "STORE-A-01", Name: "Store A 01", NodeType: identitymodel.IdentityOrganizationUnitStore, ParentID: &companyA, Path: "/company-a/store-a-01", AncestorIDs: []string{companyA}, Depth: 1, Status: identitymodel.IdentityStatusActive},
+		{OrganizationUnitID: "store-a-02", Code: "STORE-A-02", Name: "Store A 02", NodeType: identitymodel.IdentityOrganizationUnitStore, ParentID: &companyA, Path: "/company-a/store-a-02", AncestorIDs: []string{companyA}, Depth: 1, Status: identitymodel.IdentityStatusDisabled},
+		{OrganizationUnitID: "store-b-01", Code: "STORE-B-01", Name: "Store B 01", NodeType: identitymodel.IdentityOrganizationUnitStore, ParentID: &companyB, Path: "/company-b/store-b-01", AncestorIDs: []string{companyB}, Depth: 1, Status: identitymodel.IdentityStatusActive},
 		// This deliberately malformed legacy row proves the page query performs
 		// the company-parent integrity check without a per-item parent lookup.
-		{ID: "store-orphan", Code: "STORE-ORPHAN", Name: "Store Orphan", NodeType: identitymodel.IdentityOrganizationUnitStore, ParentID: &division, Path: "/company-a/division-a/store-orphan", AncestorIDs: []string{companyA, division}, Depth: 2, Status: identitymodel.IdentityStatusActive},
+		{OrganizationUnitID: "store-orphan", Code: "STORE-ORPHAN", Name: "Store Orphan", NodeType: identitymodel.IdentityOrganizationUnitStore, ParentID: &division, Path: "/company-a/division-a/store-orphan", AncestorIDs: []string{companyA, division}, Depth: 2, Status: identitymodel.IdentityStatusActive},
 	}
 	for _, unit := range units {
 		if err := store.UpsertIdentityOrganizationUnit(t.Context(), "workspace-primary", unit); err != nil {
-			t.Fatalf("upsert %s: %v", unit.ID, err)
+			t.Fatalf("upsert %s: %v", unit.OrganizationUnitID, err)
 		}
 	}
 
 	all := identitymodel.IdentityDataScopeFilter{Unrestricted: true}
-	firstFetch, err := store.ListIdentityStoreOrganizationsPage(t.Context(), "workspace-primary", all, "", 3)
+	firstFetch, err := store.ListIdentityStoreOrganizationsPage(t.Context(), "workspace-primary", all, 0, 3)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,14 +53,14 @@ func TestStoreOrganizationPageIsStableScopedAndBoundedInOneRepositoryQuery(t *te
 	if firstFetch[1].Status != string(identitymodel.IdentityStatusDisabled) || firstFetch[1].Version != 1 {
 		t.Fatalf("status/version projection=%+v", firstFetch[1])
 	}
-	next, err := store.ListIdentityStoreOrganizationsPage(t.Context(), "workspace-primary", all, "store-a-02", 3)
+	next, err := store.ListIdentityStoreOrganizationsPage(t.Context(), "workspace-primary", all, firstFetch[1].ID, 3)
 	if err != nil {
 		t.Fatal(err)
 	}
 	assertStoreOrganizationIDs(t, next, "store-b-01")
 
 	scoped := identitymodel.IdentityDataScopeFilter{OwnerOrgIDs: []string{"store-a-02", "store-a-01"}}
-	scopePage, err := store.ListIdentityStoreOrganizationsPage(t.Context(), "workspace-primary", scoped, "", 3)
+	scopePage, err := store.ListIdentityStoreOrganizationsPage(t.Context(), "workspace-primary", scoped, 0, 3)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,13 +68,13 @@ func TestStoreOrganizationPageIsStableScopedAndBoundedInOneRepositoryQuery(t *te
 
 	// A cursor is only a lower bound. Reapplying the permission scope in the
 	// same query prevents it from exposing later out-of-scope store IDs.
-	bypassAttempt, err := store.ListIdentityStoreOrganizationsPage(t.Context(), "workspace-primary", identitymodel.IdentityDataScopeFilter{OwnerOrgIDs: []string{"store-a-01"}}, "store-a-01", 3)
+	bypassAttempt, err := store.ListIdentityStoreOrganizationsPage(t.Context(), "workspace-primary", identitymodel.IdentityDataScopeFilter{OwnerOrgIDs: []string{"store-a-01"}}, firstFetch[0].ID, 3)
 	if err != nil {
 		t.Fatal(err)
 	}
 	assertStoreOrganizationIDs(t, bypassAttempt)
 
-	empty, err := store.ListIdentityStoreOrganizationsPage(t.Context(), "workspace-primary", all, "zzzz", 3)
+	empty, err := store.ListIdentityStoreOrganizationsPage(t.Context(), "workspace-primary", all, firstFetch[2].ID, 3)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestStoreOrganizationCreateKeepsRuntimeOpaqueIDAndReplaysInsideSQLiteImmedi
 	}
 	store.BindOperationsPersistence()
 	if err := store.UpsertIdentityOrganizationUnit(t.Context(), "workspace-primary", identitymodel.IdentityOrganizationUnit{
-		ID: "company", Code: "COMPANY", Name: "Company", NodeType: identitymodel.IdentityOrganizationUnitCompany,
+		OrganizationUnitID: "company", Code: "COMPANY", Name: "Company", NodeType: identitymodel.IdentityOrganizationUnitCompany,
 		Path: "/company", Status: identitymodel.IdentityStatusActive,
 	}); err != nil {
 		t.Fatal(err)
@@ -112,7 +112,7 @@ func TestStoreOrganizationCreateKeepsRuntimeOpaqueIDAndReplaysInsideSQLiteImmedi
 		WorkspaceID: "workspace-primary", ActorID: "runtime-actor", IdempotencyKey: "runtime-store-create-1", RequestFingerprint: "runtime-store-fingerprint-1",
 		Operation: identitymodel.IdentityStoreOrganizationCreate, ExpectedVersion: 0, DataScope: identitymodel.IdentityDataScopeFilter{Unrestricted: true},
 		Organization: identitymodel.IdentityOrganizationUnit{
-			ID: opaqueID, Code: "STORE-OPAQUE", Name: "Opaque Store", NodeType: identitymodel.IdentityOrganizationUnitStore,
+			OrganizationUnitID: opaqueID, Code: "STORE-OPAQUE", Name: "Opaque Store", NodeType: identitymodel.IdentityOrganizationUnitStore,
 			ParentID: &parentID, Path: "/company/" + opaqueID, AncestorIDs: []string{"company"}, Depth: 1, Status: identitymodel.IdentityStatusActive,
 		},
 	}
@@ -122,7 +122,7 @@ func TestStoreOrganizationCreateKeepsRuntimeOpaqueIDAndReplaysInsideSQLiteImmedi
 		_ = hostTransaction.Rollback(t.Context())
 		t.Fatal(err)
 	}
-	if created.Result.Organization.ID != opaqueID || created.Result.Replayed {
+	if created.Result.Organization.OrganizationUnitID != opaqueID || created.Result.Replayed {
 		_ = hostTransaction.Rollback(t.Context())
 		t.Fatalf("created receipt=%+v", created)
 	}
@@ -131,7 +131,7 @@ func TestStoreOrganizationCreateKeepsRuntimeOpaqueIDAndReplaysInsideSQLiteImmedi
 		_ = hostTransaction.Rollback(t.Context())
 		t.Fatal(err)
 	}
-	if !replayed.Result.Replayed || replayed.Result.DeliveryID != created.Result.DeliveryID || replayed.Result.Organization.ID != opaqueID {
+	if !replayed.Result.Replayed || replayed.Result.DeliveryID != created.Result.DeliveryID || replayed.Result.Organization.OrganizationUnitID != opaqueID {
 		_ = hostTransaction.Rollback(t.Context())
 		t.Fatalf("replayed receipt=%+v", replayed)
 	}
@@ -139,7 +139,7 @@ func TestStoreOrganizationCreateKeepsRuntimeOpaqueIDAndReplaysInsideSQLiteImmedi
 		t.Fatal(err)
 	}
 	for table, target := range map[string][2]string{
-		"_identity_organization_units": {"id", opaqueID},
+		"_identity_organization_units": {"organization_unit_id", opaqueID},
 		"_operations":                  {"idempotency_key", mutation.IdempotencyKey},
 	} {
 		var count int
@@ -155,8 +155,8 @@ func assertStoreOrganizationIDs(t *testing.T, items []identitymodel.IdentityStor
 		t.Fatalf("store count=%d want=%d items=%+v", len(items), len(want), items)
 	}
 	for index := range want {
-		if items[index].ID != want[index] {
-			t.Fatalf("store[%d]=%q want=%q items=%+v", index, items[index].ID, want[index], items)
+		if items[index].OrganizationUnitID != want[index] {
+			t.Fatalf("store[%d]=%q want=%q items=%+v", index, items[index].OrganizationUnitID, want[index], items)
 		}
 	}
 }

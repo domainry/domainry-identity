@@ -40,7 +40,7 @@ func (s *profileBindingRepositoryStub) ExecuteIdentityProfileBindingMutation(_ c
 	if s.executeErr != nil {
 		return identitymodel.IdentityProfileBindingReceipt{}, s.executeErr
 	}
-	return identitymodel.IdentityProfileBindingReceipt{ID: "receipt", Binding: s.binding}, s.err
+	return identitymodel.IdentityProfileBindingReceipt{OperationID: "receipt", Binding: s.binding}, s.err
 }
 func (s *profileBindingRepositoryStub) ListIdentityProfileBindingEvents(context.Context, string, string, string) ([]identitymodel.IdentityProfileBindingEvent, error) {
 	return s.events, s.err
@@ -173,8 +173,8 @@ func TestProfileBindingClaimRejectsUntrustedOrMismatchedProof(t *testing.T) {
 	}{
 		{name: "unknown proof", record: map[string]any{"email": "member@example.com"}, proof: "unknown", value: "member@example.com", code: "backend.identity.profile_claim_proof_invalid"},
 		{name: "profile mismatch", record: map[string]any{"email": "other@example.com"}, proof: "email", value: "member@example.com", code: "backend.identity.profile_claim_proof_invalid"},
-		{name: "account mismatch", record: map[string]any{"email": "member@example.com"}, users: map[string]identitymodel.IdentityUser{"member-user": {ID: "member-user", Email: "other@example.com", Status: identitymodel.IdentityStatusActive}}, proof: "email", value: "member@example.com", code: "backend.identity.profile_claim_proof_invalid"},
-		{name: "inactive account", record: map[string]any{"email": "member@example.com"}, users: map[string]identitymodel.IdentityUser{"member-user": {ID: "member-user", Email: "member@example.com", Status: identitymodel.IdentityStatusDisabled}}, proof: "email", value: "member@example.com", code: "backend.identity.profile_claim_identity_invalid"},
+		{name: "account mismatch", record: map[string]any{"email": "member@example.com"}, users: map[string]identitymodel.IdentityUser{"member-user": {UserID: "member-user", Email: "other@example.com", Status: identitymodel.IdentityStatusActive}}, proof: "email", value: "member@example.com", code: "backend.identity.profile_claim_proof_invalid"},
+		{name: "inactive account", record: map[string]any{"email": "member@example.com"}, users: map[string]identitymodel.IdentityUser{"member-user": {UserID: "member-user", Email: "member@example.com", Status: identitymodel.IdentityStatusDisabled}}, proof: "email", value: "member@example.com", code: "backend.identity.profile_claim_identity_invalid"},
 		{name: "external denied", record: map[string]any{"external_subject": "oidc-1"}, proof: "external_idp_subject", value: "oidc-1", external: profileBindingExternalClaimStub{}, code: "backend.identity.profile_claim_proof_invalid"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -240,9 +240,9 @@ func TestProfileBindingAtomicDeliveryAcceptsOnlyItsValidatedProspectiveTarget(t 
 	request := profileBindingCommand(identitymodel.IdentityProfileBindingBind)
 	request.IdentityUserID = "created-in-same-transaction"
 	principal := profileBindingPrincipal("admin", identitycontract.IdentityHandlerDeliveryCreatePermission)
-	prospective := identitymodel.IdentityUser{ID: request.IdentityUserID, Status: identitymodel.IdentityStatusActive}
+	prospective := identitymodel.IdentityUser{UserID: request.IdentityUserID, Status: identitymodel.IdentityStatusActive}
 	mutation, _, err := service.PrepareMutationForAtomicDelivery(t.Context(), request, principal, prospective, identitycontract.IdentityHandlerDeliveryCreatePermission)
-	if err != nil || mutation.IdentityUserID != prospective.ID {
+	if err != nil || mutation.IdentityUserID != prospective.UserID {
 		t.Fatalf("mutation=%+v err=%v", mutation, err)
 	}
 	request.IdentityUserID = "different"
@@ -257,10 +257,10 @@ func TestProfileBindingAtomicDeliveryAcceptsOnlyExactEmbeddedStagedProfile(t *te
 	request := profileBindingCommand(identitymodel.IdentityProfileBindingBind)
 	request.IdentityUserID = "created-in-same-transaction"
 	principal := profileBindingPrincipal("admin", identitycontract.IdentityHandlerDeliveryCreatePermission)
-	prospective := identitymodel.IdentityUser{ID: request.IdentityUserID, Status: identitymodel.IdentityStatusActive}
+	prospective := identitymodel.IdentityUser{UserID: request.IdentityUserID, Status: identitymodel.IdentityStatusActive}
 	ctx := WithEmbeddedHandlerProfileRecord(t.Context(), request.ObjectKey, request.ProfileID, map[string]any{"identity_user": nil, "status": "active"})
 	mutation, _, err := service.PrepareMutationForAtomicDelivery(ctx, request, principal, prospective, identitycontract.IdentityHandlerDeliveryCreatePermission)
-	if err != nil || mutation.ProfileID != request.ProfileID || mutation.IdentityUserID != prospective.ID || !mutation.ProfileRecordStaged {
+	if err != nil || mutation.ProfileID != request.ProfileID || mutation.IdentityUserID != prospective.UserID || !mutation.ProfileRecordStaged {
 		t.Fatalf("mutation=%#v err=%v", mutation, err)
 	}
 	wrong := WithEmbeddedHandlerProfileRecord(t.Context(), request.ObjectKey, "other-profile", map[string]any{"identity_user": nil})
@@ -571,7 +571,7 @@ func TestProfileBindingBusinessActiveAndIdentityValidationEdges(t *testing.T) {
 	if _, err := service.validateTargetIdentity(t.Context(), "target"); apperror.CodeOf(err) != "backend.identity.profile_binding_target_invalid" {
 		t.Fatalf("missing target=%v", err)
 	}
-	service.dependencies.Identity = profileBindingIdentityStub{users: map[string]identitymodel.IdentityUser{"target": {ID: "target", Status: identitymodel.IdentityStatusDisabled}}}
+	service.dependencies.Identity = profileBindingIdentityStub{users: map[string]identitymodel.IdentityUser{"target": {UserID: "target", Status: identitymodel.IdentityStatusDisabled}}}
 	if _, err := service.validateTargetIdentity(t.Context(), "target"); apperror.CodeOf(err) != "backend.identity.profile_binding_target_invalid" {
 		t.Fatalf("inactive target=%v", err)
 	}
@@ -600,10 +600,10 @@ func TestProfileBindingClaimVerificationAndDefinitionDependencyEdges(t *testing.
 	}
 	for name, user := range map[string]identitymodel.IdentityUser{
 		"missing":  {},
-		"inactive": {ID: "member-user", Status: identitymodel.IdentityStatusDisabled},
+		"inactive": {UserID: "member-user", Status: identitymodel.IdentityStatusDisabled},
 	} {
 		users := map[string]identitymodel.IdentityUser{}
-		if user.ID != "" {
+		if user.UserID != "" {
 			users["member-user"] = user
 		}
 		service.dependencies.Identity = profileBindingIdentityStub{users: users}
@@ -612,7 +612,7 @@ func TestProfileBindingClaimVerificationAndDefinitionDependencyEdges(t *testing.
 		}
 	}
 	service.dependencies.Identity = profileBindingIdentityStub{users: map[string]identitymodel.IdentityUser{
-		"member-user": {ID: "member-user", Email: "other@example.com", Phone: "+10000000000", Status: identitymodel.IdentityStatusActive},
+		"member-user": {UserID: "member-user", Email: "other@example.com", Phone: "+10000000000", Status: identitymodel.IdentityStatusActive},
 	}}
 	if err := service.verifyProfileClaim(t.Context(), extension, record, "workspace", "member-user", "email", "member@example.com"); apperror.CodeOf(err) != "backend.identity.profile_claim_proof_invalid" {
 		t.Fatalf("email mismatch=%v", err)
@@ -666,8 +666,8 @@ func profileBindingTestService(repository *profileBindingRepositoryStub, record 
 	return NewIdentityProfileBindingApplicationService(IdentityProfileBindingDependencies{
 		Repository: repository, Records: profileBindingRecordReaderStub{record: record, found: found},
 		Identity: profileBindingIdentityStub{users: map[string]identitymodel.IdentityUser{
-			"member-user": {ID: "member-user", Email: "member@example.com", Phone: "+12025550123", Status: identitymodel.IdentityStatusActive},
-			"target":      {ID: "target", Status: identitymodel.IdentityStatusActive},
+			"member-user": {UserID: "member-user", Email: "member@example.com", Phone: "+12025550123", Status: identitymodel.IdentityStatusActive},
+			"target":      {UserID: "target", Status: identitymodel.IdentityStatusActive},
 		}},
 		Objects: func() []definitionmodel.ObjectSchema { return []definitionmodel.ObjectSchema{object} },
 		Extensions: func() []identitymodel.IdentityProfileExtension {

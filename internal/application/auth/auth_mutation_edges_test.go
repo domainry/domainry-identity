@@ -175,7 +175,7 @@ func TestAuthApplicationConstructionAndPasswordMutationGuards(t *testing.T) {
 
 func TestForceLogoutRequiresDedicatedSecurityPermissionAndReplaysStableResult(t *testing.T) {
 	identity, err := identitydomain.NewIdentityDomainService(&authIdentityUserRepository{
-		users: []identitymodel.IdentityUser{{ID: "target-user", Status: identitymodel.IdentityStatusActive}},
+		users: []identitymodel.IdentityUser{{UserID: "target-user", Status: identitymodel.IdentityStatusActive}},
 	}, nil).ForWorkspace("workspace-1")
 	if err != nil {
 		t.Fatal(err)
@@ -278,7 +278,7 @@ func TestChangePasswordAndReissueSessionPropagatesForceLogoutFailure(t *testing.
 		revokeErr: revokeErr,
 	}
 	identity, err := identitydomain.NewIdentityDomainService(&authIdentityUserRepository{
-		users: []identitymodel.IdentityUser{{ID: "user-1", Status: identitymodel.IdentityStatusActive}},
+		users: []identitymodel.IdentityUser{{UserID: "user-1", Status: identitymodel.IdentityStatusActive}},
 	}, nil).ForWorkspace("workspace-1")
 	if err != nil {
 		t.Fatal(err)
@@ -292,7 +292,7 @@ func TestChangePasswordAndReissueSessionPropagatesForceLogoutFailure(t *testing.
 
 func TestChangePasswordAndReissueSessionRemainingFailures(t *testing.T) {
 	identity, err := identitydomain.NewIdentityDomainService(&authIdentityUserRepository{
-		users: []identitymodel.IdentityUser{{ID: "user-1", Status: identitymodel.IdentityStatusDisabled}},
+		users: []identitymodel.IdentityUser{{UserID: "user-1", Status: identitymodel.IdentityStatusDisabled}},
 	}, nil).ForWorkspace("workspace-1")
 	if err != nil {
 		t.Fatal(err)

@@ -56,7 +56,7 @@ func (s *IdentityDomainService) SearchRoles(ctx context.Context, query identitym
 		}
 	}
 	total := len(filtered)
-	page, err := identityProjectionPage(cursor, filtered, func(role identitymodel.IdentityRole) string { return role.ID })
+	page, err := identityProjectionPage(cursor, filtered, func(role identitymodel.IdentityRole) string { return role.RoleID })
 	if err != nil {
 		return identitymodel.IdentityRolePage{}, err
 	}
@@ -119,7 +119,7 @@ func (s *IdentityDomainService) prepareManualRoleAssignment(ctx context.Context,
 	}
 	definition, published := s.publishedRoleDefinition(role)
 	if !published {
-		definition = identitymodel.RoleSchema{Key: valueOrDefault(role.Key, role.ID), Audience: identitymodel.IdentityRoleAudienceAny, AssignmentMode: identitymodel.IdentityRoleAssignmentManual, RiskLevel: identitymodel.IdentityRoleRiskNormal}
+		definition = identitymodel.RoleSchema{Key: valueOrDefault(role.Key, role.RoleID), Audience: identitymodel.IdentityRoleAudienceAny, AssignmentMode: identitymodel.IdentityRoleAssignmentManual, RiskLevel: identitymodel.IdentityRoleRiskNormal}
 	}
 	if err := s.validateRoleEligibilityWithoutConflicts(ctx, assignment, definition, false); err != nil {
 		return identitymodel.IdentityUserRoleAssignment{}, identitymodel.RoleSchema{}, err
@@ -204,7 +204,7 @@ func (s *IdentityDomainService) validateRoleConflictsAgainstAssignments(target i
 	byID := map[string]identitymodel.RoleSchema{}
 	for _, role := range roles {
 		if definition, ok := s.publishedRoleDefinition(role); ok {
-			byID[role.ID] = definition
+			byID[role.RoleID] = definition
 		}
 	}
 	now := time.Now()

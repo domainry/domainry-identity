@@ -4,8 +4,8 @@ import (
 	"context"
 	"net/http"
 	"strings"
-	"time"
 
+	"github.com/domainry/domainry-foundation/entityid"
 	"github.com/domainry/domainry-foundation/requestcontext"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
@@ -115,8 +115,13 @@ func (h *AuthHandler) authCreateRoleRequest(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	provider, providerSubject := h.primaryExternalAccountForUser(r.Context(), principal.WorkspaceID, principal.UserID)
+	roleRequestID, err := entityid.New("rolereq")
+	if err != nil {
+		h.writeServiceError(w, r, err)
+		return
+	}
 	request, err := h.roleRequests.CreateRoleRequest(requestcontext.WithWorkspaceID(r.Context(), principal.WorkspaceID), identitymodel.IdentityRoleRequest{
-		ID:              "role_req_" + strings.ReplaceAll(time.Now().UTC().Format("20060102150405.000000000"), ".", "_"),
+		RoleRequestID:   roleRequestID,
 		UserID:          principal.UserID,
 		RequestedBy:     principal.UserID,
 		Provider:        provider,
@@ -128,7 +133,7 @@ func (h *AuthHandler) authCreateRoleRequest(w http.ResponseWriter, r *http.Reque
 		h.writeServiceError(w, r, err)
 		return
 	}
-	h.securityAuditForPrincipal(r, principal, "auth_role_request_submitted", "Submitted role request", map[string]any{"request_id": request.ID, "role_count": len(request.RoleIDs), "provider": request.Provider})
+	h.securityAuditForPrincipal(r, principal, "auth_role_request_submitted", "Submitted role request", map[string]any{"request_id": request.RoleRequestID, "role_count": len(request.RoleIDs), "provider": request.Provider})
 	h.writeJSON(w, http.StatusCreated, request)
 }
 
@@ -144,7 +149,7 @@ func authRoleOptions(roles []identitymodel.IdentityRole) []map[string]any {
 	out := make([]map[string]any, 0, len(roles))
 	for _, role := range roles {
 		out = append(out, map[string]any{
-			"id":          role.ID,
+			"role_id":     role.RoleID,
 			"key":         role.Key,
 			"label":       role.Label,
 			"description": role.Description,

@@ -41,8 +41,8 @@ func (binding *moduleBinding) PublishProjectRoles(ctx context.Context, catalog i
 	}
 	for _, definition := range definitions {
 		role := byKey[definition.Key]
-		if role.ID == "" {
-			role.ID = identitypersistence.WorkspaceRoleID(workspaceID, definition.Key)
+		if role.RoleID == "" {
+			role.RoleID = identitypersistence.WorkspaceRoleID(workspaceID, definition.Key)
 			role.Key = definition.Key
 		}
 		role.Label = definition.Name

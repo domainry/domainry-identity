@@ -9,6 +9,7 @@ import (
 
 	definitionmodel "github.com/domainry/domainry-identity/internal/domain/definition/model"
 	"github.com/domainry/domainry-orm/query"
+	"github.com/domainry/domainry-orm/recordschema"
 )
 
 // GetIdentityProfileBindingRecord reads only metadata-declared columns from a
@@ -23,8 +24,9 @@ func (s *SQLIdentityStore) GetIdentityProfileBindingRecord(ctx context.Context, 
 	if objectKey == "" || strings.TrimSpace(profileID) == "" {
 		return nil, false, fmt.Errorf("profile binding object and profile id are required")
 	}
-	columns := []string{"id", "workspace_id"}
-	seen := map[string]struct{}{"id": {}, "workspace_id": {}}
+	businessIDColumn := recordschema.EntityIDColumn(objectKey)
+	columns := []string{"id", "workspace_id", businessIDColumn}
+	seen := map[string]struct{}{"id": {}, "workspace_id": {}, businessIDColumn: {}}
 	for _, field := range object.Fields {
 		key := strings.TrimSpace(field.Key)
 		if key == "" || strings.TrimSpace(field.DisabledAt) != "" {
@@ -37,7 +39,7 @@ func (s *SQLIdentityStore) GetIdentityProfileBindingRecord(ctx context.Context, 
 		columns = append(columns, key)
 	}
 	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.sqlRenderer(), objectKey, workspaceID).
-		Columns(columns...).Where(query.Equal("id", strings.TrimSpace(profileID))).Limit(1).Build()
+		Columns(columns...).Where(query.Equal(businessIDColumn, strings.TrimSpace(profileID))).Limit(1).Build()
 	if err != nil {
 		return nil, false, fmt.Errorf("build profile binding record query: %w", err)
 	}

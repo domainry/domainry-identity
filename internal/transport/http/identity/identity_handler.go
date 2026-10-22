@@ -201,15 +201,15 @@ func (h *IdentityHandler) createIdentityOrganizationUnit(w http.ResponseWriter, 
 		return
 	}
 	principal := h.principal(r)
-	result, err := h.executeIdentityAuthoringUpsert(r.Context(), "identity.organization_unit", organizationUnit.ID, r.Header.Get("Builder-Task-ID"), r.Header.Get("Idempotency-Key"), r.Header.Get("Expected-Schema-Hash"), organizationUnit, principal,
+	result, err := h.executeIdentityAuthoringUpsert(r.Context(), "identity.organization_unit", organizationUnit.OrganizationUnitID, r.Header.Get("Builder-Task-ID"), r.Header.Get("Idempotency-Key"), r.Header.Get("Expected-Schema-Hash"), organizationUnit, principal,
 		func(ctx context.Context) (any, bool, error) {
-			return h.users.OrganizationUnitByIDWithinDataScope(ctx, organizationUnit.ID, principal, "identity.organization_units.create")
+			return h.users.OrganizationUnitByIDWithinDataScope(ctx, organizationUnit.OrganizationUnitID, principal, "identity.organization_units.create")
 		},
 		func(ctx context.Context) (any, error) {
 			if executeErr := h.users.UpsertOrganizationUnitWithinDataScope(ctx, organizationUnit, principal, "identity.organization_units.create"); executeErr != nil {
 				return nil, executeErr
 			}
-			h.appendIdentityMutationAudit(r, "identity_organization_unit_created", "identity_organization_unit", organizationUnit.ID, "Created identity organization unit", map[string]any{"name": organizationUnit.Name})
+			h.appendIdentityMutationAudit(r, "identity_organization_unit_created", "identity_organization_unit", organizationUnit.OrganizationUnitID, "Created identity organization unit", map[string]any{"name": organizationUnit.Name})
 			return organizationUnit, nil
 		})
 	h.writeIdentityAuthoringResult(w, r, http.StatusCreated, result, err)
@@ -220,17 +220,17 @@ func (h *IdentityHandler) updateIdentityOrganizationUnit(w http.ResponseWriter, 
 	if !h.decodeJSON(w, r, &organizationUnit) {
 		return
 	}
-	organizationUnit.ID = valueOrDefault(strings.TrimSpace(r.PathValue("organizationUnitID")), organizationUnit.ID)
+	organizationUnit.OrganizationUnitID = valueOrDefault(strings.TrimSpace(r.PathValue("organizationUnitID")), organizationUnit.OrganizationUnitID)
 	principal := h.principal(r)
-	result, err := h.executeIdentityAuthoringUpsert(r.Context(), "identity.organization_unit", organizationUnit.ID, r.Header.Get("Builder-Task-ID"), r.Header.Get("Idempotency-Key"), r.Header.Get("Expected-Schema-Hash"), organizationUnit, principal,
+	result, err := h.executeIdentityAuthoringUpsert(r.Context(), "identity.organization_unit", organizationUnit.OrganizationUnitID, r.Header.Get("Builder-Task-ID"), r.Header.Get("Idempotency-Key"), r.Header.Get("Expected-Schema-Hash"), organizationUnit, principal,
 		func(ctx context.Context) (any, bool, error) {
-			return h.users.OrganizationUnitByIDWithinDataScope(ctx, organizationUnit.ID, principal, "identity.organization_units.update")
+			return h.users.OrganizationUnitByIDWithinDataScope(ctx, organizationUnit.OrganizationUnitID, principal, "identity.organization_units.update")
 		},
 		func(ctx context.Context) (any, error) {
 			if executeErr := h.users.UpsertOrganizationUnitWithinDataScope(ctx, organizationUnit, principal, "identity.organization_units.update"); executeErr != nil {
 				return nil, executeErr
 			}
-			h.appendIdentityMutationAudit(r, "identity_organization_unit_updated", "identity_organization_unit", organizationUnit.ID, "Updated identity organization unit", map[string]any{"name": organizationUnit.Name, "status": organizationUnit.Status})
+			h.appendIdentityMutationAudit(r, "identity_organization_unit_updated", "identity_organization_unit", organizationUnit.OrganizationUnitID, "Updated identity organization unit", map[string]any{"name": organizationUnit.Name, "status": organizationUnit.Status})
 			return organizationUnit, nil
 		})
 	h.writeIdentityAuthoringResult(w, r, http.StatusOK, result, err)

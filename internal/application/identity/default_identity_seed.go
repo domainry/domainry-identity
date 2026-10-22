@@ -166,12 +166,12 @@ func generatedManifestIdentitySeed() Seed {
 	roleMenus := generatedIdentityRoleMenusFromTemplate(platformMenus)
 	return Seed{
 		Roles: []identitymodel.IdentityRole{
-			{ID: "admin", Key: "admin", Label: "Admin", Status: identitymodel.IdentityStatusActive},
-			{ID: "organization_administrator", Key: "organization_administrator", Label: "Organization administrator", Status: identitymodel.IdentityStatusActive},
-			{ID: "system_administrator", Key: "system_administrator", Label: "System administrator", Status: identitymodel.IdentityStatusActive},
+			{RoleID: "admin", Key: "admin", Label: "Admin", Status: identitymodel.IdentityStatusActive},
+			{RoleID: "organization_administrator", Key: "organization_administrator", Label: "Organization administrator", Status: identitymodel.IdentityStatusActive},
+			{RoleID: "system_administrator", Key: "system_administrator", Label: "System administrator", Status: identitymodel.IdentityStatusActive},
 		},
 		Users: []identitymodel.IdentityUser{{
-			ID:     "admin",
+			UserID: "admin",
 			Name:   "Admin",
 			Email:  "admin@example.com",
 			Status: identitymodel.IdentityStatusActive,
@@ -191,7 +191,7 @@ func generatedIdentityMenus() []identitymodel.IdentityMenu {
 	for _, group := range platformAdminNavigation.Groups {
 		groupIDs[group.Key] = group.MenuID
 		menus = append(menus, identitymodel.IdentityMenu{
-			ID:        group.MenuID,
+			MenuID:    group.MenuID,
 			Key:       group.MenuID,
 			Label:     group.Label["en"],
 			Icon:      group.Icon,
@@ -201,7 +201,7 @@ func generatedIdentityMenus() []identitymodel.IdentityMenu {
 	}
 	for _, workspace := range platformAdminNavigation.Workspaces {
 		menus = append(menus, identitymodel.IdentityMenu{
-			ID:        workspace.MenuID,
+			MenuID:    workspace.MenuID,
 			Key:       workspace.MenuKey,
 			Label:     workspace.Label["en"],
 			Route:     workspace.Route,
@@ -253,7 +253,7 @@ func platformAdminPagePermissions(route string) ([]string, bool) {
 func generatedIdentityRoleMenusFromTemplate(menus []identitymodel.IdentityMenu) []identitymodel.IdentityRoleMenuAssignment {
 	menuIDsByKey := make(map[string]string, len(menus))
 	for _, menu := range menus {
-		menuIDsByKey[menu.Key] = menu.ID
+		menuIDsByKey[menu.Key] = menu.MenuID
 	}
 	assignments := make([]identitymodel.IdentityRoleMenuAssignment, 0)
 	for _, set := range platformAdminRoleMenus.RoleMenuSets {

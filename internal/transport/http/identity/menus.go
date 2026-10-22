@@ -71,17 +71,17 @@ func (h *IdentityHandler) upsertIdentityMenu(w http.ResponseWriter, r *http.Requ
 	}
 	menuID := strings.TrimSpace(r.PathValue("menuID"))
 	if menuID != "" {
-		req.ID = menuID
+		req.MenuID = menuID
 	}
 	principal := h.principal(r)
-	result, err := h.executeIdentityAuthoringUpsert(r.Context(), "identity.menu", req.ID, r.Header.Get("Builder-Task-ID"), r.Header.Get("Idempotency-Key"), r.Header.Get("Expected-Schema-Hash"), req, principal,
+	result, err := h.executeIdentityAuthoringUpsert(r.Context(), "identity.menu", req.MenuID, r.Header.Get("Builder-Task-ID"), r.Header.Get("Idempotency-Key"), r.Header.Get("Expected-Schema-Hash"), req, principal,
 		func(ctx context.Context) (any, bool, error) {
 			items, loadErr := h.menus.ListMenus(ctx)
 			if loadErr != nil {
 				return nil, false, loadErr
 			}
 			for _, item := range items {
-				if item.ID == req.ID {
+				if item.MenuID == req.MenuID {
 					return item, true, nil
 				}
 			}
@@ -94,7 +94,7 @@ func (h *IdentityHandler) upsertIdentityMenu(w http.ResponseWriter, r *http.Requ
 			if executeErr := h.menus.UpsertMenu(ctx, req); executeErr != nil {
 				return nil, executeErr
 			}
-			h.appendIdentityMutationAudit(r, "identity_menu_upserted", "identity_menu", req.ID, "Upserted identity menu", map[string]any{"key": req.Key, "route": req.Route, "status": req.Status})
+			h.appendIdentityMutationAudit(r, "identity_menu_upserted", "identity_menu", req.MenuID, "Upserted identity menu", map[string]any{"key": req.Key, "route": req.Route, "status": req.Status})
 			menus, loadErr := h.menus.ListMenus(ctx)
 			if loadErr != nil {
 				return nil, loadErr
@@ -130,7 +130,7 @@ func (h *IdentityHandler) LocalizedMenus(r *http.Request, menus []identitymodel.
 		menu := &out[index]
 		key := strings.TrimSpace(menu.Key)
 		if key == "" {
-			key = strings.TrimSpace(menu.ID)
+			key = strings.TrimSpace(menu.MenuID)
 		}
 		if label := lookup[identityLocalizedTextLookupKey("menu", key, "label")]; label != "" {
 			menu.Label = label

@@ -175,7 +175,7 @@ func TestIdentityScopedMethodsDelegateWithinWorkspace(t *testing.T) {
 
 func TestDisableUserOwnsAccountSecurityOrchestration(t *testing.T) {
 	service := NewIdentityApplicationService(&identityScopedRepository{
-		users: []identitymodel.IdentityUser{{ID: "user-1", Status: identitymodel.IdentityStatusActive}},
+		users: []identitymodel.IdentityUser{{UserID: "user-1", Status: identitymodel.IdentityStatusActive}},
 	}, nil)
 	ctx := requestcontext.WithWorkspaceID(t.Context(), "workspace-a")
 	revoker := &identityScopedSessionRevoker{count: 3}
@@ -188,7 +188,7 @@ func TestDisableUserOwnsAccountSecurityOrchestration(t *testing.T) {
 
 func TestDisableUserRejectsMissingScopeOrSessionRevokerAndPropagatesFailure(t *testing.T) {
 	service := NewIdentityApplicationService(&identityScopedRepository{
-		users: []identitymodel.IdentityUser{{ID: "user-1", Status: identitymodel.IdentityStatusActive}},
+		users: []identitymodel.IdentityUser{{UserID: "user-1", Status: identitymodel.IdentityStatusActive}},
 	}, nil)
 	if _, err := service.DisableUser(t.Context(), "user-1", &identityScopedSessionRevoker{}); apperror.CodeOf(err) != "backend.workspace_scope_required" {
 		t.Fatalf("missing workspace code=%q", apperror.CodeOf(err))
@@ -204,7 +204,7 @@ func TestDisableUserRejectsMissingScopeOrSessionRevokerAndPropagatesFailure(t *t
 }
 
 func TestIdentityScopedImpactAndAccountDisableFailureEdges(t *testing.T) {
-	base := &identityScopedRepository{users: []identitymodel.IdentityUser{{ID: "user-1", Status: identitymodel.IdentityStatusActive}}}
+	base := &identityScopedRepository{users: []identitymodel.IdentityUser{{UserID: "user-1", Status: identitymodel.IdentityStatusActive}}}
 	service := NewIdentityApplicationServiceWithDependencies(base, nil, IdentityApplicationServiceDependencies{
 		UserDeletionInspector: &identityScopedDeletionInspector{},
 	})
@@ -262,7 +262,7 @@ func (r *identityScopedStatusFaultRepository) ListIdentityUsers(ctx context.Cont
 
 func TestUserDeletionImpactAggregatesEveryCrossDomainBlocker(t *testing.T) {
 	service := NewIdentityApplicationServiceWithDependencies(&identityScopedRepository{
-		users:       []identitymodel.IdentityUser{{ID: "user-1", Status: identitymodel.IdentityStatusActive}},
+		users:       []identitymodel.IdentityUser{{UserID: "user-1", Status: identitymodel.IdentityStatusActive}},
 		assignments: []identitymodel.IdentityUserRoleAssignment{{UserID: "user-1", RoleID: "role-1", Status: "active"}},
 	}, nil, IdentityApplicationServiceDependencies{
 		UserDeletionInspector: &identityScopedDeletionInspector{inspection: IdentityUserDeletionInspection{
@@ -286,7 +286,7 @@ func TestUserDeletionImpactAggregatesEveryCrossDomainBlocker(t *testing.T) {
 
 func TestUserDisableImpactIncludesEveryIdentityAndEntitlementProjection(t *testing.T) {
 	service := NewIdentityApplicationService(&identityScopedRepository{
-		users:       []identitymodel.IdentityUser{{ID: "user-1", Status: identitymodel.IdentityStatusActive}},
+		users:       []identitymodel.IdentityUser{{UserID: "user-1", Status: identitymodel.IdentityStatusActive}},
 		assignments: []identitymodel.IdentityUserRoleAssignment{{UserID: "user-1", RoleID: "member", Status: "active"}},
 	}, nil)
 	impact, err := service.UserDisableImpact(requestcontext.WithWorkspaceID(t.Context(), "workspace-a"), "user-1")
@@ -297,7 +297,7 @@ func TestUserDisableImpactIncludesEveryIdentityAndEntitlementProjection(t *testi
 
 func TestUserDeletionInspectionUsesIdentityLocalDefaultAndPropagatesInjectedFailure(t *testing.T) {
 	repository := &identityScopedRepository{
-		users: []identitymodel.IdentityUser{{ID: "user-1", Status: identitymodel.IdentityStatusActive}},
+		users: []identitymodel.IdentityUser{{UserID: "user-1", Status: identitymodel.IdentityStatusActive}},
 	}
 	service := NewIdentityApplicationService(repository, nil)
 	ctx := requestcontext.WithWorkspaceID(t.Context(), "workspace-a")

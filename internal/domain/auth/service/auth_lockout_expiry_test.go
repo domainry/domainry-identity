@@ -117,7 +117,7 @@ func TestExpiredLockLiftsOnLogin(t *testing.T) {
 		credential.LockedUntil = time.Now().UTC().Add(-6 * time.Minute).Format(time.RFC3339)
 		authRepository.credentials = map[string]identitymodel.IdentityCredential{"user": credential}
 
-		if err := auth.ChangePassword(t.Context(), "workspace-primary", user.ID, password, "NewPassword2!"); err != nil {
+		if err := auth.ChangePassword(t.Context(), "workspace-primary", user.UserID, password, "NewPassword2!"); err != nil {
 			t.Fatalf("expired lock with the correct password must allow a password change, got: %v", err)
 		}
 		stored := authRepository.credentials["user"]

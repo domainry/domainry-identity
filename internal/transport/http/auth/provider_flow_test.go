@@ -74,10 +74,10 @@ func newAuthProviderFlowFixture(t *testing.T) *authProviderFlowFixture {
 	t.Helper()
 	handler, _, repository, capture, _ := newAuthPasswordHandler(t)
 	repository.accounts = []identitymodel.IdentityExternalAccount{
-		{ID: "otp-account", UserID: "user-1", Provider: "whatsapp", ProviderSubject: "+8613800000000"},
-		{ID: "oidc-account", UserID: "user-1", Provider: "oidc", ProviderSubject: "oidc-user"},
-		{ID: "wechat-account", UserID: "user-1", Provider: "wechat_mini_program", ProviderSubject: "wechat-user"},
-		{ID: "line-account", UserID: "user-1", Provider: "line", ProviderSubject: "line-user"},
+		{ExternalAccountID: "otp-account", UserID: "user-1", Provider: "whatsapp", ProviderSubject: "+8613800000000"},
+		{ExternalAccountID: "oidc-account", UserID: "user-1", Provider: "oidc", ProviderSubject: "oidc-user"},
+		{ExternalAccountID: "wechat-account", UserID: "user-1", Provider: "wechat_mini_program", ProviderSubject: "wechat-user"},
+		{ExternalAccountID: "line-account", UserID: "user-1", Provider: "line", ProviderSubject: "line-user"},
 	}
 	providers := authapplication.NewAuthProviderApplicationService([]map[string]any{
 		{"key": "oidc", "type": "oidc", "enabled": true, "auth_url": "https://identity.example/authorize", "client_id": "client-1", "redirect_url": "https://app.example/callback", "scope": "openid", "auto_create_users": false},
@@ -107,7 +107,7 @@ func TestAuthProviderExchangeAcceptsLineLIFFIDToken(t *testing.T) {
 	request := providerFlowRequest(http.MethodPost, "/auth/providers/line/exchange", "line", `{"workspace_id":"workspace-a","application_key":"line-mini","id_token":"liff-id-token"}`)
 	response := httptest.NewRecorder()
 	fixture.handler.authProviderExchange(response, request)
-	if session := decodeProviderFlowSession(t, response); response.Code != http.StatusOK || session.User.ID != "user-1" || fixture.callback.input.Values["code"] != "liff-id-token" {
+	if session := decodeProviderFlowSession(t, response); response.Code != http.StatusOK || session.User.UserID != "user-1" || fixture.callback.input.Values["code"] != "liff-id-token" {
 		t.Fatalf("status=%d session=%#v callback=%#v body=%s", response.Code, session, fixture.callback, response.Body.String())
 	}
 }
@@ -118,7 +118,7 @@ func TestAuthProviderExchangeCompletesWeChatMiniProgramLogin(t *testing.T) {
 	request := providerFlowRequest(http.MethodPost, "/auth/providers/wechat_mini_program/exchange", "wechat_mini_program", `{"workspace_id":"workspace-a","application_key":"mini-app","code":"wx-code"}`)
 	response := httptest.NewRecorder()
 	fixture.handler.authProviderExchange(response, request)
-	if session := decodeProviderFlowSession(t, response); response.Code != http.StatusOK || session.User.ID != "user-1" || fixture.callback.input.Values["code"] != "wx-code" {
+	if session := decodeProviderFlowSession(t, response); response.Code != http.StatusOK || session.User.UserID != "user-1" || fixture.callback.input.Values["code"] != "wx-code" {
 		t.Fatalf("status=%d session=%#v callback=%#v body=%s", response.Code, session, fixture.callback, response.Body.String())
 	}
 
@@ -277,7 +277,7 @@ func TestAuthProviderVerifyCoversSuccessStateAndExternalLoginFailures(t *testing
 	surfaceRequest.Header.Set("X-Domainry-Product-Surface", "consumer_portal")
 	success := httptest.NewRecorder()
 	fixture.handler.authProviderVerify(success, surfaceRequest)
-	if session := decodeProviderFlowSession(t, success); success.Code != http.StatusOK || session.User.ID != "user-1" || session.RefreshToken == "" {
+	if session := decodeProviderFlowSession(t, success); success.Code != http.StatusOK || session.User.UserID != "user-1" || session.RefreshToken == "" {
 		t.Fatalf("verify must ignore Surface status=%d session=%#v body=%s", success.Code, session, success.Body.String())
 	}
 
@@ -315,7 +315,7 @@ func TestAuthProviderCallbackCompletesGETAndPOSTRelayState(t *testing.T) {
 	getRequest := providerFlowRequest(http.MethodGet, "/callback?state="+state+"&code=code-1", " oidc ", "")
 	getRequest.Header.Del("X-Domainry-Product-Surface")
 	fixture.handler.authProviderCallback(getResponse, getRequest)
-	if session := decodeProviderFlowSession(t, getResponse); getResponse.Code != http.StatusOK || session.User.ID != "user-1" || fixture.callback.called != 1 || fixture.callback.provider != "oidc" || fixture.callback.input.Method != http.MethodGet || fixture.callback.input.Values["code"] != "code-1" || fixture.callback.challenge.WorkspaceID != "workspace-a" {
+	if session := decodeProviderFlowSession(t, getResponse); getResponse.Code != http.StatusOK || session.User.UserID != "user-1" || fixture.callback.called != 1 || fixture.callback.provider != "oidc" || fixture.callback.input.Method != http.MethodGet || fixture.callback.input.Values["code"] != "code-1" || fixture.callback.challenge.WorkspaceID != "workspace-a" {
 		t.Fatalf("GET callback status=%d session=%#v callback=%#v", getResponse.Code, session, fixture.callback)
 	}
 

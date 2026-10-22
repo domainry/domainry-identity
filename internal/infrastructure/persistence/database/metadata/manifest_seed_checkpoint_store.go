@@ -78,7 +78,7 @@ func (s MetadataStore) SetManifestIdentitySeedSyncedVersion(ctx context.Context,
 		}
 		now := time.Now().UTC().Format(time.RFC3339Nano)
 		insertErr := sharedoperation.InsertSucceeded(ctx, s.database(), s.store.SQLRenderer, sharedoperation.SucceededRecord{
-			ID: id, WorkspaceID: workspaceID, Owner: manifestSeedCheckpointOwner, Kind: manifestSeedCheckpointKind,
+			OperationID: id, WorkspaceID: workspaceID, Owner: manifestSeedCheckpointOwner, Kind: manifestSeedCheckpointKind,
 			ActionKey: "identity.manifest_seed.sync", ResourceType: "identity_manifest", ResourceID: workspaceID,
 			IdempotencyKey: "identity-manifest-seed-checkpoint", RequestFingerprint: "identity-manifest-seed-checkpoint-v1",
 			RequestedBy: "identity.manifest_seed", Reason: "record the applied Identity manifest seed",

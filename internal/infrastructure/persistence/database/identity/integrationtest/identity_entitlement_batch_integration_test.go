@@ -106,7 +106,7 @@ func TestEntitlementBatchUsesOneTransactionAndStableIdempotencyReceipt(t *testin
 		t.Fatalf("receipt=%#v err=%v", receipt, err)
 	}
 	replay, err := store.ApplyIdentityEntitlementBatch(t.Context(), mutation)
-	if err != nil || !replay.Replayed || replay.ID != receipt.ID {
+	if err != nil || !replay.Replayed || replay.OperationID != receipt.OperationID {
 		t.Fatalf("replay=%#v err=%v", replay, err)
 	}
 	reused := mutation
@@ -142,8 +142,8 @@ func TestScopedEntitlementBatchRejectsOneForeignTargetWithoutPartialWrites(t *te
 	}
 	bindSharedOperations(t, store)
 	for _, user := range []identitymodel.IdentityUser{
-		{ID: "sales-user", Name: "Sales", Email: "sales@example.com", OrgID: "sales", Status: identitymodel.IdentityStatusActive},
-		{ID: "finance-user", Name: "Finance", Email: "finance@example.com", OrgID: "finance", Status: identitymodel.IdentityStatusActive},
+		{UserID: "sales-user", Name: "Sales", Email: "sales@example.com", OrgID: "sales", Status: identitymodel.IdentityStatusActive},
+		{UserID: "finance-user", Name: "Finance", Email: "finance@example.com", OrgID: "finance", Status: identitymodel.IdentityStatusActive},
 	} {
 		if err := store.UpsertIdentityUser(t.Context(), "workspace-primary", user); err != nil {
 			t.Fatal(err)

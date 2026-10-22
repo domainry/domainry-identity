@@ -154,7 +154,7 @@ func (r *identityHTTPRepository) ListIdentityOrganizationUnitsWithinDataScope(_ 
 	}
 	items := make([]identitymodel.IdentityOrganizationUnit, 0, len(r.organizationUnits))
 	for _, item := range r.organizationUnits {
-		if allowed[item.ID] {
+		if allowed[item.OrganizationUnitID] {
 			items = append(items, item)
 		}
 	}
@@ -167,7 +167,7 @@ func (r *identityHTTPRepository) GetIdentityOrganizationUnitWithinDataScope(ctx 
 		return identitymodel.IdentityOrganizationUnit{}, false, err
 	}
 	for _, item := range items {
-		if item.ID == organizationUnitID {
+		if item.OrganizationUnitID == organizationUnitID {
 			return item, true, nil
 		}
 	}
@@ -178,7 +178,7 @@ func (r *identityHTTPRepository) UpsertIdentityOrganizationUnit(_ context.Contex
 	r.upsertOrganizationUnitCalls++
 	r.lastOrganizationUnit = organizationUnit
 	for index := range r.organizationUnits {
-		if r.organizationUnits[index].ID == organizationUnit.ID {
+		if r.organizationUnits[index].OrganizationUnitID == organizationUnit.OrganizationUnitID {
 			r.organizationUnits[index] = organizationUnit
 			return firstIdentityHTTPError(r.upsertOrganizationUnitErr, r.err)
 		}
@@ -209,9 +209,9 @@ func (r *identityHTTPRepository) UpsertIdentityOrganizationUnitsWithinDataScopeA
 		existing := map[string]bool{}
 		existingParent := map[string]string{}
 		for _, item := range r.organizationUnits {
-			existing[item.ID] = true
+			existing[item.OrganizationUnitID] = true
 			if item.ParentID != nil {
-				existingParent[item.ID] = strings.TrimSpace(*item.ParentID)
+				existingParent[item.OrganizationUnitID] = strings.TrimSpace(*item.ParentID)
 			}
 		}
 		for _, item := range organizationUnits {
@@ -219,8 +219,8 @@ func (r *identityHTTPRepository) UpsertIdentityOrganizationUnitsWithinDataScopeA
 			if item.ParentID != nil {
 				parentID = strings.TrimSpace(*item.ParentID)
 			}
-			parentChanged := !existing[item.ID] || existingParent[item.ID] != parentID
-			if existing[item.ID] && !allowed[item.ID] || parentChanged && (parentID == "" || !allowed[parentID]) {
+			parentChanged := !existing[item.OrganizationUnitID] || existingParent[item.OrganizationUnitID] != parentID
+			if existing[item.OrganizationUnitID] && !allowed[item.OrganizationUnitID] || parentChanged && (parentID == "" || !allowed[parentID]) {
 				return false, nil
 			}
 		}
@@ -257,7 +257,7 @@ func (r *identityHTTPRepository) ListIdentityProfileBindingsByUser(_ context.Con
 }
 func (r *identityHTTPRepository) GetIdentityUser(_ context.Context, _, userID string) (identitymodel.IdentityUser, bool, error) {
 	for _, user := range r.users {
-		if user.ID == userID {
+		if user.UserID == userID {
 			return user, true, r.err
 		}
 	}
@@ -268,7 +268,7 @@ func (r *identityHTTPRepository) GetIdentityUserWithinDataScope(_ context.Contex
 		return identitymodel.IdentityUser{}, false, r.listUsersErrAfterUpsert
 	}
 	for _, user := range r.users {
-		if user.ID == userID && identityHTTPUserMatchesDataScope(user, scope) {
+		if user.UserID == userID && identityHTTPUserMatchesDataScope(user, scope) {
 			return user, true, r.err
 		}
 	}
@@ -284,7 +284,7 @@ func (r *identityHTTPRepository) UpsertIdentityUser(_ context.Context, _ string,
 		return nil
 	}
 	for index := range r.users {
-		if r.users[index].ID == user.ID {
+		if r.users[index].UserID == user.UserID {
 			r.users[index] = user
 			return nil
 		}
@@ -294,7 +294,7 @@ func (r *identityHTTPRepository) UpsertIdentityUser(_ context.Context, _ string,
 }
 func (r *identityHTTPRepository) CreateIdentityUser(ctx context.Context, workspaceID string, user identitymodel.IdentityUser) error {
 	for _, existing := range r.users {
-		if existing.ID == user.ID {
+		if existing.UserID == user.UserID {
 			return errors.New("identity user already exists")
 		}
 	}
@@ -315,7 +315,7 @@ func (r *identityHTTPRepository) UpsertIdentityUsersAtomically(_ context.Context
 	for _, user := range users {
 		updated := false
 		for index := range r.users {
-			if r.users[index].ID == user.ID {
+			if r.users[index].UserID == user.UserID {
 				r.users[index] = user
 				updated = true
 				break
@@ -338,7 +338,7 @@ func (r *identityHTTPRepository) UpdateIdentityUsersWithinDataScopeAtomically(_ 
 	for _, update := range users {
 		matched := false
 		for _, existing := range r.users {
-			if existing.ID == update.ID && identityHTTPUserMatchesDataScope(existing, scope) {
+			if existing.UserID == update.UserID && identityHTTPUserMatchesDataScope(existing, scope) {
 				matched = true
 				break
 			}
@@ -351,7 +351,7 @@ func (r *identityHTTPRepository) UpdateIdentityUsersWithinDataScopeAtomically(_ 
 	if r.dropUpsertUser {
 		for _, update := range users {
 			for index := range r.users {
-				if r.users[index].ID == update.ID {
+				if r.users[index].UserID == update.UserID {
 					r.users = append(r.users[:index], r.users[index+1:]...)
 					break
 				}
@@ -361,7 +361,7 @@ func (r *identityHTTPRepository) UpdateIdentityUsersWithinDataScopeAtomically(_ 
 	}
 	for _, update := range users {
 		for index := range r.users {
-			if r.users[index].ID == update.ID {
+			if r.users[index].UserID == update.UserID {
 				r.users[index] = update
 			}
 		}
@@ -370,17 +370,17 @@ func (r *identityHTTPRepository) UpdateIdentityUsersWithinDataScopeAtomically(_ 
 }
 func (r *identityHTTPRepository) UpsertIdentityUserWithRoleAssignmentsAtomically(_ context.Context, _ string, user identitymodel.IdentityUser, assignments []identitymodel.IdentityUserRoleAssignment) error {
 	r.lastUser = user
-	r.lastUserID = user.ID
+	r.lastUserID = user.UserID
 	r.assignments = append([]identitymodel.IdentityUserRoleAssignment(nil), assignments...)
 	return firstIdentityHTTPError(r.assignErr, r.err)
 }
 func (r *identityHTTPRepository) UpsertIdentityUserWithRoleAssignmentsWithinDataScopeAtomically(_ context.Context, _ string, user identitymodel.IdentityUser, assignments []identitymodel.IdentityUserRoleAssignment, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
-	r.lastUser, r.lastUserID = user, user.ID
+	r.lastUser, r.lastUserID = user, user.UserID
 	if err := firstIdentityHTTPError(r.assignErr, r.err); err != nil {
 		return false, err
 	}
 	for _, existing := range r.users {
-		if existing.ID == user.ID && identityHTTPUserMatchesDataScope(existing, scope) {
+		if existing.UserID == user.UserID && identityHTTPUserMatchesDataScope(existing, scope) {
 			r.assignments = append([]identitymodel.IdentityUserRoleAssignment(nil), assignments...)
 			return true, nil
 		}
@@ -399,7 +399,7 @@ func (r *identityHTTPRepository) RemoveIdentityUserWithinDataScope(_ context.Con
 		return false, err
 	}
 	for index, user := range r.users {
-		if user.ID == userID && identityHTTPUserMatchesDataScope(user, scope) {
+		if user.UserID == userID && identityHTTPUserMatchesDataScope(user, scope) {
 			r.users = append(r.users[:index], r.users[index+1:]...)
 			return true, nil
 		}
@@ -416,7 +416,7 @@ func (r *identityHTTPRepository) SetIdentityUserStatusWithinDataScope(_ context.
 		return false, err
 	}
 	for index, user := range r.users {
-		if user.ID == userID && identityHTTPUserMatchesDataScope(user, scope) {
+		if user.UserID == userID && identityHTTPUserMatchesDataScope(user, scope) {
 			r.users[index].Status = status
 			return true, nil
 		}
@@ -430,7 +430,7 @@ func identityHTTPUserMatchesDataScope(user identitymodel.IdentityUser, scope ide
 		return true
 	}
 	for _, userID := range scope.OwnerUserIDs {
-		if user.ID == userID {
+		if user.UserID == userID {
 			return true
 		}
 	}
@@ -472,7 +472,7 @@ func (r *identityHTTPRepository) ListIdentityUserRoleAssignmentsWithinDataScope(
 	}
 	allowed := map[string]bool{}
 	for _, user := range r.users {
-		allowed[user.ID] = identityHTTPUserMatchesDataScope(user, scope)
+		allowed[user.UserID] = identityHTTPUserMatchesDataScope(user, scope)
 	}
 	out := []identitymodel.IdentityUserRoleAssignment{}
 	for _, assignment := range r.assignments {
@@ -496,7 +496,7 @@ func (r *identityHTTPRepository) AssignIdentityUserRoleWithinDataScope(_ context
 		return false, err
 	}
 	for _, user := range r.users {
-		if user.ID == assignment.UserID && identityHTTPUserMatchesDataScope(user, scope) {
+		if user.UserID == assignment.UserID && identityHTTPUserMatchesDataScope(user, scope) {
 			r.assignments = append(r.assignments, assignment)
 			return true, nil
 		}
@@ -513,7 +513,7 @@ func (r *identityHTTPRepository) RemoveIdentityUserRoleWithinDataScope(_ context
 		return false, err
 	}
 	for _, user := range r.users {
-		if user.ID == userID && identityHTTPUserMatchesDataScope(user, scope) {
+		if user.UserID == userID && identityHTTPUserMatchesDataScope(user, scope) {
 			return true, nil
 		}
 	}
@@ -535,7 +535,7 @@ func (r *identityHTTPRepository) ApplyIdentityEntitlementBatch(_ context.Context
 	}
 	r.assignments = append(r.assignments, mutation.Assignments...)
 	receipt := identitymodel.IdentityEntitlementBatchReceipt{
-		ID: "receipt-" + mutation.IdempotencyKey, WorkspaceID: mutation.WorkspaceID, ActorID: mutation.ActorID,
+		OperationID: "receipt-" + mutation.IdempotencyKey, WorkspaceID: mutation.WorkspaceID, ActorID: mutation.ActorID,
 		IdempotencyKey: mutation.IdempotencyKey, RequestFingerprint: mutation.RequestFingerprint, Items: mutation.Items, CreatedAt: "now",
 	}
 	r.entitlementReceipts[mutation.IdempotencyKey] = receipt
@@ -556,7 +556,7 @@ func (r *identityHTTPRepository) ListIdentityRoleRequestsWithinDataScope(_ conte
 	}
 	allowed := map[string]bool{}
 	for _, user := range r.users {
-		allowed[user.ID] = identityHTTPUserMatchesDataScope(user, scope)
+		allowed[user.UserID] = identityHTTPUserMatchesDataScope(user, scope)
 	}
 	out := []identitymodel.IdentityRoleRequest{}
 	for _, request := range r.requests {
@@ -568,7 +568,7 @@ func (r *identityHTTPRepository) ListIdentityRoleRequestsWithinDataScope(_ conte
 }
 func (r *identityHTTPRepository) UpdateIdentityRoleRequest(_ context.Context, _ string, request identitymodel.IdentityRoleRequest) error {
 	for index := range r.requests {
-		if r.requests[index].ID == request.ID {
+		if r.requests[index].RoleRequestID == request.RoleRequestID {
 			r.requests[index] = request
 		}
 	}
@@ -586,7 +586,7 @@ func (r *identityHTTPRepository) ApplyIdentityRoleRequestDecision(_ context.Cont
 		r.assignments = append(r.assignments, assignment)
 	}
 	for index := range r.requests {
-		if r.requests[index].ID == request.ID {
+		if r.requests[index].RoleRequestID == request.RoleRequestID {
 			r.requests[index] = request
 		}
 	}
@@ -594,7 +594,7 @@ func (r *identityHTTPRepository) ApplyIdentityRoleRequestDecision(_ context.Cont
 }
 func (r *identityHTTPRepository) ApplyIdentityRoleRequestDecisionWithinDataScope(ctx context.Context, workspaceID string, request identitymodel.IdentityRoleRequest, assignments []identitymodel.IdentityUserRoleAssignment, expectedStatus string, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
 	for _, user := range r.users {
-		if user.ID == request.UserID && identityHTTPUserMatchesDataScope(user, scope) {
+		if user.UserID == request.UserID && identityHTTPUserMatchesDataScope(user, scope) {
 			if err := r.ApplyIdentityRoleRequestDecision(ctx, workspaceID, request, assignments, expectedStatus); err != nil {
 				return false, err
 			}
@@ -612,7 +612,7 @@ func (r *identityHTTPRepository) UpsertIdentityMenu(_ context.Context, _ string,
 		return err
 	}
 	for index := range r.menus {
-		if r.menus[index].ID == menu.ID {
+		if r.menus[index].MenuID == menu.MenuID {
 			r.menus[index] = menu
 			if r.failListMenusAfterUpsert {
 				r.listMenusErr = errIdentityHTTPTest
@@ -631,7 +631,7 @@ func (r *identityHTTPRepository) RemoveIdentityMenu(context.Context, string, str
 }
 func (r *identityHTTPRepository) RemoveIdentityMenusAtomically(_ context.Context, _ string, menus []identitymodel.IdentityMenu) error {
 	for _, menu := range menus {
-		r.lastMenuIDs = append(r.lastMenuIDs, menu.ID)
+		r.lastMenuIDs = append(r.lastMenuIDs, menu.MenuID)
 	}
 	return r.err
 }

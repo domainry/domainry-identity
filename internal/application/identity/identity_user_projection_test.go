@@ -65,12 +65,12 @@ func (r *projectionProjectionRepository) ListIdentityProfileBindingsByUser(_ con
 func projectionProjectionFixture() (*IdentityApplicationService, *projectionProjectionRepository) {
 	base := &identityScopedRepository{
 		users: []identitymodel.IdentityUser{
-			{ID: "user-1", Name: "Alice", Status: identitymodel.IdentityStatusActive},
-			{ID: "user-2", Name: "Bob", Status: identitymodel.IdentityStatusDisabled},
+			{UserID: "user-1", Name: "Alice", Status: identitymodel.IdentityStatusActive},
+			{UserID: "user-2", Name: "Bob", Status: identitymodel.IdentityStatusDisabled},
 		},
 		roles: []identitymodel.IdentityRole{
-			{ID: "role-b", Key: "viewer", Label: "Viewer"},
-			{ID: "role-a", Key: "admin", Label: "Admin"},
+			{RoleID: "role-b", Key: "viewer", Label: "Viewer"},
+			{RoleID: "role-a", Key: "admin", Label: "Admin"},
 		},
 		assignments: []identitymodel.IdentityUserRoleAssignment{
 			{UserID: "user-1", RoleID: "role-b", Source: "request", Status: "active"},
@@ -105,7 +105,7 @@ func TestSearchUserProjectionProjectsRolesSecurityAndIdentityBadges(t *testing.T
 		t.Fatalf("unexpected page: %#v", page)
 	}
 	entry := page.Items[0]
-	if entry.User.ID != "user-1" || len(entry.Roles) != 2 || entry.Roles[0].Key != "admin" ||
+	if entry.User.UserID != "user-1" || len(entry.Roles) != 2 || entry.Roles[0].Key != "admin" ||
 		len(entry.IdentityBadges) != 1 || entry.IdentityBadges[0].Kind != "business_profile" ||
 		!entry.Security.MFAEnabled || entry.Security.ActiveSessions != 2 {
 		t.Fatalf("unexpected projection entry: %#v", entry)
@@ -143,7 +143,7 @@ func TestSearchUserProjectionFailureBoundaries(t *testing.T) {
 }
 
 func TestSearchUserProjectionWithoutBusinessProfiles(t *testing.T) {
-	repository := &identityScopedRepository{users: []identitymodel.IdentityUser{{ID: "user", Name: "User"}}}
+	repository := &identityScopedRepository{users: []identitymodel.IdentityUser{{UserID: "user", Name: "User"}}}
 	service := NewIdentityApplicationService(repository, nil)
 	page, err := service.SearchUserProjection(requestcontext.WithWorkspaceID(t.Context(), "workspace-primary"), identitymodel.IdentityListQuery{}, func(context.Context, string, string) (IdentityUserProjectionSecuritySummary, error) {
 		return IdentityUserProjectionSecuritySummary{}, nil

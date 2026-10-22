@@ -26,7 +26,7 @@ type IdentityEntitlementBatchMutation struct {
 }
 
 type IdentityEntitlementBatchReceipt struct {
-	ID                 string                         `json:"id"`
+	OperationID        string                         `json:"operation_id"`
 	WorkspaceID        string                         `json:"workspace_id"`
 	ActorID            string                         `json:"actor_id"`
 	IdempotencyKey     string                         `json:"idempotency_key"`

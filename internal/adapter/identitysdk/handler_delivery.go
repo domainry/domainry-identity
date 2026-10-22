@@ -96,7 +96,7 @@ func internalHandlerProfileBinding(value *identitysdk.HandlerProfileBindingMutat
 
 func internalHandlerUser(value identitysdk.User) identitymodel.IdentityUser {
 	return identitymodel.IdentityUser{
-		ID: value.ID, Name: value.Name, GivenName: value.GivenName, MiddleName: value.MiddleName, FamilyName: value.FamilyName,
+		ID: value.ID, UserID: value.UserID, Name: value.Name, GivenName: value.GivenName, MiddleName: value.MiddleName, FamilyName: value.FamilyName,
 		NamePrefix: value.NamePrefix, NameSuffix: value.NameSuffix, NativeName: value.NativeName, NameLocale: value.NameLocale,
 		Email: value.Email, Phone: value.Phone, AccountType: identitymodel.IdentityAccountType(value.AccountType), Locale: value.Locale,
 		Timezone: value.Timezone, OrgID: value.OrgID, SupportOrgID: value.SupportOrgID, ManagerUserID: value.ManagerUserID,
@@ -108,7 +108,7 @@ func internalHandlerUser(value identitysdk.User) identitymodel.IdentityUser {
 
 func sdkHandlerUser(value identitymodel.IdentityUser) identitysdk.User {
 	return identitysdk.User{
-		ID: value.ID, Name: value.Name, GivenName: value.GivenName, MiddleName: value.MiddleName, FamilyName: value.FamilyName,
+		ID: value.ID, UserID: value.UserID, Name: value.Name, GivenName: value.GivenName, MiddleName: value.MiddleName, FamilyName: value.FamilyName,
 		NamePrefix: value.NamePrefix, NameSuffix: value.NameSuffix, NativeName: value.NativeName, NameLocale: value.NameLocale,
 		Email: value.Email, Phone: value.Phone, AccountType: string(value.AccountType), Locale: value.Locale, Timezone: value.Timezone,
 		OrgID: value.OrgID, SupportOrgID: value.SupportOrgID, ManagerUserID: value.ManagerUserID, ReportingPath: value.ReportingPath,

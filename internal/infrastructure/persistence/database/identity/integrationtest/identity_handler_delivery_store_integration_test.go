@@ -24,11 +24,11 @@ func TestHandlerDeliveryStoreCommitsUserRolesProfileAndReceiptAsOneUnit(t *testi
 		t.Fatal(err)
 	}
 	if _, err := store.DB().ExecContext(t.Context(), `CREATE TABLE employee_profile (
-		workspace_id TEXT NOT NULL, id TEXT PRIMARY KEY, created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL, identity_user_id TEXT
+		id INTEGER PRIMARY KEY AUTOINCREMENT, workspace_id TEXT NOT NULL, employee_profile_id TEXT NOT NULL UNIQUE, created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL, identity_user_id TEXT
 	)`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO employee_profile (workspace_id, id, created_at, updated_at) VALUES ('workspace-primary', 'employee-profile-1', 0, 0)`); err != nil {
+	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO employee_profile (workspace_id, employee_profile_id, created_at, updated_at) VALUES ('workspace-primary', 'employee-profile-1', 0, 0)`); err != nil {
 		t.Fatal(err)
 	}
 	identityStore, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceEngine())
@@ -40,13 +40,13 @@ func TestHandlerDeliveryStoreCommitsUserRolesProfileAndReceiptAsOneUnit(t *testi
 		t.Fatalf("unbound shared Operations error=%v", err)
 	}
 	bindSharedOperations(t, identityStore)
-	if err := identityStore.UpsertIdentityRole(t.Context(), "workspace-primary", identitymodel.IdentityRole{ID: "employee-role", Key: "employee", Label: "Employee", Status: identitymodel.IdentityStatusActive}); err != nil {
+	if err := identityStore.UpsertIdentityRole(t.Context(), "workspace-primary", identitymodel.IdentityRole{RoleID: "employee-role", Key: "employee", Label: "Employee", Status: identitymodel.IdentityStatusActive}); err != nil {
 		t.Fatal(err)
 	}
 	mutation := identitymodel.IdentityHandlerDeliveryMutation{
 		WorkspaceID: "workspace-primary", ActorID: "admin", IdempotencyKey: "delivery-1", RequestFingerprint: "fingerprint-1",
 		Operation:       identitymodel.IdentityHandlerUserCreate,
-		User:            identitymodel.IdentityUser{ID: "employee-1", Name: "Employee One", Email: "employee@example.test", AccountType: identitymodel.IdentityAccountHuman, Status: identitymodel.IdentityStatusActive, Version: 1, ReportingPath: "/employee-1"},
+		User:            identitymodel.IdentityUser{UserID: "employee-1", Name: "Employee One", Email: "employee@example.test", AccountType: identitymodel.IdentityAccountHuman, Status: identitymodel.IdentityStatusActive, Version: 1, ReportingPath: "/employee-1"},
 		Credential:      &identitymodel.IdentityCredential{UserID: "employee-1", PasswordHash: "bcrypt-hash", MustChangePassword: true},
 		RoleAssignments: []identitymodel.IdentityUserRoleAssignment{{UserID: "employee-1", RoleID: "employee-role", Source: "manual", Status: "active", GrantedBy: "admin"}},
 		RoleKeys:        []string{"employee"},
@@ -79,7 +79,7 @@ func TestHandlerDeliveryStoreCommitsUserRolesProfileAndReceiptAsOneUnit(t *testi
 		_ = tx.Rollback()
 		t.Fatal(err)
 	}
-	if receipt.Result.User.ID != "employee-1" || receipt.Result.ProfileBinding == nil || receipt.Result.ProfileBinding.IdentityUserID != "employee-1" {
+	if receipt.Result.User.UserID != "employee-1" || receipt.Result.ProfileBinding == nil || receipt.Result.ProfileBinding.IdentityUserID != "employee-1" {
 		_ = tx.Rollback()
 		t.Fatalf("receipt=%+v", receipt)
 	}
@@ -137,7 +137,7 @@ func assertHandlerDeliveryCounts(t *testing.T, store *IdentityStore, users, assi
 		t.Fatalf("handler delivery operation count=%d want=%d", actualReceipts, receipts)
 	}
 	var actualProfileUser string
-	if err := store.DB().QueryRowContext(t.Context(), `SELECT COALESCE(identity_user_id, '') FROM employee_profile WHERE workspace_id = 'workspace-primary' AND id = 'employee-profile-1'`).Scan(&actualProfileUser); err != nil {
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT COALESCE(identity_user_id, '') FROM employee_profile WHERE workspace_id = 'workspace-primary' AND employee_profile_id = 'employee-profile-1'`).Scan(&actualProfileUser); err != nil {
 		t.Fatal(err)
 	}
 	if actualProfileUser != profileUser {

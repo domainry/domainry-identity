@@ -109,7 +109,7 @@ func (s *IdentityOrganizationUnitDeliveryApplicationService) Create(ctx context.
 
 		parentID := request.ParentOrganizationID
 		prepared, related, prepareErr := s.dependencies.Identity.PrepareOrganizationUnitForAtomicDelivery(transactionContext, identitymodel.IdentityOrganizationUnit{
-			ID: request.OrganizationID, Code: request.Code, Name: request.Name, NodeType: request.NodeType,
+			OrganizationUnitID: request.OrganizationID, Code: request.Code, Name: request.Name, NodeType: request.NodeType,
 			ParentID: &parentID, SortOrder: request.SortOrder, Status: identitymodel.IdentityStatusActive,
 		})
 		if prepareErr != nil {
@@ -178,7 +178,7 @@ func (s *IdentityOrganizationUnitDeliveryApplicationService) Resolve(ctx context
 
 func (s *IdentityOrganizationUnitDeliveryApplicationService) authorizeReplay(ctx context.Context, request IdentityOrganizationUnitDeliveryRequest, receipt identitymodel.IdentityOrganizationUnitDeliveryReceipt, principal identitymodel.Principal, permissionKey string) error {
 	receipted := receipt.Result.Organization
-	if receipted.ID != request.OrganizationID || receipted.Code != request.Code || receipted.Name != request.Name || receipted.NodeType != request.NodeType ||
+	if receipted.OrganizationUnitID != request.OrganizationID || receipted.Code != request.Code || receipted.Name != request.Name || receipted.NodeType != request.NodeType ||
 		receipted.ParentOrganizationID != request.ParentOrganizationID || receipted.SortOrder != request.SortOrder || receipted.Status != string(identitymodel.IdentityStatusActive) || receipted.Version != 1 {
 		return organizationUnitDeliveryError(apperror.KindConflict, "backend.identity.organization_unit_external_change")
 	}
@@ -272,7 +272,7 @@ func validDeliveredOrganizationUnitType(nodeType identitymodel.IdentityOrganizat
 }
 
 func validOrganizationUnitDeliveryParent(parent identitymodel.IdentityOrganizationUnit, found bool) bool {
-	return found && strings.TrimSpace(parent.ID) != "" && parent.NodeType.Valid() && parent.Status == identitymodel.IdentityStatusActive
+	return found && strings.TrimSpace(parent.OrganizationUnitID) != "" && parent.NodeType.Valid() && parent.Status == identitymodel.IdentityStatusActive
 }
 
 func organizationUnitParentScopeAllows(principal identitymodel.Principal, permissionKey, parentID string) bool {
@@ -294,6 +294,7 @@ func identityOrganizationUnitDeliveryRequestFingerprint(request IdentityOrganiza
 }
 
 func identityOrganizationUnitDeliveryFingerprint(organization identitymodel.IdentityOrganizationUnit) string {
+	organization.ID = 0
 	payload, _ := json.Marshal(organization)
 	sum := sha256.Sum256(payload)
 	return hex.EncodeToString(sum[:])
@@ -302,7 +303,7 @@ func identityOrganizationUnitDeliveryFingerprint(organization identitymodel.Iden
 func identityDeliveredOrganizationUnitFingerprint(organization identitymodel.IdentityDeliveredOrganizationUnit) string {
 	parentID := organization.ParentOrganizationID
 	return identityOrganizationUnitDeliveryFingerprint(identitymodel.IdentityOrganizationUnit{
-		ID: organization.ID, Code: organization.Code, Name: organization.Name, NodeType: organization.NodeType,
+		ID: organization.ID, OrganizationUnitID: organization.OrganizationUnitID, Code: organization.Code, Name: organization.Name, NodeType: organization.NodeType,
 		ParentID: &parentID, Path: organization.Path, AncestorIDs: append([]string(nil), organization.AncestorIDs...),
 		Depth: organization.Depth, SortOrder: organization.SortOrder, Status: identitymodel.IdentityStatus(organization.Status),
 	})
@@ -317,7 +318,7 @@ func identityOrganizationUnitParentID(parentID *string) string {
 
 func identityOrganizationUnitDeliveryProjection(organization identitymodel.IdentityOrganizationUnit, version int64) identitymodel.IdentityDeliveredOrganizationUnit {
 	return identitymodel.IdentityDeliveredOrganizationUnit{
-		ID: organization.ID, Code: organization.Code, Name: organization.Name, NodeType: organization.NodeType,
+		ID: organization.ID, OrganizationUnitID: organization.OrganizationUnitID, Code: organization.Code, Name: organization.Name, NodeType: organization.NodeType,
 		Status: string(organization.Status), ParentOrganizationID: identityOrganizationUnitParentID(organization.ParentID),
 		Path: organization.Path, AncestorIDs: append([]string(nil), organization.AncestorIDs...), Depth: organization.Depth,
 		SortOrder: organization.SortOrder, Version: version,
@@ -326,7 +327,7 @@ func identityOrganizationUnitDeliveryProjection(organization identitymodel.Ident
 
 func organizationUnitDeliveryAuditMap(organization identitymodel.IdentityDeliveredOrganizationUnit) map[string]any {
 	return map[string]any{
-		"id": organization.ID, "code": organization.Code, "name": organization.Name, "node_type": organization.NodeType,
+		"id": organization.ID, "organization_unit_id": organization.OrganizationUnitID, "code": organization.Code, "name": organization.Name, "node_type": organization.NodeType,
 		"status": organization.Status, "parent_id": organization.ParentOrganizationID, "version": organization.Version,
 	}
 }

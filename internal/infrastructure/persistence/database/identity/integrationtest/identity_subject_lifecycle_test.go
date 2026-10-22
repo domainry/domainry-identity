@@ -25,7 +25,7 @@ func bindSharedSubjectLifecycle(t *testing.T, db *sql.DB, store *identitypersist
 
 func beginSharedSubjectErasure(t *testing.T, db *sql.DB, workspaceID, subjectID, requestID string) {
 	t.Helper()
-	if _, err := db.ExecContext(t.Context(), `INSERT INTO _subject_requests(id,workspace_id,request_type,kind,status,subject_id,resolved_identity,updated_at,payload_json) VALUES(?,?,'subject_request','erase','executing',?,?,?,'{}')`, requestID, workspaceID, subjectID, subjectID, time.Now().UTC().UnixMilli()); err != nil {
+	if _, err := db.ExecContext(t.Context(), `INSERT INTO _subject_requests(request_id,workspace_id,request_type,kind,status,subject_id,resolved_identity,updated_at,payload_json) VALUES(?,?,'subject_request','erase','executing',?,?,?,'{}')`, requestID, workspaceID, subjectID, subjectID, time.Now().UTC().UnixMilli()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.ExecContext(t.Context(), `INSERT INTO _subject_steps(workspace_id,request_id,owner,operation,payload_json,completed_at) VALUES(?,?,'lifecycle','erase_fence','{}',?)`, workspaceID, requestID, time.Now().UTC().UnixMilli()); err != nil {
@@ -47,7 +47,7 @@ func TestIdentitySubjectLifecycleContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	user := identitymodel.IdentityUser{
-		ID: "user", Name: "Dr. User Example", GivenName: "User", MiddleName: "Middle", FamilyName: "Example",
+		UserID: "user", Name: "Dr. User Example", GivenName: "User", MiddleName: "Middle", FamilyName: "Example",
 		NamePrefix: "Dr.", NameSuffix: "PhD", NativeName: "用户", NameLocale: "en-US",
 		Email: "user@example.com", Phone: "1", OrgID: "organization-unit", SupportOrgID: "supported-organization-unit", WorkerNo: "E-1",
 		WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive,
@@ -59,7 +59,7 @@ func TestIdentitySubjectLifecycleContract(t *testing.T) {
 	if _, err := store.DB().ExecContext(t.Context(), "INSERT INTO _identity_credentials (user_id, workspace_id, password_hash, password_updated_at, failed_login_count, must_change_password, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", "user", "workspace-primary", "hash", nowMillis, 0, false, nowMillis, nowMillis); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.DB().ExecContext(t.Context(), "INSERT INTO _identity_mfa_factors (id, workspace_id, user_id, factor_type, status, verified_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", "factor", "workspace-primary", "user", "totp", "active", nowMillis, nowMillis, nowMillis); err != nil {
+	if _, err := store.DB().ExecContext(t.Context(), "INSERT INTO _identity_mfa_factors (mfa_factor_id, workspace_id, user_id, factor_type, status, verified_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", "factor", "workspace-primary", "user", "totp", "active", nowMillis, nowMillis, nowMillis); err != nil {
 		t.Fatal(err)
 	}
 	if err := identity.AssignIdentityUserRole(t.Context(), "workspace-primary", identitymodel.IdentityUserRoleAssignment{
@@ -68,8 +68,8 @@ func TestIdentitySubjectLifecycleContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO _identity_profile_bindings
-		(id,workspace_id,binding_key,object_key,profile_id,identity_user_id,status,version,created_at,updated_at)
-		VALUES ('binding','workspace-primary','member','member_profile','member-1','user','active',1,1,1)`); err != nil {
+		(workspace_id,binding_key,object_key,profile_id,identity_user_id,status,version,created_at,updated_at)
+		VALUES ('workspace-primary','member','member_profile','member-1','user','active',1,1,1)`); err != nil {
 		t.Fatal(err)
 	}
 
@@ -200,7 +200,7 @@ func TestIdentitySubjectEraseRollsBackAtEveryOwnedFactStage(t *testing.T) {
 				t.Fatal(err)
 			}
 			if err := identity.UpsertIdentityUser(t.Context(), "workspace-primary", identitymodel.IdentityUser{
-				ID: "user", Name: "Original Name", Email: "original@example.test", Phone: "100", Status: identitymodel.IdentityStatusActive,
+				UserID: "user", Name: "Original Name", Email: "original@example.test", Phone: "100", Status: identitymodel.IdentityStatusActive,
 			}); err != nil {
 				t.Fatal(err)
 			}
@@ -214,14 +214,14 @@ func TestIdentitySubjectEraseRollsBackAtEveryOwnedFactStage(t *testing.T) {
 					(user_id, workspace_id, password_hash, password_updated_at, failed_login_count, must_change_password, created_at, updated_at)
 					VALUES ('user','workspace-primary','hash',1,0,0,1,1)`,
 				`INSERT INTO _identity_external_accounts
-					(id, workspace_id, user_id, provider, provider_subject, email, phone, display_name, avatar_url, metadata, linked_at, created_at, updated_at)
+					(external_account_id, workspace_id, user_id, provider, provider_subject, email, phone, display_name, avatar_url, metadata, linked_at, created_at, updated_at)
 					VALUES ('external','workspace-primary','user','oidc','subject','original@example.test','100','Original','','{}',1,1,1)`,
 				`INSERT INTO _identity_mfa_factors
-					(id, workspace_id, user_id, factor_type, status, verified_at, created_at, updated_at)
+					(mfa_factor_id, workspace_id, user_id, factor_type, status, verified_at, created_at, updated_at)
 					VALUES ('factor','workspace-primary','user','totp','active',1,1,1)`,
 				`INSERT INTO _identity_auth_refresh_tokens
-					(id, workspace_id, user_id, session_id, token_hash, expires_at, created_at, updated_at)
-					VALUES ('token','workspace-primary','user','session','hash',32503680000000,1,1)`,
+					(workspace_id, user_id, session_id, token_hash, expires_at, created_at, updated_at)
+					VALUES ('workspace-primary','user','session','hash',32503680000000,1,1)`,
 			} {
 				if _, err := store.DB().ExecContext(t.Context(), statement); err != nil {
 					t.Fatal(err)
@@ -249,7 +249,7 @@ func TestIdentitySubjectEraseRollsBackAtEveryOwnedFactStage(t *testing.T) {
 			}
 			var name, email, phone, status string
 			if err := store.DB().QueryRowContext(t.Context(), `SELECT name,email,phone,status FROM _identity_users
-				WHERE workspace_id='workspace-primary' AND id='user'`).Scan(&name, &email, &phone, &status); err != nil {
+				WHERE workspace_id='workspace-primary' AND user_id='user'`).Scan(&name, &email, &phone, &status); err != nil {
 				t.Fatal(err)
 			}
 			if name != "Original Name" || email != "original@example.test" || phone != "100" || status != string(identitymodel.IdentityStatusActive) {
@@ -278,9 +278,9 @@ func TestIdentityExportHelpers(t *testing.T) {
 	if identitypersistence.ValueFromNull(sql.NullString{}) != "" || identitypersistence.ValueFromNull(sql.NullString{String: "x", Valid: true}) != "x" {
 		t.Fatal("null conversion")
 	}
-	values := []driver.Value{"id", "user", "session", "audience", int64(1000), `["pwd"]`, "urn:domainry:acr:1", "hash", time.Now().UnixMilli(), int64(0), nil, int64(0), int64(1)}
+	values := []driver.Value{"user", "session", "audience", int64(1000), `["pwd"]`, "urn:domainry:acr:1", "hash", time.Now().UnixMilli(), int64(0), nil, int64(0), int64(1)}
 	token, err := identitypersistence.ScanAuthRefreshToken(identityTestScanner{values: values})
-	if err != nil || token.ID != "id" || token.RevokedAt != "" {
+	if err != nil || token.TokenHash != "hash" || token.RevokedAt != "" {
 		t.Fatalf("token=%#v err=%v", token, err)
 	}
 	if _, err := identitypersistence.ScanAuthRefreshToken(identityTestScanner{err: errors.New("scan")}); err == nil {

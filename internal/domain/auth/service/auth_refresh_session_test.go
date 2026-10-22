@@ -163,7 +163,7 @@ func TestLogoutSession(t *testing.T) {
 	auth.Logout(t.Context(), "workspace-primary", "refresh-token")
 	authRepository.revokeRefreshTokenErr = nil
 	auth.Logout(t.Context(), "workspace-primary", "refresh-token")
-	if len(authRepository.revokedRefreshTokens) != 1 || authRepository.revokedRefreshTokens[0] != "refresh-old" {
+	if len(authRepository.revokedRefreshTokens) != 1 || authRepository.revokedRefreshTokens[0] != hashRefreshToken("refresh-token") {
 		t.Fatalf("unexpected logout revocations: %#v", authRepository.revokedRefreshTokens)
 	}
 }
@@ -188,7 +188,6 @@ func validRefreshFixture() (*AuthDomainService, *faultExternalIdentityRepository
 
 func validRefreshRecord(rawToken string, userID string) identitymodel.AuthRefreshToken {
 	return identitymodel.AuthRefreshToken{
-		ID:        "refresh-old",
 		UserID:    userID,
 		SessionID: "session",
 		TokenHash: hashRefreshToken(rawToken),

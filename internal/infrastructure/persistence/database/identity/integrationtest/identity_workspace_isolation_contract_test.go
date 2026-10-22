@@ -41,14 +41,14 @@ func assertIdentityRepositoryWorkspaceIsolation(t *testing.T, repository identit
 	t.Helper()
 	ctx := t.Context()
 	const workspaceA, workspaceB = "workspace-a", "workspace-b"
-	organizationUnitA := identitymodel.IdentityOrganizationUnit{ID: "organization-unit-a", Code: "A", Name: "Organization Unit A", NodeType: identitymodel.IdentityOrganizationUnitTeam, Path: "/organization-unit-a"}
-	organizationUnitB := identitymodel.IdentityOrganizationUnit{ID: "organization-unit-b", Code: "B", Name: "Organization Unit B", NodeType: identitymodel.IdentityOrganizationUnitStore, Path: "/organization-unit-b"}
-	userA := identitymodel.IdentityUser{ID: "user-a", Name: "User A", Email: "a@example.com", OrgID: organizationUnitA.ID, WorkerNo: "A-001", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive}
-	userB := identitymodel.IdentityUser{ID: "user-b", Name: "User B", Email: "b@example.com", OrgID: organizationUnitB.ID, WorkerNo: "B-001", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive}
-	roleA := identitymodel.IdentityRole{ID: "role-a", Key: "role-a", Label: "Role A"}
-	roleB := identitymodel.IdentityRole{ID: "role-b", Key: "role-b", Label: "Role B"}
-	menuA := identitymodel.IdentityMenu{ID: "menu-a", Key: "menu-a", Label: "Menu A"}
-	menuB := identitymodel.IdentityMenu{ID: "menu-b", Key: "menu-b", Label: "Menu B"}
+	organizationUnitA := identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "organization-unit-a", Code: "A", Name: "Organization Unit A", NodeType: identitymodel.IdentityOrganizationUnitTeam, Path: "/organization-unit-a"}
+	organizationUnitB := identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "organization-unit-b", Code: "B", Name: "Organization Unit B", NodeType: identitymodel.IdentityOrganizationUnitStore, Path: "/organization-unit-b"}
+	userA := identitymodel.IdentityUser{UserID: "user-a", Name: "User A", Email: "a@example.com", OrgID: organizationUnitA.OrganizationUnitID, WorkerNo: "A-001", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive}
+	userB := identitymodel.IdentityUser{UserID: "user-b", Name: "User B", Email: "b@example.com", OrgID: organizationUnitB.OrganizationUnitID, WorkerNo: "B-001", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive}
+	roleA := identitymodel.IdentityRole{RoleID: "role-a", Key: "role-a", Label: "Role A"}
+	roleB := identitymodel.IdentityRole{RoleID: "role-b", Key: "role-b", Label: "Role B"}
+	menuA := identitymodel.IdentityMenu{MenuID: "menu-a", Key: "menu-a", Label: "Menu A"}
+	menuB := identitymodel.IdentityMenu{MenuID: "menu-b", Key: "menu-b", Label: "Menu B"}
 
 	for _, seed := range []func() error{
 		func() error { return repository.UpsertIdentityOrganizationUnit(ctx, workspaceA, organizationUnitA) },
@@ -58,24 +58,28 @@ func assertIdentityRepositoryWorkspaceIsolation(t *testing.T, repository identit
 		func() error { return repository.UpsertIdentityRole(ctx, workspaceA, roleA) },
 		func() error { return repository.UpsertIdentityRole(ctx, workspaceB, roleB) },
 		func() error {
-			return repository.AssignIdentityUserRole(ctx, workspaceA, identitymodel.IdentityUserRoleAssignment{UserID: userA.ID, RoleID: roleA.ID})
+			return repository.AssignIdentityUserRole(ctx, workspaceA, identitymodel.IdentityUserRoleAssignment{UserID: userA.UserID, RoleID: roleA.RoleID})
 		},
 		func() error {
-			return repository.AssignIdentityUserRole(ctx, workspaceB, identitymodel.IdentityUserRoleAssignment{UserID: userB.ID, RoleID: roleB.ID})
+			return repository.AssignIdentityUserRole(ctx, workspaceB, identitymodel.IdentityUserRoleAssignment{UserID: userB.UserID, RoleID: roleB.RoleID})
 		},
 		func() error { return repository.UpsertIdentityMenu(ctx, workspaceA, menuA) },
 		func() error { return repository.UpsertIdentityMenu(ctx, workspaceB, menuB) },
-		func() error { return repository.SetIdentityRoleMenus(ctx, workspaceA, roleA.ID, []string{menuA.ID}) },
-		func() error { return repository.SetIdentityRoleMenus(ctx, workspaceB, roleB.ID, []string{menuB.ID}) },
+		func() error {
+			return repository.SetIdentityRoleMenus(ctx, workspaceA, roleA.RoleID, []string{menuA.MenuID})
+		},
+		func() error {
+			return repository.SetIdentityRoleMenus(ctx, workspaceB, roleB.RoleID, []string{menuB.MenuID})
+		},
 	} {
 		if err := seed(); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := repository.CreateIdentityRoleRequest(ctx, workspaceA, identitymodel.IdentityRoleRequest{ID: "request-a", UserID: userA.ID, RoleIDs: []string{roleA.ID}}); err != nil {
+	if _, err := repository.CreateIdentityRoleRequest(ctx, workspaceA, identitymodel.IdentityRoleRequest{RoleRequestID: "request-a", UserID: userA.UserID, RoleIDs: []string{roleA.RoleID}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := repository.CreateIdentityRoleRequest(ctx, workspaceB, identitymodel.IdentityRoleRequest{ID: "request-b", UserID: userB.ID, RoleIDs: []string{roleB.ID}}); err != nil {
+	if _, err := repository.CreateIdentityRoleRequest(ctx, workspaceB, identitymodel.IdentityRoleRequest{RoleRequestID: "request-b", UserID: userB.UserID, RoleIDs: []string{roleB.RoleID}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -86,20 +90,20 @@ func assertIdentityRepositoryWorkspaceIsolation(t *testing.T, repository identit
 	menus, _ := repository.ListIdentityMenus(ctx, workspaceA)
 	roleMenus, _ := repository.ListIdentityRoleMenuAssignments(ctx, workspaceA, "")
 	requests, _ := repository.ListIdentityRoleRequests(ctx, workspaceA, "", "")
-	if len(organizationUnits) != 1 || organizationUnits[0].ID != organizationUnitA.ID ||
-		len(users) != 1 || users[0].ID != userA.ID ||
-		len(roles) != 1 || roles[0].ID != roleA.ID ||
-		len(assignments) != 1 || assignments[0].UserID != userA.ID ||
-		len(menus) != 1 || menus[0].ID != menuA.ID ||
-		len(roleMenus) != 1 || roleMenus[0].MenuID != menuA.ID ||
-		len(requests) != 1 || requests[0].ID != "request-a" {
+	if len(organizationUnits) != 1 || organizationUnits[0].OrganizationUnitID != organizationUnitA.OrganizationUnitID ||
+		len(users) != 1 || users[0].UserID != userA.UserID ||
+		len(roles) != 1 || roles[0].RoleID != roleA.RoleID ||
+		len(assignments) != 1 || assignments[0].UserID != userA.UserID ||
+		len(menus) != 1 || menus[0].MenuID != menuA.MenuID ||
+		len(roleMenus) != 1 || roleMenus[0].MenuID != menuA.MenuID ||
+		len(requests) != 1 || requests[0].RoleRequestID != "request-a" {
 		t.Fatalf("workspace A leaked or lost data: organizationUnits=%#v users=%#v roles=%#v assignments=%#v menus=%#v roleMenus=%#v requests=%#v", organizationUnits, users, roles, assignments, menus, roleMenus, requests)
 	}
-	if _, found, err := repository.GetIdentityUser(ctx, workspaceB, userA.ID); err != nil || found {
+	if _, found, err := repository.GetIdentityUser(ctx, workspaceB, userA.UserID); err != nil || found {
 		t.Fatalf("workspace B read workspace A user: found=%v err=%v", found, err)
 	}
-	_ = repository.SetIdentityUserStatus(ctx, workspaceB, userA.ID, identitymodel.IdentityStatusDisabled)
-	storedA, found, err := repository.GetIdentityUser(ctx, workspaceA, userA.ID)
+	_ = repository.SetIdentityUserStatus(ctx, workspaceB, userA.UserID, identitymodel.IdentityStatusDisabled)
+	storedA, found, err := repository.GetIdentityUser(ctx, workspaceA, userA.UserID)
 	if err != nil || !found || storedA.Status != identitymodel.IdentityStatusActive {
 		t.Fatalf("cross-workspace status mutation changed A: user=%#v found=%v err=%v", storedA, found, err)
 	}
@@ -110,17 +114,19 @@ func assertIdentityRepositoryWorkspaceIsolation(t *testing.T, repository identit
 func assertIdentityRepositoryRejectsMissingWorkspace(t *testing.T, repository identityWorkspaceRepository) {
 	t.Helper()
 	ctx := t.Context()
-	role := identitymodel.IdentityRole{ID: "missing-role"}
-	menu := identitymodel.IdentityMenu{ID: "missing-menu"}
+	role := identitymodel.IdentityRole{RoleID: "missing-role"}
+	menu := identitymodel.IdentityMenu{MenuID: "missing-menu"}
 	atomic := repository.(identityrepository.IdentityAtomicMutationRepository)
 	operations := []func() error{
 		func() error { _, err := repository.ListIdentityOrganizationUnits(ctx, ""); return err },
 		func() error {
-			return repository.UpsertIdentityOrganizationUnit(ctx, "", identitymodel.IdentityOrganizationUnit{ID: "missing"})
+			return repository.UpsertIdentityOrganizationUnit(ctx, "", identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "missing"})
 		},
 		func() error { _, err := repository.ListIdentityUsers(ctx, ""); return err },
 		func() error { _, _, err := repository.GetIdentityUser(ctx, "", "user"); return err },
-		func() error { return repository.UpsertIdentityUser(ctx, "", identitymodel.IdentityUser{ID: "user"}) },
+		func() error {
+			return repository.UpsertIdentityUser(ctx, "", identitymodel.IdentityUser{UserID: "user"})
+		},
 		func() error { return repository.UpsertIdentityUsersAtomically(ctx, "", nil) },
 		func() error { return repository.RemoveIdentityUser(ctx, "", "user") },
 		func() error {
@@ -128,25 +134,25 @@ func assertIdentityRepositoryRejectsMissingWorkspace(t *testing.T, repository id
 		},
 		func() error { _, err := repository.ListIdentityRoles(ctx, ""); return err },
 		func() error { return repository.UpsertIdentityRole(ctx, "", role) },
-		func() error { return repository.RemoveIdentityRole(ctx, "", role.ID) },
+		func() error { return repository.RemoveIdentityRole(ctx, "", role.RoleID) },
 		func() error {
-			return repository.AssignIdentityUserRole(ctx, "", identitymodel.IdentityUserRoleAssignment{UserID: "user", RoleID: role.ID})
+			return repository.AssignIdentityUserRole(ctx, "", identitymodel.IdentityUserRoleAssignment{UserID: "user", RoleID: role.RoleID})
 		},
-		func() error { return repository.RemoveIdentityUserRole(ctx, "", "user", role.ID) },
+		func() error { return repository.RemoveIdentityUserRole(ctx, "", "user", role.RoleID) },
 		func() error { _, err := repository.ListIdentityUserRoleAssignments(ctx, "", "user"); return err },
 		func() error {
-			_, err := repository.CreateIdentityRoleRequest(ctx, "", identitymodel.IdentityRoleRequest{ID: "request"})
+			_, err := repository.CreateIdentityRoleRequest(ctx, "", identitymodel.IdentityRoleRequest{RoleRequestID: "request"})
 			return err
 		},
 		func() error { _, err := repository.ListIdentityRoleRequests(ctx, "", "", ""); return err },
 		func() error {
-			return repository.UpdateIdentityRoleRequest(ctx, "", identitymodel.IdentityRoleRequest{ID: "request"})
+			return repository.UpdateIdentityRoleRequest(ctx, "", identitymodel.IdentityRoleRequest{RoleRequestID: "request"})
 		},
 		func() error { _, err := repository.ListIdentityMenus(ctx, ""); return err },
 		func() error { return repository.UpsertIdentityMenu(ctx, "", menu) },
-		func() error { return repository.RemoveIdentityMenu(ctx, "", menu.ID) },
-		func() error { return repository.SetIdentityRoleMenus(ctx, "", role.ID, nil) },
-		func() error { _, err := repository.ListIdentityRoleMenuAssignments(ctx, "", role.ID); return err },
+		func() error { return repository.RemoveIdentityMenu(ctx, "", menu.MenuID) },
+		func() error { return repository.SetIdentityRoleMenus(ctx, "", role.RoleID, nil) },
+		func() error { _, err := repository.ListIdentityRoleMenuAssignments(ctx, "", role.RoleID); return err },
 		func() error { return atomic.RemoveIdentityMenusAtomically(ctx, "", []identitymodel.IdentityMenu{menu}) },
 	}
 	for index, operation := range operations {

@@ -74,11 +74,11 @@ func (s *SQLIdentityStore) CountIdentityWorkspaceActiveHumanAccountsWithActiveRo
 		Distinct().
 		Projections(
 			query.Project(query.QualifiedColumn("usage_user", "workspace_id")),
-			query.Project(query.QualifiedColumn("usage_user", "id")),
+			query.Project(query.QualifiedColumn("usage_user", "user_id")),
 		).
 		Join(query.InnerJoin("_identity_user_role_assignments", "usage_assignment", query.And(
 			query.EqualExpressions(query.QualifiedColumn("usage_user", "workspace_id"), query.QualifiedColumn("usage_assignment", "workspace_id")),
-			query.EqualExpressions(query.QualifiedColumn("usage_user", "id"), query.QualifiedColumn("usage_assignment", "user_id")),
+			query.EqualExpressions(query.QualifiedColumn("usage_user", "user_id"), query.QualifiedColumn("usage_assignment", "user_id")),
 		))).
 		Where(query.And(
 			query.InExpression(query.QualifiedColumn("usage_user", "workspace_id"), values...),

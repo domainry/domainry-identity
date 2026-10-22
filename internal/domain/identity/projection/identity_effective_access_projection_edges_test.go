@@ -27,8 +27,8 @@ func TestIdentityBuildEffectiveAccessSnapshotEdges(t *testing.T) {
 			{UserID: "user", RoleID: "role-1", ExpiresAt: &expiresAt},
 		},
 		ProjectionRoles: []identitymodel.IdentityRole{
-			{ID: "role-1", Key: "manager"},
-			{ID: "role-2"},
+			{RoleID: "role-1", Key: "manager"},
+			{RoleID: "role-2"},
 		},
 		RoleDefinitions: []identitymodel.RoleSchema{
 			{Key: "manager", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "order.read"), PermissionSetKeys: []string{"direct"}, PermissionSetGroups: []string{"group"}, GuardrailKeys: []string{"guardrail"}},
@@ -46,10 +46,10 @@ func TestIdentityBuildEffectiveAccessSnapshotEdges(t *testing.T) {
 			{RoleID: "missing", MenuID: "unassigned"},
 		},
 		Menus: []identitymodel.IdentityMenu{
-			{ID: "blank", Key: "b"},
-			{ID: "active", Key: "a", Status: identitymodel.IdentityStatusActive},
-			{ID: "disabled", Key: "d", Status: identitymodel.IdentityStatusDisabled},
-			{ID: "unassigned", Key: "u"},
+			{MenuID: "blank", Key: "b"},
+			{MenuID: "active", Key: "a", Status: identitymodel.IdentityStatusActive},
+			{MenuID: "disabled", Key: "d", Status: identitymodel.IdentityStatusDisabled},
+			{MenuID: "unassigned", Key: "u"},
 		},
 		Objects: []definitionmodel.ObjectSchema{{
 			Key: "order",

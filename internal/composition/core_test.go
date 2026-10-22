@@ -99,7 +99,7 @@ func TestSharedPasswordLoginBoundaryAuditsSuccessAndFailureWithoutCredentials(t 
 	if _, err := core.Auth.ManageTOTP(t.Context(), cfg.IdentityWorkspaceID, succeeded.ActorID, authmodel.TOTPRequest{Operation: "confirm", State: enrollment.State, Code: coreTestAuthenticatorCode(t, enrollment.SetupKey, step-1)}); err != nil {
 		t.Fatal(err)
 	}
-	if err := core.AuthStore.UpsertIdentityMFAFactor(t.Context(), cfg.IdentityWorkspaceID, identitymodel.IdentityMFAFactor{ID: "login-policy", UserID: succeeded.ActorID, Type: "otp", Provider: "sms", Status: "active", VerifiedAt: time.Now().UTC().Format(time.RFC3339)}); err != nil {
+	if err := core.AuthStore.UpsertIdentityMFAFactor(t.Context(), cfg.IdentityWorkspaceID, identitymodel.IdentityMFAFactor{MFAFactorID: "login-policy", UserID: succeeded.ActorID, Type: "otp", Provider: "sms", Status: "active", VerifiedAt: time.Now().UTC().Format(time.RFC3339)}); err != nil {
 		t.Fatal(err)
 	}
 	core.ProviderConfiguration.AddConfig(authmodel.AuthProviderConfig{Key: "sms", Type: "otp", Enabled: true, AllowedPurposes: []string{authmodel.AuthChallengePurposeLoginMFA}})

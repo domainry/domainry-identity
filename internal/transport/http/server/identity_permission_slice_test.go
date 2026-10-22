@@ -91,10 +91,13 @@ func TestStandalonePermissionAPIProjectsDatabaseStateAndActionBindingsWithRoleEn
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := repository.RemoveIdentityUserRole(t.Context(), "workspace-primary", "admin", "admin"); err != nil {
+	adminUserID := projectedUserIDByEmail(t, store, "admin@example.com")
+	adminRoleID := projectedRoleIDByKey(t, store, "admin")
+	systemAdministratorRoleID := projectedRoleIDByKey(t, store, "system_administrator")
+	if err := repository.RemoveIdentityUserRole(t.Context(), "workspace-primary", adminUserID, adminRoleID); err != nil {
 		t.Fatal(err)
 	}
-	if err := repository.AssignIdentityUserRole(t.Context(), "workspace-primary", identitymodel.IdentityUserRoleAssignment{UserID: "admin", RoleID: "system_administrator"}); err != nil {
+	if err := repository.AssignIdentityUserRole(t.Context(), "workspace-primary", identitymodel.IdentityUserRoleAssignment{UserID: adminUserID, RoleID: systemAdministratorRoleID}); err != nil {
 		t.Fatal(err)
 	}
 	limitedToken := loginAccessToken(t, testServer)
@@ -278,7 +281,8 @@ func TestStandaloneRolePermissionPublicationVersionsRoleSchemaAndSurvivesRestart
 
 	store, identityServer, testServer := openServer()
 	adminToken := loginAccessToken(t, testServer)
-	initial, initialHash, initialVersion := rolePermissionConfiguration(t, testServer, adminToken, "organization_administrator")
+	organizationAdministratorRoleID := projectedRoleIDByKey(t, store, "organization_administrator")
+	initial, initialHash, initialVersion := rolePermissionConfiguration(t, testServer, adminToken, organizationAdministratorRoleID)
 	initialKeys := rolePermissionKeys(initial)
 	if !slices.Contains(initialKeys, "identity.role_permissions.list") || !slices.Contains(initialKeys, "identity.role_permissions.publish") {
 		t.Fatalf("organization administrator is missing exact role-permission Actions: %v", initialKeys)
@@ -289,7 +293,7 @@ func TestStandaloneRolePermissionPublicationVersionsRoleSchemaAndSurvivesRestart
 		return key == "identity.role_permissions.list"
 	})
 	requestedKeys = append(requestedKeys, "inventory.items.list")
-	published, publishedHash, publishedVersion := publishRolePermissions(t, testServer, adminToken, "organization_administrator", initialHash, "role-permission-publication-1", requestedKeys, "verify direct RoleSchema publication")
+	published, publishedHash, publishedVersion := publishRolePermissions(t, testServer, adminToken, organizationAdministratorRoleID, initialHash, "role-permission-publication-1", requestedKeys, "verify direct RoleSchema publication")
 	if publishedHash == "" || publishedHash == initialHash || publishedVersion == "" || publishedVersion == initialVersion {
 		t.Fatalf("publication revision did not advance: initial=%s/%s published=%s/%s", initialVersion, initialHash, publishedVersion, publishedHash)
 	}
@@ -302,7 +306,7 @@ func TestStandaloneRolePermissionPublicationVersionsRoleSchemaAndSurvivesRestart
 		t.Fatalf("permission publication changed non-permission RoleSchema fields:\nbefore=%+v\nafter=%+v", beforeRole, afterRole)
 	}
 
-	replayed, replayedHash, replayedVersion := publishRolePermissions(t, testServer, adminToken, "organization_administrator", initialHash, "role-permission-publication-1", requestedKeys, "verify direct RoleSchema publication")
+	replayed, replayedHash, replayedVersion := publishRolePermissions(t, testServer, adminToken, organizationAdministratorRoleID, initialHash, "role-permission-publication-1", requestedKeys, "verify direct RoleSchema publication")
 	if replayedHash != publishedHash || replayedVersion != publishedVersion || !reflect.DeepEqual(replayed, published) {
 		t.Fatalf("idempotent replay changed the result: first=%s/%s %+v replay=%s/%s %+v", publishedVersion, publishedHash, published, replayedVersion, replayedHash, replayed)
 	}
@@ -311,13 +315,13 @@ func TestStandaloneRolePermissionPublicationVersionsRoleSchemaAndSurvivesRestart
 	staleKeys := slices.DeleteFunc(slices.Clone(requestedKeys), func(key string) bool {
 		return key == "inventory.items.list"
 	})
-	stale := publishRolePermissionsResponse(t, testServer, adminToken, "organization_administrator", initialHash, "role-permission-publication-stale", staleKeys, "verify stale CAS")
+	stale := publishRolePermissionsResponse(t, testServer, adminToken, organizationAdministratorRoleID, initialHash, "role-permission-publication-stale", staleKeys, "verify stale CAS")
 	if stale.StatusCode != http.StatusConflict {
 		t.Fatalf("stale RoleSchema publication status=%d body=%s", stale.StatusCode, readResponseBody(t, stale))
 	}
 	_ = stale.Body.Close()
 	unknownKeys := append(slices.Clone(requestedKeys), "identity.permission.unknown")
-	unknown := publishRolePermissionsResponse(t, testServer, adminToken, "organization_administrator", publishedHash, "role-permission-publication-unknown", unknownKeys, "verify fail closed selection")
+	unknown := publishRolePermissionsResponse(t, testServer, adminToken, organizationAdministratorRoleID, publishedHash, "role-permission-publication-unknown", unknownKeys, "verify fail closed selection")
 	if unknown.StatusCode != http.StatusBadRequest {
 		t.Fatalf("unknown permission publication status=%d body=%s", unknown.StatusCode, readResponseBody(t, unknown))
 	}
@@ -333,7 +337,8 @@ func TestStandaloneRolePermissionPublicationVersionsRoleSchemaAndSurvivesRestart
 	t.Cleanup(restartedTestServer.Close)
 	t.Cleanup(func() { _ = restartedIdentityServer.CloseContext(t.Context()) })
 	restartedAdminToken := loginAccessToken(t, restartedTestServer)
-	restarted, restartedHash, restartedVersion := rolePermissionConfiguration(t, restartedTestServer, restartedAdminToken, "organization_administrator")
+	restartedOrganizationAdministratorRoleID := projectedRoleIDByKey(t, restartedStore, "organization_administrator")
+	restarted, restartedHash, restartedVersion := rolePermissionConfiguration(t, restartedTestServer, restartedAdminToken, restartedOrganizationAdministratorRoleID)
 	if restartedHash != publishedHash || restartedVersion != publishedVersion || slices.Contains(rolePermissionKeys(restarted), "identity.role_permissions.list") {
 		t.Fatalf("restarted RoleSchema differs from publication: version=%s hash=%s permissions=%v", restartedVersion, restartedHash, rolePermissionKeys(restarted))
 	}
@@ -343,21 +348,23 @@ func TestStandaloneRolePermissionPublicationVersionsRoleSchemaAndSurvivesRestart
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := repository.RemoveIdentityUserRole(t.Context(), "workspace-primary", "admin", "admin"); err != nil {
+	restartedAdminUserID := projectedUserIDByEmail(t, restartedStore, "admin@example.com")
+	restartedAdminRoleID := projectedRoleIDByKey(t, restartedStore, "admin")
+	if err := repository.RemoveIdentityUserRole(t.Context(), "workspace-primary", restartedAdminUserID, restartedAdminRoleID); err != nil {
 		t.Fatal(err)
 	}
-	if err := repository.AssignIdentityUserRole(t.Context(), "workspace-primary", identitymodel.IdentityUserRoleAssignment{UserID: "admin", RoleID: "organization_administrator"}); err != nil {
+	if err := repository.AssignIdentityUserRole(t.Context(), "workspace-primary", identitymodel.IdentityUserRoleAssignment{UserID: restartedAdminUserID, RoleID: restartedOrganizationAdministratorRoleID}); err != nil {
 		t.Fatal(err)
 	}
 	limitedToken := loginAccessToken(t, restartedTestServer)
 	limitedPublishKeys := slices.DeleteFunc(slices.Clone(requestedKeys), func(key string) bool {
 		return key == "identity.role_permissions.validate"
 	})
-	limitedPublished, limitedPublishedHash, limitedPublishedVersion := publishRolePermissions(t, restartedTestServer, limitedToken, "organization_administrator", restartedHash, "role-permission-publication-without-list", limitedPublishKeys, "prove publish does not acquire list permission")
+	limitedPublished, limitedPublishedHash, limitedPublishedVersion := publishRolePermissions(t, restartedTestServer, limitedToken, restartedOrganizationAdministratorRoleID, restartedHash, "role-permission-publication-without-list", limitedPublishKeys, "prove publish does not acquire list permission")
 	if limitedPublishedHash == restartedHash || limitedPublishedVersion == restartedVersion || slices.Contains(rolePermissionKeys(limitedPublished), "identity.role_permissions.validate") {
 		t.Fatalf("exact publish without list did not advance RoleSchema: version=%s hash=%s permissions=%v", limitedPublishedVersion, limitedPublishedHash, rolePermissionKeys(limitedPublished))
 	}
-	denied := rolePermissionConfigurationResponse(t, restartedTestServer, limitedToken, "organization_administrator")
+	denied := rolePermissionConfigurationResponse(t, restartedTestServer, limitedToken, restartedOrganizationAdministratorRoleID)
 	if denied.StatusCode != http.StatusForbidden {
 		t.Fatalf("published role without identity.role_permissions.list status=%d body=%s", denied.StatusCode, readResponseBody(t, denied))
 	}
@@ -413,6 +420,7 @@ func TestStandaloneRoleAndPolicyAuthoringPublishesRoleSchemaDirectly(t *testing.
 	if createdHash == "" || createdVersion != "1" {
 		t.Fatalf("created role revision=%s/%s", createdVersion, createdHash)
 	}
+	auditorRoleID := projectedRoleIDByKey(t, store, "auditor")
 	createdRole := storedRoleSchema(t, store, "auditor")
 	if !reflect.DeepEqual(createdRole.Permissions, identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "inventory.items.list")) || len(createdRole.FieldPermissions) != 0 {
 		t.Fatalf("created role was not fail closed: %+v", createdRole)
@@ -424,7 +432,7 @@ func TestStandaloneRoleAndPolicyAuthoringPublishesRoleSchemaDirectly(t *testing.
 	_ = replay.Body.Close()
 	assertRoleDefinitionEventRows(t, store, "auditor", "identity_role.created", 1, 1)
 
-	permissionResponse := identityRolePolicyRequest(t, testServer, adminToken, http.MethodPut, "/identity/roles/auditor/permissions", createdHash, "role-permissions-1", identitymodel.IdentityRolePermissionPublicationRequest{
+	permissionResponse := identityRolePolicyRequest(t, testServer, adminToken, http.MethodPut, "/identity/roles/"+auditorRoleID+"/permissions", createdHash, "role-permissions-1", identitymodel.IdentityRolePermissionPublicationRequest{
 		Permissions:    identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeOwner, "inventory.items.list"),
 		BusinessReason: "restrict invoices to owned records",
 	})
@@ -441,7 +449,7 @@ func TestStandaloneRoleAndPolicyAuthoringPublishesRoleSchemaDirectly(t *testing.
 		t.Fatalf("permission publication changed the wrong RoleSchema fields: %+v", afterData)
 	}
 
-	fieldResponse := identityRolePolicyRequest(t, testServer, adminToken, http.MethodPut, "/identity/roles/auditor/field-permissions", dataHash, "role-field-permissions-1", identitymodel.IdentityRoleFieldPermissionPublicationRequest{
+	fieldResponse := identityRolePolicyRequest(t, testServer, adminToken, http.MethodPut, "/identity/roles/"+auditorRoleID+"/field-permissions", dataHash, "role-field-permissions-1", identitymodel.IdentityRoleFieldPermissionPublicationRequest{
 		FieldPermissions: []identitymodel.IdentityFieldPermission{{Resource: "invoice", Field: "amount", Visible: true, Editable: false, Masked: true}},
 		BusinessReason:   "mask invoice amounts",
 	})
@@ -457,7 +465,7 @@ func TestStandaloneRoleAndPolicyAuthoringPublishesRoleSchemaDirectly(t *testing.
 	assertRoleDefinitionEventRows(t, store, "auditor", "identity_role_permissions.published", 3, 1)
 	assertRoleDefinitionEventRows(t, store, "auditor", "identity_role_field_permissions.published", 3, 1)
 
-	updateResponse := identityRolePolicyRequest(t, testServer, adminToken, http.MethodPatch, "/identity/roles/auditor", fieldHash, "role-update-1", identitymodel.IdentityRoleDefinitionUpdateRequest{
+	updateResponse := identityRolePolicyRequest(t, testServer, adminToken, http.MethodPatch, "/identity/roles/"+auditorRoleID, fieldHash, "role-update-1", identitymodel.IdentityRoleDefinitionUpdateRequest{
 		Name: "Audit viewer", Description: "Reviews audit evidence", BusinessReason: "use the approved role label",
 	})
 	if updateResponse.StatusCode != http.StatusOK {
@@ -471,7 +479,7 @@ func TestStandaloneRoleAndPolicyAuthoringPublishesRoleSchemaDirectly(t *testing.
 	}
 	assertRoleDefinitionEventRows(t, store, "auditor", "identity_role.updated", 4, 1)
 
-	deleteResponse := identityRolePolicyRequest(t, testServer, adminToken, http.MethodDelete, "/identity/roles/auditor", updateHash, "role-delete-1", identitymodel.IdentityRoleDefinitionDeleteRequest{
+	deleteResponse := identityRolePolicyRequest(t, testServer, adminToken, http.MethodDelete, "/identity/roles/"+auditorRoleID, updateHash, "role-delete-1", identitymodel.IdentityRoleDefinitionDeleteRequest{
 		BusinessReason: "retire the unused audit role",
 	})
 	if deleteResponse.StatusCode != http.StatusNoContent {
@@ -662,6 +670,24 @@ func storedRoleSchema(t *testing.T, store *database.IdentityStore, roleKey strin
 		t.Fatal(err)
 	}
 	return role
+}
+
+func projectedRoleIDByKey(t *testing.T, store *database.IdentityStore, roleKey string) string {
+	t.Helper()
+	var roleID string
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT role_id FROM _identity_roles WHERE workspace_id = ? AND role_key = ?`, "workspace-primary", roleKey).Scan(&roleID); err != nil {
+		t.Fatal(err)
+	}
+	return roleID
+}
+
+func projectedUserIDByEmail(t *testing.T, store *database.IdentityStore, email string) string {
+	t.Helper()
+	var userID string
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT user_id FROM _identity_users WHERE workspace_id = ? AND email = ?`, "workspace-primary", email).Scan(&userID); err != nil {
+		t.Fatal(err)
+	}
+	return userID
 }
 
 func assertRolePermissionPublicationRows(t *testing.T, store *database.IdentityStore, wantVersions, wantAudits int) {

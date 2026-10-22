@@ -43,8 +43,8 @@ func (s *SQLIdentityStore) ApplyIdentityWorkflowWorkloadRelease(ctx context.Cont
 			return nil, encodeErr
 		}
 		insert := query.NewWorkspaceInsertBuilder(s.sqlRenderer(), "_identity_workflow_workload_bindings", workspaceID).
-			Columns("id", "application_key", "subject_id", "workflow_key", "definition_version_id", "definition_version", "role_key", "action_keys_json", "release_id", "release_digest", "source_kind", "source_id", "status", "created_at", "updated_at", "deactivated_at").
-			Values(identityID("workflow_workload", workspaceID, release.ApplicationKey, binding.WorkflowKey), release.ApplicationKey, binding.SubjectID, binding.WorkflowKey, binding.DefinitionVersionID, binding.DefinitionVersion, binding.RoleKey, string(actionsJSON), release.ReleaseID, release.ReleaseDigest, binding.SourceKind, binding.SourceID, "active", nowMillis, nowMillis, int64(0))
+			Columns("application_key", "subject_id", "workflow_key", "definition_version_id", "definition_version", "role_key", "action_keys_json", "release_id", "release_digest", "source_kind", "source_id", "status", "created_at", "updated_at", "deactivated_at").
+			Values(release.ApplicationKey, binding.SubjectID, binding.WorkflowKey, binding.DefinitionVersionID, binding.DefinitionVersion, binding.RoleKey, string(actionsJSON), release.ReleaseID, release.ReleaseDigest, binding.SourceKind, binding.SourceID, "active", nowMillis, nowMillis, int64(0))
 		s.ApplyUpsert(insert, []string{"workspace_id", "application_key", "workflow_key"}, "subject_id", "definition_version_id", "definition_version", "role_key", "action_keys_json", "release_id", "release_digest", "source_kind", "source_id", "status", "updated_at", "deactivated_at")
 		statement, arguments, buildErr := insert.Build()
 		if buildErr != nil {

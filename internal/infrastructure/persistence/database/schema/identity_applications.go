@@ -25,7 +25,8 @@ func identityApplicationsTableDefinition(renderer ormdialect.Renderer) *ormschem
 	return ormschema.NewTable(renderer, identityApplicationsTable).
 		IfNotExists().
 		Columns(
-			ormschema.Column("id", ormschema.TextKey(128)).NotNull(),
+			ormschema.Column("id", ormschema.BigInt()).NotNull().AutoIncrement(),
+			ormschema.Column("application_id", ormschema.TextKey(128)).NotNull(),
 			ormschema.Column("workspace_id", ormschema.TextKey(128)).NotNull(),
 			ormschema.Column("application_key", ormschema.TextKey(255)).NotNull(),
 			ormschema.Column("redirect_urls_json", ormschema.Text()).NotNull(),
@@ -33,6 +34,7 @@ func identityApplicationsTableDefinition(renderer ormdialect.Renderer) *ormschem
 			ormschema.Column("created_at", ormschema.BigInt()).NotNull(),
 			ormschema.Column("updated_at", ormschema.BigInt()).NotNull(),
 		).
-		PrimaryKey("workspace_id", "id").
+		PrimaryKey("id").
+		Unique("application_id").
 		Unique("workspace_id", "application_key")
 }

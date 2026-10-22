@@ -35,6 +35,7 @@ func TestIdentityAccountModelsExposeOnlyAccountFacts(t *testing.T) {
 		}
 		for _, allowed := range []string{
 			"ID",
+			"UserID",
 			"Name",
 			"GivenName",
 			"MiddleName",

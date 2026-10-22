@@ -40,7 +40,7 @@ func TestIdentityListQueryParsesPaginationSearchFiltersAndSort(t *testing.T) {
 
 func TestIdentityUserProjectionHandlerProjectsSecuritySummary(t *testing.T) {
 	repository := &identityHTTPRepository{
-		users: []identitymodel.IdentityUser{{ID: "user-1", Name: "Alice", Status: identitymodel.IdentityStatusActive}},
+		users: []identitymodel.IdentityUser{{UserID: "user-1", Name: "Alice", Status: identitymodel.IdentityStatusActive}},
 	}
 	handler, response := newIdentityHTTPHandler(repository)
 	handler.userSecurity = &identityHTTPUserSecurity{profile: authdomain.UserSecurityProfile{
@@ -78,8 +78,8 @@ func TestIdentityUserProjectionHandlerProjectsSecuritySummary(t *testing.T) {
 
 func TestIdentityUserProjectionBatchSecurityProjectionAndFailures(t *testing.T) {
 	repository := &identityHTTPRepository{users: []identitymodel.IdentityUser{
-		{ID: "user-1", Name: "Alice", Status: identitymodel.IdentityStatusActive},
-		{ID: "user-2", Name: "Bob", Status: identitymodel.IdentityStatusActive},
+		{UserID: "user-1", Name: "Alice", Status: identitymodel.IdentityStatusActive},
+		{UserID: "user-2", Name: "Bob", Status: identitymodel.IdentityStatusActive},
 	}}
 	handler, response := newIdentityHTTPHandler(repository)
 	batch := &identityHTTPBatchSecurity{
@@ -114,8 +114,8 @@ func TestIdentityUserProjectionBatchSecurityProjectionAndFailures(t *testing.T) 
 func TestIdentityPagedListHandlers(t *testing.T) {
 	repository := &identityHTTPRepository{
 		users: []identitymodel.IdentityUser{
-			{ID: "user-2", Name: "Bob", Email: "bob@example.test", Status: identitymodel.IdentityStatusDisabled},
-			{ID: "user-1", Name: "Alice", Email: "alice@example.test", WorkerNo: "001", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive, Status: identitymodel.IdentityStatusActive},
+			{UserID: "user-2", Name: "Bob", Email: "bob@example.test", Status: identitymodel.IdentityStatusDisabled},
+			{UserID: "user-1", Name: "Alice", Email: "alice@example.test", WorkerNo: "001", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive, Status: identitymodel.IdentityStatusActive},
 		},
 		assignments: []identitymodel.IdentityUserRoleAssignment{
 			{UserID: "user-1", RoleID: "viewer", Source: "manual", Status: "active"},

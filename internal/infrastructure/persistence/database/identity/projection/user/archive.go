@@ -21,7 +21,7 @@ func (s *Store) ArchiveWithinDataScope(ctx context.Context, workspaceID, userID 
 		return 0, false, err
 	}
 	defer tx.Rollback()
-	predicates := []query.Predicate{query.Equal("id", userID), query.NotEqual("status", "erased")}
+	predicates := []query.Predicate{query.Equal("user_id", userID), query.NotEqual("status", "erased")}
 	if !scope.Unrestricted {
 		predicates = append(predicates, userDataScopePredicate(scope))
 	}

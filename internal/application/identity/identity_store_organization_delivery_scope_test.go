@@ -63,26 +63,26 @@ func TestStoreOrganizationPageSizeUsesDefaultAndEnforcesMaximum(t *testing.T) {
 }
 
 func TestStoreOrganizationCursorIsOpaqueStrictAndRoundTrips(t *testing.T) {
-	cursor, err := encodeStoreOrganizationCursor("store-002")
+	cursor, err := encodeStoreOrganizationCursor(2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cursor == "store-002" {
+	if cursor == "2" {
 		t.Fatal("cursor exposed the raw store ID")
 	}
 	afterID, err := decodeStoreOrganizationCursor(cursor)
-	if err != nil || afterID != "store-002" {
-		t.Fatalf("decoded after_id=%q err=%v", afterID, err)
+	if err != nil || afterID != 2 {
+		t.Fatalf("decoded after_id=%d err=%v", afterID, err)
 	}
-	if afterID, err := decodeStoreOrganizationCursor(""); err != nil || afterID != "" {
-		t.Fatalf("empty cursor after_id=%q err=%v", afterID, err)
+	if afterID, err := decodeStoreOrganizationCursor(""); err != nil || afterID != 0 {
+		t.Fatalf("empty cursor after_id=%d err=%v", afterID, err)
 	}
 	invalid := []string{
 		"not-base64***",
-		base64.RawURLEncoding.EncodeToString([]byte(`{"v":2,"after_id":"store-002"}`)),
-		base64.RawURLEncoding.EncodeToString([]byte(`{"v":1,"after_id":""}`)),
-		base64.RawURLEncoding.EncodeToString([]byte(`{"v":1,"after_id":"store-002","scope":"all"}`)),
-		base64.RawURLEncoding.EncodeToString([]byte(`{"v":1,"after_id":"store-002"} trailing`)),
+		base64.RawURLEncoding.EncodeToString([]byte(`{"v":2,"after_id":2}`)),
+		base64.RawURLEncoding.EncodeToString([]byte(`{"v":1,"after_id":0}`)),
+		base64.RawURLEncoding.EncodeToString([]byte(`{"v":1,"after_id":2,"scope":"all"}`)),
+		base64.RawURLEncoding.EncodeToString([]byte(`{"v":1,"after_id":2} trailing`)),
 	}
 	for _, value := range invalid {
 		if _, err := decodeStoreOrganizationCursor(value); apperror.CodeOf(err) != "backend.identity.store_organization_cursor_invalid" {

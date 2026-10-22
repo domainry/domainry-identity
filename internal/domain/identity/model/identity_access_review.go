@@ -18,7 +18,8 @@ const (
 )
 
 type IdentityAccessReview struct {
-	ID          string                     `json:"id"`
+	ID          int64                      `json:"id"`
+	ReviewID    string                     `json:"review_id"`
 	WorkspaceID string                     `json:"workspace_id"`
 	PeriodStart string                     `json:"period_start"`
 	PeriodEnd   string                     `json:"period_end"`
@@ -31,7 +32,8 @@ type IdentityAccessReview struct {
 }
 
 type IdentityAccessReviewItem struct {
-	ID                string                                `json:"id"`
+	ID                int64                                 `json:"id"`
+	ReviewItemID      string                                `json:"review_item_id"`
 	ReviewID          string                                `json:"review_id"`
 	UserID            string                                `json:"user_id"`
 	RoleID            string                                `json:"role_id"`
@@ -67,7 +69,6 @@ type IdentityAccessReviewPermissionState struct {
 }
 
 type IdentityAccessReviewCreateRequest struct {
-	ID          string `json:"id"`
 	PeriodStart string `json:"period_start"`
 	PeriodEnd   string `json:"period_end"`
 	DueAt       string `json:"due_at"`
@@ -91,7 +92,7 @@ type IdentityAccessReviewDecisionMutation struct {
 }
 
 type IdentityAccessReviewDecisionReceipt struct {
-	ID                 string                   `json:"id"`
+	OperationID        string                   `json:"operation_id"`
 	WorkspaceID        string                   `json:"workspace_id"`
 	ItemID             string                   `json:"item_id"`
 	IdempotencyKey     string                   `json:"idempotency_key"`

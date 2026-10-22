@@ -145,11 +145,11 @@ func (s *IdentityStoreOrganizationDeliveryApplicationService) Deliver(ctx contex
 
 func (s *IdentityStoreOrganizationDeliveryApplicationService) authorizeReplay(ctx context.Context, request IdentityStoreOrganizationDeliveryRequest, receipt identitymodel.IdentityStoreOrganizationDeliveryReceipt, principal identitymodel.Principal, permissionKey string) error {
 	receipted := receipt.Result.Organization
-	if strings.TrimSpace(receipted.ID) == "" || receipted.ID != request.OrganizationID {
+	if strings.TrimSpace(receipted.OrganizationUnitID) == "" || receipted.OrganizationUnitID != request.OrganizationID {
 		return storeOrganizationError(apperror.KindConflict, "backend.identity.store_organization_external_change")
 	}
 	if request.Operation != identitymodel.IdentityStoreOrganizationCreate {
-		if !storeOrganizationScopeAllows(principal, permissionKey, receipted.ID) {
+		if !storeOrganizationScopeAllows(principal, permissionKey, receipted.OrganizationUnitID) {
 			return storeOrganizationError(apperror.KindForbidden, "backend.identity.store_organization_scope_denied")
 		}
 		return nil
@@ -158,7 +158,7 @@ func (s *IdentityStoreOrganizationDeliveryApplicationService) authorizeReplay(ct
 	// Create is authorized against its persisted company parent, not the child
 	// store ID. Re-read every fact required for that decision so a durable
 	// receipt cannot become an authorization oracle after external mutations.
-	current, found, err := s.dependencies.Identity.FindOrganizationUnit(ctx, receipted.ID)
+	current, found, err := s.dependencies.Identity.FindOrganizationUnit(ctx, receipted.OrganizationUnitID)
 	if err != nil {
 		return err
 	}
@@ -170,7 +170,7 @@ func (s *IdentityStoreOrganizationDeliveryApplicationService) authorizeReplay(ct
 		receiptedParentID != request.ParentOrganizationID || storeOrganizationParentID(current.ParentID) != receiptedParentID {
 		return storeOrganizationError(apperror.KindConflict, "backend.identity.store_organization_external_change")
 	}
-	state, stateFound, err := s.dependencies.Repository.GetIdentityStoreOrganizationState(ctx, principal.WorkspaceID, current.ID)
+	state, stateFound, err := s.dependencies.Repository.GetIdentityStoreOrganizationState(ctx, principal.WorkspaceID, current.OrganizationUnitID)
 	if err != nil {
 		return err
 	}
@@ -259,8 +259,8 @@ func (s *IdentityStoreOrganizationDeliveryApplicationService) List(ctx context.C
 }
 
 type identityStoreOrganizationCursor struct {
-	Version int    `json:"v"`
-	AfterID string `json:"after_id"`
+	Version int   `json:"v"`
+	AfterID int64 `json:"after_id"`
 }
 
 func normalizeStoreOrganizationPageSize(pageSize int) (int, error) {
@@ -273,34 +273,34 @@ func normalizeStoreOrganizationPageSize(pageSize int) (int, error) {
 	return pageSize, nil
 }
 
-func encodeStoreOrganizationCursor(afterID string) (string, error) {
-	payload, err := json.Marshal(identityStoreOrganizationCursor{Version: 1, AfterID: strings.TrimSpace(afterID)})
+func encodeStoreOrganizationCursor(afterID int64) (string, error) {
+	payload, err := json.Marshal(identityStoreOrganizationCursor{Version: 1, AfterID: afterID})
 	if err != nil {
 		return "", err
 	}
 	return base64.RawURLEncoding.EncodeToString(payload), nil
 }
 
-func decodeStoreOrganizationCursor(cursor string) (string, error) {
+func decodeStoreOrganizationCursor(cursor string) (int64, error) {
 	cursor = strings.TrimSpace(cursor)
 	if cursor == "" {
-		return "", nil
+		return 0, nil
 	}
 	if len(cursor) > 2048 {
-		return "", storeOrganizationError(apperror.KindBadRequest, "backend.identity.store_organization_cursor_invalid")
+		return 0, storeOrganizationError(apperror.KindBadRequest, "backend.identity.store_organization_cursor_invalid")
 	}
 	payload, err := base64.RawURLEncoding.DecodeString(cursor)
 	if err != nil {
-		return "", storeOrganizationError(apperror.KindBadRequest, "backend.identity.store_organization_cursor_invalid")
+		return 0, storeOrganizationError(apperror.KindBadRequest, "backend.identity.store_organization_cursor_invalid")
 	}
 	decoder := json.NewDecoder(bytes.NewReader(payload))
 	decoder.DisallowUnknownFields()
 	var decoded identityStoreOrganizationCursor
 	if err := decoder.Decode(&decoded); err != nil {
-		return "", storeOrganizationError(apperror.KindBadRequest, "backend.identity.store_organization_cursor_invalid")
+		return 0, storeOrganizationError(apperror.KindBadRequest, "backend.identity.store_organization_cursor_invalid")
 	}
-	if err := decoder.Decode(&struct{}{}); err != io.EOF || decoded.Version != 1 || strings.TrimSpace(decoded.AfterID) == "" || decoded.AfterID != strings.TrimSpace(decoded.AfterID) || len(decoded.AfterID) > 255 {
-		return "", storeOrganizationError(apperror.KindBadRequest, "backend.identity.store_organization_cursor_invalid")
+	if err := decoder.Decode(&struct{}{}); err != io.EOF || decoded.Version != 1 || decoded.AfterID < 1 {
+		return 0, storeOrganizationError(apperror.KindBadRequest, "backend.identity.store_organization_cursor_invalid")
 	}
 	return decoded.AfterID, nil
 }
@@ -354,14 +354,14 @@ func (s *IdentityStoreOrganizationDeliveryApplicationService) prepareMutation(ct
 			return identitymodel.IdentityStoreOrganizationDeliveryMutation{}, current, storeOrganizationError(apperror.KindForbidden, "backend.identity.store_organization_scope_denied")
 		}
 		desired = identitymodel.IdentityOrganizationUnit{
-			ID: request.OrganizationID, Code: request.Code, Name: request.Name, NodeType: identitymodel.IdentityOrganizationUnitStore,
+			OrganizationUnitID: request.OrganizationID, Code: request.Code, Name: request.Name, NodeType: identitymodel.IdentityOrganizationUnitStore,
 			ParentID: &parentID, SortOrder: request.SortOrder, Status: identitymodel.IdentityStatusActive,
 		}
 	case identitymodel.IdentityStoreOrganizationRename:
 		if !found {
 			return identitymodel.IdentityStoreOrganizationDeliveryMutation{}, current, storeOrganizationError(apperror.KindNotFound, "backend.identity.store_organization_not_found")
 		}
-		if !storeOrganizationScopeAllows(principal, permissionKey, current.ID) {
+		if !storeOrganizationScopeAllows(principal, permissionKey, current.OrganizationUnitID) {
 			return identitymodel.IdentityStoreOrganizationDeliveryMutation{}, current, storeOrganizationError(apperror.KindForbidden, "backend.identity.store_organization_scope_denied")
 		}
 		desired = current
@@ -371,7 +371,7 @@ func (s *IdentityStoreOrganizationDeliveryApplicationService) prepareMutation(ct
 		if !found {
 			return identitymodel.IdentityStoreOrganizationDeliveryMutation{}, current, storeOrganizationError(apperror.KindNotFound, "backend.identity.store_organization_not_found")
 		}
-		if !storeOrganizationScopeAllows(principal, permissionKey, current.ID) {
+		if !storeOrganizationScopeAllows(principal, permissionKey, current.OrganizationUnitID) {
 			return identitymodel.IdentityStoreOrganizationDeliveryMutation{}, current, storeOrganizationError(apperror.KindForbidden, "backend.identity.store_organization_scope_denied")
 		}
 		if current.Status == identitymodel.IdentityStatusDisabled {
@@ -404,7 +404,7 @@ func (s *IdentityStoreOrganizationDeliveryApplicationService) prepareMutation(ct
 	}
 	if found {
 		mutation.CurrentFingerprint = identityStoreOrganizationFingerprint(current)
-		state, stateFound, err := s.dependencies.Repository.GetIdentityStoreOrganizationState(ctx, principal.WorkspaceID, current.ID)
+		state, stateFound, err := s.dependencies.Repository.GetIdentityStoreOrganizationState(ctx, principal.WorkspaceID, current.OrganizationUnitID)
 		if err != nil {
 			return identitymodel.IdentityStoreOrganizationDeliveryMutation{}, current, err
 		}
@@ -435,7 +435,7 @@ func (s *IdentityStoreOrganizationDeliveryApplicationService) validatePersistedS
 }
 
 func (s *IdentityStoreOrganizationDeliveryApplicationService) project(ctx context.Context, organization identitymodel.IdentityOrganizationUnit) (identitymodel.IdentityStoreOrganization, error) {
-	state, found, err := s.dependencies.Repository.GetIdentityStoreOrganizationState(ctx, s.dependencies.WorkspaceID, organization.ID)
+	state, found, err := s.dependencies.Repository.GetIdentityStoreOrganizationState(ctx, s.dependencies.WorkspaceID, organization.OrganizationUnitID)
 	if err != nil {
 		return identitymodel.IdentityStoreOrganization{}, err
 	}
@@ -498,6 +498,7 @@ func identityStoreOrganizationRequestFingerprint(request IdentityStoreOrganizati
 }
 
 func identityStoreOrganizationFingerprint(organization identitymodel.IdentityOrganizationUnit) string {
+	organization.ID = 0
 	payload, _ := json.Marshal(organization)
 	sum := sha256.Sum256(payload)
 	return hex.EncodeToString(sum[:])
@@ -505,17 +506,17 @@ func identityStoreOrganizationFingerprint(organization identitymodel.IdentityOrg
 
 func identityStoreOrganizationProjection(organization identitymodel.IdentityOrganizationUnit, version int64) identitymodel.IdentityStoreOrganization {
 	return identitymodel.IdentityStoreOrganization{
-		ID: organization.ID, Code: organization.Code, Name: organization.Name, Status: string(organization.Status),
+		ID: organization.ID, OrganizationUnitID: organization.OrganizationUnitID, Code: organization.Code, Name: organization.Name, Status: string(organization.Status),
 		ParentOrganizationID: storeOrganizationParentID(organization.ParentID), Path: organization.Path,
 		AncestorIDs: append([]string(nil), organization.AncestorIDs...), Depth: organization.Depth, SortOrder: organization.SortOrder, Version: version,
 	}
 }
 
 func storeOrganizationAuditMap(organization identitymodel.IdentityOrganizationUnit) map[string]any {
-	if strings.TrimSpace(organization.ID) == "" {
+	if strings.TrimSpace(organization.OrganizationUnitID) == "" {
 		return nil
 	}
-	return map[string]any{"id": organization.ID, "name": organization.Name, "status": organization.Status, "parent_id": storeOrganizationParentID(organization.ParentID)}
+	return map[string]any{"id": organization.ID, "organization_unit_id": organization.OrganizationUnitID, "name": organization.Name, "status": organization.Status, "parent_id": storeOrganizationParentID(organization.ParentID)}
 }
 
 func storeOrganizationParentID(parentID *string) string {
@@ -526,7 +527,7 @@ func storeOrganizationParentID(parentID *string) string {
 }
 
 func storeOrganizationProjectionAuditMap(organization identitymodel.IdentityStoreOrganization) map[string]any {
-	return map[string]any{"id": organization.ID, "name": organization.Name, "status": organization.Status, "parent_id": organization.ParentOrganizationID, "version": organization.Version}
+	return map[string]any{"id": organization.ID, "organization_unit_id": organization.OrganizationUnitID, "name": organization.Name, "status": organization.Status, "parent_id": organization.ParentOrganizationID, "version": organization.Version}
 }
 
 func storeOrganizationError(kind apperror.ErrorKind, code string) error {

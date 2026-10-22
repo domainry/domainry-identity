@@ -19,9 +19,9 @@ func IdentityBuildAccessReverseIndex(roles []identitymodel.IdentityRole, definit
 	for _, role := range roles {
 		key := strings.TrimSpace(role.Key)
 		if key == "" {
-			key = strings.TrimSpace(role.ID)
+			key = strings.TrimSpace(role.RoleID)
 		}
-		roleKeyByID[role.ID] = key
+		roleKeyByID[role.RoleID] = key
 	}
 	for _, assignment := range assignments {
 		if assignment.Status != "" && assignment.Status != string(identitymodel.IdentityStatusActive) {
@@ -64,7 +64,7 @@ func IdentityBuildGovernanceReports(now time.Time, permissions []identitymodel.I
 	grantedPermissions := map[string]bool{}
 	memberRoleIDs := map[string]bool{}
 	for _, role := range roles {
-		roleByID[role.ID] = role
+		roleByID[role.RoleID] = role
 	}
 	for _, permission := range permissions {
 		if key := strings.TrimSpace(permission.Key); key != "" {
@@ -115,7 +115,7 @@ func IdentityBuildGovernanceReports(now time.Time, permissions []identitymodel.I
 		}
 	}
 	for _, role := range roles {
-		if !memberRoleIDs[role.ID] {
+		if !memberRoleIDs[role.RoleID] {
 			report.RolesWithoutMembers = append(report.RolesWithoutMembers, identityProjectionRoleKey(role))
 		}
 	}
@@ -140,7 +140,7 @@ func IdentityPreviewRoleChange(request identitymodel.IdentityRoleChangeImpactReq
 	affectedUsers := map[string]bool{}
 	profileTypes := []string{}
 	for _, assignment := range assignments {
-		if assignment.RoleID != projectionRole.ID || assignment.Status != "" && assignment.Status != string(identitymodel.IdentityStatusActive) {
+		if assignment.RoleID != projectionRole.RoleID || assignment.Status != "" && assignment.Status != string(identitymodel.IdentityStatusActive) {
 			continue
 		}
 		affectedUsers[assignment.UserID] = true
@@ -197,7 +197,7 @@ func identityProjectionRoleKey(role identitymodel.IdentityRole) string {
 	if key := strings.TrimSpace(role.Key); key != "" {
 		return key
 	}
-	return strings.TrimSpace(role.ID)
+	return strings.TrimSpace(role.RoleID)
 }
 
 func identityProjectionAssignmentExpired(assignment identitymodel.IdentityUserRoleAssignment, now time.Time) bool {

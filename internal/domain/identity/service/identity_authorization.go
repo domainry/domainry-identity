@@ -46,7 +46,7 @@ func (s *IdentityDomainService) effectiveRolesFromAssignments(assignments []iden
 	}
 	effective := make([]identitymodel.IdentityRole, 0, len(activeRoleIDs))
 	for _, role := range roles {
-		if _, assigned := activeRoleIDs[role.ID]; !assigned {
+		if _, assigned := activeRoleIDs[role.RoleID]; !assigned {
 			continue
 		}
 		if role.Status != "" && role.Status != identitymodel.IdentityStatusActive {
@@ -58,7 +58,7 @@ func (s *IdentityDomainService) effectiveRolesFromAssignments(assignments []iden
 		effective = append(effective, role)
 	}
 	sort.Slice(effective, func(left, right int) bool {
-		return effective[left].Key+effective[left].ID < effective[right].Key+effective[right].ID
+		return effective[left].Key+effective[left].RoleID < effective[right].Key+effective[right].RoleID
 	})
 	return effective
 }
@@ -126,7 +126,7 @@ func (s *IdentityDomainService) FindOrganizationUnit(ctx context.Context, organi
 	}
 	organizationUnitID = strings.TrimSpace(organizationUnitID)
 	for _, organizationUnit := range organizationUnits {
-		if strings.TrimSpace(organizationUnit.ID) == organizationUnitID {
+		if strings.TrimSpace(organizationUnit.OrganizationUnitID) == organizationUnitID {
 			return organizationUnit, true, nil
 		}
 	}

@@ -11,7 +11,7 @@ import (
 )
 
 func TestIdentityUserReadHandlers(t *testing.T) {
-	repository := &identityHTTPRepository{users: []identitymodel.IdentityUser{{ID: "user-1", Email: "one@example.test", Status: identitymodel.IdentityStatusActive}}}
+	repository := &identityHTTPRepository{users: []identitymodel.IdentityUser{{UserID: "user-1", Email: "one@example.test", Status: identitymodel.IdentityStatusActive}}}
 	handler, response := newIdentityHTTPHandler(repository)
 
 	w, request := identityRoleRequest(http.MethodGet, "/identity/users", "", nil)
@@ -25,7 +25,7 @@ func TestIdentityUserReadHandlers(t *testing.T) {
 	w, request = identityRoleRequest(http.MethodGet, "/identity/users/user-1", "", map[string]string{"userID": " user-1 "})
 	handler.getIdentityUser(w, request)
 	user, ok := response.value.(identitymodel.IdentityUser)
-	if response.status != http.StatusOK || !ok || user.ID != "user-1" {
+	if response.status != http.StatusOK || !ok || user.UserID != "user-1" {
 		t.Fatalf("get status=%d value=%#v err=%v", response.status, response.value, response.err)
 	}
 	if resourceHash := w.Header().Get(identityResourceHashHeader); resourceHash == "" || resourceHash == "empty" {
@@ -60,9 +60,9 @@ func TestIdentityUserMutationHandlers(t *testing.T) {
 		wantID     string
 		wantState  identitymodel.IdentityStatus
 	}{
-		{name: "create", call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.createIdentityUser(w, r) }, method: http.MethodPost, body: `{"id":"user-1","name":"User One","email":"one@example.test","status":"active"}`, wantStatus: http.StatusCreated, wantID: "user-1"},
-		{name: "update path id", call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.updateIdentityUser(w, r) }, method: http.MethodPatch, body: `{"id":"body-id","name":"User One","email":"one@example.test"}`, path: map[string]string{"userID": " user-2 "}, wantStatus: http.StatusOK, wantID: "user-2"},
-		{name: "update body id", call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.updateIdentityUser(w, r) }, method: http.MethodPatch, body: `{"id":"body-id","name":"User One","email":"one@example.test"}`, path: map[string]string{"userID": " "}, wantStatus: http.StatusOK, wantID: "body-id"},
+		{name: "create", call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.createIdentityUser(w, r) }, method: http.MethodPost, body: `{"user_id":"user-1","name":"User One","email":"one@example.test","status":"active"}`, wantStatus: http.StatusCreated, wantID: "user-1"},
+		{name: "update path id", call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.updateIdentityUser(w, r) }, method: http.MethodPatch, body: `{"user_id":"body-id","name":"User One","email":"one@example.test"}`, path: map[string]string{"userID": " user-2 "}, wantStatus: http.StatusOK, wantID: "user-2"},
+		{name: "update body id", call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.updateIdentityUser(w, r) }, method: http.MethodPatch, body: `{"user_id":"body-id","name":"User One","email":"one@example.test"}`, path: map[string]string{"userID": " "}, wantStatus: http.StatusOK, wantID: "body-id"},
 		{name: "disable", call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.disableIdentityUser(w, r) }, method: http.MethodPost, path: map[string]string{"userID": " user-3 "}, wantStatus: http.StatusNoContent, wantID: "user-3", wantState: identitymodel.IdentityStatusDisabled},
 		{name: "enable", call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.enableIdentityUser(w, r) }, method: http.MethodPost, path: map[string]string{"userID": " user-3 "}, wantStatus: http.StatusNoContent, wantID: "user-3", wantState: identitymodel.IdentityStatusActive},
 	}
@@ -70,7 +70,7 @@ func TestIdentityUserMutationHandlers(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			repository := &identityHTTPRepository{}
 			if test.name != "create" {
-				repository.users = []identitymodel.IdentityUser{{ID: test.wantID, Name: "Existing User", Email: test.wantID + "@example.test", Status: identitymodel.IdentityStatusActive}}
+				repository.users = []identitymodel.IdentityUser{{UserID: test.wantID, Name: "Existing User", Email: test.wantID + "@example.test", Status: identitymodel.IdentityStatusActive}}
 			}
 			handler, response := newIdentityHTTPHandler(repository)
 			response.status, response.value, response.err = 0, nil, nil
@@ -84,7 +84,7 @@ func TestIdentityUserMutationHandlers(t *testing.T) {
 				t.Fatalf("status=%d callback=%d err=%v", status, response.status, response.err)
 			}
 			if test.wantState == "" {
-				if repository.lastUser.ID != test.wantID {
+				if repository.lastUser.UserID != test.wantID {
 					t.Fatalf("user=%+v want id=%q", repository.lastUser, test.wantID)
 				}
 			} else if repository.lastUserID != test.wantID || repository.lastStatus != test.wantState {
@@ -102,7 +102,7 @@ func TestCreateIdentityUserIssuesOneTimeInitialCredential(t *testing.T) {
 	w, request := identityRoleRequest(
 		http.MethodPost,
 		"/identity/users",
-		`{"id":"user-1","name":"User One","email":"one@example.test","status":"active"}`,
+		`{"user_id":"user-1","name":"User One","email":"one@example.test","status":"active"}`,
 		nil,
 	)
 
@@ -112,7 +112,7 @@ func TestCreateIdentityUserIssuesOneTimeInitialCredential(t *testing.T) {
 	if response.status != http.StatusCreated || response.err != nil || !ok {
 		t.Fatalf("status=%d value=%#v err=%v", response.status, response.value, response.err)
 	}
-	if result.ID != "user-1" || result.InitialPassword != security.initialPassword || !result.MustChangePassword {
+	if result.UserID != "user-1" || result.InitialPassword != security.initialPassword || !result.MustChangePassword {
 		t.Fatalf("provisioning response=%#v", result)
 	}
 	if security.issuedUserID != "user-1" {
@@ -130,7 +130,7 @@ func TestCreateIdentityServiceAccountDoesNotIssueLoginCredential(t *testing.T) {
 	w, request := identityRoleRequest(
 		http.MethodPost,
 		"/identity/users",
-		`{"id":"service-1","name":"CRM API","email":"service-1@service.invalid","account_type":"service","status":"active"}`,
+		`{"user_id":"service-1","name":"CRM API","email":"service-1@service.invalid","account_type":"service","status":"active"}`,
 		nil,
 	)
 
@@ -140,21 +140,21 @@ func TestCreateIdentityServiceAccountDoesNotIssueLoginCredential(t *testing.T) {
 	if response.status != http.StatusCreated || response.err != nil || !ok {
 		t.Fatalf("status=%d value=%#v err=%v", response.status, response.value, response.err)
 	}
-	if result.ID != "service-1" || result.AccountType != identitymodel.IdentityAccountService || result.InitialPassword != "" || result.MustChangePassword || security.issuedUserID != "" {
+	if result.UserID != "service-1" || result.AccountType != identitymodel.IdentityAccountService || result.InitialPassword != "" || result.MustChangePassword || security.issuedUserID != "" {
 		t.Fatalf("service account provisioning response=%#v issued_user=%q", result, security.issuedUserID)
 	}
 }
 
 func TestCreateIdentityUserRejectsExistingAccountWithoutRotatingCredential(t *testing.T) {
 	repository := &identityHTTPRepository{users: []identitymodel.IdentityUser{{
-		ID: "user-1", Name: "Existing User", Email: "existing@example.test", Status: identitymodel.IdentityStatusActive,
+		UserID: "user-1", Name: "Existing User", Email: "existing@example.test", Status: identitymodel.IdentityStatusActive,
 	}}}
 	handler, response := newIdentityHTTPHandler(repository)
 	security := handler.userSecurity.(*identityHTTPUserSecurity)
 	w, request := identityRoleRequest(
 		http.MethodPost,
 		"/identity/users",
-		`{"id":"user-1","name":"Replacement","email":"replacement@example.test","status":"active"}`,
+		`{"user_id":"user-1","name":"Replacement","email":"replacement@example.test","status":"active"}`,
 		nil,
 	)
 
@@ -175,7 +175,7 @@ func TestCreateIdentityUserRollsBackWhenCredentialIssueFails(t *testing.T) {
 	w, request := identityRoleRequest(
 		http.MethodPost,
 		"/identity/users",
-		`{"id":"user-1","name":"User One","email":"one@example.test","status":"active"}`,
+		`{"user_id":"user-1","name":"User One","email":"one@example.test","status":"active"}`,
 		nil,
 	)
 
@@ -210,15 +210,15 @@ func TestIdentityUserMutationHandlersRejectInvalidJSONAndServiceFailures(t *test
 		call func(*IdentityHandler, http.ResponseWriter, *http.Request)
 		body string
 	}{
-		{name: "create", repo: &identityHTTPRepository{upsertUserErr: errIdentityHTTPTest}, call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.createIdentityUser(w, r) }, body: `{"id":"user-1","name":"User One","email":"one@example.test"}`},
-		{name: "update", repo: &identityHTTPRepository{upsertUserErr: errIdentityHTTPTest}, call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.updateIdentityUser(w, r) }, body: `{"id":"user-1","name":"User One","email":"one@example.test"}`},
+		{name: "create", repo: &identityHTTPRepository{upsertUserErr: errIdentityHTTPTest}, call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.createIdentityUser(w, r) }, body: `{"user_id":"user-1","name":"User One","email":"one@example.test"}`},
+		{name: "update", repo: &identityHTTPRepository{upsertUserErr: errIdentityHTTPTest}, call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.updateIdentityUser(w, r) }, body: `{"user_id":"user-1","name":"User One","email":"one@example.test"}`},
 		{name: "disable", repo: &identityHTTPRepository{statusErr: errIdentityHTTPTest}, call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.disableIdentityUser(w, r) }},
 		{name: "enable", repo: &identityHTTPRepository{statusErr: errIdentityHTTPTest}, call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.enableIdentityUser(w, r) }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			if test.name != "create" {
-				test.repo.users = []identitymodel.IdentityUser{{ID: "user-1", Name: "Existing User", Email: "existing@example.test", Status: identitymodel.IdentityStatusActive}}
+				test.repo.users = []identitymodel.IdentityUser{{UserID: "user-1", Name: "Existing User", Email: "existing@example.test", Status: identitymodel.IdentityStatusActive}}
 			}
 			handler, response := newIdentityHTTPHandler(test.repo)
 			w, request := identityRoleRequest(http.MethodPost, "/identity/users/user-1", test.body, map[string]string{"userID": "user-1"})
@@ -260,13 +260,13 @@ func TestIdentityUserMutationHandlersForwardPostWriteReadFailures(t *testing.T) 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			if strings.HasPrefix(test.name, "update ") {
-				test.repo.users = []identitymodel.IdentityUser{{ID: "user-1", Name: "Existing User", Email: "existing@example.test", Status: identitymodel.IdentityStatusActive}}
+				test.repo.users = []identitymodel.IdentityUser{{UserID: "user-1", Name: "Existing User", Email: "existing@example.test", Status: identitymodel.IdentityStatusActive}}
 			}
 			handler, response := newIdentityHTTPHandler(test.repo)
 			w, request := identityRoleRequest(
 				http.MethodPost,
 				"/identity/users/user-1",
-				`{"id":"user-1","name":"User One","email":"one@example.test","status":"active"}`,
+				`{"user_id":"user-1","name":"User One","email":"one@example.test","status":"active"}`,
 				map[string]string{"userID": "user-1"},
 			)
 			test.call(handler, w, request)
@@ -278,7 +278,7 @@ func TestIdentityUserMutationHandlersForwardPostWriteReadFailures(t *testing.T) 
 }
 
 func TestUpdateIdentityUserUsesCurrentResourceForOwnerControlledAuthoring(t *testing.T) {
-	repository := &identityHTTPRepository{users: []identitymodel.IdentityUser{{ID: "user-1", Name: "Existing User", Email: "existing@example.test", Status: identitymodel.IdentityStatusActive}}}
+	repository := &identityHTTPRepository{users: []identitymodel.IdentityUser{{UserID: "user-1", Name: "Existing User", Email: "existing@example.test", Status: identitymodel.IdentityStatusActive}}}
 	handler, response := newIdentityHTTPHandler(repository)
 	handler.principal = func(*http.Request) identitymodel.Principal {
 		return identitymodel.Principal{
@@ -289,7 +289,7 @@ func TestUpdateIdentityUserUsesCurrentResourceForOwnerControlledAuthoring(t *tes
 	w, request := identityRoleRequest(
 		http.MethodPatch,
 		"/identity/users/user-1",
-		`{"id":"user-1","name":"User One","email":"one@example.test","status":"active"}`,
+		`{"user_id":"user-1","name":"User One","email":"one@example.test","status":"active"}`,
 		map[string]string{"userID": "user-1"},
 	)
 	request.Header.Set("Builder-Task-ID", "task-1")
@@ -317,7 +317,7 @@ func TestDeleteIdentityUserWithoutProfileReferences(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			repository := &identityHTTPRepository{
 				removeUserErr: test.removeErr,
-				users:         []identitymodel.IdentityUser{{ID: "user-1", Status: identitymodel.IdentityStatusActive}},
+				users:         []identitymodel.IdentityUser{{UserID: "user-1", Status: identitymodel.IdentityStatusActive}},
 			}
 			handler, response := newIdentityHTTPHandler(repository)
 			handler.principal = func(*http.Request) identitymodel.Principal {
@@ -338,7 +338,7 @@ func TestDeleteIdentityUserWithoutProfileReferences(t *testing.T) {
 
 func TestDisableIdentityUserRevokesSessionsAndPreservesBusinessProfiles(t *testing.T) {
 	repository := &identityHTTPRepository{
-		users: []identitymodel.IdentityUser{{ID: "user-1", WorkerNo: "E001", WorkStatus: identitymodel.IdentityWorkActive, Status: identitymodel.IdentityStatusActive}},
+		users: []identitymodel.IdentityUser{{UserID: "user-1", WorkerNo: "E001", WorkStatus: identitymodel.IdentityWorkActive, Status: identitymodel.IdentityStatusActive}},
 		profileBindings: []identitymodel.IdentityProfileBinding{{
 			IdentityUserID: "user-1", ObjectKey: "member_profile", ProfileID: "member-1", Status: identitymodel.IdentityProfileBindingActive,
 		}},
@@ -365,7 +365,7 @@ func TestDisableIdentityUserReportsSessionRevocationAvailabilityAndFailure(t *te
 		{"failure", &identityHTTPUserSecurity{err: errIdentityHTTPTest}, http.StatusInternalServerError},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			repository := &identityHTTPRepository{users: []identitymodel.IdentityUser{{ID: "user-1", Status: identitymodel.IdentityStatusActive}}}
+			repository := &identityHTTPRepository{users: []identitymodel.IdentityUser{{UserID: "user-1", Status: identitymodel.IdentityStatusActive}}}
 			handler, response := newIdentityHTTPHandler(repository)
 			handler.userSecurity = test.security
 			writer, request := identityRoleRequest(http.MethodPost, "/identity/users/user-1/disable", "", map[string]string{"userID": "user-1"})
@@ -419,7 +419,7 @@ func TestDeleteIdentityUserProfileReferenceBoundaries(t *testing.T) {
 				inspection.BusinessProfileReferences = []identitymodel.IdentityUserRecordReference{{ObjectKey: "member_profile", FieldKey: "identity_user", Count: test.total}}
 			}
 			handler, response := newIdentityHTTPHandler(repository, &identityHTTPDeletionInspector{inspection: inspection, err: test.referenceErr})
-			repository.users = []identitymodel.IdentityUser{{ID: "user-1", Status: identitymodel.IdentityStatusActive}}
+			repository.users = []identitymodel.IdentityUser{{UserID: "user-1", Status: identitymodel.IdentityStatusActive}}
 			w, request := identityRoleRequest(http.MethodDelete, "/identity/users/user-1", "", map[string]string{"userID": " user-1 "})
 			handler.deleteIdentityUser(w, request)
 			if response.status != test.wantCode || repository.removeUserCalls != 0 {
@@ -434,7 +434,7 @@ func TestDeleteIdentityUserProfileReferenceBoundaries(t *testing.T) {
 
 func TestIdentityUserDeletionImpactHandler(t *testing.T) {
 	repository := &identityHTTPRepository{
-		users: []identitymodel.IdentityUser{{ID: "user-1", Status: identitymodel.IdentityStatusActive}},
+		users: []identitymodel.IdentityUser{{UserID: "user-1", Status: identitymodel.IdentityStatusActive}},
 		profileBindings: []identitymodel.IdentityProfileBinding{{
 			IdentityUserID: "user-1", ObjectKey: "member_profile", ProfileID: "member-1", Status: identitymodel.IdentityProfileBindingActive,
 		}},
@@ -451,7 +451,7 @@ func TestIdentityUserDeletionImpactHandler(t *testing.T) {
 
 func TestIdentityUserDisableImpactHandler(t *testing.T) {
 	repository := &identityHTTPRepository{
-		users: []identitymodel.IdentityUser{{ID: "user-1", Status: identitymodel.IdentityStatusActive}},
+		users: []identitymodel.IdentityUser{{UserID: "user-1", Status: identitymodel.IdentityStatusActive}},
 		profileBindings: []identitymodel.IdentityProfileBinding{{
 			IdentityUserID: "user-1", BindingKey: "member", ObjectKey: "member_profile", ProfileID: "member-1", Status: identitymodel.IdentityProfileBindingActive,
 		}},

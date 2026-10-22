@@ -25,12 +25,12 @@ func (s AuthStore) IdentityUserExistsWithinDataScope(ctx context.Context, worksp
 }
 
 func (s AuthStore) identityUserExistsWithinDataScope(ctx context.Context, queryer authScopedQueryRower, workspaceID, userID string, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
-	predicates := []query.Predicate{query.Equal("id", userID)}
+	predicates := []query.Predicate{query.Equal("user_id", userID)}
 	if !scope.Unrestricted {
-		predicates = append(predicates, identitydatascope.UserPredicate(scope, query.Column("id"), query.Column("org_id")))
+		predicates = append(predicates, identitydatascope.UserPredicate(scope, query.Column("user_id"), query.Column("org_id")))
 	}
 	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_users", workspaceID).
-		Columns("id").Where(query.And(predicates...)).Build()
+		Columns("user_id").Where(query.And(predicates...)).Build()
 	if err != nil {
 		return false, fmt.Errorf("build scoped auth user candidate: %w", err)
 	}
@@ -113,12 +113,12 @@ func (s AuthStore) ResetIdentityCredentialWithinDataScope(ctx context.Context, w
 		return false, err
 	}
 	defer tx.Rollback()
-	predicates := []query.Predicate{query.Equal("id", userID), query.Equal("status", string(identitymodel.IdentityStatusActive))}
+	predicates := []query.Predicate{query.Equal("user_id", userID), query.Equal("status", string(identitymodel.IdentityStatusActive))}
 	if !scope.Unrestricted {
-		predicates = append(predicates, identitydatascope.UserPredicate(scope, query.Column("id"), query.Column("org_id")))
+		predicates = append(predicates, identitydatascope.UserPredicate(scope, query.Column("user_id"), query.Column("org_id")))
 	}
 	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_users", workspaceID).
-		Columns("id").Where(query.And(predicates...)).Build()
+		Columns("user_id").Where(query.And(predicates...)).Build()
 	if err != nil {
 		return false, fmt.Errorf("build scoped password reset candidate: %w", err)
 	}
@@ -176,7 +176,7 @@ func (s AuthStore) RevokeIdentityMFAFactorWithinDataScope(ctx context.Context, w
 	if err != nil || !visible {
 		return visible, false, err
 	}
-	predicates := []query.Predicate{query.Equal("user_id", userID), query.Equal("id", factorID)}
+	predicates := []query.Predicate{query.Equal("user_id", userID), query.Equal("mfa_factor_id", factorID)}
 	if !scope.Unrestricted {
 		predicates = append(predicates, identitydatascope.UserExists(workspaceID, query.TableColumn("_identity_mfa_factors", "user_id"), scope))
 	}

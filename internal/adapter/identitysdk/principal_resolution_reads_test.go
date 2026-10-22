@@ -96,11 +96,11 @@ func newPrincipalReadFixture(t *testing.T) principalReadFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := sqlStore.UpsertIdentityUser(t.Context(), "workspace-primary", identitymodel.IdentityUser{ID: "subject", Name: "Subject", Status: identitymodel.IdentityStatusActive}); err != nil {
+	if err := sqlStore.UpsertIdentityUser(t.Context(), "workspace-primary", identitymodel.IdentityUser{UserID: "subject", Name: "Subject", Status: identitymodel.IdentityStatusActive}); err != nil {
 		t.Fatal(err)
 	}
 	for _, key := range []string{"reader", "writer"} {
-		if err := sqlStore.UpsertIdentityRole(t.Context(), "workspace-primary", identitymodel.IdentityRole{ID: key + "-id", Key: key, Label: key, Status: identitymodel.IdentityStatusActive}); err != nil {
+		if err := sqlStore.UpsertIdentityRole(t.Context(), "workspace-primary", identitymodel.IdentityRole{RoleID: key + "-id", Key: key, Label: key, Status: identitymodel.IdentityStatusActive}); err != nil {
 			t.Fatal(err)
 		}
 		if err := sqlStore.AssignIdentityUserRole(t.Context(), "workspace-primary", identitymodel.IdentityUserRoleAssignment{UserID: "subject", RoleID: key + "-id", Source: "manual", Status: "active"}); err != nil {
@@ -144,7 +144,7 @@ func TestSDKPrincipalResolutionReusesOwnerReadsAndPreservesRoleSelection(t *test
 		t.Run(selection.name, func(t *testing.T) {
 			f := newPrincipalReadFixture(t)
 			result, err := f.resolver.Resolve(f.ctx, identitysdk.PrincipalResolutionRequest{SubjectID: "subject", RoleKey: selection.role, SessionRoleKey: selection.session})
-			if err != nil || !reflect.DeepEqual(result.Principal.Permissions, selection.permissions) || len(result.Principal.Roles) != 2 || result.Principal.User.ID != "subject" {
+			if err != nil || !reflect.DeepEqual(result.Principal.Permissions, selection.permissions) || len(result.Principal.Roles) != 2 || result.Principal.User.UserID != "subject" {
 				t.Fatalf("resolution=%+v err=%v", result, err)
 			}
 			if selection.role != "" && result.Principal.RoleKey != "reader" || selection.session != "" && result.Principal.RoleKey != "writer" {
@@ -184,7 +184,7 @@ func TestSDKPrincipalResolutionChecksRevocationAfterProjectionIO(t *testing.T) {
 				case "user":
 					return f.repo.SetIdentityUserStatus(ioCtx, "workspace-primary", "subject", identitymodel.IdentityStatusDisabled)
 				case "role":
-					return f.repo.UpsertIdentityRole(ioCtx, "workspace-primary", identitymodel.IdentityRole{ID: "reader-id", Key: "reader", Status: identitymodel.IdentityStatusDisabled})
+					return f.repo.UpsertIdentityRole(ioCtx, "workspace-primary", identitymodel.IdentityRole{RoleID: "reader-id", Key: "reader", Status: identitymodel.IdentityStatusDisabled})
 				case "permission":
 					f.grants[0].Enabled = false
 					f.identity.ReplacePermissionDefinitions(f.grants)
@@ -227,7 +227,7 @@ func TestSDKPrincipalResolutionChecksRevocationAfterProjectionIO(t *testing.T) {
 
 func TestSDKPrincipalResolutionExcludesDisabledRoleFromEffectiveUnion(t *testing.T) {
 	f := newPrincipalReadFixture(t)
-	if err := f.repo.UpsertIdentityRole(f.ctx, "workspace-primary", identitymodel.IdentityRole{ID: "writer-id", Key: "writer", Status: identitymodel.IdentityStatusDisabled}); err != nil {
+	if err := f.repo.UpsertIdentityRole(f.ctx, "workspace-primary", identitymodel.IdentityRole{RoleID: "writer-id", Key: "writer", Status: identitymodel.IdentityStatusDisabled}); err != nil {
 		t.Fatal(err)
 	}
 	result, err := f.resolver.Resolve(f.ctx, identitysdk.PrincipalResolutionRequest{SubjectID: "subject"})

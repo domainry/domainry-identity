@@ -38,7 +38,7 @@ func (s *Store) List(ctx context.Context, workspaceID string) ([]identitymodel.I
 	if err != nil {
 		return nil, err
 	}
-	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_roles", workspaceID).Columns("id", "role_key", "label", "description", "status").OrderBy(query.Ascending("id")).Build()
+	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_roles", workspaceID).Columns("id", "role_id", "role_key", "label", "description", "status").OrderBy(query.Ascending("id")).Build()
 	if err != nil {
 		return nil, fmt.Errorf("build identity role list: %w", err)
 	}
@@ -51,7 +51,7 @@ func (s *Store) List(ctx context.Context, workspaceID string) ([]identitymodel.I
 	for rows.Next() {
 		var item identitymodel.IdentityRole
 		var status string
-		if err := rows.Scan(&item.ID, &item.Key, &item.Label, &item.Description, &status); err != nil {
+		if err := rows.Scan(&item.ID, &item.RoleID, &item.Key, &item.Label, &item.Description, &status); err != nil {
 			return nil, err
 		}
 		item.Status = identitymodel.IdentityStatus(status)
@@ -83,22 +83,22 @@ func (s *Store) UpsertBatchWithExecutor(ctx context.Context, execer Execer, work
 	normalized := make([]identitymodel.IdentityRole, 0, len(items))
 	positionByID := make(map[string]int, len(items))
 	for _, item := range items {
-		item.ID = strings.TrimSpace(item.ID)
+		item.RoleID = strings.TrimSpace(item.RoleID)
 		item.Key = strings.TrimSpace(item.Key)
-		if item.ID == "" {
+		if item.RoleID == "" {
 			return fmt.Errorf("role id is required")
 		}
 		if item.Key == "" {
-			item.Key = item.ID
+			item.Key = item.RoleID
 		}
 		if item.Status == "" {
 			item.Status = identitymodel.IdentityStatusActive
 		}
-		if position, duplicate := positionByID[item.ID]; duplicate {
+		if position, duplicate := positionByID[item.RoleID]; duplicate {
 			normalized[position] = item
 			continue
 		}
-		positionByID[item.ID] = len(normalized)
+		positionByID[item.RoleID] = len(normalized)
 		normalized = append(normalized, item)
 	}
 	const parametersPerRole = 8 // workspace_id plus the seven explicit columns below.
@@ -109,11 +109,11 @@ func (s *Store) UpsertBatchWithExecutor(ctx context.Context, execer Execer, work
 	now := timevalue.Millis(s.now())
 	for _, batchRange := range ranges {
 		insert := query.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_roles", workspaceID).
-			Columns("id", "role_key", "label", "description", "status", "created_at", "updated_at")
+			Columns("role_id", "role_key", "label", "description", "status", "created_at", "updated_at")
 		for _, item := range normalized[batchRange.Start:batchRange.End] {
-			insert.Values(item.ID, item.Key, item.Label, item.Description, string(item.Status), now, now)
+			insert.Values(item.RoleID, item.Key, item.Label, item.Description, string(item.Status), now, now)
 		}
-		s.backend.ApplyUpsert(insert, []string{"workspace_id", "id"}, "role_key", "label", "description", "status", "updated_at")
+		s.backend.ApplyUpsert(insert, []string{"role_id"}, "role_key", "label", "description", "status", "updated_at")
 		statement, arguments, buildErr := insert.Build()
 		if buildErr != nil {
 			return fmt.Errorf("build identity role batch upsert: %w", buildErr)
@@ -139,7 +139,7 @@ func (s *Store) Remove(ctx context.Context, workspaceID, roleID string) error {
 			return err
 		}
 	}
-	statement, arguments, err := query.NewWorkspaceDeleteBuilder(s.backend.SQLRenderer(), "_identity_roles", workspaceID).Where(query.Equal("id", roleID)).Build()
+	statement, arguments, err := query.NewWorkspaceDeleteBuilder(s.backend.SQLRenderer(), "_identity_roles", workspaceID).Where(query.Equal("role_id", roleID)).Build()
 	if err != nil {
 		return fmt.Errorf("build identity role delete: %w", err)
 	}
@@ -171,12 +171,12 @@ func (s *Store) RemoveUserAssignmentWithinDataScope(ctx context.Context, workspa
 		return false, err
 	}
 	defer tx.Rollback()
-	candidatePredicates := []query.Predicate{query.Equal("id", userID)}
+	candidatePredicates := []query.Predicate{query.Equal("user_id", userID)}
 	if !scope.Unrestricted {
-		candidatePredicates = append(candidatePredicates, identitydatascope.UserPredicate(scope, query.Column("id"), query.Column("org_id")))
+		candidatePredicates = append(candidatePredicates, identitydatascope.UserPredicate(scope, query.Column("user_id"), query.Column("org_id")))
 	}
 	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_users", workspaceID).
-		Columns("id").Where(query.And(candidatePredicates...)).Build()
+		Columns("user_id").Where(query.And(candidatePredicates...)).Build()
 	if err != nil {
 		return false, fmt.Errorf("build scoped identity user-role removal candidate: %w", err)
 	}

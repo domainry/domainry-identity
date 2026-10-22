@@ -8,15 +8,15 @@ import (
 )
 
 // UserPredicate maps the public Identity data-scope contract to the user's
-// natural ownership columns: owner -> id and org scopes -> org_id.
-func UserPredicate(scope identitymodel.IdentityDataScopeFilter, id, orgID query.Expression) query.Predicate {
+// business ownership columns: owner -> user_id and org scopes -> org_id.
+func UserPredicate(scope identitymodel.IdentityDataScopeFilter, userID, orgID query.Expression) query.Predicate {
 	scope = scope.Normalized()
 	if scope.Unrestricted {
 		return query.AlwaysTrue()
 	}
 	predicates := make([]query.Predicate, 0, 2)
 	if values := scopeValues(scope.OwnerUserIDs); len(values) > 0 {
-		predicates = append(predicates, query.InExpression(id, values...))
+		predicates = append(predicates, query.InExpression(userID, values...))
 	}
 	if values := scopeValues(scope.OwnerOrgIDs); len(values) > 0 {
 		predicates = append(predicates, query.InExpression(orgID, values...))
@@ -32,8 +32,8 @@ func UserPredicate(scope identitymodel.IdentityDataScopeFilter, id, orgID query.
 func UserExists(workspaceID string, outerUserID query.Expression, scope identitymodel.IdentityDataScopeFilter) query.Predicate {
 	return query.Exists("_identity_users", query.And(
 		query.Equal("workspace_id", strings.TrimSpace(workspaceID)),
-		query.EqualExpressions(query.Column("id"), outerUserID),
-		UserPredicate(scope, query.Column("id"), query.Column("org_id")),
+		query.EqualExpressions(query.Column("user_id"), outerUserID),
+		UserPredicate(scope, query.Column("user_id"), query.Column("org_id")),
 	))
 }
 

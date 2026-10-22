@@ -31,7 +31,7 @@ func (d *emailDeliveryProbe) Send(_ context.Context, message credentialemail.Mes
 func emailCredentialFixture(t *testing.T) (AuthStore, *authservice.AuthDomainService, *emailDeliveryProbe, identitymodel.IdentityUser) {
 	t.Helper()
 	repository := newTOTPRepository(t)
-	user := identitymodel.IdentityUser{ID: "email-user", Name: "Email User", Email: "email@example.test", Status: identitymodel.IdentityStatusActive, AccountType: identitymodel.IdentityAccountHuman}
+	user := identitymodel.IdentityUser{UserID: "email-user", Name: "Email User", Email: "email@example.test", Status: identitymodel.IdentityStatusActive, AccountType: identitymodel.IdentityAccountHuman}
 	if err := repository.store.UpsertIdentityUser(t.Context(), "workspace-primary", user); err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func invitationState(t *testing.T, message credentialemail.Message) string {
 }
 func TestEmailInvitationUsesThirtyMinuteSingleUseLinkAndAtomicSessionRevocation(t *testing.T) {
 	repository, auth, delivery, user := emailCredentialFixture(t)
-	receipt, err := auth.SendPasswordInvitation(t.Context(), "workspace-primary", user.ID)
+	receipt, err := auth.SendPasswordInvitation(t.Context(), "workspace-primary", user.UserID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestEmailInvitationUsesThirtyMinuteSingleUseLinkAndAtomicSessionRevocation(
 	if receipt.Status != "sent" || time.Until(expiry) < 29*time.Minute || time.Until(expiry) > 30*time.Minute {
 		t.Fatal("invitation lifetime is not thirty minutes")
 	}
-	if _, found, err := repository.GetIdentityCredential(t.Context(), "workspace-primary", user.ID); err != nil || found {
+	if _, found, err := repository.GetIdentityCredential(t.Context(), "workspace-primary", user.UserID); err != nil || found {
 		t.Fatal("invitation issued an initial/default password")
 	}
 	state := invitationState(t, delivery.messages[0])
@@ -75,7 +75,7 @@ func TestEmailInvitationUsesThirtyMinuteSingleUseLinkAndAtomicSessionRevocation(
 		t.Fatal("invitation token leaked into delivery identity")
 	}
 	now := time.Now().UTC()
-	if err := repository.CreateAuthRefreshToken(t.Context(), "workspace-primary", identitymodel.AuthRefreshToken{ID: "old", UserID: user.ID, SessionID: "old-session", TokenHash: "old-hash", ExpiresAt: now.Add(time.Hour).Format(time.RFC3339Nano)}); err != nil {
+	if err := repository.CreateAuthRefreshToken(t.Context(), "workspace-primary", identitymodel.AuthRefreshToken{UserID: user.UserID, SessionID: "old-session", TokenHash: "old-hash", ExpiresAt: now.Add(time.Hour).Format(time.RFC3339Nano)}); err != nil {
 		t.Fatal(err)
 	}
 	if err := auth.CompleteEmailPassword(t.Context(), "workspace-primary", state, authservice.PasswordSetupPurpose, "", "short"); err == nil {
@@ -84,11 +84,11 @@ func TestEmailInvitationUsesThirtyMinuteSingleUseLinkAndAtomicSessionRevocation(
 	if err := auth.CompleteEmailPassword(t.Context(), "workspace-primary", state, authservice.PasswordSetupPurpose, "", "NewSecure!2026"); err != nil {
 		t.Fatal(err)
 	}
-	credential, found, err := repository.GetIdentityCredential(t.Context(), "workspace-primary", user.ID)
+	credential, found, err := repository.GetIdentityCredential(t.Context(), "workspace-primary", user.UserID)
 	if err != nil || !found || credential.MustChangePassword || bcrypt.CompareHashAndPassword([]byte(credential.PasswordHash), []byte("NewSecure!2026")) != nil {
 		t.Fatal("setup did not establish the selected password")
 	}
-	if state, err := repository.AuthSessionState(t.Context(), "workspace-primary", user.ID, "old-session", time.Now()); err != nil || state != "revoked" {
+	if state, err := repository.AuthSessionState(t.Context(), "workspace-primary", user.UserID, "old-session", time.Now()); err != nil || state != "revoked" {
 		t.Fatalf("prior session survived: %s %v", state, err)
 	}
 	if err := auth.CompleteEmailPassword(t.Context(), "workspace-primary", state, authservice.PasswordSetupPurpose, "", "Different!2026"); err == nil {
@@ -97,7 +97,7 @@ func TestEmailInvitationUsesThirtyMinuteSingleUseLinkAndAtomicSessionRevocation(
 }
 func TestEmailInvitationRejectsExpiredCrossWorkspaceAndWrongPurpose(t *testing.T) {
 	repository, auth, delivery, user := emailCredentialFixture(t)
-	receipt, err := auth.SendPasswordInvitation(t.Context(), "workspace-primary", user.ID)
+	receipt, err := auth.SendPasswordInvitation(t.Context(), "workspace-primary", user.UserID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func TestEmailInvitationRejectsExpiredCrossWorkspaceAndWrongPurpose(t *testing.T
 }
 func TestEmailCredentialWriteFailureRollsBackGrantConsumption(t *testing.T) {
 	repository, auth, delivery, user := emailCredentialFixture(t)
-	if _, err := auth.SendPasswordInvitation(t.Context(), "workspace-primary", user.ID); err != nil {
+	if _, err := auth.SendPasswordInvitation(t.Context(), "workspace-primary", user.UserID); err != nil {
 		t.Fatal(err)
 	}
 	state := invitationState(t, delivery.messages[0])
@@ -138,11 +138,11 @@ func TestEmailCredentialWriteFailureRollsBackGrantConsumption(t *testing.T) {
 }
 func TestEmailRecoveryCodesAreLimitedAndInvitationsSuperseded(t *testing.T) {
 	_, auth, delivery, user := emailCredentialFixture(t)
-	if _, err := auth.SendPasswordInvitation(t.Context(), "workspace-primary", user.ID); err != nil {
+	if _, err := auth.SendPasswordInvitation(t.Context(), "workspace-primary", user.UserID); err != nil {
 		t.Fatal(err)
 	}
 	first := invitationState(t, delivery.messages[0])
-	if _, err := auth.SendPasswordInvitation(t.Context(), "workspace-primary", user.ID); err != nil {
+	if _, err := auth.SendPasswordInvitation(t.Context(), "workspace-primary", user.UserID); err != nil {
 		t.Fatal(err)
 	}
 	if err := auth.CompleteEmailPassword(t.Context(), "workspace-primary", first, authservice.PasswordSetupPurpose, "", "FirstLink!2026"); err == nil {
@@ -186,7 +186,7 @@ func TestUnknownRecoveryNeverSendsAndDeliveryFailureCannotActivateLink(t *testin
 		t.Fatal("unknown recovery exposed account state or sent mail", err)
 	}
 	delivery.fail = true
-	if _, err := auth.SendPasswordInvitation(t.Context(), "workspace-primary", user.ID); err == nil {
+	if _, err := auth.SendPasswordInvitation(t.Context(), "workspace-primary", user.UserID); err == nil {
 		t.Fatal("delivery failure reported sent")
 	}
 	if err := auth.CompleteEmailPassword(t.Context(), "workspace-primary", invitationState(t, delivery.messages[0]), authservice.PasswordSetupPurpose, "", "NotDelivered!2026"); err == nil {

@@ -159,19 +159,19 @@ func (h *IdentityHandler) upsertIdentityUserWithRoles(w http.ResponseWriter, r *
 	if !h.decodeJSON(w, r, &req) {
 		return
 	}
-	req.User.ID = strings.TrimSpace(r.PathValue("userID"))
+	req.User.UserID = strings.TrimSpace(r.PathValue("userID"))
 	for index := range req.Assignments {
-		req.Assignments[index].UserID = req.User.ID
+		req.Assignments[index].UserID = req.User.UserID
 	}
 	principal := h.principal(r)
 	if err := h.roles.UpsertUserWithRoles(r.Context(), req.User, req.Assignments, principal); err != nil {
 		h.securityPrincipal(r, principal, "identity_user_role_reconcile_denied", "Denied atomic identity user and role reconcile", map[string]any{
-			"target_user_id": req.User.ID, "role_count": len(req.Assignments), "error_code": apperror.CodeOf(err),
+			"target_user_id": req.User.UserID, "role_count": len(req.Assignments), "error_code": apperror.CodeOf(err),
 		})
 		h.writeServiceError(w, r, err)
 		return
 	}
-	h.appendIdentityMutationAudit(r, "identity_user_roles_reconciled", "identity_user", req.User.ID, "Reconciled identity user and roles atomically", map[string]any{"role_count": len(req.Assignments)})
+	h.appendIdentityMutationAudit(r, "identity_user_roles_reconciled", "identity_user", req.User.UserID, "Reconciled identity user and roles atomically", map[string]any{"role_count": len(req.Assignments)})
 	h.writeJSON(w, http.StatusOK, req.User)
 }
 
@@ -247,7 +247,7 @@ func (h *IdentityHandler) applyIdentityEntitlementBatch(w http.ResponseWriter, r
 		return
 	}
 	h.securityPrincipal(r, principal, "identity_entitlement_batch_applied", "Applied atomic identity entitlement batch", map[string]any{
-		"receipt_id": receipt.ID, "item_count": len(receipt.Items), "replayed": receipt.Replayed,
+		"operation_id": receipt.OperationID, "item_count": len(receipt.Items), "replayed": receipt.Replayed,
 	})
 	h.writeJSON(w, http.StatusOK, receipt)
 }
@@ -277,7 +277,7 @@ func (h *IdentityHandler) approveIdentityRoleRequest(w http.ResponseWriter, r *h
 		h.writeServiceError(w, r, err)
 		return
 	}
-	h.securityPrincipal(r, principal, "identity_role_request_approved", "Approved role request", map[string]any{"request_id": request.ID, "target_user_id": request.UserID, "role_count": len(request.RoleIDs)})
+	h.securityPrincipal(r, principal, "identity_role_request_approved", "Approved role request", map[string]any{"request_id": request.RoleRequestID, "target_user_id": request.UserID, "role_count": len(request.RoleIDs)})
 	h.writeJSON(w, http.StatusOK, request)
 }
 
@@ -294,6 +294,6 @@ func (h *IdentityHandler) rejectIdentityRoleRequest(w http.ResponseWriter, r *ht
 		h.writeServiceError(w, r, err)
 		return
 	}
-	h.securityPrincipal(r, principal, "identity_role_request_rejected", "Rejected role request", map[string]any{"request_id": request.ID, "target_user_id": request.UserID, "role_count": len(request.RoleIDs)})
+	h.securityPrincipal(r, principal, "identity_role_request_rejected", "Rejected role request", map[string]any{"request_id": request.RoleRequestID, "target_user_id": request.UserID, "role_count": len(request.RoleIDs)})
 	h.writeJSON(w, http.StatusOK, request)
 }

@@ -47,7 +47,7 @@ func (s *Store) Create(ctx context.Context, workspaceID string, request identity
 	if err != nil {
 		return identitymodel.IdentityRoleRequest{}, err
 	}
-	if request.ID == "" || request.UserID == "" || len(request.RoleIDs) == 0 {
+	if request.RoleRequestID == "" || request.UserID == "" || len(request.RoleIDs) == 0 {
 		return identitymodel.IdentityRoleRequest{}, fmt.Errorf("role request id, user id, and roles are required")
 	}
 	now := s.now()
@@ -59,11 +59,30 @@ func (s *Store) Create(ctx context.Context, workspaceID string, request identity
 		request.Status = "pending"
 	}
 	roleIDs, _ := json.Marshal(unique(request.RoleIDs))
-	statement, arguments, err := query.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_role_requests", workspaceID).Columns("id", "user_id", "requested_by", "provider", "provider_subject", "role_ids_json", "status", "reason", "created_at", "updated_at", "reviewed_by", "reviewed_at", "review_note").Values(request.ID, request.UserID, nullable(request.RequestedBy), nullable(request.Provider), nullable(request.ProviderSubject), string(roleIDs), request.Status, nullable(request.Reason), timevalue.Millis(request.CreatedAt), timevalue.Millis(request.UpdatedAt), nullable(request.ReviewedBy), timevalue.Millis(request.ReviewedAt), nullable(request.ReviewNote)).Build()
+	statement, arguments, err := query.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_role_requests", workspaceID).Columns("role_request_id", "user_id", "requested_by", "provider", "provider_subject", "role_ids_json", "status", "reason", "created_at", "updated_at", "reviewed_by", "reviewed_at", "review_note").Values(request.RoleRequestID, request.UserID, nullable(request.RequestedBy), nullable(request.Provider), nullable(request.ProviderSubject), string(roleIDs), request.Status, nullable(request.Reason), timevalue.Millis(request.CreatedAt), timevalue.Millis(request.UpdatedAt), nullable(request.ReviewedBy), timevalue.Millis(request.ReviewedAt), nullable(request.ReviewNote)).Build()
 	if err != nil {
 		return identitymodel.IdentityRoleRequest{}, fmt.Errorf("build identity role request insert: %w", err)
 	}
-	if _, err := s.backend.DB().ExecContext(ctx, statement, arguments...); err != nil {
+	tx, err := s.backend.DB().BeginTx(ctx, nil)
+	if err != nil {
+		return identitymodel.IdentityRoleRequest{}, err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
+		return identitymodel.IdentityRoleRequest{}, err
+	}
+	statement, arguments, err = query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_role_requests", workspaceID).
+		Columns("id").Where(query.Equal("role_request_id", request.RoleRequestID)).Build()
+	if err != nil {
+		return identitymodel.IdentityRoleRequest{}, err
+	}
+	if err := tx.QueryRowContext(ctx, statement, arguments...).Scan(&request.ID); err != nil {
+		return identitymodel.IdentityRoleRequest{}, fmt.Errorf("read created role request identity: %w", err)
+	}
+	if request.ID <= 0 {
+		return identitymodel.IdentityRoleRequest{}, fmt.Errorf("created role request identity is missing")
+	}
+	if err := tx.Commit(); err != nil {
 		return identitymodel.IdentityRoleRequest{}, err
 	}
 	return request, nil
@@ -88,7 +107,7 @@ func (s *Store) ListWithinDataScope(ctx context.Context, workspaceID, status, us
 	if !scope.Unrestricted {
 		predicates = append(predicates, identitydatascope.UserExists(workspaceID, query.TableColumn("_identity_role_requests", "user_id"), scope))
 	}
-	builder := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_role_requests", workspaceID).Columns("id", "user_id", "requested_by", "provider", "provider_subject", "role_ids_json", "status", "reason", "created_at", "updated_at", "reviewed_by", "reviewed_at", "review_note").OrderBy(query.Descending("created_at"), query.Ascending("id"))
+	builder := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_role_requests", workspaceID).Columns("id", "role_request_id", "user_id", "requested_by", "provider", "provider_subject", "role_ids_json", "status", "reason", "created_at", "updated_at", "reviewed_by", "reviewed_at", "review_note").OrderBy(query.Descending("created_at"), query.Ascending("id"))
 	if len(predicates) > 0 {
 		builder.Where(query.And(predicates...))
 	}
@@ -107,7 +126,7 @@ func (s *Store) ListWithinDataScope(ctx context.Context, workspaceID, status, us
 		var requestedBy, provider, providerSubject, reason, reviewedBy, reviewNote sql.NullString
 		var createdAt, updatedAt, reviewedAt int64
 		var roleIDs string
-		if err := rows.Scan(&item.ID, &item.UserID, &requestedBy, &provider, &providerSubject, &roleIDs, &item.Status, &reason, &createdAt, &updatedAt, &reviewedBy, &reviewedAt, &reviewNote); err != nil {
+		if err := rows.Scan(&item.ID, &item.RoleRequestID, &item.UserID, &requestedBy, &provider, &providerSubject, &roleIDs, &item.Status, &reason, &createdAt, &updatedAt, &reviewedBy, &reviewedAt, &reviewNote); err != nil {
 			return nil, err
 		}
 		item.RequestedBy, item.Provider, item.ProviderSubject = requestedBy.String, provider.String, providerSubject.String
@@ -124,7 +143,7 @@ func (s *Store) Update(ctx context.Context, workspaceID string, request identity
 	if err != nil {
 		return err
 	}
-	if request.ID == "" {
+	if request.RoleRequestID == "" {
 		return fmt.Errorf("role request id is required")
 	}
 	if request.UpdatedAt == "" {
@@ -163,7 +182,7 @@ func (s *Store) applyDecision(ctx context.Context, workspaceID string, request i
 		return false, err
 	}
 	defer tx.Rollback()
-	candidatePredicates := []query.Predicate{query.Equal("id", request.ID)}
+	candidatePredicates := []query.Predicate{query.Equal("role_request_id", request.RoleRequestID)}
 	if !scope.Unrestricted {
 		candidatePredicates = append(candidatePredicates, identitydatascope.UserExists(workspaceID, query.TableColumn("_identity_role_requests", "user_id"), scope))
 	}
@@ -194,7 +213,7 @@ func (s *Store) applyDecision(ctx context.Context, workspaceID string, request i
 			return false, err
 		}
 	}
-	updatePredicates := []query.Predicate{query.Equal("id", request.ID), query.Equal("status", expectedStatus)}
+	updatePredicates := []query.Predicate{query.Equal("role_request_id", request.RoleRequestID), query.Equal("status", expectedStatus)}
 	if !scope.Unrestricted {
 		updatePredicates = append(updatePredicates, identitydatascope.UserExists(workspaceID, query.TableColumn("_identity_role_requests", "user_id"), scope))
 	}
@@ -221,7 +240,7 @@ func (s *Store) applyDecision(ctx context.Context, workspaceID string, request i
 
 func (s *Store) update(workspaceID string, request identitymodel.IdentityRoleRequest) *query.UpdateBuilder {
 	roleIDs, _ := json.Marshal(unique(request.RoleIDs))
-	return query.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_role_requests", workspaceID).Set("role_ids_json", string(roleIDs)).Set("status", request.Status).Set("reason", nullable(request.Reason)).Set("updated_at", timevalue.Millis(request.UpdatedAt)).Set("reviewed_by", nullable(request.ReviewedBy)).Set("reviewed_at", timevalue.Millis(request.ReviewedAt)).Set("review_note", nullable(request.ReviewNote)).Where(query.Equal("id", request.ID))
+	return query.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_role_requests", workspaceID).Set("role_ids_json", string(roleIDs)).Set("status", request.Status).Set("reason", nullable(request.Reason)).Set("updated_at", timevalue.Millis(request.UpdatedAt)).Set("reviewed_by", nullable(request.ReviewedBy)).Set("reviewed_at", timevalue.Millis(request.ReviewedAt)).Set("review_note", nullable(request.ReviewNote)).Where(query.Equal("role_request_id", request.RoleRequestID))
 }
 func workspace(value string) (string, error) {
 	id, err := identitymodel.NewWorkspaceID(value)

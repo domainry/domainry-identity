@@ -8,6 +8,7 @@ import (
 	"time"
 
 	auditmodel "github.com/domainry/domainry-audit-sdk/contract"
+	"github.com/domainry/domainry-foundation/entityid"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	localizationmodel "github.com/domainry/domainry-identity/internal/domain/localization/model"
 	metadatamodel "github.com/domainry/domainry-identity/internal/domain/metadata/model"
@@ -108,7 +109,11 @@ func TestDirectRolePublicationRollbackAndDisableAreAtomicWithProjectionAndAudit(
 	scope := identitymodel.NewSystemScope(identitymodel.SystemScopeInstallation, "test direct role publication")
 	publication := &metadatamodel.MetadataDefinitionPublication{WorkspaceID: "workspace-primary"}
 	audit := func(id, event string) auditmodel.AuditEvent {
-		return auditmodel.AuditEvent{ID: id, WorkspaceID: "workspace-primary", Family: auditmodel.EventFamilyIdentityGovernance, Event: event, ObjectKey: "role", RecordID: "reviewer", ActorID: "admin", RoleKey: "admin", CreatedAt: time.Now().UTC().Format(time.RFC3339Nano)}
+		auditEventID, deriveErr := entityid.Derive("audevt", "identity.test-role-publication", id)
+		if deriveErr != nil {
+			t.Fatal(deriveErr)
+		}
+		return auditmodel.AuditEvent{AuditEventID: auditEventID, WorkspaceID: "workspace-primary", Family: auditmodel.EventFamilyIdentityGovernance, Event: event, ObjectKey: "role", RecordID: "reviewer", ActorID: "admin", RoleKey: "admin", CreatedAt: time.Now().UTC().Format(time.RFC3339Nano)}
 	}
 	payload := func(name string) json.RawMessage {
 		raw, marshalErr := json.Marshal(identitymodel.RoleSchema{Key: "reviewer", Name: name, I18n: localizationmodel.LocalizedTextMap{"zh-CN": {"name": name + " zh"}}})

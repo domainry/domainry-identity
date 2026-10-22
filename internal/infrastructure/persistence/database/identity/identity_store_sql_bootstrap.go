@@ -31,12 +31,12 @@ func (s *SQLIdentityStore) ApplyIdentityBootstrapAtomically(
 	}
 	for _, organizationUnit := range organizationUnits {
 		if err := s.writeIdentityOrganizationUnit(ctx, tx, workspaceID, organizationUnit); err != nil {
-			return rollback(fmt.Errorf("write bootstrap organization unit %s: %w", organizationUnit.ID, err))
+			return rollback(fmt.Errorf("write bootstrap organization unit %s: %w", organizationUnit.OrganizationUnitID, err))
 		}
 	}
 	for _, user := range users {
 		if err := s.writeIdentityUser(ctx, tx, workspaceID, user); err != nil {
-			return rollback(fmt.Errorf("write bootstrap user %s: %w", user.ID, err))
+			return rollback(fmt.Errorf("write bootstrap user %s: %w", user.UserID, err))
 		}
 	}
 	for _, assignment := range roleAssignments {

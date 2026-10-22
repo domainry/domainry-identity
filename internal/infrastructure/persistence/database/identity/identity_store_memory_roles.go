@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/domainry/domainry-foundation/apperror"
+	"github.com/domainry/domainry-foundation/entityid"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
@@ -24,12 +25,12 @@ func (s *MemoryIdentityStore) ListIdentityRoles(ctx context.Context, workspaceID
 		}
 		out = append(out, cloneIdentityRole(value))
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	sort.Slice(out, func(i, j int) bool { return out[i].RoleID < out[j].RoleID })
 	return out, nil
 }
 
 func (s *MemoryIdentityStore) ApplyIdentityRoleRequestDecision(_ context.Context, workspaceID string, request identitymodel.IdentityRoleRequest, assignments []identitymodel.IdentityUserRoleAssignment, expectedStatus string) error {
-	requestKey, err := identityWorkspaceKey(workspaceID, request.ID)
+	requestKey, err := identityWorkspaceKey(workspaceID, request.RoleRequestID)
 	if err != nil {
 		return err
 	}
@@ -65,7 +66,7 @@ func (s *MemoryIdentityStore) ApplyIdentityRoleRequestDecision(_ context.Context
 }
 
 func (s *MemoryIdentityStore) ApplyIdentityRoleRequestDecisionWithinDataScope(_ context.Context, workspaceID string, request identitymodel.IdentityRoleRequest, assignments []identitymodel.IdentityUserRoleAssignment, expectedStatus string, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
-	requestKey, err := identityWorkspaceKey(workspaceID, request.ID)
+	requestKey, err := identityWorkspaceKey(workspaceID, request.RoleRequestID)
 	if err != nil {
 		return false, err
 	}
@@ -107,11 +108,11 @@ func (s *MemoryIdentityStore) ApplyIdentityRoleRequestDecisionWithinDataScope(_ 
 }
 
 func (s *MemoryIdentityStore) UpsertIdentityRole(ctx context.Context, workspaceID string, role identitymodel.IdentityRole) error {
-	key, err := identityWorkspaceKey(workspaceID, role.ID)
+	key, err := identityWorkspaceKey(workspaceID, role.RoleID)
 	if err != nil {
 		return err
 	}
-	if role.ID == "" {
+	if role.RoleID == "" {
 		return fmt.Errorf("role id is required")
 	}
 	if role.Status == "" {
@@ -323,8 +324,12 @@ func (s *MemoryIdentityStore) ApplyIdentityEntitlementBatch(_ context.Context, m
 		key, _ := identityWorkspaceKey(mutation.WorkspaceID, assignment.UserID, assignment.RoleID)
 		next[key] = assignment
 	}
+	operationID, err := entityid.Derive("op", "identity.entitlement-batch", mutation.WorkspaceID, mutation.IdempotencyKey)
+	if err != nil {
+		return identitymodel.IdentityEntitlementBatchReceipt{}, err
+	}
 	receipt := identitymodel.IdentityEntitlementBatchReceipt{
-		ID: identityID("identity_entitlement_batch", mutation.WorkspaceID, mutation.IdempotencyKey), WorkspaceID: mutation.WorkspaceID,
+		OperationID: operationID, WorkspaceID: mutation.WorkspaceID,
 		ActorID: mutation.ActorID, IdempotencyKey: mutation.IdempotencyKey, RequestFingerprint: mutation.RequestFingerprint,
 		Items: mutation.Items, CreatedAt: nowString(),
 	}
@@ -380,8 +385,12 @@ func (s *MemoryIdentityStore) ApplyIdentityEntitlementBatchWithinDataScope(_ con
 		assignmentKey, _ := identityWorkspaceKey(mutation.WorkspaceID, assignment.UserID, assignment.RoleID)
 		next[assignmentKey] = assignment
 	}
+	operationID, err := entityid.Derive("op", "identity.entitlement-batch", mutation.WorkspaceID, mutation.IdempotencyKey)
+	if err != nil {
+		return identitymodel.IdentityEntitlementBatchReceipt{}, false, err
+	}
 	receipt := identitymodel.IdentityEntitlementBatchReceipt{
-		ID: identityID("identity_entitlement_batch", mutation.WorkspaceID, mutation.IdempotencyKey), WorkspaceID: mutation.WorkspaceID,
+		OperationID: operationID, WorkspaceID: mutation.WorkspaceID,
 		ActorID: mutation.ActorID, IdempotencyKey: mutation.IdempotencyKey, RequestFingerprint: mutation.RequestFingerprint,
 		Items: mutation.Items, CreatedAt: nowString(),
 	}
@@ -391,11 +400,11 @@ func (s *MemoryIdentityStore) ApplyIdentityEntitlementBatchWithinDataScope(_ con
 }
 
 func (s *MemoryIdentityStore) CreateIdentityRoleRequest(ctx context.Context, workspaceID string, request identitymodel.IdentityRoleRequest) (identitymodel.IdentityRoleRequest, error) {
-	key, err := identityWorkspaceKey(workspaceID, request.ID)
+	key, err := identityWorkspaceKey(workspaceID, request.RoleRequestID)
 	if err != nil {
 		return identitymodel.IdentityRoleRequest{}, err
 	}
-	if request.ID == "" || request.UserID == "" || len(request.RoleIDs) == 0 {
+	if request.RoleRequestID == "" || request.UserID == "" || len(request.RoleIDs) == 0 {
 		return identitymodel.IdentityRoleRequest{}, fmt.Errorf("role request id, user id, and roles are required")
 	}
 	request.RoleIDs = uniqueSortedStrings(request.RoleIDs)
@@ -443,7 +452,7 @@ func (s *MemoryIdentityStore) ListIdentityRoleRequestsWithinDataScope(_ context.
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].CreatedAt == out[j].CreatedAt {
-			return out[i].ID < out[j].ID
+			return out[i].RoleRequestID < out[j].RoleRequestID
 		}
 		return out[i].CreatedAt > out[j].CreatedAt
 	})
@@ -451,17 +460,17 @@ func (s *MemoryIdentityStore) ListIdentityRoleRequestsWithinDataScope(_ context.
 }
 
 func (s *MemoryIdentityStore) UpdateIdentityRoleRequest(ctx context.Context, workspaceID string, request identitymodel.IdentityRoleRequest) error {
-	key, err := identityWorkspaceKey(workspaceID, request.ID)
+	key, err := identityWorkspaceKey(workspaceID, request.RoleRequestID)
 	if err != nil {
 		return err
 	}
-	if request.ID == "" {
+	if request.RoleRequestID == "" {
 		return fmt.Errorf("role request id is required")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.roleRequests[key]; !ok {
-		return fmt.Errorf("role request %q not found", request.ID)
+		return fmt.Errorf("role request %q not found", request.RoleRequestID)
 	}
 	s.roleRequests[key] = cloneIdentityRoleRequest(request)
 	return nil

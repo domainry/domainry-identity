@@ -61,12 +61,12 @@ func (s *SQLIdentityStore) ProvisionWorkspaceIdentityWithExecutor(
 	}
 	for _, organization := range organizations {
 		if err := s.writeIdentityOrganizationUnit(ctx, execer, workspaceID, organization); err != nil {
-			return fmt.Errorf("provision acceptance organization %s: %w", organization.ID, err)
+			return fmt.Errorf("provision acceptance organization %s: %w", organization.OrganizationUnitID, err)
 		}
 	}
 	for _, user := range users {
 		if err := s.writeIdentityUser(ctx, execer, workspaceID, user); err != nil {
-			return fmt.Errorf("provision acceptance user %s: %w", user.ID, err)
+			return fmt.Errorf("provision acceptance user %s: %w", user.UserID, err)
 		}
 	}
 	for _, assignment := range assignments {
@@ -80,7 +80,7 @@ func (s *SQLIdentityStore) ProvisionWorkspaceIdentityWithExecutor(
 		}
 	}
 	if err := s.writeIdentityUserRoleAssignment(ctx, execer, workspaceID, identitymodel.IdentityUserRoleAssignment{
-		UserID: admin.ID, RoleID: strings.TrimSpace(adminRoleID), Source: "workspace_provisioning_v1_legacy", Status: "active",
+		UserID: admin.UserID, RoleID: strings.TrimSpace(adminRoleID), Source: "workspace_provisioning_v1_legacy", Status: "active",
 	}); err != nil {
 		return fmt.Errorf("assign workspace administrator role: %w", err)
 	}
@@ -113,12 +113,12 @@ func (s *SQLIdentityStore) ProvisionWorkspaceAcceptanceFixturesWithExecutor(
 	}
 	for _, organization := range organizations {
 		if err := s.writeIdentityOrganizationUnit(ctx, execer, workspaceID, organization); err != nil {
-			return fmt.Errorf("provision acceptance organization %s: %w", organization.ID, err)
+			return fmt.Errorf("provision acceptance organization %s: %w", organization.OrganizationUnitID, err)
 		}
 	}
 	for _, user := range users {
 		if err := s.writeIdentityUser(ctx, execer, workspaceID, user); err != nil {
-			return fmt.Errorf("provision acceptance user %s: %w", user.ID, err)
+			return fmt.Errorf("provision acceptance user %s: %w", user.UserID, err)
 		}
 	}
 	for _, assignment := range assignments {
@@ -138,7 +138,7 @@ type WorkspaceIdentityBootstrapGraph struct {
 }
 
 type WorkspaceIdentityBootstrapReceipt struct {
-	ID                                   string `json:"id"`
+	OperationID                          string `json:"operation_id"`
 	WorkspaceID                          string `json:"workspace_id"`
 	InvocationID                         string `json:"invocation_id"`
 	RequestFingerprint                   string `json:"request_fingerprint"`
@@ -155,7 +155,7 @@ type WorkspaceIdentityBootstrapReceipt struct {
 }
 
 type workspaceIdentityBootstrapReceiptJSON struct {
-	ID                                   string `json:"id"`
+	OperationID                          string `json:"operation_id"`
 	WorkspaceID                          string `json:"workspace_id"`
 	InvocationID                         string `json:"invocation_id"`
 	RequestFingerprint                   string `json:"request_fingerprint"`
@@ -173,7 +173,7 @@ type workspaceIdentityBootstrapReceiptJSON struct {
 
 func (value WorkspaceIdentityBootstrapReceipt) MarshalJSON() ([]byte, error) {
 	return json.Marshal(workspaceIdentityBootstrapReceiptJSON{
-		ID: value.ID, WorkspaceID: value.WorkspaceID, InvocationID: value.InvocationID, RequestFingerprint: value.RequestFingerprint,
+		OperationID: value.OperationID, WorkspaceID: value.WorkspaceID, InvocationID: value.InvocationID, RequestFingerprint: value.RequestFingerprint,
 		ContractVersion: value.ContractVersion, ContractHash: value.ContractHash, CompanyID: value.CompanyID, FirstStoreID: value.FirstStoreID,
 		InitialAdminUserID: value.InitialAdminUserID, InitialAdminLoginID: value.InitialAdminLoginID, RoleCatalogSHA256: value.RoleCatalogSHA256,
 		InitialWorkspaceAdministratorRoleKey: value.InitialWorkspaceAdministratorRoleKey,
@@ -187,7 +187,7 @@ func (value *WorkspaceIdentityBootstrapReceipt) UnmarshalJSON(raw []byte) error 
 		return err
 	}
 	*value = WorkspaceIdentityBootstrapReceipt{
-		ID: stored.ID, WorkspaceID: stored.WorkspaceID, InvocationID: stored.InvocationID, RequestFingerprint: stored.RequestFingerprint,
+		OperationID: stored.OperationID, WorkspaceID: stored.WorkspaceID, InvocationID: stored.InvocationID, RequestFingerprint: stored.RequestFingerprint,
 		ContractVersion: stored.ContractVersion, ContractHash: stored.ContractHash, CompanyID: stored.CompanyID, FirstStoreID: stored.FirstStoreID,
 		InitialAdminUserID: stored.InitialAdminUserID, InitialAdminLoginID: stored.InitialAdminLoginID, RoleCatalogSHA256: stored.RoleCatalogSHA256,
 		InitialWorkspaceAdministratorRoleKey: stored.InitialWorkspaceAdministratorRoleKey,
@@ -272,7 +272,7 @@ func (s *SQLIdentityStore) WriteWorkspaceIdentityBootstrapGraphWithExecutor(ctx 
 		}
 	}
 	if err := s.writeIdentityUserRoleAssignment(ctx, execer, workspaceID, identitymodel.IdentityUserRoleAssignment{
-		UserID: graph.InitialAdmin.ID, RoleID: strings.TrimSpace(graph.AdminRoleID), Source: "workspace_bootstrap_v1", Status: "active",
+		UserID: graph.InitialAdmin.UserID, RoleID: strings.TrimSpace(graph.AdminRoleID), Source: "workspace_bootstrap_v1", Status: "active",
 	}); err != nil {
 		return fmt.Errorf("assign workspace initial administrator role: %w", err)
 	}
@@ -337,7 +337,7 @@ func (s *SQLIdentityStore) InsertWorkspaceIdentityBootstrapReceiptWithExecutor(c
 	})
 	relatedIDsJSON, _ := json.Marshal([]string{receipt.WorkspaceID, receipt.CompanyID, receipt.FirstStoreID, receipt.InitialAdminUserID})
 	if err := operationreceipt.InsertSucceeded(ctx, execer, s.sqlRenderer(), operationreceipt.Succeeded{
-		ID: receipt.ID, WorkspaceID: receipt.WorkspaceID, Owner: workspaceBootstrapOperationOwner, Kind: workspaceBootstrapOperationKind,
+		OperationID: receipt.OperationID, WorkspaceID: receipt.WorkspaceID, Owner: workspaceBootstrapOperationOwner, Kind: workspaceBootstrapOperationKind,
 		ActionKey: "identity.workspace.bootstrap", ResourceType: "workspace", ResourceID: receipt.WorkspaceID,
 		IdempotencyKey: workspaceBootstrapOperationIdempotencyKey, RequestFingerprint: receipt.RequestFingerprint,
 		RequestedBy: "identity.workspace_bootstrap", Reason: "bootstrap workspace identity graph", Reference: receipt.InvocationID,
@@ -392,7 +392,7 @@ func decodeWorkspaceIdentityBootstrapReceipt(operation operationreceipt.Receipt,
 	if err := json.Unmarshal(operation.ResultJSON, &receipt); err != nil {
 		return WorkspaceIdentityBootstrapReceipt{}, false, fmt.Errorf("decode workspace bootstrap operation: %w", err)
 	}
-	if receipt.ID != operation.ID || receipt.WorkspaceID != workspaceID || receipt.WorkspaceID != operation.ResourceID ||
+	if receipt.OperationID != operation.OperationID || receipt.WorkspaceID != workspaceID || receipt.WorkspaceID != operation.ResourceID ||
 		receipt.InvocationID != operation.Reference || receipt.RequestFingerprint != operation.RequestFingerprint || receipt.CreatedAt != operation.CreatedAt {
 		return WorkspaceIdentityBootstrapReceipt{}, false, fmt.Errorf("identity shared workspace bootstrap operation scope mismatch")
 	}

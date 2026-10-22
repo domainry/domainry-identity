@@ -54,7 +54,7 @@ func (s AuthStore) TryBeginAuthMutation(ctx context.Context, workspaceID string,
 	relatedIDsJSON, _ := json.Marshal([]string{receipt.TargetID})
 	insertErr := operationreceipt.InsertStarted(ctx, s.db, s.store.SQLRenderer(), operationreceipt.Started{
 		Leased: operationreceipt.Leased{
-			ID: receipt.ID, WorkspaceID: workspaceID, ActionKey: receipt.UseCase, ResourceType: "identity_user", ResourceID: receipt.TargetID,
+			OperationID: receipt.ID, WorkspaceID: workspaceID, ActionKey: receipt.UseCase, ResourceType: "identity_user", ResourceID: receipt.TargetID,
 			IdempotencyKey: receipt.IdempotencyKey, RequestFingerprint: receipt.RequestFingerprint, RequestedBy: receipt.ActorID,
 			LeaseOwner: receipt.LeaseOwner, LeaseExpiresAt: receipt.LeaseExpiresAt, FencingToken: receipt.FencingToken,
 			CreatedAt: receipt.CreatedAt, UpdatedAt: receipt.UpdatedAt,
@@ -78,7 +78,7 @@ func (s AuthStore) TryBeginAuthMutation(ctx context.Context, workspaceID string,
 		return authmodel.AuthMutationClaimResult{Decision: decision, Receipt: current}, nil
 	}
 	reclaimed, err := operationreceipt.ReclaimStarted(ctx, s.db, s.store.SQLRenderer(), operationreceipt.Reclaim{
-		WorkspaceID: workspaceID, ID: receipt.ID, RequestFingerprint: receipt.RequestFingerprint,
+		WorkspaceID: workspaceID, OperationID: receipt.ID, RequestFingerprint: receipt.RequestFingerprint,
 		LeaseOwner: receipt.LeaseOwner, LeaseExpiresAt: receipt.LeaseExpiresAt, ExpectedToken: current.FencingToken,
 		ExpiredAt: now.Format(time.RFC3339Nano), UpdatedAt: receipt.UpdatedAt,
 	})
@@ -125,7 +125,7 @@ func (s AuthStore) CompleteAuthMutation(ctx context.Context, workspaceID string,
 		return authmodel.AuthMutationReceipt{}, err
 	}
 	completed, err := operationreceipt.CompleteLeased(ctx, s.db, s.store.SQLRenderer(), operationreceipt.Completion{
-		WorkspaceID: workspaceID, ID: completion.ReceiptID, LeaseOwner: strings.TrimSpace(completion.LeaseOwner),
+		WorkspaceID: workspaceID, OperationID: completion.ReceiptID, LeaseOwner: strings.TrimSpace(completion.LeaseOwner),
 		FencingToken: completion.FencingToken, Status: operationStatus, ResultJSON: resultJSON,
 		ErrorCode: strings.TrimSpace(completion.ErrorCode), ExpiresAt: completion.ExpiresAt.UTC().Format(time.RFC3339Nano),
 		CompletedAt: now.Format(time.RFC3339Nano),
@@ -170,7 +170,7 @@ func (s AuthStore) findAuthMutationByID(ctx context.Context, workspaceID, id str
 
 func authMutationReceiptColumns() []string {
 	return []string{
-		"id", "workspace_id", "action_key", "resource_type", "resource_id", "idempotency_key", "request_fingerprint",
+		"id", "operation_id", "workspace_id", "action_key", "resource_type", "resource_id", "idempotency_key", "request_fingerprint",
 		"requested_by", "status", "result_json", "lease_owner", "lease_expires_at", "fencing_token", "error_code",
 		"expires_at", "created_at", "updated_at",
 	}
@@ -182,7 +182,7 @@ func authMutationReceipt(operation operationreceipt.Leased) (authmodel.AuthMutat
 		return authmodel.AuthMutationReceipt{}, err
 	}
 	return authmodel.AuthMutationReceipt{
-		ID: operation.ID, WorkspaceID: operation.WorkspaceID, UseCase: operation.ActionKey, TargetID: operation.ResourceID,
+		ID: operation.OperationID, WorkspaceID: operation.WorkspaceID, UseCase: operation.ActionKey, TargetID: operation.ResourceID,
 		IdempotencyKey: operation.IdempotencyKey, RequestFingerprint: operation.RequestFingerprint, Status: string(status),
 		Result: operation.ResultJSON, LeaseOwner: operation.LeaseOwner, LeaseExpiresAt: operation.LeaseExpiresAt,
 		FencingToken: operation.FencingToken, ErrorCode: operation.ErrorCode, ExpiresAt: operation.ExpiresAt,

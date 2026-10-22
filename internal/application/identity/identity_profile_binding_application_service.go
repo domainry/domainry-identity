@@ -421,7 +421,7 @@ func (s *IdentityProfileBindingApplicationService) validateTargetIdentityForDeli
 	if userID == "" || s.dependencies.Identity == nil {
 		return "", profileBindingError(apperror.KindBadRequest, "backend.identity.profile_binding_target_invalid")
 	}
-	if prospectiveTarget != nil && strings.TrimSpace(prospectiveTarget.ID) == userID && prospectiveTarget.Status == identitymodel.IdentityStatusActive {
+	if prospectiveTarget != nil && strings.TrimSpace(prospectiveTarget.UserID) == userID && prospectiveTarget.Status == identitymodel.IdentityStatusActive {
 		return userID, nil
 	}
 	user, found, err := s.dependencies.Identity.FindUser(ctx, userID)
@@ -431,7 +431,7 @@ func (s *IdentityProfileBindingApplicationService) validateTargetIdentityForDeli
 	if !found || user.Status != identitymodel.IdentityStatusActive {
 		return "", profileBindingError(apperror.KindBadRequest, "backend.identity.profile_binding_target_invalid")
 	}
-	return user.ID, nil
+	return user.UserID, nil
 }
 
 func (s *IdentityProfileBindingApplicationService) verifyProfileClaim(ctx context.Context, extension identitymodel.IdentityProfileExtension, record map[string]any, workspaceID, userID, proofType, proofValue string) error {

@@ -72,7 +72,7 @@ func (s *SQLIdentityStore) ExecuteIdentityHandlerDelivery(ctx context.Context, m
 		return identitymodel.IdentityHandlerDeliveryReceipt{}, handlerDeliveryStoreError(apperror.KindBadRequest, "backend.identity.handler_delivery_operation_invalid")
 	}
 	if mutation.Credential != nil {
-		if mutation.Operation != identitymodel.IdentityHandlerUserCreate || strings.TrimSpace(mutation.Credential.UserID) != strings.TrimSpace(mutation.User.ID) || strings.TrimSpace(mutation.Credential.PasswordHash) == "" {
+		if mutation.Operation != identitymodel.IdentityHandlerUserCreate || strings.TrimSpace(mutation.Credential.UserID) != strings.TrimSpace(mutation.User.UserID) || strings.TrimSpace(mutation.Credential.PasswordHash) == "" {
 			return identitymodel.IdentityHandlerDeliveryReceipt{}, handlerDeliveryStoreError(apperror.KindBadRequest, "backend.identity.handler_delivery_credential_invalid")
 		}
 		now := nowString()
@@ -92,7 +92,7 @@ func (s *SQLIdentityStore) ExecuteIdentityHandlerDelivery(ctx context.Context, m
 	}
 
 	statement, arguments, err := query.NewWorkspaceDeleteBuilder(s.sqlRenderer(), "_identity_user_role_assignments", mutation.WorkspaceID).
-		Where(query.And(query.Equal("user_id", mutation.User.ID), query.Equal("source", "manual"))).Build()
+		Where(query.And(query.Equal("user_id", mutation.User.UserID), query.Equal("source", "manual"))).Build()
 	if err != nil {
 		return identitymodel.IdentityHandlerDeliveryReceipt{}, fmt.Errorf("build exact Identity role reset: %w", err)
 	}
@@ -132,7 +132,7 @@ func (s *SQLIdentityStore) ExecuteIdentityHandlerDelivery(ctx context.Context, m
 		revokedSessions += int(count)
 	}
 
-	user, found, err := s.GetIdentityUser(ctx, mutation.WorkspaceID, mutation.User.ID)
+	user, found, err := s.GetIdentityUser(ctx, mutation.WorkspaceID, mutation.User.UserID)
 	if err != nil {
 		return identitymodel.IdentityHandlerDeliveryReceipt{}, err
 	}
@@ -154,8 +154,8 @@ func (s *SQLIdentityStore) ExecuteIdentityHandlerDelivery(ctx context.Context, m
 	}
 	relatedIDsJSON, _ := json.Marshal(handlerDeliveryRelatedIDs(mutation))
 	if err := operationreceipt.InsertSucceeded(ctx, executor, s.sqlRenderer(), operationreceipt.Succeeded{
-		ID: result.DeliveryID, WorkspaceID: mutation.WorkspaceID, Owner: handlerDeliveryOperationOwner, Kind: handlerDeliveryOperationKind,
-		ActionKey: "identity.handler_delivery." + string(mutation.Operation), ResourceType: "identity_user", ResourceID: mutation.User.ID,
+		OperationID: result.DeliveryID, WorkspaceID: mutation.WorkspaceID, Owner: handlerDeliveryOperationOwner, Kind: handlerDeliveryOperationKind,
+		ActionKey: "identity.handler_delivery." + string(mutation.Operation), ResourceType: "identity_user", ResourceID: mutation.User.UserID,
 		IdempotencyKey: mutation.IdempotencyKey, RequestFingerprint: mutation.RequestFingerprint, RequestedBy: mutation.ActorID,
 		Reason: "deliver identity handler mutation", ResultJSON: resultJSON, RelatedIDsJSON: relatedIDsJSON, CompletedAt: now,
 	}); err != nil {
@@ -173,7 +173,7 @@ func (s *SQLIdentityStore) loadIdentityHandlerDeliveryReceipt(ctx context.Contex
 	if err != nil {
 		return identitymodel.IdentityHandlerDeliveryReceipt{}, false, fmt.Errorf("decode identity handler delivery operation: %w", err)
 	}
-	if result.DeliveryID != operation.ID || result.User.ID != operation.ResourceID {
+	if result.DeliveryID != operation.OperationID || result.User.UserID != operation.ResourceID {
 		return identitymodel.IdentityHandlerDeliveryReceipt{}, false, fmt.Errorf("identity shared handler delivery operation scope mismatch")
 	}
 	return identitymodel.IdentityHandlerDeliveryReceipt{
@@ -183,7 +183,7 @@ func (s *SQLIdentityStore) loadIdentityHandlerDeliveryReceipt(ctx context.Contex
 }
 
 func handlerDeliveryRelatedIDs(mutation identitymodel.IdentityHandlerDeliveryMutation) []string {
-	values := []string{mutation.User.ID}
+	values := []string{mutation.User.UserID}
 	values = append(values, mutation.RevokeUserIDs...)
 	for _, assignment := range mutation.RoleAssignments {
 		values = append(values, assignment.UserID, assignment.RoleID)

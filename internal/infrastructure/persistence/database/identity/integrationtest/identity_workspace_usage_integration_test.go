@@ -43,7 +43,7 @@ func TestWorkspaceIdentityUsageStoreGroupsOnlyBoundedIdentityAccountDimensions(t
 	}
 	for _, record := range users {
 		if err := repository.UpsertIdentityUser(t.Context(), record.workspaceID, identitymodel.IdentityUser{
-			ID: record.id, Name: record.id, Email: record.id + "@example.test", AccountType: record.accountType,
+			UserID: record.id, Name: record.id, Email: record.id + "@example.test", AccountType: record.accountType,
 			Status: record.status, Version: 1, ReportingPath: "/" + record.id,
 		}); err != nil {
 			t.Fatalf("insert %s: %v", record.id, err)
@@ -76,11 +76,11 @@ func TestWorkspaceIdentityUsageStoreGroupsOnlyBoundedIdentityAccountDimensions(t
 	// This foreign application table intentionally contains unrelated people.
 	// It is test fixture setup, not Identity persistence; the usage repository
 	// must neither read it nor infer an account count from it.
-	if _, err := store.DB().ExecContext(t.Context(), `CREATE TABLE employee_profile (workspace_id TEXT NOT NULL, id TEXT PRIMARY KEY, name TEXT NOT NULL)`); err != nil {
+	if _, err := store.DB().ExecContext(t.Context(), `CREATE TABLE employee_profile (id INTEGER PRIMARY KEY AUTOINCREMENT, workspace_id TEXT NOT NULL, employee_profile_id TEXT NOT NULL UNIQUE, name TEXT NOT NULL)`); err != nil {
 		t.Fatal(err)
 	}
 	for index := 0; index < 7; index++ {
-		if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO employee_profile (workspace_id, id, name) VALUES (?, ?, ?)`, "workspace-a", fmt.Sprintf("employee-%d", index), "Unrelated Employee"); err != nil {
+		if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO employee_profile (workspace_id, employee_profile_id, name) VALUES (?, ?, ?)`, "workspace-a", fmt.Sprintf("employee-%d", index), "Unrelated Employee"); err != nil {
 			t.Fatal(err)
 		}
 	}

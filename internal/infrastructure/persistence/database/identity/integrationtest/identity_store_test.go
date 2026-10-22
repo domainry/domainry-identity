@@ -10,10 +10,10 @@ import (
 
 func TestMemoryIdentityStoreRoleAssignments(t *testing.T) {
 	store := identitypersistence.NewMemoryIdentityStore()
-	if err := store.UpsertIdentityUser(t.Context(), "workspace-primary", identitymodel.IdentityUser{ID: "u-admin", Name: "Admin", Email: "admin@example.com"}); err != nil {
+	if err := store.UpsertIdentityUser(t.Context(), "workspace-primary", identitymodel.IdentityUser{UserID: "u-admin", Name: "Admin", Email: "admin@example.com"}); err != nil {
 		t.Fatalf("upsert user: %v", err)
 	}
-	if err := store.UpsertIdentityRole(t.Context(), "workspace-primary", identitymodel.IdentityRole{ID: "r-admin", Key: "admin", Label: "Admin"}); err != nil {
+	if err := store.UpsertIdentityRole(t.Context(), "workspace-primary", identitymodel.IdentityRole{RoleID: "r-admin", Key: "admin", Label: "Admin"}); err != nil {
 		t.Fatalf("upsert role: %v", err)
 	}
 	if err := store.AssignIdentityUserRole(t.Context(), "workspace-primary", identitymodel.IdentityUserRoleAssignment{UserID: "u-admin", RoleID: "r-admin"}); err != nil {

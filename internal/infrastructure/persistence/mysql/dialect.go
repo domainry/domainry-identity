@@ -22,7 +22,8 @@ func (Dialect) MaxParameters() int                     { return 65535 }
 func (Dialect) TextKeyColumnType(maxLength int) string { return fmt.Sprintf("VARCHAR(%d)", maxLength) }
 func (Dialect) SchemaTypes() driver.SchemaTypes {
 	return driver.SchemaTypes{
-		Boolean: "BOOLEAN", FalseLiteral: "0", DefaultText: "VARCHAR(255)", DocumentText: "LONGTEXT",
+		AutoIncrementBigInt: "BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY",
+		Boolean:             "BOOLEAN", FalseLiteral: "0", DefaultText: "VARCHAR(255)", DocumentText: "LONGTEXT",
 		IndexedText:     "VARCHAR(191) CHARACTER SET ascii COLLATE ascii_bin",
 		AuditCursorText: "VARCHAR(191) CHARACTER SET ascii COLLATE ascii_bin",
 	}
@@ -69,5 +70,5 @@ func (Dialect) SQLDialect() ormdialect.Dialect {
 }
 
 func (Dialect) SchemaMigrationSQL() string {
-	return "CREATE TABLE IF NOT EXISTS `_schema_migrations` (`path` VARCHAR(255) PRIMARY KEY, `applied_at` BIGINT NOT NULL)"
+	return "CREATE TABLE IF NOT EXISTS `_schema_migrations` (`id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, `path` VARCHAR(255) NOT NULL UNIQUE, `applied_at` BIGINT NOT NULL)"
 }

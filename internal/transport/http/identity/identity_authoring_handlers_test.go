@@ -9,9 +9,9 @@ import (
 
 func TestIdentityAuthoringValidationHandlersUseExactCapabilityPayloads(t *testing.T) {
 	repo := &identityHTTPRepository{
-		roles: []identitymodel.IdentityRole{{ID: "sales_manager", Key: "sales_manager", Label: "Sales Manager", Status: identitymodel.IdentityStatusActive}},
-		users: []identitymodel.IdentityUser{{ID: "sales_manager", Name: "Sales Manager", Email: "sales.manager@example.com", Status: identitymodel.IdentityStatusActive}},
-		menus: []identitymodel.IdentityMenu{{ID: "orders", Key: "orders", Label: "Orders", Status: identitymodel.IdentityStatusActive}},
+		roles: []identitymodel.IdentityRole{{RoleID: "sales_manager", Key: "sales_manager", Label: "Sales Manager", Status: identitymodel.IdentityStatusActive}},
+		users: []identitymodel.IdentityUser{{UserID: "sales_manager", Name: "Sales Manager", Email: "sales.manager@example.com", Status: identitymodel.IdentityStatusActive}},
+		menus: []identitymodel.IdentityMenu{{MenuID: "orders", Key: "orders", Label: "Orders", Status: identitymodel.IdentityStatusActive}},
 	}
 	handler, response := newIdentityHTTPHandler(repo)
 	tests := []struct {
@@ -19,14 +19,14 @@ func TestIdentityAuthoringValidationHandlersUseExactCapabilityPayloads(t *testin
 		body string
 		call func(http.ResponseWriter, *http.Request)
 	}{
-		{name: "role", body: `{"id":"sales_manager","key":"sales_manager","label":"Sales Manager","status":"active"}`, call: handler.validateIdentityRoleAuthoring},
+		{name: "role", body: `{"role_id":"sales_manager","key":"sales_manager","label":"Sales Manager","status":"active"}`, call: handler.validateIdentityRoleAuthoring},
 		{name: "role permission", body: `{"permissions":[{"permission_key":"identity.users.list","data_scope":"all"}]}`, call: handler.validateIdentityRolePermissionAuthoring},
 		{name: "role menu assignment", body: `{"menu_ids":["orders"]}`, call: handler.validateIdentityRoleMenuAssignmentAuthoring},
-		{name: "user", body: `{"id":"sales_manager","name":"Sales Manager","email":"sales.manager@example.com","status":"active"}`, call: handler.validateIdentityUserAuthoring},
-		{name: "organizationUnit", body: `{"id":"sales","code":"SALES","name":"Sales","node_type":"department","status":"active"}`, call: handler.validateIdentityOrganizationUnitAuthoring},
+		{name: "user", body: `{"user_id":"sales_manager","name":"Sales Manager","email":"sales.manager@example.com","status":"active"}`, call: handler.validateIdentityUserAuthoring},
+		{name: "organizationUnit", body: `{"organization_unit_id":"sales","code":"SALES","name":"Sales","node_type":"department","status":"active"}`, call: handler.validateIdentityOrganizationUnitAuthoring},
 		{name: "user role assignment", body: `{"role_id":"sales_manager"}`, call: handler.validateIdentityUserRoleAssignmentAuthoring},
 		{name: "role field permissions", body: `{"field_permissions":[]}`, call: handler.validateIdentityRoleFieldPermissionAuthoring},
-		{name: "menu", body: `{"id":"orders","key":"orders","label":"Orders","status":"active"}`, call: handler.validateIdentityMenuAuthoring},
+		{name: "menu", body: `{"menu_id":"orders","key":"orders","label":"Orders","status":"active"}`, call: handler.validateIdentityMenuAuthoring},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

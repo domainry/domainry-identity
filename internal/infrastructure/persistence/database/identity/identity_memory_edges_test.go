@@ -17,20 +17,20 @@ func TestMemoryIdentityUserRoleLifecycleEdges(t *testing.T) {
 	if err := store.UpsertIdentityUser(ctx, "workspace-primary", identitymodel.IdentityUser{}); err == nil {
 		t.Fatal("empty user accepted")
 	}
-	if err := store.UpsertIdentityUser(ctx, "workspace-primary", identitymodel.IdentityUser{ID: "b", Phone: "123"}); err != nil {
+	if err := store.UpsertIdentityUser(ctx, "workspace-primary", identitymodel.IdentityUser{UserID: "b", Phone: "123"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpsertIdentityUser(ctx, "other", identitymodel.IdentityUser{ID: "other"}); err != nil {
+	if err := store.UpsertIdentityUser(ctx, "other", identitymodel.IdentityUser{UserID: "other"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpsertIdentityUsersAtomically(ctx, "workspace-primary", []identitymodel.IdentityUser{{ID: "a"}, {ID: "c", Status: identitymodel.IdentityStatusDisabled}}); err != nil {
+	if err := store.UpsertIdentityUsersAtomically(ctx, "workspace-primary", []identitymodel.IdentityUser{{UserID: "a"}, {UserID: "c", Status: identitymodel.IdentityStatusDisabled}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.UpsertIdentityUsersAtomically(ctx, "workspace-primary", []identitymodel.IdentityUser{{}}); err == nil {
 		t.Fatal("atomic empty user accepted")
 	}
 	users, err := store.ListIdentityUsers(ctx, "workspace-primary")
-	if err != nil || len(users) != 3 || users[0].ID != "a" {
+	if err != nil || len(users) != 3 || users[0].UserID != "a" {
 		t.Fatalf("users=%#v err=%v", users, err)
 	}
 	loaded, found, err := store.GetIdentityUser(ctx, "workspace-primary", "b")
@@ -50,12 +50,12 @@ func TestMemoryIdentityUserRoleLifecycleEdges(t *testing.T) {
 		t.Fatal("missing remove succeeded")
 	}
 	store.credentials["default\x00b"] = identitymodel.IdentityCredential{UserID: "b"}
-	store.externalAccounts["default\x00account"] = identitymodel.IdentityExternalAccount{ID: "account", UserID: "b"}
-	store.externalAccounts["default\x00account-other"] = identitymodel.IdentityExternalAccount{ID: "account-other", UserID: "other"}
-	store.externalAccounts["other\x00account"] = identitymodel.IdentityExternalAccount{ID: "account", UserID: "b"}
-	store.refreshTokens["default\x00token"] = identitymodel.AuthRefreshToken{ID: "token", UserID: "b"}
-	store.refreshTokens["default\x00token-other"] = identitymodel.AuthRefreshToken{ID: "token-other", UserID: "other"}
-	store.refreshTokens["other\x00token"] = identitymodel.AuthRefreshToken{ID: "token", UserID: "b"}
+	store.externalAccounts["default\x00account"] = identitymodel.IdentityExternalAccount{ExternalAccountID: "account", UserID: "b"}
+	store.externalAccounts["default\x00account-other"] = identitymodel.IdentityExternalAccount{ExternalAccountID: "account-other", UserID: "other"}
+	store.externalAccounts["other\x00account"] = identitymodel.IdentityExternalAccount{ExternalAccountID: "account", UserID: "b"}
+	store.refreshTokens["default\x00token"] = identitymodel.AuthRefreshToken{TokenHash: "token", UserID: "b"}
+	store.refreshTokens["default\x00token-other"] = identitymodel.AuthRefreshToken{TokenHash: "token-other", UserID: "other"}
+	store.refreshTokens["other\x00token"] = identitymodel.AuthRefreshToken{TokenHash: "token", UserID: "b"}
 	store.userRoles["default\x00b\x00role"] = identitymodel.IdentityUserRoleAssignment{UserID: "b", RoleID: "role"}
 	store.userRoles["default\x00other\x00role"] = identitymodel.IdentityUserRoleAssignment{UserID: "other", RoleID: "role"}
 	store.userRoles["other\x00b\x00role"] = identitymodel.IdentityUserRoleAssignment{UserID: "b", RoleID: "role"}
@@ -67,17 +67,17 @@ func TestMemoryIdentityUserRoleLifecycleEdges(t *testing.T) {
 	if err := store.UpsertIdentityRole(ctx, "workspace-primary", identitymodel.IdentityRole{}); err == nil {
 		t.Fatal("empty role accepted")
 	}
-	if err := store.UpsertIdentityRole(ctx, "workspace-primary", identitymodel.IdentityRole{ID: "b"}); err != nil {
+	if err := store.UpsertIdentityRole(ctx, "workspace-primary", identitymodel.IdentityRole{RoleID: "b"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpsertIdentityRole(ctx, "workspace-primary", identitymodel.IdentityRole{ID: "a", Status: identitymodel.IdentityStatusDisabled}); err != nil {
+	if err := store.UpsertIdentityRole(ctx, "workspace-primary", identitymodel.IdentityRole{RoleID: "a", Status: identitymodel.IdentityStatusDisabled}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpsertIdentityRole(ctx, "other", identitymodel.IdentityRole{ID: "other"}); err != nil {
+	if err := store.UpsertIdentityRole(ctx, "other", identitymodel.IdentityRole{RoleID: "other"}); err != nil {
 		t.Fatal(err)
 	}
 	roles, err := store.ListIdentityRoles(ctx, "workspace-primary")
-	if err != nil || len(roles) != 2 || roles[0].ID != "a" {
+	if err != nil || len(roles) != 2 || roles[0].RoleID != "a" {
 		t.Fatalf("roles=%#v err=%v", roles, err)
 	}
 	for _, assignment := range []identitymodel.IdentityUserRoleAssignment{{}, {UserID: "u"}} {
@@ -118,7 +118,7 @@ func TestMemoryIdentityUserRoleLifecycleEdges(t *testing.T) {
 func TestMemoryIdentityRoleRequestDecisionEdges(t *testing.T) {
 	store := NewMemoryIdentityStore()
 	ctx := t.Context()
-	request := identitymodel.IdentityRoleRequest{ID: "request", UserID: "user", RoleIDs: []string{"role"}, Status: "pending"}
+	request := identitymodel.IdentityRoleRequest{RoleRequestID: "request", UserID: "user", RoleIDs: []string{"role"}, Status: "pending"}
 	if _, err := store.CreateIdentityRoleRequest(ctx, "workspace-primary", request); err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func TestMemoryIdentityRoleRequestDecisionEdges(t *testing.T) {
 			t.Fatalf("invalid assignment accepted: %+v", assignment)
 		}
 	}
-	if err := store.ApplyIdentityRoleRequestDecision(ctx, "workspace-primary", identitymodel.IdentityRoleRequest{ID: "missing"}, nil, "pending"); apperror.CodeOf(err) != "backend.identity.role_request_concurrent_decision" {
+	if err := store.ApplyIdentityRoleRequestDecision(ctx, "workspace-primary", identitymodel.IdentityRoleRequest{RoleRequestID: "missing"}, nil, "pending"); apperror.CodeOf(err) != "backend.identity.role_request_concurrent_decision" {
 		t.Fatalf("missing request error=%v", err)
 	}
 	if err := store.ApplyIdentityRoleRequestDecision(ctx, "workspace-primary", request, nil, "approved"); apperror.CodeOf(err) != "backend.identity.role_request_concurrent_decision" {
@@ -196,11 +196,11 @@ func TestMemoryIdentityEntitlementBatchEdges(t *testing.T) {
 		t.Fatal(err)
 	}
 	receipt, err := store.ApplyIdentityEntitlementBatch(ctx, valid)
-	if err != nil || receipt.Replayed || receipt.ID == "" {
+	if err != nil || receipt.Replayed || receipt.OperationID == "" {
 		t.Fatalf("receipt=%+v error=%v", receipt, err)
 	}
 	loaded, found, err := store.GetIdentityEntitlementBatchReceipt(ctx, "workspace-primary", " batch ")
-	if err != nil || !found || loaded.ID != receipt.ID {
+	if err != nil || !found || loaded.OperationID != receipt.OperationID {
 		t.Fatalf("loaded=%+v found=%v error=%v", loaded, found, err)
 	}
 	if _, _, err := store.GetIdentityEntitlementBatchReceipt(ctx, "", "batch"); err == nil {
@@ -220,26 +220,26 @@ func TestMemoryIdentityEntitlementBatchEdges(t *testing.T) {
 func TestMemoryIdentityRequestsMenusAndPolicyEdges(t *testing.T) {
 	store := NewMemoryIdentityStore()
 	ctx := t.Context()
-	for _, request := range []identitymodel.IdentityRoleRequest{{}, {ID: "id"}, {ID: "id", UserID: "user"}} {
+	for _, request := range []identitymodel.IdentityRoleRequest{{}, {RoleRequestID: "id"}, {RoleRequestID: "id", UserID: "user"}} {
 		if _, err := store.CreateIdentityRoleRequest(ctx, "workspace-primary", request); err == nil {
 			t.Fatalf("invalid request accepted: %#v", request)
 		}
 	}
-	request, err := store.CreateIdentityRoleRequest(ctx, "workspace-primary", identitymodel.IdentityRoleRequest{ID: "b", UserID: "user", RoleIDs: []string{"r2", "r1", "r1"}, CreatedAt: "1"})
+	request, err := store.CreateIdentityRoleRequest(ctx, "workspace-primary", identitymodel.IdentityRoleRequest{RoleRequestID: "b", UserID: "user", RoleIDs: []string{"r2", "r1", "r1"}, CreatedAt: "1"})
 	if err != nil || request.Status != "pending" || len(request.RoleIDs) != 2 {
 		t.Fatalf("request=%#v err=%v", request, err)
 	}
-	if _, err := store.CreateIdentityRoleRequest(ctx, "workspace-primary", identitymodel.IdentityRoleRequest{ID: "a", UserID: "other", RoleIDs: []string{"r"}, Status: "approved", CreatedAt: "1"}); err != nil {
+	if _, err := store.CreateIdentityRoleRequest(ctx, "workspace-primary", identitymodel.IdentityRoleRequest{RoleRequestID: "a", UserID: "other", RoleIDs: []string{"r"}, Status: "approved", CreatedAt: "1"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.CreateIdentityRoleRequest(ctx, "workspace-primary", identitymodel.IdentityRoleRequest{ID: "c", UserID: "different", RoleIDs: []string{"r"}, Status: "approved", CreatedAt: "2"}); err != nil {
+	if _, err := store.CreateIdentityRoleRequest(ctx, "workspace-primary", identitymodel.IdentityRoleRequest{RoleRequestID: "c", UserID: "different", RoleIDs: []string{"r"}, Status: "approved", CreatedAt: "2"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.CreateIdentityRoleRequest(ctx, "other", identitymodel.IdentityRoleRequest{ID: "other", UserID: "user", RoleIDs: []string{"r"}}); err != nil {
+	if _, err := store.CreateIdentityRoleRequest(ctx, "other", identitymodel.IdentityRoleRequest{RoleRequestID: "other", UserID: "user", RoleIDs: []string{"r"}}); err != nil {
 		t.Fatal(err)
 	}
 	requests, err := store.ListIdentityRoleRequests(ctx, "workspace-primary", "", "")
-	if err != nil || len(requests) != 3 || requests[0].ID != "c" {
+	if err != nil || len(requests) != 3 || requests[0].RoleRequestID != "c" {
 		t.Fatalf("requests=%#v err=%v", requests, err)
 	}
 	if filtered, err := store.ListIdentityRoleRequests(ctx, "workspace-primary", "approved", "other"); err != nil || len(filtered) != 1 {
@@ -248,7 +248,7 @@ func TestMemoryIdentityRequestsMenusAndPolicyEdges(t *testing.T) {
 	if err := store.UpdateIdentityRoleRequest(ctx, "workspace-primary", identitymodel.IdentityRoleRequest{}); err == nil {
 		t.Fatal("empty update accepted")
 	}
-	if err := store.UpdateIdentityRoleRequest(ctx, "workspace-primary", identitymodel.IdentityRoleRequest{ID: "missing"}); err == nil {
+	if err := store.UpdateIdentityRoleRequest(ctx, "workspace-primary", identitymodel.IdentityRoleRequest{RoleRequestID: "missing"}); err == nil {
 		t.Fatal("missing update accepted")
 	}
 	request.Status = "approved"
@@ -259,16 +259,16 @@ func TestMemoryIdentityRequestsMenusAndPolicyEdges(t *testing.T) {
 	if err := store.UpsertIdentityMenu(ctx, "workspace-primary", identitymodel.IdentityMenu{}); err == nil {
 		t.Fatal("empty menu accepted")
 	}
-	for _, menu := range []identitymodel.IdentityMenu{{ID: "b", SortOrder: 1}, {ID: "a", Key: "key-a", SortOrder: 1, Status: identitymodel.IdentityStatusDisabled}, {ID: "c", SortOrder: 0}} {
+	for _, menu := range []identitymodel.IdentityMenu{{MenuID: "b", SortOrder: 1}, {MenuID: "a", Key: "key-a", SortOrder: 1, Status: identitymodel.IdentityStatusDisabled}, {MenuID: "c", SortOrder: 0}} {
 		if err := store.UpsertIdentityMenu(ctx, "workspace-primary", menu); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := store.UpsertIdentityMenu(ctx, "other", identitymodel.IdentityMenu{ID: "other"}); err != nil {
+	if err := store.UpsertIdentityMenu(ctx, "other", identitymodel.IdentityMenu{MenuID: "other"}); err != nil {
 		t.Fatal(err)
 	}
 	menus, err := store.ListIdentityMenus(ctx, "workspace-primary")
-	if err != nil || len(menus) != 3 || menus[0].ID != "c" || menus[1].ID != "b" {
+	if err != nil || len(menus) != 3 || menus[0].MenuID != "c" || menus[1].MenuID != "b" {
 		t.Fatalf("menus=%#v err=%v", menus, err)
 	}
 	if err := store.SetIdentityRoleMenus(ctx, "workspace-primary", "role", []string{"a", "b", "key-a", "b"}); err != nil {
@@ -292,10 +292,10 @@ func TestMemoryIdentityRequestsMenusAndPolicyEdges(t *testing.T) {
 	if err := store.RemoveIdentityMenu(ctx, "workspace-primary", "a"); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.RemoveIdentityMenusAtomically(ctx, "workspace-primary", []identitymodel.IdentityMenu{{ID: "missing"}}); err == nil {
+	if err := store.RemoveIdentityMenusAtomically(ctx, "workspace-primary", []identitymodel.IdentityMenu{{MenuID: "missing"}}); err == nil {
 		t.Fatal("missing atomic menu removed")
 	}
-	if err := store.RemoveIdentityMenusAtomically(ctx, "workspace-primary", []identitymodel.IdentityMenu{{ID: "b", Key: "b"}, {ID: "c", Key: "c"}}); err != nil {
+	if err := store.RemoveIdentityMenusAtomically(ctx, "workspace-primary", []identitymodel.IdentityMenu{{MenuID: "b", Key: "b"}, {MenuID: "c", Key: "c"}}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -318,12 +318,12 @@ func TestIdentityValueAndOrganizationUnitEdges(t *testing.T) {
 		t.Fatal("empty organizationUnit accepted")
 	}
 	parentA, parentB := "a", "b"
-	for _, organizationUnit := range []identitymodel.IdentityOrganizationUnit{{ID: "root"}, {ID: "a2", ParentID: &parentA, Depth: 1, SortOrder: 2}, {ID: "a1", ParentID: &parentA, Depth: 1, SortOrder: 1}, {ID: "b1", ParentID: &parentB, Depth: 1}} {
+	for _, organizationUnit := range []identitymodel.IdentityOrganizationUnit{{OrganizationUnitID: "root"}, {OrganizationUnitID: "a2", ParentID: &parentA, Depth: 1, SortOrder: 2}, {OrganizationUnitID: "a1", ParentID: &parentA, Depth: 1, SortOrder: 1}, {OrganizationUnitID: "b1", ParentID: &parentB, Depth: 1}} {
 		if err := store.UpsertIdentityOrganizationUnit(ctx, "workspace-primary", organizationUnit); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := store.UpsertIdentityOrganizationUnit(ctx, "other", identitymodel.IdentityOrganizationUnit{ID: "other"}); err != nil {
+	if err := store.UpsertIdentityOrganizationUnit(ctx, "other", identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "other"}); err != nil {
 		t.Fatal(err)
 	}
 	organizationUnits, err := store.ListIdentityOrganizationUnits(ctx, "workspace-primary")

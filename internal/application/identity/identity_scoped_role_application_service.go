@@ -280,7 +280,7 @@ func (s *IdentityApplicationService) ValidateRoleMenus(ctx context.Context, role
 	}
 	menusByID := make(map[string]identitymodel.IdentityMenu, len(menus)*2)
 	for _, menu := range menus {
-		menusByID[menu.ID] = menu
+		menusByID[menu.MenuID] = menu
 		menusByID[menu.Key] = menu
 	}
 	seen := make(map[string]bool, len(menuIDs))
@@ -306,11 +306,11 @@ func (s *IdentityApplicationService) ValidateRoleMenus(ctx context.Context, role
 		}
 		required, registered := s.pagePermissions.RequiredPermissionsForPage(route)
 		if !registered {
-			return apperror.New(apperror.KindBadRequest, "backend.identity.menu_route_not_registered", nil, map[string]string{"menu": menu.ID, "route": menu.Route})
+			return apperror.New(apperror.KindBadRequest, "backend.identity.menu_route_not_registered", nil, map[string]string{"menu": menu.MenuID, "route": menu.Route})
 		}
 		for _, permission := range required {
 			if _, found := identitymodel.RolePermissionForKey(definition.Permissions, permission); !found {
-				return apperror.New(apperror.KindBadRequest, "backend.identity.menu_route_permission_missing", nil, map[string]string{"menu": menu.ID, "route": menu.Route, "permission": permission})
+				return apperror.New(apperror.KindBadRequest, "backend.identity.menu_route_permission_missing", nil, map[string]string{"menu": menu.MenuID, "route": menu.Route, "permission": permission})
 			}
 		}
 	}

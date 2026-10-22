@@ -21,7 +21,7 @@ func (s *AuthDomainService) authUser(user identitymodel.IdentityUser) authmodel.
 		version = 1
 	}
 	return authmodel.AuthUser{
-		ID:      user.ID,
+		UserID:  user.UserID,
 		Name:    user.Name,
 		Email:   user.Email,
 		Locale:  locale,
@@ -33,7 +33,7 @@ func (s *AuthDomainService) authUser(user identitymodel.IdentityUser) authmodel.
 func authRoles(roles []identitymodel.IdentityRole) []authmodel.AuthRole {
 	out := make([]authmodel.AuthRole, 0, len(roles))
 	for _, role := range roles {
-		out = append(out, authmodel.AuthRole{ID: role.ID, Key: role.Key, Label: role.Label})
+		out = append(out, authmodel.AuthRole{RoleID: role.RoleID, Key: role.Key, Label: role.Label})
 	}
 	return out
 }

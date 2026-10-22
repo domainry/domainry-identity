@@ -93,7 +93,7 @@ func (s AuthStore) CompleteEmailCredential(ctx context.Context, workspace, state
 	// A portable no-op update locks the subject on SQL engines without relying
 	// on SELECT FOR UPDATE (unsupported by SQLite). Do not alter user metadata.
 	statement, args, err = query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_users", workspace).
-		SetExpression("updated_at", query.Column("updated_at")).Where(query.Equal("id", challenge.UserID)).Build()
+		SetExpression("updated_at", query.Column("updated_at")).Where(query.Equal("user_id", challenge.UserID)).Build()
 	if err != nil {
 		return "", false, err
 	}
@@ -101,7 +101,7 @@ func (s AuthStore) CompleteEmailCredential(ctx context.Context, workspace, state
 		return "", false, err
 	}
 	statement, args, err = query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_users", workspace).
-		Columns("id").Where(query.And(query.Equal("id", challenge.UserID), query.Equal("email", challenge.Email), query.Equal("status", "active"), query.Equal("account_type", "human"))).Build()
+		Columns("user_id").Where(query.And(query.Equal("user_id", challenge.UserID), query.Equal("email", challenge.Email), query.Equal("status", "active"), query.Equal("account_type", "human"))).Build()
 	if err != nil {
 		return "", false, err
 	}

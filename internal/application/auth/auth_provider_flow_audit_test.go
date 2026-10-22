@@ -18,7 +18,7 @@ func TestProviderAuthenticationAuditUsesStableTraceAndSafeFields(t *testing.T) {
 
 	successContext := requestcontext.WithRequestID(t.Context(), "provider-success-request")
 	err := service.appendAuthenticationSuccess(successContext, "provider", "oidc", "member-app", authmodel.AuthSession{
-		WorkspaceID: "workspace-1", User: authmodel.AuthUser{ID: "user-1"}, DefaultRole: "member",
+		WorkspaceID: "workspace-1", User: authmodel.AuthUser{UserID: "user-1"}, DefaultRole: "member",
 	})
 	if err != nil {
 		t.Fatal(err)

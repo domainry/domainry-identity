@@ -24,15 +24,15 @@ func (s *IdentityApplicationService) RoleGovernanceDetail(ctx context.Context, r
 		return identitymodel.IdentityRoleGovernanceDetail{}, apperror.New(apperror.KindNotFound, "backend.identity.role_not_found", nil, map[string]string{"role": roleID})
 	}
 	definition, _ := scoped.PublishedRoleDefinition(ctx, role.Key)
-	permissions, err := scoped.ListRolePermissionAssignments(ctx, role.ID)
+	permissions, err := scoped.ListRolePermissionAssignments(ctx, role.RoleID)
 	if err != nil {
 		return identitymodel.IdentityRoleGovernanceDetail{}, err
 	}
-	fieldPermissions, err := scoped.ListRoleFieldPermissions(ctx, role.ID)
+	fieldPermissions, err := scoped.ListRoleFieldPermissions(ctx, role.RoleID)
 	if err != nil {
 		return identitymodel.IdentityRoleGovernanceDetail{}, err
 	}
-	menuAssignments, err := scoped.ListRoleMenuAssignments(ctx, role.ID)
+	menuAssignments, err := scoped.ListRoleMenuAssignments(ctx, role.RoleID)
 	if err != nil {
 		return identitymodel.IdentityRoleGovernanceDetail{}, err
 	}
@@ -51,13 +51,13 @@ func (s *IdentityApplicationService) RoleGovernanceDetail(ctx context.Context, r
 	}
 	menus := make([]identitymodel.IdentityMenu, 0, len(menuAssignments))
 	for _, menu := range allMenus {
-		if menuIDs[menu.ID] || menuIDs[menu.Key] {
+		if menuIDs[menu.MenuID] || menuIDs[menu.Key] {
 			menus = append(menus, menu)
 		}
 	}
 	members := make([]identitymodel.IdentityUserRoleAssignment, 0)
 	for _, assignment := range allAssignments {
-		if assignment.RoleID == role.ID || assignment.RoleID == role.Key {
+		if assignment.RoleID == role.RoleID || assignment.RoleID == role.Key {
 			members = append(members, assignment)
 		}
 	}

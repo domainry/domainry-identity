@@ -158,7 +158,7 @@ func TestIdentityAccessHandlersUnavailableAndDecodeFailures(t *testing.T) {
 
 func TestIdentityAccessHandlersSuccessAndServiceFailures(t *testing.T) {
 	access := &identityEffectiveAccessStub{}
-	reviews := &identityAccessReviewsStub{reviews: []identitymodel.IdentityAccessReview{{ID: "review-1"}}}
+	reviews := &identityAccessReviewsStub{reviews: []identitymodel.IdentityAccessReview{{ReviewID: "review-1"}}}
 	handler, serviceErr := newIdentityAccessTestHandler(access, reviews, true)
 	calls := []struct {
 		name       string

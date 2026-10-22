@@ -106,18 +106,18 @@ func (binding *moduleBinding) BootstrapWorkspaceIdentity(ctx context.Context, re
 	companyID := request.CompanyID
 	graph := identitypersistence.WorkspaceIdentityBootstrapGraph{
 		Company: identitymodel.IdentityOrganizationUnit{
-			ID: companyID, Code: request.CompanyCode, Name: request.CompanyName,
+			OrganizationUnitID: companyID, Code: request.CompanyCode, Name: request.CompanyName,
 			NodeType: identitymodel.IdentityOrganizationUnitCompany, Path: "/" + companyID,
 			AncestorIDs: []string{}, Depth: 0, SortOrder: 0, Status: identitymodel.IdentityStatusActive,
 		},
 		FirstStore: identitymodel.IdentityOrganizationUnit{
-			ID: request.FirstStoreID, Code: request.FirstStoreCode, Name: request.FirstStoreName,
+			OrganizationUnitID: request.FirstStoreID, Code: request.FirstStoreCode, Name: request.FirstStoreName,
 			NodeType: identitymodel.IdentityOrganizationUnitStore, ParentID: &companyID,
 			Path: "/" + companyID + "/" + request.FirstStoreID, AncestorIDs: []string{companyID},
 			Depth: 1, SortOrder: 0, Status: identitymodel.IdentityStatusActive,
 		},
 		InitialAdmin: identitymodel.IdentityUser{
-			ID: request.InitialAdminUserID, Name: request.InitialAdminName, Email: request.InitialAdminLoginID,
+			UserID: request.InitialAdminUserID, Name: request.InitialAdminName, Email: request.InitialAdminLoginID,
 			AccountType: identitymodel.IdentityAccountHuman, OrgID: companyID,
 			ReportingPath: "/" + request.InitialAdminUserID, Status: identitymodel.IdentityStatusActive,
 		},
@@ -171,7 +171,7 @@ func (binding *moduleBinding) BootstrapWorkspaceIdentity(ctx context.Context, re
 		}
 	}
 	receipt := identitypersistence.WorkspaceIdentityBootstrapReceipt{
-		ID:          identitypersistence.WorkspaceIdentityBootstrapReceiptID(request.WorkspaceID, request.InvocationID),
+		OperationID: identitypersistence.WorkspaceIdentityBootstrapReceiptID(request.WorkspaceID, request.InvocationID),
 		WorkspaceID: request.WorkspaceID, InvocationID: request.InvocationID, RequestFingerprint: fingerprint,
 		ContractVersion: request.ContractVersion, ContractHash: request.ContractHash,
 		CompanyID: request.CompanyID, FirstStoreID: request.FirstStoreID,
@@ -187,7 +187,7 @@ func (binding *moduleBinding) BootstrapWorkspaceIdentity(ctx context.Context, re
 			return identitysdk.WorkspaceIdentityBootstrapReceipt{}, err
 		}
 	}
-	binding.storeWorkspaceBootstrapCredential(receipt.ID, request.WorkspaceID, request.InitialAdminLoginID, []byte(password), mustChangePassword)
+	binding.storeWorkspaceBootstrapCredential(receipt.OperationID, request.WorkspaceID, request.InitialAdminLoginID, []byte(password), mustChangePassword)
 	return workspaceBootstrapReceipt(receipt, false), nil
 }
 
@@ -386,7 +386,7 @@ func workspaceBootstrapFingerprint(request identitysdk.WorkspaceIdentityBootstra
 func workspaceBootstrapReceipt(receipt identitypersistence.WorkspaceIdentityBootstrapReceipt, replayed bool) identitysdk.WorkspaceIdentityBootstrapReceipt {
 	return identitysdk.WorkspaceIdentityBootstrapReceipt{
 		ContractVersion: receipt.ContractVersion, ContractHash: receipt.ContractHash,
-		ReceiptID: receipt.ID, InvocationID: receipt.InvocationID, WorkspaceID: receipt.WorkspaceID,
+		ReceiptID: receipt.OperationID, InvocationID: receipt.InvocationID, WorkspaceID: receipt.WorkspaceID,
 		CompanyID: receipt.CompanyID, FirstStoreID: receipt.FirstStoreID,
 		InitialAdminUserID: receipt.InitialAdminUserID, InitialAdminLoginID: receipt.InitialAdminLoginID,
 		RoleCatalogSHA256:                    receipt.RoleCatalogSHA256,
@@ -411,7 +411,7 @@ func workspaceBootstrapRoles(workspaceID string, catalog workspaceBootstrapRoleC
 			return nil, &identitysdk.Error{Class: identitysdk.ErrorClassInternal, Code: "identity.workspace_bootstrap_role_catalog_invalid"}
 		}
 		roles = append(roles, identitymodel.IdentityRole{
-			ID: identitypersistence.WorkspaceRoleID(workspaceID, key), Key: key, Label: label,
+			RoleID: identitypersistence.WorkspaceRoleID(workspaceID, key), Key: key, Label: label,
 			Description: "Trusted project role provisioned during Workspace bootstrap", Status: identitymodel.IdentityStatusActive,
 		})
 	}

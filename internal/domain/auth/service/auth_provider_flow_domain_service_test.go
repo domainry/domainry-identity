@@ -115,7 +115,7 @@ func TestVerifiedOIDCCallbackLinksOnlyTheAuthenticatedChallengeUser(t *testing.T
 	}
 	assertion := authmodel.AuthExternalIdentityAssertion{Provider: "feishu", Subject: "verified-feishu-user", Email: "current@example.test", ProviderSubjectVerified: true}
 	session, completed, err := flows.ExchangeAndCompleteCallbackWithChallenge(t.Context(), "workspace-application", "feishu", started.State, authmodel.AuthProviderCallbackInput{}, assertionAdapter{assertion: assertion})
-	if err != nil || session.User.ID != "user-current" || completed.Purpose != authmodel.AuthChallengePurposeLink {
+	if err != nil || session.User.UserID != "user-current" || completed.Purpose != authmodel.AuthChallengePurposeLink {
 		t.Fatalf("session=%#v challenge=%#v err=%v", session, completed, err)
 	}
 	if len(authRepository.accounts) != 1 || authRepository.accounts[0].UserID != "user-current" || authRepository.accounts[0].ProviderSubject != "verified-feishu-user" {

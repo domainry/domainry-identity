@@ -59,7 +59,7 @@ func (r *identityRolesRepositoryStub) UpsertIdentityUserWithRoleAssignmentsWithi
 		return false, r.reconcileErr
 	}
 	for _, persisted := range r.users {
-		if persisted.ID == user.ID && identityRolesTestUserMatchesScope(persisted, scope) {
+		if persisted.UserID == user.UserID && identityRolesTestUserMatchesScope(persisted, scope) {
 			r.reconciledUser = user
 			r.reconciledRoles = append([]identitymodel.IdentityUserRoleAssignment(nil), assignments...)
 			return true, nil
@@ -88,7 +88,7 @@ func (r *identityRolesRepositoryStub) ListIdentityOrganizationUnits(context.Cont
 	if r.organizationUnits != nil {
 		return append([]identitymodel.IdentityOrganizationUnit(nil), r.organizationUnits...), nil
 	}
-	return []identitymodel.IdentityOrganizationUnit{{ID: "organizationUnit", Name: "OrganizationUnit", Status: identitymodel.IdentityStatusActive}}, nil
+	return []identitymodel.IdentityOrganizationUnit{{OrganizationUnitID: "organizationUnit", Name: "OrganizationUnit", Status: identitymodel.IdentityStatusActive}}, nil
 }
 
 func (r *identityRolesRepositoryStub) ListIdentityRoles(context.Context, string) ([]identitymodel.IdentityRole, error) {
@@ -136,7 +136,7 @@ func (r *identityRolesRepositoryStub) GetIdentityUser(_ context.Context, _, id s
 		return identitymodel.IdentityUser{}, false, r.err
 	}
 	for _, user := range r.users {
-		if user.ID == id {
+		if user.UserID == id {
 			return user, true, nil
 		}
 	}
@@ -211,7 +211,7 @@ func (r *identityRolesRepositoryStub) ListIdentityUserRoleAssignmentsWithinDataS
 	}
 	users := make(map[string]identitymodel.IdentityUser, len(r.users))
 	for _, user := range r.users {
-		users[user.ID] = user
+		users[user.UserID] = user
 	}
 	out := []identitymodel.IdentityUserRoleAssignment{}
 	for _, assignment := range r.assignments {
@@ -230,7 +230,7 @@ func identityRolesTestUserMatchesScope(user identitymodel.IdentityUser, scope id
 		return true
 	}
 	for _, userID := range scope.OwnerUserIDs {
-		if user.ID == userID {
+		if user.UserID == userID {
 			return true
 		}
 	}
@@ -245,7 +245,7 @@ func (r *identityRolesRepositoryStub) CreateIdentityRoleRequest(_ context.Contex
 	if r.err != nil {
 		return identitymodel.IdentityRoleRequest{}, r.err
 	}
-	request.ID = "request-created"
+	request.RoleRequestID = "request-created"
 	r.requests = append(r.requests, request)
 	return request, nil
 }
@@ -277,7 +277,7 @@ func (r *identityRolesRepositoryStub) ListIdentityRoleRequestsWithinDataScope(_ 
 	}
 	users := make(map[string]identitymodel.IdentityUser, len(r.users))
 	for _, user := range r.users {
-		users[user.ID] = user
+		users[user.UserID] = user
 	}
 	out := []identitymodel.IdentityRoleRequest{}
 	for _, request := range r.requests {
@@ -320,7 +320,7 @@ func (r *identityRolesRepositoryStub) ApplyIdentityRoleRequestDecision(_ context
 
 func (r *identityRolesRepositoryStub) ApplyIdentityRoleRequestDecisionWithinDataScope(ctx context.Context, workspaceID string, request identitymodel.IdentityRoleRequest, assignments []identitymodel.IdentityUserRoleAssignment, expectedStatus string, scope identitymodel.IdentityDataScopeFilter) (bool, error) {
 	for _, user := range r.users {
-		if user.ID == request.UserID && identityRolesTestUserMatchesScope(user, scope) {
+		if user.UserID == request.UserID && identityRolesTestUserMatchesScope(user, scope) {
 			if err := r.ApplyIdentityRoleRequestDecision(ctx, workspaceID, request, assignments, expectedStatus); err != nil {
 				return false, err
 			}
@@ -333,15 +333,15 @@ func (r *identityRolesRepositoryStub) ApplyIdentityRoleRequestDecisionWithinData
 func identityRolesFixture() (*identityRolesRepositoryStub, *IdentityDomainService) {
 	repository := &identityRolesRepositoryStub{
 		roles: []identitymodel.IdentityRole{
-			{ID: "member-id", Key: "member", Label: "Member", Status: identitymodel.IdentityStatusActive},
-			{ID: "viewer-id", Key: "viewer", Label: "Viewer", Status: identitymodel.IdentityStatusActive},
-			{ID: "admin-id", Key: "admin", Label: "Admin", Status: identitymodel.IdentityStatusActive},
-			{ID: "owner-id", Key: "owner", Label: "Owner", Status: identitymodel.IdentityStatusActive},
-			{ID: "workspace-admin-id", Key: "team_workspace_admin", Label: "Workspace Admin", Status: identitymodel.IdentityStatusActive},
-			{ID: "permission-admin-id", Key: "security", Label: "Security", Status: identitymodel.IdentityStatusActive},
-			{ID: "disabled-id", Key: "disabled", Label: "Disabled", Status: identitymodel.IdentityStatusDisabled},
+			{RoleID: "member-id", Key: "member", Label: "Member", Status: identitymodel.IdentityStatusActive},
+			{RoleID: "viewer-id", Key: "viewer", Label: "Viewer", Status: identitymodel.IdentityStatusActive},
+			{RoleID: "admin-id", Key: "admin", Label: "Admin", Status: identitymodel.IdentityStatusActive},
+			{RoleID: "owner-id", Key: "owner", Label: "Owner", Status: identitymodel.IdentityStatusActive},
+			{RoleID: "workspace-admin-id", Key: "team_workspace_admin", Label: "Workspace Admin", Status: identitymodel.IdentityStatusActive},
+			{RoleID: "permission-admin-id", Key: "security", Label: "Security", Status: identitymodel.IdentityStatusActive},
+			{RoleID: "disabled-id", Key: "disabled", Label: "Disabled", Status: identitymodel.IdentityStatusDisabled},
 		},
-		users: []identitymodel.IdentityUser{{ID: "user-1", Status: identitymodel.IdentityStatusActive}, {ID: "disabled-user", Status: identitymodel.IdentityStatusDisabled}},
+		users: []identitymodel.IdentityUser{{UserID: "user-1", Status: identitymodel.IdentityStatusActive}, {UserID: "disabled-user", Status: identitymodel.IdentityStatusDisabled}},
 	}
 	service, err := NewIdentityDomainService(repository, nil).ForWorkspace("workspace-1")
 	if err != nil {

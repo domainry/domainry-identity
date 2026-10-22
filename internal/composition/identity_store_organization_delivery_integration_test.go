@@ -82,6 +82,8 @@ func TestStoreOrganizationDeliveryIsAtomicScopedIdempotentAndRestartSafe(t *test
 		return core, store
 	}
 	core, store := open()
+	companyAID := identityOrganizationUnitIDByCode(t, store.DB(), cfg.IdentityWorkspaceID, "COMPANY-A")
+	companyBID := identityOrganizationUnitIDByCode(t, store.DB(), cfg.IdentityWorkspaceID, "COMPANY-B")
 	application := identitysdk.ApplicationRef{WorkspaceID: identitysdk.WorkspaceID(cfg.IdentityWorkspaceID), ApplicationKey: identitysdk.ApplicationKey(cfg.AuthAudience)}
 	if _, err := core.Binding.Applications().Register(t.Context(), identitysdk.ApplicationRegistration{Application: application}); err != nil {
 		t.Fatal(err)
@@ -100,11 +102,11 @@ func TestStoreOrganizationDeliveryIsAtomicScopedIdempotentAndRestartSafe(t *test
 	create := identitysdk.StoreOrganizationDeliveryRequest{
 		ContractVersion: identitysdk.StoreOrganizationDeliveryContractVersionV1, AccessToken: operatorSession.AccessToken, IdempotencyKey: "store-create-1",
 		Organization: identitysdk.StoreOrganizationMutation{
-			Operation: identitysdk.StoreOrganizationCreate, OrganizationID: "store-1", Code: "STORE-1", Name: "Store One", ParentOrganizationID: "company-a",
+			Operation: identitysdk.StoreOrganizationCreate, OrganizationID: "store-1", Code: "STORE-1", Name: "Store One", ParentOrganizationID: companyAID,
 		},
 	}
 	created, err := delivery.DeliverStoreOrganization(t.Context(), create)
-	if err != nil || created.Replayed || created.Organization.Version != 1 || created.Organization.Path != "/company-a/store-1" || created.Organization.ParentOrganizationID != "company-a" {
+	if err != nil || created.Replayed || created.Organization.Version != 1 || created.Organization.Path != "/"+companyAID+"/store-1" || created.Organization.ParentOrganizationID != companyAID {
 		t.Fatalf("created=%+v err=%v", created, err)
 	}
 	persisted, found, err := core.Identity.FindOrganizationUnit(requestcontext.WithWorkspaceID(t.Context(), cfg.IdentityWorkspaceID), "store-1")
@@ -130,7 +132,7 @@ func TestStoreOrganizationDeliveryIsAtomicScopedIdempotentAndRestartSafe(t *test
 	orgCreate.AccessToken, orgCreate.IdempotencyKey = orgCreateSession.AccessToken, "org-scope-create"
 	orgCreate.Organization.OrganizationID, orgCreate.Organization.Code, orgCreate.Organization.Name = "org-scope-store", "ORG-SCOPE", "Org Scope Store"
 	orgCreated, err := delivery.DeliverStoreOrganization(t.Context(), orgCreate)
-	if err != nil || orgCreated.Organization.ParentOrganizationID != "company-a" {
+	if err != nil || orgCreated.Organization.ParentOrganizationID != companyAID {
 		t.Fatalf("org-scope create=%+v err=%v", orgCreated, err)
 	}
 	orgCreateSession = login("org_store_creator@example.com")
@@ -150,7 +152,7 @@ func TestStoreOrganizationDeliveryIsAtomicScopedIdempotentAndRestartSafe(t *test
 	targetCreate.AccessToken, targetCreate.IdempotencyKey = targetCreateSession.AccessToken, "target-scope-create"
 	targetCreate.Organization.OrganizationID, targetCreate.Organization.Code, targetCreate.Organization.Name = "target-scope-store", "TARGET-SCOPE", "Target Scope Store"
 	targetCreated, err := delivery.DeliverStoreOrganization(t.Context(), targetCreate)
-	if err != nil || targetCreated.Organization.ParentOrganizationID != "company-a" {
+	if err != nil || targetCreated.Organization.ParentOrganizationID != companyAID {
 		t.Fatalf("target-scope create=%+v err=%v", targetCreated, err)
 	}
 	targetCreateSession = login("target_store_creator@example.com")
@@ -185,7 +187,7 @@ func TestStoreOrganizationDeliveryIsAtomicScopedIdempotentAndRestartSafe(t *test
 	if err != nil || !found {
 		t.Fatalf("target store before external move found=%v err=%v", found, err)
 	}
-	companyB := "company-b"
+	companyB := companyBID
 	externallyMoved.ParentID = &companyB
 	if err := core.Identity.UpsertOrganizationUnit(requestcontext.WithWorkspaceID(t.Context(), cfg.IdentityWorkspaceID), externallyMoved); err != nil {
 		t.Fatal(err)
@@ -202,7 +204,7 @@ func TestStoreOrganizationDeliveryIsAtomicScopedIdempotentAndRestartSafe(t *test
 	resolved, err := delivery.ResolveStoreOrganization(t.Context(), identitysdk.StoreOrganizationResolveRequest{
 		ContractVersion: identitysdk.StoreOrganizationDeliveryContractVersionV1, AccessToken: operatorSession.AccessToken, OrganizationID: "store-1",
 	})
-	if err != nil || resolved.ID != "store-1" || resolved.Version != 1 || len(resolved.AncestorIDs) != 1 || resolved.AncestorIDs[0] != "company-a" {
+	if err != nil || resolved.OrganizationUnitID != "store-1" || resolved.Version != 1 || len(resolved.AncestorIDs) != 1 || resolved.AncestorIDs[0] != companyAID {
 		t.Fatalf("resolved=%+v err=%v", resolved, err)
 	}
 	stores, err := delivery.ListStoreOrganizations(t.Context(), identitysdk.StoreOrganizationListRequest{ContractVersion: identitysdk.StoreOrganizationDeliveryContractVersionV1, AccessToken: operatorSession.AccessToken})
@@ -210,13 +212,13 @@ func TestStoreOrganizationDeliveryIsAtomicScopedIdempotentAndRestartSafe(t *test
 		t.Fatalf("stores=%+v err=%v", stores, err)
 	}
 
-	purposePrincipal, err := core.Identity.ResolvePrincipal(requestcontext.WithWorkspaceID(t.Context(), cfg.IdentityWorkspaceID), "store_operator_user")
+	purposePrincipal, err := core.Identity.ResolvePrincipal(requestcontext.WithWorkspaceID(t.Context(), cfg.IdentityWorkspaceID), operatorSession.User.UserID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	parentA := "company-a"
+	parentA := companyAID
 	if err := core.Identity.UpsertOrganizationUnitWithinDataScope(requestcontext.WithWorkspaceID(t.Context(), cfg.IdentityWorkspaceID), identitymodel.IdentityOrganizationUnit{
-		ID: "generic-bypass", Code: "GENERIC-BYPASS", Name: "Generic bypass", NodeType: identitymodel.IdentityOrganizationUnitStore, ParentID: &parentA, Status: identitymodel.IdentityStatusActive,
+		OrganizationUnitID: "generic-bypass", Code: "GENERIC-BYPASS", Name: "Generic bypass", NodeType: identitymodel.IdentityOrganizationUnitStore, ParentID: &parentA, Status: identitymodel.IdentityStatusActive,
 	}, purposePrincipal, "identity.organization_units.create"); apperror.CodeOf(err) != "auth.permission_denied" {
 		t.Fatalf("purpose grant reached generic organization CRUD: %v", err)
 	}
@@ -231,7 +233,7 @@ func TestStoreOrganizationDeliveryIsAtomicScopedIdempotentAndRestartSafe(t *test
 	scopedSession := login("scoped_store_operator@example.com")
 	outOfHierarchy := create
 	outOfHierarchy.AccessToken, outOfHierarchy.IdempotencyKey = scopedSession.AccessToken, "out-of-hierarchy"
-	outOfHierarchy.Organization.OrganizationID, outOfHierarchy.Organization.Code, outOfHierarchy.Organization.ParentOrganizationID = "store-b", "STORE-B", "company-b"
+	outOfHierarchy.Organization.OrganizationID, outOfHierarchy.Organization.Code, outOfHierarchy.Organization.ParentOrganizationID = "store-b", "STORE-B", companyBID
 	if _, err := delivery.DeliverStoreOrganization(t.Context(), outOfHierarchy); apperror.CodeOf(err) != "backend.identity.store_organization_scope_denied" {
 		t.Fatalf("out-of-hierarchy create error=%v", err)
 	}
@@ -243,7 +245,7 @@ func TestStoreOrganizationDeliveryIsAtomicScopedIdempotentAndRestartSafe(t *test
 	}
 	companyBStore := create
 	companyBStore.IdempotencyKey = "company-b-store"
-	companyBStore.Organization.OrganizationID, companyBStore.Organization.Code, companyBStore.Organization.Name, companyBStore.Organization.ParentOrganizationID = "store-b", "STORE-B", "Store B", "company-b"
+	companyBStore.Organization.OrganizationID, companyBStore.Organization.Code, companyBStore.Organization.Name, companyBStore.Organization.ParentOrganizationID = "store-b", "STORE-B", "Store B", companyBID
 	if _, err := delivery.DeliverStoreOrganization(t.Context(), companyBStore); err != nil {
 		t.Fatalf("company-b store create error=%v", err)
 	}
@@ -252,7 +254,8 @@ func TestStoreOrganizationDeliveryIsAtomicScopedIdempotentAndRestartSafe(t *test
 	// store creation. Paging remains stable, bounded, and scoped on every call.
 	scopedSession = login("scoped_store_operator@example.com")
 	seenScoped := map[string]struct{}{}
-	previousID, cursor := "", ""
+	var previousID int64
+	cursor := ""
 	for {
 		page, err := delivery.ListStoreOrganizations(t.Context(), identitysdk.StoreOrganizationListRequest{
 			ContractVersion: identitysdk.StoreOrganizationDeliveryContractVersionV1,
@@ -267,16 +270,16 @@ func TestStoreOrganizationDeliveryIsAtomicScopedIdempotentAndRestartSafe(t *test
 			t.Fatalf("page exceeded bound: %+v", page)
 		}
 		for _, item := range page.Items {
-			if previousID != "" && item.ID <= previousID {
-				t.Fatalf("unstable store order previous=%q current=%q", previousID, item.ID)
+			if previousID != 0 && item.ID <= previousID {
+				t.Fatalf("unstable store order previous=%d current=%d", previousID, item.ID)
 			}
-			if item.ID == "store-b" {
+			if item.OrganizationUnitID == "store-b" {
 				t.Fatalf("scope leaked company-b store: %+v", page)
 			}
-			if _, duplicate := seenScoped[item.ID]; duplicate {
-				t.Fatalf("duplicate store across pages: %q", item.ID)
+			if _, duplicate := seenScoped[item.OrganizationUnitID]; duplicate {
+				t.Fatalf("duplicate store across pages: %q", item.OrganizationUnitID)
 			}
-			seenScoped[item.ID], previousID = struct{}{}, item.ID
+			seenScoped[item.OrganizationUnitID], previousID = struct{}{}, item.ID
 		}
 		if page.NextCursor == "" {
 			break
@@ -337,7 +340,7 @@ func TestStoreOrganizationDeliveryIsAtomicScopedIdempotentAndRestartSafe(t *test
 	rename := staleRename
 	rename.IdempotencyKey, rename.Organization.Name, rename.Organization.ExpectedVersion = "store-rename-1", "Store One Renamed", 1
 	renamed, err := delivery.DeliverStoreOrganization(t.Context(), rename)
-	if err != nil || renamed.Organization.Version != 2 || renamed.Organization.Name != "Store One Renamed" || renamed.Organization.Code != "STORE-1" || renamed.Organization.ParentOrganizationID != "company-a" {
+	if err != nil || renamed.Organization.Version != 2 || renamed.Organization.Name != "Store One Renamed" || renamed.Organization.Code != "STORE-1" || renamed.Organization.ParentOrganizationID != companyAID {
 		t.Fatalf("renamed=%+v err=%v", renamed, err)
 	}
 
@@ -376,7 +379,7 @@ func TestStoreOrganizationDeliveryIsAtomicScopedIdempotentAndRestartSafe(t *test
 		t.Fatal(err)
 	}
 	for table, column := range map[string]string{
-		"_identity_organization_units": "id", "_operations": "idempotency_key", "_audit_events": "record_id",
+		"_identity_organization_units": "organization_unit_id", "_operations": "idempotency_key", "_audit_events": "record_id",
 	} {
 		value := "store-rollback"
 		if table == "_operations" {
@@ -411,7 +414,7 @@ func TestStoreOrganizationDeliveryIsAtomicScopedIdempotentAndRestartSafe(t *test
 
 func storeOrganizationListContains(stores []identitysdk.StoreOrganization, id string) bool {
 	for _, store := range stores {
-		if store.ID == id {
+		if store.OrganizationUnitID == id {
 			return true
 		}
 	}
@@ -430,7 +433,7 @@ type storeOrganizationReplaySnapshot struct {
 func loadStoreOrganizationReplaySnapshot(t *testing.T, store *database.IdentityStore, workspaceID, organizationID, idempotencyKey string) storeOrganizationReplaySnapshot {
 	t.Helper()
 	var snapshot storeOrganizationReplaySnapshot
-	if err := store.DB().QueryRowContext(t.Context(), `SELECT updated_at, delivery_version, delivery_state_fingerprint, updated_at FROM _identity_organization_units WHERE workspace_id = ? AND id = ?`, workspaceID, organizationID).
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT updated_at, delivery_version, delivery_state_fingerprint, updated_at FROM _identity_organization_units WHERE workspace_id = ? AND organization_unit_id = ?`, workspaceID, organizationID).
 		Scan(&snapshot.OrganizationUpdatedAt, &snapshot.StateVersion, &snapshot.StateFingerprint, &snapshot.StateUpdatedAt); err != nil {
 		t.Fatal(err)
 	}

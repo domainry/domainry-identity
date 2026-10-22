@@ -27,7 +27,7 @@ func TestIdentityUserGlobalNameFieldsRoundTripAndRemainSearchable(t *testing.T) 
 		t.Fatal(err)
 	}
 	want := identitymodel.IdentityUser{
-		ID: "global-name", Name: "Dr. María José Carreño Quiñones",
+		UserID: "global-name", Name: "Dr. María José Carreño Quiñones",
 		GivenName: "María", MiddleName: "José", FamilyName: "Carreño Quiñones",
 		NamePrefix: "Dr.", NameSuffix: "PhD", NativeName: "마리아 카레뇨", NameLocale: "es-CO",
 		Email: "maria@example.com", Phone: "+1-555-0100", Status: identitymodel.IdentityStatusActive,
@@ -35,8 +35,9 @@ func TestIdentityUserGlobalNameFieldsRoundTripAndRemainSearchable(t *testing.T) 
 	if err := store.UpsertIdentityUser(t.Context(), "workspace-primary", want); err != nil {
 		t.Fatal(err)
 	}
-	got, found, err := store.GetIdentityUser(t.Context(), "workspace-primary", want.ID)
+	got, found, err := store.GetIdentityUser(t.Context(), "workspace-primary", want.UserID)
 	expected := want
+	expected.ID = got.ID
 	expected.AccountType = identitymodel.IdentityAccountHuman
 	expected.Version = 1
 	expected.CreatedAt = got.CreatedAt
@@ -49,7 +50,7 @@ func TestIdentityUserGlobalNameFieldsRoundTripAndRemainSearchable(t *testing.T) 
 			PageSize: 20, Search: search, SearchFields: []string{field},
 			Sort: []identitymodel.IdentitySortRule{{Field: "id", Direction: "asc"}},
 		})
-		if searchErr != nil || page.Total != 1 || page.Items[0].ID != want.ID {
+		if searchErr != nil || page.Total != 1 || page.Items[0].UserID != want.UserID {
 			t.Fatalf("search %s=%q page=%#v err=%v", field, search, page, searchErr)
 		}
 	}

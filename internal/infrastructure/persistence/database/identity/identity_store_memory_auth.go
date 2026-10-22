@@ -47,8 +47,8 @@ func (s *MemoryIdentityStore) recordIdentityLoginSuccess(userID string, at strin
 }
 
 func (s *MemoryIdentityStore) createAuthRefreshToken(token identitymodel.AuthRefreshToken) error {
-	if token.ID == "" || token.TokenHash == "" || token.UserID == "" {
-		return fmt.Errorf("refresh token id, hash, and user id are required")
+	if token.TokenHash == "" || token.UserID == "" || token.SessionID == "" {
+		return fmt.Errorf("refresh token hash, user id, and session id are required")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -63,19 +63,17 @@ func (s *MemoryIdentityStore) getAuthRefreshTokenByHash(tokenHash string) (ident
 	return token, ok, nil
 }
 
-func (s *MemoryIdentityStore) revokeAuthRefreshToken(tokenID string, revokedAt string, replacedByID string) error {
+func (s *MemoryIdentityStore) revokeAuthRefreshToken(tokenHash string, revokedAt string, replacedByHash string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for hash, token := range s.refreshTokens {
-		if token.ID != tokenID {
-			continue
-		}
-		token.RevokedAt = revokedAt
-		token.ReplacedByID = replacedByID
-		token.LastUsedAt = revokedAt
-		s.refreshTokens[hash] = token
+	token, found := s.refreshTokens[tokenHash]
+	if !found {
 		return nil
 	}
+	token.RevokedAt = revokedAt
+	token.ReplacedByHash = replacedByHash
+	token.LastUsedAt = revokedAt
+	s.refreshTokens[tokenHash] = token
 	return nil
 }
 
@@ -98,12 +96,12 @@ func (s *MemoryIdentityStore) listIdentityExternalAccounts(userID string) ([]ide
 }
 
 func (s *MemoryIdentityStore) upsertIdentityExternalAccount(account identitymodel.IdentityExternalAccount) error {
-	if account.ID == "" || account.UserID == "" || account.Provider == "" || account.ProviderSubject == "" {
+	if account.ExternalAccountID == "" || account.UserID == "" || account.Provider == "" || account.ProviderSubject == "" {
 		return fmt.Errorf("external account id, user id, provider, and subject are required")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.externalAccounts[account.ID] = account
+	s.externalAccounts[account.ExternalAccountID] = account
 	return nil
 }
 func (s *MemoryIdentityStore) removeIdentityExternalAccount(accountID string) error {

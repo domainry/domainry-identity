@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/domainry/domainry-foundation/pagination"
@@ -26,7 +27,7 @@ type Store struct{ backend Backend }
 func New(backend Backend) Store { return Store{backend: backend} }
 
 var identityUserProjectionColumns = map[string]string{
-	"id": "id", "name": "name", "given_name": "given_name", "middle_name": "middle_name", "family_name": "family_name",
+	"id": "id", "user_id": "user_id", "name": "name", "given_name": "given_name", "middle_name": "middle_name", "family_name": "family_name",
 	"name_prefix": "name_prefix", "name_suffix": "name_suffix", "native_name": "native_name", "name_locale": "name_locale",
 	"email": "email", "phone": "phone", "account_type": "account_type", "locale": "locale", "timezone": "timezone",
 	"org_id": "org_id", "support_org_id": "support_org_id", "manager_user_id": "manager_user_id", "reporting_path": "reporting_path", "worker_no": "worker_no", "worker_type": "worker_type", "work_status": "work_status",
@@ -52,7 +53,7 @@ func (s Store) SearchIdentityUsersWithinDataScope(ctx context.Context, workspace
 		return identitymodel.IdentityUserPage{}, err
 	}
 	columns := []string{
-		"id", "name", "given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale",
+		"id", "user_id", "name", "given_name", "middle_name", "family_name", "name_prefix", "name_suffix", "native_name", "name_locale",
 		"email", "phone", "account_type", "locale", "timezone", "org_id", "support_org_id", "manager_user_id", "reporting_path", "worker_no", "worker_type", "work_status", "start_date", "end_date", "status", "version", "created_at", "updated_at",
 	}
 	statement, args, err := s.PageSQL(ctx, workspaceID, "_identity_users", columns, queryValue, conditions)
@@ -72,7 +73,7 @@ func (s Store) SearchIdentityUsersWithinDataScope(ctx context.Context, workspace
 		var organizationUnitID, supportOrganizationUnitID, managerUserID, startDate, endDate sql.NullString
 		var createdAt, updatedAt int64
 		if err := rows.Scan(
-			&user.ID, &user.Name, &user.GivenName, &user.MiddleName, &user.FamilyName, &user.NamePrefix, &user.NameSuffix, &user.NativeName, &user.NameLocale,
+			&user.ID, &user.UserID, &user.Name, &user.GivenName, &user.MiddleName, &user.FamilyName, &user.NamePrefix, &user.NameSuffix, &user.NativeName, &user.NameLocale,
 			&user.Email, &user.Phone, &accountType, &user.Locale, &user.Timezone, &organizationUnitID, &supportOrganizationUnitID, &managerUserID, &user.ReportingPath, &user.WorkerNo, &workerType, &workStatus, &startDate, &endDate, &status, &user.Version, &createdAt, &updatedAt,
 		); err != nil {
 			return identitymodel.IdentityUserPage{}, err
@@ -90,7 +91,7 @@ func (s Store) SearchIdentityUsersWithinDataScope(ctx context.Context, workspace
 	if err := rows.Err(); err != nil {
 		return identitymodel.IdentityUserPage{}, err
 	}
-	page := pagination.Boundary(cursor, items, func(user identitymodel.IdentityUser) string { return user.ID })
+	page := pagination.Boundary(cursor, items, func(user identitymodel.IdentityUser) string { return strconv.FormatInt(user.ID, 10) })
 	return identitymodel.IdentityUserPage{Items: page.Items, PageSize: cursor.PageSize(), Total: total, HasNext: page.HasNext, NextID: page.NextID}, nil
 }
 
@@ -105,7 +106,7 @@ func identityUserDataScopePredicate(scope identitymodel.IdentityDataScopeFilter)
 		for index := range scope.OwnerUserIDs {
 			values[index] = scope.OwnerUserIDs[index]
 		}
-		predicates = append(predicates, query.In("id", values...))
+		predicates = append(predicates, query.In("user_id", values...))
 	}
 	if len(scope.OwnerOrgIDs) > 0 {
 		values := make([]any, len(scope.OwnerOrgIDs))
@@ -166,14 +167,18 @@ func (s Store) PageSQL(ctx context.Context, workspaceID, table string, columns [
 	if strings.TrimSpace(queryValue.AfterID) == "" {
 		return builder.FirstPage(cursor.FetchLimit(), orders...).Build()
 	}
-	values, err := s.identityProjectionCursorValues(ctx, workspaceID, table, queryValue.AfterID, queryValue.Sort, conditions)
+	afterID, err := strconv.ParseInt(strings.TrimSpace(queryValue.AfterID), 10, 64)
+	if err != nil || afterID < 1 {
+		return "", nil, fmt.Errorf("identity projection cursor %q is not a positive physical ID", queryValue.AfterID)
+	}
+	values, err := s.identityProjectionCursorValues(ctx, workspaceID, table, afterID, queryValue.Sort, conditions)
 	if err != nil {
 		return "", nil, err
 	}
-	return builder.NextPage(cursor.AfterID(), cursor.FetchLimit(), values, orders...).Build()
+	return builder.NextPage(afterID, cursor.FetchLimit(), values, orders...).Build()
 }
 
-func (s Store) identityProjectionCursorValues(ctx context.Context, workspaceID, table, afterID string, rules []identitymodel.IdentitySortRule, conditions []query.Predicate) (map[string]any, error) {
+func (s Store) identityProjectionCursorValues(ctx context.Context, workspaceID, table string, afterID int64, rules []identitymodel.IdentitySortRule, conditions []query.Predicate) (map[string]any, error) {
 	columns := make([]string, 0, len(rules))
 	for _, rule := range rules {
 		if rule.Field != "id" {
@@ -184,7 +189,7 @@ func (s Store) identityProjectionCursorValues(ctx context.Context, workspaceID, 
 		return map[string]any{}, nil
 	}
 	predicates := append([]query.Predicate(nil), conditions...)
-	predicates = append(predicates, query.Equal("id", strings.TrimSpace(afterID)))
+	predicates = append(predicates, query.Equal("id", afterID))
 	statement, args, err := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), table, workspaceID).
 		Columns(columns...).Where(query.And(predicates...)).Limit(1).Build()
 	if err != nil {
@@ -197,7 +202,7 @@ func (s Store) identityProjectionCursorValues(ctx context.Context, workspaceID, 
 	}
 	if err := s.backend.DB().QueryRowContext(ctx, statement, args...).Scan(destinations...); err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("identity projection cursor %q is not in the workspace result", afterID)
+			return nil, fmt.Errorf("identity projection cursor %d is not in the workspace result", afterID)
 		}
 		return nil, err
 	}

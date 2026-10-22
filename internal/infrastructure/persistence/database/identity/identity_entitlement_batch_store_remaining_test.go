@@ -52,7 +52,7 @@ func TestApplyIdentityEntitlementBatchUsesChunkedWrites(t *testing.T) {
 }
 
 func identityEntitlementBatchReceiptJSON() string {
-	return `{"id":"receipt","workspace_id":"workspace","actor_id":"actor","idempotency_key":"batch-key","request_fingerprint":"fingerprint","items":[],"created_at":1700000000000}`
+	return `{"operation_id":"receipt","workspace_id":"workspace","actor_id":"actor","idempotency_key":"batch-key","request_fingerprint":"fingerprint","items":[],"created_at":1700000000000}`
 }
 
 func TestApplyIdentityEntitlementBatchValidationAndFailureStages(t *testing.T) {
@@ -122,8 +122,8 @@ func TestGetIdentityEntitlementBatchReceiptRemainingFailures(t *testing.T) {
 	for _, state := range []*identitySQLState{
 		{queryFailAt: 1, failure: errProfileBindingSQL},
 		{querySteps: []identitySQLQueryStep{{
-			columns: []string{"id", "resource_id", "request_fingerprint", "requested_by", "result_json", "created_at", "status"},
-			rows:    [][]driver.Value{{"receipt", "receipt", "fingerprint", "actor", "{", int64(1_700_000_000_000), "succeeded"}},
+			columns: []string{"id", "operation_id", "resource_id", "request_fingerprint", "requested_by", "result_json", "created_at", "status"},
+			rows:    [][]driver.Value{{int64(1), "receipt", "receipt", "fingerprint", "actor", "{", int64(1_700_000_000_000), "succeeded"}},
 		}}},
 	} {
 		store, closeDB = scriptedEntitlementOperations(state)
@@ -138,8 +138,8 @@ func TestGetIdentityEntitlementBatchReceiptRemainingFailures(t *testing.T) {
 	}
 	closeDB()
 	store, closeDB = scriptedEntitlementOperations(&identitySQLState{querySteps: []identitySQLQueryStep{{
-		columns: []string{"id", "resource_id", "request_fingerprint", "requested_by", "result_json", "created_at", "status"},
-		rows:    [][]driver.Value{{"receipt", "receipt", "fingerprint", "actor", identityEntitlementBatchReceiptJSON(), int64(1_700_000_000_000), "succeeded"}},
+		columns: []string{"id", "operation_id", "resource_id", "request_fingerprint", "requested_by", "result_json", "created_at", "status"},
+		rows:    [][]driver.Value{{int64(1), "receipt", "receipt", "fingerprint", "actor", identityEntitlementBatchReceiptJSON(), int64(1_700_000_000_000), "succeeded"}},
 	}}})
 	receipt, found, err := store.GetIdentityEntitlementBatchReceipt(t.Context(), "workspace", "batch-key")
 	if err != nil || !found || receipt.RequestFingerprint != "fingerprint" {

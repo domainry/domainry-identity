@@ -43,7 +43,7 @@ func TestVerifiedFeishuOffboardingArchivesOnlyLinkedUserAndIsIdempotent(t *testi
 	defer server.CloseContext(t.Context())
 	ctx := requestcontext.WithWorkspaceID(t.Context(), "workspace-primary")
 	for _, id := range []string{"departed", "unlinked-same-email", "untouched"} {
-		if err := server.core.Identity.UpsertUser(ctx, identitymodel.IdentityUser{ID: id, Name: id, Email: id + "@example.test", Status: identitymodel.IdentityStatusActive}); err != nil {
+		if err := server.core.Identity.UpsertUser(ctx, identitymodel.IdentityUser{UserID: id, Name: id, Email: id + "@example.test", Status: identitymodel.IdentityStatusActive}); err != nil {
 			t.Fatal(err)
 		}
 	}

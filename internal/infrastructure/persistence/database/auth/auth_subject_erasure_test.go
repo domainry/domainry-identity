@@ -25,7 +25,7 @@ func TestSubjectAuthenticationErasureSharesTransactionAndPreservesOtherUsers(t *
 		if err := auth.CreateAuthLoginTransaction(t.Context(), authmodel.AuthProviderChallenge{WorkspaceID: item.workspace, State: key, Provider: "totp", UserID: item.user, Phone: key, ExpiresAt: now.Add(time.Hour).Format(time.RFC3339Nano)}); err != nil {
 			t.Fatal(err)
 		}
-		if err := auth.CreateAuthAuthorizationCode(t.Context(), authmodel.AuthAuthorizationCode{Code: key, WorkspaceID: item.workspace, ApplicationKey: "app", RedirectURL: "https://app.example.test/callback", ExpiresAt: now.Add(time.Hour).Format(time.RFC3339Nano), Session: authmodel.AuthSession{WorkspaceID: item.workspace, User: authmodel.AuthUser{ID: item.user, Email: item.user + "@example.test"}}}); err != nil {
+		if err := auth.CreateAuthAuthorizationCode(t.Context(), authmodel.AuthAuthorizationCode{Code: key, WorkspaceID: item.workspace, ApplicationKey: "app", RedirectURL: "https://app.example.test/callback", ExpiresAt: now.Add(time.Hour).Format(time.RFC3339Nano), Session: authmodel.AuthSession{WorkspaceID: item.workspace, User: authmodel.AuthUser{UserID: item.user, Email: item.user + "@example.test"}}}); err != nil {
 			t.Fatal(err)
 		}
 	}

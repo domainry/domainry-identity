@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/domainry/domainry-foundation/entityid"
 	"github.com/domainry/domainry-foundation/requestcontext"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	identityrepository "github.com/domainry/domainry-identity/internal/domain/identity/repository"
@@ -43,7 +44,7 @@ func FromManifest(manifest manifestmodel.ManifestSchema) Seed {
 	}
 	roleIndexByID := map[string]int{}
 	for index, role := range seed.Roles {
-		roleIndexByID[role.ID] = index
+		roleIndexByID[role.RoleID] = index
 	}
 	for _, role := range manifest.Roles {
 		roleID := strings.TrimSpace(role.Key)
@@ -51,7 +52,7 @@ func FromManifest(manifest manifestmodel.ManifestSchema) Seed {
 			continue
 		}
 		identityRole := identitymodel.IdentityRole{
-			ID:     roleID,
+			RoleID: roleID,
 			Key:    roleID,
 			Label:  identityValueOrDefault(role.Name, roleID),
 			Status: identitymodel.IdentityStatusActive,
@@ -66,7 +67,7 @@ func FromManifest(manifest manifestmodel.ManifestSchema) Seed {
 	}
 	userIndexByID := map[string]int{}
 	for index, user := range seed.Users {
-		userIndexByID[user.ID] = index
+		userIndexByID[user.UserID] = index
 	}
 	configuredUsers := append([]identitymodel.ManifestIdentityUserSchema(nil), manifest.Users...)
 	if manifest.IdentityBootstrap != nil {
@@ -78,7 +79,7 @@ func FromManifest(manifest manifestmodel.ManifestSchema) Seed {
 			continue
 		}
 		user := identitymodel.IdentityUser{
-			ID: userID, Name: identityValueOrDefault(configured.Name, userID),
+			UserID: userID, Name: identityValueOrDefault(configured.Name, userID),
 			GivenName: strings.TrimSpace(configured.GivenName), MiddleName: strings.TrimSpace(configured.MiddleName),
 			FamilyName: strings.TrimSpace(configured.FamilyName), NamePrefix: strings.TrimSpace(configured.NamePrefix),
 			NameSuffix: strings.TrimSpace(configured.NameSuffix), NativeName: strings.TrimSpace(configured.NativeName),
@@ -130,7 +131,7 @@ func ensureManifestRoleBootstrapUser(seed Seed, roleID, roleName string) Seed {
 	}
 	userID := roleID + "_user"
 	seed.Users = append(seed.Users, identitymodel.IdentityUser{
-		ID:     userID,
+		UserID: userID,
 		Name:   roleName,
 		Email:  roleID + "@example.com",
 		Status: identitymodel.IdentityStatusActive,
@@ -142,7 +143,7 @@ func ensureManifestRoleBootstrapUser(seed Seed, roleID, roleName string) Seed {
 func manifestIdentityUserReportingPaths(users []identitymodel.IdentityUser) []identitymodel.IdentityUser {
 	byID := make(map[string]identitymodel.IdentityUser, len(users))
 	for _, user := range users {
-		byID[user.ID] = user
+		byID[user.UserID] = user
 	}
 	resolved := make(map[string]string, len(users))
 	visiting := map[string]bool{}
@@ -167,7 +168,7 @@ func manifestIdentityUserReportingPaths(users []identitymodel.IdentityUser) []id
 		return path
 	}
 	for index := range users {
-		users[index].ReportingPath = resolve(users[index].ID)
+		users[index].ReportingPath = resolve(users[index].UserID)
 	}
 	return users
 }
@@ -187,14 +188,14 @@ func manifestIdentityOrganizationUnits(configured []identitymodel.ManifestIdenti
 		}
 		configuredUnit := byID[id]
 		organizationUnit := identitymodel.IdentityOrganizationUnit{
-			ID:        id,
-			Code:      identityValueOrDefault(strings.TrimSpace(configuredUnit.Code), id),
-			Name:      strings.TrimSpace(configuredUnit.Name),
-			NodeType:  configuredUnit.NodeType,
-			ParentID:  configuredUnit.ParentID,
-			Path:      "/" + id,
-			SortOrder: configuredUnit.SortOrder,
-			Status:    identitymodel.IdentityStatus(identityValueOrDefault(configuredUnit.Status, string(identitymodel.IdentityStatusActive))),
+			OrganizationUnitID: id,
+			Code:               identityValueOrDefault(strings.TrimSpace(configuredUnit.Code), id),
+			Name:               strings.TrimSpace(configuredUnit.Name),
+			NodeType:           configuredUnit.NodeType,
+			ParentID:           configuredUnit.ParentID,
+			Path:               "/" + id,
+			SortOrder:          configuredUnit.SortOrder,
+			Status:             identitymodel.IdentityStatus(identityValueOrDefault(configuredUnit.Status, string(identitymodel.IdentityStatusActive))),
 		}
 		if organizationUnit.NodeType == "" {
 			organizationUnit.NodeType = identitymodel.IdentityOrganizationUnitDepartment
@@ -204,7 +205,7 @@ func manifestIdentityOrganizationUnits(configured []identitymodel.ManifestIdenti
 			if _, exists := byID[parentID]; exists {
 				parent := resolve(parentID)
 				organizationUnit.Path = strings.TrimRight(parent.Path, "/") + "/" + id
-				organizationUnit.AncestorIDs = append(append([]string(nil), parent.AncestorIDs...), parent.ID)
+				organizationUnit.AncestorIDs = append(append([]string(nil), parent.AncestorIDs...), parent.OrganizationUnitID)
 				organizationUnit.Depth = parent.Depth + 1
 			}
 		}
@@ -227,7 +228,7 @@ func manifestIdentityOrganizationUnits(configured []identitymodel.ManifestIdenti
 		if out[i].SortOrder != out[j].SortOrder {
 			return out[i].SortOrder < out[j].SortOrder
 		}
-		return out[i].ID < out[j].ID
+		return out[i].OrganizationUnitID < out[j].OrganizationUnitID
 	})
 	return out
 }
@@ -239,64 +240,183 @@ func manifestMenuSortOrder(value int, index int) int {
 	return (index + 1) * 10
 }
 
-func SyncIdentitySeeds(ctx context.Context, checkpoint manifestrepository.IdentitySeedCheckpointRepository, identityStore identityrepository.IdentitySeedRepository, manifest manifestmodel.ManifestSchema, seed Seed, scope identitymodel.SystemScope) error {
+func SyncIdentitySeeds(ctx context.Context, checkpoint manifestrepository.IdentitySeedCheckpointRepository, identityStore identityrepository.IdentitySeedRepository, manifest manifestmodel.ManifestSchema, seed Seed, scope identitymodel.SystemScope) (Seed, error) {
 	if _, err := identitymodel.NewSystemCommandScope(scope); err != nil {
-		return err
+		return Seed{}, err
 	}
 	if checkpoint == nil || identityStore == nil || strings.TrimSpace(manifest.Version) == "" {
-		return nil
+		return seed, nil
 	}
 	syncedVersion, err := checkpoint.ManifestIdentitySeedSyncedVersion(ctx)
 	if err != nil {
-		return err
+		return Seed{}, err
 	}
-	seed, err = scopeGeneratedSeedLoginNames(ctx, identityStore, manifest, seed, manifestIdentityWorkspaceID(ctx))
+	workspaceID := manifestIdentityWorkspaceID(ctx)
+	seed, err = materializeIdentitySeed(workspaceID, seed)
 	if err != nil {
-		return err
+		return Seed{}, err
+	}
+	seed, err = scopeGeneratedSeedLoginNames(ctx, identityStore, manifest, seed, workspaceID)
+	if err != nil {
+		return Seed{}, err
 	}
 	seedSignature := seedSyncSignature(manifest, seed)
 	if syncedVersion == seedSignature {
-		workspaceID := manifestIdentityWorkspaceID(ctx)
 		roles, listErr := identityStore.ListIdentityRoles(ctx, workspaceID)
 		if listErr != nil {
-			return listErr
+			return Seed{}, listErr
 		}
 		if len(roles) != 0 {
-			return nil
+			return seed, nil
 		}
 	}
 	if err := syncManifestIdentityRoles(ctx, identityStore, seed.Roles); err != nil {
-		return err
+		return Seed{}, err
 	}
 	seed, err = preserveExistingImplicitSeedUsers(ctx, identityStore, manifest, seed)
 	if err != nil {
-		return err
+		return Seed{}, err
 	}
 	if err := identityStore.ApplyIdentityBootstrapAtomically(ctx, manifestIdentityWorkspaceID(ctx), seed.OrganizationUnits, seed.Users, seed.UserRoles); err != nil {
-		return fmt.Errorf("sync manifest Identity Bootstrap atomically: %w", err)
+		return Seed{}, fmt.Errorf("sync manifest Identity Bootstrap atomically: %w", err)
 	}
-	declaredUserIDs := manifestDeclaredIdentityUserIDs(manifest)
+	declaredUserIDs := manifestDeclaredIdentityUserIDs(workspaceID, manifest)
 	for _, user := range seed.Users {
-		if !declaredUserIDs[user.ID] {
+		if !declaredUserIDs[user.UserID] {
 			continue
 		}
 		if err := identityStore.UpsertIdentityUser(ctx, manifestIdentityWorkspaceID(ctx), user); err != nil {
-			return fmt.Errorf("sync declared identity user %s: %w", user.ID, err)
+			return Seed{}, fmt.Errorf("sync declared identity user %s: %w", user.UserID, err)
 		}
 	}
 	if err := syncManifestIdentityMenus(ctx, identityStore, seed.Menus); err != nil {
-		return err
+		return Seed{}, err
 	}
 	if err := syncManifestIdentityRoleMenus(ctx, identityStore, seed.Roles, seed.RoleMenus); err != nil {
-		return err
+		return Seed{}, err
 	}
 	if err := syncManifestIdentityMenuRetirements(ctx, identityStore, seed.Menus); err != nil {
-		return err
+		return Seed{}, err
 	}
 	if err := retireRemovedPlatformIdentityMenus(ctx, identityStore); err != nil {
-		return err
+		return Seed{}, err
 	}
-	return checkpoint.SetManifestIdentitySeedSyncedVersion(ctx, seedSignature)
+	if err := checkpoint.SetManifestIdentitySeedSyncedVersion(ctx, seedSignature); err != nil {
+		return Seed{}, err
+	}
+	return seed, nil
+}
+
+func materializeIdentitySeed(workspaceID string, seed Seed) (Seed, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return Seed{}, fmt.Errorf("materialize identity seed: workspace ID is required")
+	}
+	// Materialization rewrites semantic source aliases into canonical business
+	// identifiers. Clone every slice first so callers can safely materialize the
+	// same source seed for more than one workspace.
+	seed.Roles = append([]identitymodel.IdentityRole(nil), seed.Roles...)
+	seed.OrganizationUnits = append([]identitymodel.IdentityOrganizationUnit(nil), seed.OrganizationUnits...)
+	seed.Users = append([]identitymodel.IdentityUser(nil), seed.Users...)
+	seed.UserRoles = append([]identitymodel.IdentityUserRoleAssignment(nil), seed.UserRoles...)
+	seed.Menus = append([]identitymodel.IdentityMenu(nil), seed.Menus...)
+	seed.RoleMenus = append([]identitymodel.IdentityRoleMenuAssignment(nil), seed.RoleMenus...)
+	roleIDs := make(map[string]string, len(seed.Roles)*2)
+	for index := range seed.Roles {
+		alias := strings.TrimSpace(seed.Roles[index].RoleID)
+		if alias == "" {
+			alias = strings.TrimSpace(seed.Roles[index].Key)
+		}
+		id, err := entityid.Derive("role", "identity.workspace-role", workspaceID, alias)
+		if err != nil {
+			return Seed{}, err
+		}
+		roleIDs[alias], roleIDs[strings.TrimSpace(seed.Roles[index].Key)] = id, id
+		seed.Roles[index].RoleID = id
+	}
+
+	organizationIDs := make(map[string]string, len(seed.OrganizationUnits))
+	for index := range seed.OrganizationUnits {
+		alias := strings.TrimSpace(seed.OrganizationUnits[index].OrganizationUnitID)
+		id, err := entityid.Derive("orgunit", "identity.manifest-organization-unit", workspaceID, alias)
+		if err != nil {
+			return Seed{}, err
+		}
+		organizationIDs[alias] = id
+		seed.OrganizationUnits[index].OrganizationUnitID = id
+	}
+	for index := range seed.OrganizationUnits {
+		unit := &seed.OrganizationUnits[index]
+		if unit.ParentID != nil {
+			if parentID := organizationIDs[strings.TrimSpace(*unit.ParentID)]; parentID != "" {
+				unit.ParentID = &parentID
+			}
+		}
+		for ancestorIndex, ancestorID := range unit.AncestorIDs {
+			if resolved := organizationIDs[strings.TrimSpace(ancestorID)]; resolved != "" {
+				unit.AncestorIDs[ancestorIndex] = resolved
+			}
+		}
+		unit.Path = identityOrganizationUnitSeedPath(unit.OrganizationUnitID, unit.AncestorIDs)
+	}
+
+	userIDs := make(map[string]string, len(seed.Users))
+	for index := range seed.Users {
+		alias := strings.TrimSpace(seed.Users[index].UserID)
+		id, err := entityid.Derive("user", "identity.manifest-user", workspaceID, alias)
+		if err != nil {
+			return Seed{}, err
+		}
+		userIDs[alias] = id
+		seed.Users[index].UserID = id
+	}
+	for index := range seed.Users {
+		user := &seed.Users[index]
+		user.OrgID = identityMappedSeedID(organizationIDs, user.OrgID)
+		user.SupportOrgID = identityMappedSeedID(organizationIDs, user.SupportOrgID)
+		user.ManagerUserID = identityMappedSeedID(userIDs, user.ManagerUserID)
+	}
+	seed.Users = manifestIdentityUserReportingPaths(seed.Users)
+
+	menuIDs := make(map[string]string, len(seed.Menus)*2)
+	for index := range seed.Menus {
+		alias := strings.TrimSpace(seed.Menus[index].MenuID)
+		key := strings.TrimSpace(seed.Menus[index].Key)
+		id, err := entityid.Derive("menu", "identity.workspace-menu", workspaceID, key)
+		if err != nil {
+			return Seed{}, err
+		}
+		menuIDs[alias], menuIDs[key] = id, id
+		seed.Menus[index].MenuID = id
+	}
+	for index := range seed.Menus {
+		seed.Menus[index].ParentID = identityMappedSeedID(menuIDs, seed.Menus[index].ParentID)
+	}
+	for index := range seed.UserRoles {
+		seed.UserRoles[index].UserID = identityMappedSeedID(userIDs, seed.UserRoles[index].UserID)
+		seed.UserRoles[index].RoleID = identityMappedSeedID(roleIDs, seed.UserRoles[index].RoleID)
+	}
+	for index := range seed.RoleMenus {
+		seed.RoleMenus[index].RoleID = identityMappedSeedID(roleIDs, seed.RoleMenus[index].RoleID)
+		seed.RoleMenus[index].MenuID = identityMappedSeedID(menuIDs, seed.RoleMenus[index].MenuID)
+	}
+	return seed, nil
+}
+
+func identityMappedSeedID(index map[string]string, value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if resolved := index[value]; resolved != "" {
+		return resolved
+	}
+	return value
+}
+
+func identityOrganizationUnitSeedPath(id string, ancestorIDs []string) string {
+	parts := append(append([]string(nil), ancestorIDs...), id)
+	return "/" + strings.Join(parts, "/")
 }
 
 func preserveExistingImplicitSeedUsers(ctx context.Context, identityStore identityrepository.IdentitySeedRepository, manifest manifestmodel.ManifestSchema, seed Seed) (Seed, error) {
@@ -304,22 +424,22 @@ func preserveExistingImplicitSeedUsers(ctx context.Context, identityStore identi
 	if !ok {
 		return seed, nil
 	}
-	declaredUserIDs := manifestDeclaredIdentityUserIDs(manifest)
 	workspaceID := manifestIdentityWorkspaceID(ctx)
+	declaredUserIDs := manifestDeclaredIdentityUserIDs(workspaceID, manifest)
 	users := make([]identitymodel.IdentityUser, 0, len(seed.Users))
 	deletedIDs := map[string]bool{}
 	for _, user := range seed.Users {
-		existing, found, err := reader.GetIdentityUser(ctx, workspaceID, user.ID)
+		existing, found, err := reader.GetIdentityUser(ctx, workspaceID, user.UserID)
 		if err != nil {
-			return Seed{}, fmt.Errorf("load implicit identity seed user %s: %w", user.ID, err)
+			return Seed{}, fmt.Errorf("load implicit identity seed user %s: %w", user.UserID, err)
 		}
 		// An account lifecycle decision wins over source seed defaults. Do not
 		// resurrect the user or its role grants on a later manifest refresh.
 		if found && existing.Status == identitymodel.IdentityStatusDeleted {
-			deletedIDs[user.ID] = true
+			deletedIDs[user.UserID] = true
 			continue
 		}
-		if found && !declaredUserIDs[strings.TrimSpace(user.ID)] {
+		if found && !declaredUserIDs[strings.TrimSpace(user.UserID)] {
 			user = existing
 		}
 		users = append(users, user)
@@ -335,17 +455,20 @@ func preserveExistingImplicitSeedUsers(ctx context.Context, identityStore identi
 	return seed, nil
 }
 
-func manifestDeclaredIdentityUserIDs(manifest manifestmodel.ManifestSchema) map[string]bool {
+func manifestDeclaredIdentityUserIDs(workspaceID string, manifest manifestmodel.ManifestSchema) map[string]bool {
 	declared := map[string]bool{}
 	for _, user := range manifest.Users {
-		declared[strings.TrimSpace(user.ID)] = true
+		if id, err := entityid.Derive("user", "identity.manifest-user", workspaceID, user.ID); err == nil {
+			declared[id] = true
+		}
 	}
 	if manifest.IdentityBootstrap != nil {
 		for _, user := range manifest.IdentityBootstrap.Users {
-			declared[strings.TrimSpace(user.ID)] = true
+			if id, err := entityid.Derive("user", "identity.manifest-user", workspaceID, user.ID); err == nil {
+				declared[id] = true
+			}
 		}
 	}
-	delete(declared, "")
 	return declared
 }
 
@@ -370,7 +493,7 @@ func retireRemovedPlatformIdentityMenus(ctx context.Context, identityStore ident
 	for _, menu := range menus {
 		byParent[menu.ParentID] = append(byParent[menu.ParentID], menu)
 		if retiredKeys[menu.Key] {
-			retiredIDs[menu.ID] = true
+			retiredIDs[menu.MenuID] = true
 		}
 	}
 	removed := map[string]bool{}
@@ -380,7 +503,7 @@ func retireRemovedPlatformIdentityMenus(ctx context.Context, identityStore ident
 			return nil
 		}
 		for _, child := range byParent[parentID] {
-			if err := removeTree(child.ID); err != nil {
+			if err := removeTree(child.MenuID); err != nil {
 				return err
 			}
 		}
@@ -436,13 +559,17 @@ func scopeGeneratedSeedLoginNames(ctx context.Context, store identityrepository.
 	explicit := map[string]bool{}
 	for _, user := range manifest.Users {
 		if strings.TrimSpace(user.Email) != "" {
-			explicit[strings.TrimSpace(user.ID)] = true
+			if id, err := entityid.Derive("user", "identity.manifest-user", workspaceID, user.ID); err == nil {
+				explicit[id] = true
+			}
 		}
 	}
 	if manifest.IdentityBootstrap != nil {
 		for _, user := range manifest.IdentityBootstrap.Users {
 			if strings.TrimSpace(user.Email) != "" {
-				explicit[strings.TrimSpace(user.ID)] = true
+				if id, err := entityid.Derive("user", "identity.manifest-user", workspaceID, user.ID); err == nil {
+					explicit[id] = true
+				}
 			}
 		}
 	}
@@ -450,11 +577,11 @@ func scopeGeneratedSeedLoginNames(ctx context.Context, store identityrepository.
 	suffix := hex.EncodeToString(digest[:12])
 	users := append([]identitymodel.IdentityUser(nil), seed.Users...)
 	for index, user := range users {
-		if explicit[user.ID] {
+		if explicit[user.UserID] {
 			continue
 		}
 		if reader != nil {
-			existing, found, err := reader.GetIdentityUser(ctx, workspaceID, user.ID)
+			existing, found, err := reader.GetIdentityUser(ctx, workspaceID, user.UserID)
 			if err != nil {
 				return Seed{}, err
 			}
@@ -463,7 +590,7 @@ func scopeGeneratedSeedLoginNames(ctx context.Context, store identityrepository.
 				continue
 			}
 		}
-		available, err := availability.GlobalLoginNameAvailable(ctx, workspaceID, user.ID, user.Email)
+		available, err := availability.GlobalLoginNameAvailable(ctx, workspaceID, user.UserID, user.Email)
 		if err != nil {
 			return Seed{}, err
 		}
@@ -472,7 +599,7 @@ func scopeGeneratedSeedLoginNames(ctx context.Context, store identityrepository.
 		}
 		local, domain, ok := strings.Cut(user.Email, "@")
 		if !ok {
-			local, domain = user.ID, "example.com"
+			local, domain = user.UserID, "example.com"
 		}
 		users[index].Email = local + "+" + suffix + "@" + domain
 	}

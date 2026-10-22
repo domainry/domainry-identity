@@ -150,7 +150,7 @@ func TestEmbeddedWorkspaceExportImportIsDeterministicAndSecretFree(t *testing.T)
 	if err != nil || replay.Receipt == nil || !replay.Receipt.Replayed {
 		t.Fatalf("replay=%+v err=%v", replay.Receipt, err)
 	}
-	if _, err := target.DB().ExecContext(t.Context(), `UPDATE _identity_roles SET label='Tampered' WHERE workspace_id='workspace-a' AND id='role-1'`); err != nil {
+	if _, err := target.DB().ExecContext(t.Context(), `UPDATE _identity_roles SET label='Tampered' WHERE workspace_id='workspace-a' AND role_id='role-1'`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := targetService.Import(t.Context(), request); err == nil || !strings.Contains(err.Error(), "authorization_parity_failed") {
@@ -240,14 +240,14 @@ func seedPortableWorkspace(t *testing.T, store *database.IdentityStore, now time
 		{id: "application-runtime", key: "orders-runtime", redirects: `[]`},
 	} {
 		if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO _identity_applications
-			(id, workspace_id, application_key, redirect_urls_json, status, created_at, updated_at)
+			(application_id, workspace_id, application_key, redirect_urls_json, status, created_at, updated_at)
 			VALUES (?, 'workspace-a', ?, ?, 'active', ?, ?)`, application.id, application.key, application.redirects, timestamp, timestamp); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO _identity_workflow_workload_bindings
-		(id, workspace_id, application_key, subject_id, workflow_key, definition_version_id, definition_version, role_key, action_keys_json, release_id, release_digest, source_kind, source_id, status, created_at, updated_at)
-		VALUES ('workload-1', 'workspace-a', 'orders-runtime', 'workflow:customer_sync', 'customer_sync', 'workflow-version-1', 1, 'project_viewer', '["customer.read"]', 'workflow-release:release-1', 'release-1', 'deployment_control_plane', 'orders-runtime', 'active', ?, ?)`, timestamp, timestamp); err != nil {
+		(workspace_id, application_key, subject_id, workflow_key, definition_version_id, definition_version, role_key, action_keys_json, release_id, release_digest, source_kind, source_id, status, created_at, updated_at)
+		VALUES ('workspace-a', 'orders-runtime', 'workflow:customer_sync', 'customer_sync', 'workflow-version-1', 1, 'project_viewer', '["customer.read"]', 'workflow-release:release-1', 'release-1', 'deployment_control_plane', 'orders-runtime', 'active', ?, ?)`, timestamp, timestamp); err != nil {
 		t.Fatal(err)
 	}
 	for _, permission := range []struct {
@@ -258,27 +258,27 @@ func seedPortableWorkspace(t *testing.T, store *database.IdentityStore, now time
 		{id: "permission-export", key: "customer.export", action: "export", status: "active", enabled: false},
 	} {
 		if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO _identity_permissions
-			(id, workspace_id, permission_key, resource_key, operation_key, label, description, category, source_kind, source_owner, definition_status, enabled, definition_hash, source_snapshot_hash, created_at, updated_at)
-			VALUES (?, 'workspace-a', ?, 'customer', ?, ?, '', 'CRM', 'object_default', 'application:orders-runtime', ?, ?, ?, ?, ?, ?)`,
-			permission.id, permission.key, permission.action, permission.key, permission.status, permission.enabled, strings.Repeat("a", 64), strings.Repeat("b", 64), timestamp, timestamp); err != nil {
+			(workspace_id, permission_key, resource_key, operation_key, label, description, category, source_kind, source_owner, definition_status, enabled, definition_hash, source_snapshot_hash, created_at, updated_at)
+			VALUES ('workspace-a', ?, 'customer', ?, ?, '', 'CRM', 'object_default', 'application:orders-runtime', ?, ?, ?, ?, ?, ?)`,
+			permission.key, permission.action, permission.key, permission.status, permission.enabled, strings.Repeat("a", 64), strings.Repeat("b", 64), timestamp, timestamp); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO _identity_users
-        (id, workspace_id, name, given_name, middle_name, family_name, name_prefix, name_suffix, native_name, name_locale, email, phone, account_type, locale, timezone, status, version, created_at, updated_at)
+		(user_id, workspace_id, name, given_name, middle_name, family_name, name_prefix, name_suffix, native_name, name_locale, email, phone, account_type, locale, timezone, status, version, created_at, updated_at)
         VALUES (?, ?, ?, '', '', '', '', '', '', '', ?, '', 'human', '', '', 'active', 1, ?, ?)`,
 		"user-1", "workspace-a", "User One", "user@example.com", timestamp, timestamp); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO _identity_roles
-        (id, workspace_id, role_key, label, description, status, created_at, updated_at)
+		(role_id, workspace_id, role_key, label, description, status, created_at, updated_at)
         VALUES (?, ?, ?, ?, '', 'active', ?, ?)`, "role-1", "workspace-a", "reader", "Reader", timestamp, timestamp); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO _identity_user_role_assignments
-		(id, workspace_id, user_id, role_id, binding_key, profile_id, source, status, valid_from, valid_until, granted_by, grant_reason, revoked_by, revoked_at, revoke_reason, expires_at, created_at, updated_at)
-		VALUES (?, ?, ?, ?, NULL, NULL, 'manual', 'active', 0, 0, 'admin', '', NULL, 0, NULL, 0, ?, ?)`,
-		"assignment-1", "workspace-a", "user-1", "role-1", timestamp, timestamp); err != nil {
+		(workspace_id, user_id, role_id, binding_key, profile_id, source, status, valid_from, valid_until, granted_by, grant_reason, revoked_by, revoked_at, revoke_reason, expires_at, created_at, updated_at)
+		VALUES (?, ?, ?, NULL, NULL, 'manual', 'active', 0, 0, 'admin', '', NULL, 0, NULL, 0, ?, ?)`,
+		"workspace-a", "user-1", "role-1", timestamp, timestamp); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO _identity_credentials
@@ -287,9 +287,9 @@ func seedPortableWorkspace(t *testing.T, store *database.IdentityStore, now time
 		t.Fatal(err)
 	}
 	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO _identity_auth_refresh_tokens
-        (id, workspace_id, user_id, session_id, audience, token_hash, expires_at, revoked_at, replaced_by_id, last_used_at, created_at, updated_at)
-		VALUES (?, ?, ?, ?, 'runtime', ?, ?, 0, NULL, 0, ?, ?)`,
-		"refresh-1", "workspace-a", "user-1", "session-1", "refresh-token-secret", now.Add(time.Hour).UnixMilli(), timestamp, timestamp); err != nil {
+		(workspace_id, user_id, session_id, audience, token_hash, expires_at, revoked_at, replaced_by_hash, last_used_at, created_at, updated_at)
+		VALUES (?, ?, ?, 'runtime', ?, ?, 0, NULL, 0, ?, ?)`,
+		"workspace-a", "user-1", "session-1", "refresh-token-secret", now.Add(time.Hour).UnixMilli(), timestamp, timestamp); err != nil {
 		t.Fatal(err)
 	}
 	providerConfiguration := `{"provider_key":"oidc","workspace_id":"workspace-a","type":"oidc","issuer":"https://issuer.example","client_id":"client-a","auto_create_users":false}`

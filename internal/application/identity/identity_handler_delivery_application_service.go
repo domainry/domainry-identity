@@ -180,7 +180,7 @@ func (s *IdentityHandlerDeliveryApplicationService) ResolveBoundIdentity(ctx con
 	roleKeyByID := make(map[string]string, len(roles))
 	for _, role := range roles {
 		if role.Status == identitymodel.IdentityStatusActive {
-			roleKeyByID[role.ID] = role.Key
+			roleKeyByID[role.RoleID] = role.Key
 		}
 	}
 	roleKeys := make([]string, 0, len(assignments))
@@ -195,17 +195,17 @@ func (s *IdentityHandlerDeliveryApplicationService) ResolveBoundIdentity(ctx con
 	roleKeys, _ = canonicalHandlerRoleKeys(roleKeys)
 	targetPrincipal := identitymodel.Principal{}
 	if user.Status == identitymodel.IdentityStatusActive {
-		targetPrincipal, err = s.dependencies.Identity.ResolvePrincipal(workspaceContext, user.ID)
+		targetPrincipal, err = s.dependencies.Identity.ResolvePrincipal(workspaceContext, user.UserID)
 		if err != nil {
 			return IdentityHandlerBoundIdentity{}, err
 		}
 	}
-	profileBinding, err := s.resolveRequestedProfileBinding(workspaceContext, workspaceID, user.ID, request.ProfileBinding)
+	profileBinding, err := s.resolveRequestedProfileBinding(workspaceContext, workspaceID, user.UserID, request.ProfileBinding)
 	if err != nil {
 		return IdentityHandlerBoundIdentity{}, err
 	}
 	return IdentityHandlerBoundIdentity{
-		UserID: user.ID, DisplayName: user.Name, Status: user.Status, Active: user.Status == identitymodel.IdentityStatusActive,
+		UserID: user.UserID, DisplayName: user.Name, Status: user.Status, Active: user.Status == identitymodel.IdentityStatusActive,
 		Version: user.Version, OrganizationID: user.OrgID, SupportOrganizationID: user.SupportOrgID,
 		OrganizationPath: targetPrincipal.OrganizationPath, OrganizationScopeIDs: append([]string(nil), targetPrincipal.OrgScopeIDs...),
 		SupportOrgScopeIDs: append([]string(nil), targetPrincipal.SupportOrgScopeIDs...), ManagerUserID: user.ManagerUserID,
@@ -247,7 +247,7 @@ func (s *IdentityHandlerDeliveryApplicationService) Deliver(ctx context.Context,
 	request.ContractVersion = strings.TrimSpace(request.ContractVersion)
 	request.IdempotencyKey = strings.TrimSpace(request.IdempotencyKey)
 	request.AccessToken = strings.TrimSpace(request.AccessToken)
-	if request.ContractVersion != IdentityHandlerDeliveryContractVersionV1 || request.IdempotencyKey == "" || request.AccessToken == "" || request.ExpectedVersion < 0 || strings.TrimSpace(request.User.ID) == "" {
+	if request.ContractVersion != IdentityHandlerDeliveryContractVersionV1 || request.IdempotencyKey == "" || request.AccessToken == "" || request.ExpectedVersion < 0 || strings.TrimSpace(request.User.UserID) == "" {
 		return identitymodel.IdentityHandlerDeliveryResult{}, handlerDeliveryError(apperror.KindBadRequest, "backend.identity.handler_delivery_invalid")
 	}
 	if request.Operation != identitymodel.IdentityHandlerUserCreate && request.Operation != identitymodel.IdentityHandlerUserUpdate && request.Operation != identitymodel.IdentityHandlerUserDisable {
@@ -295,7 +295,7 @@ func (s *IdentityHandlerDeliveryApplicationService) Deliver(ctx context.Context,
 	if err != nil {
 		return identitymodel.IdentityHandlerDeliveryResult{}, err
 	}
-	request.User.ID = strings.TrimSpace(request.User.ID)
+	request.User.UserID = strings.TrimSpace(request.User.UserID)
 	fingerprint, err := identityHandlerDeliveryFingerprint(request, principal.UserID, claims.Audience)
 	if err != nil {
 		return identitymodel.IdentityHandlerDeliveryResult{}, err
@@ -309,7 +309,7 @@ func (s *IdentityHandlerDeliveryApplicationService) Deliver(ctx context.Context,
 			if receipt.RequestFingerprint != fingerprint {
 				return handlerDeliveryError(apperror.KindConflict, "backend.idempotency_key_reused")
 			}
-			current, currentFound, currentErr := s.dependencies.Identity.FindUser(transactionContext, request.User.ID)
+			current, currentFound, currentErr := s.dependencies.Identity.FindUser(transactionContext, request.User.UserID)
 			if currentErr != nil {
 				return currentErr
 			}
@@ -337,7 +337,7 @@ func (s *IdentityHandlerDeliveryApplicationService) Deliver(ctx context.Context,
 			IdempotencyKey: "identity-handler-delivery:" + request.IdempotencyKey,
 			Family:         auditcontract.EventFamilyIdentityGovernance,
 			Event:          "identity.handler_delivery." + string(request.Operation), ObjectKey: identitycontract.IdentityUserObjectKey,
-			RecordID: request.User.ID, Principal: principal, Summary: "Runtime handler delivered Identity state",
+			RecordID: request.User.UserID, Principal: principal, Summary: "Runtime handler delivered Identity state",
 			Before: handlerDeliveryUserAuditMap(before), After: handlerDeliveryUserAuditMap(receipt.Result.User),
 			Metadata: map[string]any{"application_key": claims.Audience, "idempotency_key": request.IdempotencyKey, "role_keys": append([]string(nil), request.RoleKeys...), "profile_binding": request.ProfileBinding != nil, "login_mode": request.LoginMode},
 		}); err != nil {
@@ -355,7 +355,7 @@ func (s *IdentityHandlerDeliveryApplicationService) Deliver(ctx context.Context,
 }
 
 func (s *IdentityHandlerDeliveryApplicationService) prepareMutation(ctx context.Context, request IdentityHandlerDeliveryRequest, principal identitymodel.Principal, fingerprint string) (identitymodel.IdentityHandlerDeliveryMutation, identitymodel.IdentityUser, string, error) {
-	current, found, err := s.dependencies.Identity.FindUser(ctx, request.User.ID)
+	current, found, err := s.dependencies.Identity.FindUser(ctx, request.User.UserID)
 	if err != nil {
 		return identitymodel.IdentityHandlerDeliveryMutation{}, identitymodel.IdentityUser{}, "", err
 	}
@@ -399,7 +399,7 @@ func (s *IdentityHandlerDeliveryApplicationService) prepareMutation(ctx context.
 	roleIDs := make(map[string]string, len(roles))
 	for _, role := range roles {
 		if role.Status == identitymodel.IdentityStatusActive {
-			roleIDs[strings.TrimSpace(role.Key)] = role.ID
+			roleIDs[strings.TrimSpace(role.Key)] = role.RoleID
 		}
 	}
 	assignments := make([]identitymodel.IdentityUserRoleAssignment, 0, len(request.RoleKeys))
@@ -408,7 +408,7 @@ func (s *IdentityHandlerDeliveryApplicationService) prepareMutation(ctx context.
 		if roleID == "" {
 			return identitymodel.IdentityHandlerDeliveryMutation{}, current, "", handlerDeliveryError(apperror.KindBadRequest, "backend.identity.role_not_found")
 		}
-		assignments = append(assignments, identitymodel.IdentityUserRoleAssignment{UserID: prepared.ID, RoleID: roleID})
+		assignments = append(assignments, identitymodel.IdentityUserRoleAssignment{UserID: prepared.UserID, RoleID: roleID})
 	}
 	prepared, assignments, err = s.dependencies.Identity.PrepareUserWithExactRoles(ctx, prepared, assignments, principal)
 	if err != nil {
@@ -422,7 +422,7 @@ func (s *IdentityHandlerDeliveryApplicationService) prepareMutation(ctx context.
 		RoleAssignments: assignments, RoleKeys: append([]string(nil), request.RoleKeys...),
 	}
 	if request.Operation == identitymodel.IdentityHandlerUserDisable {
-		mutation.RevokeUserIDs = append(mutation.RevokeUserIDs, prepared.ID)
+		mutation.RevokeUserIDs = append(mutation.RevokeUserIDs, prepared.UserID)
 	}
 	initialPassword := ""
 	if request.Operation == identitymodel.IdentityHandlerUserCreate && request.LoginMode == identitymodel.IdentityHandlerLoginPassword {
@@ -434,7 +434,7 @@ func (s *IdentityHandlerDeliveryApplicationService) prepareMutation(ctx context.
 		if hashErr != nil {
 			return identitymodel.IdentityHandlerDeliveryMutation{}, current, "", hashErr
 		}
-		mutation.Credential = &identitymodel.IdentityCredential{UserID: prepared.ID, PasswordHash: string(passwordHash), MustChangePassword: true}
+		mutation.Credential = &identitymodel.IdentityCredential{UserID: prepared.UserID, PasswordHash: string(passwordHash), MustChangePassword: true}
 	}
 	if request.ProfileBinding != nil {
 		if s.dependencies.ProfileBindings == nil {
@@ -451,7 +451,7 @@ func (s *IdentityHandlerDeliveryApplicationService) prepareMutation(ctx context.
 		if !bindingFound && profile.ExpectedVersion != 0 {
 			return identitymodel.IdentityHandlerDeliveryMutation{}, current, "", handlerDeliveryError(apperror.KindConflict, "backend.identity.profile_binding_version_conflict")
 		}
-		if !(bindingFound && currentBinding.Status == identitymodel.IdentityProfileBindingActive && currentBinding.IdentityUserID == prepared.ID) {
+		if !(bindingFound && currentBinding.Status == identitymodel.IdentityProfileBindingActive && currentBinding.IdentityUserID == prepared.UserID) {
 			operation := identitymodel.IdentityProfileBindingBind
 			if bindingFound && strings.TrimSpace(currentBinding.IdentityUserID) != "" {
 				operation = identitymodel.IdentityProfileBindingRebind
@@ -459,7 +459,7 @@ func (s *IdentityHandlerDeliveryApplicationService) prepareMutation(ctx context.
 			}
 			preparedProfile, _, prepareErr := s.dependencies.ProfileBindings.PrepareMutationForAtomicDelivery(ctx, IdentityProfileBindingCommandRequest{
 				ObjectKey: strings.TrimSpace(profile.ObjectKey), ProfileID: strings.TrimSpace(profile.ProfileID), BindingKey: strings.TrimSpace(profile.BindingKey),
-				Operation: string(operation), IdentityUserID: prepared.ID, ExpectedVersion: profile.ExpectedVersion,
+				Operation: string(operation), IdentityUserID: prepared.UserID, ExpectedVersion: profile.ExpectedVersion,
 				IdempotencyKey: request.IdempotencyKey + ":profile", Reason: strings.TrimSpace(profile.Reason), ApprovalID: strings.TrimSpace(profile.ApprovalID),
 			}, principal, prepared, permissionKey)
 			if prepareErr != nil {
@@ -500,10 +500,10 @@ func generateHandlerInitialPassword() (string, error) {
 }
 
 func handlerDeliveryScopeAllows(principal identitymodel.Principal, permissionKey string, current, desired identitymodel.IdentityUser, currentFound bool) bool {
-	if currentFound && !identitycontract.IdentityPermissionDataScopeAllows(principal, permissionKey, identitycontract.IdentityResourceFacts{RecordID: current.ID, OwnerUserID: current.ID, OwnerOrgID: current.OrgID}) {
+	if currentFound && !identitycontract.IdentityPermissionDataScopeAllows(principal, permissionKey, identitycontract.IdentityResourceFacts{RecordID: current.UserID, OwnerUserID: current.UserID, OwnerOrgID: current.OrgID}) {
 		return false
 	}
-	return identitycontract.IdentityPermissionDataScopeAllows(principal, permissionKey, identitycontract.IdentityResourceFacts{RecordID: desired.ID, OwnerUserID: desired.ID, OwnerOrgID: desired.OrgID})
+	return identitycontract.IdentityPermissionDataScopeAllows(principal, permissionKey, identitycontract.IdentityResourceFacts{RecordID: desired.UserID, OwnerUserID: desired.UserID, OwnerOrgID: desired.OrgID})
 }
 
 func canonicalHandlerRoleKeys(values []string) ([]string, error) {
@@ -547,10 +547,10 @@ func identityHandlerDeliveryFingerprint(request IdentityHandlerDeliveryRequest, 
 }
 
 func handlerDeliveryUserAuditMap(user identitymodel.IdentityUser) map[string]any {
-	if strings.TrimSpace(user.ID) == "" {
+	if strings.TrimSpace(user.UserID) == "" {
 		return nil
 	}
-	return map[string]any{"id": user.ID, "status": user.Status, "org_id": user.OrgID, "support_org_id": user.SupportOrgID, "version": user.Version}
+	return map[string]any{"user_id": user.UserID, "status": user.Status, "org_id": user.OrgID, "support_org_id": user.SupportOrgID, "version": user.Version}
 }
 
 func handlerDeliveryError(kind apperror.ErrorKind, code string) error {

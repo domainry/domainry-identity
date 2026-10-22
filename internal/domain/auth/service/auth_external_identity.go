@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/domainry/domainry-foundation/entityid"
 	authrepository "github.com/domainry/domainry-identity/internal/domain/auth/repository"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
@@ -61,7 +62,7 @@ func (s *AuthDomainService) ExternalLoginWithPolicyForApplicationAndAuthenticati
 		if !ok || user.Status != identitymodel.IdentityStatusActive {
 			return authmodel.AuthSession{}, forbidden("auth.user_disabled")
 		}
-		if err := s.ensureExternalDefaultRole(ctx, user.ID, policy.DefaultRoleKey); err != nil {
+		if err := s.ensureExternalDefaultRole(ctx, user.UserID, policy.DefaultRoleKey); err != nil {
 			return authmodel.AuthSession{}, err
 		}
 		return s.issueSessionForAudienceWithAuthentication(ctx, workspaceID, user, applicationKey, authentication)
@@ -72,21 +73,21 @@ func (s *AuthDomainService) ExternalLoginWithPolicyForApplicationAndAuthenticati
 	if user, ok, err := s.externalLoginUserByVerifiedEmail(ctx, assertion); err != nil {
 		return authmodel.AuthSession{}, err
 	} else if ok {
-		accountID, err := s.randomToken()
+		accountID, err := entityid.New("extacct")
 		if err != nil {
 			return authmodel.AuthSession{}, internalError("generate external account identifier", err)
 		}
 		account = identitymodel.IdentityExternalAccount{
-			ID:              "ext_" + accountID,
-			UserID:          user.ID,
-			Provider:        assertion.Provider,
-			ProviderSubject: assertion.Subject,
-			Email:           strings.TrimSpace(assertion.Email),
-			Phone:           strings.TrimSpace(assertion.Phone),
-			DisplayName:     strings.TrimSpace(assertion.DisplayName),
-			AvatarURL:       strings.TrimSpace(assertion.AvatarURL),
-			Metadata:        strings.TrimSpace(assertion.Metadata),
-			LinkedAt:        time.Now().UTC().Format(time.RFC3339),
+			ExternalAccountID: accountID,
+			UserID:            user.UserID,
+			Provider:          assertion.Provider,
+			ProviderSubject:   assertion.Subject,
+			Email:             strings.TrimSpace(assertion.Email),
+			Phone:             strings.TrimSpace(assertion.Phone),
+			DisplayName:       strings.TrimSpace(assertion.DisplayName),
+			AvatarURL:         strings.TrimSpace(assertion.AvatarURL),
+			Metadata:          strings.TrimSpace(assertion.Metadata),
+			LinkedAt:          time.Now().UTC().Format(time.RFC3339),
 		}
 		if err := s.identityStore.UpsertIdentityExternalAccount(ctx, workspaceID, account); err != nil {
 			return authmodel.AuthSession{}, err
@@ -97,21 +98,21 @@ func (s *AuthDomainService) ExternalLoginWithPolicyForApplicationAndAuthenticati
 	if err != nil {
 		return authmodel.AuthSession{}, err
 	}
-	accountID, err := s.randomToken()
+	accountID, err := entityid.New("extacct")
 	if err != nil {
 		return authmodel.AuthSession{}, internalError("generate external account identifier", err)
 	}
 	account = identitymodel.IdentityExternalAccount{
-		ID:              "ext_" + accountID,
-		UserID:          user.ID,
-		Provider:        assertion.Provider,
-		ProviderSubject: assertion.Subject,
-		Email:           strings.TrimSpace(assertion.Email),
-		Phone:           strings.TrimSpace(assertion.Phone),
-		DisplayName:     strings.TrimSpace(assertion.DisplayName),
-		AvatarURL:       strings.TrimSpace(assertion.AvatarURL),
-		Metadata:        strings.TrimSpace(assertion.Metadata),
-		LinkedAt:        time.Now().UTC().Format(time.RFC3339),
+		ExternalAccountID: accountID,
+		UserID:            user.UserID,
+		Provider:          assertion.Provider,
+		ProviderSubject:   assertion.Subject,
+		Email:             strings.TrimSpace(assertion.Email),
+		Phone:             strings.TrimSpace(assertion.Phone),
+		DisplayName:       strings.TrimSpace(assertion.DisplayName),
+		AvatarURL:         strings.TrimSpace(assertion.AvatarURL),
+		Metadata:          strings.TrimSpace(assertion.Metadata),
+		LinkedAt:          time.Now().UTC().Format(time.RFC3339),
 	}
 	if err := s.identityStore.UpsertIdentityExternalAccount(ctx, workspaceID, account); err != nil {
 		return authmodel.AuthSession{}, err
@@ -165,21 +166,21 @@ func (s *AuthDomainService) BindExternalAccount(ctx context.Context, workspaceID
 		}
 		return existing, nil
 	}
-	accountID, err := s.randomToken()
+	accountID, err := entityid.New("extacct")
 	if err != nil {
 		return identitymodel.IdentityExternalAccount{}, internalError("generate external account identifier", err)
 	}
 	account := identitymodel.IdentityExternalAccount{
-		ID:              "ext_" + accountID,
-		UserID:          userID,
-		Provider:        assertion.Provider,
-		ProviderSubject: assertion.Subject,
-		Email:           strings.TrimSpace(assertion.Email),
-		Phone:           strings.TrimSpace(assertion.Phone),
-		DisplayName:     strings.TrimSpace(assertion.DisplayName),
-		AvatarURL:       strings.TrimSpace(assertion.AvatarURL),
-		Metadata:        strings.TrimSpace(assertion.Metadata),
-		LinkedAt:        time.Now().UTC().Format(time.RFC3339),
+		ExternalAccountID: accountID,
+		UserID:            userID,
+		Provider:          assertion.Provider,
+		ProviderSubject:   assertion.Subject,
+		Email:             strings.TrimSpace(assertion.Email),
+		Phone:             strings.TrimSpace(assertion.Phone),
+		DisplayName:       strings.TrimSpace(assertion.DisplayName),
+		AvatarURL:         strings.TrimSpace(assertion.AvatarURL),
+		Metadata:          strings.TrimSpace(assertion.Metadata),
+		LinkedAt:          time.Now().UTC().Format(time.RFC3339),
 	}
 	if err := s.identityStore.UpsertIdentityExternalAccount(ctx, workspaceID, account); err != nil {
 		return identitymodel.IdentityExternalAccount{}, err
@@ -237,7 +238,7 @@ func (s *AuthDomainService) UnbindExternalAccount(ctx context.Context, workspace
 		return err
 	}
 	for _, account := range accounts {
-		if account.ID == accountID && normalizeProvider(account.Provider) == provider {
+		if account.ExternalAccountID == accountID && normalizeProvider(account.Provider) == provider {
 			return s.identityStore.RemoveIdentityExternalAccount(ctx, workspaceID, accountID)
 		}
 	}
@@ -267,37 +268,16 @@ func (s *AuthDomainService) createExternalIdentityUser(ctx context.Context, asse
 		}
 		email = verifiedSubjectPlaceholderEmail(assertion.Provider, assertion.Subject)
 	}
-	idBase := assertion.Provider + "_" + assertion.Subject
-	idBase = strings.Trim(strings.Map(func(r rune) rune {
-		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
-			return r
-		}
-		if r >= 'A' && r <= 'Z' {
-			return r + ('a' - 'A')
-		}
-		return '_'
-	}, idBase), "_")
-	if idBase == "" {
-		idBase = "external_user"
-	}
-	if len(idBase) > 64 {
-		idBase = idBase[:64]
-	}
-	userID := idBase
-	for i := 0; ; i++ {
-		if _, ok, err := s.identity.UserByID(ctx, userID); err != nil {
-			return identitymodel.IdentityUser{}, err
-		} else if !ok {
-			break
-		}
-		userID = fmt.Sprintf("%s_%d", idBase, i+1)
+	userID, err := entityid.New("user")
+	if err != nil {
+		return identitymodel.IdentityUser{}, internalError("generate identity user identifier", err)
 	}
 	name := strings.TrimSpace(assertion.DisplayName)
 	if name == "" {
 		name = email
 	}
 	user := identitymodel.IdentityUser{
-		ID: userID, Name: name, Email: email, Phone: strings.TrimSpace(assertion.Phone), Status: identitymodel.IdentityStatusActive,
+		UserID: userID, Name: name, Email: email, Phone: strings.TrimSpace(assertion.Phone), Status: identitymodel.IdentityStatusActive,
 	}
 	if err := s.identity.UpsertUser(ctx, user); err != nil {
 		return identitymodel.IdentityUser{}, err
@@ -307,7 +287,7 @@ func (s *AuthDomainService) createExternalIdentityUser(ctx context.Context, asse
 		return identitymodel.IdentityUser{}, err
 	}
 	if ok {
-		if err := s.identity.AssignUserRole(ctx, identitymodel.IdentityUserRoleAssignment{UserID: user.ID, RoleID: role.ID}); err != nil {
+		if err := s.identity.AssignUserRole(ctx, identitymodel.IdentityUserRoleAssignment{UserID: user.UserID, RoleID: role.RoleID}); err != nil {
 			return identitymodel.IdentityUser{}, err
 		}
 	}
@@ -336,12 +316,12 @@ func (s *AuthDomainService) roleForExternalAssertion(ctx context.Context, assert
 	}
 	byKey := map[string]identitymodel.IdentityRole{}
 	for _, role := range roles {
-		definition, published := s.identity.PublishedRoleDefinition(ctx, valueOrDefault(role.Key, role.ID))
+		definition, published := s.identity.PublishedRoleDefinition(ctx, valueOrDefault(role.Key, role.RoleID))
 		if !published || !externalAutoAssignableRole(definition) {
 			continue
 		}
 		byKey[strings.ToLower(strings.TrimSpace(role.Key))] = role
-		byKey[strings.ToLower(strings.TrimSpace(role.ID))] = role
+		byKey[strings.ToLower(strings.TrimSpace(role.RoleID))] = role
 	}
 	for _, mapping := range policy.RoleMappings {
 		role, ok := byKey[strings.ToLower(strings.TrimSpace(mapping.RoleKey))]
@@ -386,7 +366,7 @@ func (s *AuthDomainService) ensureExternalDefaultRole(ctx context.Context, userI
 	if err != nil || !ok {
 		return err
 	}
-	return s.identity.AssignUserRole(ctx, identitymodel.IdentityUserRoleAssignment{UserID: userID, RoleID: role.ID})
+	return s.identity.AssignUserRole(ctx, identitymodel.IdentityUserRoleAssignment{UserID: userID, RoleID: role.RoleID})
 }
 
 func externalAssertionMappingMatches(assertion authmodel.AuthExternalIdentityAssertion, mapping authmodel.AuthExternalRoleMapping) bool {

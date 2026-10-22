@@ -114,7 +114,7 @@ func identityProjectionLess(rules []identitymodel.IdentitySortRule, left, right 
 func identityUserValue(user identitymodel.IdentityUser, field string) string {
 	switch field {
 	case "id":
-		return user.ID
+		return user.UserID
 	case "name":
 		return user.Name
 	case "given_name":
@@ -227,7 +227,7 @@ func (s *IdentityDomainService) searchUsers(ctx context.Context, query identitym
 			func(field string) string { return identityUserValue(filtered[left], field) },
 			func(field string) string { return identityUserValue(filtered[right], field) })
 	})
-	page, err := identityProjectionPage(cursor, filtered, func(user identitymodel.IdentityUser) string { return user.ID })
+	page, err := identityProjectionPage(cursor, filtered, func(user identitymodel.IdentityUser) string { return user.UserID })
 	if err != nil {
 		return identitymodel.IdentityUserPage{}, err
 	}

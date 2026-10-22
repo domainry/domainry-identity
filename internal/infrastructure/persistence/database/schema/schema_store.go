@@ -8,6 +8,7 @@ import (
 
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/driver"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
+	ormschema "github.com/domainry/domainry-orm/schema"
 )
 
 // SQLDatabase is the transaction/connection-neutral DDL adapter used by the
@@ -62,32 +63,26 @@ func quotedColumnDefinitions(store Store, definitions []string) string {
 	return strings.Join(quoted, ", ")
 }
 
-// workspaceScopedColumnDefinitions renders a fresh-schema table with its real
-// Workspace-scoped primary key. Identity is not deployed yet, so its canonical
-// schema must not create an installation-global key and repair the shape with a
-// compatibility index afterwards.
-func workspaceScopedColumnDefinitions(store Store, definitions []string) string {
-	primaryKey := ""
-	workspaceScoped := false
-	columns := make([]string, 0, len(definitions)+1)
-	for _, definition := range definitions {
-		parts := strings.SplitN(definition, " ", 2)
-		if len(parts) == 0 {
-			continue
-		}
-		column := parts[0]
-		workspaceScoped = workspaceScoped || column == "workspace_id"
-		if strings.Contains(definition, " PRIMARY KEY") {
-			primaryKey = column
-			definition = strings.Replace(definition, " PRIMARY KEY", "", 1)
-			if !strings.Contains(definition, " NOT NULL") {
-				definition += " NOT NULL"
-			}
-		}
-		columns = append(columns, quotedColumnDefinitions(store, []string{definition}))
+// tableColumnDefinitions renders a fresh-schema table. Every definition owns
+// the same dialect-specific auto-increment id primary key; natural identities
+// are enforced separately as unique indexes.
+func tableColumnDefinitions(store Store, table string, definitions []string) string {
+	names := make([]string, len(definitions))
+	byName := make(map[string]string, len(definitions))
+	for index, definition := range definitions {
+		name := strings.Fields(definition)[0]
+		names[index], byName[name] = name, definition
 	}
-	if workspaceScoped && primaryKey != "" {
-		columns = append(columns, "PRIMARY KEY ("+store.Identifier("workspace_id")+", "+store.Identifier(primaryKey)+")")
+	identities := []string{}
+	for _, ownership := range SchemaOwnership() {
+		if ownership.Name == table && ownership.EntityIDColumn != "" {
+			identities = append(identities, ownership.EntityIDColumn)
+		}
+	}
+	columns := make([]string, 0, len(definitions))
+	for _, name := range ormschema.OrderColumnNames(names, identities...) {
+		definition := byName[name]
+		columns = append(columns, quotedColumnDefinitions(store, []string{definition}))
 	}
 	return strings.Join(columns, ", ")
 }

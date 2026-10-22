@@ -49,7 +49,7 @@ func (s *AuthDomainService) EnsureBootstrapCredential(ctx context.Context, works
 	if !ok {
 		return nil
 	}
-	return s.ensureSeedCredential(ctx, workspaceID, user.ID)
+	return s.ensureSeedCredential(ctx, workspaceID, user.UserID)
 }
 
 func (s *AuthDomainService) EnsureCredentialsForUsers(ctx context.Context, workspaceID string, users []identitymodel.IdentityUser) error {
@@ -57,7 +57,7 @@ func (s *AuthDomainService) EnsureCredentialsForUsers(ctx context.Context, works
 		return nil
 	}
 	for _, user := range users {
-		userID := strings.TrimSpace(user.ID)
+		userID := strings.TrimSpace(user.UserID)
 		if userID == "" || user.Status == identitymodel.IdentityStatusDisabled {
 			continue
 		}
@@ -102,7 +102,7 @@ func (s *AuthDomainService) AuthenticatePassword(ctx context.Context, workspaceI
 	if !ok || user.Status != identitymodel.IdentityStatusActive {
 		return identitymodel.IdentityUser{}, forbidden("auth.invalid_credentials")
 	}
-	credential, ok, err := s.identityStore.GetIdentityCredential(ctx, workspaceID, user.ID)
+	credential, ok, err := s.identityStore.GetIdentityCredential(ctx, workspaceID, user.UserID)
 	if err != nil {
 		return identitymodel.IdentityUser{}, err
 	}
@@ -122,7 +122,7 @@ func (s *AuthDomainService) AuthenticatePassword(ctx context.Context, workspaceI
 		}
 		return identitymodel.IdentityUser{}, forbidden("auth.invalid_credentials")
 	}
-	if err := s.identityStore.RecordIdentityLoginSuccess(ctx, workspaceID, user.ID, time.Now().UTC().Format(time.RFC3339)); err != nil {
+	if err := s.identityStore.RecordIdentityLoginSuccess(ctx, workspaceID, user.UserID, time.Now().UTC().Format(time.RFC3339)); err != nil {
 		return identitymodel.IdentityUser{}, err
 	}
 	return user, nil

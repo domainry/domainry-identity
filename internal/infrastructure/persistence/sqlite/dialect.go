@@ -22,7 +22,7 @@ func (Dialect) Name() string { return "sqlite" }
 func (Dialect) MaxParameters() int           { return 999 }
 func (Dialect) TextKeyColumnType(int) string { return "TEXT" }
 func (Dialect) SchemaTypes() driver.SchemaTypes {
-	return driver.SchemaTypes{Boolean: "INTEGER", FalseLiteral: "0", DefaultText: "TEXT", DocumentText: "TEXT", IndexedText: "TEXT", AuditCursorText: "TEXT"}
+	return driver.SchemaTypes{AutoIncrementBigInt: "INTEGER PRIMARY KEY AUTOINCREMENT", Boolean: "INTEGER", FalseLiteral: "0", DefaultText: "TEXT", DocumentText: "TEXT", IndexedText: "TEXT", AuditCursorText: "TEXT"}
 }
 func (Dialect) ApplyUpdateLock(builder *query.SelectBuilder) *query.SelectBuilder {
 	return builder
@@ -104,5 +104,5 @@ func (Dialect) SQLDialect() ormdialect.Dialect {
 }
 
 func (Dialect) SchemaMigrationSQL() string {
-	return `CREATE TABLE IF NOT EXISTS "_schema_migrations" ("path" TEXT PRIMARY KEY, "applied_at" INTEGER NOT NULL)`
+	return `CREATE TABLE IF NOT EXISTS "_schema_migrations" ("id" INTEGER PRIMARY KEY AUTOINCREMENT, "path" TEXT NOT NULL UNIQUE, "applied_at" INTEGER NOT NULL)`
 }

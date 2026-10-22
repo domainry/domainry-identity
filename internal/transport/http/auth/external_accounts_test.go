@@ -38,7 +38,7 @@ func (r *authExternalIdentityRepository) ListIdentityUsers(context.Context, stri
 }
 func (r *authExternalIdentityRepository) GetIdentityUser(_ context.Context, _ string, userID string) (identitymodel.IdentityUser, bool, error) {
 	for _, user := range r.users {
-		if user.ID == userID {
+		if user.UserID == userID {
 			return user, true, nil
 		}
 	}
@@ -46,7 +46,7 @@ func (r *authExternalIdentityRepository) GetIdentityUser(_ context.Context, _ st
 }
 func (r *authExternalIdentityRepository) UpdateIdentityUserLocale(_ context.Context, _ string, userID, locale string, expectedVersion int64) (identitymodel.IdentityUser, bool, error) {
 	for index, user := range r.users {
-		if user.ID != userID || user.Version != expectedVersion {
+		if user.UserID != userID || user.Version != expectedVersion {
 			continue
 		}
 		user.Locale, user.Version = locale, user.Version+1
@@ -209,10 +209,10 @@ type authExternalHandlerCapture struct {
 func newAuthExternalHandler(t *testing.T) (*AuthHandler, *authExternalIdentityRepository, *authExternalAccountRepository, *authExternalHandlerCapture, string) {
 	t.Helper()
 	identityRepository := &authExternalIdentityRepository{
-		users:        []identitymodel.IdentityUser{{ID: "user-1", Name: "User One", Email: "user@example.com", Locale: "en-US", Version: 1, Status: identitymodel.IdentityStatusActive}},
-		roles:        []identitymodel.IdentityRole{{ID: "role-viewer", Key: "viewer", Label: "Viewer", Description: "Read access", Status: identitymodel.IdentityStatusActive}},
+		users:        []identitymodel.IdentityUser{{UserID: "user-1", Name: "User One", Email: "user@example.com", Locale: "en-US", Version: 1, Status: identitymodel.IdentityStatusActive}},
+		roles:        []identitymodel.IdentityRole{{RoleID: "role-viewer", Key: "viewer", Label: "Viewer", Description: "Read access", Status: identitymodel.IdentityStatusActive}},
 		assignments:  []identitymodel.IdentityUserRoleAssignment{{UserID: "user-1", RoleID: "role-viewer"}},
-		roleRequests: []identitymodel.IdentityRoleRequest{{ID: "request-existing", UserID: "user-1", RoleIDs: []string{"role-viewer"}, Status: "pending"}},
+		roleRequests: []identitymodel.IdentityRoleRequest{{RoleRequestID: "request-existing", UserID: "user-1", RoleIDs: []string{"role-viewer"}, Status: "pending"}},
 	}
 	domain := identityservice.NewIdentityDomainService(identityRepository, authExecutablePermissionDefinitions("records.read"))
 	domain.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{Key: "viewer", Name: "Viewer", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "records.read")}})
@@ -225,7 +225,7 @@ func newAuthExternalHandler(t *testing.T) (*AuthHandler, *authExternalIdentityRe
 		t.Fatal(err)
 	}
 	authRepository := &authExternalAccountRepository{
-		accounts:   []identitymodel.IdentityExternalAccount{{ID: "account-1", UserID: "user-1", Provider: "github", ProviderSubject: "github-user"}},
+		accounts:   []identitymodel.IdentityExternalAccount{{ExternalAccountID: "account-1", UserID: "user-1", Provider: "github", ProviderSubject: "github-user"}},
 		credential: identitymodel.IdentityCredential{UserID: "user-1", PasswordHash: string(passwordHash)},
 	}
 	authService := authapplication.NewAuthApplicationService(scoped, authRepository, "test-secret", "", time.Hour, 24*time.Hour, 5, time.Minute, time.Minute, 3, authpolicy.AuthPasswordPolicy{})
@@ -358,7 +358,7 @@ func TestExternalAccountHandlersListUnbindAndMe(t *testing.T) {
 	meRequest.Header.Set("Authorization", "bearer "+accessToken)
 	meResponse := httptest.NewRecorder()
 	handler.authMe(meResponse, meRequest)
-	if meResponse.Code != http.StatusOK || !strings.Contains(meResponse.Body.String(), `"id":"user-1"`) || !strings.Contains(meResponse.Body.String(), `"records.read"`) {
+	if meResponse.Code != http.StatusOK || !strings.Contains(meResponse.Body.String(), `"user_id":"user-1"`) || !strings.Contains(meResponse.Body.String(), `"records.read"`) {
 		t.Fatalf("me status=%d body=%s", meResponse.Code, meResponse.Body.String())
 	}
 
@@ -410,7 +410,7 @@ func TestAuthRoleHandlersOptionsRequestsCreationAndErrors(t *testing.T) {
 
 	optionsResponse := httptest.NewRecorder()
 	handler.authRoleOptions(optionsResponse, httptest.NewRequest(http.MethodGet, "/auth/role-options", nil))
-	if optionsResponse.Code != http.StatusOK || !strings.Contains(optionsResponse.Body.String(), `"id":"role-viewer"`) {
+	if optionsResponse.Code != http.StatusOK || !strings.Contains(optionsResponse.Body.String(), `"role_id":"role-viewer"`) {
 		t.Fatalf("options status=%d error=%v body=%s", optionsResponse.Code, capture.serviceErr, optionsResponse.Body.String())
 	}
 
@@ -440,7 +440,7 @@ func TestAuthRoleHandlersOptionsRequestsCreationAndErrors(t *testing.T) {
 		t.Fatalf("empty primary account = %q/%q", provider, subject)
 	}
 
-	projected := authRoleOptions([]identitymodel.IdentityRole{{ID: "role", Key: "key", Label: "Label", Description: "Description", Status: identitymodel.IdentityStatusDisabled}})
+	projected := authRoleOptions([]identitymodel.IdentityRole{{RoleID: "role", Key: "key", Label: "Label", Description: "Description", Status: identitymodel.IdentityStatusDisabled}})
 	if len(projected) != 1 || projected[0]["description"] != "Description" || projected[0]["status"] != identitymodel.IdentityStatusDisabled {
 		t.Fatalf("projected role options = %#v", projected)
 	}

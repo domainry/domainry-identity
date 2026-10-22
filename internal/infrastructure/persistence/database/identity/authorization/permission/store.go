@@ -2,9 +2,7 @@ package permission
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"fmt"
 	"sort"
 	"strings"
@@ -243,7 +241,7 @@ func (store *Store) reconcileWithExecutor(ctx context.Context, executor reconcil
 
 func permissionSelectBuilder(renderer ormdialect.Renderer, workspaceID string) *query.SelectBuilder {
 	return query.NewWorkspaceSelectBuilder(renderer, "_identity_permissions", workspaceID).
-		Columns("id", "workspace_id", "permission_key", "resource_key", "operation_key", "label", "description", "category", "source_kind", "source_owner", "definition_status", "enabled", "definition_hash", "source_snapshot_hash", "created_at", "updated_at")
+		Columns("workspace_id", "permission_key", "resource_key", "operation_key", "label", "description", "category", "source_kind", "source_owner", "definition_status", "enabled", "definition_hash", "source_snapshot_hash", "created_at", "updated_at")
 }
 
 func permissionListBuilder(renderer ormdialect.Renderer, workspaceID string) *query.SelectBuilder {
@@ -283,7 +281,7 @@ func scanPermissionDefinition(scanner permissionDefinitionScanner) (identitymode
 	var definition identitymodel.IdentityPermissionDefinitionRecord
 	var createdAt, updatedAt int64
 	err := scanner.Scan(
-		&definition.ID, &definition.WorkspaceID, &definition.PermissionKey, &definition.ResourceKey, &definition.OperationKey,
+		&definition.WorkspaceID, &definition.PermissionKey, &definition.ResourceKey, &definition.OperationKey,
 		&definition.Label, &definition.Description, &definition.Category, &definition.SourceKind, &definition.SourceOwner,
 		&definition.DefinitionStatus, &definition.Enabled, &definition.DefinitionHash, &definition.SourceSnapshotHash,
 		&createdAt, &updatedAt,
@@ -309,7 +307,7 @@ func retireOwnerDefinitions(ctx context.Context, executor reconcileExecutor, ren
 }
 
 func upsertDefinitions(ctx context.Context, executor reconcileExecutor, backend Backend, workspaceID string, keys []string, incoming map[string]identitymodel.IdentityPermissionDefinitionRecord, now string) error {
-	const parametersPerRow = 16 // workspace_id plus the fifteen explicit columns below.
+	const parametersPerRow = 15 // workspace_id plus the fourteen explicit columns below.
 	ranges, err := (batch.Parameters{Max: backend.MaxParameters(), PerItem: parametersPerRow}).Ranges(len(keys))
 	if err != nil {
 		return fmt.Errorf("plan Identity permission upsert batches: %w", err)
@@ -329,11 +327,11 @@ func upsertDefinitions(ctx context.Context, executor reconcileExecutor, backend 
 
 func permissionUpsertBuilder(backend Backend, workspaceID string, keys []string, incoming map[string]identitymodel.IdentityPermissionDefinitionRecord, now string) *query.InsertBuilder {
 	insert := query.NewWorkspaceInsertBuilder(backend.SQLRenderer(), "_identity_permissions", workspaceID).
-		Columns("id", "permission_key", "resource_key", "operation_key", "label", "description", "category", "source_kind", "source_owner", "definition_status", "enabled", "definition_hash", "source_snapshot_hash", "created_at", "updated_at")
+		Columns("permission_key", "resource_key", "operation_key", "label", "description", "category", "source_kind", "source_owner", "definition_status", "enabled", "definition_hash", "source_snapshot_hash", "created_at", "updated_at")
 	for _, key := range keys {
 		definition := incoming[key]
 		insert.Values(
-			permissionRowID(workspaceID, key), key, definition.ResourceKey, definition.OperationKey,
+			key, definition.ResourceKey, definition.OperationKey,
 			definition.Label, definition.Description, definition.Category, definition.SourceKind, definition.SourceOwner,
 			identitymodel.IdentityPermissionDefinitionActive, true, definition.DefinitionHash, definition.SourceSnapshotHash,
 			timevalue.Millis(now), timevalue.Millis(now),
@@ -351,9 +349,4 @@ func workspace(value string) (string, error) {
 		return "", err
 	}
 	return id.String(), nil
-}
-
-func permissionRowID(workspaceID, permissionKey string) string {
-	sum := sha256.Sum256([]byte(workspaceID + "\x00" + permissionKey))
-	return "permission-" + hex.EncodeToString(sum[:16])
 }

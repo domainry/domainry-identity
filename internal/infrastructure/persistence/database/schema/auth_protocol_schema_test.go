@@ -27,7 +27,7 @@ func TestAuthenticationProtocolsKeepDedicatedStoresAndSecurityIndexes(t *testing
 	// generic JSON credential table would lose their atomic consume, rotation,
 	// replay and lockout constraints.
 	for table, requiredColumns := range map[string][]string{
-		"_identity_auth_refresh_tokens":      {"token_hash", "session_id", "revoked_at", "replaced_by_id", "expires_at"},
+		"_identity_auth_refresh_tokens":      {"token_hash", "session_id", "revoked_at", "replaced_by_hash", "expires_at"},
 		"_identity_auth_authorization_codes": {"code_hash", "session_json", "redirect_url", "consumed_at", "expires_at"},
 		"_identity_auth_assertion_replays":   {"replay_hash", "provider_key", "expires_at"},
 		"_identity_auth_login_transactions":  {"state_hash", "payload_json", "attempts", "consumed_at", "expires_at"},
@@ -47,7 +47,7 @@ func TestAuthenticationProtocolsKeepDedicatedStoresAndSecurityIndexes(t *testing
 
 	for index, expectedColumns := range map[string][]string{
 		"idx_auth_refresh_tokens_hash":        {"token_hash", "workspace_id"},
-		"idx_auth_refresh_tokens_replaced_by": {"workspace_id", "replaced_by_id"},
+		"idx_auth_refresh_tokens_replaced_by": {"workspace_id", "replaced_by_hash"},
 		"idx_auth_login_transactions_state":   {"state_hash", "provider_key", "workspace_id"},
 		"idx_auth_assertion_replays_expiry":   {"workspace_id", "expires_at"},
 	} {
@@ -60,8 +60,8 @@ func TestAuthenticationProtocolsKeepDedicatedStoresAndSecurityIndexes(t *testing
 		}
 	}
 	for table, expectedColumns := range map[string][]string{
-		"_identity_auth_authorization_codes": {"workspace_id", "code_hash"},
-		"_identity_auth_assertion_replays":   {"workspace_id", "replay_hash"},
+		"_identity_auth_authorization_codes": {"id"},
+		"_identity_auth_assertion_replays":   {"id"},
 	} {
 		actualColumns, err := authProtocolSQLitePrimaryKeyColumns(store.DB(), table)
 		if err != nil {

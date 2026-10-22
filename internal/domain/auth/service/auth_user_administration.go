@@ -30,7 +30,6 @@ type UserCredentialSecuritySummary struct {
 }
 
 type UserSessionSecuritySummary struct {
-	ID         string `json:"id"`
 	SessionID  string `json:"session_id"`
 	ExpiresAt  string `json:"expires_at"`
 	RevokedAt  string `json:"revoked_at,omitempty"`
@@ -113,7 +112,7 @@ func (s *AuthDomainService) userSecurityProfile(ctx context.Context, workspaceID
 	now := time.Now().UTC()
 	for _, session := range sessions {
 		profile.Sessions = append(profile.Sessions, UserSessionSecuritySummary{
-			ID: session.ID, SessionID: session.SessionID, ExpiresAt: session.ExpiresAt,
+			SessionID: session.SessionID, ExpiresAt: session.ExpiresAt,
 			RevokedAt: session.RevokedAt, CreatedAt: session.CreatedAt, LastUsedAt: session.LastUsedAt,
 		})
 		if session.RevokedAt == "" && tokenExpiresAfter(session.ExpiresAt, now) {
@@ -126,7 +125,7 @@ func (s *AuthDomainService) userSecurityProfile(ctx context.Context, workspaceID
 	}
 	for _, account := range accounts {
 		profile.ExternalAccounts = append(profile.ExternalAccounts, ExternalAccountSecuritySummary{
-			ID: account.ID, Provider: account.Provider, Email: account.Email, Phone: account.Phone,
+			ID: account.ExternalAccountID, Provider: account.Provider, Email: account.Email, Phone: account.Phone,
 			DisplayName: account.DisplayName, LinkedAt: account.LinkedAt,
 		})
 	}
@@ -137,7 +136,7 @@ func (s *AuthDomainService) userSecurityProfile(ctx context.Context, workspaceID
 		}
 		for _, factor := range factors {
 			profile.MFAFactors = append(profile.MFAFactors, MFAFactorSecuritySummary{
-				ID: factor.ID, Type: factor.Type, Label: factor.Label, Provider: factor.Provider,
+				ID: factor.MFAFactorID, Type: factor.Type, Label: factor.Label, Provider: factor.Provider,
 				Status: factor.Status, VerifiedAt: factor.VerifiedAt, LastUsedAt: factor.LastUsedAt,
 				CreatedAt: factor.CreatedAt,
 			})
@@ -154,7 +153,7 @@ func (s *AuthDomainService) userSecurityProfile(ctx context.Context, workspaceID
 // Identity-owned TOTP keys use ManageTOTP and its encrypted enrollment store.
 func (s *AuthDomainService) RegisterVerifiedMFAFactor(ctx context.Context, workspaceID, userID string, factor identitymodel.IdentityMFAFactor) error {
 	userID = strings.TrimSpace(userID)
-	factor.ID, factor.Type = strings.TrimSpace(factor.ID), strings.TrimSpace(factor.Type)
+	factor.MFAFactorID, factor.Type = strings.TrimSpace(factor.MFAFactorID), strings.TrimSpace(factor.Type)
 	factor.VerifiedAt = strings.TrimSpace(factor.VerifiedAt)
 	if factor.Provider == authmodel.TOTPProvider {
 		return badRequest("auth.totp_enrollment_required")
@@ -162,7 +161,7 @@ func (s *AuthDomainService) RegisterVerifiedMFAFactor(ctx context.Context, works
 	if userID == "" {
 		return badRequest("auth.user_required")
 	}
-	if factor.ID == "" {
+	if factor.MFAFactorID == "" {
 		return badRequest("auth.mfa_factor_id_required")
 	}
 	switch factor.Type {

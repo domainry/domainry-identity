@@ -17,17 +17,17 @@ func syncManifestIdentityRoles(ctx context.Context, identityStore identityreposi
 	}
 	existingIDs := map[string]bool{}
 	for _, role := range existing {
-		existingIDs[role.ID] = true
+		existingIDs[role.RoleID] = true
 	}
 	for _, role := range desired {
-		if strings.TrimSpace(role.ID) == "" || existingIDs[role.ID] {
+		if strings.TrimSpace(role.RoleID) == "" || existingIDs[role.RoleID] {
 			continue
 		}
 		if role.Status == "" {
 			role.Status = identitymodel.IdentityStatusActive
 		}
 		if err := identityStore.UpsertIdentityRole(ctx, workspaceID, role); err != nil {
-			return fmt.Errorf("sync identity role %s: %w", role.ID, err)
+			return fmt.Errorf("sync identity role %s: %w", role.RoleID, err)
 		}
 	}
 	return nil
@@ -39,14 +39,14 @@ func syncManifestIdentityUsers(ctx context.Context, identityStore identityreposi
 		return fmt.Errorf("sync manifest identity users requires initialized workspace: %w", err)
 	}
 	for _, user := range desiredUsers {
-		if strings.TrimSpace(user.ID) == "" {
+		if strings.TrimSpace(user.UserID) == "" {
 			continue
 		}
 		if user.Status == "" {
 			user.Status = identitymodel.IdentityStatusActive
 		}
 		if err := identityStore.UpsertIdentityUser(ctx, workspaceID, user); err != nil {
-			return fmt.Errorf("sync identity user %s: %w", user.ID, err)
+			return fmt.Errorf("sync identity user %s: %w", user.UserID, err)
 		}
 	}
 	for _, assignment := range desiredUserRoles {

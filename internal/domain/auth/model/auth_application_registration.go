@@ -9,7 +9,8 @@ const (
 // Authorization Actions, Permissions, and service credential secrets do not
 // belong to this record.
 type AuthApplicationRegistration struct {
-	ID             string   `json:"id"`
+	ID             int64    `json:"id"`
+	ApplicationID  string   `json:"application_id"`
 	WorkspaceID    string   `json:"workspace_id"`
 	ApplicationKey string   `json:"application_key"`
 	RedirectURLs   []string `json:"redirect_urls"`

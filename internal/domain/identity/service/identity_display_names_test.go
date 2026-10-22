@@ -17,7 +17,7 @@ type identityDisplayNameRepository struct {
 
 func (r *identityDisplayNameRepository) ListIdentityUsersWithinDataScope(_ context.Context, _ string, scope identitymodel.IdentityDataScopeFilter) ([]identitymodel.IdentityUser, error) {
 	r.userScope = scope
-	return []identitymodel.IdentityUser{{ID: "user-2", Name: "Ada"}}, nil
+	return []identitymodel.IdentityUser{{UserID: "user-2", Name: "Ada"}}, nil
 }
 
 func (r *identityDisplayNameRepository) GetIdentityUserWithinDataScope(context.Context, string, string, identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityUser, bool, error) {
@@ -26,7 +26,7 @@ func (r *identityDisplayNameRepository) GetIdentityUserWithinDataScope(context.C
 
 func (r *identityDisplayNameRepository) ListIdentityOrganizationUnitsWithinDataScope(_ context.Context, _ string, scope identitymodel.IdentityDataScopeFilter) ([]identitymodel.IdentityOrganizationUnit, error) {
 	r.orgScope = scope
-	return []identitymodel.IdentityOrganizationUnit{{ID: "org-2", Name: "Engineering"}}, nil
+	return []identitymodel.IdentityOrganizationUnit{{OrganizationUnitID: "org-2", Name: "Engineering"}}, nil
 }
 
 func (r *identityDisplayNameRepository) GetIdentityOrganizationUnitWithinDataScope(context.Context, string, string, identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityOrganizationUnit, bool, error) {

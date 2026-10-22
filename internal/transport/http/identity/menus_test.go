@@ -24,7 +24,7 @@ func (r *identityLocalizationRepository) ListLocalizedTexts(context.Context, str
 
 func TestIdentityMenuReadAndLocalizationHelpers(t *testing.T) {
 	repo := &identityHTTPRepository{
-		menus:     []identitymodel.IdentityMenu{{ID: "menu-1", Key: "customers", Label: "Customers"}},
+		menus:     []identitymodel.IdentityMenu{{MenuID: "menu-1", Key: "customers", Label: "Customers"}},
 		menuLinks: []identitymodel.IdentityRoleMenuAssignment{{RoleID: "role-1", MenuID: "menu-1"}},
 	}
 	handler, response := newIdentityHTTPHandler(repo)
@@ -57,7 +57,7 @@ func TestIdentityMenuReadAndLocalizationHelpers(t *testing.T) {
 	}
 
 	request = mustIdentityMenuRequest(t, "/identity/menus")
-	menus := []identitymodel.IdentityMenu{{ID: "menu-1", Label: "Original"}}
+	menus := []identitymodel.IdentityMenu{{MenuID: "menu-1", Label: "Original"}}
 	if got := handler.LocalizedMenus(request, menus); len(got) != 1 || got[0].Label != "Original" {
 		t.Fatalf("menus without locale = %#v", got)
 	}
@@ -106,7 +106,7 @@ func TestIdentityMenuAndPermissionLocalization(t *testing.T) {
 	handler.localization = metadataapplication.NewMetadataApplicationService(metadataapplication.MetadataApplicationDependencies{Repository: repository})
 	request := mustIdentityMenuRequest(t, "/identity/menus?locale=zh-CN")
 
-	menus := []identitymodel.IdentityMenu{{ID: "customers", Label: "Customers"}, {ID: "orders", Key: "orders", Label: "Orders"}, {ID: "other", Key: "other", Label: "Other"}}
+	menus := []identitymodel.IdentityMenu{{MenuID: "customers", Label: "Customers"}, {MenuID: "orders", Key: "orders", Label: "Orders"}, {MenuID: "other", Key: "other", Label: "Other"}}
 	localizedMenus := handler.LocalizedMenus(request, menus)
 	if localizedMenus[0].Label != "客户" || localizedMenus[0].Description != "客户列表" || localizedMenus[1].Label != "订单" || menus[0].Label != "Customers" || localizedMenus[2].Label != "Other" {
 		t.Fatalf("localized menus = %#v; original = %#v", localizedMenus, menus)
@@ -142,22 +142,22 @@ func mustIdentityMenuRequest(t *testing.T, target string) *http.Request {
 
 func TestIdentityMenuMutationHandlers(t *testing.T) {
 	repo := &identityHTTPRepository{
-		roles:     []identitymodel.IdentityRole{{ID: "role-1", Key: "sales"}},
-		menus:     []identitymodel.IdentityMenu{{ID: "menu-1", Key: "customers", Label: "Customers", Status: identitymodel.IdentityStatusActive}},
+		roles:     []identitymodel.IdentityRole{{RoleID: "role-1", Key: "sales"}},
+		menus:     []identitymodel.IdentityMenu{{MenuID: "menu-1", Key: "customers", Label: "Customers", Status: identitymodel.IdentityStatusActive}},
 		menuLinks: []identitymodel.IdentityRoleMenuAssignment{{RoleID: "role-1", MenuID: "menu-1"}},
 	}
 	handler, response := newIdentityHTTPHandler(repo)
 
-	w, request := identityRoleRequest(http.MethodPut, "/identity/menus/menu-2", `{"id":"body-id","key":"orders","label":"Orders","route":"/orders"}`, map[string]string{"menuID": " menu-2 "})
+	w, request := identityRoleRequest(http.MethodPut, "/identity/menus/menu-2", `{"menu_id":"body-id","key":"orders","label":"Orders","route":"/orders"}`, map[string]string{"menuID": " menu-2 "})
 	handler.upsertIdentityMenu(w, request)
-	if response.status != http.StatusOK || response.err != nil || repo.lastMenu.ID != "menu-2" {
+	if response.status != http.StatusOK || response.err != nil || repo.lastMenu.MenuID != "menu-2" {
 		t.Fatalf("upsert response = status %d menu %#v err %v", response.status, repo.lastMenu, response.err)
 	}
 
 	response.status, response.err = 0, nil
-	w, request = identityRoleRequest(http.MethodPut, "/identity/menus", `{"id":"menu-2","key":"orders","label":"Orders","route":"/orders"}`, nil)
+	w, request = identityRoleRequest(http.MethodPut, "/identity/menus", `{"menu_id":"menu-2","key":"orders","label":"Orders","route":"/orders"}`, nil)
 	handler.upsertIdentityMenu(w, request)
-	if response.status != http.StatusOK || repo.lastMenu.ID != "menu-2" {
+	if response.status != http.StatusOK || repo.lastMenu.MenuID != "menu-2" {
 		t.Fatalf("body-id upsert = status %d menu %#v err %v", response.status, repo.lastMenu, response.err)
 	}
 
@@ -201,8 +201,8 @@ func TestIdentityMenuHandlersRejectInvalidJSONAndServiceErrors(t *testing.T) {
 }
 
 func TestIdentityMenuMutationServiceErrors(t *testing.T) {
-	validMenus := []identitymodel.IdentityMenu{{ID: "menu-1", Key: "customers"}}
-	validRoles := []identitymodel.IdentityRole{{ID: "role-1", Key: "sales"}}
+	validMenus := []identitymodel.IdentityMenu{{MenuID: "menu-1", Key: "customers"}}
+	validRoles := []identitymodel.IdentityRole{{RoleID: "role-1", Key: "sales"}}
 	tests := []struct {
 		name string
 		repo *identityHTTPRepository
@@ -211,8 +211,8 @@ func TestIdentityMenuMutationServiceErrors(t *testing.T) {
 		path map[string]string
 	}{
 		{name: "upsert governance", repo: &identityHTTPRepository{}, call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.upsertIdentityMenu(w, r) }, body: `{}`},
-		{name: "upsert repository", repo: &identityHTTPRepository{upsertMenuErr: errIdentityHTTPTest}, call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.upsertIdentityMenu(w, r) }, body: `{"id":"menu-2","key":"orders"}`},
-		{name: "upsert relist", repo: &identityHTTPRepository{failListMenusAfterUpsert: true}, call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.upsertIdentityMenu(w, r) }, body: `{"id":"menu-2","key":"orders"}`},
+		{name: "upsert repository", repo: &identityHTTPRepository{upsertMenuErr: errIdentityHTTPTest}, call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.upsertIdentityMenu(w, r) }, body: `{"menu_id":"menu-2","key":"orders"}`},
+		{name: "upsert relist", repo: &identityHTTPRepository{failListMenusAfterUpsert: true}, call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.upsertIdentityMenu(w, r) }, body: `{"menu_id":"menu-2","key":"orders"}`},
 		{name: "set governance", repo: &identityHTTPRepository{menus: validMenus}, call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.setIdentityRoleMenus(w, r) }, body: `{"menu_ids":["menu-1"]}`, path: map[string]string{"roleID": "missing"}},
 		{name: "set repository", repo: &identityHTTPRepository{menus: validMenus, roles: validRoles, setRoleMenusErr: errIdentityHTTPTest}, call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.setIdentityRoleMenus(w, r) }, body: `{"menu_ids":["menu-1"]}`, path: map[string]string{"roleID": "role-1"}},
 		{name: "set relist", repo: &identityHTTPRepository{menus: validMenus, roles: validRoles, failListLinksAfterSet: true}, call: func(h *IdentityHandler, w http.ResponseWriter, r *http.Request) { h.setIdentityRoleMenus(w, r) }, body: `{"menu_ids":["menu-1"]}`, path: map[string]string{"roleID": "role-1"}},

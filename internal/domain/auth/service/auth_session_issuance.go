@@ -59,25 +59,25 @@ func (s *AuthDomainService) prepareSessionForAudienceWithIDAndAuthentication(ctx
 	}
 	workspaceID = workspace.String()
 	if reconciler, ok := s.identity.(authcontract.AuthSystemManagedRoleReconciler); ok {
-		if err := reconciler.ReconcileSystemManagedBusinessRoles(ctx, user.ID); err != nil {
+		if err := reconciler.ReconcileSystemManagedBusinessRoles(ctx, user.UserID); err != nil {
 			return authmodel.AuthSession{}, identitymodel.AuthRefreshToken{}, err
 		}
 	}
-	roles, err := s.identity.ActiveRolesForUser(ctx, user.ID)
+	roles, err := s.identity.ActiveRolesForUser(ctx, user.UserID)
 	if err != nil {
 		return authmodel.AuthSession{}, identitymodel.AuthRefreshToken{}, err
 	}
-	permissions, err := s.authorization.ResolveEffectivePermissions(ctx, user.ID)
+	permissions, err := s.authorization.ResolveEffectivePermissions(ctx, user.UserID)
 	if err != nil {
 		return authmodel.AuthSession{}, identitymodel.AuthRefreshToken{}, err
 	}
-	mustChangePassword, err := s.RequiresPasswordChange(ctx, workspaceID, user.ID)
+	mustChangePassword, err := s.RequiresPasswordChange(ctx, workspaceID, user.UserID)
 	if err != nil {
 		return authmodel.AuthSession{}, identitymodel.AuthRefreshToken{}, err
 	}
 	now := time.Now()
 	authentication = normalizeAuthenticationContext(authentication, now)
-	authenticatedProvider, providerSubject, err := s.resolveAuthenticatedExternalIdentity(ctx, workspaceID, user.ID, authentication)
+	authenticatedProvider, providerSubject, err := s.resolveAuthenticatedExternalIdentity(ctx, workspaceID, user.UserID, authentication)
 	if err != nil {
 		return authmodel.AuthSession{}, identitymodel.AuthRefreshToken{}, err
 	}
@@ -88,12 +88,12 @@ func (s *AuthDomainService) prepareSessionForAudienceWithIDAndAuthentication(ctx
 			return authmodel.AuthSession{}, identitymodel.AuthRefreshToken{}, internalError("generate session identifier", err)
 		}
 	}
-	principal, err := s.authorization.ResolvePrincipal(ctx, user.ID)
+	principal, err := s.authorization.ResolvePrincipal(ctx, user.UserID)
 	if err != nil {
 		return authmodel.AuthSession{}, identitymodel.AuthRefreshToken{}, err
 	}
 	if principal.AuthorizationRevision == "" {
-		principal.AuthorizationRevision = "bootstrap-" + user.ID
+		principal.AuthorizationRevision = "bootstrap-" + user.UserID
 	}
 	audience = strings.TrimSpace(audience)
 	if audience == "" {
@@ -104,7 +104,7 @@ func (s *AuthDomainService) prepareSessionForAudienceWithIDAndAuthentication(ctx
 		return authmodel.AuthSession{}, identitymodel.AuthRefreshToken{}, internalError("generate access token identifier", err)
 	}
 	claims := authmodel.AuthClaims{
-		Issuer: s.issuer, Audience: audience, Subject: user.ID,
+		Issuer: s.issuer, Audience: audience, Subject: user.UserID,
 		WorkspaceID: workspaceID, SessionID: sessionID,
 		AuthorizationRevision: principal.AuthorizationRevision,
 		AuthenticationTime:    authentication.AuthenticationTime, AuthenticationMethods: authentication.Methods, AssuranceLevel: authentication.AssuranceLevel,
@@ -119,13 +119,8 @@ func (s *AuthDomainService) prepareSessionForAudienceWithIDAndAuthentication(ctx
 	if err != nil {
 		return authmodel.AuthSession{}, identitymodel.AuthRefreshToken{}, internalError("generate refresh token", err)
 	}
-	refreshID, err := s.randomToken()
-	if err != nil {
-		return authmodel.AuthSession{}, identitymodel.AuthRefreshToken{}, internalError("generate refresh token identifier", err)
-	}
 	refreshRecord := identitymodel.AuthRefreshToken{
-		ID:                    "refresh_" + refreshID,
-		UserID:                user.ID,
+		UserID:                user.UserID,
 		SessionID:             sessionID,
 		Audience:              audience,
 		AuthenticationTime:    authentication.AuthenticationTime,
