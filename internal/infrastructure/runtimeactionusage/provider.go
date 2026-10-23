@@ -13,6 +13,7 @@ import (
 
 	actioncontract "github.com/domainry/domainry-foundation/action"
 	"github.com/domainry/domainry-foundation/requestcontext"
+	"github.com/domainry/domainry-foundation/telemetry"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 )
 
@@ -58,6 +59,7 @@ func New(options Options) (*Provider, error) {
 	if client == nil {
 		client = &http.Client{}
 	}
+	client = telemetry.InstrumentHTTPClient(client, "domainry.identity.runtime_action_usage")
 	return &Provider{endpoint: endpoint, requestTimeout: options.RequestTimeout, httpClient: client, tokenSource: options.TokenSource}, nil
 }
 
@@ -97,6 +99,7 @@ func (provider *Provider) QueryPermissionUsages(ctx context.Context, request act
 	}
 	requestContext, cancel := context.WithTimeout(ctx, provider.requestTimeout)
 	defer cancel()
+	requestContext = telemetry.WithHTTPClientOperation(requestContext, "runtime.action.permission_usages.query")
 	httpRequest, err := http.NewRequestWithContext(requestContext, http.MethodPost, provider.endpoint.String(), bytes.NewReader(body))
 	if err != nil {
 		return actioncontract.PermissionUsageSnapshot{}, fmt.Errorf("build Runtime Action usage request: %w", err)
@@ -105,9 +108,6 @@ func (provider *Provider) QueryPermissionUsages(ctx context.Context, request act
 	httpRequest.Header.Set("Content-Type", "application/json")
 	httpRequest.Header.Set("Accept", "application/json")
 	httpRequest.Header.Set("X-Workspace-ID", workspaceID)
-	if requestID := requestcontext.RequestID(ctx); requestID != "" {
-		httpRequest.Header.Set("X-Request-ID", requestID)
-	}
 	response, err := provider.httpClient.Do(httpRequest)
 	if err != nil {
 		return actioncontract.PermissionUsageSnapshot{}, fmt.Errorf("query Runtime Action usages: %w", err)

@@ -290,9 +290,6 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *identitycomposi
 		if principal.RequestID == "" {
 			principal.RequestID = requestcontext.RequestID(r.Context())
 		}
-		if principal.CorrelationID == "" {
-			principal.CorrelationID = requestcontext.CorrelationID(r.Context())
-		}
 		if !principal.Known && principal.UserID == "" {
 			principal.UserID = "anonymous"
 		}

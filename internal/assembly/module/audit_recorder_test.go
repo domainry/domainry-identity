@@ -17,12 +17,12 @@ func TestModuleAuditRecorderAppendsIdentityOwnedDenial(t *testing.T) {
 	err := recorder.Record(t.Context(), modulehttp.AuditEvent{
 		Event: "auth_api_denied", ObjectKey: "identity.user_role_assignments", RecordID: "target-1",
 		WorkspaceID: "workspace-a", ActorID: "coach-1", RoleKey: "coach", Summary: "Identity API permission denied",
-		Metadata: map[string]any{"request_id": "request-1", "correlation_id": "correlation-1", "result": "denied", "reason": "permission_denied"},
+		Metadata: map[string]any{"request_id": "request-1", "result": "denied", "reason": "permission_denied"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if captured.IdempotencyKey != "auth_api_denied:request-1" || captured.Event != "auth_api_denied" || captured.ObjectKey != "identity.user_role_assignments" || captured.RecordID != "target-1" || captured.Principal.WorkspaceID != "workspace-a" || captured.Principal.UserID != "coach-1" || captured.Principal.Role.Key != "coach" || captured.Principal.RequestID != "request-1" || captured.Principal.CorrelationID != "correlation-1" {
+	if captured.IdempotencyKey != "auth_api_denied:request-1" || captured.Event != "auth_api_denied" || captured.ObjectKey != "identity.user_role_assignments" || captured.RecordID != "target-1" || captured.Principal.WorkspaceID != "workspace-a" || captured.Principal.UserID != "coach-1" || captured.Principal.Role.Key != "coach" || captured.Principal.RequestID != "request-1" {
 		t.Fatalf("captured denial=%#v", captured)
 	}
 }

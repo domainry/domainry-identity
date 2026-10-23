@@ -7,6 +7,7 @@ import (
 
 	actioncontract "github.com/domainry/domainry-foundation/action"
 	"github.com/domainry/domainry-foundation/apperror"
+	"github.com/domainry/domainry-foundation/requestcontext"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
@@ -163,7 +164,7 @@ func TestDirectRolePermissionSelectionUsesCurrentRepositoryState(t *testing.T) {
 	}
 }
 
-func TestPermissionReconcileEmitsStableReceiptLogWithGeneratedRequestID(t *testing.T) {
+func TestPermissionReconcileEmitsStableReceiptLogWithGeneratedTraceID(t *testing.T) {
 	registry, err := NewStandaloneIdentityAuthorizationSliceRegistry()
 	if err != nil {
 		t.Fatal(err)
@@ -189,9 +190,9 @@ func TestPermissionReconcileEmitsStableReceiptLogWithGeneratedRequestID(t *testi
 	if fields["workspace_id"] != "workspace-primary" || fields["source_owner"] != IdentityBuiltinAuthorizationOwner || fields["snapshot_hash"] != receipt.SnapshotHash || fields["inserted"] != int64(100) {
 		t.Fatalf("reconcile log fields=%v", fields)
 	}
-	requestID, _ := fields["request_id"].(string)
-	if requestID == "" {
-		t.Fatalf("reconcile log has no request id: %v", fields)
+	traceID, _ := fields["trace_id"].(string)
+	if requestcontext.NormalizeTraceID(traceID) == "" || fields["request_id"] != nil {
+		t.Fatalf("reconcile log has invalid trace identity: %v", fields)
 	}
 }
 

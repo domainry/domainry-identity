@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/domainry/domainry-foundation/apperror"
@@ -24,7 +23,6 @@ type httpSupport struct {
 	auth                   *authapplication.AuthApplicationService
 	corsAllowedOrigins     map[string]struct{}
 	corsAllowAnyOrigin     bool
-	request                atomic.Uint64
 	writesFrozen           func(context.Context, string) (bool, error)
 	controls               *httpListenerControls
 	exposures              *routeExposureResolver
@@ -177,16 +175,19 @@ func (h *httpSupport) middleware(next http.Handler) http.Handler {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Vary", "Origin")
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
-			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Idempotency-Key, Builder-Task-ID, Expected-Schema-Hash, X-Request-ID, X-Workspace-ID")
+			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Idempotency-Key, Builder-Task-ID, Expected-Schema-Hash, Traceparent, Tracestate, Baggage, X-Request-ID, X-Workspace-ID")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		}
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		requestID := strings.TrimSpace(r.Header.Get("X-Request-ID"))
+		requestID := requestcontext.RequestID(r.Context())
 		if requestID == "" {
-			requestID = "identity-" + time.Now().UTC().Format("20060102T150405.000000000")
+			requestID = requestcontext.NormalizeTraceID(r.Header.Get("X-Request-ID"))
+			if requestID == "" {
+				requestID = requestcontext.NewRequestID()
+			}
 		}
 		workspaceID := strings.TrimSpace(r.Header.Get("X-Workspace-ID"))
 		if h.hostTokenVerifier != nil {

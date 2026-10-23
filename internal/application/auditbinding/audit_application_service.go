@@ -37,7 +37,7 @@ func identityPolicy() auditapplication.Policy[identitymodel.Principal, identitym
 			if principal.SystemScope.Valid() {
 				kind = "system"
 			}
-			return auditcontract.Actor{WorkspaceID: principal.WorkspaceID, SubjectID: principal.UserID, RoleKey: principal.Role.Key, Kind: kind, RequestID: principal.RequestID, CorrelationID: principal.CorrelationID, CausationID: principal.CausationID, AuthorizationRevision: principal.AuthorizationRevision}
+			return auditcontract.Actor{WorkspaceID: principal.WorkspaceID, SubjectID: principal.UserID, RoleKey: principal.Role.Key, Kind: kind, RequestID: principal.RequestID, CausationID: principal.CausationID, AuthorizationRevision: principal.AuthorizationRevision}
 		},
 		WorkspaceID: func(principal identitymodel.Principal) string { return principal.WorkspaceID },
 		ValidateCommand: func(principal identitymodel.Principal) error {

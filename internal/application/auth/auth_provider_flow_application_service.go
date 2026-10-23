@@ -146,7 +146,7 @@ func (s *AuthProviderFlowApplicationService) appendAuthenticationSuccess(ctx con
 	requestID, ctx := authenticationRequestID(ctx)
 	principal := identitymodel.Principal{
 		Known: true, WorkspaceID: session.WorkspaceID, UserID: session.User.UserID,
-		Role: identitymodel.RoleSchema{Key: session.DefaultRole}, RequestID: requestID, CorrelationID: requestcontext.CorrelationID(ctx),
+		Role: identitymodel.RoleSchema{Key: session.DefaultRole}, RequestID: requestID,
 	}
 	return s.appendAuthenticationAudit(ctx, AuthenticationAuditRequest{
 		IdempotencyKey: authenticationAuditIdempotencyKey("auth_login_succeeded", requestID),
@@ -167,7 +167,7 @@ func (s *AuthProviderFlowApplicationService) appendAuthenticationFailure(ctx con
 		Event:          "auth_login_failed", ObjectKey: "identity_login",
 		Principal: identitymodel.Principal{
 			WorkspaceID: strings.TrimSpace(workspaceID), UserID: "anonymous", RequestID: requestID,
-			Role: identitymodel.RoleSchema{Key: "anonymous"}, CorrelationID: requestcontext.CorrelationID(ctx), Known: false,
+			Role: identitymodel.RoleSchema{Key: "anonymous"}, Known: false,
 		},
 		Summary: "Authentication failed", Metadata: metadata,
 	})

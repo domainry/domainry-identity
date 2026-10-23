@@ -361,9 +361,6 @@ func (recorder moduleAuditRecorder) Record(ctx context.Context, event modulehttp
 	if value, ok := metadata["request_id"].(string); ok {
 		principal.RequestID = value
 	}
-	if value, ok := metadata["correlation_id"].(string); ok {
-		principal.CorrelationID = value
-	}
 	idempotencyKey := ""
 	if principal.RequestID != "" {
 		idempotencyKey = event.Event + ":" + principal.RequestID

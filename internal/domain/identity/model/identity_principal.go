@@ -24,7 +24,6 @@ type Principal struct {
 	ReportingScopeUserIDs []string
 	OrganizationPath      string
 	RequestID             string
-	CorrelationID         string
 	CausationID           string
 	Role                  RoleSchema
 	Known                 bool

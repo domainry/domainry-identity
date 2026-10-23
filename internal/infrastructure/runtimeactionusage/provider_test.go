@@ -12,7 +12,9 @@ import (
 
 	actioncontract "github.com/domainry/domainry-foundation/action"
 	"github.com/domainry/domainry-foundation/requestcontext"
+	"github.com/domainry/domainry-foundation/telemetry"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
+	"go.opentelemetry.io/otel"
 )
 
 type staticTokenSource struct {
@@ -25,6 +27,18 @@ func (source staticTokenSource) AccessToken(context.Context) (string, error) {
 }
 
 func TestProviderQueriesMultipleOwnersInOneAuthenticatedRequest(t *testing.T) {
+	previousProvider := otel.GetTracerProvider()
+	previousPropagator := otel.GetTextMapPropagator()
+	shutdown, err := telemetry.Initialize(t.Context(), telemetry.Config{ServiceName: "identity-test", Exporter: telemetry.ExporterDisabled})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = shutdown(context.Background())
+		otel.SetTracerProvider(previousProvider)
+		otel.SetTextMapPropagator(previousPropagator)
+	})
+
 	registry := actioncontract.NewRegistry()
 	if err := registry.Register(
 		testPermissionAction("orders.customers.list", "module:orders", "/orders/customers"),
@@ -41,7 +55,7 @@ func TestProviderQueriesMultipleOwnersInOneAuthenticatedRequest(t *testing.T) {
 		if request.Method != http.MethodPost || request.URL.Path != queryPath {
 			t.Errorf("request=%s %s", request.Method, request.URL.Path)
 		}
-		if request.Header.Get("Authorization") != "Bearer runtime-service-token" || request.Header.Get("X-Workspace-ID") != "workspace-a" || request.Header.Get("X-Request-ID") != "request-a" {
+		if request.Header.Get("Authorization") != "Bearer runtime-service-token" || request.Header.Get("X-Workspace-ID") != "workspace-a" || request.Header.Get("X-Request-ID") != "4bf92f3577b34da6a3ce929d0e0e4736" {
 			t.Errorf("headers=%v", request.Header)
 		}
 		var query actioncontract.PermissionUsageRequest
@@ -72,7 +86,7 @@ func TestProviderQueriesMultipleOwnersInOneAuthenticatedRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := requestcontext.WithWorkspaceID(t.Context(), "workspace-a")
-	ctx = requestcontext.WithRequestID(ctx, "request-a")
+	ctx = requestcontext.WithRequestID(ctx, "4bf92f3577b34da6a3ce929d0e0e4736")
 	ctx = identitysdk.WithRequestIdentity(ctx, identitysdk.RequestIdentity{
 		Principal:   identitysdk.Principal{Known: true, WorkspaceID: "workspace-a", UserID: "user-a"},
 		AccessToken: " caller-token ",

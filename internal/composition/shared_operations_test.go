@@ -32,7 +32,6 @@ func installAndBindTestSharedOperations(t *testing.T, core *Core, store *databas
 		failure_class TEXT NOT NULL DEFAULT '',
 		next_action TEXT NOT NULL DEFAULT '',
 		related_ids_json TEXT NOT NULL,
-		correlation TEXT NOT NULL DEFAULT '',
 		evidence_json TEXT NOT NULL,
 		lease_owner TEXT NOT NULL DEFAULT '',
 		lease_expires_at BIGINT NOT NULL DEFAULT 0,

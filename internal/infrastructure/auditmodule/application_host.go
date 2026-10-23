@@ -22,7 +22,7 @@ func NewApplicationHost(secret string) ApplicationHost {
 func (ApplicationHost) ResolveAuditPrincipal(_ context.Context, request auditmodulehost.AuditPrincipalRequest) (auditmodulehost.AuditPrincipal, error) {
 	return auditmodulehost.AuditPrincipal{
 		Identity: request.Identity, BusinessProfileKey: request.BusinessProfileKey, BusinessProfileID: request.BusinessProfileID,
-		RequestID: request.RequestID, CorrelationID: request.CorrelationID, AuthorizationRevision: request.Identity.AuthorizationRevision,
+		RequestID: request.RequestID, AuthorizationRevision: request.Identity.AuthorizationRevision,
 	}, nil
 }
 
