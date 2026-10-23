@@ -6,6 +6,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -190,11 +191,15 @@ func TestAuthProjectionSecurityFactsAndMFAValidationEdges(t *testing.T) {
 			t.Fatalf("projection failure %d was accepted", index)
 		}
 	}
-	repository, closeDB := scriptedAuthStore(base, &authDBState{querySteps: []authMutationQueryStep{{columns: columns, rows: [][]driver.Value{{"user", int64(1), int64(2), int64(2), true}}}}})
+	state := &authDBState{querySteps: []authMutationQueryStep{{columns: columns, rows: [][]driver.Value{{"user", int64(1), int64(2), int64(2), true}}}}}
+	repository, closeDB := scriptedAuthStore(base, state)
 	facts, err := repository.ListUserProjectionSecurityFacts(t.Context(), "workspace-primary", []string{" user "})
 	closeDB()
 	if err != nil || len(facts) != 1 || facts[0].UserID != "user" || facts[0].ActiveSessions != 2 || !facts[0].MFAEnabled {
 		t.Fatalf("facts=%#v err=%v", facts, err)
+	}
+	if !strings.Contains(state.lastQuery, "CASE WHEN") || strings.Count(state.lastQuery, "AS INTEGER") != 2 {
+		t.Fatalf("MFA projection must give both CASE results an explicit integer type: %s", state.lastQuery)
 	}
 
 	valid := identitymodel.IdentityMFAFactor{MFAFactorID: "factor", UserID: "user", Type: "totp", Status: "active"}
@@ -251,6 +256,7 @@ type authDBState struct {
 	execSteps  []authExecStep
 	beginErr   error
 	commitErr  error
+	lastQuery  string
 }
 type authConnector struct{ state *authDBState }
 
@@ -275,7 +281,8 @@ func (c *authConn) begin() (driver.Tx, error) {
 	}
 	return authTx{state: c.state}, nil
 }
-func (c *authConn) QueryContext(context.Context, string, []driver.NamedValue) (driver.Rows, error) {
+func (c *authConn) QueryContext(_ context.Context, statement string, _ []driver.NamedValue) (driver.Rows, error) {
+	c.state.lastQuery = statement
 	if len(c.state.querySteps) == 0 {
 		return &authRows{}, nil
 	}

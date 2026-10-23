@@ -140,7 +140,10 @@ func (s AuthStore) queryUserProjectionSecurityFacts(ctx context.Context, workspa
 			query.Project(query.Coalesce(query.ScalarSubquery("_identity_credentials", query.Column("locked_until"), credentialPredicate), query.Value(int64(0)))),
 			query.Project(query.Coalesce(query.ScalarSubquery("_identity_credentials", query.Column("last_login_at"), credentialPredicate), query.Value(int64(0)))),
 			query.Project(query.ScalarSubquery("_identity_auth_refresh_tokens", query.CountAll(), refreshPredicate)),
-			query.Project(query.CaseWhen(query.Exists("_identity_mfa_factors", mfaPredicate), 1).Else(0)),
+			query.Project(query.CaseWhen(
+				query.Exists("_identity_mfa_factors", mfaPredicate),
+				query.Cast(query.Value(1), "INTEGER"),
+			).Else(query.Cast(query.Value(0), "INTEGER"))),
 		).
 		Where(query.In("user_id", authStringValues(userIDs)...)).Build()
 	if err != nil {
