@@ -6,16 +6,17 @@ require (
 	github.com/beevik/etree v1.6.0
 	github.com/coreos/go-oidc/v3 v3.20.0
 	github.com/crewjam/saml v0.5.1
-	github.com/domainry/domainry-audit v0.1.40
-	github.com/domainry/domainry-audit-sdk v0.1.17
-	github.com/domainry/domainry-data-exchange-sdk v0.3.16
-	github.com/domainry/domainry-foundation v0.2.13
-	github.com/domainry/domainry-identity-sdk v0.1.34
-	github.com/domainry/domainry-metadata v0.1.34
-	github.com/domainry/domainry-metadata-sdk v0.1.15
+	github.com/domainry/domainry-audit v0.1.41
+	github.com/domainry/domainry-audit-sdk v0.1.18
+	github.com/domainry/domainry-data-exchange-sdk v0.3.17
+	github.com/domainry/domainry-foundation v0.2.14
+	github.com/domainry/domainry-identity-sdk v0.1.35
+	github.com/domainry/domainry-metadata v0.1.35
+	github.com/domainry/domainry-metadata-sdk v0.1.16
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/russellhaering/goxmldsig v1.6.0
+	go.opentelemetry.io/otel v1.45.0
 	go.uber.org/zap v1.27.1
 	golang.org/x/crypto v0.55.0
 	golang.org/x/oauth2 v0.36.0
@@ -25,7 +26,6 @@ require (
 require (
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/mattermost/xml-roundtrip-validator v0.1.0 // indirect
-	go.opentelemetry.io/otel v1.45.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.45.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.45.0 // indirect
 	go.opentelemetry.io/otel/trace v1.45.0 // indirect
