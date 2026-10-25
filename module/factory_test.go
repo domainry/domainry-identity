@@ -185,6 +185,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	t.Setenv("APP_DB_PATH", filepath.Join(t.TempDir(), "runtime-must-not-be-used.db"))
 	t.Setenv("TEMPLATE_MANIFEST", filepath.Join(projectRoot, "domainry.template.json"))
 	t.Setenv("AUTH_AUDIENCE", "must-not-win-over-host-application")
+	t.Setenv("IDENTITY_APPLICATION_SERVICE_CREDENTIALS", "workspace-primary/orders-runtime=orders-runtime-test-service-secret")
 	now := time.Now().UTC().Truncate(time.Second)
 	application := identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "orders-runtime"}
 	factory := testIdentityFactory(identitymodule.Options{IdentityVersion: "test", DatabaseDriver: "sqlite", DatabasePath: moduleDBPath, Clock: testClock{now: now}})
@@ -240,10 +241,10 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		t.Fatal("module Binding does not expose its HTTP Adapters")
 	}
 	adapters := httpProvider.HTTPAdapters()
-	if len(adapters) != 2 {
+	if len(adapters) != 3 {
 		t.Fatalf("HTTP adapter count=%d", len(adapters))
 	}
-	foundUsers, foundLogin := false, false
+	foundUsers, foundLogin, foundRemoteDiscovery, foundRemoteCredentialRoute := false, false, false, false
 	for _, adapter := range adapters {
 		if adapter == nil || adapter.Handler() == nil || adapter.ContractVersion() != identityhttpapi.ContractVersion {
 			t.Fatalf("invalid module HTTP Adapter %#v", adapter)
@@ -255,13 +256,22 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 			if route.Pattern() == "POST /auth/login" {
 				foundLogin = true
 			}
+			if route.Pattern() == "GET /identity/discovery" {
+				foundRemoteDiscovery = true
+			}
+			if route.Pattern() == "PUT /identity/applications/current" {
+				foundRemoteCredentialRoute = true
+				if route.Action.Authorization.Strategy != actioncontract.AuthorizationSigned || len(route.Action.Authorization.Audiences) != 0 {
+					t.Fatalf("embedded Remote SDK credential route authorization=%#v", route.Action.Authorization)
+				}
+			}
 			if route.Pattern() == "GET /health" {
 				t.Fatalf("standalone-only route leaked into module HTTP Adapter: %q", route.Pattern())
 			}
 		}
 	}
-	if !foundUsers || !foundLogin {
-		t.Fatalf("module adapters users=%v login=%v", foundUsers, foundLogin)
+	if !foundUsers || !foundLogin || !foundRemoteDiscovery || !foundRemoteCredentialRoute {
+		t.Fatalf("module adapters users=%v login=%v remote_discovery=%v remote_credential=%v", foundUsers, foundLogin, foundRemoteDiscovery, foundRemoteCredentialRoute)
 	}
 	mounted := http.NewServeMux()
 	mountedPatterns := map[string]string{}
@@ -276,6 +286,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		}
 	}
 	for pattern, wantExposure := range map[string]identityhttpapi.Exposure{
+		"GET /identity/discovery":                               identityhttpapi.ExposurePublic,
 		"GET /.well-known/jwks.json":                            identityhttpapi.ExposurePublic,
 		"GET /.well-known/openid-configuration":                 identityhttpapi.ExposurePublic,
 		"POST /auth/login":                                      identityhttpapi.ExposurePublic,
@@ -316,6 +327,19 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		if !foundExposure {
 			t.Fatalf("module route %q does not have exposure %q", pattern, wantExposure)
 		}
+	}
+	discovery := httptest.NewRecorder()
+	mounted.ServeHTTP(discovery, httptest.NewRequest(http.MethodGet, "/identity/discovery", nil))
+	if discovery.Code != http.StatusOK || !strings.Contains(discovery.Body.String(), `"mode":"saas"`) {
+		t.Fatalf("embedded Remote SDK discovery status=%d body=%s", discovery.Code, discovery.Body.String())
+	}
+	remoteRegistration := httptest.NewRecorder()
+	remoteRegistrationRequest := httptest.NewRequest(http.MethodPut, "/identity/applications/current", strings.NewReader(`{"application":{"workspace_id":"workspace-primary","application_key":"orders-runtime"}}`))
+	remoteRegistrationRequest.Header.Set("Authorization", "Bearer orders-runtime-test-service-secret")
+	remoteRegistrationRequest.Header.Set("Content-Type", "application/json")
+	mounted.ServeHTTP(remoteRegistration, remoteRegistrationRequest)
+	if remoteRegistration.Code != http.StatusOK {
+		t.Fatalf("embedded Remote SDK application registration status=%d body=%s", remoteRegistration.Code, remoteRegistration.Body.String())
 	}
 	if _, err := binding.Applications().Register(t.Context(), identitysdk.ApplicationRegistration{
 		Application: application, RedirectURLs: []string{"http://localhost:3100/auth/callback"},

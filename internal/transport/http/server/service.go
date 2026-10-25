@@ -13,6 +13,7 @@ import (
 	auditsdk "github.com/domainry/domainry-audit-sdk"
 	auditcontract "github.com/domainry/domainry-audit-sdk/contract"
 	actioncontract "github.com/domainry/domainry-foundation/action"
+	"github.com/domainry/domainry-foundation/modulehttp"
 	"github.com/domainry/domainry-foundation/requestcontext"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	"github.com/domainry/domainry-identity-sdk/browsergateway"
@@ -48,6 +49,7 @@ type Server struct {
 	identityManagementRoutes     []string
 	embeddedPublicAuthRoutes     []string
 	embeddedManagementAuthRoutes []string
+	remoteSDKRoutes              []string
 }
 
 type recordingRouteRegistrar struct {
@@ -452,6 +454,7 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *identitycomposi
 		identityManagementRoutes:     managementRoutes,
 		embeddedPublicAuthRoutes:     embeddedPublicAuthRoutes,
 		embeddedManagementAuthRoutes: embeddedManagementAuthRoutes,
+		remoteSDKRoutes:              append([]string(nil), remoteSDKRoutes.patterns...),
 	}, nil
 }
 
@@ -605,6 +608,41 @@ func (s *Server) EmbeddedManagementAuthRoutes() []string {
 		return nil
 	}
 	return append([]string(nil), s.embeddedManagementAuthRoutes...)
+}
+
+// EmbeddedRemoteSDKRoutes returns the canonical Remote SDK routes already
+// assembled over the embedded Identity core. The module host can mount these
+// routes without creating a second Identity service or reimplementing service
+// credential authentication.
+func (s *Server) EmbeddedRemoteSDKRoutes() ([]modulehttp.Route, error) {
+	if s == nil {
+		return nil, nil
+	}
+	routes := make([]modulehttp.Route, 0, len(s.remoteSDKRoutes))
+	for _, pattern := range s.remoteSDKRoutes {
+		method, routeTemplate, ok := strings.Cut(strings.TrimSpace(pattern), " ")
+		if !ok {
+			return nil, fmt.Errorf("Identity Remote SDK route pattern %q is invalid", pattern)
+		}
+		definition, found := s.actions.ResolveHTTP(method, routeTemplate)
+		if !found {
+			return nil, fmt.Errorf("Identity Remote SDK route %q has no canonical Action", pattern)
+		}
+		if definition.Authorization.Strategy == actioncontract.AuthorizationSigned {
+			// The Remote SDK handler authenticates the exact Workspace/application
+			// static credential through ApplicationCredentialRegistry. An embedded
+			// Runtime must not interpret the standalone descriptor audience marker
+			// as a Runtime-issued application-service token audience and wrap the
+			// route with a second, incompatible verifier.
+			definition.Authorization.Audiences = nil
+		}
+		route, err := modulehttp.RouteFromAction(definition)
+		if err != nil {
+			return nil, fmt.Errorf("project Identity Remote SDK route %q: %w", pattern, err)
+		}
+		routes = append(routes, route)
+	}
+	return routes, nil
 }
 func (s *Server) SDKBinding() identitysdk.Binding {
 	if s == nil || s.core == nil {

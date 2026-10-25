@@ -9,6 +9,7 @@ import (
 	actioncontract "github.com/domainry/domainry-foundation/action"
 	"github.com/domainry/domainry-foundation/httpresponse"
 	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
+	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
 type listenerClass string
@@ -175,6 +176,19 @@ func (resolver *routeExposureResolver) pattern(request *http.Request) (string, s
 		return "", ""
 	}
 	return method, routeTemplate
+}
+
+func (resolver *routeExposureResolver) action(request *http.Request) (identitymodel.IdentityActionDefinition, bool) {
+	if resolver == nil || resolver.actions == nil {
+		return identitymodel.IdentityActionDefinition{}, false
+	}
+	method, routeTemplate := resolver.pattern(request)
+	return resolver.actions.ResolveHTTP(method, routeTemplate)
+}
+
+func (resolver *routeExposureResolver) usesIdentityApplicationCredential(request *http.Request) bool {
+	action, found := resolver.action(request)
+	return found && action.Owner == "identity:remote-sdk" && action.Authorization.Strategy == actioncontract.AuthorizationSigned
 }
 
 // exposedOn reports whether the request's Action is exposed on the listener.

@@ -324,6 +324,26 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 		return nil, err
 	}
 	browserAdapter := modulehttptransport.NewAdapter("browser_authentication", browserMux, browserRoutes, auditRecorder)
+	remoteRoutes, err := managementServer.EmbeddedRemoteSDKRoutes()
+	if err != nil {
+		_ = identityRuntime.CloseContext(ctx)
+		return nil, fmt.Errorf("assemble Identity module Remote SDK adapter: %w", err)
+	}
+	ownedPatterns := make(map[string]struct{}, len(managementRoutes)+len(browserRoutes))
+	for _, route := range managementRoutes {
+		ownedPatterns[route.Pattern()] = struct{}{}
+	}
+	for _, route := range browserRoutes {
+		ownedPatterns[route.Pattern()] = struct{}{}
+	}
+	remoteOnlyRoutes := make([]identityhttpapi.Route, 0, len(remoteRoutes))
+	for _, route := range remoteRoutes {
+		if _, owned := ownedPatterns[route.Pattern()]; owned {
+			continue
+		}
+		remoteOnlyRoutes = append(remoteOnlyRoutes, route)
+	}
+	remoteAdapter := modulehttptransport.NewAdapter("identity_remote_sdk", managementServer.Routes(), remoteOnlyRoutes, auditRecorder)
 	portabilityRepository, err := portabilitypersistence.NewSQLRepository(store)
 	if err != nil {
 		_ = identityRuntime.CloseContext(ctx)
@@ -339,7 +359,7 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 		workflowWorkloads = workloadBinding.WorkflowWorkloads()
 	}
 	return &moduleBinding{
-		Binding: scopedBinding, runtime: identityRuntime, application: application, adapters: []identityhttpapi.Adapter{browserAdapter, managementAdapter},
+		Binding: scopedBinding, runtime: identityRuntime, application: application, adapters: []identityhttpapi.Adapter{browserAdapter, managementAdapter, remoteAdapter},
 		portability: &identityPortabilityDataExchangeProvider{service: portabilityService}, workspaceUsage: workspaceUsage,
 		workflowWorkloads: workflowWorkloads, initialCredentialRotation: initialCredentialRotationPolicyFromConfig(cfg.AuthInitialCredentialRotationRequired),
 	}, nil
@@ -450,9 +470,9 @@ func (binding *moduleBinding) HTTPAdapters() []identityhttpapi.Adapter {
 }
 
 // AuthorizationActions exposes Identity's complete canonical Action manifest
-// to an embedding Runtime. HTTPAdapters intentionally contains only mounted
-// browser/management routes; Identity also owns non-HTTP metadata use cases
-// whose Permission definitions must participate in the host registry.
+// to an embedding Runtime. HTTPAdapters contains browser, management and
+// Remote SDK routes; Identity also owns non-HTTP metadata use cases whose
+// Permission definitions must participate in the host registry.
 func (*moduleBinding) AuthorizationActions() ([]actioncontract.ActionDefinition, error) {
 	return identityapplicationinternal.IdentityBuiltinAuthorizationActions(), nil
 }

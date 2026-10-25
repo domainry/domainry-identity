@@ -190,7 +190,11 @@ func (h *httpSupport) middleware(next http.Handler) http.Handler {
 			}
 		}
 		workspaceID := strings.TrimSpace(r.Header.Get("X-Workspace-ID"))
-		if h.hostTokenVerifier != nil {
+		// Remote SDK service routes carry a source-owned static application
+		// credential in Authorization. Their handler validates its exact
+		// Workspace/application scope; treating that credential as an end-user
+		// JWT here would reject every valid embedded Remote SDK request first.
+		if h.hostTokenVerifier != nil && !h.exposures.usesIdentityApplicationCredential(r) {
 			token := authpolicy.AuthBearerToken(r.Header.Get("Authorization"))
 			if token != "" {
 				verified, err := h.hostTokenVerifier.Verify(r.Context(), identitysdk.VerifyTokenRequest{AccessToken: token})
