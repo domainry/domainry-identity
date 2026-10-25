@@ -59,7 +59,7 @@ func New(options Options) (*Provider, error) {
 	if client == nil {
 		client = &http.Client{}
 	}
-	client = telemetry.InstrumentHTTPClient(client, "domainry.identity.runtime_action_usage")
+	client = telemetry.InstrumentHTTPClientWithOptions(client, "domainry.identity.runtime_action_usage", telemetry.HTTPClientInstrumentationOptions{DisableDiagnosticContent: true})
 	return &Provider{endpoint: endpoint, requestTimeout: options.RequestTimeout, httpClient: client, tokenSource: options.TokenSource}, nil
 }
 

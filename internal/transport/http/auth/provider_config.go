@@ -13,13 +13,14 @@ import (
 	"time"
 
 	"github.com/domainry/domainry-foundation/apperror"
+	"github.com/domainry/domainry-foundation/telemetry"
 )
 
 var (
 	buildAuthProviderProbeRequest = func(method, url string, body io.Reader) (*http.Request, error) {
 		return http.NewRequest(method, url, body)
 	}
-	executeAuthProviderProbeRequest = (&http.Client{Timeout: 5 * time.Second}).Do
+	executeAuthProviderProbeRequest = telemetry.InstrumentHTTPClientWithOptions(&http.Client{Timeout: 5 * time.Second}, "domainry.identity.provider_probe", telemetry.HTTPClientInstrumentationOptions{DisableDiagnosticContent: true}).Do
 )
 
 func (h *AuthHandler) authProviders(w http.ResponseWriter, r *http.Request) {
@@ -170,6 +171,7 @@ func (h *AuthHandler) checkFeishuProviderConfig(config map[string]any) map[strin
 		return map[string]any{"status": "failed", "reason": "build_request_failed"}
 	}
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	req = req.WithContext(telemetry.WithHTTPClientOperation(req.Context(), "identity.feishu.configuration_probe"))
 	resp, err := executeAuthProviderProbeRequest(req)
 	if err != nil {
 		return map[string]any{"status": "failed", "reason": "request_failed", "error_code": apperror.CodeOf(err)}

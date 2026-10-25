@@ -14,10 +14,11 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/domainry/domainry-foundation/telemetry"
 	"golang.org/x/oauth2"
 )
 
-var callbackHTTPClient = &http.Client{Timeout: 8 * time.Second}
+var callbackHTTPClient = telemetry.InstrumentHTTPClientWithOptions(&http.Client{Timeout: 8 * time.Second}, "domainry.identity.provider", telemetry.HTTPClientInstrumentationOptions{DisableDiagnosticContent: true})
 
 // ExchangeOIDCCallback performs the provider-specific token and user-info
 // exchange without depending on HTTP transport request types.
@@ -50,7 +51,7 @@ func exchangeStandardOIDC(ctx context.Context, providerKey, code string, config 
 	if err != nil || parsedIssuer.Scheme != "https" || parsedIssuer.Host == "" || parsedIssuer.User != nil || parsedIssuer.Fragment != "" {
 		return authmodel.AuthExternalIdentityAssertion{}, fmt.Errorf("oidc issuer must be a canonical HTTPS URL")
 	}
-	providerContext := oidc.ClientContext(ctx, callbackHTTPClient)
+	providerContext := oidc.ClientContext(telemetry.WithHTTPClientOperation(ctx, "identity.oidc.exchange"), callbackHTTPClient)
 	discovered, err := oidc.NewProvider(providerContext, issuer)
 	if err != nil {
 		return authmodel.AuthExternalIdentityAssertion{}, fmt.Errorf("oidc discovery failed: %w", err)
@@ -234,6 +235,7 @@ func fetchFeishuUserInfo(ctx context.Context, token string, config authmodel.Aut
 }
 
 func executeJSON(req *http.Request, label string) (map[string]any, error) {
+	req = req.WithContext(telemetry.WithHTTPClientOperation(req.Context(), identityProviderHTTPOperation(label)))
 	resp, err := callbackHTTPClient.Do(req)
 	if err != nil {
 		return nil, err
@@ -250,6 +252,21 @@ func executeJSON(req *http.Request, label string) (map[string]any, error) {
 		return nil, err
 	}
 	return parsed, nil
+}
+
+func identityProviderHTTPOperation(label string) string {
+	switch label {
+	case "oidc token":
+		return "identity.oidc.token"
+	case "oidc userinfo":
+		return "identity.oidc.userinfo"
+	case "feishu token":
+		return "identity.feishu.token"
+	case "feishu user_info":
+		return "identity.feishu.userinfo"
+	default:
+		return "identity.provider.request"
+	}
 }
 
 func claimsFromMap(values map[string]any) map[string]string {

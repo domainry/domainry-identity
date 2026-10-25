@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/domainry/domainry-foundation/telemetry"
 	authmodel "github.com/domainry/domainry-identity/internal/domain/auth/model"
 )
 
@@ -47,6 +48,7 @@ func ExchangeAlipayMiniProgramCode(ctx context.Context, provider, code string, c
 	if endpoint == "" {
 		endpoint = alipayMiniProgramGatewayURL
 	}
+	ctx = telemetry.WithHTTPClientOperation(ctx, "identity.alipay.token")
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(values.Encode()))
 	if err != nil {
 		return authmodel.AuthExternalIdentityAssertion{}, err
