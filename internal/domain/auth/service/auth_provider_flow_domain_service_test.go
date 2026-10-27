@@ -76,24 +76,72 @@ func TestAuthProviderFlowUsesNeutralCallbackAdapterAfterConsumingState(t *testin
 	}
 }
 
-func TestFederatedCallbackDoesNotAutoCreateUnlinkedIdentityInChallengeWorkspace(t *testing.T) {
-	auth, identityRepository, _ := newFaultAuthDomainService()
+func TestFederatedCallbackAutoCreatesAndBindsUnlinkedIdentityInChallengeWorkspace(t *testing.T) {
+	auth, identityRepository, authRepository := newFaultAuthDomainService()
 	providers := NewAuthProviderDomainService([]map[string]any{{
 		"key": "oidc", "type": "oidc", "enabled": true,
 		"auth_url": "https://id.example/auth", "client_id": "client", "redirect_url": "https://app.example/callback",
-		"auto_create_users": true,
+		"auto_create_users": true, "default_role_key": "sales",
 	}}, true)
 	flows := NewAuthProviderFlowDomainService(auth, providers)
 	started, err := flows.Start(t.Context(), "workspace-application", "oidc", "GET", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertion := authmodel.AuthExternalIdentityAssertion{Provider: "oidc", Subject: "unlinked-subject", Email: "unlinked@example.test"}
+	assertion := authmodel.AuthExternalIdentityAssertion{Provider: "oidc", Subject: "unlinked-subject", Email: "unlinked@example.test", DisplayName: "Unlinked User", ProviderSubjectVerified: true}
+	session, err := flows.ExchangeAndCompleteCallback(t.Context(), "workspace-application", "oidc", started.State, authmodel.AuthProviderCallbackInput{}, assertionAdapter{assertion: assertion})
+	if err != nil || session.User.Email != assertion.Email || session.User.Name != assertion.DisplayName {
+		t.Fatalf("session=%#v err=%v", session, err)
+	}
+	if len(identityRepository.users) != 1 || len(authRepository.accounts) != 1 || authRepository.accounts[0].UserID != identityRepository.users[0].UserID || authRepository.accounts[0].ProviderSubject != assertion.Subject {
+		t.Fatalf("users=%#v accounts=%#v", identityRepository.users, authRepository.accounts)
+	}
+	if len(identityRepository.roleAssignments) != 1 || identityRepository.roleAssignments[0].UserID != identityRepository.users[0].UserID || identityRepository.roleAssignments[0].RoleID != "role-sales" {
+		t.Fatalf("role assignments=%#v", identityRepository.roleAssignments)
+	}
+}
+
+func TestFederatedCallbackAutoBindsExistingUserByEmail(t *testing.T) {
+	auth, identityRepository, authRepository := newFaultAuthDomainService()
+	identityRepository.users = []identitymodel.IdentityUser{activeExternalIdentityUser("existing-user", "existing@example.test")}
+	providers := NewAuthProviderDomainService([]map[string]any{{
+		"key": "feishu", "type": "oidc", "enabled": true,
+		"auth_url": "https://accounts.feishu.cn/open-apis/authen/v1/authorize", "client_id": "client", "redirect_url": "https://app.example/callback",
+		"auto_create_users": true,
+	}}, true)
+	flows := NewAuthProviderFlowDomainService(auth, providers)
+	started, err := flows.Start(t.Context(), "workspace-application", "feishu", "GET", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertion := authmodel.AuthExternalIdentityAssertion{Provider: "feishu", Subject: "feishu-subject", Email: "existing@example.test", ProviderSubjectVerified: true}
+	session, err := flows.ExchangeAndCompleteCallback(t.Context(), "workspace-application", "feishu", started.State, authmodel.AuthProviderCallbackInput{}, assertionAdapter{assertion: assertion})
+	if err != nil || session.User.UserID != "existing-user" {
+		t.Fatalf("session=%#v err=%v", session, err)
+	}
+	if len(identityRepository.users) != 1 || len(authRepository.accounts) != 1 || authRepository.accounts[0].UserID != "existing-user" || authRepository.accounts[0].ProviderSubject != assertion.Subject {
+		t.Fatalf("users=%#v accounts=%#v", identityRepository.users, authRepository.accounts)
+	}
+}
+
+func TestFederatedCallbackRejectsUnlinkedIdentityWhenAutoCreateIsDisabled(t *testing.T) {
+	auth, identityRepository, authRepository := newFaultAuthDomainService()
+	providers := NewAuthProviderDomainService([]map[string]any{{
+		"key": "oidc", "type": "oidc", "enabled": true,
+		"auth_url": "https://id.example/auth", "client_id": "client", "redirect_url": "https://app.example/callback",
+		"auto_create_users": false,
+	}}, false)
+	flows := NewAuthProviderFlowDomainService(auth, providers)
+	started, err := flows.Start(t.Context(), "workspace-application", "oidc", "GET", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertion := authmodel.AuthExternalIdentityAssertion{Provider: "oidc", Subject: "unlinked-subject", Email: "unlinked@example.test", ProviderSubjectVerified: true}
 	if _, err := flows.ExchangeAndCompleteCallback(t.Context(), "workspace-application", "oidc", started.State, authmodel.AuthProviderCallbackInput{}, assertionAdapter{assertion: assertion}); authProviderTestErrorCode(err) != "auth.external_account_unlinked" {
 		t.Fatalf("unlinked callback error=%v", err)
 	}
-	if len(identityRepository.users) != 0 {
-		t.Fatalf("unlinked federated identity created users=%#v", identityRepository.users)
+	if len(identityRepository.users) != 0 || len(authRepository.accounts) != 0 {
+		t.Fatalf("users=%#v accounts=%#v", identityRepository.users, authRepository.accounts)
 	}
 }
 

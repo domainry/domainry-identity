@@ -469,7 +469,11 @@ func (s *AuthProviderFlowDomainService) ExchangeAndCompleteCallbackWithChallenge
 		return authmodel.AuthSession{}, challenge, err
 	}
 	if !found {
-		return authmodel.AuthSession{}, challenge, forbidden("auth.external_account_unlinked")
+		policy := s.providers.AuthExternalLoginPolicy(ctx, config)
+		if !policy.AutoCreateUsers {
+			return authmodel.AuthSession{}, challenge, forbidden("auth.external_account_unlinked")
+		}
+		resolvedWorkspaceID = challenge.WorkspaceID
 	}
 	resolvedContext := requestcontext.WithWorkspaceID(ctx, resolvedWorkspaceID)
 	if strings.EqualFold(config.Type, "saml") {

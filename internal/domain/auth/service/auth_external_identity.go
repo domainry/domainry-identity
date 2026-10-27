@@ -351,7 +351,9 @@ func externalAutoAssignableRole(role identitymodel.RoleSchema) bool {
 	if risk == "" {
 		risk = identitymodel.IdentityRoleRiskNormal
 	}
-	return mode == identitymodel.IdentityRoleAssignmentManual && audience == identitymodel.IdentityRoleAudienceAny && risk == identitymodel.IdentityRoleRiskNormal
+	return mode == identitymodel.IdentityRoleAssignmentManual &&
+		(audience == identitymodel.IdentityRoleAudienceAny || audience == identitymodel.IdentityRoleAudienceUser) &&
+		risk == identitymodel.IdentityRoleRiskNormal
 }
 
 func (s *AuthDomainService) ensureExternalDefaultRole(ctx context.Context, userID, defaultRoleKey string) error {
