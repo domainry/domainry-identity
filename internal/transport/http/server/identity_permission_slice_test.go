@@ -23,7 +23,7 @@ import (
 	httpserver "github.com/domainry/domainry-identity/internal/transport/http/server"
 )
 
-func TestStandalonePermissionAPIProjectsDatabaseStateAndActionBindingsWithRoleEnforcement(t *testing.T) {
+func TestStandalonePermissionAPIReturnsOnlyRoleAuthoringChoicesWithRoleEnforcement(t *testing.T) {
 	_, sourceFile, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("resolve server test source")
@@ -62,29 +62,20 @@ func TestStandalonePermissionAPIProjectsDatabaseStateAndActionBindingsWithRoleEn
 		t.Fatal(err)
 	}
 	expectedPermissions := registry.OwnedPermissionDefinitions(identityapplication.IdentityBuiltinAuthorizationOwner)
-	if len(expectedPermissions) != 100 || len(permissions) != 105 {
-		t.Fatalf("database permission count=%d Identity owner registry count=%d", len(permissions), len(expectedPermissions))
+	var persistedPermissionCount int
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _identity_permissions`).Scan(&persistedPermissionCount); err != nil {
+		t.Fatal(err)
 	}
-	ownerCounts := map[string]int{}
+	if len(expectedPermissions) != 100 || persistedPermissionCount != 105 {
+		t.Fatalf("persisted permission count=%d Identity owner registry count=%d", persistedPermissionCount, len(expectedPermissions))
+	}
+	if len(permissions) != 0 {
+		t.Fatalf("standalone management catalog exposed non-direct permissions: %#v", permissions)
+	}
 	for _, permission := range permissions {
-		ownerCounts[permission.SourceOwner]++
-		if permission.DefinitionStatus != identitymodel.IdentityPermissionDefinitionActive || !permission.Enabled || len(permission.ActionUsages) == 0 {
+		if permission.GrantMode != string(actioncontract.PermissionGrantDirect) || permission.DefinitionStatus != identitymodel.IdentityPermissionDefinitionActive || !permission.Enabled || permission.ActionUsageStatus != identitymodel.IdentityActionUsageAvailable || len(permission.ActionUsages) == 0 {
 			t.Fatalf("permission projection=%+v", permission)
 		}
-		for _, usage := range permission.ActionUsages {
-			if usage.ActionKey != permission.Key || usage.CapabilityKey == "" || usage.OperationKey == "" {
-				t.Fatalf("incomplete live action usage=%+v", usage)
-			}
-			if permission.SourceOwner == identityapplication.IdentityBuiltinAuthorizationOwner {
-				action, found := registry.Definition(usage.ActionKey)
-				if !found || action.HTTP != nil && (usage.HTTPMethod == "" || usage.RouteTemplate == "") || action.HTTP == nil && (usage.HTTPMethod != "" || usage.RouteTemplate != "") {
-					t.Fatalf("permission usage does not match registered Action: permission=%+v action=%+v", permission, action)
-				}
-			}
-		}
-	}
-	if ownerCounts[identityapplication.IdentityBuiltinAuthorizationOwner] != 100 || ownerCounts["module:audit"] != 5 {
-		t.Fatalf("permission owner counts=%v", ownerCounts)
 	}
 
 	repository, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceEngine())
@@ -203,7 +194,6 @@ func TestStandalonePermissionAPIQueriesRemoteRuntimeUsageWithoutPersistingIt(t *
 	if _, err := identityServer.SDKBinding().Permissions().Reconcile(t.Context(), reconcile); err != nil {
 		t.Fatal(err)
 	}
-
 	identityHTTP := httptest.NewServer(identityServer.Routes())
 	defer identityHTTP.Close()
 	adminToken := loginAccessToken(t, identityHTTP)
@@ -255,9 +245,10 @@ func TestStandalonePermissionAPIQueriesRemoteRuntimeUsageWithoutPersistingIt(t *
 
 	runtimeAvailable.Store(false)
 	unavailableResponse := permissionCatalogRequest(t, identityHTTP, adminToken)
-	unavailable := permissionDefinitionByKey(t, decodePermissionDefinitions(t, unavailableResponse), externalAction.Key)
-	if unavailable.ActionUsageStatus != identitymodel.IdentityActionUsageUnavailable || len(unavailable.ActionUsages) != 0 {
-		t.Fatalf("unreachable owner reused persisted usage=%+v", unavailable)
+	for _, permission := range decodePermissionDefinitions(t, unavailableResponse) {
+		if permission.Key == externalAction.Key {
+			t.Fatalf("unreachable permission remained in role-authoring catalog: %+v", permission)
+		}
 	}
 	if runtimeCalls.Load() != 2 {
 		t.Fatalf("Runtime query calls=%d want=2", runtimeCalls.Load())
@@ -505,12 +496,14 @@ func decodePermissionDefinitions(t *testing.T, response *http.Response) []identi
 
 func permissionDefinitionByKey(t *testing.T, permissions []identitymodel.IdentityPermissionDefinition, key string) identitymodel.IdentityPermissionDefinition {
 	t.Helper()
+	keys := make([]string, 0, len(permissions))
 	for _, permission := range permissions {
+		keys = append(keys, permission.Key)
 		if permission.Key == key {
 			return permission
 		}
 	}
-	t.Fatalf("permission %q not found", key)
+	t.Fatalf("permission %q not found in %v", key, keys)
 	return identitymodel.IdentityPermissionDefinition{}
 }
 

@@ -16,7 +16,7 @@ func (h *IdentityHandler) listIdentityPermissions(w http.ResponseWriter, r *http
 		h.writeJSON(w, http.StatusOK, h.localizedIdentityPermissions(r, h.menus.ListPermissions(r.Context())))
 		return
 	}
-	permissions, err := h.permissionCatalog.List(r.Context())
+	permissions, err := h.permissionCatalog.ListRoleAuthoringPermissions(r.Context())
 	if err != nil {
 		h.writeServiceError(w, r, err)
 		return
@@ -149,12 +149,15 @@ func (h *IdentityHandler) localizedIdentityPermissions(r *http.Request, permissi
 	if locale == "" {
 		return permissions
 	}
+	out := append([]identitymodel.IdentityPermissionDefinition(nil), permissions...)
+	for index := range out {
+		applyIdentityPermissionDefinitionLocale(&out[index], locale)
+	}
 	values, err := h.localization.LocalizedTextsForLocale(r.Context(), requestcontext.WorkspaceID(r.Context()), locale)
 	if err != nil || len(values) == 0 {
-		return permissions
+		return out
 	}
 	lookup := identityLocalizedTextLookup(values)
-	out := append([]identitymodel.IdentityPermissionDefinition(nil), permissions...)
 	for index := range out {
 		permission := &out[index]
 		if label := lookup[identityLocalizedTextLookupKey("permission", permission.Key, "label")]; label != "" {
@@ -170,6 +173,47 @@ func (h *IdentityHandler) localizedIdentityPermissions(r *http.Request, permissi
 		}
 	}
 	return out
+}
+
+// PermissionDefinition localization is source-owned and travels with the
+// permission catalog. Workspace metadata remains an optional override, not
+// the primary translation store for Runtime and module permissions.
+func applyIdentityPermissionDefinitionLocale(permission *identitymodel.IdentityPermissionDefinition, locale string) {
+	text, found := identityPermissionTextForLocale(permission.I18n, locale)
+	if !found {
+		return
+	}
+	if text.Label != "" {
+		permission.Label = text.Label
+	}
+	if text.ResourceLabel != "" {
+		permission.ResourceLabel = text.ResourceLabel
+	}
+	if text.OperationLabel != "" {
+		permission.ActionLabel = text.OperationLabel
+	}
+	if text.Description != "" {
+		permission.Description = text.Description
+	}
+}
+
+func identityPermissionTextForLocale(values identitymodel.IdentityPermissionLocalizedText, locale string) (identitymodel.IdentityPermissionText, bool) {
+	normalized := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(locale), "_", "-"))
+	if normalized == "" {
+		return identitymodel.IdentityPermissionText{}, false
+	}
+	candidates := []string{normalized}
+	if separator := strings.IndexByte(normalized, '-'); separator > 0 {
+		candidates = append(candidates, normalized[:separator])
+	}
+	for _, candidate := range candidates {
+		for key, text := range values {
+			if strings.ToLower(strings.ReplaceAll(strings.TrimSpace(key), "_", "-")) == candidate {
+				return text, true
+			}
+		}
+	}
+	return identitymodel.IdentityPermissionText{}, false
 }
 
 func identityLocalizedTextLookup(values []metadatamodel.LocalizedText) map[string]string {

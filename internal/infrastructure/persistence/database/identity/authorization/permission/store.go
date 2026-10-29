@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	actioncontract "github.com/domainry/domainry-foundation/action"
 	"github.com/domainry/domainry-foundation/apperror"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/timevalue"
@@ -45,6 +46,25 @@ func (store *Store) List(ctx context.Context, workspaceID string) ([]identitymod
 	statement, arguments, err := permissionListBuilder(store.backend.SQLRenderer()).Build()
 	if err != nil {
 		return nil, fmt.Errorf("build Identity permission list: %w", err)
+	}
+	rows, err := store.backend.QueryIdentityContext(ctx, statement, arguments...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanPermissionDefinitions(rows)
+}
+
+func (store *Store) ListRoleAuthoring(ctx context.Context, workspaceID string) ([]identitymodel.IdentityPermissionDefinitionRecord, error) {
+	_ = workspaceID
+	statement, arguments, err := permissionListBuilder(store.backend.SQLRenderer()).
+		Where(query.And(
+			query.Equal("grant_mode", string(actioncontract.PermissionGrantDirect)),
+			query.Equal("definition_status", identitymodel.IdentityPermissionDefinitionActive),
+			query.Equal("enabled", true),
+		)).Build()
+	if err != nil {
+		return nil, fmt.Errorf("build Identity role-authoring permission list: %w", err)
 	}
 	rows, err := store.backend.QueryIdentityContext(ctx, statement, arguments...)
 	if err != nil {

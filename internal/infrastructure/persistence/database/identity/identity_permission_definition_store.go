@@ -15,6 +15,10 @@ func (store *SQLIdentityStore) ListIdentityPermissionDefinitions(ctx context.Con
 	return store.permissionDefinitionStore().List(ctx, workspaceID)
 }
 
+func (store *SQLIdentityStore) ListIdentityRoleAuthoringPermissionDefinitions(ctx context.Context, workspaceID string) ([]identitymodel.IdentityPermissionDefinitionRecord, error) {
+	return store.permissionDefinitionStore().ListRoleAuthoring(ctx, workspaceID)
+}
+
 func (store *SQLIdentityStore) GetIdentityPermissionDefinition(ctx context.Context, workspaceID, permissionKey string) (identitymodel.IdentityPermissionDefinitionRecord, bool, error) {
 	return store.permissionDefinitionStore().Get(ctx, workspaceID, permissionKey)
 }

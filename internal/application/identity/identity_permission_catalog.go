@@ -443,6 +443,34 @@ func (service *IdentityPermissionCatalogApplicationService) List(ctx context.Con
 	return out, nil
 }
 
+// ListRoleAuthoringPermissions returns the permission choices that an
+// administrator can actually add to a tenant-owned role. Bundled permissions
+// belong to source-owned role definitions and internal permissions belong to
+// platform principals; exposing either class in the authoring catalog creates
+// controls that can only fail at the command boundary.
+//
+// List deliberately remains the complete runtime catalog used by validation,
+// enablement, effective-access projection and authorization diagnostics.
+func (service *IdentityPermissionCatalogApplicationService) ListRoleAuthoringPermissions(ctx context.Context) ([]identitymodel.IdentityPermissionDefinition, error) {
+	records, err := service.repository.ListIdentityRoleAuthoringPermissionDefinitions(ctx, service.workspace)
+	if err != nil {
+		return nil, err
+	}
+	resolved := service.resolveActionUsages(ctx, records)
+	visible := make([]identitymodel.IdentityPermissionDefinition, 0, len(records))
+	for _, record := range records {
+		definition := service.projectDefinitionWithUsage(record, resolved[record.PermissionKey])
+		if definition.GrantMode != string(actioncontract.PermissionGrantDirect) ||
+			definition.DefinitionStatus != identitymodel.IdentityPermissionDefinitionActive ||
+			!definition.Enabled ||
+			definition.ActionUsageStatus != identitymodel.IdentityActionUsageAvailable {
+			continue
+		}
+		visible = append(visible, definition)
+	}
+	return visible, nil
+}
+
 func (service *IdentityPermissionCatalogApplicationService) projectDefinition(record identitymodel.IdentityPermissionDefinitionRecord) identitymodel.IdentityPermissionDefinition {
 	resolution := identityActionUsageResolution{
 		available: service.registry.PermissionUsageAvailable(record.SourceOwner),

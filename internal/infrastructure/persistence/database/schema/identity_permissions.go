@@ -18,6 +18,7 @@ type identityPermissionIndexSpec struct {
 
 var identityPermissionIndexSpecs = []identityPermissionIndexSpec{
 	{name: "idx_identity_permissions_state", columns: []string{"definition_status", "enabled"}},
+	{name: "idx_identity_permissions_role_authoring", columns: []string{"grant_mode", "definition_status", "enabled", "permission_key"}},
 	{name: "idx_identity_permissions_source_owner", columns: []string{"source_owner"}},
 }
 

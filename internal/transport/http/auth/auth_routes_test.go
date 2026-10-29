@@ -63,6 +63,16 @@ func (repository *authRoutePermissionRepository) ListIdentityPermissionDefinitio
 	return slices.Clone(repository.records), nil
 }
 
+func (repository *authRoutePermissionRepository) ListIdentityRoleAuthoringPermissionDefinitions(context.Context, string) ([]identitymodel.IdentityPermissionDefinitionRecord, error) {
+	visible := make([]identitymodel.IdentityPermissionDefinitionRecord, 0, len(repository.records))
+	for _, record := range repository.records {
+		if record.GrantMode == "direct" && record.DefinitionStatus == identitymodel.IdentityPermissionDefinitionActive && record.Enabled {
+			visible = append(visible, record)
+		}
+	}
+	return visible, nil
+}
+
 func (*authRoutePermissionRepository) GetIdentityPermissionDefinition(context.Context, string, string) (identitymodel.IdentityPermissionDefinitionRecord, bool, error) {
 	return identitymodel.IdentityPermissionDefinitionRecord{}, false, nil
 }

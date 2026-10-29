@@ -135,6 +135,30 @@ func TestIdentityMenuAndPermissionLocalization(t *testing.T) {
 	}
 }
 
+func TestIdentityPermissionLocalizationUsesSourceOwnedCatalogText(t *testing.T) {
+	handler, _ := newIdentityHTTPHandler(&identityHTTPRepository{})
+	handler.localization = metadataapplication.NewMetadataApplicationService(metadataapplication.MetadataApplicationDependencies{Repository: &identityLocalizationRepository{}})
+	permissions := []identitymodel.IdentityPermissionDefinition{{
+		Key: "customer.read", Label: "Default", ResourceLabel: "default resource", ActionLabel: "default action", Description: "default description",
+		I18n: identitymodel.IdentityPermissionLocalizedText{
+			"zh-CN": {Label: "客户 · 查看", ResourceLabel: "客户", OperationLabel: "查看", Description: "查看客户"},
+			"en":    {Label: "Accounts · View", ResourceLabel: "Accounts", OperationLabel: "View", Description: "View accounts"},
+		},
+	}}
+
+	english := handler.localizedIdentityPermissions(mustIdentityMenuRequest(t, "/identity/permissions?locale=en-US"), permissions)
+	if got := english[0]; got.Label != "Accounts · View" || got.ResourceLabel != "Accounts" || got.ActionLabel != "View" || got.Description != "View accounts" {
+		t.Fatalf("English permission localization = %#v", got)
+	}
+	chinese := handler.localizedIdentityPermissions(mustIdentityMenuRequest(t, "/identity/permissions?locale=zh_CN"), permissions)
+	if got := chinese[0]; got.Label != "客户 · 查看" || got.ResourceLabel != "客户" || got.ActionLabel != "查看" || got.Description != "查看客户" {
+		t.Fatalf("Chinese permission localization = %#v", got)
+	}
+	if permissions[0].Label != "Default" || permissions[0].ResourceLabel != "default resource" {
+		t.Fatalf("source permission mutated = %#v", permissions[0])
+	}
+}
+
 func mustIdentityMenuRequest(t *testing.T, target string) *http.Request {
 	t.Helper()
 	_, request := identityRoleRequest(http.MethodGet, target, "", nil)

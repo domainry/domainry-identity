@@ -57,6 +57,16 @@ func (repository *permissionCatalogRepositoryStub) ListIdentityPermissionDefinit
 	return slices.Clone(repository.records), nil
 }
 
+func (repository *permissionCatalogRepositoryStub) ListIdentityRoleAuthoringPermissionDefinitions(context.Context, string) ([]identitymodel.IdentityPermissionDefinitionRecord, error) {
+	visible := make([]identitymodel.IdentityPermissionDefinitionRecord, 0, len(repository.records))
+	for _, record := range repository.records {
+		if record.GrantMode == string(actioncontract.PermissionGrantDirect) && record.DefinitionStatus == identitymodel.IdentityPermissionDefinitionActive && record.Enabled {
+			visible = append(visible, record)
+		}
+	}
+	return visible, nil
+}
+
 func (repository *permissionCatalogRepositoryStub) GetIdentityPermissionDefinition(_ context.Context, _ string, key string) (identitymodel.IdentityPermissionDefinitionRecord, bool, error) {
 	for _, record := range repository.records {
 		if record.PermissionKey == key {
@@ -352,6 +362,52 @@ func TestPermissionCatalogQueriesExternalActionUsageWithoutPersistingIt(t *testi
 	}
 	if current := service.PermissionDefinitions()["customer.read"]; current.ActionUsageStatus != identitymodel.IdentityActionUsageUnavailable || len(current.ActionUsages) != 0 {
 		t.Fatalf("live usage leaked into current permission state: %#v", current)
+	}
+}
+
+func TestRoleAuthoringPermissionCatalogReturnsOnlyCurrentDirectChoices(t *testing.T) {
+	registry := identityTestAuthorizationRegistryWithDirectPermission(t)
+	repository := &permissionCatalogRepositoryStub{}
+	service, err := NewIdentityPermissionCatalogApplicationService(repository, registry, "workspace")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.ReconcileOwner(t.Context(), IdentityBuiltinAuthorizationOwner); err != nil {
+		t.Fatal(err)
+	}
+
+	directKey := identityTestDirectBusinessPermission
+	for index := range repository.records {
+		if repository.records[index].PermissionKey == directKey {
+			continue
+		}
+		if repository.records[index].GrantMode == string(actioncontract.PermissionGrantDirect) {
+			repository.records[index].Enabled = false
+		}
+	}
+
+	visible, err := service.ListRoleAuthoringPermissions(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(visible) != 1 || visible[0].Key != directKey {
+		t.Fatalf("role authoring permissions = %#v", visible)
+	}
+	for _, permission := range visible {
+		if permission.GrantMode != string(actioncontract.PermissionGrantDirect) ||
+			permission.DefinitionStatus != identitymodel.IdentityPermissionDefinitionActive ||
+			!permission.Enabled ||
+			permission.ActionUsageStatus != identitymodel.IdentityActionUsageAvailable {
+			t.Fatalf("non-authorable permission leaked into management catalog: %#v", permission)
+		}
+	}
+
+	complete, err := service.List(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(complete) <= len(visible) {
+		t.Fatalf("complete runtime catalog was narrowed: complete=%d visible=%d", len(complete), len(visible))
 	}
 }
 

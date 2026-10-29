@@ -692,6 +692,16 @@ func (r *identityHTTPPermissionRepository) ListIdentityPermissionDefinitions(con
 	return append([]identitymodel.IdentityPermissionDefinitionRecord(nil), r.records...), nil
 }
 
+func (r *identityHTTPPermissionRepository) ListIdentityRoleAuthoringPermissionDefinitions(context.Context, string) ([]identitymodel.IdentityPermissionDefinitionRecord, error) {
+	visible := make([]identitymodel.IdentityPermissionDefinitionRecord, 0, len(r.records))
+	for _, record := range r.records {
+		if record.GrantMode == "direct" && record.DefinitionStatus == identitymodel.IdentityPermissionDefinitionActive && record.Enabled {
+			visible = append(visible, record)
+		}
+	}
+	return visible, nil
+}
+
 func (r *identityHTTPPermissionRepository) GetIdentityPermissionDefinition(_ context.Context, _ string, key string) (identitymodel.IdentityPermissionDefinitionRecord, bool, error) {
 	for _, record := range r.records {
 		if record.PermissionKey == key {

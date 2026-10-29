@@ -11,6 +11,10 @@ import (
 // second permission-definition implementation.
 type IdentityPermissionDefinitionRepository interface {
 	ListIdentityPermissionDefinitions(context.Context, string) ([]identitymodel.IdentityPermissionDefinitionRecord, error)
+	// ListIdentityRoleAuthoringPermissionDefinitions applies the persisted
+	// authoring predicates in storage. Runtime Action availability remains an
+	// application-layer concern because it is not persisted by Identity.
+	ListIdentityRoleAuthoringPermissionDefinitions(context.Context, string) ([]identitymodel.IdentityPermissionDefinitionRecord, error)
 	GetIdentityPermissionDefinition(context.Context, string, string) (identitymodel.IdentityPermissionDefinitionRecord, bool, error)
 	// SetIdentityPermissionDefinitionEnabled returns true only when an active
 	// definition changed state. Missing, retired, and idempotent requests return

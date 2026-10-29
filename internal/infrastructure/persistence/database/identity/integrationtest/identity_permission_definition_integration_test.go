@@ -3,6 +3,7 @@ package identity_test
 import (
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	actioncontract "github.com/domainry/domainry-foundation/action"
@@ -90,6 +91,86 @@ func TestStandalonePermissionReconcileIsIdempotentAndSurvivesRestart(t *testing.
 		if definition.DefinitionStatus != identitymodel.IdentityPermissionDefinitionActive {
 			t.Fatalf("permission %q status=%q", definition.PermissionKey, definition.DefinitionStatus)
 		}
+	}
+}
+
+func TestRoleAuthoringPermissionListFiltersPersistedState(t *testing.T) {
+	store, err := database.OpenContext(t.Context(), config.Config{DatabaseDriver: "sqlite", DBPath: filepath.Join(t.TempDir(), "identity-role-authoring-permissions.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.EnsureSchema(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	repository, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceEngine())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const owner = "application:test"
+	const snapshot = "snapshot-role-authoring"
+	definition := func(resource, operation, grantMode string) identitymodel.IdentityPermissionDefinitionRecord {
+		key := resource + "." + operation
+		label := resource + " " + operation
+		return identitymodel.IdentityPermissionDefinitionRecord{
+			PermissionKey: key, ModuleKey: "test", GroupKey: resource, ResourceKey: resource, OperationKey: operation,
+			Label: label, Category: "Test", SourceKind: "test", SourceOwner: owner, GrantMode: grantMode,
+			ScopeKind: string(actioncontract.PermissionScopeNone), DefaultLocale: "en",
+			I18n: identitymodel.IdentityPermissionLocalizedText{"en": {
+				ModuleLabel: "Test", GroupLabel: resource, ResourceLabel: resource, OperationLabel: operation, Label: label,
+			}},
+			DefinitionStatus: identitymodel.IdentityPermissionDefinitionActive, Enabled: true,
+			DefinitionHash: key + "-hash", SourceSnapshotHash: snapshot,
+		}
+	}
+	definitions := []identitymodel.IdentityPermissionDefinitionRecord{
+		definition("visible", "read", string(actioncontract.PermissionGrantDirect)),
+		definition("disabled", "read", string(actioncontract.PermissionGrantDirect)),
+		definition("bundled", "read", string(actioncontract.PermissionGrantBundled)),
+		definition("internal", "read", string(actioncontract.PermissionGrantInternal)),
+	}
+	if _, err := repository.ReconcileIdentityPermissionDefinitions(t.Context(), identitymodel.IdentityPermissionReconcileRequest{
+		SourceOwner: owner, SnapshotHash: snapshot, Definitions: definitions,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := repository.SetIdentityPermissionDefinitionEnabled(t.Context(), "workspace-primary", "disabled.read", false); err != nil || !changed {
+		t.Fatalf("disable direct permission changed=%t err=%v", changed, err)
+	}
+	planRows, err := store.DB().QueryContext(t.Context(), `EXPLAIN QUERY PLAN
+		SELECT * FROM _identity_permissions
+		WHERE grant_mode = 'direct' AND definition_status = 'active' AND enabled = 1
+		ORDER BY permission_key`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer planRows.Close()
+	usedRoleAuthoringIndex := false
+	usedTemporarySort := false
+	for planRows.Next() {
+		var id, parent, unused int
+		var detail string
+		if err := planRows.Scan(&id, &parent, &unused, &detail); err != nil {
+			t.Fatal(err)
+		}
+		usedRoleAuthoringIndex = usedRoleAuthoringIndex || strings.Contains(detail, "idx_identity_permissions_role_authoring")
+		usedTemporarySort = usedTemporarySort || strings.Contains(detail, "TEMP B-TREE")
+	}
+	if err := planRows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if !usedRoleAuthoringIndex || usedTemporarySort {
+		t.Fatalf("role-authoring query plan index=%t temporary_sort=%t", usedRoleAuthoringIndex, usedTemporarySort)
+	}
+
+	visible, err := repository.ListIdentityRoleAuthoringPermissionDefinitions(t.Context(), "workspace-primary")
+	if err != nil || len(visible) != 1 || visible[0].PermissionKey != "visible.read" {
+		t.Fatalf("role-authoring definitions=%#v err=%v", visible, err)
+	}
+	complete, err := repository.ListIdentityPermissionDefinitions(t.Context(), "workspace-primary")
+	if err != nil || len(complete) != len(definitions) {
+		t.Fatalf("complete definitions=%#v err=%v", complete, err)
 	}
 }
 
