@@ -41,7 +41,7 @@ func (r *authPasswordRepository) CreateAuthAuthorizationCode(_ context.Context, 
 	return nil
 }
 
-func (r *authPasswordRepository) ConsumeAuthAuthorizationCode(_ context.Context, workspaceID, code, applicationKey, redirectURL string, _ time.Time) (authmodel.AuthSession, bool, error) {
+func (r *authPasswordRepository) ConsumeAuthAuthorizationCode(_ context.Context, workspaceID, code, applicationKey, redirectURL, codeVerifier string, _ time.Time) (authmodel.AuthSession, bool, error) {
 	stored, ok := r.authCodes[code]
 	if !ok || stored.WorkspaceID != workspaceID || stored.ApplicationKey != applicationKey || stored.RedirectURL != redirectURL {
 		return authmodel.AuthSession{}, false, nil

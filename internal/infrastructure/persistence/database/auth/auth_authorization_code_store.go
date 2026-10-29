@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/subtle"
 	"database/sql"
 	"encoding/base64"
 	"strings"
@@ -34,8 +35,8 @@ func (s AuthStore) CreateAuthAuthorizationCode(ctx context.Context, value authmo
 	}
 	now := time.Now().UTC().UnixMilli()
 	statement, args, buildErr := query.NewWorkspaceInsertBuilder(s.store.SQLRenderer(), "_identity_auth_authorization_codes", workspaceID).
-		Columns("code_hash", "application_key", "session_json", "redirect_url", "expires_at", "consumed_at", "created_at").
-		Values(codeHash, strings.TrimSpace(value.ApplicationKey), envelope, strings.TrimSpace(value.RedirectURL), identitypersistence.TimeMillis(value.ExpiresAt), int64(0), valueOrNowMillis(value.CreatedAt, now)).Build()
+		Columns("code_hash", "application_key", "session_json", "redirect_url", "code_challenge", "code_challenge_method", "expires_at", "consumed_at", "created_at").
+		Values(codeHash, strings.TrimSpace(value.ApplicationKey), envelope, strings.TrimSpace(value.RedirectURL), strings.TrimSpace(value.CodeChallenge), strings.TrimSpace(value.CodeChallengeMethod), identitypersistence.TimeMillis(value.ExpiresAt), int64(0), valueOrNowMillis(value.CreatedAt, now)).Build()
 	if buildErr != nil {
 		return buildErr
 	}
@@ -79,7 +80,7 @@ func (s AuthStore) AuthorizationCodeWorkspace(ctx context.Context, code, applica
 	return workspaceID, true, nil
 }
 
-func (s AuthStore) ConsumeAuthAuthorizationCode(ctx context.Context, workspaceID, code, applicationKey, redirectURL string, now time.Time) (authmodel.AuthSession, bool, error) {
+func (s AuthStore) ConsumeAuthAuthorizationCode(ctx context.Context, workspaceID, code, applicationKey, redirectURL, codeVerifier string, now time.Time) (authmodel.AuthSession, bool, error) {
 	workspaceID, err := authWorkspaceID(workspaceID)
 	if err != nil {
 		return authmodel.AuthSession{}, false, err
@@ -99,11 +100,27 @@ func (s AuthStore) ConsumeAuthAuthorizationCode(ctx context.Context, workspaceID
 		return authmodel.AuthSession{}, false, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	updateStatement, updateArgs, buildErr := query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_auth_authorization_codes", workspaceID).
-		Set("consumed_at", nowMillis).Where(query.And(
+	conditions := query.And(
 		query.Equal("code_hash", codeHash), query.Equal("application_key", applicationKey), query.Equal("redirect_url", redirectURL),
 		query.Equal("consumed_at", int64(0)), query.GreaterThan("expires_at", nowMillis),
-	)).Build()
+	)
+	selectStatement, selectArgs, buildErr := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_auth_authorization_codes", workspaceID).
+		Columns("session_json", "code_challenge", "code_challenge_method").Where(conditions).Limit(1).Build()
+	if buildErr != nil {
+		return authmodel.AuthSession{}, false, buildErr
+	}
+	var envelope, codeChallenge, codeChallengeMethod string
+	if err := tx.QueryRowContext(ctx, selectStatement, selectArgs...).Scan(&envelope, &codeChallenge, &codeChallengeMethod); err != nil {
+		if err == sql.ErrNoRows {
+			return authmodel.AuthSession{}, false, nil
+		}
+		return authmodel.AuthSession{}, false, err
+	}
+	if !authorizationCodePKCEMatches(codeChallenge, codeChallengeMethod, codeVerifier) {
+		return authmodel.AuthSession{}, false, nil
+	}
+	updateStatement, updateArgs, buildErr := query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_auth_authorization_codes", workspaceID).
+		Set("consumed_at", nowMillis).Where(conditions).Build()
 	if buildErr != nil {
 		return authmodel.AuthSession{}, false, buildErr
 	}
@@ -113,15 +130,6 @@ func (s AuthStore) ConsumeAuthAuthorizationCode(ctx context.Context, workspaceID
 	}
 	count, err := result.RowsAffected()
 	if err != nil || count != 1 {
-		return authmodel.AuthSession{}, false, err
-	}
-	selectStatement, selectArgs, buildErr := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_auth_authorization_codes", workspaceID).
-		Columns("session_json").Where(query.Equal("code_hash", codeHash)).Limit(1).Build()
-	if buildErr != nil {
-		return authmodel.AuthSession{}, false, buildErr
-	}
-	var envelope string
-	if err := tx.QueryRowContext(ctx, selectStatement, selectArgs...).Scan(&envelope); err != nil {
 		return authmodel.AuthSession{}, false, err
 	}
 	plain, err := s.codeSecrets.Decrypt(ctx, workspaceID, codeHash, envelope)
@@ -136,4 +144,23 @@ func (s AuthStore) ConsumeAuthAuthorizationCode(ctx context.Context, workspaceID
 		return authmodel.AuthSession{}, false, err
 	}
 	return session, true, nil
+}
+
+func authorizationCodePKCEMatches(challenge, method, verifier string) bool {
+	challenge, method, verifier = strings.TrimSpace(challenge), strings.TrimSpace(method), strings.TrimSpace(verifier)
+	if challenge == "" && method == "" {
+		return verifier == ""
+	}
+	if method != "S256" || len(challenge) != 43 || len(verifier) < 43 || len(verifier) > 128 {
+		return false
+	}
+	for _, character := range verifier {
+		if character >= 'a' && character <= 'z' || character >= 'A' && character <= 'Z' || character >= '0' && character <= '9' || strings.ContainsRune("-._~", character) {
+			continue
+		}
+		return false
+	}
+	digest := sha256.Sum256([]byte(verifier))
+	actual := base64.RawURLEncoding.EncodeToString(digest[:])
+	return subtle.ConstantTimeCompare([]byte(actual), []byte(challenge)) == 1
 }

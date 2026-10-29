@@ -59,13 +59,19 @@ func (h *AuthHandler) authProviderSetupResult(config authmodel.AuthProviderConfi
 	raw := config.Map()
 	providerType, enabled := config.Type, config.Enabled
 	result := map[string]any{
-		"provider":       config.Key,
-		"label":          config.Label,
-		"type":           providerType,
-		"enabled":        enabled,
-		"checks":         authProviderSetupChecks(raw),
-		"can_auto_fetch": false,
-		"next_steps":     authProviderSetupNextSteps(raw),
+		"provider":                 config.Key,
+		"label":                    config.Label,
+		"type":                     providerType,
+		"enabled":                  enabled,
+		"client_id":                config.ClientID,
+		"client_secret_configured": config.ClientSecretConfigured,
+		"auto_create_users":        config.AutoCreateUsers,
+		"default_role_key":         config.DefaultRoleKey,
+		"configured_from":          config.ConfiguredFrom,
+		"updated_at":               config.UpdatedAt,
+		"checks":                   authProviderSetupChecks(raw),
+		"can_auto_fetch":           false,
+		"next_steps":               authProviderSetupNextSteps(raw),
 	}
 	if providerType == "oidc" {
 		result["redirect_url"] = config.RedirectURL

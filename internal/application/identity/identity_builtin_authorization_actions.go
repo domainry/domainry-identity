@@ -41,15 +41,21 @@ func IdentityBuiltinAuthorizationActions() []identitymodel.IdentityActionDefinit
 		anonymousAction("auth.guest", "认证", "访客登录", "POST", "/auth/guest", "访客登录"),
 		anonymousAction("auth.refresh", "认证", "刷新会话", "POST", "/auth/refresh", "刷新访问会话"),
 		anonymousAction("auth.logout", "认证", "退出", "POST", "/auth/logout", "撤销刷新会话并退出"),
-		authPrincipalAction("auth.session.get", "浏览器会话", "读取会话", "GET", "/auth/session", "读取当前浏览器会话"),
-		anonymousAction("auth.code.exchange", "认证码", "交换认证码", "POST", "/auth/code/exchange", "交换一次性认证码"),
+		// The session handler is the token-validation boundary. Keeping an
+		// authenticated outer action here makes the host validate every bearer
+		// against its own audience before the handler can validate an
+		// application-scoped token (for example verdent-knowledge).
+		anonymousAction("auth.session.get", "浏览器会话", "读取会话", "GET", "/auth/session", "校验 Bearer 并读取当前浏览器会话"),
+		anonymousAction("auth.authorize", "浏览器会话", "单点授权", "GET", "/auth/authorize", "使用现有浏览器会话签发应用授权码"),
+		anonymousAction("auth.code.exchange", "授权码", "交换授权码", "POST", "/auth/code/exchange", "浏览器交换一次性授权码"),
+		anonymousAction("auth.code.remote_exchange", "授权码", "远程交换授权码", "POST", "/identity/auth/code/exchange", "远程应用交换一次性授权码"),
 		authPrincipalAction("auth.sessions.revoke_others", "会话安全", "撤销其它会话", "POST", "/auth/sessions/revoke-others", "撤销当前用户的其它会话"),
 		authPrincipalAction("auth.change_password", "认证安全", "修改密码", "POST", "/auth/change-password", "修改当前用户密码"),
 		authPermissionAction(identitycontract.IdentityActionAuthResetPassword, "认证安全", "重置密码", "POST", "/auth/reset-password", "重置用户密码"),
 		anonymousAction("auth.providers.list", "认证提供方", "列出", "GET", "/auth/providers", "列出可用认证提供方"),
 		anonymousAction("auth.feishu.events", "认证提供方", "飞书离职事件", "POST", "/auth/providers/feishu/events", "验签后处理已绑定用户离职事件"),
-		authAnonymousAction("auth.providers.setup_check", "认证提供方", "配置检查", "GET", "/auth/providers/{provider}/setup-check", "检查认证提供方配置"),
-		authPermissionAction(identitycontract.IdentityActionAuthProvidersSetup, "认证提供方", "配置", "PUT", "/auth/providers/{provider}/setup", "配置认证提供方"),
+		authPublicPermissionAction("auth.providers.setup_check", "认证提供方", "配置检查", "GET", "/auth/providers/{provider}/setup-check", "检查认证提供方配置"),
+		authPublicPermissionAction(identitycontract.IdentityActionAuthProvidersSetup, "认证提供方", "配置", "PUT", "/auth/providers/{provider}/setup", "配置认证提供方"),
 		anonymousAction("auth.providers.start_get", "认证提供方", "发起登录", "GET", "/auth/providers/{provider}/start", "发起认证提供方登录"),
 		anonymousAction("auth.providers.start_post", "认证提供方", "发起登录", "POST", "/auth/providers/{provider}/start", "发起认证提供方登录"),
 		anonymousAction("auth.providers.callback_get", "认证提供方", "处理回调", "GET", "/auth/providers/{provider}/callback", "处理认证提供方回调"),
@@ -271,6 +277,15 @@ func permissionAction(key, capabilityLabel, operationLabel, method, route, label
 func authPermissionAction(key, capabilityLabel, operationLabel, method, route, label string) identityBuiltinActionSpec {
 	spec := permissionAction(key, capabilityLabel, operationLabel, method, route, label, nil)
 	spec.exposures = []actioncontract.Exposure{actioncontract.ExposureManagement}
+	return spec
+}
+
+func authPublicPermissionAction(key, capabilityLabel, operationLabel, method, route, label string) identityBuiltinActionSpec {
+	spec := permissionAction(key, capabilityLabel, operationLabel, method, route, label, nil)
+	// Provider configuration is an authenticated management capability, while
+	// the Enterprise product hosts its administration UI on the public listener.
+	// Keep the management exposure and explicitly add the product-facing one.
+	spec.exposures = []actioncontract.Exposure{actioncontract.ExposureManagement, actioncontract.ExposurePublic}
 	return spec
 }
 

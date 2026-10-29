@@ -89,7 +89,7 @@ func TestAuthProviderHandlersListCheckAndSaveWithoutLeakingSecrets(t *testing.T)
 
 	checkResponse := httptest.NewRecorder()
 	handler.authProviderSetupCheck(checkResponse, authProviderRequest(http.MethodGet, "", " feishu "))
-	if checkResponse.Code != http.StatusOK || !strings.Contains(checkResponse.Body.String(), `"status":"ok"`) || !strings.Contains(checkResponse.Body.String(), `"mode":"mock"`) || strings.Contains(checkResponse.Body.String(), "mock-secret") {
+	if checkResponse.Code != http.StatusOK || !strings.Contains(checkResponse.Body.String(), `"status":"ok"`) || !strings.Contains(checkResponse.Body.String(), `"mode":"mock"`) || !strings.Contains(checkResponse.Body.String(), `"client_id":"mock-app"`) || !strings.Contains(checkResponse.Body.String(), `"client_secret_configured":true`) || strings.Contains(checkResponse.Body.String(), "mock-secret") {
 		t.Fatalf("check status=%d body=%s", checkResponse.Code, checkResponse.Body.String())
 	}
 

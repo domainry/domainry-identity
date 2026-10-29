@@ -28,7 +28,7 @@ func TestAuthenticationProtocolsKeepDedicatedStoresAndSecurityIndexes(t *testing
 	// replay and lockout constraints.
 	for table, requiredColumns := range map[string][]string{
 		"_identity_auth_refresh_tokens":      {"token_hash", "session_id", "revoked_at", "replaced_by_hash", "expires_at"},
-		"_identity_auth_authorization_codes": {"code_hash", "session_json", "redirect_url", "consumed_at", "expires_at"},
+		"_identity_auth_authorization_codes": {"code_hash", "session_json", "redirect_url", "code_challenge", "code_challenge_method", "consumed_at", "expires_at"},
 		"_identity_auth_assertion_replays":   {"replay_hash", "provider_key", "expires_at"},
 		"_identity_auth_login_transactions":  {"state_hash", "payload_json", "attempts", "consumed_at", "expires_at"},
 		"_identity_credentials":              {"password_hash", "failed_login_count", "locked_until"},

@@ -13,8 +13,8 @@ func TestStandaloneAuthorizationSliceRegistryOwnsCompleteRouteAndPermissionMatri
 		t.Fatal(err)
 	}
 	definitions := registry.Definitions()
-	if len(definitions) != 136 {
-		t.Fatalf("Identity Action count=%d want=136", len(definitions))
+	if len(definitions) != 138 {
+		t.Fatalf("Identity Action count=%d want=138", len(definitions))
 	}
 	seenHTTP := map[string]string{}
 	pageBindings := 0
@@ -63,7 +63,9 @@ func TestStandaloneAuthorizationSliceRegistryOwnsCompleteRouteAndPermissionMatri
 	}
 	for key, binding := range map[string]string{
 		"auth.session.get":                        "GET /auth/session",
+		"auth.authorize":                          "GET /auth/authorize",
 		"auth.code.exchange":                      "POST /auth/code/exchange",
+		"auth.code.remote_exchange":               "POST /identity/auth/code/exchange",
 		"auth.external_accounts.link_start":       "POST /auth/external-accounts/{provider}/link/start",
 		"identity.users.create":                   "POST /identity/users",
 		"identity.users.force_logout":             "POST /identity/users/{userID}/force-logout",
@@ -82,14 +84,28 @@ func TestStandaloneAuthorizationSliceRegistryOwnsCompleteRouteAndPermissionMatri
 			t.Fatalf("Action %q binding=%v found=%v want=%q", key, definition.HTTP, found, binding)
 		}
 	}
+	session, found := registry.Definition("auth.session.get")
+	if !found || session.Authorization.Strategy != actioncontract.AuthorizationAnonymous || session.Permission != nil {
+		t.Fatalf("session validation boundary must authenticate its bearer inside the handler: found=%v action=%+v", found, session)
+	}
 	effectiveMenus, found := registry.Definition("identity.effective_menus.get")
 	if !found || effectiveMenus.Authorization.Strategy != actioncontract.AuthorizationAuthenticated || effectiveMenus.Permission != nil ||
 		len(effectiveMenus.Exposures) != 1 || effectiveMenus.Exposures[0] != actioncontract.ExposurePublic {
 		t.Fatalf("effective menus must be public-listener, authenticated, and principal-scoped: found=%v action=%+v", found, effectiveMenus)
 	}
 	permissions := registry.OwnedPermissionDefinitions(IdentityBuiltinAuthorizationOwner)
-	if len(permissions) != 100 {
-		t.Fatalf("owned permission count=%d want=100", len(permissions))
+	if len(permissions) != 101 {
+		t.Fatalf("owned permission count=%d want=101", len(permissions))
+	}
+	for _, key := range []string{"auth.providers.setup_check", "auth.providers.setup"} {
+		definition, found := registry.Definition(key)
+		exposures := map[actioncontract.Exposure]bool{}
+		for _, exposure := range definition.Exposures {
+			exposures[exposure] = true
+		}
+		if !found || definition.Permission == nil || !exposures[actioncontract.ExposureManagement] || !exposures[actioncontract.ExposurePublic] {
+			t.Fatalf("provider setup Action %q must be management/public and permission-guarded: found=%v action=%+v", key, found, definition)
+		}
 	}
 	for _, key := range []string{
 		"identity.handler_delivery.create", "identity.handler_delivery.update",

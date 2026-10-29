@@ -186,9 +186,14 @@ func (resolver *routeExposureResolver) action(request *http.Request) (identitymo
 	return resolver.actions.ResolveHTTP(method, routeTemplate)
 }
 
-func (resolver *routeExposureResolver) usesIdentityApplicationCredential(request *http.Request) bool {
+// usesHostUserBearer reports whether the transport owns bearer validation for
+// this route. Anonymous routes either need no identity at all or deliberately
+// validate an application-scoped bearer inside their handler. Signed routes
+// likewise authenticate through their source-owned credential middleware.
+// Only authenticated Actions may be pre-authenticated with the host audience.
+func (resolver *routeExposureResolver) usesHostUserBearer(request *http.Request) bool {
 	action, found := resolver.action(request)
-	return found && action.Owner == "identity:remote-sdk" && action.Authorization.Strategy == actioncontract.AuthorizationSigned
+	return found && action.Authorization.Strategy == actioncontract.AuthorizationAuthenticated
 }
 
 // exposedOn reports whether the request's Action is exposed on the listener.

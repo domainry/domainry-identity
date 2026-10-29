@@ -112,6 +112,42 @@ func (binding *sdkBinding) BindOperationsPersistence() error {
 func (binding *sdkBinding) Authentication() identitysdk.Authentication {
 	return sdkAuthentication{binding}
 }
+func (binding *sdkBinding) AuthorizeBrowserApplication(ctx context.Context, request identitysdk.BrowserAuthorizationRequest) (identitysdk.BrowserAuthorizationResult, error) {
+	if !request.SourceApplicationKey.Valid() || !request.TargetApplicationKey.Valid() || strings.TrimSpace(request.RefreshToken) == "" || strings.TrimSpace(request.State) == "" {
+		return identitysdk.BrowserAuthorizationResult{}, &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "auth.authorization_code_request_invalid"}
+	}
+	if binding.resolveRefreshWorkspace == nil {
+		return identitysdk.BrowserAuthorizationResult{}, &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.browser_sso_unavailable"}
+	}
+	workspaceID, found, err := binding.resolveRefreshWorkspace(ctx, strings.TrimSpace(request.RefreshToken))
+	if err != nil {
+		return identitysdk.BrowserAuthorizationResult{}, sdkBoundaryError(err)
+	}
+	if !found || !workspaceID.Valid() {
+		return identitysdk.BrowserAuthorizationResult{}, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "auth.session_expired"}
+	}
+	ctx = requestcontext.WithWorkspaceID(ctx, string(workspaceID))
+	if err := binding.requireMutableWorkspace(ctx, workspaceID); err != nil {
+		return identitysdk.BrowserAuthorizationResult{}, err
+	}
+	for _, applicationKey := range []identitysdk.ApplicationKey{request.SourceApplicationKey, request.TargetApplicationKey} {
+		registered, err := binding.applicationRegistered(ctx, identitysdk.ApplicationRef{WorkspaceID: workspaceID, ApplicationKey: applicationKey})
+		if err != nil {
+			return identitysdk.BrowserAuthorizationResult{}, sdkBoundaryError(err)
+		}
+		if !registered {
+			return identitysdk.BrowserAuthorizationResult{}, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.application_not_registered"}
+		}
+	}
+	if err := binding.validateApplicationRedirect(ctx, identitysdk.ApplicationRef{WorkspaceID: workspaceID, ApplicationKey: request.TargetApplicationKey}, request.ReturnURL); err != nil {
+		return identitysdk.BrowserAuthorizationResult{}, sdkBoundaryError(err)
+	}
+	code, err := binding.auth.IssueBrowserAuthorizationCode(ctx, string(workspaceID), request.RefreshToken, string(request.SourceApplicationKey), string(request.TargetApplicationKey), request.ReturnURL, request.CodeChallenge, request.CodeChallengeMethod)
+	if err != nil {
+		return identitysdk.BrowserAuthorizationResult{}, sdkBoundaryError(err)
+	}
+	return identitysdk.BrowserAuthorizationResult{AuthorizationCode: code, ReturnURL: request.ReturnURL, State: request.State}, nil
+}
 func (binding *sdkBinding) ChallengeAuthentication() identitysdk.ChallengeAuthentication {
 	return sdkAuthentication{binding}
 }
@@ -292,7 +328,7 @@ func (adapter sdkAuthentication) ExchangeAuthorizationCode(ctx context.Context, 
 	if !request.ApplicationKey.Valid() {
 		return identitysdk.AuthSession{}, &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.application_scope_invalid"}
 	}
-	session, err := adapter.binding.auth.ExchangeAuthorizationCode(ctx, request.Code, string(request.ApplicationKey), request.ReturnURL)
+	session, err := adapter.binding.auth.ExchangeAuthorizationCode(ctx, request.Code, string(request.ApplicationKey), request.ReturnURL, request.CodeVerifier)
 	if err != nil {
 		return identitysdk.AuthSession{}, sdkBoundaryError(err)
 	}

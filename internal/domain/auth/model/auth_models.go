@@ -95,13 +95,15 @@ const (
 )
 
 type AuthAuthorizationCode struct {
-	Code           string      `json:"-"`
-	WorkspaceID    string      `json:"workspace_id"`
-	ApplicationKey string      `json:"application_key"`
-	Session        AuthSession `json:"session"`
-	RedirectURL    string      `json:"redirect_url"`
-	ExpiresAt      string      `json:"expires_at"`
-	CreatedAt      string      `json:"created_at"`
+	Code                string      `json:"-"`
+	WorkspaceID         string      `json:"workspace_id"`
+	ApplicationKey      string      `json:"application_key"`
+	Session             AuthSession `json:"session"`
+	RedirectURL         string      `json:"redirect_url"`
+	CodeChallenge       string      `json:"code_challenge,omitempty"`
+	CodeChallengeMethod string      `json:"code_challenge_method,omitempty"`
+	ExpiresAt           string      `json:"expires_at"`
+	CreatedAt           string      `json:"created_at"`
 }
 
 type AuthExternalIdentityAssertion struct {

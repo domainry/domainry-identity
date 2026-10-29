@@ -97,7 +97,7 @@ type AuthEmailCredentialRepository interface {
 // rest and atomically consumed once.
 type AuthAuthorizationCodeRepository interface {
 	CreateAuthAuthorizationCode(context.Context, authmodel.AuthAuthorizationCode) error
-	ConsumeAuthAuthorizationCode(context.Context, string, string, string, string, time.Time) (authmodel.AuthSession, bool, error)
+	ConsumeAuthAuthorizationCode(context.Context, string, string, string, string, string, time.Time) (authmodel.AuthSession, bool, error)
 }
 
 // AuthAuthorizationCodeWorkspaceRepository restores server-owned Workspace

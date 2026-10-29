@@ -38,8 +38,8 @@ func TestStandaloneRouteInventoryBaseline(t *testing.T) {
 	t.Cleanup(func() { _ = server.CloseContext(t.Context()) })
 	routes := server.RouteInventory()
 	sum := sha256.Sum256([]byte(strings.Join(routes, "\n")))
-	const wantCount = 170
-	const wantSHA256 = "d4d9ef23916aac8a37605bd43da3e828b2f39c9e86de674886afa15178396631"
+	const wantCount = 171
+	const wantSHA256 = "5b04fc7752b81fec33394cb73d9820dc9d2a0c9aaf4d08f276d7a48eb016d0d3"
 	if len(routes) != wantCount || hex.EncodeToString(sum[:]) != wantSHA256 {
 		t.Fatalf("standalone route inventory count=%d sha256=%s routes=%#v", len(routes), hex.EncodeToString(sum[:]), routes)
 	}
@@ -125,6 +125,54 @@ func TestRecordingRouteRegistrarRejectsRouteOutsideFrozenActionRegistry(t *testi
 	}
 }
 
+func TestRemoteBearerValidationBoundariesAuthenticateInsideTheirHandlers(t *testing.T) {
+	definitions, err := standaloneProtocolAuthorizationActions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{
+		"identity.remote.access_bundle.resolve":             true,
+		"identity.remote.authorization.reauthorize":         true,
+		"identity.remote.action_assurance.begin":            true,
+		"identity.remote.action_assurance.verify":           true,
+		"identity.remote.action_assurance.receipt_validate": true,
+	}
+	for _, definition := range definitions {
+		if !want[definition.Key] {
+			continue
+		}
+		if definition.Authorization.Strategy != actioncontract.AuthorizationAnonymous {
+			t.Fatalf("remote bearer boundary %q must authenticate inside its handler: %+v", definition.Key, definition.Authorization)
+		}
+		delete(want, definition.Key)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing remote bearer boundaries: %v", want)
+	}
+}
+
+func TestHostBearerPreauthenticationOnlyAppliesToAuthenticatedActions(t *testing.T) {
+	resolver := testStandaloneExposureResolver(t)
+	tests := []struct {
+		method string
+		path   string
+		want   bool
+	}{
+		{method: http.MethodGet, path: "/identity/users", want: true},
+		{method: http.MethodPost, path: "/identity/access-bundle", want: false},
+		{method: http.MethodPost, path: "/identity/reauthorize", want: false},
+		{method: http.MethodPost, path: "/auth/action-assurance/challenges", want: false},
+		{method: http.MethodGet, path: "/identity/discovery", want: false},
+		{method: http.MethodPost, path: "/identity/browser/login", want: false},
+	}
+	for _, test := range tests {
+		request := httptest.NewRequest(test.method, test.path, nil)
+		if got := resolver.usesHostUserBearer(request); got != test.want {
+			t.Fatalf("uses host bearer for %s %s=%t want=%t", test.method, test.path, got, test.want)
+		}
+	}
+}
+
 func TestEmbeddedAuthRouteInventoryOwnsEveryNonBrowserRoute(t *testing.T) {
 	authRoutes := &recordingRouteRegistrar{mux: http.NewServeMux()}
 	authhttp.NewAuthHandler(authhttp.AuthDependencies{}).RegisterRoutes(authRoutes)
@@ -142,6 +190,8 @@ func TestEmbeddedAuthRouteInventoryOwnsEveryNonBrowserRoute(t *testing.T) {
 		"POST /auth/password/recovery/complete",
 		"POST /auth/guest",
 		"POST /auth/providers/feishu/events",
+		"GET /auth/providers/{provider}/setup-check",
+		"PUT /auth/providers/{provider}/setup",
 		"POST /auth/providers/{provider}/exchange",
 		"GET /auth/me",
 		"PATCH /auth/me",
@@ -151,8 +201,6 @@ func TestEmbeddedAuthRouteInventoryOwnsEveryNonBrowserRoute(t *testing.T) {
 	}
 	wantManagement := []string{
 		"POST /auth/reset-password",
-		"GET /auth/providers/{provider}/setup-check",
-		"PUT /auth/providers/{provider}/setup",
 	}
 	if !reflect.DeepEqual(publicRoutes, wantPublic) {
 		t.Fatalf("embedded public auth routes=%#v want=%#v", publicRoutes, wantPublic)
@@ -180,7 +228,7 @@ func TestRouteExposureResolverUsesActionExposure(t *testing.T) {
 		"GET /identity/discovery":                 listenerClassPublic,
 		"GET /identity/users":                     listenerClassManagement,
 		"GET /identity/schema":                    listenerClassManagement,
-		"PUT /auth/providers/{provider}/setup":    listenerClassManagement,
+		"PUT /auth/providers/{provider}/setup":    listenerClassPublic,
 		"POST /identity/portability/write-fences": listenerClassOperations,
 	}
 	for requestTarget, want := range tests {

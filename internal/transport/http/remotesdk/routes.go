@@ -214,7 +214,7 @@ func RegisterRoutes(registrar RouteRegistrar, binding identitysdk.Binding, suppo
 		}
 		support.writeJSON(w, http.StatusOK, session)
 	})
-	registrar.HandleFunc("POST /auth/code/exchange", func(w http.ResponseWriter, r *http.Request) {
+	registrar.HandleFunc("POST /identity/auth/code/exchange", func(w http.ResponseWriter, r *http.Request) {
 		var request identitysdk.ExchangeAuthorizationCodeRequest
 		if !support.decodeJSON(w, r, &request) {
 			return

@@ -107,12 +107,16 @@ func TestFederatedCallbackAutoBindsExistingUserByEmail(t *testing.T) {
 	providers := NewAuthProviderDomainService([]map[string]any{{
 		"key": "feishu", "type": "oidc", "enabled": true,
 		"auth_url": "https://accounts.feishu.cn/open-apis/authen/v1/authorize", "client_id": "client", "redirect_url": "https://app.example/callback",
+		"scope":             "openid",
 		"auto_create_users": true,
 	}}, true)
 	flows := NewAuthProviderFlowDomainService(auth, providers)
 	started, err := flows.Start(t.Context(), "workspace-application", "feishu", "GET", "")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if parsed, parseErr := url.Parse(started.AuthURL); parseErr != nil || parsed.Query().Has("scope") {
+		t.Fatalf("Feishu authorization URL must not send OIDC scope: %q err=%v", started.AuthURL, parseErr)
 	}
 	assertion := authmodel.AuthExternalIdentityAssertion{Provider: "feishu", Subject: "feishu-subject", Email: "existing@example.test", ProviderSubjectVerified: true}
 	session, err := flows.ExchangeAndCompleteCallback(t.Context(), "workspace-application", "feishu", started.State, authmodel.AuthProviderCallbackInput{}, assertionAdapter{assertion: assertion})

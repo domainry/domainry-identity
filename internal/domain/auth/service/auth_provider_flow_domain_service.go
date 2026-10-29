@@ -69,7 +69,7 @@ func (s *AuthProviderFlowDomainService) StartForApplication(ctx context.Context,
 	case "saml":
 		return s.auth.BeginSAMLLoginForApplication(ctx, workspaceID, provider, config.AuthURL, config.ClientID, config.RedirectURL, applicationKey, returnURL)
 	case "oidc":
-		return s.auth.BeginProviderLoginForApplication(ctx, workspaceID, provider, config.AuthURL, config.ClientID, config.RedirectURL, config.Scope, applicationKey, returnURL)
+		return s.auth.BeginProviderLoginForApplication(ctx, workspaceID, provider, config.AuthURL, config.ClientID, config.RedirectURL, providerAuthorizationScope(config), applicationKey, returnURL)
 	case "oauth2":
 		result, err := s.auth.BeginProviderLoginForApplication(ctx, workspaceID, provider, config.AuthURL, config.ClientID, config.RedirectURL, config.Scope, applicationKey, returnURL)
 		if err == nil {
@@ -102,7 +102,16 @@ func (s *AuthProviderFlowDomainService) StartExternalAccountLinkForApplication(c
 	if !found || user.Status != identitymodel.IdentityStatusActive {
 		return authprojection.AuthProviderStartResponse{}, forbidden("auth.user_disabled")
 	}
-	return s.auth.BeginProviderLinkForApplication(ctx, workspaceID, user.UserID, provider, config.AuthURL, config.ClientID, config.RedirectURL, config.Scope, applicationKey, returnURL)
+	return s.auth.BeginProviderLinkForApplication(ctx, workspaceID, user.UserID, provider, config.AuthURL, config.ClientID, config.RedirectURL, providerAuthorizationScope(config), applicationKey, returnURL)
+}
+
+func providerAuthorizationScope(config authmodel.AuthProviderConfig) string {
+	if strings.EqualFold(config.Key, "feishu") || strings.EqualFold(config.Key, "lark") {
+		// Feishu/Lark browser login is OAuth 2.0, not OpenID Connect. Sending the
+		// OIDC pseudo-scope "openid" makes the provider reject the request (20043).
+		return ""
+	}
+	return config.Scope
 }
 
 func (s *AuthProviderFlowDomainService) LoginWithPasswordOutcome(ctx context.Context, workspaceID, login, password, applicationKey string) (authmodel.AuthenticationOutcome, error) {

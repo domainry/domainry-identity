@@ -273,6 +273,8 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"application_key " + text + " NOT NULL",
 			"session_json TEXT NOT NULL",
 			"redirect_url TEXT NOT NULL",
+			"code_challenge TEXT NOT NULL DEFAULT ''",
+			"code_challenge_method " + text + " NOT NULL DEFAULT ''",
 			"expires_at BIGINT NOT NULL",
 			"consumed_at BIGINT NOT NULL DEFAULT 0",
 			"created_at BIGINT NOT NULL",

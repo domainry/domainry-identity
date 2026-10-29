@@ -623,7 +623,9 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		t.Fatalf("workspace admin provider setup did not reach handler: status=%d body=%s", adminSetup.Code, adminSetup.Body.String())
 	}
 	setupCheck := httptest.NewRecorder()
-	mounted.ServeHTTP(setupCheck, httptest.NewRequest(http.MethodGet, "/auth/providers/wechat_mini_program/setup-check", nil))
+	setupCheckRequest := httptest.NewRequest(http.MethodGet, "/auth/providers/wechat_mini_program/setup-check", nil)
+	setupCheckRequest.Header.Set("Authorization", "Bearer "+adminSession.AccessToken)
+	mounted.ServeHTTP(setupCheck, setupCheckRequest)
 	if setupCheck.Code != http.StatusOK {
 		t.Fatalf("provider setup-check did not reach handler: status=%d body=%s", setupCheck.Code, setupCheck.Body.String())
 	}

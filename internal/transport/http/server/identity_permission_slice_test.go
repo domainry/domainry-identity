@@ -66,7 +66,7 @@ func TestStandalonePermissionAPIReturnsOnlyRoleAuthoringChoicesWithRoleEnforceme
 	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _identity_permissions`).Scan(&persistedPermissionCount); err != nil {
 		t.Fatal(err)
 	}
-	if len(expectedPermissions) != 100 || persistedPermissionCount != 105 {
+	if len(expectedPermissions) != 101 || persistedPermissionCount != 106 {
 		t.Fatalf("persisted permission count=%d Identity owner registry count=%d", persistedPermissionCount, len(expectedPermissions))
 	}
 	if len(permissions) != 0 {
