@@ -52,10 +52,14 @@ func FromManifest(manifest manifestmodel.ManifestSchema) Seed {
 			continue
 		}
 		identityRole := identitymodel.IdentityRole{
-			RoleID: roleID,
-			Key:    roleID,
-			Label:  identityValueOrDefault(role.Name, roleID),
-			Status: identitymodel.IdentityStatusActive,
+			RoleID:      roleID,
+			ScopeType:   identitymodel.IdentityRoleScopeGlobal,
+			SourceOwner: IdentityBuiltinAuthorizationOwner,
+			Key:         roleID,
+			Label:       identityValueOrDefault(role.Name, roleID),
+			Description: strings.TrimSpace(role.Description),
+			Definition:  role,
+			Status:      identitymodel.IdentityStatusActive,
 		}
 		if index, exists := roleIndexByID[roleID]; exists {
 			seed.Roles[index] = identityRole
@@ -327,12 +331,19 @@ func materializeIdentitySeed(workspaceID string, seed Seed) (Seed, error) {
 		if alias == "" {
 			alias = strings.TrimSpace(seed.Roles[index].Key)
 		}
-		id, err := entityid.Derive("role", "identity.workspace-role", workspaceID, alias)
+		role := &seed.Roles[index]
+		if role.ScopeType == "" {
+			role.ScopeType = identitymodel.IdentityRoleScopeGlobal
+		}
+		if strings.TrimSpace(role.SourceOwner) == "" {
+			role.SourceOwner = IdentityBuiltinAuthorizationOwner
+		}
+		id, err := entityid.Derive("role", "identity.global-role", role.SourceOwner, strings.TrimSpace(role.Key))
 		if err != nil {
 			return Seed{}, err
 		}
 		roleIDs[alias], roleIDs[strings.TrimSpace(seed.Roles[index].Key)] = id, id
-		seed.Roles[index].RoleID = id
+		role.RoleID = id
 	}
 
 	organizationIDs := make(map[string]string, len(seed.OrganizationUnits))
@@ -382,7 +393,11 @@ func materializeIdentitySeed(workspaceID string, seed Seed) (Seed, error) {
 	for index := range seed.Menus {
 		alias := strings.TrimSpace(seed.Menus[index].MenuID)
 		key := strings.TrimSpace(seed.Menus[index].Key)
-		id, err := entityid.Derive("menu", "identity.workspace-menu", workspaceID, key)
+		menu := &seed.Menus[index]
+		if strings.TrimSpace(menu.SourceOwner) == "" {
+			menu.SourceOwner = IdentityBuiltinAuthorizationOwner
+		}
+		id, err := entityid.Derive("menu", "identity.global-menu", menu.SourceOwner, key)
 		if err != nil {
 			return Seed{}, err
 		}

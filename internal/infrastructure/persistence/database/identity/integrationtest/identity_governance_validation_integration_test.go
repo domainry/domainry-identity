@@ -19,11 +19,11 @@ func TestIdentityGovernanceValidationAggregatesCrossReferenceIssuesWithoutPersis
 	store := identitypersistence.NewMemoryIdentityStore()
 	identity, _ := identitybusiness.NewIdentityDomainService(store, []identitymodel.IdentityPermissionDefinition{currentPermission("order.read", "order", "read")}).ForWorkspace("workspace-a")
 	seedIdentityProjectionRole(t, store, "workspace-a", identitymodel.IdentityRole{RoleID: "sales", Key: "sales", Label: "Sales", Status: identitymodel.IdentityStatusActive})
-	if err := identity.UpsertMenu(t.Context(), identitymodel.IdentityMenu{MenuID: "orders", Key: "orders", Label: "Orders", Status: identitymodel.IdentityStatusActive}); err != nil {
+	if err := identity.UpsertMenu(t.Context(), identitymodel.IdentityMenu{MenuID: "orders", SourceOwner: "application:test", Key: "orders", Label: "Orders", Status: identitymodel.IdentityStatusActive}); err != nil {
 		t.Fatal(err)
 	}
 	validator := identityapplication.NewIdentityGovernanceApplicationService(identity.Repository(), identity.PermissionDefinitions(), func() map[string]definitionmodel.ObjectSchema { return objects })
-	menu := identitymodel.IdentityMenu{MenuID: "child", Key: "child", ParentID: "missing"}
+	menu := identitymodel.IdentityMenu{MenuID: "child", SourceOwner: "application:test", Key: "child", ParentID: "missing"}
 	result, err := validator.Validate(t.Context(), identitycontract.IdentityGovernanceValidationRequest{
 		RoleID: "sales", Permissions: []identitymodel.RolePermission{
 			{PermissionKey: "order.read", DataScope: identitymodel.IdentityDataScopeAll},
@@ -61,7 +61,7 @@ func TestIdentityGovernanceValidatorAcceptsExistingBusinessReferences(t *testing
 	store := identitypersistence.NewMemoryIdentityStore()
 	identity, _ := identitybusiness.NewIdentityDomainService(store, []identitymodel.IdentityPermissionDefinition{currentPermission("order.read", "order", "read")}).ForWorkspace("workspace-a")
 	seedIdentityProjectionRole(t, store, "workspace-a", identitymodel.IdentityRole{RoleID: "sales", Key: "sales", Label: "Sales", Status: identitymodel.IdentityStatusActive})
-	if err := identity.UpsertMenu(t.Context(), identitymodel.IdentityMenu{MenuID: "orders", Key: "orders", Label: "Orders", Status: identitymodel.IdentityStatusActive}); err != nil {
+	if err := identity.UpsertMenu(t.Context(), identitymodel.IdentityMenu{MenuID: "orders", SourceOwner: "application:test", Key: "orders", Label: "Orders", Status: identitymodel.IdentityStatusActive}); err != nil {
 		t.Fatal(err)
 	}
 	result, err := identityapplication.NewIdentityGovernanceApplicationService(identity.Repository(), identity.PermissionDefinitions(), func() map[string]definitionmodel.ObjectSchema { return objects }).Validate(t.Context(), identitycontract.IdentityGovernanceValidationRequest{

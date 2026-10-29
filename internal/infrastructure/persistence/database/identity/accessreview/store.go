@@ -723,18 +723,31 @@ func (s *Store) LoadAssignment(ctx context.Context, queryer Queryer, workspaceID
 }
 
 func (s *Store) LoadRole(ctx context.Context, queryer Queryer, workspaceID, roleID string) (identitymodel.IdentityRole, bool, error) {
-	statement, arguments, buildErr := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_roles", workspaceID).
-		Columns("id", "role_id", "role_key", "label", "description", "status").Where(query.Equal("role_id", roleID)).Build()
+	statement, arguments, buildErr := query.NewSelectBuilder(s.backend.SQLRenderer(), "_identity_roles").
+		Columns("id", "role_id", "workspace_id", "scope_type", "source_owner", "role_key", "label", "description", "definition_json", "status").
+		Where(query.And(
+			query.Equal("role_id", roleID),
+			query.Or(
+				query.Equal("scope_type", string(identitymodel.IdentityRoleScopeGlobal)),
+				query.And(query.Equal("scope_type", string(identitymodel.IdentityRoleScopeTenant)), query.Equal("workspace_id", workspaceID)),
+			),
+		)).Build()
 	if buildErr != nil {
 		return identitymodel.IdentityRole{}, false, buildErr
 	}
 	var role identitymodel.IdentityRole
-	var status string
-	err := queryer.QueryRowContext(ctx, statement, arguments...).Scan(&role.ID, &role.RoleID, &role.Key, &role.Label, &role.Description, &status)
+	var persistedWorkspace sql.NullString
+	var scopeType, definitionJSON, status string
+	err := queryer.QueryRowContext(ctx, statement, arguments...).Scan(&role.ID, &role.RoleID, &persistedWorkspace, &scopeType, &role.SourceOwner, &role.Key, &role.Label, &role.Description, &definitionJSON, &status)
 	if errors.Is(err, sql.ErrNoRows) {
 		return identitymodel.IdentityRole{}, false, nil
 	}
 	if err != nil {
+		return identitymodel.IdentityRole{}, false, err
+	}
+	role.WorkspaceID = persistedWorkspace.String
+	role.ScopeType = identitymodel.IdentityRoleScope(scopeType)
+	if err := json.Unmarshal([]byte(definitionJSON), &role.Definition); err != nil {
 		return identitymodel.IdentityRole{}, false, err
 	}
 	role.Status = identitymodel.IdentityStatus(status)

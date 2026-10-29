@@ -397,10 +397,14 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *identitycomposi
 	}))
 
 	remoteSDKRoutes := newRecordingRouteRegistrar(mux, standaloneActions)
+	browserApplications, err := remotesdkhttp.NewBrowserApplicationRegistry(cfg.IdentityGlobalBrowserApplications, cfg.IdentityGlobalBrowserCredentials, cfg.IdentityGlobalCatalogSourceOwners)
+	if err != nil {
+		return nil, fmt.Errorf("configure Identity global browser applications: %w", err)
+	}
 	remotesdkhttp.RegisterRoutes(remoteSDKRoutes, core.Binding, remotesdkhttp.Support{
 		DecodeJSON: httpSupport.decodeJSON, WriteJSON: httpSupport.writeJSON, WriteError: httpSupport.writeError,
 		WriteServiceError: httpSupport.writeServiceError,
-	}, applicationCredentials)
+	}, applicationCredentials, browserApplications)
 	if _, err := core.Binding.Applications().Register(ctx, identitysdk.ApplicationRegistration{
 		Application:  identitysdk.ApplicationRef{WorkspaceID: identitysdk.WorkspaceID(cfg.IdentityWorkspaceID), ApplicationKey: identitysdk.ApplicationKey(cfg.IdentityBrowserApplicationKey)},
 		RedirectURLs: append([]string(nil), cfg.IdentityBrowserReturnURLs...),

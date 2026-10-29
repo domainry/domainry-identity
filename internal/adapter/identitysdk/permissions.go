@@ -14,25 +14,16 @@ func (adapter sdkPermissions) Reconcile(ctx context.Context, request identitysdk
 	if err := request.ValidateContract(); err != nil {
 		return identitysdk.PermissionReconcileReceipt{}, sdkBoundaryError(err)
 	}
-	if adapter.binding == nil || adapter.binding.permissions == nil || adapter.binding.applications == nil {
+	if adapter.binding == nil || adapter.binding.permissions == nil {
 		return identitysdk.PermissionReconcileReceipt{}, &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.permission_registry_unavailable"}
-	}
-	workspaceID := string(request.Application.WorkspaceID)
-	if err := adapter.binding.requireMutableWorkspace(ctx, request.Application.WorkspaceID); err != nil {
-		return identitysdk.PermissionReconcileReceipt{}, err
-	}
-	registered, err := adapter.binding.applicationRegistered(ctx, request.Application)
-	if err != nil {
-		return identitysdk.PermissionReconcileReceipt{}, sdkBoundaryError(err)
-	}
-	if !registered {
-		return identitysdk.PermissionReconcileReceipt{}, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.application_not_registered"}
 	}
 	sourceOwner := strings.TrimSpace(request.SourceOwner)
 	definitions := make([]identitymodel.IdentityPermissionDefinitionRecord, len(request.Definitions))
 	for index, definition := range request.Definitions {
 		definitions[index] = identitymodel.IdentityPermissionDefinitionRecord{
 			PermissionKey: strings.TrimSpace(definition.PermissionKey),
+			ModuleKey:     strings.TrimSpace(definition.ModuleKey),
+			GroupKey:      strings.TrimSpace(definition.GroupKey),
 			ResourceKey:   strings.TrimSpace(definition.ResourceKey),
 			OperationKey:  strings.TrimSpace(definition.OperationKey),
 			Label:         strings.TrimSpace(definition.Label),
@@ -40,18 +31,18 @@ func (adapter sdkPermissions) Reconcile(ctx context.Context, request identitysdk
 			Category:      strings.TrimSpace(definition.Category),
 			SourceKind:    strings.TrimSpace(definition.SourceKind),
 			SourceOwner:   sourceOwner,
+			GrantMode:     strings.TrimSpace(definition.GrantMode),
+			ScopeKind:     strings.TrimSpace(definition.ScopeKind),
+			ObjectKey:     strings.TrimSpace(definition.ObjectKey),
+			DefaultLocale: strings.TrimSpace(definition.DefaultLocale),
+			I18n:          permissionTextFromSDK(definition.I18n),
 		}
 	}
-	catalog, err := adapter.binding.permissions.ForWorkspace(workspaceID)
-	if err != nil {
-		return identitysdk.PermissionReconcileReceipt{}, err
-	}
-	receipt, err := catalog.ReconcileDefinitions(ctx, sourceOwner, request.PreviousSnapshotHash, request.SnapshotHash, definitions)
+	receipt, err := adapter.binding.permissions.ReconcileDefinitions(ctx, sourceOwner, request.PreviousSnapshotHash, request.SnapshotHash, definitions)
 	if err != nil {
 		return identitysdk.PermissionReconcileReceipt{}, sdkBoundaryError(err)
 	}
 	return identitysdk.PermissionReconcileReceipt{
-		WorkspaceID:          identitysdk.WorkspaceID(receipt.WorkspaceID),
 		SourceOwner:          receipt.SourceOwner,
 		PreviousSnapshotHash: receipt.PreviousSnapshotHash,
 		SnapshotHash:         receipt.SnapshotHash,
@@ -67,36 +58,49 @@ func (adapter sdkPermissions) CurrentSourceSnapshot(ctx context.Context, request
 	if err := request.ValidateContract(); err != nil {
 		return identitysdk.PermissionSourceSnapshot{}, sdkBoundaryError(err)
 	}
-	if adapter.binding == nil || adapter.binding.permissions == nil || adapter.binding.applications == nil {
+	if adapter.binding == nil || adapter.binding.permissions == nil {
 		return identitysdk.PermissionSourceSnapshot{}, &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.permission_snapshot_reader_unavailable"}
 	}
-	workspaceID := string(request.Application.WorkspaceID)
-	registered, err := adapter.binding.applicationRegistered(ctx, request.Application)
-	if err != nil {
-		return identitysdk.PermissionSourceSnapshot{}, sdkBoundaryError(err)
-	}
-	if !registered {
-		return identitysdk.PermissionSourceSnapshot{}, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.application_not_registered"}
-	}
 	sourceOwner := strings.TrimSpace(request.SourceOwner)
-	catalog, err := adapter.binding.permissions.ForWorkspace(workspaceID)
-	if err != nil {
-		return identitysdk.PermissionSourceSnapshot{}, err
-	}
-	hash, current, err := catalog.CurrentSourceSnapshot(ctx, sourceOwner)
+	hash, current, err := adapter.binding.permissions.CurrentSourceSnapshot(ctx, sourceOwner)
 	if err != nil {
 		return identitysdk.PermissionSourceSnapshot{}, sdkBoundaryError(err)
 	}
 	definitions := make([]identitysdk.PermissionDefinition, len(current))
 	for index, definition := range current {
 		definitions[index] = identitysdk.PermissionDefinition{
-			PermissionKey: definition.PermissionKey, ResourceKey: definition.ResourceKey, OperationKey: definition.OperationKey,
+			PermissionKey: definition.PermissionKey, ModuleKey: definition.ModuleKey, GroupKey: definition.GroupKey,
+			ResourceKey: definition.ResourceKey, OperationKey: definition.OperationKey,
 			Label: definition.Label, Description: definition.Description, Category: definition.Category, SourceKind: definition.SourceKind,
+			GrantMode: definition.GrantMode, ScopeKind: definition.ScopeKind, ObjectKey: definition.ObjectKey,
+			DefaultLocale: definition.DefaultLocale, I18n: permissionTextToSDK(definition.I18n),
 		}
 	}
 	return identitysdk.PermissionSourceSnapshot{
-		WorkspaceID: request.Application.WorkspaceID, SourceOwner: sourceOwner, SnapshotHash: hash, Definitions: definitions,
+		SourceOwner: sourceOwner, SnapshotHash: hash, Definitions: definitions,
 	}, nil
 }
 
 var _ identitysdk.PermissionSnapshotReader = sdkPermissions{}
+
+func permissionTextFromSDK(source identitysdk.PermissionLocalizedText) identitymodel.IdentityPermissionLocalizedText {
+	result := make(identitymodel.IdentityPermissionLocalizedText, len(source))
+	for locale, text := range source {
+		result[locale] = identitymodel.IdentityPermissionText{
+			ModuleLabel: text.ModuleLabel, GroupLabel: text.GroupLabel, ResourceLabel: text.ResourceLabel,
+			OperationLabel: text.OperationLabel, Label: text.Label, Description: text.Description,
+		}
+	}
+	return result
+}
+
+func permissionTextToSDK(source identitymodel.IdentityPermissionLocalizedText) identitysdk.PermissionLocalizedText {
+	result := make(identitysdk.PermissionLocalizedText, len(source))
+	for locale, text := range source {
+		result[locale] = identitysdk.PermissionText{
+			ModuleLabel: text.ModuleLabel, GroupLabel: text.GroupLabel, ResourceLabel: text.ResourceLabel,
+			OperationLabel: text.OperationLabel, Label: text.Label, Description: text.Description,
+		}
+	}
+	return result
+}

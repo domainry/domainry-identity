@@ -10,26 +10,20 @@ import (
 )
 
 func (s *MemoryIdentityStore) RemoveIdentityMenusAtomically(_ context.Context, workspaceID string, menus []identitymodel.IdentityMenu) error {
-	prefix, err := identityWorkspacePrefix(workspaceID)
-	if err != nil {
-		return err
-	}
+	_ = workspaceID
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	removed := map[string]bool{}
 	for _, menu := range menus {
-		if _, ok := s.menus[prefix+menu.MenuID]; !ok {
+		if _, ok := s.menus[menu.MenuID]; !ok {
 			return fmt.Errorf("menu not found: %s", menu.MenuID)
 		}
 		removed[menu.MenuID], removed[menu.Key] = true, true
 	}
 	for _, menu := range menus {
-		delete(s.menus, prefix+menu.MenuID)
+		delete(s.menus, menu.MenuID)
 	}
 	for roleID, menuIDs := range s.roleMenus {
-		if !strings.HasPrefix(roleID, prefix) {
-			continue
-		}
 		filtered := make([]string, 0, len(menuIDs))
 		for _, assigned := range menuIDs {
 			if !removed[assigned] {
@@ -42,17 +36,12 @@ func (s *MemoryIdentityStore) RemoveIdentityMenusAtomically(_ context.Context, w
 }
 
 func (s *MemoryIdentityStore) ListIdentityMenus(ctx context.Context, workspaceID string) ([]identitymodel.IdentityMenu, error) {
-	prefix, err := identityWorkspacePrefix(workspaceID)
-	if err != nil {
-		return nil, err
-	}
+	_ = ctx
+	_ = workspaceID
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := make([]identitymodel.IdentityMenu, 0, len(s.menus))
-	for key, value := range s.menus {
-		if !strings.HasPrefix(key, prefix) {
-			continue
-		}
+	for _, value := range s.menus {
 		out = append(out, value)
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -65,10 +54,8 @@ func (s *MemoryIdentityStore) ListIdentityMenus(ctx context.Context, workspaceID
 }
 
 func (s *MemoryIdentityStore) UpsertIdentityMenu(ctx context.Context, workspaceID string, menu identitymodel.IdentityMenu) error {
-	key, err := identityWorkspaceKey(workspaceID, menu.MenuID)
-	if err != nil {
-		return err
-	}
+	_ = ctx
+	_ = workspaceID
 	if menu.MenuID == "" {
 		return fmt.Errorf("menu id is required")
 	}
@@ -78,29 +65,27 @@ func (s *MemoryIdentityStore) UpsertIdentityMenu(ctx context.Context, workspaceI
 	if menu.Status == "" {
 		menu.Status = identitymodel.IdentityStatusActive
 	}
+	menu.SourceOwner = strings.TrimSpace(menu.SourceOwner)
+	if menu.SourceOwner == "" {
+		return fmt.Errorf("menu source owner is required")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.menus[key] = menu
+	s.menus[menu.MenuID] = menu
 	return nil
 }
 
 func (s *MemoryIdentityStore) RemoveIdentityMenu(ctx context.Context, workspaceID, menuID string) error {
-	key, err := identityWorkspaceKey(workspaceID, menuID)
-	if err != nil {
-		return err
-	}
-	prefix, _ := identityWorkspacePrefix(workspaceID)
+	_ = ctx
+	_ = workspaceID
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	menu, ok := s.menus[key]
+	menu, ok := s.menus[menuID]
 	if !ok {
 		return fmt.Errorf("menu not found: %s", menuID)
 	}
-	delete(s.menus, key)
+	delete(s.menus, menuID)
 	for roleID, menuIDs := range s.roleMenus {
-		if !strings.HasPrefix(roleID, prefix) {
-			continue
-		}
 		filtered := make([]string, 0, len(menuIDs))
 		for _, assigned := range menuIDs {
 			if assigned != menu.MenuID && assigned != menu.Key {
@@ -113,21 +98,17 @@ func (s *MemoryIdentityStore) RemoveIdentityMenu(ctx context.Context, workspaceI
 }
 
 func (s *MemoryIdentityStore) SetIdentityRoleMenus(ctx context.Context, workspaceID, roleID string, menuIDs []string) error {
-	key, err := identityWorkspaceKey(workspaceID, roleID)
-	if err != nil {
-		return err
-	}
+	_ = ctx
+	_ = workspaceID
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.roleMenus[key] = uniqueSortedStrings(menuIDs)
+	s.roleMenus[roleID] = uniqueSortedStrings(menuIDs)
 	return nil
 }
 
 func (s *MemoryIdentityStore) ListIdentityRoleMenuAssignments(ctx context.Context, workspaceID, roleID string) ([]identitymodel.IdentityRoleMenuAssignment, error) {
-	prefix, err := identityWorkspacePrefix(workspaceID)
-	if err != nil {
-		return nil, err
-	}
+	_ = ctx
+	_ = workspaceID
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := []identitymodel.IdentityRoleMenuAssignment{}
@@ -137,18 +118,16 @@ func (s *MemoryIdentityStore) ListIdentityRoleMenuAssignments(ctx context.Contex
 		}
 	}
 	if strings.TrimSpace(roleID) != "" {
-		appendAssignments(roleID, s.roleMenus[prefix+roleID])
+		appendAssignments(roleID, s.roleMenus[roleID])
 		return out, nil
 	}
 	roleIDs := make([]string, 0, len(s.roleMenus))
-	for scopedRoleID := range s.roleMenus {
-		if strings.HasPrefix(scopedRoleID, prefix) {
-			roleIDs = append(roleIDs, strings.TrimPrefix(scopedRoleID, prefix))
-		}
+	for currentRoleID := range s.roleMenus {
+		roleIDs = append(roleIDs, currentRoleID)
 	}
 	sort.Strings(roleIDs)
 	for _, currentRoleID := range roleIDs {
-		appendAssignments(currentRoleID, s.roleMenus[prefix+currentRoleID])
+		appendAssignments(currentRoleID, s.roleMenus[currentRoleID])
 	}
 	return out, nil
 }

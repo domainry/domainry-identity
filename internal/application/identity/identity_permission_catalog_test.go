@@ -8,6 +8,7 @@ import (
 	actioncontract "github.com/domainry/domainry-foundation/action"
 	"github.com/domainry/domainry-foundation/apperror"
 	"github.com/domainry/domainry-foundation/requestcontext"
+	identitysdk "github.com/domainry/domainry-identity-sdk"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
@@ -15,6 +16,18 @@ import (
 
 type permissionCatalogRepositoryStub struct {
 	records []identitymodel.IdentityPermissionDefinitionRecord
+}
+
+func permissionCatalogTestDefinition(permissionKey, resourceKey, operationKey, label, category, sourceKind, sourceOwner string) identitymodel.IdentityPermissionDefinitionRecord {
+	return identitymodel.IdentityPermissionDefinitionRecord{
+		PermissionKey: permissionKey, ModuleKey: "test", GroupKey: resourceKey,
+		ResourceKey: resourceKey, OperationKey: operationKey, Label: label, Category: category,
+		SourceKind: sourceKind, SourceOwner: sourceOwner, GrantMode: string(actioncontract.PermissionGrantDirect),
+		ScopeKind: string(actioncontract.PermissionScopeNone), DefaultLocale: "en",
+		I18n: identitymodel.IdentityPermissionLocalizedText{"en": {
+			ModuleLabel: "Test", GroupLabel: category, ResourceLabel: category, OperationLabel: operationKey, Label: label,
+		}},
+	}
 }
 
 const identityTestDirectBusinessPermission = "business.customer.read"
@@ -81,16 +94,14 @@ func (repository *permissionCatalogRepositoryStub) ReconcileIdentityPermissionDe
 	}
 	repository.records = retained
 	return identitymodel.IdentityPermissionReconcileReceipt{
-		WorkspaceID: request.WorkspaceID, SourceOwner: request.SourceOwner,
+		SourceOwner:  request.SourceOwner,
 		SnapshotHash: request.SnapshotHash, Inserted: len(request.Definitions),
 	}, nil
 }
 
 func TestPermissionDefinitionAndSnapshotHashesAreCanonical(t *testing.T) {
-	definition := identitymodel.IdentityPermissionDefinitionRecord{
-		PermissionKey: "identity.roles.get", ResourceKey: "identity.roles", OperationKey: "get", Label: "Get role",
-		Description: "Get one role", Category: "Identity", SourceKind: "builtin_http", SourceOwner: "identity:builtin",
-	}
+	definition := permissionCatalogTestDefinition("identity.roles.get", "identity.roles", "get", "Get role", "Identity", "builtin_http", "identity:builtin")
+	definition.Description = "Get one role"
 	first, err := IdentityPermissionDefinitionHash(definition)
 	if err != nil {
 		t.Fatal(err)
@@ -100,6 +111,24 @@ func TestPermissionDefinitionAndSnapshotHashesAreCanonical(t *testing.T) {
 	second, err := IdentityPermissionDefinitionHash(definition)
 	if err != nil || first != second {
 		t.Fatalf("source hash changed with administrator/database fields: %q %q err=%v", first, second, err)
+	}
+	definition.DefinitionHash = first
+	identitySnapshotHash, err := IdentityPermissionSourceSnapshotHash([]identitymodel.IdentityPermissionDefinitionRecord{definition})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sdkSnapshotHash, err := identitysdk.PermissionSnapshotHash(definition.SourceOwner, []identitysdk.PermissionDefinition{{
+		PermissionKey: definition.PermissionKey, ModuleKey: definition.ModuleKey, GroupKey: definition.GroupKey,
+		ResourceKey: definition.ResourceKey, OperationKey: definition.OperationKey, Label: definition.Label,
+		Description: definition.Description, Category: definition.Category, SourceKind: definition.SourceKind,
+		GrantMode: definition.GrantMode, ScopeKind: definition.ScopeKind, ObjectKey: definition.ObjectKey,
+		DefaultLocale: definition.DefaultLocale,
+		I18n: identitysdk.PermissionLocalizedText{"en": {
+			ModuleLabel: "Test", GroupLabel: "Identity", ResourceLabel: "Identity", OperationLabel: "get", Label: "Get role",
+		}},
+	}})
+	if err != nil || identitySnapshotHash != sdkSnapshotHash {
+		t.Fatalf("Identity and SDK permission snapshot hashes differ: identity=%q sdk=%q err=%v", identitySnapshotHash, sdkSnapshotHash, err)
 	}
 	left := []identitymodel.IdentityPermissionDefinitionRecord{{PermissionKey: "b", DefinitionHash: "2"}, {PermissionKey: "a", DefinitionHash: "1"}}
 	right := slices.Clone(left)
@@ -187,7 +216,7 @@ func TestPermissionReconcileEmitsStableReceiptLogWithGeneratedTraceID(t *testing
 		t.Fatalf("reconcile log entries=%v", observed.All())
 	}
 	fields := entries[0].ContextMap()
-	if fields["workspace_id"] != "workspace-primary" || fields["source_owner"] != IdentityBuiltinAuthorizationOwner || fields["snapshot_hash"] != receipt.SnapshotHash || fields["inserted"] != int64(100) {
+	if fields["workspace_id"] != nil || fields["source_owner"] != IdentityBuiltinAuthorizationOwner || fields["snapshot_hash"] != receipt.SnapshotHash || fields["inserted"] != int64(100) {
 		t.Fatalf("reconcile log fields=%v", fields)
 	}
 	traceID, _ := fields["trace_id"].(string)
@@ -206,10 +235,9 @@ func TestPermissionCatalogReconcilesExternalOwnerAndEnablementChangesSharedSnaps
 	if err != nil {
 		t.Fatal(err)
 	}
-	definitions := []identitymodel.IdentityPermissionDefinitionRecord{{
-		PermissionKey: "customer.read", ResourceKey: "customer", OperationKey: "read", Label: "Read customers",
-		Category: "Customer", SourceKind: "object_default", SourceOwner: "runtime:orders",
-	}}
+	definitions := []identitymodel.IdentityPermissionDefinitionRecord{
+		permissionCatalogTestDefinition("customer.read", "customer", "read", "Read customers", "Customer", "object_default", "runtime:orders"),
+	}
 	snapshotHash, err := identityPermissionSnapshotHash("runtime:orders", definitions)
 	if err != nil {
 		t.Fatal(err)
@@ -273,10 +301,10 @@ func TestPermissionCatalogQueriesExternalActionUsageWithoutPersistingIt(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	definitions := []identitymodel.IdentityPermissionDefinitionRecord{{
-		PermissionKey: "customer.read", ResourceKey: "customer", OperationKey: "read", Label: "Read customers",
-		Category: "Customer", SourceKind: "object_default", SourceOwner: "runtime:orders",
-	}}
+	definitions := []identitymodel.IdentityPermissionDefinitionRecord{
+		permissionCatalogTestDefinition("customer.read", "customer", "read", "Read customers", "Customer", "object_default", "runtime:orders"),
+	}
+	definitions[0].GrantMode = string(actioncontract.PermissionGrantBundled)
 	snapshotHash, err := identityPermissionSnapshotHash("runtime:orders", definitions)
 	if err != nil {
 		t.Fatal(err)

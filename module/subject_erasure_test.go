@@ -27,10 +27,11 @@ func bindSharedSubjectLifecycle(t *testing.T, binding identitysdk.Binding) {
 
 func TestSubjectErasureThroughModuleRevokesSessionsAndPreservesReceipt(t *testing.T) {
 	catalog := identitysdk.ProjectRoleCatalog{
+		SourceOwner:                          "application:runtime",
 		InitialWorkspaceAdministratorRoleKey: "member",
 		Roles: []identitysdk.ProjectRoleDefinition{
-			{Key: "member", Name: "Member", Audience: "any", AssignmentMode: "manual", ProvisionToWorkspaces: true, Permissions: []identitysdk.ProjectRolePermission{{PermissionKey: "identity.users.list", DataScope: "owner"}}},
-			{Key: "member_onboarding", Name: "Onboarding", Audience: "any", AssignmentMode: "manual", ProvisionToWorkspaces: true, Permissions: []identitysdk.ProjectRolePermission{{PermissionKey: "identity.roles.list", DataScope: "all"}}},
+			{Key: "member", Name: "Member", Audience: "any", AssignmentMode: "manual", Permissions: []identitysdk.ProjectRolePermission{{PermissionKey: "identity.users.list", DataScope: "owner"}}},
+			{Key: "member_onboarding", Name: "Onboarding", Audience: "any", AssignmentMode: "manual", Permissions: []identitysdk.ProjectRolePermission{{PermissionKey: "identity.roles.list", DataScope: "all"}}},
 		},
 	}
 	bootstrap, db := openWorkspaceIdentityBootstrapCatalog(t, catalog)
@@ -56,7 +57,6 @@ func TestSubjectErasureThroughModuleRevokesSessionsAndPreservesReceipt(t *testin
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = binding.Close(context.Background()) })
-	catalog.Application = identitysdk.ApplicationRef{ApplicationKey: "runtime"}
 	if err := binding.(identitysdk.BootstrapProjectRoleCatalogBinder).BindBootstrapProjectRoleCatalog(t.Context(), catalog); err != nil {
 		t.Fatal(err)
 	}

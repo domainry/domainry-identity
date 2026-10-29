@@ -47,7 +47,11 @@ func (s Support) writeServiceError(w http.ResponseWriter, r *http.Request, err e
 	s.WriteServiceError(w, r, err)
 }
 
-func RegisterRoutes(registrar RouteRegistrar, binding identitysdk.Binding, support Support, credentials *ApplicationCredentialRegistry) {
+func RegisterRoutes(registrar RouteRegistrar, binding identitysdk.Binding, support Support, credentials *ApplicationCredentialRegistry, browserApplications ...*BrowserApplicationRegistry) {
+	var browserRegistry *BrowserApplicationRegistry
+	if len(browserApplications) > 0 {
+		browserRegistry = browserApplications[0]
+	}
 	registrar.HandleFunc("GET /identity/discovery", func(w http.ResponseWriter, _ *http.Request) {
 		descriptor := binding.Descriptor()
 		descriptor.Mode = identitysdk.DeploymentModeSaaS
@@ -56,6 +60,68 @@ func RegisterRoutes(registrar RouteRegistrar, binding identitysdk.Binding, suppo
 		// discovery describes the issuer and protocol, not one tenant app.
 		descriptor.Audience = ""
 		support.writeJSON(w, http.StatusOK, descriptor)
+	})
+	registrar.HandleFunc("POST /identity/browser/login", func(w http.ResponseWriter, r *http.Request) {
+		var request identitysdk.PasswordLoginRequest
+		if !support.decodeJSON(w, r, &request) {
+			return
+		}
+		if browserRegistry == nil || !browserRegistry.Authorize(r.Header.Get("Authorization"), request.ApplicationKey) {
+			support.writeError(w, r, http.StatusUnauthorized, "identity.browser_application_credential_invalid")
+			return
+		}
+		session, err := binding.Authentication().LoginWithPassword(r.Context(), request)
+		if err != nil {
+			support.writeServiceError(w, r, err)
+			return
+		}
+		support.writeJSON(w, http.StatusOK, session)
+	})
+	registrar.HandleFunc("GET /identity/browser/providers", func(w http.ResponseWriter, r *http.Request) {
+		applicationKey := identitysdk.ApplicationKey(strings.TrimSpace(r.Header.Get("X-Domainry-Application-Key")))
+		if browserRegistry == nil || !browserRegistry.Authorize(r.Header.Get("Authorization"), applicationKey) {
+			support.writeError(w, r, http.StatusUnauthorized, "identity.browser_application_credential_invalid")
+			return
+		}
+		providers, err := binding.Authentication().Providers(r.Context(), identitysdk.ProviderQuery{})
+		if err != nil {
+			support.writeServiceError(w, r, err)
+			return
+		}
+		support.writeJSON(w, http.StatusOK, providers)
+	})
+	registrar.HandleFunc("POST /identity/browser/refresh", func(w http.ResponseWriter, r *http.Request) {
+		var request identitysdk.RefreshRequest
+		if !support.decodeJSON(w, r, &request) {
+			return
+		}
+		if browserRegistry == nil || !browserRegistry.Authorize(r.Header.Get("Authorization"), request.ApplicationKey) {
+			support.writeError(w, r, http.StatusUnauthorized, "identity.browser_application_credential_invalid")
+			return
+		}
+		request.WorkspaceID = ""
+		session, err := binding.Authentication().RefreshSession(r.Context(), request)
+		if err != nil {
+			support.writeServiceError(w, r, err)
+			return
+		}
+		support.writeJSON(w, http.StatusOK, session)
+	})
+	registrar.HandleFunc("POST /identity/browser/logout", func(w http.ResponseWriter, r *http.Request) {
+		var request identitysdk.LogoutRequest
+		if !support.decodeJSON(w, r, &request) {
+			return
+		}
+		if browserRegistry == nil || !browserRegistry.Authorize(r.Header.Get("Authorization"), request.ApplicationKey) {
+			support.writeError(w, r, http.StatusUnauthorized, "identity.browser_application_credential_invalid")
+			return
+		}
+		request.WorkspaceID = ""
+		if err := binding.Authentication().LogoutSession(r.Context(), request); err != nil {
+			support.writeServiceError(w, r, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 	})
 	registrar.HandleFunc("POST /identity/application-service/token", func(w http.ResponseWriter, r *http.Request) {
 		var request identitysdk.ExchangeApplicationServiceTokenRequest
@@ -281,7 +347,7 @@ func RegisterRoutes(registrar RouteRegistrar, binding identitysdk.Binding, suppo
 		if !support.decodeJSON(w, r, &request) {
 			return
 		}
-		if !authorizeApplicationCredential(w, r, support, credentials, request.Application) {
+		if !authorizeRuntimeApplicationCredential(w, r, support, credentials, browserRegistry, request.Application) {
 			return
 		}
 		workloads, ok := binding.(identitysdk.WorkflowWorkloadIdentityBinding)
@@ -301,7 +367,7 @@ func RegisterRoutes(registrar RouteRegistrar, binding identitysdk.Binding, suppo
 		if !support.decodeJSON(w, r, &request) {
 			return
 		}
-		if !authorizeApplicationCredential(w, r, support, credentials, request.Application) {
+		if !authorizeRuntimeApplicationCredential(w, r, support, credentials, browserRegistry, request.Application) {
 			return
 		}
 		workloads, ok := binding.(identitysdk.WorkflowWorkloadIdentityBinding)
@@ -321,7 +387,7 @@ func RegisterRoutes(registrar RouteRegistrar, binding identitysdk.Binding, suppo
 		if !support.decodeJSON(w, r, &request) {
 			return
 		}
-		if !authorizeApplicationCredentialSourceOwner(w, r, support, credentials, applicationScope(request.Application), request.SourceOwner) {
+		if !authorizeApplicationCredentialSourceOwner(w, r, support, credentials, catalogApplicationScope(r), request.SourceOwner, browserRegistry) {
 			return
 		}
 		receipt, err := binding.Permissions().Reconcile(r.Context(), request)
@@ -336,7 +402,7 @@ func RegisterRoutes(registrar RouteRegistrar, binding identitysdk.Binding, suppo
 		if !support.decodeJSON(w, r, &request) {
 			return
 		}
-		if !authorizeApplicationCredentialSourceOwner(w, r, support, credentials, applicationScope(request.Application), request.SourceOwner) {
+		if !authorizeApplicationCredentialSourceOwner(w, r, support, credentials, catalogApplicationScope(r), request.SourceOwner, browserRegistry) {
 			return
 		}
 		reader, ok := binding.Permissions().(identitysdk.PermissionSnapshotReader)
@@ -355,30 +421,65 @@ func RegisterRoutes(registrar RouteRegistrar, binding identitysdk.Binding, suppo
 		}
 		support.writeJSON(w, http.StatusOK, snapshot)
 	})
-	registerRuntimeProjectionRoutes(registrar, binding, support, credentials)
-	registerSubjectLifecycleRoutes(registrar, binding, support, credentials)
+	registrar.HandleFunc("PUT /identity/project-roles/reconcile", func(w http.ResponseWriter, r *http.Request) {
+		var request identitysdk.ProjectRoleCatalog
+		if !support.decodeJSON(w, r, &request) {
+			return
+		}
+		if !authorizeApplicationCredentialSourceOwner(w, r, support, credentials, catalogApplicationScope(r), request.SourceOwner, browserRegistry) {
+			return
+		}
+		publisher, ok := binding.(identitysdk.ProjectRoleCatalogPublisher)
+		if !ok {
+			support.writeError(w, r, http.StatusNotImplemented, "identity.project_role_catalog_unavailable")
+			return
+		}
+		receipt, err := publisher.PublishProjectRoles(r.Context(), request)
+		if err != nil {
+			support.writeServiceError(w, r, err)
+			return
+		}
+		support.writeJSON(w, http.StatusOK, receipt)
+	})
+	registerRuntimeProjectionRoutes(registrar, binding, support, credentials, browserRegistry)
+	registerSubjectLifecycleRoutes(registrar, binding, support, credentials, browserRegistry)
 }
 
-func authorizeApplicationCredentialSourceOwner(w http.ResponseWriter, r *http.Request, support Support, credentials *ApplicationCredentialRegistry, scope identitysdk.ApplicationScope, sourceOwner string) bool {
-	if credentials == nil {
-		support.writeError(w, r, http.StatusUnauthorized, "identity.service_credential_required")
-		return false
+func catalogApplicationScope(r *http.Request) identitysdk.ApplicationScope {
+	return identitysdk.ApplicationScope{
+		WorkspaceID:    identitysdk.WorkspaceID(strings.TrimSpace(r.Header.Get("X-Domainry-Workspace-ID"))),
+		ApplicationKey: identitysdk.ApplicationKey(strings.TrimSpace(r.Header.Get("X-Domainry-Application-Key"))),
 	}
-	decision := credentials.AuthorizeSourceOwner(r.Header.Get("Authorization"), scope, sourceOwner)
-	if !decision.Authenticated {
-		support.writeError(w, r, http.StatusUnauthorized, "identity.service_credential_required")
-		return false
+}
+
+func authorizeApplicationCredentialSourceOwner(w http.ResponseWriter, r *http.Request, support Support, credentials *ApplicationCredentialRegistry, scope identitysdk.ApplicationScope, sourceOwner string, browserApplications ...*BrowserApplicationRegistry) bool {
+	if credentials != nil {
+		decision := credentials.AuthorizeSourceOwner(r.Header.Get("Authorization"), scope, sourceOwner)
+		if decision.Authenticated {
+			if !decision.SourceOwnerAllowed {
+				support.writeError(w, r, http.StatusForbidden, "identity.permission_source_owner_forbidden")
+				return false
+			}
+			writeApplicationCredentialRateLimit(w, decision)
+			if decision.RateLimited {
+				support.writeError(w, r, http.StatusTooManyRequests, "identity.application_rate_limited")
+				return false
+			}
+			return true
+		}
 	}
-	if !decision.SourceOwnerAllowed {
-		support.writeError(w, r, http.StatusForbidden, "identity.permission_source_owner_forbidden")
-		return false
+	if len(browserApplications) > 0 && browserApplications[0] != nil {
+		browserRegistry := browserApplications[0]
+		if browserRegistry.Authorize(r.Header.Get("Authorization"), scope.ApplicationKey) {
+			if !browserRegistry.AuthorizeSourceOwner(r.Header.Get("Authorization"), scope.ApplicationKey, sourceOwner) {
+				support.writeError(w, r, http.StatusForbidden, "identity.permission_source_owner_forbidden")
+				return false
+			}
+			return true
+		}
 	}
-	writeApplicationCredentialRateLimit(w, decision)
-	if decision.RateLimited {
-		support.writeError(w, r, http.StatusTooManyRequests, "identity.application_rate_limited")
-		return false
-	}
-	return true
+	support.writeError(w, r, http.StatusUnauthorized, "identity.service_credential_required")
+	return false
 }
 
 func authorizeApplicationCredential(w http.ResponseWriter, r *http.Request, support Support, credentials *ApplicationCredentialRegistry, scope identitysdk.ApplicationScope) bool {

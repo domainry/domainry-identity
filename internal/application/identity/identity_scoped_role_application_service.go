@@ -234,19 +234,19 @@ func (s *IdentityApplicationService) ListRoleFieldPermissions(ctx context.Contex
 }
 
 func (s *IdentityApplicationService) UpsertMenu(ctx context.Context, menu identitymodel.IdentityMenu) error {
-	scoped, err := s.domainForContext(ctx)
-	if err != nil {
+	if _, err := s.domainForContext(ctx); err != nil {
 		return err
 	}
-	return scoped.UpsertMenu(ctx, menu)
+	_ = menu
+	return apperror.New(apperror.KindForbidden, "backend.identity.global_menu_read_only", nil, nil)
 }
 
 func (s *IdentityApplicationService) RemoveMenu(ctx context.Context, menuID string) ([]string, error) {
-	scoped, err := s.domainForContext(ctx)
-	if err != nil {
+	if _, err := s.domainForContext(ctx); err != nil {
 		return nil, err
 	}
-	return scoped.RemoveMenu(ctx, menuID)
+	_ = menuID
+	return nil, apperror.New(apperror.KindForbidden, "backend.identity.global_menu_read_only", nil, nil)
 }
 
 func (s *IdentityApplicationService) SetRoleMenus(ctx context.Context, roleID string, menuIDs []string) error {
@@ -269,6 +269,9 @@ func (s *IdentityApplicationService) ValidateRoleMenus(ctx context.Context, role
 	}
 	if !found {
 		return apperror.New(apperror.KindBadRequest, "backend.identity.role_not_found", nil, map[string]string{"role": roleID})
+	}
+	if role.ScopeType == identitymodel.IdentityRoleScopeGlobal {
+		return apperror.New(apperror.KindForbidden, "backend.identity.global_role_read_only", nil, map[string]string{"role": role.Key})
 	}
 	definition, published := scoped.PublishedRoleDefinition(ctx, role.Key)
 	if !published {

@@ -15,11 +15,12 @@ import (
 )
 
 func (binding *moduleBinding) PublishProjectRoles(ctx context.Context, catalog identitysdk.ProjectRoleCatalog) (identitysdk.ProjectRoleCatalogReceipt, error) {
-	if binding == nil || binding.runtime == nil || binding.runtime.Identity == nil || binding.runtime.IdentityStore == nil || binding.runtime.MetadataRuntime == nil {
+	if binding == nil || binding.runtime == nil || binding.runtime.Identity == nil || binding.runtime.IdentityStore == nil {
 		return identitysdk.ProjectRoleCatalogReceipt{}, &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.project_role_catalog_unavailable"}
 	}
-	if catalog.Application.WorkspaceID != binding.application.WorkspaceID || catalog.Application.ApplicationKey != binding.application.ApplicationKey {
-		return identitysdk.ProjectRoleCatalogReceipt{}, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.project_role_catalog_scope_mismatch"}
+	sourceOwner := strings.TrimSpace(catalog.SourceOwner)
+	if sourceOwner == "" {
+		return identitysdk.ProjectRoleCatalogReceipt{}, &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.project_role_catalog_owner_required"}
 	}
 	projectObjects := []definitionmodel.ObjectSchema{}
 	if err := decodeProjectRolePolicy(catalog.Objects, &projectObjects); err != nil {
@@ -30,7 +31,7 @@ func (binding *moduleBinding) PublishProjectRoles(ctx context.Context, catalog i
 		return identitysdk.ProjectRoleCatalogReceipt{}, err
 	}
 
-	workspaceID := string(catalog.Application.WorkspaceID)
+	workspaceID := string(binding.application.WorkspaceID)
 	existing, err := binding.runtime.IdentityStore.ListIdentityRoles(ctx, workspaceID)
 	if err != nil {
 		return identitysdk.ProjectRoleCatalogReceipt{}, err
@@ -39,32 +40,61 @@ func (binding *moduleBinding) PublishProjectRoles(ctx context.Context, catalog i
 	for _, role := range existing {
 		byKey[strings.TrimSpace(role.Key)] = role
 	}
+	menuKeysByRole := make(map[string][]string, len(catalog.Roles))
+	for _, input := range catalog.Roles {
+		menuKeysByRole[strings.TrimSpace(input.Key)] = append([]string(nil), input.MenuKeys...)
+	}
+	active := make(map[string]bool, len(definitions))
 	for _, definition := range definitions {
+		active[definition.Key] = true
 		role := byKey[definition.Key]
+		if role.RoleID != "" && role.ScopeType == identitymodel.IdentityRoleScopeGlobal && role.SourceOwner != sourceOwner {
+			return identitysdk.ProjectRoleCatalogReceipt{}, &identitysdk.Error{Class: identitysdk.ErrorClassConflict, Code: "identity.project_role_owner_conflict", Params: map[string]string{"role_key": definition.Key, "current_owner": role.SourceOwner}}
+		}
 		if role.RoleID == "" {
-			role.RoleID = identitypersistence.WorkspaceRoleID(workspaceID, definition.Key)
+			role.RoleID = identitypersistence.GlobalRoleID(sourceOwner, definition.Key)
 			role.Key = definition.Key
 		}
 		role.Label = definition.Name
+		role.Description = definition.Description
+		role.ScopeType = identitymodel.IdentityRoleScopeGlobal
+		role.SourceOwner = sourceOwner
+		role.Definition = definition
 		role.Status = identitymodel.IdentityStatusActive
 		if err := binding.runtime.IdentityStore.UpsertIdentityRole(ctx, workspaceID, role); err != nil {
 			return identitysdk.ProjectRoleCatalogReceipt{}, fmt.Errorf("sync project role %s: %w", definition.Key, err)
 		}
+		if err := binding.runtime.IdentityStore.SetIdentityRoleMenus(ctx, workspaceID, role.RoleID, menuKeysByRole[definition.Key]); err != nil {
+			return identitysdk.ProjectRoleCatalogReceipt{}, fmt.Errorf("sync project role menus %s: %w", definition.Key, err)
+		}
 	}
-	binding.runtime.MetadataRuntime.ReplaceProjectObjects(projectObjects)
-	binding.runtime.MetadataRuntime.ReplaceProjectRoles(definitions)
-	binding.runtime.Identity.ReplaceRoleDefinitions(
-		binding.runtime.MetadataRuntime.EffectiveRoleDefinitions(
-			binding.runtime.MetadataRuntime.Schema().Roles,
-		),
-	)
+	for _, role := range existing {
+		if role.ScopeType != identitymodel.IdentityRoleScopeGlobal || role.SourceOwner != sourceOwner || active[role.Key] {
+			continue
+		}
+		role.Status = identitymodel.IdentityStatusDisabled
+		if err := binding.runtime.IdentityStore.UpsertIdentityRole(ctx, workspaceID, role); err != nil {
+			return identitysdk.ProjectRoleCatalogReceipt{}, fmt.Errorf("retire project role %s: %w", role.Key, err)
+		}
+	}
+	if binding.runtime.MetadataRuntime != nil {
+		binding.runtime.MetadataRuntime.ReplaceProjectObjects(projectObjects)
+		binding.runtime.MetadataRuntime.ReplaceProjectRoles(definitions)
+		binding.runtime.Identity.ReplaceRoleDefinitions(
+			binding.runtime.MetadataRuntime.EffectiveRoleDefinitions(
+				binding.runtime.MetadataRuntime.Schema().Roles,
+			),
+		)
+	} else {
+		binding.runtime.Identity.ReplaceRoleDefinitions(definitions)
+	}
 
 	canonical, err := json.Marshal(catalog)
 	if err != nil {
 		return identitysdk.ProjectRoleCatalogReceipt{}, err
 	}
 	digest := sha256.Sum256(canonical)
-	return identitysdk.ProjectRoleCatalogReceipt{Published: len(definitions), SHA256: fmt.Sprintf("%x", digest[:])}, nil
+	return identitysdk.ProjectRoleCatalogReceipt{SourceOwner: sourceOwner, Published: len(definitions), SHA256: fmt.Sprintf("%x", digest[:])}, nil
 }
 
 // BindBootstrapProjectRoleCatalog makes application roles available to the
@@ -82,8 +112,14 @@ func (binding *moduleBinding) BindBootstrapProjectRoleCatalog(ctx context.Contex
 	if err := ctx.Err(); err != nil {
 		return &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.context_unavailable", Cause: err}
 	}
-	if catalog.Application.WorkspaceID != "" || catalog.Application.ApplicationKey != binding.application.ApplicationKey {
-		return &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.bootstrap_project_role_catalog_scope_mismatch"}
+	if err := catalog.ValidateContract(); err != nil {
+		return err
+	}
+	// Global roles must exist before the first tenant transaction can assign
+	// its administrator. Catalog publication is installation-scoped and is
+	// intentionally outside the tenant bootstrap transaction.
+	if _, err := binding.PublishProjectRoles(ctx, catalog); err != nil {
+		return err
 	}
 	projectObjects := []definitionmodel.ObjectSchema{}
 	if err := decodeProjectRolePolicy(catalog.Objects, &projectObjects); err != nil {
@@ -116,6 +152,7 @@ func (binding *moduleBinding) BindBootstrapProjectRoleCatalog(ctx context.Contex
 	sort.Slice(roles, func(left, right int) bool { return roles[left].Key < roles[right].Key })
 	binding.runtime.Identity.ReplaceRoleDefinitions(roles)
 	binding.bootstrapMu.Lock()
+	bootstrapCatalog.sourceOwner = strings.TrimSpace(catalog.SourceOwner)
 	binding.bootstrapRoleCatalog = bootstrapCatalog
 	binding.bootstrapMu.Unlock()
 	return nil
@@ -144,12 +181,11 @@ func projectRoleDefinition(input identitysdk.ProjectRoleDefinition) (identitymod
 		return identitymodel.RoleSchema{}, &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.project_role_invalid"}
 	}
 	definition := identitymodel.RoleSchema{
-		Key: key, Name: name,
+		Key: key, Name: name, Description: strings.TrimSpace(input.Description),
 		Audience: identitymodel.IdentityRoleAudience(strings.TrimSpace(input.Audience)), RequiredBindingKey: strings.TrimSpace(input.RequiredBindingKey),
 		AssignmentMode: identitymodel.IdentityRoleAssignmentMode(strings.TrimSpace(input.AssignmentMode)), RiskLevel: identitymodel.IdentityRoleRiskLevel(strings.TrimSpace(input.RiskLevel)),
 		ConflictRoleKeys: append([]string(nil), input.ConflictRoleKeys...), GrantableRoleKeys: append([]string(nil), input.GrantableRoleKeys...),
 		PermissionSetKeys: append([]string(nil), input.PermissionSetKeys...), PermissionSetGroups: append([]string(nil), input.PermissionSetGroups...), GuardrailKeys: append([]string(nil), input.GuardrailKeys...),
-		ProvisionToWorkspaces: input.ProvisionToWorkspaces,
 	}
 	for _, permission := range input.Permissions {
 		key := strings.TrimSpace(permission.PermissionKey)

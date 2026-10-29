@@ -202,6 +202,10 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 	identityApp := identityapplication.NewIdentityApplicationServiceWithPermissionSource(identityStore, permissionCatalog, identityActions)
 	identityApp.ReplaceRoleDefinitions(manifest.Roles)
 	identityApp.ReplaceAuthorizationPolicies(manifest.PermissionSets, manifest.PermissionSetGroups, manifest.Guardrails)
+	globalRoleCatalog, err := identityapplication.NewIdentityGlobalRoleCatalogApplicationService(identityStore, identityApp, workspaceID)
+	if err != nil {
+		return fail(fmt.Errorf("assemble Identity global role catalog: %w", err))
+	}
 
 	auditStore := identityauditmodule.NewAuditStore(auditBinding)
 	auditApp := auditapplication.NewAuditApplicationService(auditStore)
@@ -219,6 +223,7 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 			auditApp.AppendWithMetadata(ctx, auditcontract.EventFamilyIdentitySecurity, event, objectKey, recordID, principal, summary, before, after, metadata)
 		},
 	)
+	authApp.ConfigureInitialCredentialRotation(cfg.AuthInitialCredentialRotationRequired)
 	if err := authApp.ConfigureCredentialEmail(options.CredentialEmail, options.CredentialSetupURL); err != nil {
 		return fail(fmt.Errorf("configure Identity credential emails: %w", err))
 	}
@@ -311,8 +316,16 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 		WorkspaceResolver: options.WorkspaceResolver, Config: cfg, Authentication: authApp, ProviderConfiguration: providerConfiguration,
 		ProviderFlows: providerFlows, ProviderCallback: identityprovider.CallbackAdapter{},
 		EffectiveAccess: effectiveAccess, Identity: identityApp,
-		Applications: applicationRegistrations, Permissions: permissionCatalog, HandlerDelivery: handlerDelivery, StoreOrganizations: storeOrganizations, OrganizationUnits: organizationUnits,
+		Applications: applicationRegistrations, Permissions: permissionCatalog, RoleCatalog: globalRoleCatalog, HandlerDelivery: handlerDelivery, StoreOrganizations: storeOrganizations, OrganizationUnits: organizationUnits,
 		Clock: options.Clock, MutationFence: store, OperationsPersistence: identityStore, LoginTransactions: authStore,
+		ResolveLoginWorkspace: func(ctx context.Context, login string) (identitysdk.WorkspaceID, bool, error) {
+			workspaceID, found, err := identityStore.GlobalLoginWorkspace(ctx, login)
+			return identitysdk.WorkspaceID(workspaceID), found, err
+		},
+		ResolveRefreshWorkspace: func(ctx context.Context, refreshToken string) (identitysdk.WorkspaceID, bool, error) {
+			workspaceID, found, err := authStore.GlobalRefreshTokenWorkspace(ctx, authpolicy.AuthHashRefreshToken(refreshToken))
+			return identitysdk.WorkspaceID(workspaceID), found, err
+		},
 	})
 	if err != nil {
 		return fail(fmt.Errorf("assemble Identity SDK binding: %w", err))

@@ -21,24 +21,27 @@ import (
 )
 
 type BindingDependencies struct {
-	Subjects              SubjectLifecycle
-	WorkspaceResolver     identitysdk.WorkspaceResolver
-	Config                config.Config
-	Authentication        *authapplication.AuthApplicationService
-	ProviderConfiguration *authapplication.AuthProviderApplicationService
-	ProviderFlows         *authapplication.AuthProviderFlowApplicationService
-	ProviderCallback      authcontract.AuthProviderCallbackAdapter
-	EffectiveAccess       *identityapplication.IdentityEffectiveAccessApplicationService
-	Identity              *identityapplication.IdentityApplicationService
-	Applications          *authapplication.AuthApplicationRegistrationService
-	Permissions           *identityapplication.IdentityPermissionCatalogApplicationService
-	HandlerDelivery       *identityapplication.IdentityHandlerDeliveryApplicationService
-	StoreOrganizations    *identityapplication.IdentityStoreOrganizationDeliveryApplicationService
-	OrganizationUnits     *identityapplication.IdentityOrganizationUnitDeliveryApplicationService
-	Clock                 identitysdk.Clock
-	MutationFence         IdentityMutationFence
-	OperationsPersistence OperationsPersistence
-	LoginTransactions     FederatedLoginTransactionReader
+	Subjects                SubjectLifecycle
+	WorkspaceResolver       identitysdk.WorkspaceResolver
+	Config                  config.Config
+	Authentication          *authapplication.AuthApplicationService
+	ProviderConfiguration   *authapplication.AuthProviderApplicationService
+	ProviderFlows           *authapplication.AuthProviderFlowApplicationService
+	ProviderCallback        authcontract.AuthProviderCallbackAdapter
+	EffectiveAccess         *identityapplication.IdentityEffectiveAccessApplicationService
+	Identity                *identityapplication.IdentityApplicationService
+	Applications            *authapplication.AuthApplicationRegistrationService
+	Permissions             *identityapplication.IdentityPermissionCatalogApplicationService
+	RoleCatalog             *identityapplication.IdentityGlobalRoleCatalogApplicationService
+	HandlerDelivery         *identityapplication.IdentityHandlerDeliveryApplicationService
+	StoreOrganizations      *identityapplication.IdentityStoreOrganizationDeliveryApplicationService
+	OrganizationUnits       *identityapplication.IdentityOrganizationUnitDeliveryApplicationService
+	Clock                   identitysdk.Clock
+	MutationFence           IdentityMutationFence
+	OperationsPersistence   OperationsPersistence
+	LoginTransactions       FederatedLoginTransactionReader
+	ResolveLoginWorkspace   func(context.Context, string) (identitysdk.WorkspaceID, bool, error)
+	ResolveRefreshWorkspace func(context.Context, string) (identitysdk.WorkspaceID, bool, error)
 }
 
 type sdkBinding struct {
@@ -53,6 +56,7 @@ type sdkBinding struct {
 	identity                    *identityapplication.IdentityApplicationService
 	applications                *authapplication.AuthApplicationRegistrationService
 	permissions                 *identityapplication.IdentityPermissionCatalogApplicationService
+	roleCatalog                 *identityapplication.IdentityGlobalRoleCatalogApplicationService
 	handlerDelivery             *identityapplication.IdentityHandlerDeliveryApplicationService
 	storeOrganizations          *identityapplication.IdentityStoreOrganizationDeliveryApplicationService
 	organizationUnits           *identityapplication.IdentityOrganizationUnitDeliveryApplicationService
@@ -61,12 +65,15 @@ type sdkBinding struct {
 	operationsPersistence       OperationsPersistence
 	loginTransactions           FederatedLoginTransactionReader
 	loginApplicationWorkspaceID identitysdk.WorkspaceID
+	globalBrowserApplications   map[string][]string
+	resolveLoginWorkspace       func(context.Context, string) (identitysdk.WorkspaceID, bool, error)
+	resolveRefreshWorkspace     func(context.Context, string) (identitysdk.WorkspaceID, bool, error)
 }
 
 func NewBinding(dependencies BindingDependencies) (identitysdk.Binding, error) {
 	if dependencies.Authentication == nil || dependencies.ProviderConfiguration == nil || dependencies.ProviderFlows == nil ||
 		dependencies.ProviderCallback == nil || dependencies.EffectiveAccess == nil || dependencies.Identity == nil ||
-		dependencies.Applications == nil || dependencies.Permissions == nil || dependencies.HandlerDelivery == nil || dependencies.StoreOrganizations == nil || dependencies.OrganizationUnits == nil || dependencies.MutationFence == nil || dependencies.OperationsPersistence == nil || dependencies.LoginTransactions == nil {
+		dependencies.Applications == nil || dependencies.Permissions == nil || dependencies.RoleCatalog == nil || dependencies.HandlerDelivery == nil || dependencies.StoreOrganizations == nil || dependencies.OrganizationUnits == nil || dependencies.MutationFence == nil || dependencies.OperationsPersistence == nil || dependencies.LoginTransactions == nil {
 		return nil, errors.New("complete Identity SDK Binding dependencies are required")
 	}
 	if dependencies.Clock == nil {
@@ -75,12 +82,14 @@ func NewBinding(dependencies BindingDependencies) (identitysdk.Binding, error) {
 	binding := &sdkBinding{descriptor: identitysdk.Descriptor{
 		ProtocolVersion: identitysdk.CurrentProtocolVersion, BundleVersion: identitysdk.CurrentPolicyBundleVersion, AuthorizationVersion: identitysdk.CurrentAuthorizationContractVersion,
 		Mode: identitysdk.DeploymentModeModule, Issuer: defaultString(dependencies.Config.AuthIssuer, "http://localhost:8081"), Audience: defaultString(dependencies.Config.AuthAudience, "domainry-runtime"),
-		Capabilities: []string{"authentication", "challenge_authentication", "external_accounts", "action_assurance", "token_verification", "authorization", "principal_resolution", "workflow_workload_identity", "identity_projection", "handler_delivery", "store_organization_delivery", "organization_unit_delivery", "application_registration", "permission_reconciliation", "credentials", "oidc", "saml"},
+		Capabilities: []string{"authentication", "challenge_authentication", "external_accounts", "action_assurance", "token_verification", "authorization", "principal_resolution", "workflow_workload_identity", "identity_projection", "handler_delivery", "store_organization_delivery", "organization_unit_delivery", "application_registration", "permission_reconciliation", "project_role_catalog", "credentials", "oidc", "saml"},
 	}, auth: dependencies.Authentication, providers: dependencies.ProviderConfiguration, flows: dependencies.ProviderFlows,
 		providerCallback: dependencies.ProviderCallback, access: dependencies.EffectiveAccess, identity: dependencies.Identity,
-		workspaceResolver: dependencies.WorkspaceResolver, applications: dependencies.Applications, permissions: dependencies.Permissions, handlerDelivery: dependencies.HandlerDelivery, storeOrganizations: dependencies.StoreOrganizations, organizationUnits: dependencies.OrganizationUnits, clock: dependencies.Clock,
+		workspaceResolver: dependencies.WorkspaceResolver, applications: dependencies.Applications, permissions: dependencies.Permissions, roleCatalog: dependencies.RoleCatalog, handlerDelivery: dependencies.HandlerDelivery, storeOrganizations: dependencies.StoreOrganizations, organizationUnits: dependencies.OrganizationUnits, clock: dependencies.Clock,
 		subjects: dependencies.Subjects, mutationFence: dependencies.MutationFence, operationsPersistence: dependencies.OperationsPersistence, loginTransactions: dependencies.LoginTransactions,
-		loginApplicationWorkspaceID: identitysdk.WorkspaceID(strings.TrimSpace(dependencies.Config.IdentityWorkspaceID))}
+		loginApplicationWorkspaceID: identitysdk.WorkspaceID(strings.TrimSpace(dependencies.Config.IdentityWorkspaceID)),
+		globalBrowserApplications:   cloneGlobalBrowserApplications(dependencies.Config.IdentityGlobalBrowserApplications),
+		resolveLoginWorkspace:       dependencies.ResolveLoginWorkspace, resolveRefreshWorkspace: dependencies.ResolveRefreshWorkspace}
 	return binding, nil
 }
 
@@ -131,6 +140,13 @@ func (binding *sdkBinding) Applications() identitysdk.ApplicationRegistry {
 func (binding *sdkBinding) Permissions() identitysdk.PermissionRegistry {
 	return sdkPermissions{binding: binding}
 }
+func (binding *sdkBinding) PublishProjectRoles(ctx context.Context, catalog identitysdk.ProjectRoleCatalog) (identitysdk.ProjectRoleCatalogReceipt, error) {
+	if binding == nil || binding.roleCatalog == nil {
+		return identitysdk.ProjectRoleCatalogReceipt{}, &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.project_role_catalog_unavailable"}
+	}
+	receipt, err := binding.roleCatalog.Reconcile(ctx, catalog)
+	return receipt, sdkBoundaryError(err)
+}
 func (binding *sdkBinding) Credentials() identitysdk.CredentialManager {
 	return sdkCredentials{binding}
 }
@@ -144,6 +160,7 @@ func (binding *sdkBinding) Close(context.Context) error { return nil }
 var _ identitysdk.WorkflowWorkloadIdentityBinding = (*sdkBinding)(nil)
 var _ identitysdk.SubjectLifecyclePersistenceBinding = (*sdkBinding)(nil)
 var _ identitysdk.OperationsPersistenceBinding = (*sdkBinding)(nil)
+var _ identitysdk.ProjectRoleCatalogPublisher = (*sdkBinding)(nil)
 
 type sdkAuthentication struct{ binding *sdkBinding }
 
@@ -209,7 +226,7 @@ func sdkActionAssuranceReceipt(receipt authmodel.AuthActionAssuranceReceipt) ide
 var _ identitysdk.ActionAssurance = sdkActionAssurance{}
 
 func (adapter sdkAuthentication) Providers(ctx context.Context, query identitysdk.ProviderQuery) ([]identitysdk.Provider, error) {
-	if !query.WorkspaceID.Valid() {
+	if query.WorkspaceID != "" && !query.WorkspaceID.Valid() {
 		return nil, &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "backend.workspace_scope_required"}
 	}
 	values := adapter.binding.providers.ListSafe(requestcontext.WithWorkspaceID(ctx, string(query.WorkspaceID)))
@@ -228,6 +245,15 @@ func (adapter sdkAuthentication) LoginWithPassword(ctx context.Context, request 
 }
 
 func (adapter sdkAuthentication) LoginWithPasswordOutcome(ctx context.Context, request identitysdk.PasswordLoginRequest) (identitysdk.AuthenticationOutcome, error) {
+	if !request.WorkspaceID.Valid() && adapter.binding.resolveLoginWorkspace != nil {
+		workspaceID, found, err := adapter.binding.resolveLoginWorkspace(ctx, strings.TrimSpace(request.Login))
+		if err != nil {
+			return identitysdk.AuthenticationOutcome{}, sdkBoundaryError(err)
+		}
+		if found {
+			request.WorkspaceID = workspaceID
+		}
+	}
 	if !request.WorkspaceID.Valid() {
 		return identitysdk.AuthenticationOutcome{}, &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "backend.workspace_scope_required"}
 	}
@@ -329,6 +355,15 @@ func (adapter sdkAuthentication) VerifyOTPOutcome(ctx context.Context, request i
 }
 
 func (adapter sdkAuthentication) RefreshSession(ctx context.Context, request identitysdk.RefreshRequest) (identitysdk.AuthSession, error) {
+	if !request.WorkspaceID.Valid() && adapter.binding.resolveRefreshWorkspace != nil {
+		workspaceID, found, err := adapter.binding.resolveRefreshWorkspace(ctx, strings.TrimSpace(request.RefreshToken))
+		if err != nil {
+			return identitysdk.AuthSession{}, sdkBoundaryError(err)
+		}
+		if found {
+			request.WorkspaceID = workspaceID
+		}
+	}
 	if err := adapter.binding.requireMutableWorkspace(ctx, request.WorkspaceID); err != nil {
 		return identitysdk.AuthSession{}, err
 	}
@@ -342,6 +377,15 @@ func (adapter sdkAuthentication) RefreshSession(ctx context.Context, request ide
 }
 
 func (adapter sdkAuthentication) LogoutSession(ctx context.Context, request identitysdk.LogoutRequest) error {
+	if !request.WorkspaceID.Valid() && adapter.binding.resolveRefreshWorkspace != nil {
+		workspaceID, found, err := adapter.binding.resolveRefreshWorkspace(ctx, strings.TrimSpace(request.RefreshToken))
+		if err != nil {
+			return sdkBoundaryError(err)
+		}
+		if found {
+			request.WorkspaceID = workspaceID
+		}
+	}
 	if err := adapter.binding.requireMutableWorkspace(ctx, request.WorkspaceID); err != nil {
 		return err
 	}
@@ -479,6 +523,14 @@ func (binding *sdkBinding) validateApplicationRedirect(ctx context.Context, appl
 	if err != nil {
 		return err
 	}
+	if redirectURLs, global := binding.globalBrowserApplications[string(application.ApplicationKey)]; global {
+		for _, allowed := range redirectURLs {
+			if strings.TrimSpace(allowed) == strings.TrimSpace(returnURL) {
+				return nil
+			}
+		}
+		return &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.redirect_url_not_registered"}
+	}
 	ok, err := applications.RedirectAllowed(ctx, string(application.ApplicationKey), returnURL)
 	if err != nil {
 		return err
@@ -499,7 +551,8 @@ func (binding *sdkBinding) scopedApplications(ctx context.Context, application i
 		}
 		return binding.applications, nil
 	}
-	if string(application.ApplicationKey) != binding.descriptor.Audience {
+	_, global := binding.globalBrowserApplications[string(application.ApplicationKey)]
+	if string(application.ApplicationKey) != binding.descriptor.Audience && !global {
 		return nil, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.application_scope_mismatch"}
 	}
 	resolved, err := binding.workspaceResolver.ResolveWorkspace(ctx, application.WorkspaceID)
@@ -514,7 +567,18 @@ func (binding *sdkBinding) applicationRegistered(ctx context.Context, applicatio
 	if err != nil {
 		return false, err
 	}
+	if _, global := binding.globalBrowserApplications[string(application.ApplicationKey)]; global {
+		return true, nil
+	}
 	return applications.Registered(ctx, string(application.ApplicationKey))
+}
+
+func cloneGlobalBrowserApplications(source map[string][]string) map[string][]string {
+	result := make(map[string][]string, len(source))
+	for key, values := range source {
+		result[strings.TrimSpace(key)] = append([]string(nil), values...)
+	}
+	return result
 }
 
 type sdkCredentials struct{ binding *sdkBinding }

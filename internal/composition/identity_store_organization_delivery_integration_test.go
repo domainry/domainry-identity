@@ -173,6 +173,24 @@ func TestStoreOrganizationDeliveryIsAtomicScopedIdempotentAndRestartSafe(t *test
 	if !revoked {
 		t.Fatal("org_store_creator definition not found")
 	}
+	roles, err := core.IdentityStore.ListIdentityRoles(t.Context(), cfg.IdentityWorkspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	persistedRevocation := false
+	for _, role := range roles {
+		if role.Key != "org_store_creator" {
+			continue
+		}
+		role.Definition.Permissions = nil
+		if err := core.IdentityStore.UpsertIdentityRole(t.Context(), cfg.IdentityWorkspaceID, role); err != nil {
+			t.Fatal(err)
+		}
+		persistedRevocation = true
+	}
+	if !persistedRevocation {
+		t.Fatal("org_store_creator persisted role not found")
+	}
 	core.Identity.ReplaceRoleDefinitions(definitions)
 	orgCreate.AccessToken = login("org_store_creator@example.com").AccessToken
 	beforeRevokedReplay := loadStoreOrganizationReplaySnapshot(t, store, cfg.IdentityWorkspaceID, orgCreate.Organization.OrganizationID, orgCreate.IdempotencyKey)

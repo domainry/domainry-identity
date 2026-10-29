@@ -108,15 +108,17 @@ func TestPermissionReconcileRetiresRestoresAndRejectsConflictingSnapshots(t *tes
 		t.Fatal(err)
 	}
 	definition := func(workspaceID, owner, key, snapshot, hash string) identitymodel.IdentityPermissionDefinitionRecord {
+		_ = workspaceID
 		return identitymodel.IdentityPermissionDefinitionRecord{
-			WorkspaceID: workspaceID, PermissionKey: key, ResourceKey: "roles", OperationKey: "read",
+			PermissionKey: key, ResourceKey: "roles", OperationKey: "read",
 			Label: key, Category: "Identity", SourceKind: "builtin_http", SourceOwner: owner,
 			DefinitionHash: hash, SourceSnapshotHash: snapshot,
 		}
 	}
 	reconcile := func(workspaceID, owner, previous, snapshot string, definitions ...identitymodel.IdentityPermissionDefinitionRecord) (identitymodel.IdentityPermissionReconcileReceipt, error) {
+		_ = workspaceID
 		return repository.ReconcileIdentityPermissionDefinitions(t.Context(), identitymodel.IdentityPermissionReconcileRequest{
-			WorkspaceID: workspaceID, SourceOwner: owner, PreviousSnapshotHash: previous,
+			SourceOwner: owner, PreviousSnapshotHash: previous,
 			SnapshotHash: snapshot, Definitions: definitions,
 		})
 	}
@@ -190,10 +192,10 @@ func TestPermissionReconcileRetiresRestoresAndRejectsConflictingSnapshots(t *tes
 		t.Fatalf("owner conflict did not roll back the transaction: %v", keys)
 	}
 	const secondWorkspace = "workspace-secondary"
-	if receipt, err := reconcile(secondWorkspace, "module:conflict", "", "secondary-snapshot",
+	if _, err := reconcile(secondWorkspace, "module:conflict", "", "secondary-snapshot",
 		definition(secondWorkspace, "module:conflict", "permission.one", "secondary-snapshot", "secondary-hash"),
-	); err != nil || receipt.Inserted != 1 {
-		t.Fatalf("workspace-isolated receipt=%+v err=%v", receipt, err)
+	); err == nil {
+		t.Fatal("global permission owner conflict was accepted through another workspace")
 	}
 }
 
@@ -212,9 +214,9 @@ func TestPermissionReconcileParticipatesInHostTransaction(t *testing.T) {
 		t.Fatal(err)
 	}
 	request := identitymodel.IdentityPermissionReconcileRequest{
-		WorkspaceID: "workspace-primary", SourceOwner: "identity:builtin", SnapshotHash: "snapshot-1",
+		SourceOwner: "identity:builtin", SnapshotHash: "snapshot-1",
 		Definitions: []identitymodel.IdentityPermissionDefinitionRecord{{
-			WorkspaceID: "workspace-primary", PermissionKey: "identity.roles.get", ResourceKey: "identity.roles", OperationKey: "get",
+			PermissionKey: "identity.roles.get", ResourceKey: "identity.roles", OperationKey: "get",
 			Label: "Get role", Category: "Identity", SourceKind: "builtin_http", SourceOwner: "identity:builtin",
 			DefinitionHash: "definition-1", SourceSnapshotHash: "snapshot-1",
 		}},
@@ -262,8 +264,8 @@ func TestPermissionReconcileParticipatesInHostTransaction(t *testing.T) {
 	if err != nil || !found || !definition.Enabled {
 		t.Fatalf("get committed permission=%+v found=%t err=%v", definition, found, err)
 	}
-	if _, found, err := repository.GetIdentityPermissionDefinition(t.Context(), "workspace-secondary", "identity.roles.get"); err != nil || found {
-		t.Fatalf("cross-workspace permission found=%t err=%v", found, err)
+	if crossWorkspace, found, err := repository.GetIdentityPermissionDefinition(t.Context(), "workspace-secondary", "identity.roles.get"); err != nil || !found || crossWorkspace.PermissionKey != "identity.roles.get" {
+		t.Fatalf("global permission lookup found=%t definition=%+v err=%v", found, crossWorkspace, err)
 	}
 	if changed, err := repository.SetIdentityPermissionDefinitionEnabled(t.Context(), "workspace-primary", "missing", false); err != nil || changed {
 		t.Fatalf("missing permission enablement changed=%t err=%v", changed, err)

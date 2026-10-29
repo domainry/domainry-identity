@@ -27,9 +27,9 @@ func TestRetireRemovedPlatformIdentityMenusDeletesLegacyTree(t *testing.T) {
 		t.Fatalf("open identity store: %v", err)
 	}
 	for _, menu := range []identitymodel.IdentityMenu{
-		{MenuID: "org_permissions", Key: "org_permissions", Label: "Permissions", Status: identitymodel.IdentityStatusActive},
-		{MenuID: "legacy_child", Key: "legacy_child", Label: "Legacy child", ParentID: "org_permissions", Status: identitymodel.IdentityStatusActive},
-		{MenuID: "org_roles", Key: "org_roles", Label: "Roles", Status: identitymodel.IdentityStatusActive},
+		{MenuID: "org_permissions", SourceOwner: IdentityBuiltinAuthorizationOwner, Key: "org_permissions", Label: "Permissions", Status: identitymodel.IdentityStatusActive},
+		{MenuID: "legacy_child", SourceOwner: IdentityBuiltinAuthorizationOwner, Key: "legacy_child", Label: "Legacy child", ParentID: "org_permissions", Status: identitymodel.IdentityStatusActive},
+		{MenuID: "org_roles", SourceOwner: IdentityBuiltinAuthorizationOwner, Key: "org_roles", Label: "Roles", Status: identitymodel.IdentityStatusActive},
 	} {
 		if err := identityStore.UpsertIdentityMenu(t.Context(), "workspace-primary", menu); err != nil {
 			t.Fatalf("seed menu %s: %v", menu.MenuID, err)

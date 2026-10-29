@@ -27,15 +27,6 @@ func (adapter sdkApplications) Register(ctx context.Context, request identitysdk
 	if err != nil {
 		return identitysdk.ApplicationRegistrationReceipt{}, sdkBoundaryError(err)
 	}
-	if adapter.binding.workspaceResolver != nil && string(request.Application.WorkspaceID) != adapter.binding.applications.WorkspaceID() {
-		catalog, err := adapter.binding.permissions.ForWorkspace(string(request.Application.WorkspaceID))
-		if err != nil {
-			return identitysdk.ApplicationRegistrationReceipt{}, err
-		}
-		if err := catalog.ReconcileApplicationSourcesFromWorkspace(ctx, adapter.binding.applications.WorkspaceID()); err != nil {
-			return identitysdk.ApplicationRegistrationReceipt{}, err
-		}
-	}
 	return identitysdk.ApplicationRegistrationReceipt{
 		Application:  request.Application,
 		RedirectURLs: append([]string(nil), registration.RedirectURLs...),

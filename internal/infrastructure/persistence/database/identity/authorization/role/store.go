@@ -3,6 +3,7 @@ package role
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -34,11 +35,27 @@ type Store struct {
 func New(backend Backend, now func() string) *Store { return &Store{backend: backend, now: now} }
 
 func (s *Store) List(ctx context.Context, workspaceID string) ([]identitymodel.IdentityRole, error) {
-	workspaceID, err := workspace(workspaceID)
-	if err != nil {
-		return nil, err
+	workspaceID = strings.TrimSpace(workspaceID)
+	filter := query.Equal("scope_type", string(identitymodel.IdentityRoleScopeGlobal))
+	if workspaceID != "" {
+		normalizedWorkspace, err := workspace(workspaceID)
+		if err != nil {
+			return nil, err
+		}
+		workspaceID = normalizedWorkspace
+		filter = query.Or(
+			filter,
+			query.And(
+				query.Equal("scope_type", string(identitymodel.IdentityRoleScopeTenant)),
+				query.Equal("workspace_id", workspaceID),
+			),
+		)
 	}
-	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_roles", workspaceID).Columns("id", "role_id", "role_key", "label", "description", "status").OrderBy(query.Ascending("id")).Build()
+	statement, arguments, err := query.NewSelectBuilder(s.backend.SQLRenderer(), "_identity_roles").
+		Columns("id", "role_id", "workspace_id", "scope_type", "source_owner", "role_key", "label", "description", "definition_json", "status").
+		Where(filter).
+		OrderBy(query.Ascending("scope_type"), query.Ascending("role_key")).
+		Build()
 	if err != nil {
 		return nil, fmt.Errorf("build identity role list: %w", err)
 	}
@@ -50,11 +67,17 @@ func (s *Store) List(ctx context.Context, workspaceID string) ([]identitymodel.I
 	out := []identitymodel.IdentityRole{}
 	for rows.Next() {
 		var item identitymodel.IdentityRole
-		var status string
-		if err := rows.Scan(&item.ID, &item.RoleID, &item.Key, &item.Label, &item.Description, &status); err != nil {
+		var persistedWorkspace sql.NullString
+		var scopeType, definitionJSON, status string
+		if err := rows.Scan(&item.ID, &item.RoleID, &persistedWorkspace, &scopeType, &item.SourceOwner, &item.Key, &item.Label, &item.Description, &definitionJSON, &status); err != nil {
 			return nil, err
 		}
+		item.WorkspaceID = persistedWorkspace.String
+		item.ScopeType = identitymodel.IdentityRoleScope(scopeType)
 		item.Status = identitymodel.IdentityStatus(status)
+		if err := json.Unmarshal([]byte(definitionJSON), &item.Definition); err != nil {
+			return nil, fmt.Errorf("decode identity role %q definition: %w", item.RoleID, err)
+		}
 		out = append(out, item)
 	}
 	return out, rows.Err()
@@ -73,13 +96,10 @@ func (s *Store) UpsertWithExecutor(ctx context.Context, execer Execer, workspace
 // lets workspace provisioning commit roles together with users, assignments,
 // credentials and PermissionDefinitions without one database write per role.
 func (s *Store) UpsertBatchWithExecutor(ctx context.Context, execer Execer, workspaceID string, items []identitymodel.IdentityRole) error {
-	workspaceID, err := workspace(workspaceID)
-	if err != nil {
-		return err
-	}
 	if execer == nil {
 		return fmt.Errorf("role executor is required")
 	}
+	workspaceID = strings.TrimSpace(workspaceID)
 	normalized := make([]identitymodel.IdentityRole, 0, len(items))
 	positionByID := make(map[string]int, len(items))
 	for _, item := range items {
@@ -91,8 +111,37 @@ func (s *Store) UpsertBatchWithExecutor(ctx context.Context, execer Execer, work
 		if item.Key == "" {
 			item.Key = item.RoleID
 		}
+		if item.ScopeType == "" {
+			item.ScopeType = identitymodel.IdentityRoleScopeTenant
+		}
+		switch item.ScopeType {
+		case identitymodel.IdentityRoleScopeGlobal:
+			item.WorkspaceID = ""
+			item.SourceOwner = strings.TrimSpace(item.SourceOwner)
+			if item.SourceOwner == "" {
+				return fmt.Errorf("global role %q source owner is required", item.Key)
+			}
+		case identitymodel.IdentityRoleScopeTenant:
+			normalizedWorkspace, normalizeErr := workspace(workspaceID)
+			if normalizeErr != nil {
+				return normalizeErr
+			}
+			item.WorkspaceID = normalizedWorkspace
+			item.SourceOwner = "tenant:" + normalizedWorkspace
+		default:
+			return fmt.Errorf("role %q scope type %q is invalid", item.Key, item.ScopeType)
+		}
 		if item.Status == "" {
 			item.Status = identitymodel.IdentityStatusActive
+		}
+		if roleDefinitionProvided(item.Definition) {
+			item.Definition.Key = item.Key
+			if strings.TrimSpace(item.Definition.Name) == "" {
+				item.Definition.Name = item.Label
+			}
+			if strings.TrimSpace(item.Definition.Description) == "" {
+				item.Definition.Description = item.Description
+			}
 		}
 		if position, duplicate := positionByID[item.RoleID]; duplicate {
 			normalized[position] = item
@@ -101,19 +150,23 @@ func (s *Store) UpsertBatchWithExecutor(ctx context.Context, execer Execer, work
 		positionByID[item.RoleID] = len(normalized)
 		normalized = append(normalized, item)
 	}
-	const parametersPerRole = 8 // workspace_id plus the seven explicit columns below.
+	const parametersPerRole = 11
 	ranges, err := (batch.Parameters{Max: s.backend.MaxParameters(), PerItem: parametersPerRole}).Ranges(len(normalized))
 	if err != nil {
 		return fmt.Errorf("plan identity role upsert batches: %w", err)
 	}
 	now := timevalue.Millis(s.now())
 	for _, batchRange := range ranges {
-		insert := query.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_roles", workspaceID).
-			Columns("role_id", "role_key", "label", "description", "status", "created_at", "updated_at")
+		insert := query.NewInsertBuilder(s.backend.SQLRenderer(), "_identity_roles").
+			Columns("role_id", "workspace_id", "scope_type", "source_owner", "role_key", "label", "description", "definition_json", "status", "created_at", "updated_at")
 		for _, item := range normalized[batchRange.Start:batchRange.End] {
-			insert.Values(item.RoleID, item.Key, item.Label, item.Description, string(item.Status), now, now)
+			definitionJSON, marshalErr := json.Marshal(item.Definition)
+			if marshalErr != nil {
+				return fmt.Errorf("encode identity role %q definition: %w", item.RoleID, marshalErr)
+			}
+			insert.Values(item.RoleID, nullableWorkspace(item.WorkspaceID), string(item.ScopeType), item.SourceOwner, item.Key, item.Label, item.Description, string(definitionJSON), string(item.Status), now, now)
 		}
-		s.backend.ApplyUpsert(insert, []string{"role_id"}, "role_key", "label", "description", "status", "updated_at")
+		s.backend.ApplyUpsert(insert, []string{"role_id"}, "workspace_id", "scope_type", "source_owner", "role_key", "label", "description", "definition_json", "status", "updated_at")
 		statement, arguments, buildErr := insert.Build()
 		if buildErr != nil {
 			return fmt.Errorf("build identity role batch upsert: %w", buildErr)
@@ -130,21 +183,59 @@ func (s *Store) Remove(ctx context.Context, workspaceID, roleID string) error {
 	if err != nil {
 		return err
 	}
-	for _, table := range []string{"_identity_user_role_assignments", "_identity_role_menu_assignments"} {
-		statement, arguments, buildErr := query.NewWorkspaceDeleteBuilder(s.backend.SQLRenderer(), table, workspaceID).Where(query.Equal("role_id", roleID)).Build()
-		if buildErr != nil {
-			return fmt.Errorf("build identity role relation delete: %w", buildErr)
-		}
-		if _, err := s.backend.DB().ExecContext(ctx, statement, arguments...); err != nil {
-			return err
-		}
+	roleID = strings.TrimSpace(roleID)
+	tx, err := s.backend.DB().BeginTx(ctx, nil)
+	if err != nil {
+		return err
 	}
-	statement, arguments, err := query.NewWorkspaceDeleteBuilder(s.backend.SQLRenderer(), "_identity_roles", workspaceID).Where(query.Equal("role_id", roleID)).Build()
+	defer func() { _ = tx.Rollback() }()
+	statement, arguments, err := query.NewDeleteBuilder(s.backend.SQLRenderer(), "_identity_roles").Where(query.And(
+		query.Equal("role_id", roleID),
+		query.Equal("scope_type", string(identitymodel.IdentityRoleScopeTenant)),
+		query.Equal("workspace_id", workspaceID),
+	)).Build()
 	if err != nil {
 		return fmt.Errorf("build identity role delete: %w", err)
 	}
-	_, err = s.backend.DB().ExecContext(ctx, statement, arguments...)
-	return err
+	result, err := tx.ExecContext(ctx, statement, arguments...)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return fmt.Errorf("tenant role not found or global role is read-only: %s", roleID)
+	}
+	statement, arguments, err = query.NewWorkspaceDeleteBuilder(s.backend.SQLRenderer(), "_identity_user_role_assignments", workspaceID).Where(query.Equal("role_id", roleID)).Build()
+	if err != nil {
+		return fmt.Errorf("build identity user-role assignment delete: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
+		return err
+	}
+	statement, arguments, err = query.NewDeleteBuilder(s.backend.SQLRenderer(), "_identity_role_menu_assignments").Where(query.Equal("role_id", roleID)).Build()
+	if err != nil {
+		return fmt.Errorf("build identity role-menu assignment delete: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, statement, arguments...); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func nullableWorkspace(value string) any {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return value
+}
+
+func roleDefinitionProvided(definition identitymodel.RoleSchema) bool {
+	return strings.TrimSpace(definition.Key) != "" || strings.TrimSpace(definition.Name) != "" ||
+		len(definition.Permissions) != 0 || len(definition.FieldPermissions) != 0 ||
+		len(definition.ReferencePermissions) != 0 || len(definition.ExportRules) != 0
 }
 
 func (s *Store) RemoveUserAssignment(ctx context.Context, workspaceID, userID, roleID string) error {

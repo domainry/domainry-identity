@@ -11,7 +11,6 @@ import (
 
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	identitymodulehost "github.com/domainry/domainry-identity-sdk/modulehost"
-	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
 	identitymodule "github.com/domainry/domainry-identity/module"
 	"golang.org/x/crypto/bcrypt"
 	_ "modernc.org/sqlite"
@@ -124,7 +123,7 @@ func TestInstallationAdministratorBootstrapIsEmbeddedAtomicAuditedAndFirstOnly(t
 		t.Fatalf("installation administrator operation resource=%q reference=%q status=%q result=%s", operationResourceID, operationReference, operationStatus, operationResult)
 	}
 	var roleKey, orgID string
-	if err := db.QueryRowContext(t.Context(), `SELECT role.role_key, user.org_id FROM _identity_users user JOIN _identity_user_role_assignments assignment ON assignment.workspace_id=user.workspace_id AND assignment.user_id=user.user_id JOIN _identity_roles role ON role.workspace_id=assignment.workspace_id AND role.role_id=assignment.role_id WHERE user.workspace_id=? AND user.user_id=?`, request.WorkspaceID, receipt.UserID).Scan(&roleKey, &orgID); err != nil {
+	if err := db.QueryRowContext(t.Context(), `SELECT role.role_key, user.org_id FROM _identity_users user JOIN _identity_user_role_assignments assignment ON assignment.workspace_id=user.workspace_id AND assignment.user_id=user.user_id JOIN _identity_roles role ON role.role_id=assignment.role_id WHERE user.workspace_id=? AND user.user_id=?`, request.WorkspaceID, receipt.UserID).Scan(&roleKey, &orgID); err != nil {
 		t.Fatal(err)
 	}
 	if roleKey != identitymodulehost.InstallationAdministratorRoleKey || orgID != workspaceRequest.CompanyID {
@@ -188,11 +187,11 @@ func TestWorkspaceIdentityBootstrapCreatesGraphAndReleasesCredentialAfterCommit(
 
 	assertIdentityRowCount(t, db, "_identity_organization_units", request.WorkspaceID, 2)
 	assertIdentityRowCount(t, db, "_identity_users", request.WorkspaceID, 1)
-	assertIdentityRowCount(t, db, "_identity_roles", request.WorkspaceID, 3)
+	assertIdentityRowCount(t, db, "_identity_roles", request.WorkspaceID, 0)
 	assertIdentityRowCount(t, db, "_identity_user_role_assignments", request.WorkspaceID, 1)
 	assertIdentityRowCount(t, db, "_identity_credentials", request.WorkspaceID, 1)
 	assertIdentityOperationCount(t, db, request.WorkspaceID, "identity.workspace_bootstrap", 1)
-	assertIdentityRowCount(t, db, "_identity_permissions", request.WorkspaceID, standaloneIdentityPermissionCount())
+	assertGlobalIdentityRowCount(t, db, "_identity_permissions", 0)
 
 	assertBootstrapOrganizationGraph(t, db, request)
 	credential, err := bootstrap.ClaimWorkspaceIdentityBootstrapCredential(t.Context(), identitysdk.WorkspaceIdentityBootstrapCredentialClaim{WorkspaceID: request.WorkspaceID, ReceiptID: receipt.ReceiptID})
@@ -274,8 +273,9 @@ func TestWorkspaceIdentityBootstrapMaterializesM1RolesAndAssignsExplicitAdminist
 	if err != nil || credential.InitialPassword == "" {
 		t.Fatalf("credential=%#v error=%v", credential, err)
 	}
-	assertIdentityRowCount(t, db, "_identity_roles", request.WorkspaceID, 3)
-	rows, err := db.QueryContext(t.Context(), `SELECT role_key FROM _identity_roles WHERE workspace_id=? ORDER BY role_key`, request.WorkspaceID)
+	assertIdentityRowCount(t, db, "_identity_roles", request.WorkspaceID, 0)
+	assertGlobalIdentityRowCount(t, db, "_identity_roles", 5)
+	rows, err := db.QueryContext(t.Context(), `SELECT role_key FROM _identity_roles WHERE scope_type='global' ORDER BY role_key`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,11 +288,11 @@ func TestWorkspaceIdentityBootstrapMaterializesM1RolesAndAssignsExplicitAdminist
 		}
 		keys = append(keys, key)
 	}
-	if got := strings.Join(keys, ","); got != "crm_acceptance_admin,sales_director,sales_rep" {
-		t.Fatalf("M1 materialized roles=%q", got)
+	if got := strings.Join(keys, ","); got != "crm_acceptance_admin,crm_internal_service,crm_sync_service,sales_director,sales_rep" {
+		t.Fatalf("global roles=%q", got)
 	}
 	var assigned, persistedResult string
-	if err := db.QueryRowContext(t.Context(), `SELECT role.role_key FROM _identity_user_role_assignments assignment JOIN _identity_roles role ON role.workspace_id=assignment.workspace_id AND role.role_id=assignment.role_id WHERE assignment.workspace_id=? AND assignment.user_id=?`, request.WorkspaceID, request.InitialAdminUserID).Scan(&assigned); err != nil {
+	if err := db.QueryRowContext(t.Context(), `SELECT role.role_key FROM _identity_user_role_assignments assignment JOIN _identity_roles role ON role.role_id=assignment.role_id WHERE assignment.workspace_id=? AND assignment.user_id=?`, request.WorkspaceID, request.InitialAdminUserID).Scan(&assigned); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.QueryRowContext(t.Context(), `SELECT result_json FROM _operations WHERE workspace_id=? AND owner='identity' AND kind='identity.workspace_bootstrap'`, request.WorkspaceID).Scan(&persistedResult); err != nil {
@@ -312,10 +312,11 @@ func TestWorkspaceIdentityBootstrapMaterializesM1RolesAndAssignsExplicitAdminist
 
 func TestWorkspaceIdentityBootstrapMaterializesProvisionedBusinessProfileRoleWithoutAssigningIt(t *testing.T) {
 	catalog := identitysdk.ProjectRoleCatalog{
+		SourceOwner:                          "application:runtime",
 		InitialWorkspaceAdministratorRoleKey: "admin",
 		Roles: []identitysdk.ProjectRoleDefinition{
-			{Key: "admin", Name: "Admin", Audience: "user", AssignmentMode: "manual", ProvisionToWorkspaces: true},
-			{Key: "profile_member", Name: "Profile member", Audience: "business_profile", AssignmentMode: "request_only", RequiredBindingKey: "member", ProvisionToWorkspaces: true},
+			{Key: "admin", Name: "Admin", Audience: "user", AssignmentMode: "manual"},
+			{Key: "profile_member", Name: "Profile member", Audience: "business_profile", AssignmentMode: "request_only", RequiredBindingKey: "member"},
 			{Key: "internal_service", Name: "Internal service", Audience: "service", AssignmentMode: "system_managed"},
 		},
 	}
@@ -331,9 +332,10 @@ func TestWorkspaceIdentityBootstrapMaterializesProvisionedBusinessProfileRoleWit
 		t.Fatal(err)
 	}
 	completeWorkspaceIdentityBootstrap(t, bootstrap, receipt, identitysdk.WorkspaceIdentityBootstrapTransactionCommitted)
-	assertIdentityRowCount(t, db, "_identity_roles", request.WorkspaceID, 2)
+	assertIdentityRowCount(t, db, "_identity_roles", request.WorkspaceID, 0)
+	assertGlobalIdentityRowCount(t, db, "_identity_roles", 3)
 	var assigned string
-	if err := db.QueryRowContext(t.Context(), `SELECT role.role_key FROM _identity_user_role_assignments assignment JOIN _identity_roles role ON role.workspace_id=assignment.workspace_id AND role.role_id=assignment.role_id WHERE assignment.workspace_id=?`, request.WorkspaceID).Scan(&assigned); err != nil {
+	if err := db.QueryRowContext(t.Context(), `SELECT role.role_key FROM _identity_user_role_assignments assignment JOIN _identity_roles role ON role.role_id=assignment.role_id WHERE assignment.workspace_id=?`, request.WorkspaceID).Scan(&assigned); err != nil {
 		t.Fatal(err)
 	}
 	if assigned != "admin" {
@@ -348,15 +350,13 @@ func TestWorkspaceIdentityBootstrapRolePolicyFailsClosed(t *testing.T) {
 		code    string
 	}{
 		{name: "explicit administrator missing", catalog: identitysdk.ProjectRoleCatalog{InitialWorkspaceAdministratorRoleKey: "missing", Roles: m1WorkspaceBootstrapRoleCatalog().Roles}, code: "identity.workspace_bootstrap_initial_administrator_role_missing"},
-		{name: "request-only administrator", catalog: identitysdk.ProjectRoleCatalog{InitialWorkspaceAdministratorRoleKey: "request_admin", Roles: []identitysdk.ProjectRoleDefinition{{Key: "request_admin", Name: "Request admin", Audience: "user", AssignmentMode: "request_only", ProvisionToWorkspaces: true}}}, code: "identity.workspace_bootstrap_initial_administrator_role_invalid"},
-		{name: "business-profile administrator", catalog: identitysdk.ProjectRoleCatalog{InitialWorkspaceAdministratorRoleKey: "profile_admin", Roles: []identitysdk.ProjectRoleDefinition{{Key: "profile_admin", Name: "Profile admin", Audience: "business_profile", AssignmentMode: "manual", ProvisionToWorkspaces: true}}}, code: "identity.workspace_bootstrap_initial_administrator_role_invalid"},
-		{name: "service role marked provisionable", catalog: identitysdk.ProjectRoleCatalog{InitialWorkspaceAdministratorRoleKey: "admin", Roles: []identitysdk.ProjectRoleDefinition{{Key: "admin", Name: "Admin", Audience: "user", AssignmentMode: "manual", ProvisionToWorkspaces: true}, {Key: "service", Name: "Service", Audience: "service", AssignmentMode: "system_managed", ProvisionToWorkspaces: true}}}, code: "identity.workspace_bootstrap_role_catalog_invalid"},
-		{name: "system-managed role marked provisionable", catalog: identitysdk.ProjectRoleCatalog{InitialWorkspaceAdministratorRoleKey: "admin", Roles: []identitysdk.ProjectRoleDefinition{{Key: "admin", Name: "Admin", Audience: "user", AssignmentMode: "manual", ProvisionToWorkspaces: true}, {Key: "profile", Name: "Profile", Audience: "business_profile", AssignmentMode: "system_managed", ProvisionToWorkspaces: true}}}, code: "identity.workspace_bootstrap_role_catalog_invalid"},
+		{name: "request-only administrator", catalog: identitysdk.ProjectRoleCatalog{InitialWorkspaceAdministratorRoleKey: "request_admin", Roles: []identitysdk.ProjectRoleDefinition{{Key: "request_admin", Name: "Request admin", Audience: "user", AssignmentMode: "request_only"}}}, code: "identity.workspace_bootstrap_initial_administrator_role_invalid"},
+		{name: "business-profile administrator", catalog: identitysdk.ProjectRoleCatalog{InitialWorkspaceAdministratorRoleKey: "profile_admin", Roles: []identitysdk.ProjectRoleDefinition{{Key: "profile_admin", Name: "Profile admin", Audience: "business_profile", AssignmentMode: "manual"}}}, code: "identity.workspace_bootstrap_initial_administrator_role_invalid"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			bootstrap, _ := openWorkspaceIdentityBootstrapUnbound(t)
-			test.catalog.Application = identitysdk.ApplicationRef{ApplicationKey: "runtime"}
+			test.catalog.SourceOwner = "application:runtime"
 			err := bootstrap.BindBootstrapProjectRoleCatalog(t.Context(), test.catalog)
 			var sdkErr *identitysdk.Error
 			if !errors.As(err, &sdkErr) || sdkErr.Code != test.code {
@@ -367,7 +367,7 @@ func TestWorkspaceIdentityBootstrapRolePolicyFailsClosed(t *testing.T) {
 
 	bootstrap, _ := openWorkspaceIdentityBootstrapUnbound(t)
 	err := bootstrap.BindBootstrapProjectRoleCatalog(t.Context(), identitysdk.ProjectRoleCatalog{
-		Application: identitysdk.ApplicationRef{ApplicationKey: "runtime"},
+		SourceOwner: "application:runtime",
 		Roles:       m1WorkspaceBootstrapRoleCatalog().Roles,
 	})
 	var sdkErr *identitysdk.Error
@@ -391,7 +391,6 @@ func TestWorkspaceIdentityBootstrapDetectsRoleCatalogDriftOnReplay(t *testing.T)
 	}
 	completeWorkspaceIdentityBootstrap(t, bootstrap, receipt, identitysdk.WorkspaceIdentityBootstrapTransactionCommitted)
 	catalog.Roles[2].Name = "Sales representative changed"
-	catalog.Application = identitysdk.ApplicationRef{ApplicationKey: "runtime"}
 	if err := bootstrap.BindBootstrapProjectRoleCatalog(t.Context(), catalog); err != nil {
 		t.Fatal(err)
 	}
@@ -428,11 +427,12 @@ func TestWorkspaceIdentityBootstrapReplayAndDuplicateAreDeterministic(t *testing
 		t.Fatal(err)
 	}
 	for table, want := range map[string]int{
-		"_identity_organization_units": 2, "_identity_users": 1, "_identity_roles": 3,
+		"_identity_organization_units": 2, "_identity_users": 1, "_identity_roles": 0,
 		"_identity_user_role_assignments": 1, "_identity_credentials": 1,
 	} {
 		assertIdentityRowCount(t, db, table, request.WorkspaceID, want)
 	}
+	assertGlobalIdentityRowCount(t, db, "_identity_roles", 5)
 	assertIdentityOperationCount(t, db, request.WorkspaceID, "identity.workspace_bootstrap", 1)
 
 	conflict := request
@@ -490,7 +490,7 @@ func TestWorkspaceIdentityBootstrapRollbackCompletionDestroysVolatileCredential(
 func TestWorkspaceIdentityBootstrapFailsClosedForMissingRoleAndPreexistingCrossWorkspaceParent(t *testing.T) {
 	missingRoles := m1WorkspaceBootstrapRoleCatalog().Roles[:3]
 	bootstrap, db := openWorkspaceIdentityBootstrapUnbound(t)
-	if err := bootstrap.BindBootstrapProjectRoleCatalog(t.Context(), identitysdk.ProjectRoleCatalog{Application: identitysdk.ApplicationRef{ApplicationKey: "runtime"}, Roles: missingRoles}); err == nil {
+	if err := bootstrap.BindBootstrapProjectRoleCatalog(t.Context(), identitysdk.ProjectRoleCatalog{SourceOwner: "application:runtime", Roles: missingRoles}); err == nil {
 		t.Fatal("bootstrap binder accepted a catalog without an explicit administrator")
 	}
 	request := workspaceIdentityBootstrapRequest("workspace-missing-role", "missing-role")
@@ -575,7 +575,9 @@ func TestWorkspaceIdentityBootstrapRollsBackEveryBoundaryAndRetriesCleanly(t *te
 func openWorkspaceIdentityBootstrapCatalog(t *testing.T, catalog identitysdk.ProjectRoleCatalog) (identitysdk.BootstrapBinding, *sql.DB) {
 	t.Helper()
 	bootstrap, db := openWorkspaceIdentityBootstrapUnbound(t)
-	catalog.Application = identitysdk.ApplicationRef{ApplicationKey: "runtime"}
+	if catalog.SourceOwner == "" {
+		catalog.SourceOwner = "application:runtime"
+	}
 	if err := bootstrap.BindBootstrapProjectRoleCatalog(t.Context(), catalog); err != nil {
 		t.Fatal(err)
 	}
@@ -605,11 +607,12 @@ func openWorkspaceIdentityBootstrapUnbound(t *testing.T) (identitysdk.BootstrapB
 
 func m1WorkspaceBootstrapRoleCatalog() identitysdk.ProjectRoleCatalog {
 	return identitysdk.ProjectRoleCatalog{
+		SourceOwner:                          "application:runtime",
 		InitialWorkspaceAdministratorRoleKey: "crm_acceptance_admin",
 		Roles: []identitysdk.ProjectRoleDefinition{
-			{Key: "crm_acceptance_admin", Name: "CRM acceptance administrator", Audience: "any", AssignmentMode: "manual", ProvisionToWorkspaces: true},
-			{Key: "sales_director", Name: "Sales director", Audience: "any", AssignmentMode: "manual", ProvisionToWorkspaces: true},
-			{Key: "sales_rep", Name: "Sales representative", Audience: "any", AssignmentMode: "manual", ProvisionToWorkspaces: true},
+			{Key: "crm_acceptance_admin", Name: "CRM acceptance administrator", Audience: "any", AssignmentMode: "manual"},
+			{Key: "sales_director", Name: "Sales director", Audience: "any", AssignmentMode: "manual"},
+			{Key: "sales_rep", Name: "Sales representative", Audience: "any", AssignmentMode: "manual"},
 			{Key: "crm_internal_service", Name: "CRM internal service", Audience: "service", AssignmentMode: "system_managed"},
 			{Key: "crm_sync_service", Name: "CRM sync service", Audience: "service", AssignmentMode: "system_managed"},
 		},
@@ -618,10 +621,11 @@ func m1WorkspaceBootstrapRoleCatalog() identitysdk.ProjectRoleCatalog {
 
 func installationBootstrapRoleCatalog() identitysdk.ProjectRoleCatalog {
 	return identitysdk.ProjectRoleCatalog{
+		SourceOwner:                          "application:runtime",
 		InitialWorkspaceAdministratorRoleKey: "workspace_admin",
 		Roles: []identitysdk.ProjectRoleDefinition{
-			{Key: "workspace_admin", Name: "Workspace administrator", Audience: "user", AssignmentMode: "manual", ProvisionToWorkspaces: true},
-			{Key: identitymodulehost.InstallationAdministratorRoleKey, Name: "Installation administrator", Audience: "user", AssignmentMode: "manual", ProvisionToWorkspaces: true},
+			{Key: "workspace_admin", Name: "Workspace administrator", Audience: "user", AssignmentMode: "manual"},
+			{Key: identitymodulehost.InstallationAdministratorRoleKey, Name: "Installation administrator", Audience: "user", AssignmentMode: "manual"},
 		},
 	}
 }
@@ -758,12 +762,17 @@ func assertIdentityRowCount(t *testing.T, db *sql.DB, table, workspaceID string,
 	}
 }
 
-func standaloneIdentityPermissionCount() int {
-	count := 0
-	for _, action := range identityapplication.StandaloneIdentityAuthorizationSliceActions() {
-		if action.Permission != nil {
-			count++
-		}
+func assertGlobalIdentityRowCount(t *testing.T, db *sql.DB, table string, want int) {
+	t.Helper()
+	statement := `SELECT COUNT(*) FROM "` + table + `"`
+	if table == "_identity_roles" {
+		statement += ` WHERE scope_type='global'`
 	}
-	return count
+	var count int
+	if err := db.QueryRowContext(t.Context(), statement).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != want {
+		t.Fatalf("%s global count=%d want=%d", table, count, want)
+	}
 }

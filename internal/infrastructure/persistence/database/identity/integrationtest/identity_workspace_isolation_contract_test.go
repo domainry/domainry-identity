@@ -47,8 +47,8 @@ func assertIdentityRepositoryWorkspaceIsolation(t *testing.T, repository identit
 	userB := identitymodel.IdentityUser{UserID: "user-b", Name: "User B", Email: "b@example.com", OrgID: organizationUnitB.OrganizationUnitID, WorkerNo: "B-001", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive}
 	roleA := identitymodel.IdentityRole{RoleID: "role-a", Key: "role-a", Label: "Role A"}
 	roleB := identitymodel.IdentityRole{RoleID: "role-b", Key: "role-b", Label: "Role B"}
-	menuA := identitymodel.IdentityMenu{MenuID: "menu-a", Key: "menu-a", Label: "Menu A"}
-	menuB := identitymodel.IdentityMenu{MenuID: "menu-b", Key: "menu-b", Label: "Menu B"}
+	menuA := identitymodel.IdentityMenu{MenuID: "menu-a", SourceOwner: "application:test", Key: "menu-a", Label: "Menu A"}
+	menuB := identitymodel.IdentityMenu{MenuID: "menu-b", SourceOwner: "application:test", Key: "menu-b", Label: "Menu B"}
 
 	for _, seed := range []func() error{
 		func() error { return repository.UpsertIdentityOrganizationUnit(ctx, workspaceA, organizationUnitA) },
@@ -88,13 +88,13 @@ func assertIdentityRepositoryWorkspaceIsolation(t *testing.T, repository identit
 	roles, _ := repository.ListIdentityRoles(ctx, workspaceA)
 	assignments, _ := repository.ListIdentityUserRoleAssignments(ctx, workspaceA, "")
 	menus, _ := repository.ListIdentityMenus(ctx, workspaceA)
-	roleMenus, _ := repository.ListIdentityRoleMenuAssignments(ctx, workspaceA, "")
+	roleMenus, _ := repository.ListIdentityRoleMenuAssignments(ctx, workspaceA, roleA.RoleID)
 	requests, _ := repository.ListIdentityRoleRequests(ctx, workspaceA, "", "")
 	if len(organizationUnits) != 1 || organizationUnits[0].OrganizationUnitID != organizationUnitA.OrganizationUnitID ||
 		len(users) != 1 || users[0].UserID != userA.UserID ||
 		len(roles) != 1 || roles[0].RoleID != roleA.RoleID ||
 		len(assignments) != 1 || assignments[0].UserID != userA.UserID ||
-		len(menus) != 1 || menus[0].MenuID != menuA.MenuID ||
+		len(menus) != 2 || menus[0].MenuID != menuA.MenuID || menus[1].MenuID != menuB.MenuID ||
 		len(roleMenus) != 1 || roleMenus[0].MenuID != menuA.MenuID ||
 		len(requests) != 1 || requests[0].RoleRequestID != "request-a" {
 		t.Fatalf("workspace A leaked or lost data: organizationUnits=%#v users=%#v roles=%#v assignments=%#v menus=%#v roleMenus=%#v requests=%#v", organizationUnits, users, roles, assignments, menus, roleMenus, requests)
@@ -115,8 +115,6 @@ func assertIdentityRepositoryRejectsMissingWorkspace(t *testing.T, repository id
 	t.Helper()
 	ctx := t.Context()
 	role := identitymodel.IdentityRole{RoleID: "missing-role"}
-	menu := identitymodel.IdentityMenu{MenuID: "missing-menu"}
-	atomic := repository.(identityrepository.IdentityAtomicMutationRepository)
 	operations := []func() error{
 		func() error { _, err := repository.ListIdentityOrganizationUnits(ctx, ""); return err },
 		func() error {
@@ -132,7 +130,6 @@ func assertIdentityRepositoryRejectsMissingWorkspace(t *testing.T, repository id
 		func() error {
 			return repository.SetIdentityUserStatus(ctx, "", "user", identitymodel.IdentityStatusDisabled)
 		},
-		func() error { _, err := repository.ListIdentityRoles(ctx, ""); return err },
 		func() error { return repository.UpsertIdentityRole(ctx, "", role) },
 		func() error { return repository.RemoveIdentityRole(ctx, "", role.RoleID) },
 		func() error {
@@ -148,12 +145,6 @@ func assertIdentityRepositoryRejectsMissingWorkspace(t *testing.T, repository id
 		func() error {
 			return repository.UpdateIdentityRoleRequest(ctx, "", identitymodel.IdentityRoleRequest{RoleRequestID: "request"})
 		},
-		func() error { _, err := repository.ListIdentityMenus(ctx, ""); return err },
-		func() error { return repository.UpsertIdentityMenu(ctx, "", menu) },
-		func() error { return repository.RemoveIdentityMenu(ctx, "", menu.MenuID) },
-		func() error { return repository.SetIdentityRoleMenus(ctx, "", role.RoleID, nil) },
-		func() error { _, err := repository.ListIdentityRoleMenuAssignments(ctx, "", role.RoleID); return err },
-		func() error { return atomic.RemoveIdentityMenusAtomically(ctx, "", []identitymodel.IdentityMenu{menu}) },
 	}
 	for index, operation := range operations {
 		if err := operation(); !errors.Is(err, identitymodel.ErrWorkspaceIDRequired) {

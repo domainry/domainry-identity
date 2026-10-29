@@ -226,7 +226,7 @@ func TestSQLIdentityRequestAndMenuWriteStages(t *testing.T) {
 			return s.UpdateIdentityRoleRequest(t.Context(), "workspace-primary", validRequest)
 		}},
 		{1, func(s *SQLIdentityStore) error {
-			return s.UpsertIdentityMenu(t.Context(), "workspace-primary", identitymodel.IdentityMenu{MenuID: "menu"})
+			return s.UpsertIdentityMenu(t.Context(), "workspace-primary", identitymodel.IdentityMenu{MenuID: "menu", SourceOwner: "application:test"})
 		}},
 		{1, func(s *SQLIdentityStore) error {
 			return s.SetIdentityRoleMenus(t.Context(), "workspace-primary", "role", []string{"menu"})
@@ -358,8 +358,8 @@ func TestSQLIdentityBootstrapAndMenuAtomicStages(t *testing.T) {
 
 func TestSQLIdentityRoleReadStages(t *testing.T) {
 	wantErr := errors.New("permission stage")
-	roleColumns := []string{"id", "role_id", "key", "label", "description", "status"}
-	roleRow := []driver.Value{int64(1), "role", "role", "Role", "", "active"}
+	roleColumns := []string{"id", "role_id", "workspace_id", "scope_type", "source_owner", "key", "label", "description", "definition_json", "status"}
+	roleRow := []driver.Value{int64(1), "role", nil, "global", "application:test", "role", "Role", "", `{}`, "active"}
 	store, closeDB := scriptedSQLIdentity(&identitySQLState{queryFailAt: 1, failure: wantErr, querySteps: []identitySQLQueryStep{{columns: roleColumns, rows: [][]driver.Value{roleRow}}}})
 	if _, err := store.ListIdentityRoles(t.Context(), "workspace-primary"); err == nil {
 		t.Fatal("role query failure ignored")
@@ -376,7 +376,7 @@ func TestSQLIdentityRoleReadStages(t *testing.T) {
 	}
 	closeDB()
 	store, closeDB = scriptedSQLIdentity(&identitySQLState{querySteps: []identitySQLQueryStep{
-		{columns: roleColumns, rows: [][]driver.Value{{int64(2), "other", "other", "Other", "", "active"}}},
+		{columns: roleColumns, rows: [][]driver.Value{{int64(2), "other", nil, "global", "application:test", "other", "Other", "", `{}`, "active"}}},
 	}})
 	if _, found, err := store.memoryRole(t.Context(), "workspace-primary", "role"); err != nil || found {
 		t.Fatalf("other role found=%v err=%v", found, err)
@@ -442,10 +442,10 @@ func TestSQLIdentityRemainingWriteAndMenuStages(t *testing.T) {
 	}
 	closeDB()
 
-	menuColumns := []string{"id", "menu_id", "key", "label", "description", "route", "icon", "parent", "sort", "status"}
-	menuRow := []driver.Value{int64(1), "menu", "key", "Menu", "", "/menu", "", nil, int64(1), "active"}
+	menuColumns := []string{"id", "menu_id", "source_owner", "key", "label", "description", "route", "icon", "parent", "sort", "status"}
+	menuRow := []driver.Value{int64(1), "menu", "application:test", "key", "Menu", "", "/menu", "", nil, int64(1), "active"}
 	store, closeDB = scriptedSQLIdentity(&identitySQLState{queryFailAt: 1, failure: wantErr})
-	if err := store.UpsertIdentityMenu(t.Context(), "workspace-primary", identitymodel.IdentityMenu{MenuID: "menu"}); err == nil {
+	if err := store.UpsertIdentityMenu(t.Context(), "workspace-primary", identitymodel.IdentityMenu{MenuID: "menu", SourceOwner: "application:test"}); err == nil {
 		t.Fatal("menu pre-read failure ignored")
 	}
 	closeDB()
@@ -478,7 +478,7 @@ func TestSQLIdentityRemainingWriteAndMenuStages(t *testing.T) {
 	}
 	closeDB()
 	otherMenu := append([]driver.Value(nil), menuRow...)
-	otherMenu[0], otherMenu[1], otherMenu[2] = int64(2), "other", "other"
+	otherMenu[0], otherMenu[1], otherMenu[3] = int64(2), "other", "other"
 	store, closeDB = scriptedSQLIdentity(&identitySQLState{querySteps: []identitySQLQueryStep{{columns: menuColumns, rows: [][]driver.Value{otherMenu, menuRow}}}})
 	if err := store.RemoveIdentityMenu(t.Context(), "workspace-primary", "menu"); err != nil {
 		t.Fatal(err)

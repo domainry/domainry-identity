@@ -111,9 +111,13 @@ func (s *SQLIdentityStore) InstallationAdministratorBootstrapStateWithExecutor(c
 	if err != nil {
 		return "", false, err
 	}
-	roleID := WorkspaceRoleID(workspaceID, installationAdministratorRoleKey)
-	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.sqlRenderer(), "_identity_roles", workspaceID).
-		Columns("role_id").Where(query.And(query.Equal("role_id", roleID), query.Equal("role_key", installationAdministratorRoleKey), query.Equal("status", "active"))).Limit(1).Build()
+	roleID := ""
+	statement, arguments, err := query.NewSelectBuilder(s.sqlRenderer(), "_identity_roles").
+		Columns("role_id").Where(query.And(
+		query.Equal("scope_type", string(identitymodel.IdentityRoleScopeGlobal)),
+		query.Equal("role_key", installationAdministratorRoleKey),
+		query.Equal("status", "active"),
+	)).Limit(1).Build()
 	if err != nil {
 		return "", false, err
 	}
@@ -174,8 +178,20 @@ func (s *SQLIdentityStore) InsertInstallationAdministratorWithExecutor(ctx conte
 	if err := s.userStore().CreateWithExecutor(ctx, execer, workspaceID, user); err != nil {
 		return fmt.Errorf("create installation administrator: %w", err)
 	}
+	statement, arguments, err := query.NewSelectBuilder(s.sqlRenderer(), "_identity_roles").Columns("role_id").Where(query.And(
+		query.Equal("scope_type", string(identitymodel.IdentityRoleScopeGlobal)),
+		query.Equal("role_key", installationAdministratorRoleKey),
+		query.Equal("status", "active"),
+	)).Limit(1).Build()
+	if err != nil {
+		return err
+	}
+	var roleID string
+	if err := execer.QueryRowContext(ctx, statement, arguments...).Scan(&roleID); err != nil {
+		return fmt.Errorf("load installation administrator global role: %w", err)
+	}
 	if err := s.writeIdentityUserRoleAssignment(ctx, execer, workspaceID, identitymodel.IdentityUserRoleAssignment{
-		UserID: user.UserID, RoleID: WorkspaceRoleID(workspaceID, installationAdministratorRoleKey),
+		UserID: user.UserID, RoleID: roleID,
 		Source: "installation_administrator_bootstrap_v1", Status: "active",
 	}); err != nil {
 		return fmt.Errorf("assign installation administrator role: %w", err)

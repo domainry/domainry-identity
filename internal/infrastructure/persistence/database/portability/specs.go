@@ -14,10 +14,6 @@ var portableDatasetSpecs = []datasetSpec{
 		columns: []string{"application_id", "workspace_id", "application_key", "redirect_urls_json", "status", "created_at", "updated_at"},
 	},
 	{
-		name: "permissions", table: "_identity_permissions", workspace: "workspace_id", orderBy: []string{"permission_key"},
-		columns: []string{"workspace_id", "permission_key", "resource_key", "operation_key", "label", "description", "category", "source_kind", "source_owner", "definition_status", "enabled", "definition_hash", "source_snapshot_hash", "created_at", "updated_at"},
-	},
-	{
 		name: "organization_units", table: "_identity_organization_units", workspace: "workspace_id", orderBy: []string{"path", "organization_unit_id"},
 		columns: []string{"organization_unit_id", "workspace_id", "code", "name", "sibling_key", "node_type", "parent_id", "path", "ancestor_ids", "depth", "sort_order", "status", "created_at", "updated_at"},
 	},
@@ -26,20 +22,12 @@ var portableDatasetSpecs = []datasetSpec{
 		columns: []string{"external_account_id", "workspace_id", "user_id", "provider", "provider_subject", "email", "phone", "display_name", "avatar_url", "metadata", "linked_at", "created_at", "updated_at"},
 	},
 	{
-		name: "menus", table: "_identity_menus", workspace: "workspace_id", orderBy: []string{"sort_order", "menu_key", "menu_id"},
-		columns: []string{"menu_id", "workspace_id", "menu_key", "label", "description", "route", "icon", "parent_id", "sort_order", "status", "created_at", "updated_at"},
-	},
-	{
 		name: "profile_bindings", table: "_identity_profile_bindings", workspace: "workspace_id", orderBy: []string{"binding_key", "object_key", "profile_id"},
 		columns: []string{"workspace_id", "binding_key", "object_key", "profile_id", "identity_user_id", "status", "invitation_channel", "claim_proof_type", "version", "created_at", "updated_at"},
 	},
 	{
-		name: "role_menu_assignments", table: "_identity_role_menu_assignments", workspace: "workspace_id", orderBy: []string{"role_id", "menu_id"},
-		columns: []string{"workspace_id", "role_id", "menu_id", "created_at", "updated_at"},
-	},
-	{
 		name: "roles", table: "_identity_roles", workspace: "workspace_id", orderBy: []string{"role_key", "role_id"},
-		columns: []string{"role_id", "workspace_id", "role_key", "label", "description", "status", "created_at", "updated_at"},
+		columns: []string{"role_id", "workspace_id", "scope_type", "source_owner", "role_key", "label", "description", "definition_json", "status", "created_at", "updated_at"},
 	},
 	{
 		name: "user_role_assignments", table: "_identity_user_role_assignments", workspace: "workspace_id", orderBy: []string{"user_id", "role_id"},

@@ -141,6 +141,8 @@ type IdentityUserRecordReference struct {
 
 type IdentityPermissionDefinition struct {
 	Key                string                          `json:"key"`
+	ModuleKey          string                          `json:"module_key"`
+	GroupKey           string                          `json:"group_key"`
 	Label              string                          `json:"label"`
 	System             string                          `json:"system"`
 	Resource           string                          `json:"resource"`
@@ -151,6 +153,9 @@ type IdentityPermissionDefinition struct {
 	SourceType         string                          `json:"source_type,omitempty"`
 	SourceActionKey    string                          `json:"source_action_key,omitempty"`
 	ObjectKey          string                          `json:"object_key,omitempty"`
+	ScopeKind          string                          `json:"scope_kind"`
+	DefaultLocale      string                          `json:"default_locale"`
+	I18n               IdentityPermissionLocalizedText `json:"i18n"`
 	ActionLabel        string                          `json:"action_label,omitempty"`
 	RiskLevel          string                          `json:"risk_level,omitempty"`
 	ApprovalRequired   bool                            `json:"approval_required,omitempty"`
@@ -193,13 +198,24 @@ type IdentityActionPermissionUsage struct {
 }
 
 type IdentityRole struct {
-	ID          int64          `json:"id"`
-	RoleID      string         `json:"role_id"`
-	Key         string         `json:"key"`
-	Label       string         `json:"label"`
-	Description string         `json:"description"`
-	Status      IdentityStatus `json:"status"`
+	ID          int64             `json:"id"`
+	RoleID      string            `json:"role_id"`
+	WorkspaceID string            `json:"workspace_id,omitempty"`
+	ScopeType   IdentityRoleScope `json:"scope_type"`
+	SourceOwner string            `json:"source_owner"`
+	Key         string            `json:"key"`
+	Label       string            `json:"label"`
+	Description string            `json:"description"`
+	Definition  RoleSchema        `json:"definition"`
+	Status      IdentityStatus    `json:"status"`
 }
+
+type IdentityRoleScope string
+
+const (
+	IdentityRoleScopeGlobal IdentityRoleScope = "global"
+	IdentityRoleScopeTenant IdentityRoleScope = "tenant"
+)
 
 type IdentityRolePage struct {
 	Items    []IdentityRole `json:"items"`
@@ -212,6 +228,7 @@ type IdentityRolePage struct {
 type IdentityMenu struct {
 	ID          int64          `json:"id"`
 	MenuID      string         `json:"menu_id"`
+	SourceOwner string         `json:"source_owner"`
 	Key         string         `json:"key"`
 	Label       string         `json:"label"`
 	Description string         `json:"description,omitempty"`

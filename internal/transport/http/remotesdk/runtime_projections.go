@@ -13,7 +13,11 @@ import (
 // registerRuntimeProjectionRoutes exposes the read-only projection and trusted
 // background-principal boundary used by a SaaS Runtime. These routes are never
 // reachable with an end-user bearer token or the management Admin middleware.
-func registerRuntimeProjectionRoutes(registrar RouteRegistrar, binding identitysdk.Binding, support Support, credentials *ApplicationCredentialRegistry) {
+func registerRuntimeProjectionRoutes(registrar RouteRegistrar, binding identitysdk.Binding, support Support, credentials *ApplicationCredentialRegistry, browserApplications ...*BrowserApplicationRegistry) {
+	var browserRegistry *BrowserApplicationRegistry
+	if len(browserApplications) > 0 {
+		browserRegistry = browserApplications[0]
+	}
 	decodeProjectionQuery := func(w http.ResponseWriter, r *http.Request) (identitysdk.ProjectionQuery, bool) {
 		var request identitysdk.ProjectionQuery
 		if !support.decodeJSON(w, r, &request) {
@@ -27,7 +31,7 @@ func registerRuntimeProjectionRoutes(registrar RouteRegistrar, binding identitys
 			return
 		}
 		scope := runtimeApplicationScope(r)
-		if !authorizeApplicationCredential(w, r, support, credentials, scope) {
+		if !authorizeRuntimeApplicationCredential(w, r, support, credentials, browserRegistry, scope) {
 			return
 		}
 		user, found, err := binding.Projection().FindUser(runtimeApplicationContext(r, scope), request)
@@ -46,7 +50,7 @@ func registerRuntimeProjectionRoutes(registrar RouteRegistrar, binding identitys
 			return
 		}
 		scope := runtimeApplicationScope(r)
-		if !authorizeApplicationCredential(w, r, support, credentials, scope) {
+		if !authorizeRuntimeApplicationCredential(w, r, support, credentials, browserRegistry, scope) {
 			return
 		}
 		organizationUnit, found, err := binding.Projection().FindOrganizationUnit(runtimeApplicationContext(r, scope), request)
@@ -65,7 +69,7 @@ func registerRuntimeProjectionRoutes(registrar RouteRegistrar, binding identitys
 			return
 		}
 		scope := runtimeApplicationScope(r)
-		if !authorizeApplicationCredential(w, r, support, credentials, scope) {
+		if !authorizeRuntimeApplicationCredential(w, r, support, credentials, browserRegistry, scope) {
 			return
 		}
 		resolver, ok := binding.Projection().(identitysdk.DisplayNameProjection)
@@ -82,7 +86,7 @@ func registerRuntimeProjectionRoutes(registrar RouteRegistrar, binding identitys
 			return
 		}
 		scope := runtimeApplicationScope(r)
-		if !authorizeApplicationCredential(w, r, support, credentials, scope) {
+		if !authorizeRuntimeApplicationCredential(w, r, support, credentials, browserRegistry, scope) {
 			return
 		}
 		values, err := binding.Projection().ListUsers(runtimeApplicationContext(r, scope), request)
@@ -94,7 +98,7 @@ func registerRuntimeProjectionRoutes(registrar RouteRegistrar, binding identitys
 			return
 		}
 		scope := runtimeApplicationScope(r)
-		if !authorizeApplicationCredential(w, r, support, credentials, scope) {
+		if !authorizeRuntimeApplicationCredential(w, r, support, credentials, browserRegistry, scope) {
 			return
 		}
 		values, err := binding.Projection().ListRoles(runtimeApplicationContext(r, scope), request)
@@ -106,7 +110,7 @@ func registerRuntimeProjectionRoutes(registrar RouteRegistrar, binding identitys
 			return
 		}
 		scope := runtimeApplicationScope(r)
-		if !authorizeApplicationCredential(w, r, support, credentials, scope) {
+		if !authorizeRuntimeApplicationCredential(w, r, support, credentials, browserRegistry, scope) {
 			return
 		}
 		values, err := binding.Projection().ListUserRoleAssignments(runtimeApplicationContext(r, scope), request)
@@ -118,7 +122,7 @@ func registerRuntimeProjectionRoutes(registrar RouteRegistrar, binding identitys
 			return
 		}
 		scope := runtimeApplicationScope(r)
-		if !authorizeApplicationCredential(w, r, support, credentials, scope) {
+		if !authorizeRuntimeApplicationCredential(w, r, support, credentials, browserRegistry, scope) {
 			return
 		}
 		resolution, err := binding.Principals().Resolve(runtimeApplicationContext(r, scope), request)
@@ -128,6 +132,30 @@ func registerRuntimeProjectionRoutes(registrar RouteRegistrar, binding identitys
 		}
 		support.writeJSON(w, http.StatusOK, resolution)
 	})
+}
+
+// authorizeRuntimeApplicationCredential accepts either a tenant-scoped
+// Runtime credential or the confidential credential of a registered global
+// SaaS application. The latter is application-scoped and may operate on the
+// explicitly supplied Workspace for Runtime service boundaries; catalog
+// publication remains independently constrained by source-owner policy.
+func authorizeRuntimeApplicationCredential(w http.ResponseWriter, r *http.Request, support Support, credentials *ApplicationCredentialRegistry, browserApplications *BrowserApplicationRegistry, scope identitysdk.ApplicationScope) bool {
+	if credentials != nil {
+		decision := credentials.Authorize(r.Header.Get("Authorization"), scope)
+		if decision.Authenticated {
+			writeApplicationCredentialRateLimit(w, decision)
+			if decision.RateLimited {
+				support.writeError(w, r, http.StatusTooManyRequests, "identity.application_rate_limited")
+				return false
+			}
+			return true
+		}
+	}
+	if browserApplications != nil && scope.WorkspaceID.Valid() && browserApplications.Authorize(r.Header.Get("Authorization"), scope.ApplicationKey) {
+		return true
+	}
+	support.writeError(w, r, http.StatusUnauthorized, "identity.service_credential_required")
+	return false
 }
 
 func runtimeApplicationScope(r *http.Request) identitysdk.ApplicationScope {

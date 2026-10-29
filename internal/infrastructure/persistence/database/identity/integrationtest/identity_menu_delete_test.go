@@ -25,7 +25,7 @@ func TestSQLIdentityMenuDeletionSurvivesReloadAndSeedSync(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open identity store: %v", err)
 	}
-	menu := identitymodel.IdentityMenu{MenuID: "manifest-menu", Key: "manifest_menu", Label: "Manifest menu", Status: identitymodel.IdentityStatusActive}
+	menu := identitymodel.IdentityMenu{MenuID: "manifest-menu", SourceOwner: "application:test", Key: "manifest_menu", Label: "Manifest menu", Status: identitymodel.IdentityStatusActive}
 	if err := identityStore.UpsertIdentityMenu(t.Context(), "workspace-primary", menu); err != nil {
 		t.Fatalf("seed menu: %v", err)
 	}
@@ -61,15 +61,15 @@ func TestSQLIdentityAtomicMenuTreeRollback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	parent := identitymodel.IdentityMenu{MenuID: "parent", Key: "parent", Status: identitymodel.IdentityStatusActive}
-	child := identitymodel.IdentityMenu{MenuID: "child", Key: "child", ParentID: parent.MenuID, Status: identitymodel.IdentityStatusActive}
+	parent := identitymodel.IdentityMenu{MenuID: "parent", SourceOwner: "application:test", Key: "parent", Status: identitymodel.IdentityStatusActive}
+	child := identitymodel.IdentityMenu{MenuID: "child", SourceOwner: "application:test", Key: "child", ParentID: parent.MenuID, Status: identitymodel.IdentityStatusActive}
 	if err := identityStore.UpsertIdentityMenu(t.Context(), "workspace-primary", parent); err != nil {
 		t.Fatal(err)
 	}
 	if err := identityStore.UpsertIdentityMenu(t.Context(), "workspace-primary", child); err != nil {
 		t.Fatal(err)
 	}
-	missing := identitymodel.IdentityMenu{MenuID: "missing", Key: "missing"}
+	missing := identitymodel.IdentityMenu{MenuID: "missing", SourceOwner: "application:test", Key: "missing"}
 	if err := identityStore.RemoveIdentityMenusAtomically(t.Context(), "workspace-primary", []identitymodel.IdentityMenu{child, parent, missing}); err == nil {
 		t.Fatal("expected missing menu to roll back tree deletion")
 	}

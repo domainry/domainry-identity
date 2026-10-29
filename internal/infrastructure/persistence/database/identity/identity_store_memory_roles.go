@@ -12,15 +12,20 @@ import (
 )
 
 func (s *MemoryIdentityStore) ListIdentityRoles(ctx context.Context, workspaceID string) ([]identitymodel.IdentityRole, error) {
-	prefix, err := identityWorkspacePrefix(workspaceID)
-	if err != nil {
-		return nil, err
+	workspaceID = strings.TrimSpace(workspaceID)
+	prefix := ""
+	if workspaceID != "" {
+		var err error
+		prefix, err = identityWorkspacePrefix(workspaceID)
+		if err != nil {
+			return nil, err
+		}
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := make([]identitymodel.IdentityRole, 0, len(s.roles))
 	for key, value := range s.roles {
-		if !strings.HasPrefix(key, prefix) {
+		if !strings.HasPrefix(key, "global\x00") && (prefix == "" || !strings.HasPrefix(key, prefix)) {
 			continue
 		}
 		out = append(out, cloneIdentityRole(value))
@@ -108,12 +113,34 @@ func (s *MemoryIdentityStore) ApplyIdentityRoleRequestDecisionWithinDataScope(_ 
 }
 
 func (s *MemoryIdentityStore) UpsertIdentityRole(ctx context.Context, workspaceID string, role identitymodel.IdentityRole) error {
-	key, err := identityWorkspaceKey(workspaceID, role.RoleID)
-	if err != nil {
-		return err
-	}
 	if role.RoleID == "" {
 		return fmt.Errorf("role id is required")
+	}
+	if role.Key == "" {
+		role.Key = role.RoleID
+	}
+	if role.ScopeType == "" {
+		role.ScopeType = identitymodel.IdentityRoleScopeTenant
+	}
+	key := ""
+	switch role.ScopeType {
+	case identitymodel.IdentityRoleScopeGlobal:
+		role.WorkspaceID = ""
+		role.SourceOwner = strings.TrimSpace(role.SourceOwner)
+		if role.SourceOwner == "" {
+			return fmt.Errorf("global role %q source owner is required", role.Key)
+		}
+		key = "global\x00" + role.RoleID
+	case identitymodel.IdentityRoleScopeTenant:
+		normalized, err := identitymodel.NewWorkspaceID(workspaceID)
+		if err != nil {
+			return err
+		}
+		role.WorkspaceID = normalized.String()
+		role.SourceOwner = "tenant:" + role.WorkspaceID
+		key, _ = identityWorkspaceKey(role.WorkspaceID, role.RoleID)
+	default:
+		return fmt.Errorf("role %q scope type %q is invalid", role.Key, role.ScopeType)
 	}
 	if role.Status == "" {
 		role.Status = identitymodel.IdentityStatusActive
@@ -133,7 +160,7 @@ func (s *MemoryIdentityStore) RemoveIdentityRole(ctx context.Context, workspaceI
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.roles, key)
-	delete(s.roleMenus, key)
+	delete(s.roleMenus, roleID)
 	for scopedKey, assignment := range s.userRoles {
 		if strings.HasPrefix(scopedKey, prefix) && assignment.RoleID == roleID {
 			delete(s.userRoles, scopedKey)

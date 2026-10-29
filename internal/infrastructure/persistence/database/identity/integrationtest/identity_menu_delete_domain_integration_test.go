@@ -20,10 +20,10 @@ func TestIdentityServiceRemoveMenuDeletesDescendantsAndRoleAssignments(t *testin
 		seedIdentityProjectionRole(t, store, "workspace-primary", role)
 	}
 	for _, menu := range []identitymodel.IdentityMenu{
-		{MenuID: "parent", Key: "parent-key", Label: "Parent"},
-		{MenuID: "child", Key: "child-key", Label: "Child", ParentID: "parent"},
-		{MenuID: "grandchild", Key: "grandchild-key", Label: "Grandchild", ParentID: "child"},
-		{MenuID: "sibling", Key: "sibling-key", Label: "Sibling"},
+		{MenuID: "parent", SourceOwner: "application:test", Key: "parent-key", Label: "Parent"},
+		{MenuID: "child", SourceOwner: "application:test", Key: "child-key", Label: "Child", ParentID: "parent"},
+		{MenuID: "grandchild", SourceOwner: "application:test", Key: "grandchild-key", Label: "Grandchild", ParentID: "child"},
+		{MenuID: "sibling", SourceOwner: "application:test", Key: "sibling-key", Label: "Sibling"},
 	} {
 		if err := identity.UpsertMenu(t.Context(), menu); err != nil {
 			t.Fatalf("upsert menu %s: %v", menu.MenuID, err)

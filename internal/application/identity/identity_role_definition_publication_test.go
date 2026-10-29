@@ -145,7 +145,7 @@ func TestRoleCreateIsFailClosedForDataAuthority(t *testing.T) {
 			FieldPermissions:     []identitymodel.FieldPermission{{ObjectKey: "customer", FieldKey: "secret", Read: true}},
 			ReferencePermissions: []identitymodel.ReferencePermission{{SourceObjectKey: "customer", RelationFieldKey: "owner", TargetObjectKey: "identity_user"}},
 			ExportRules:          []identitymodel.ExportRule{{ObjectKey: "customer", Mode: "allow_list", Fields: []string{"id"}}},
-			GrantableRoleKeys:    []string{"*"}, GuardrailKeys: []string{"guardrail"}, ProvisionToWorkspaces: true,
+			GrantableRoleKeys:    []string{"*"}, GuardrailKeys: []string{"guardrail"},
 		},
 		BusinessReason: "create reviewer", OperationID: "create-1",
 	}, principal)
@@ -153,7 +153,7 @@ func TestRoleCreateIsFailClosedForDataAuthority(t *testing.T) {
 		t.Fatal(err)
 	}
 	created := publisher.createdRole
-	if created.Key != "reviewer" || len(created.Permissions) != 1 || created.Permissions[0].PermissionKey != identityTestDirectBusinessPermission || created.Permissions[0].DataScope != identitymodel.IdentityDataScopeAll || len(created.FieldPermissions) != 0 || len(created.ReferencePermissions) != 0 || len(created.ExportRules) != 0 || len(created.GrantableRoleKeys) != 0 || len(created.GuardrailKeys) != 0 || created.ProvisionToWorkspaces {
+	if created.Key != "reviewer" || len(created.Permissions) != 1 || created.Permissions[0].PermissionKey != identityTestDirectBusinessPermission || created.Permissions[0].DataScope != identitymodel.IdentityDataScopeAll || len(created.FieldPermissions) != 0 || len(created.ReferencePermissions) != 0 || len(created.ExportRules) != 0 || len(created.GrantableRoleKeys) != 0 || len(created.GuardrailKeys) != 0 {
 		t.Fatalf("new role did not fail closed: %#v", created)
 	}
 	if created.Audience != identitymodel.IdentityRoleAudienceAny || created.AssignmentMode != identitymodel.IdentityRoleAssignmentManual || created.RiskLevel != identitymodel.IdentityRoleRiskNormal {

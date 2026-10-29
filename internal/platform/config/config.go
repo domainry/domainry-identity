@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	identitysdk "github.com/domainry/domainry-identity-sdk"
 	"github.com/domainry/domainry-identity/internal/platform/productbrand"
 )
 
@@ -121,6 +122,9 @@ type Config struct {
 	IdentityWorkspaceID                   string
 	IdentityBrowserApplicationKey         string
 	IdentityBrowserReturnURLs             []string
+	IdentityGlobalBrowserApplications     map[string][]string
+	IdentityGlobalBrowserCredentials      map[string]string
+	IdentityGlobalCatalogSourceOwners     map[string][]string
 	IdentityActionUsageRuntimeURL         string
 	IdentityActionUsageRequestTimeout     time.Duration
 	IdentityActionUsageApplicationKey     string
@@ -236,6 +240,9 @@ func FromEnv() Config {
 		IdentityWorkspaceID:                   strings.TrimSpace(os.Getenv("IDENTITY_WORKSPACE_ID")),
 		IdentityBrowserApplicationKey:         env("IDENTITY_BROWSER_APPLICATION_KEY", "domainry-identity-admin"),
 		IdentityBrowserReturnURLs:             csvEnv("IDENTITY_BROWSER_RETURN_URLS", defaultIdentityBrowserReturnURLs(environment)),
+		IdentityGlobalBrowserApplications:     keyListMapEnv("IDENTITY_GLOBAL_BROWSER_APPLICATIONS"),
+		IdentityGlobalBrowserCredentials:      keyMapEnv("IDENTITY_GLOBAL_BROWSER_CREDENTIALS"),
+		IdentityGlobalCatalogSourceOwners:     keyListMapEnv("IDENTITY_GLOBAL_CATALOG_SOURCE_OWNERS"),
 		IdentityActionUsageRuntimeURL:         strings.TrimSpace(os.Getenv("IDENTITY_ACTION_USAGE_RUNTIME_URL")),
 		IdentityActionUsageRequestTimeout:     durationEnv("IDENTITY_ACTION_USAGE_REQUEST_TIMEOUT", 3*time.Second),
 		IdentityActionUsageApplicationKey:     env("IDENTITY_ACTION_USAGE_APPLICATION_KEY", "domainry-identity-control-plane"),
@@ -330,6 +337,41 @@ func (c Config) ValidateSecurity() error {
 	for _, redirectURL := range c.IdentityBrowserReturnURLs {
 		if err := validateProductionRedirectURL("IDENTITY_BROWSER_RETURN_URLS", redirectURL); err != nil {
 			return err
+		}
+	}
+	for applicationKey, redirectURLs := range c.IdentityGlobalBrowserApplications {
+		if !identitysdk.ApplicationKey(strings.TrimSpace(applicationKey)).Valid() {
+			return fmt.Errorf("IDENTITY_GLOBAL_BROWSER_APPLICATIONS contains invalid application %q", applicationKey)
+		}
+		if len(redirectURLs) == 0 {
+			return fmt.Errorf("IDENTITY_GLOBAL_BROWSER_APPLICATIONS application %q has no redirect URL", applicationKey)
+		}
+		for _, redirectURL := range redirectURLs {
+			if err := validateProductionRedirectURL("IDENTITY_GLOBAL_BROWSER_APPLICATIONS", redirectURL); err != nil {
+				return err
+			}
+		}
+		credential := strings.TrimSpace(c.IdentityGlobalBrowserCredentials[applicationKey])
+		if credential == "" {
+			return fmt.Errorf("IDENTITY_GLOBAL_BROWSER_CREDENTIALS is missing application %q", applicationKey)
+		}
+		if c.IsProduction() && len(credential) < 32 {
+			return fmt.Errorf("IDENTITY_GLOBAL_BROWSER_CREDENTIALS credential for %q must contain at least 32 characters in production", applicationKey)
+		}
+	}
+	for applicationKey := range c.IdentityGlobalBrowserCredentials {
+		if _, found := c.IdentityGlobalBrowserApplications[applicationKey]; !found {
+			return fmt.Errorf("IDENTITY_GLOBAL_BROWSER_CREDENTIALS application %q is not registered", applicationKey)
+		}
+	}
+	for applicationKey, owners := range c.IdentityGlobalCatalogSourceOwners {
+		if _, found := c.IdentityGlobalBrowserApplications[applicationKey]; !found {
+			return fmt.Errorf("IDENTITY_GLOBAL_CATALOG_SOURCE_OWNERS application %q is not registered", applicationKey)
+		}
+		for _, owner := range owners {
+			if _, err := identitysdk.PermissionSnapshotHash(strings.TrimSpace(owner), nil); err != nil {
+				return fmt.Errorf("IDENTITY_GLOBAL_CATALOG_SOURCE_OWNERS contains invalid source owner %q for %q", owner, applicationKey)
+			}
 		}
 	}
 	passwordMinLength := c.AuthPasswordMinLength

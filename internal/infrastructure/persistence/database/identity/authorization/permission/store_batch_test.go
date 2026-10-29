@@ -57,11 +57,11 @@ func TestPermissionReconcileUsesMultiRowUpsertAcrossDialects(t *testing.T) {
 				"permission.one": permissionBatchDefinition("permission.one"),
 				"permission.two": permissionBatchDefinition("permission.two"),
 			}
-			statement, arguments, err := permissionUpsertBuilder(backend, "workspace-primary", []string{"permission.one", "permission.two"}, definitions, "now").Build()
+			statement, arguments, err := permissionUpsertBuilder(backend, []string{"permission.one", "permission.two"}, definitions, "now").Build()
 			if err != nil {
 				t.Fatal(err)
 			}
-			if strings.Count(statement, "), (") != 1 || len(arguments) != 30 {
+			if strings.Count(statement, "), (") != 1 || len(arguments) != 42 {
 				t.Fatalf("permission upsert is not one two-row batch: sql=%s args=%d", statement, len(arguments))
 			}
 			parts := strings.SplitN(statement, test.conflictMarker, 2)
@@ -89,16 +89,16 @@ func TestPermissionEnablementUsesCurrentStateOnlyAcrossDialects(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			statement, arguments, err := permissionEnablementBuilder(renderer, "workspace-primary", "identity.roles.get", false, "now").Build()
+			statement, arguments, err := permissionEnablementBuilder(renderer, "identity.roles.get", false, "now").Build()
 			if err != nil {
 				t.Fatal(err)
 			}
-			for _, required := range []string{renderer.Table("_identity_permissions"), renderer.Identifier("workspace_id"), renderer.Identifier("permission_key"), renderer.Identifier("definition_status"), renderer.Identifier("enabled"), renderer.Identifier("updated_at")} {
+			for _, required := range []string{renderer.Table("_identity_permissions"), renderer.Identifier("permission_key"), renderer.Identifier("definition_status"), renderer.Identifier("enabled"), renderer.Identifier("updated_at")} {
 				if !strings.Contains(statement, required) {
 					t.Fatalf("permission enablement SQL is missing %q: %s", required, statement)
 				}
 			}
-			if len(arguments) != 6 {
+			if len(arguments) != 5 {
 				t.Fatalf("permission enablement args=%d SQL=%s", len(arguments), statement)
 			}
 			for _, forbidden := range []string{"source_owner", "definition_hash", "source_snapshot_hash", "definition_status ="} {
@@ -112,8 +112,12 @@ func TestPermissionEnablementUsesCurrentStateOnlyAcrossDialects(t *testing.T) {
 
 func permissionBatchDefinition(key string) identitymodel.IdentityPermissionDefinitionRecord {
 	return identitymodel.IdentityPermissionDefinitionRecord{
-		PermissionKey: key, ResourceKey: "roles", OperationKey: "read", Label: key,
+		PermissionKey: key, ModuleKey: "identity", GroupKey: "roles", ResourceKey: "roles", OperationKey: "read", Label: key,
 		Category: "Identity", SourceKind: "builtin_http", SourceOwner: "identity:builtin",
+		GrantMode: "direct", ScopeKind: "none", DefaultLocale: "en",
+		I18n: identitymodel.IdentityPermissionLocalizedText{"en": {
+			ModuleLabel: "Identity", GroupLabel: "Roles", ResourceLabel: "Roles", OperationLabel: "Read", Label: key,
+		}},
 		DefinitionHash: "definition-hash", SourceSnapshotHash: "snapshot-hash",
 	}
 }

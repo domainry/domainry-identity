@@ -40,7 +40,7 @@ func TestEmbeddedWorkspaceExportImportIsDeterministicAndSecretFree(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if dryRun.Bundle != nil || dryRun.Inventory.DatasetCounts["users"] != 1 || dryRun.Inventory.DatasetCounts["applications"] != 2 || dryRun.Inventory.DatasetCounts["permissions"] != 2 || dryRun.Inventory.DatasetCounts["workflow_workload_bindings"] != 1 || dryRun.Inventory.ExcludedCounts["credentials"] != 1 || dryRun.Inventory.ExcludedCounts["provider_secrets"] != 1 {
+	if dryRun.Bundle != nil || dryRun.Inventory.DatasetCounts["users"] != 1 || dryRun.Inventory.DatasetCounts["applications"] != 2 || dryRun.Inventory.DatasetCounts["workflow_workload_bindings"] != 1 || dryRun.Inventory.ExcludedCounts["credentials"] != 1 || dryRun.Inventory.ExcludedCounts["provider_secrets"] != 1 {
 		t.Fatalf("unexpected dry-run inventory: %+v", dryRun)
 	}
 	if _, err := sourceService.Export(t.Context(), portabilityapplication.ExportRequest{WorkspaceID: "workspace-a", SourceMode: "module"}); err == nil || !strings.Contains(err.Error(), "write_freeze_not_active") {
@@ -116,14 +116,14 @@ func TestEmbeddedWorkspaceExportImportIsDeterministicAndSecretFree(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Receipt == nil || result.Receipt.ImportedCounts["users"] != 1 || result.Receipt.ImportedCounts["applications"] != 2 || result.Receipt.ImportedCounts["permissions"] != 2 || result.Receipt.ImportedCounts["workflow_workload_bindings"] != 1 || !result.Receipt.AuthorizationOK || !result.Receipt.SessionsRevoked || !result.Receipt.CredentialsReset || !result.Receipt.MFAReenrollment {
+	if result.Receipt == nil || result.Receipt.ImportedCounts["users"] != 1 || result.Receipt.ImportedCounts["applications"] != 2 || result.Receipt.ImportedCounts["workflow_workload_bindings"] != 1 || !result.Receipt.AuthorizationOK || !result.Receipt.SessionsRevoked || !result.Receipt.CredentialsReset || !result.Receipt.MFAReenrollment {
 		t.Fatalf("import receipt=%+v", result.Receipt)
 	}
 	var users, applications, permissions, workloads, credentials, sessions, providerCredentials int
 	for query, countDestination := range map[string]*int{
 		`SELECT COUNT(*) FROM _identity_users WHERE workspace_id='workspace-a'`:                      &users,
 		`SELECT COUNT(*) FROM _identity_applications WHERE workspace_id='workspace-a'`:               &applications,
-		`SELECT COUNT(*) FROM _identity_permissions WHERE workspace_id='workspace-a'`:                &permissions,
+		`SELECT COUNT(*) FROM _identity_permissions`:                                                 &permissions,
 		`SELECT COUNT(*) FROM _identity_workflow_workload_bindings WHERE workspace_id='workspace-a'`: &workloads,
 		`SELECT COUNT(*) FROM _identity_credentials WHERE workspace_id='workspace-a'`:                &credentials,
 		`SELECT COUNT(*) FROM _identity_auth_refresh_tokens WHERE workspace_id='workspace-a'`:        &sessions,
@@ -133,12 +133,8 @@ func TestEmbeddedWorkspaceExportImportIsDeterministicAndSecretFree(t *testing.T)
 			t.Fatal(err)
 		}
 	}
-	if users != 1 || applications != 2 || permissions != 2 || workloads != 1 || credentials != 0 || sessions != 0 || providerCredentials != 1 {
+	if users != 1 || applications != 2 || permissions != 0 || workloads != 1 || credentials != 0 || sessions != 0 || providerCredentials != 1 {
 		t.Fatalf("imported users=%d applications=%d permissions=%d workloads=%d credentials=%d sessions=%d provider_credentials=%d", users, applications, permissions, workloads, credentials, sessions, providerCredentials)
-	}
-	var disabled int
-	if err := target.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _identity_permissions WHERE workspace_id='workspace-a' AND permission_key='customer.export' AND enabled=FALSE`).Scan(&disabled); err != nil || disabled != 1 {
-		t.Fatalf("imported administrator permission state=%d err=%v", disabled, err)
 	}
 	for _, retiredTable := range []string{"_identity_authorization_catalogs", "_identity_authorization_catalog_revisions"} {
 		var count int
@@ -258,8 +254,8 @@ func seedPortableWorkspace(t *testing.T, store *database.IdentityStore, now time
 		{id: "permission-export", key: "customer.export", action: "export", status: "active", enabled: false},
 	} {
 		if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO _identity_permissions
-			(workspace_id, permission_key, resource_key, operation_key, label, description, category, source_kind, source_owner, definition_status, enabled, definition_hash, source_snapshot_hash, created_at, updated_at)
-			VALUES ('workspace-a', ?, 'customer', ?, ?, '', 'CRM', 'object_default', 'application:orders-runtime', ?, ?, ?, ?, ?, ?)`,
+			(permission_key, module_key, group_key, resource_key, operation_key, label, description, category, source_kind, source_owner, grant_mode, scope_kind, object_key, default_locale, i18n_json, definition_status, enabled, definition_hash, source_snapshot_hash, created_at, updated_at)
+			VALUES (?, 'crm', 'customer', 'customer', ?, ?, '', 'CRM', 'object_default', 'application:orders-runtime', 'direct', 'record', 'customer', 'en', '{"en":{"module_label":"CRM","group_label":"Customers","resource_label":"Customers","operation_label":"Action","label":"Customer action"}}', ?, ?, ?, ?, ?, ?)`,
 			permission.key, permission.action, permission.key, permission.status, permission.enabled, strings.Repeat("a", 64), strings.Repeat("b", 64), timestamp, timestamp); err != nil {
 			t.Fatal(err)
 		}
@@ -271,8 +267,8 @@ func seedPortableWorkspace(t *testing.T, store *database.IdentityStore, now time
 		t.Fatal(err)
 	}
 	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO _identity_roles
-		(role_id, workspace_id, role_key, label, description, status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, '', 'active', ?, ?)`, "role-1", "workspace-a", "reader", "Reader", timestamp, timestamp); err != nil {
+		(role_id, workspace_id, scope_type, source_owner, role_key, label, description, definition_json, status, created_at, updated_at)
+		VALUES (?, ?, 'tenant', ?, ?, ?, '', ?, 'active', ?, ?)`, "role-1", "workspace-a", "tenant:workspace-a", "reader", "Reader", `{"key":"reader","name":"Reader"}`, timestamp, timestamp); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.DB().ExecContext(t.Context(), `INSERT INTO _identity_user_role_assignments

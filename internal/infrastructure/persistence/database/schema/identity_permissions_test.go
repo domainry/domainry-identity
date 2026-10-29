@@ -19,13 +19,16 @@ func TestIdentityPermissionsSchemaRendersThroughDomainryORM(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			for _, required := range []string{"_identity_permissions", "permission_key", "source_owner", "definition_status", "source_snapshot_hash", "PRIMARY KEY", "workspace_id"} {
+			for _, required := range []string{"_identity_permissions", "permission_key", "source_owner", "definition_status", "source_snapshot_hash", "PRIMARY KEY"} {
 				if !strings.Contains(statement, required) {
 					t.Fatalf("statement %q is missing %q", statement, required)
 				}
 			}
 			if len(arguments) != 0 {
 				t.Fatalf("DDL arguments=%v", arguments)
+			}
+			if strings.Contains(statement, "workspace_id") {
+				t.Fatalf("global permission table unexpectedly contains workspace_id: %q", statement)
 			}
 			for _, index := range identityPermissionIndexSpecs {
 				statement, arguments, err := identityPermissionIndexDefinition(renderer, index).Build()

@@ -713,7 +713,7 @@ func (r *identityHTTPPermissionRepository) SetIdentityPermissionDefinitionEnable
 
 func (r *identityHTTPPermissionRepository) ReconcileIdentityPermissionDefinitions(_ context.Context, request identitymodel.IdentityPermissionReconcileRequest) (identitymodel.IdentityPermissionReconcileReceipt, error) {
 	r.records = append([]identitymodel.IdentityPermissionDefinitionRecord(nil), request.Definitions...)
-	return identitymodel.IdentityPermissionReconcileReceipt{WorkspaceID: request.WorkspaceID, SourceOwner: request.SourceOwner, SnapshotHash: request.SnapshotHash}, nil
+	return identitymodel.IdentityPermissionReconcileReceipt{SourceOwner: request.SourceOwner, SnapshotHash: request.SnapshotHash}, nil
 }
 
 func newIdentityHTTPPermissionCatalog() (*identityapplication.IdentityPermissionCatalogApplicationService, []string) {
@@ -724,7 +724,6 @@ func newIdentityHTTPPermissionCatalog() (*identityapplication.IdentityPermission
 	records := registry.OwnedPermissionDefinitions(identityapplication.IdentityBuiltinAuthorizationOwner)
 	keys := make([]string, 0, len(records))
 	for index := range records {
-		records[index].WorkspaceID = "workspace-1"
 		records[index].DefinitionStatus = identitymodel.IdentityPermissionDefinitionActive
 		records[index].Enabled = true
 		keys = append(keys, records[index].PermissionKey)

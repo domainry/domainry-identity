@@ -43,13 +43,25 @@ func (r MetadataStore) applyIdentityRoleProjectionMutation(ctx context.Context, 
 		if strings.TrimSpace(role.Key) != roleKey {
 			return fmt.Errorf("role projection projection identity mismatch: %s", roleKey)
 		}
+		definitionJSON, err := json.Marshal(role)
+		if err != nil {
+			return fmt.Errorf("encode role projection %s: %w", roleKey, err)
+		}
 		label := strings.TrimSpace(role.Name)
 		if label == "" {
 			label = roleKey
 		}
-		statement, arguments, err := query.NewWorkspaceUpdateBuilder(r.store.SQLRenderer, "_identity_roles", workspaceID.String()).
-			Set("label", label).Set("description", strings.TrimSpace(role.Description)).Set("status", string(identitymodel.IdentityStatusActive)).Set("updated_at", timevalue.Millis(now)).
-			Where(query.Equal("role_key", roleKey)).Build()
+		statement, arguments, err := query.NewUpdateBuilder(r.store.SQLRenderer, "_identity_roles").
+			Set("label", label).
+			Set("description", strings.TrimSpace(role.Description)).
+			Set("definition_json", string(definitionJSON)).
+			Set("status", string(identitymodel.IdentityStatusActive)).
+			Set("updated_at", timevalue.Millis(now)).
+			Where(query.And(
+				query.Equal("scope_type", string(identitymodel.IdentityRoleScopeTenant)),
+				query.Equal("workspace_id", workspaceID.String()),
+				query.Equal("role_key", roleKey),
+			)).Build()
 		if err != nil {
 			return fmt.Errorf("build role projection projection %s update: %w", roleKey, err)
 		}
@@ -71,9 +83,9 @@ func (r MetadataStore) applyIdentityRoleProjectionMutation(ctx context.Context, 
 		if err != nil {
 			return fmt.Errorf("generate role projection id: %w", err)
 		}
-		statement, arguments, err = query.NewWorkspaceInsertBuilder(r.store.SQLRenderer, "_identity_roles", workspaceID.String()).
-			Columns("role_id", "role_key", "label", "description", "status", "created_at", "updated_at").
-			Values(roleID, roleKey, label, strings.TrimSpace(role.Description), string(identitymodel.IdentityStatusActive), timevalue.Millis(now), timevalue.Millis(now)).Build()
+		statement, arguments, err = query.NewInsertBuilder(r.store.SQLRenderer, "_identity_roles").
+			Columns("role_id", "workspace_id", "scope_type", "source_owner", "role_key", "label", "description", "definition_json", "status", "created_at", "updated_at").
+			Values(roleID, workspaceID.String(), string(identitymodel.IdentityRoleScopeTenant), "tenant:"+workspaceID.String(), roleKey, label, strings.TrimSpace(role.Description), string(definitionJSON), string(identitymodel.IdentityStatusActive), timevalue.Millis(now), timevalue.Millis(now)).Build()
 		if err != nil {
 			return fmt.Errorf("build role projection projection %s insert: %w", roleKey, err)
 		}
@@ -82,8 +94,12 @@ func (r MetadataStore) applyIdentityRoleProjectionMutation(ctx context.Context, 
 		}
 		return nil
 	case "archive", "delete":
-		statement, arguments, err := query.NewWorkspaceUpdateBuilder(r.store.SQLRenderer, "_identity_roles", workspaceID.String()).
-			Set("status", string(identitymodel.IdentityStatusDisabled)).Set("updated_at", timevalue.Millis(now)).Where(query.Equal("role_key", roleKey)).Build()
+		statement, arguments, err := query.NewUpdateBuilder(r.store.SQLRenderer, "_identity_roles").
+			Set("status", string(identitymodel.IdentityStatusDisabled)).Set("updated_at", timevalue.Millis(now)).Where(query.And(
+			query.Equal("scope_type", string(identitymodel.IdentityRoleScopeTenant)),
+			query.Equal("workspace_id", workspaceID.String()),
+			query.Equal("role_key", roleKey),
+		)).Build()
 		if err != nil {
 			return fmt.Errorf("build role projection projection %s disable: %w", roleKey, err)
 		}

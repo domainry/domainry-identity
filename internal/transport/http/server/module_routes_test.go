@@ -73,7 +73,7 @@ func TestStandaloneGenericModuleContributionReconcilesBeforeMountAndUsesHostGate
 	t.Cleanup(func() { _ = server.CloseContext(t.Context()) })
 
 	var rows int
-	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _identity_permissions WHERE workspace_id = ? AND permission_key = ? AND source_owner = ?`, cfg.IdentityWorkspaceID, "inventory.items.list", "module:inventory").Scan(&rows); err != nil || rows != 1 {
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _identity_permissions WHERE permission_key = ? AND source_owner = ?`, "inventory.items.list", "module:inventory").Scan(&rows); err != nil || rows != 1 {
 		t.Fatalf("generic module permission rows=%d err=%v", rows, err)
 	}
 	response := httptest.NewRecorder()
@@ -127,7 +127,7 @@ func TestStandaloneReconcilesPureNonHTTPModuleActionAndRejectsUnservedHTTP(t *te
 	}
 	t.Cleanup(func() { _ = server.CloseContext(t.Context()) })
 	var rows int
-	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _identity_permissions WHERE workspace_id = ? AND permission_key = ? AND source_owner = ?`, cfg.IdentityWorkspaceID, action.Key, action.Owner).Scan(&rows); err != nil || rows != 1 {
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _identity_permissions WHERE permission_key = ? AND source_owner = ?`, action.Key, action.Owner).Scan(&rows); err != nil || rows != 1 {
 		t.Fatalf("non-HTTP module permission rows=%d err=%v", rows, err)
 	}
 

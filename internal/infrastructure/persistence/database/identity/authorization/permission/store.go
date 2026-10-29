@@ -3,6 +3,7 @@ package permission
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -40,11 +41,8 @@ func New(backend Backend, now func() string) *Store {
 }
 
 func (store *Store) List(ctx context.Context, workspaceID string) ([]identitymodel.IdentityPermissionDefinitionRecord, error) {
-	workspaceID, err := workspace(workspaceID)
-	if err != nil {
-		return nil, err
-	}
-	statement, arguments, err := permissionListBuilder(store.backend.SQLRenderer(), workspaceID).Build()
+	_ = workspaceID
+	statement, arguments, err := permissionListBuilder(store.backend.SQLRenderer()).Build()
 	if err != nil {
 		return nil, fmt.Errorf("build Identity permission list: %w", err)
 	}
@@ -57,15 +55,12 @@ func (store *Store) List(ctx context.Context, workspaceID string) ([]identitymod
 }
 
 func (store *Store) Get(ctx context.Context, workspaceID, permissionKey string) (identitymodel.IdentityPermissionDefinitionRecord, bool, error) {
-	workspaceID, err := workspace(workspaceID)
-	if err != nil {
-		return identitymodel.IdentityPermissionDefinitionRecord{}, false, err
-	}
+	_ = workspaceID
 	permissionKey = strings.TrimSpace(permissionKey)
 	if permissionKey == "" {
 		return identitymodel.IdentityPermissionDefinitionRecord{}, false, fmt.Errorf("Identity permission key is required")
 	}
-	statement, arguments, err := permissionSelectBuilder(store.backend.SQLRenderer(), workspaceID).
+	statement, arguments, err := permissionSelectBuilder(store.backend.SQLRenderer()).
 		Where(query.Equal("permission_key", permissionKey)).Build()
 	if err != nil {
 		return identitymodel.IdentityPermissionDefinitionRecord{}, false, fmt.Errorf("build Identity permission get: %w", err)
@@ -82,15 +77,12 @@ func (store *Store) Get(ctx context.Context, workspaceID, permissionKey string) 
 // by the source owner. A surrounding host transaction, when present, owns the
 // commit/rollback together with last-admin checks and audit work.
 func (store *Store) SetEnabled(ctx context.Context, workspaceID, permissionKey string, enabled bool) (bool, error) {
-	workspaceID, err := workspace(workspaceID)
-	if err != nil {
-		return false, err
-	}
+	_ = workspaceID
 	permissionKey = strings.TrimSpace(permissionKey)
 	if permissionKey == "" {
 		return false, fmt.Errorf("Identity permission key is required")
 	}
-	statement, arguments, err := permissionEnablementBuilder(store.backend.SQLRenderer(), workspaceID, permissionKey, enabled, store.now()).Build()
+	statement, arguments, err := permissionEnablementBuilder(store.backend.SQLRenderer(), permissionKey, enabled, store.now()).Build()
 	if err != nil {
 		return false, fmt.Errorf("build Identity permission enablement: %w", err)
 	}
@@ -109,8 +101,8 @@ func (store *Store) SetEnabled(ctx context.Context, workspaceID, permissionKey s
 	return rows > 0, nil
 }
 
-func permissionEnablementBuilder(renderer ormdialect.Renderer, workspaceID, permissionKey string, enabled bool, now string) *query.UpdateBuilder {
-	return query.NewWorkspaceUpdateBuilder(renderer, "_identity_permissions", workspaceID).
+func permissionEnablementBuilder(renderer ormdialect.Renderer, permissionKey string, enabled bool, now string) *query.UpdateBuilder {
+	return query.NewUpdateBuilder(renderer, "_identity_permissions").
 		Set("enabled", enabled).
 		Set("updated_at", timevalue.Millis(now)).
 		Where(query.And(
@@ -121,11 +113,6 @@ func permissionEnablementBuilder(renderer ormdialect.Renderer, workspaceID, perm
 }
 
 func (store *Store) Reconcile(ctx context.Context, request identitymodel.IdentityPermissionReconcileRequest) (identitymodel.IdentityPermissionReconcileReceipt, error) {
-	workspaceID, err := workspace(request.WorkspaceID)
-	if err != nil {
-		return identitymodel.IdentityPermissionReconcileReceipt{}, err
-	}
-	request.WorkspaceID = workspaceID
 	request.SourceOwner = strings.TrimSpace(request.SourceOwner)
 	request.PreviousSnapshotHash = strings.TrimSpace(request.PreviousSnapshotHash)
 	request.SnapshotHash = strings.TrimSpace(request.SnapshotHash)
@@ -134,11 +121,10 @@ func (store *Store) Reconcile(ctx context.Context, request identitymodel.Identit
 	}
 	incoming := make(map[string]identitymodel.IdentityPermissionDefinitionRecord, len(request.Definitions))
 	for _, definition := range request.Definitions {
-		definition.WorkspaceID = strings.TrimSpace(definition.WorkspaceID)
 		definition.PermissionKey = strings.TrimSpace(definition.PermissionKey)
 		definition.SourceOwner = strings.TrimSpace(definition.SourceOwner)
 		definition.SourceSnapshotHash = strings.TrimSpace(definition.SourceSnapshotHash)
-		if definition.WorkspaceID != workspaceID || definition.SourceOwner != request.SourceOwner || definition.SourceSnapshotHash != request.SnapshotHash || definition.PermissionKey == "" || strings.TrimSpace(definition.DefinitionHash) == "" {
+		if definition.SourceOwner != request.SourceOwner || definition.SourceSnapshotHash != request.SnapshotHash || definition.PermissionKey == "" || strings.TrimSpace(definition.DefinitionHash) == "" {
 			return identitymodel.IdentityPermissionReconcileReceipt{}, fmt.Errorf("Identity permission definition %q does not match its reconcile scope", definition.PermissionKey)
 		}
 		if _, duplicate := incoming[definition.PermissionKey]; duplicate {
@@ -168,7 +154,7 @@ func (store *Store) Reconcile(ctx context.Context, request identitymodel.Identit
 // carried by the context. Transaction lifecycle remains with that host; the
 // standalone fallback above owns and commits its local transaction.
 func (store *Store) reconcileWithExecutor(ctx context.Context, executor reconcileExecutor, request identitymodel.IdentityPermissionReconcileRequest, incoming map[string]identitymodel.IdentityPermissionDefinitionRecord) (identitymodel.IdentityPermissionReconcileReceipt, error) {
-	current, err := listWithExecutor(ctx, executor, store.backend.SQLRenderer(), request.WorkspaceID)
+	current, err := listWithExecutor(ctx, executor, store.backend.SQLRenderer())
 	if err != nil {
 		return identitymodel.IdentityPermissionReconcileReceipt{}, err
 	}
@@ -186,7 +172,7 @@ func (store *Store) reconcileWithExecutor(ctx context.Context, executor reconcil
 		}
 	}
 	receipt := identitymodel.IdentityPermissionReconcileReceipt{
-		WorkspaceID: request.WorkspaceID, SourceOwner: request.SourceOwner,
+		SourceOwner:          request.SourceOwner,
 		PreviousSnapshotHash: currentSnapshotHash, SnapshotHash: request.SnapshotHash, DefinitionCount: len(incoming),
 	}
 	if request.SnapshotHash == currentSnapshotHash {
@@ -230,26 +216,26 @@ func (store *Store) reconcileWithExecutor(ctx context.Context, executor reconcil
 	// one statement, then reactivate/insert the submitted snapshot with bounded
 	// multi-row upserts. The transaction prevents observers from seeing the
 	// intermediate retired state and avoids one database round-trip per key.
-	if err := retireOwnerDefinitions(ctx, executor, store.backend.SQLRenderer(), request.WorkspaceID, request.SourceOwner, request.SnapshotHash, now); err != nil {
+	if err := retireOwnerDefinitions(ctx, executor, store.backend.SQLRenderer(), request.SourceOwner, request.SnapshotHash, now); err != nil {
 		return identitymodel.IdentityPermissionReconcileReceipt{}, err
 	}
-	if err := upsertDefinitions(ctx, executor, store.backend, request.WorkspaceID, keys, incoming, now); err != nil {
+	if err := upsertDefinitions(ctx, executor, store.backend, keys, incoming, now); err != nil {
 		return identitymodel.IdentityPermissionReconcileReceipt{}, err
 	}
 	return receipt, nil
 }
 
-func permissionSelectBuilder(renderer ormdialect.Renderer, workspaceID string) *query.SelectBuilder {
-	return query.NewWorkspaceSelectBuilder(renderer, "_identity_permissions", workspaceID).
-		Columns("workspace_id", "permission_key", "resource_key", "operation_key", "label", "description", "category", "source_kind", "source_owner", "definition_status", "enabled", "definition_hash", "source_snapshot_hash", "created_at", "updated_at")
+func permissionSelectBuilder(renderer ormdialect.Renderer) *query.SelectBuilder {
+	return query.NewSelectBuilder(renderer, "_identity_permissions").
+		Columns("permission_key", "module_key", "group_key", "resource_key", "operation_key", "label", "description", "category", "source_kind", "source_owner", "grant_mode", "scope_kind", "object_key", "default_locale", "i18n_json", "definition_status", "enabled", "definition_hash", "source_snapshot_hash", "created_at", "updated_at")
 }
 
-func permissionListBuilder(renderer ormdialect.Renderer, workspaceID string) *query.SelectBuilder {
-	return permissionSelectBuilder(renderer, workspaceID).OrderBy(query.Ascending("permission_key"))
+func permissionListBuilder(renderer ormdialect.Renderer) *query.SelectBuilder {
+	return permissionSelectBuilder(renderer).OrderBy(query.Ascending("permission_key"))
 }
 
-func listWithExecutor(ctx context.Context, executor reconcileExecutor, renderer ormdialect.Renderer, workspaceID string) ([]identitymodel.IdentityPermissionDefinitionRecord, error) {
-	statement, arguments, err := permissionListBuilder(renderer, workspaceID).Build()
+func listWithExecutor(ctx context.Context, executor reconcileExecutor, renderer ormdialect.Renderer) ([]identitymodel.IdentityPermissionDefinitionRecord, error) {
+	statement, arguments, err := permissionListBuilder(renderer).Build()
 	if err != nil {
 		return nil, fmt.Errorf("build Identity permission reconcile list: %w", err)
 	}
@@ -279,19 +265,27 @@ type permissionDefinitionScanner interface {
 
 func scanPermissionDefinition(scanner permissionDefinitionScanner) (identitymodel.IdentityPermissionDefinitionRecord, error) {
 	var definition identitymodel.IdentityPermissionDefinitionRecord
+	var i18nJSON string
 	var createdAt, updatedAt int64
 	err := scanner.Scan(
-		&definition.WorkspaceID, &definition.PermissionKey, &definition.ResourceKey, &definition.OperationKey,
+		&definition.PermissionKey, &definition.ModuleKey, &definition.GroupKey, &definition.ResourceKey, &definition.OperationKey,
 		&definition.Label, &definition.Description, &definition.Category, &definition.SourceKind, &definition.SourceOwner,
+		&definition.GrantMode, &definition.ScopeKind, &definition.ObjectKey, &definition.DefaultLocale, &i18nJSON,
 		&definition.DefinitionStatus, &definition.Enabled, &definition.DefinitionHash, &definition.SourceSnapshotHash,
 		&createdAt, &updatedAt,
 	)
+	if err != nil {
+		return identitymodel.IdentityPermissionDefinitionRecord{}, err
+	}
+	if err := json.Unmarshal([]byte(i18nJSON), &definition.I18n); err != nil {
+		return identitymodel.IdentityPermissionDefinitionRecord{}, fmt.Errorf("decode Identity permission %q localized text: %w", definition.PermissionKey, err)
+	}
 	definition.CreatedAt, definition.UpdatedAt = timevalue.String(createdAt), timevalue.String(updatedAt)
-	return definition, err
+	return definition, nil
 }
 
-func retireOwnerDefinitions(ctx context.Context, executor reconcileExecutor, renderer ormdialect.Renderer, workspaceID, sourceOwner, snapshotHash, now string) error {
-	statement, arguments, err := query.NewWorkspaceUpdateBuilder(renderer, "_identity_permissions", workspaceID).
+func retireOwnerDefinitions(ctx context.Context, executor reconcileExecutor, renderer ormdialect.Renderer, sourceOwner, snapshotHash, now string) error {
+	statement, arguments, err := query.NewUpdateBuilder(renderer, "_identity_permissions").
 		Set("definition_status", identitymodel.IdentityPermissionDefinitionRetired).
 		Set("source_snapshot_hash", snapshotHash).
 		Set("updated_at", timevalue.Millis(now)).
@@ -306,14 +300,14 @@ func retireOwnerDefinitions(ctx context.Context, executor reconcileExecutor, ren
 	return nil
 }
 
-func upsertDefinitions(ctx context.Context, executor reconcileExecutor, backend Backend, workspaceID string, keys []string, incoming map[string]identitymodel.IdentityPermissionDefinitionRecord, now string) error {
-	const parametersPerRow = 15 // workspace_id plus the fourteen explicit columns below.
+func upsertDefinitions(ctx context.Context, executor reconcileExecutor, backend Backend, keys []string, incoming map[string]identitymodel.IdentityPermissionDefinitionRecord, now string) error {
+	const parametersPerRow = 21
 	ranges, err := (batch.Parameters{Max: backend.MaxParameters(), PerItem: parametersPerRow}).Ranges(len(keys))
 	if err != nil {
 		return fmt.Errorf("plan Identity permission upsert batches: %w", err)
 	}
 	for _, batchRange := range ranges {
-		insert := permissionUpsertBuilder(backend, workspaceID, keys[batchRange.Start:batchRange.End], incoming, now)
+		insert := permissionUpsertBuilder(backend, keys[batchRange.Start:batchRange.End], incoming, now)
 		statement, arguments, buildErr := insert.Build()
 		if buildErr != nil {
 			return fmt.Errorf("build Identity permission batch upsert: %w", buildErr)
@@ -325,28 +319,23 @@ func upsertDefinitions(ctx context.Context, executor reconcileExecutor, backend 
 	return nil
 }
 
-func permissionUpsertBuilder(backend Backend, workspaceID string, keys []string, incoming map[string]identitymodel.IdentityPermissionDefinitionRecord, now string) *query.InsertBuilder {
-	insert := query.NewWorkspaceInsertBuilder(backend.SQLRenderer(), "_identity_permissions", workspaceID).
-		Columns("permission_key", "resource_key", "operation_key", "label", "description", "category", "source_kind", "source_owner", "definition_status", "enabled", "definition_hash", "source_snapshot_hash", "created_at", "updated_at")
+func permissionUpsertBuilder(backend Backend, keys []string, incoming map[string]identitymodel.IdentityPermissionDefinitionRecord, now string) *query.InsertBuilder {
+	insert := query.NewInsertBuilder(backend.SQLRenderer(), "_identity_permissions").
+		Columns("permission_key", "module_key", "group_key", "resource_key", "operation_key", "label", "description", "category", "source_kind", "source_owner", "grant_mode", "scope_kind", "object_key", "default_locale", "i18n_json", "definition_status", "enabled", "definition_hash", "source_snapshot_hash", "created_at", "updated_at")
 	for _, key := range keys {
 		definition := incoming[key]
+		i18nJSON, _ := json.Marshal(definition.I18n)
 		insert.Values(
-			key, definition.ResourceKey, definition.OperationKey,
+			key, definition.ModuleKey, definition.GroupKey, definition.ResourceKey, definition.OperationKey,
 			definition.Label, definition.Description, definition.Category, definition.SourceKind, definition.SourceOwner,
+			definition.GrantMode, definition.ScopeKind, definition.ObjectKey, definition.DefaultLocale, string(i18nJSON),
 			identitymodel.IdentityPermissionDefinitionActive, true, definition.DefinitionHash, definition.SourceSnapshotHash,
 			timevalue.Millis(now), timevalue.Millis(now),
 		)
 	}
-	return backend.ApplyUpsert(insert, []string{"workspace_id", "permission_key"},
-		"resource_key", "operation_key", "label", "description", "category", "source_kind", "source_owner",
+	return backend.ApplyUpsert(insert, []string{"permission_key"},
+		"module_key", "group_key", "resource_key", "operation_key", "label", "description", "category", "source_kind", "source_owner",
+		"grant_mode", "scope_kind", "object_key", "default_locale", "i18n_json",
 		"definition_status", "definition_hash", "source_snapshot_hash", "updated_at",
 	)
-}
-
-func workspace(value string) (string, error) {
-	id, err := identitymodel.NewWorkspaceID(value)
-	if err != nil {
-		return "", err
-	}
-	return id.String(), nil
 }

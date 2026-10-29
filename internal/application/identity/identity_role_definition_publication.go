@@ -62,6 +62,9 @@ func (service *IdentityRoleDefinitionPublicationService) PublishPermissions(ctx 
 	if err != nil {
 		return identitymodel.IdentityRolePermissionConfiguration{}, err
 	}
+	if err := requireTenantRoleMutation(role); err != nil {
+		return identitymodel.IdentityRolePermissionConfiguration{}, err
+	}
 	if service.permissions == nil {
 		return identitymodel.IdentityRolePermissionConfiguration{}, rolePublicationUnavailable()
 	}
@@ -110,6 +113,9 @@ func (service *IdentityRoleDefinitionPublicationService) PublishFieldPermissions
 	}
 	role, err := service.operationalRole(ctx, roleID)
 	if err != nil {
+		return identitymodel.IdentityRoleFieldPermissionConfiguration{}, err
+	}
+	if err := requireTenantRoleMutation(role); err != nil {
 		return identitymodel.IdentityRoleFieldPermissionConfiguration{}, err
 	}
 	fieldPermissions, err := normalizedFieldPermissions(request.FieldPermissions)
@@ -180,6 +186,9 @@ func (service *IdentityRoleDefinitionPublicationService) Update(ctx context.Cont
 	if err != nil {
 		return identitymodel.IdentityRoleDefinitionConfiguration{}, err
 	}
+	if err := requireTenantRoleMutation(role); err != nil {
+		return identitymodel.IdentityRoleDefinitionConfiguration{}, err
+	}
 	request.Name = strings.TrimSpace(request.Name)
 	request.Description = strings.TrimSpace(request.Description)
 	if request.Name == "" {
@@ -198,6 +207,9 @@ func (service *IdentityRoleDefinitionPublicationService) Delete(ctx context.Cont
 	}
 	role, err := service.operationalRole(ctx, roleID)
 	if err != nil {
+		return err
+	}
+	if err := requireTenantRoleMutation(role); err != nil {
 		return err
 	}
 	assignments, err := service.identity.ListUserRoleAssignments(ctx, "")
@@ -232,6 +244,13 @@ func (service *IdentityRoleDefinitionPublicationService) operationalRole(ctx con
 		return identitymodel.IdentityRole{}, &apperror.AppError{Kind: apperror.KindNotFound, Code: "backend.identity.role_not_found", Params: map[string]string{"role": roleID}}
 	}
 	return role, nil
+}
+
+func requireTenantRoleMutation(role identitymodel.IdentityRole) error {
+	if role.ScopeType == identitymodel.IdentityRoleScopeGlobal {
+		return &apperror.AppError{Kind: apperror.KindForbidden, Code: "backend.identity.global_role_read_only", Params: map[string]string{"role": role.Key}}
+	}
+	return nil
 }
 
 func validateRoleCreateCommand(businessReason, operationID string) error {
@@ -269,7 +288,6 @@ func normalizeNewRoleDefinition(role identitymodel.RoleSchema) (identitymodel.Ro
 	role.PermissionSetGroups = nil
 	role.GuardrailKeys = nil
 	role.Guardrails = nil
-	role.ProvisionToWorkspaces = false
 	role.ProjectFieldPermissionOverride = false
 	role.ProjectPermissionOverride = false
 	if role.Audience == "" {

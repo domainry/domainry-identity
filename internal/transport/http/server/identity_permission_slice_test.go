@@ -117,6 +117,7 @@ func TestStandalonePermissionAPIQueriesRemoteRuntimeUsageWithoutPersistingIt(t *
 	if err := runtimeRegistry.Freeze(); err != nil {
 		t.Fatal(err)
 	}
+	externalAction, _ = runtimeRegistry.Definition(externalAction.Key)
 	var runtimeAvailable atomic.Bool
 	runtimeAvailable.Store(true)
 	var runtimeCalls atomic.Int64
@@ -180,10 +181,21 @@ func TestStandalonePermissionAPIQueriesRemoteRuntimeUsageWithoutPersistingIt(t *
 	if _, err := identityServer.SDKBinding().Applications().Register(t.Context(), identitysdk.ApplicationRegistration{Application: application}); err != nil {
 		t.Fatal(err)
 	}
-	reconcile, err := identitysdk.NewPermissionReconcileRequest(application, externalAction.Permission.Owner, "", []identitysdk.PermissionDefinition{{
-		PermissionKey: externalAction.Permission.Key, ResourceKey: externalAction.Permission.ResourceKey,
+	reconcile, err := identitysdk.NewPermissionReconcileRequest(externalAction.Permission.Owner, "", []identitysdk.PermissionDefinition{{
+		PermissionKey: externalAction.Permission.Key, ModuleKey: externalAction.Permission.ModuleKey, GroupKey: externalAction.Permission.GroupKey,
+		ResourceKey:  externalAction.Permission.ResourceKey,
 		OperationKey: externalAction.Permission.OperationKey, Label: externalAction.Permission.Label,
 		Category: externalAction.Permission.Category, SourceKind: externalAction.SourceKind,
+		GrantMode: string(externalAction.Permission.GrantMode), ScopeKind: string(externalAction.Permission.ScopeKind), ObjectKey: externalAction.Permission.ObjectKey,
+		DefaultLocale: externalAction.Permission.DefaultLocale,
+		I18n: identitysdk.PermissionLocalizedText{externalAction.Permission.DefaultLocale: {
+			ModuleLabel:    externalAction.Permission.I18n[externalAction.Permission.DefaultLocale].ModuleLabel,
+			GroupLabel:     externalAction.Permission.I18n[externalAction.Permission.DefaultLocale].GroupLabel,
+			ResourceLabel:  externalAction.Permission.I18n[externalAction.Permission.DefaultLocale].ResourceLabel,
+			OperationLabel: externalAction.Permission.I18n[externalAction.Permission.DefaultLocale].OperationLabel,
+			Label:          externalAction.Permission.I18n[externalAction.Permission.DefaultLocale].Label,
+			Description:    externalAction.Permission.I18n[externalAction.Permission.DefaultLocale].Description,
+		}},
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -280,6 +292,8 @@ func TestStandaloneRolePermissionPublicationVersionsRoleSchemaAndSurvivesRestart
 	}
 
 	store, identityServer, testServer := openServer()
+	t.Cleanup(testServer.Close)
+	t.Cleanup(func() { _ = identityServer.CloseContext(t.Context()) })
 	adminToken := loginAccessToken(t, testServer)
 	organizationAdministratorRoleID := projectedRoleIDByKey(t, store, "organization_administrator")
 	initial, initialHash, initialVersion := rolePermissionConfiguration(t, testServer, adminToken, organizationAdministratorRoleID)
@@ -293,87 +307,33 @@ func TestStandaloneRolePermissionPublicationVersionsRoleSchemaAndSurvivesRestart
 		return key == "identity.role_permissions.list"
 	})
 	requestedKeys = append(requestedKeys, "inventory.items.list")
-	published, publishedHash, publishedVersion := publishRolePermissions(t, testServer, adminToken, organizationAdministratorRoleID, initialHash, "role-permission-publication-1", requestedKeys, "verify direct RoleSchema publication")
-	if publishedHash == "" || publishedHash == initialHash || publishedVersion == "" || publishedVersion == initialVersion {
-		t.Fatalf("publication revision did not advance: initial=%s/%s published=%s/%s", initialVersion, initialHash, publishedVersion, publishedHash)
-	}
-	if slices.Contains(rolePermissionKeys(published), "identity.role_permissions.list") {
-		t.Fatalf("published role still grants identity.role_permissions.list: %+v", published)
-	}
-	afterRole := storedRoleSchema(t, store, "organization_administrator")
-	beforeRole.Permissions, afterRole.Permissions = nil, nil
-	if !reflect.DeepEqual(beforeRole, afterRole) {
-		t.Fatalf("permission publication changed non-permission RoleSchema fields:\nbefore=%+v\nafter=%+v", beforeRole, afterRole)
-	}
-
-	replayed, replayedHash, replayedVersion := publishRolePermissions(t, testServer, adminToken, organizationAdministratorRoleID, initialHash, "role-permission-publication-1", requestedKeys, "verify direct RoleSchema publication")
-	if replayedHash != publishedHash || replayedVersion != publishedVersion || !reflect.DeepEqual(replayed, published) {
-		t.Fatalf("idempotent replay changed the result: first=%s/%s %+v replay=%s/%s %+v", publishedVersion, publishedHash, published, replayedVersion, replayedHash, replayed)
-	}
-	assertRolePermissionPublicationRows(t, store, 2, 1)
-
-	staleKeys := slices.DeleteFunc(slices.Clone(requestedKeys), func(key string) bool {
-		return key == "inventory.items.list"
-	})
-	stale := publishRolePermissionsResponse(t, testServer, adminToken, organizationAdministratorRoleID, initialHash, "role-permission-publication-stale", staleKeys, "verify stale CAS")
-	if stale.StatusCode != http.StatusConflict {
-		t.Fatalf("stale RoleSchema publication status=%d body=%s", stale.StatusCode, readResponseBody(t, stale))
-	}
-	_ = stale.Body.Close()
-	unknownKeys := append(slices.Clone(requestedKeys), "identity.permission.unknown")
-	unknown := publishRolePermissionsResponse(t, testServer, adminToken, organizationAdministratorRoleID, publishedHash, "role-permission-publication-unknown", unknownKeys, "verify fail closed selection")
-	if unknown.StatusCode != http.StatusBadRequest {
-		t.Fatalf("unknown permission publication status=%d body=%s", unknown.StatusCode, readResponseBody(t, unknown))
-	}
-	_ = unknown.Body.Close()
-	assertRolePermissionPublicationRows(t, store, 2, 1)
-
-	testServer.Close()
-	if err := identityServer.CloseContext(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-
-	restartedStore, restartedIdentityServer, restartedTestServer := openServer()
-	t.Cleanup(restartedTestServer.Close)
-	t.Cleanup(func() { _ = restartedIdentityServer.CloseContext(t.Context()) })
-	restartedAdminToken := loginAccessToken(t, restartedTestServer)
-	restartedOrganizationAdministratorRoleID := projectedRoleIDByKey(t, restartedStore, "organization_administrator")
-	restarted, restartedHash, restartedVersion := rolePermissionConfiguration(t, restartedTestServer, restartedAdminToken, restartedOrganizationAdministratorRoleID)
-	if restartedHash != publishedHash || restartedVersion != publishedVersion || slices.Contains(rolePermissionKeys(restarted), "identity.role_permissions.list") {
-		t.Fatalf("restarted RoleSchema differs from publication: version=%s hash=%s permissions=%v", restartedVersion, restartedHash, rolePermissionKeys(restarted))
-	}
-	assertRolePermissionPublicationRows(t, restartedStore, 2, 1)
-
-	repository, err := identitypersistence.NewSQLIdentityStore(t.Context(), restartedStore.DB(), restartedStore.PersistenceEngine())
-	if err != nil {
-		t.Fatal(err)
-	}
-	restartedAdminUserID := projectedUserIDByEmail(t, restartedStore, "admin@example.com")
-	restartedAdminRoleID := projectedRoleIDByKey(t, restartedStore, "admin")
-	if err := repository.RemoveIdentityUserRole(t.Context(), "workspace-primary", restartedAdminUserID, restartedAdminRoleID); err != nil {
-		t.Fatal(err)
-	}
-	if err := repository.AssignIdentityUserRole(t.Context(), "workspace-primary", identitymodel.IdentityUserRoleAssignment{UserID: restartedAdminUserID, RoleID: restartedOrganizationAdministratorRoleID}); err != nil {
-		t.Fatal(err)
-	}
-	limitedToken := loginAccessToken(t, restartedTestServer)
-	limitedPublishKeys := slices.DeleteFunc(slices.Clone(requestedKeys), func(key string) bool {
-		return key == "identity.role_permissions.validate"
-	})
-	limitedPublished, limitedPublishedHash, limitedPublishedVersion := publishRolePermissions(t, restartedTestServer, limitedToken, restartedOrganizationAdministratorRoleID, restartedHash, "role-permission-publication-without-list", limitedPublishKeys, "prove publish does not acquire list permission")
-	if limitedPublishedHash == restartedHash || limitedPublishedVersion == restartedVersion || slices.Contains(rolePermissionKeys(limitedPublished), "identity.role_permissions.validate") {
-		t.Fatalf("exact publish without list did not advance RoleSchema: version=%s hash=%s permissions=%v", limitedPublishedVersion, limitedPublishedHash, rolePermissionKeys(limitedPublished))
-	}
-	denied := rolePermissionConfigurationResponse(t, restartedTestServer, limitedToken, restartedOrganizationAdministratorRoleID)
-	if denied.StatusCode != http.StatusForbidden {
-		t.Fatalf("published role without identity.role_permissions.list status=%d body=%s", denied.StatusCode, readResponseBody(t, denied))
+	denied := publishRolePermissionsResponse(t, testServer, adminToken, organizationAdministratorRoleID, initialHash, "global-role-publication-denied", requestedKeys, "global roles are code-owned")
+	if denied.StatusCode != http.StatusForbidden || !strings.Contains(readResponseBody(t, denied), "backend.identity.global_role_read_only") {
+		t.Fatalf("global role permission publication status=%d", denied.StatusCode)
 	}
 	_ = denied.Body.Close()
-	stillAllowed := permissionCatalogRequest(t, restartedTestServer, limitedToken)
-	if stillAllowed.StatusCode != http.StatusOK {
-		t.Fatalf("removing identity.role_permissions.list affected identity.permissions.list status=%d body=%s", stillAllowed.StatusCode, readResponseBody(t, stillAllowed))
+	afterRole := storedRoleSchema(t, store, "organization_administrator")
+	if !reflect.DeepEqual(beforeRole, afterRole) {
+		t.Fatalf("global role changed through tenant authoring:\nbefore=%+v\nafter=%+v", beforeRole, afterRole)
 	}
-	_ = stillAllowed.Body.Close()
+	current, currentHash, currentVersion := rolePermissionConfiguration(t, testServer, adminToken, organizationAdministratorRoleID)
+	if currentHash != initialHash || currentVersion != initialVersion || !reflect.DeepEqual(current, initial) {
+		t.Fatalf("global role revision changed after rejected authoring: initial=%s/%s current=%s/%s", initialVersion, initialHash, currentVersion, currentHash)
+	}
+	deleteResponse := identityRolePolicyRequest(t, testServer, adminToken, http.MethodDelete, "/identity/roles/"+organizationAdministratorRoleID, initialHash, "global-role-delete-denied", identitymodel.IdentityRoleDefinitionDeleteRequest{
+		BusinessReason: "global roles are code-owned",
+	})
+	if deleteResponse.StatusCode != http.StatusForbidden || !strings.Contains(readResponseBody(t, deleteResponse), "backend.identity.global_role_read_only") {
+		t.Fatalf("global role delete status=%d", deleteResponse.StatusCode)
+	}
+	_ = deleteResponse.Body.Close()
+	var roleStatus string
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT status FROM _identity_roles WHERE role_id = ? AND scope_type = ? AND workspace_id IS NULL`, organizationAdministratorRoleID, identitymodel.IdentityRoleScopeGlobal).Scan(&roleStatus); err != nil {
+		t.Fatal(err)
+	}
+	if roleStatus != string(identitymodel.IdentityStatusActive) {
+		t.Fatalf("global role status changed after rejected delete: %q", roleStatus)
+	}
 }
 
 func TestStandaloneRoleAndPolicyAuthoringPublishesRoleSchemaDirectly(t *testing.T) {
@@ -675,7 +635,7 @@ func storedRoleSchema(t *testing.T, store *database.IdentityStore, roleKey strin
 func projectedRoleIDByKey(t *testing.T, store *database.IdentityStore, roleKey string) string {
 	t.Helper()
 	var roleID string
-	if err := store.DB().QueryRowContext(t.Context(), `SELECT role_id FROM _identity_roles WHERE workspace_id = ? AND role_key = ?`, "workspace-primary", roleKey).Scan(&roleID); err != nil {
+	if err := store.DB().QueryRowContext(t.Context(), `SELECT role_id FROM _identity_roles WHERE role_key = ? AND (scope_type = 'global' OR workspace_id = ?) ORDER BY CASE WHEN scope_type = 'tenant' THEN 0 ELSE 1 END LIMIT 1`, roleKey, "workspace-primary").Scan(&roleID); err != nil {
 		t.Fatal(err)
 	}
 	return roleID

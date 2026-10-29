@@ -73,7 +73,7 @@ func (*authRoutePermissionRepository) SetIdentityPermissionDefinitionEnabled(con
 
 func (repository *authRoutePermissionRepository) ReconcileIdentityPermissionDefinitions(_ context.Context, request identitymodel.IdentityPermissionReconcileRequest) (identitymodel.IdentityPermissionReconcileReceipt, error) {
 	repository.records = slices.Clone(request.Definitions)
-	return identitymodel.IdentityPermissionReconcileReceipt{WorkspaceID: request.WorkspaceID, SourceOwner: request.SourceOwner, SnapshotHash: request.SnapshotHash}, nil
+	return identitymodel.IdentityPermissionReconcileReceipt{SourceOwner: request.SourceOwner, SnapshotHash: request.SnapshotHash}, nil
 }
 
 func newAuthRouteTestAuthorizer(t *testing.T) *identityapplication.IdentityActionAuthorizationService {

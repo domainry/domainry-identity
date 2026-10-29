@@ -141,13 +141,13 @@ func TestIdentityServiceValidatesPermissionsAndComputesEffectiveKeys(t *testing.
 func TestIdentityServiceRejectsDuplicateMenuKeys(t *testing.T) {
 	repo := identitypersistence.NewMemoryIdentityStore()
 	service, _ := identitybusiness.NewIdentityDomainService(repo, nil).ForWorkspace("workspace-primary")
-	if err := service.UpsertMenu(t.Context(), identitymodel.IdentityMenu{MenuID: "menu-a", Key: "org_users", Label: "Users"}); err != nil {
+	if err := service.UpsertMenu(t.Context(), identitymodel.IdentityMenu{MenuID: "menu-a", SourceOwner: "application:test", Key: "org_users", Label: "Users"}); err != nil {
 		t.Fatalf("upsert first menu: %v", err)
 	}
-	if err := service.UpsertMenu(t.Context(), identitymodel.IdentityMenu{MenuID: "menu-b", Key: "ORG_USERS", Label: "Duplicate"}); err == nil {
+	if err := service.UpsertMenu(t.Context(), identitymodel.IdentityMenu{MenuID: "menu-b", SourceOwner: "application:test", Key: "ORG_USERS", Label: "Duplicate"}); err == nil {
 		t.Fatal("expected duplicate menu key to be rejected")
 	}
-	if err := service.UpsertMenu(t.Context(), identitymodel.IdentityMenu{MenuID: "menu-a", Key: "org_users", Label: "Updated users"}); err != nil {
+	if err := service.UpsertMenu(t.Context(), identitymodel.IdentityMenu{MenuID: "menu-a", SourceOwner: "application:test", Key: "org_users", Label: "Updated users"}); err != nil {
 		t.Fatalf("updating the existing menu should remain valid: %v", err)
 	}
 }
@@ -155,19 +155,19 @@ func TestIdentityServiceRejectsDuplicateMenuKeys(t *testing.T) {
 func TestIdentityServiceValidatesMenuHierarchy(t *testing.T) {
 	repo := identitypersistence.NewMemoryIdentityStore()
 	service, _ := identitybusiness.NewIdentityDomainService(repo, nil).ForWorkspace("workspace-primary")
-	if err := service.UpsertMenu(t.Context(), identitymodel.IdentityMenu{MenuID: "root", Key: "root", Label: "Root"}); err != nil {
+	if err := service.UpsertMenu(t.Context(), identitymodel.IdentityMenu{MenuID: "root", SourceOwner: "application:test", Key: "root", Label: "Root"}); err != nil {
 		t.Fatalf("upsert root menu: %v", err)
 	}
-	if err := service.UpsertMenu(t.Context(), identitymodel.IdentityMenu{MenuID: "child", Key: "child", Label: "Child", ParentID: "root"}); err != nil {
+	if err := service.UpsertMenu(t.Context(), identitymodel.IdentityMenu{MenuID: "child", SourceOwner: "application:test", Key: "child", Label: "Child", ParentID: "root"}); err != nil {
 		t.Fatalf("upsert child menu: %v", err)
 	}
-	if err := service.UpsertMenu(t.Context(), identitymodel.IdentityMenu{MenuID: "missing", Key: "missing", ParentID: "unknown"}); err == nil || !strings.Contains(err.Error(), "backend.identity.menu_parent_not_found") {
+	if err := service.UpsertMenu(t.Context(), identitymodel.IdentityMenu{MenuID: "missing", SourceOwner: "application:test", Key: "missing", ParentID: "unknown"}); err == nil || !strings.Contains(err.Error(), "backend.identity.menu_parent_not_found") {
 		t.Fatalf("expected missing parent error, got %v", err)
 	}
-	if err := service.UpsertMenu(t.Context(), identitymodel.IdentityMenu{MenuID: "self", Key: "self", ParentID: "self"}); err == nil || !strings.Contains(err.Error(), "backend.identity.menu_parent_self") {
+	if err := service.UpsertMenu(t.Context(), identitymodel.IdentityMenu{MenuID: "self", SourceOwner: "application:test", Key: "self", ParentID: "self"}); err == nil || !strings.Contains(err.Error(), "backend.identity.menu_parent_self") {
 		t.Fatalf("expected self parent error, got %v", err)
 	}
-	if err := service.UpsertMenu(t.Context(), identitymodel.IdentityMenu{MenuID: "root", Key: "root", Label: "Root", ParentID: "child"}); err == nil || !strings.Contains(err.Error(), "backend.identity.menu_parent_cycle") {
+	if err := service.UpsertMenu(t.Context(), identitymodel.IdentityMenu{MenuID: "root", SourceOwner: "application:test", Key: "root", Label: "Root", ParentID: "child"}); err == nil || !strings.Contains(err.Error(), "backend.identity.menu_parent_cycle") {
 		t.Fatalf("expected menu cycle error, got %v", err)
 	}
 }

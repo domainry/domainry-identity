@@ -221,6 +221,11 @@ func (s *IdentityDomainService) PublishedGuardrails(_ context.Context) []identit
 }
 
 func (s *IdentityDomainService) publishedRoleDefinition(role identitymodel.IdentityRole) (identitymodel.RoleSchema, bool) {
+	if key := strings.TrimSpace(role.Definition.Key); key != "" {
+		definition := role.Definition
+		definition.Key = key
+		return definition, true
+	}
 	s.roleMu.RLock()
 	defer s.roleMu.RUnlock()
 	for _, key := range []string{strings.TrimSpace(role.Key), strings.TrimSpace(role.RoleID)} {

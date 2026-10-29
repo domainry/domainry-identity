@@ -6,7 +6,7 @@ import (
 	"net/http"
 )
 
-func registerSubjectLifecycleRoutes(registrar RouteRegistrar, binding identitysdk.Binding, support Support, credentials *ApplicationCredentialRegistry) {
+func registerSubjectLifecycleRoutes(registrar RouteRegistrar, binding identitysdk.Binding, support Support, credentials *ApplicationCredentialRegistry, browserApplications *BrowserApplicationRegistry) {
 	for _, operation := range []string{"preview", "export", "erase"} {
 		registrar.HandleFunc("POST /identity/system/subjects/"+operation, func(w http.ResponseWriter, r *http.Request) {
 			var request identitysdk.SubjectErasureRequest
@@ -14,7 +14,7 @@ func registerSubjectLifecycleRoutes(registrar RouteRegistrar, binding identitysd
 				return
 			}
 			scope := runtimeApplicationScope(r)
-			if !authorizeApplicationCredential(w, r, support, credentials, scope) {
+			if !authorizeRuntimeApplicationCredential(w, r, support, credentials, browserApplications, scope) {
 				return
 			}
 			if request.WorkspaceID != string(scope.WorkspaceID) {

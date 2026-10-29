@@ -56,9 +56,12 @@ func NewIdentityActionRegistry(definitions []identitymodel.IdentityActionDefinit
 		registry.permissionOwnerByKey[permission.Key] = permission.Owner
 		registry.permissionOwners[permission.Owner] = struct{}{}
 		registry.permissionRecordByKey[permission.Key] = identitymodel.IdentityPermissionDefinitionRecord{
-			PermissionKey: permission.Key, ResourceKey: permission.ResourceKey, OperationKey: permission.OperationKey,
+			PermissionKey: permission.Key, ModuleKey: permission.ModuleKey, GroupKey: permission.GroupKey,
+			ResourceKey: permission.ResourceKey, OperationKey: permission.OperationKey,
 			Label: permission.Label, Description: permission.Description, Category: permission.Category,
 			SourceKind: definition.SourceKind, SourceOwner: permission.Owner,
+			GrantMode: string(permission.GrantMode), ScopeKind: string(permission.ScopeKind), ObjectKey: permission.ObjectKey,
+			DefaultLocale: permission.DefaultLocale, I18n: identityPermissionTextFromContract(permission.I18n),
 			DefinitionStatus: identityPermissionLifecycle(permission.LifecycleStatus), Enabled: true,
 		}
 	}
@@ -68,6 +71,17 @@ func NewIdentityActionRegistry(definitions []identitymodel.IdentityActionDefinit
 		}
 	}
 	return registry, nil
+}
+
+func identityPermissionTextFromContract(source actioncontract.PermissionLocalizedText) identitymodel.IdentityPermissionLocalizedText {
+	result := make(identitymodel.IdentityPermissionLocalizedText, len(source))
+	for locale, text := range source {
+		result[locale] = identitymodel.IdentityPermissionText{
+			ModuleLabel: text.ModuleLabel, GroupLabel: text.GroupLabel, ResourceLabel: text.ResourceLabel,
+			OperationLabel: text.OperationLabel, Label: text.Label, Description: text.Description,
+		}
+	}
+	return result
 }
 
 func projectIdentityActionPermissionUsage(usage actioncontract.PermissionUsage) identitymodel.IdentityActionPermissionUsage {

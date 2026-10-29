@@ -17,8 +17,8 @@ type identityPermissionIndexSpec struct {
 }
 
 var identityPermissionIndexSpecs = []identityPermissionIndexSpec{
-	{name: "idx_identity_permissions_state", columns: []string{"workspace_id", "definition_status", "enabled"}},
-	{name: "idx_identity_permissions_source_owner", columns: []string{"workspace_id", "source_owner"}},
+	{name: "idx_identity_permissions_state", columns: []string{"definition_status", "enabled"}},
+	{name: "idx_identity_permissions_source_owner", columns: []string{"source_owner"}},
 }
 
 func ensureIdentityPermissionsSchema(ctx context.Context, store Store) error {
@@ -45,8 +45,9 @@ func identityPermissionsTableDefinition(renderer ormdialect.Renderer) *ormschema
 	return ormschema.NewTableWithRequiredColumns(renderer, identityPermissionsTable, ormschema.Column("id", ormschema.BigInt()).NotNull().AutoIncrement()).
 		IfNotExists().
 		Columns(
-			ormschema.Column("workspace_id", ormschema.TextKey(128)).NotNull(),
 			ormschema.Column("permission_key", ormschema.TextKey(255)).NotNull(),
+			ormschema.Column("module_key", ormschema.TextKey(128)).NotNull(),
+			ormschema.Column("group_key", ormschema.TextKey(255)).NotNull(),
 			ormschema.Column("resource_key", ormschema.TextKey(255)).NotNull(),
 			ormschema.Column("operation_key", ormschema.TextKey(128)).NotNull(),
 			ormschema.Column("label", ormschema.Text()).NotNull(),
@@ -54,6 +55,11 @@ func identityPermissionsTableDefinition(renderer ormdialect.Renderer) *ormschema
 			ormschema.Column("category", ormschema.Text()).NotNull(),
 			ormschema.Column("source_kind", ormschema.TextKey(64)).NotNull(),
 			ormschema.Column("source_owner", ormschema.TextKey(255)).NotNull(),
+			ormschema.Column("grant_mode", ormschema.TextKey(32)).NotNull(),
+			ormschema.Column("scope_kind", ormschema.TextKey(32)).NotNull(),
+			ormschema.Column("object_key", ormschema.TextKey(255)).NotNull().DefaultValue(""),
+			ormschema.Column("default_locale", ormschema.TextKey(32)).NotNull(),
+			ormschema.Column("i18n_json", ormschema.Text()).NotNull(),
 			ormschema.Column("definition_status", ormschema.TextKey(32)).NotNull(),
 			ormschema.Column("enabled", ormschema.Boolean()).NotNull().DefaultValue(true),
 			ormschema.Column("definition_hash", ormschema.TextKey(64)).NotNull(),
@@ -62,7 +68,7 @@ func identityPermissionsTableDefinition(renderer ormdialect.Renderer) *ormschema
 			ormschema.Column("updated_at", ormschema.BigInt()).NotNull(),
 		).
 		PrimaryKey("id").
-		Unique("workspace_id", "permission_key")
+		Unique("permission_key")
 }
 
 func ensureIdentityPermissionIndex(ctx context.Context, store Store, name string, columns ...string) error {

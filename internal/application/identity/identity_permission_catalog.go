@@ -62,18 +62,13 @@ func NewIdentityPermissionCatalogApplicationService(repository identityrepositor
 	return &IdentityPermissionCatalogApplicationService{repository: repository, registry: registry, workspace: workspace.String()}, nil
 }
 
-// ForWorkspace creates an independent catalog; cached state is never shared
-// across workspace scopes. Only the host's immutable usage provider is shared.
+// ForWorkspace validates the caller's tenant scope. Permission definitions are
+// installation-global, so every tenant reads the same immutable snapshot.
 func (service *IdentityPermissionCatalogApplicationService) ForWorkspace(workspaceID string) (*IdentityPermissionCatalogApplicationService, error) {
-	if workspaceID == service.workspace {
-		return service, nil
+	if _, err := identitymodel.NewWorkspaceID(workspaceID); err != nil {
+		return nil, err
 	}
-	scoped, err := NewIdentityPermissionCatalogApplicationService(service.repository, service.registry, workspaceID)
-	if err == nil {
-		scoped.usage.Store(service.usage.Load())
-		scoped.hostWorkspaceScopes = service.hostWorkspaceScopes
-	}
-	return scoped, err
+	return service, nil
 }
 
 // EnableHostWorkspaceScopes is called only during embedded assembly.
@@ -81,25 +76,14 @@ func (service *IdentityPermissionCatalogApplicationService) EnableHostWorkspaceS
 	service.hostWorkspaceScopes = true
 }
 
-// WorkspacePermissionDefinitions returns a request-local snapshot, including
-// this workspace's own administrator switches. No mutable scope is shared.
+// WorkspacePermissionDefinitions exposes the global definition snapshot to a
+// workspace-scoped authorization request.
 func (service *IdentityPermissionCatalogApplicationService) WorkspacePermissionDefinitions(ctx context.Context, workspaceID string) (map[string]identitymodel.IdentityPermissionDefinition, error) {
-	if !service.hostWorkspaceScopes {
-		return service.PermissionDefinitions(), nil
-	}
-	scoped, err := service.ForWorkspace(workspaceID)
-	if err != nil {
+	_ = ctx
+	if _, err := service.ForWorkspace(workspaceID); err != nil {
 		return nil, err
 	}
-	records, err := service.repository.ListIdentityPermissionDefinitions(ctx, workspaceID)
-	if err != nil {
-		return nil, err
-	}
-	definitions := make(map[string]identitymodel.IdentityPermissionDefinition, len(records))
-	for _, record := range records {
-		definitions[record.PermissionKey] = scoped.projectDefinition(record)
-	}
-	return definitions, nil
+	return service.PermissionDefinitions(), nil
 }
 
 // UseActionUsageProvider binds the host-owned live registry query. Embedded
@@ -146,28 +130,37 @@ func (service *IdentityPermissionCatalogApplicationService) ReconcileDefinitions
 	for index := range definitions {
 		definition := &definitions[index]
 		definition.PermissionKey = strings.TrimSpace(definition.PermissionKey)
+		definition.ModuleKey = strings.TrimSpace(definition.ModuleKey)
+		definition.GroupKey = strings.TrimSpace(definition.GroupKey)
 		definition.ResourceKey = strings.TrimSpace(definition.ResourceKey)
 		definition.OperationKey = strings.TrimSpace(definition.OperationKey)
 		definition.SourceOwner = strings.TrimSpace(definition.SourceOwner)
+		definition.GrantMode = strings.TrimSpace(definition.GrantMode)
+		definition.ScopeKind = strings.TrimSpace(definition.ScopeKind)
+		definition.ObjectKey = strings.TrimSpace(definition.ObjectKey)
+		definition.DefaultLocale = strings.TrimSpace(definition.DefaultLocale)
 		if definition.SourceOwner != sourceOwner {
 			return identitymodel.IdentityPermissionReconcileReceipt{}, &apperror.AppError{Kind: apperror.KindBadRequest, Code: "identity.permission_owner_scope_mismatch", Params: map[string]string{"permission_key": definition.PermissionKey, "source_owner": sourceOwner}}
 		}
 		if _, duplicate := seen[definition.PermissionKey]; definition.PermissionKey == "" || duplicate {
 			return identitymodel.IdentityPermissionReconcileReceipt{}, &apperror.AppError{Kind: apperror.KindBadRequest, Code: "identity.permission_definition_duplicate", Params: map[string]string{"permission_key": definition.PermissionKey}}
 		}
-		if definition.PermissionKey != definition.ResourceKey+"."+definition.OperationKey {
+		defaultText, hasDefaultText := definition.I18n[definition.DefaultLocale]
+		if definition.PermissionKey != definition.ResourceKey+"."+definition.OperationKey || definition.ModuleKey == "" || definition.GroupKey == "" ||
+			definition.DefaultLocale == "" || !hasDefaultText || defaultText.ModuleLabel == "" || defaultText.GroupLabel == "" || defaultText.ResourceLabel == "" || defaultText.OperationLabel == "" || defaultText.Label == "" ||
+			definition.GrantMode != string(actioncontract.PermissionGrantDirect) && definition.GrantMode != string(actioncontract.PermissionGrantBundled) && definition.GrantMode != string(actioncontract.PermissionGrantInternal) ||
+			definition.ScopeKind != string(actioncontract.PermissionScopeNone) && definition.ScopeKind != string(actioncontract.PermissionScopeRecord) ||
+			definition.ScopeKind == string(actioncontract.PermissionScopeRecord) && definition.ObjectKey == "" || definition.ScopeKind == string(actioncontract.PermissionScopeNone) && definition.ObjectKey != "" {
 			return identitymodel.IdentityPermissionReconcileReceipt{}, &apperror.AppError{Kind: apperror.KindBadRequest, Code: "identity.permission_definition_invalid", Params: map[string]string{"permission_key": definition.PermissionKey}}
 		}
 		seen[definition.PermissionKey] = struct{}{}
 	}
-	ctx = requestcontext.WithWorkspaceID(ctx, service.workspace)
 	if requestcontext.RequestID(ctx) == "" {
 		ctx = requestcontext.WithRequestID(ctx, requestcontext.NewRequestID())
 	}
 	var err error
 	for index := range definitions {
 		definition := &definitions[index]
-		definition.WorkspaceID = service.workspace
 		definition.DefinitionStatus = identitymodel.IdentityPermissionDefinitionActive
 		definition.Enabled = true
 		definition.DefinitionHash, err = IdentityPermissionDefinitionHash(*definition)
@@ -186,7 +179,7 @@ func (service *IdentityPermissionCatalogApplicationService) ReconcileDefinitions
 		definitions[index].SourceSnapshotHash = snapshotHash
 	}
 	receipt, err := service.repository.ReconcileIdentityPermissionDefinitions(ctx, identitymodel.IdentityPermissionReconcileRequest{
-		WorkspaceID: service.workspace, SourceOwner: sourceOwner, PreviousSnapshotHash: previousSnapshotHash,
+		SourceOwner: sourceOwner, PreviousSnapshotHash: previousSnapshotHash,
 		SnapshotHash: snapshotHash, Definitions: definitions,
 	})
 	if err != nil {
@@ -224,7 +217,6 @@ func (service *IdentityPermissionCatalogApplicationService) CurrentSourceSnapsho
 	if sourceOwner == "" {
 		return "", nil, &apperror.AppError{Kind: apperror.KindBadRequest, Code: "identity.permission_source_owner_invalid"}
 	}
-	ctx = requestcontext.WithWorkspaceID(ctx, service.workspace)
 	current, err := service.repository.ListIdentityPermissionDefinitions(ctx, service.workspace)
 	if err != nil {
 		return "", nil, err
@@ -271,20 +263,6 @@ type IdentityPermissionEnablementResult struct {
 // atomic snapshot before returning. Source metadata and lifecycle remain under
 // reconcile ownership.
 func (service *IdentityPermissionCatalogApplicationService) SetEnabled(ctx context.Context, permissionKey string, enabled bool) (IdentityPermissionEnablementResult, error) {
-	if service != nil && service.hostWorkspaceScopes {
-		workspaceID := requestcontext.WorkspaceID(ctx)
-		if workspaceID == "" {
-			return IdentityPermissionEnablementResult{}, &apperror.AppError{Kind: apperror.KindForbidden, Code: "backend.workspace_scope_required"}
-		}
-		if workspaceID != service.workspace {
-			scoped, err := service.ForWorkspace(workspaceID)
-			if err != nil {
-				return IdentityPermissionEnablementResult{}, err
-			}
-			return scoped.SetEnabled(ctx, permissionKey, enabled)
-		}
-	}
-
 	if service == nil || service.repository == nil {
 		return IdentityPermissionEnablementResult{}, &apperror.AppError{Kind: apperror.KindUnavailable, Code: "backend.identity.permission_catalog_unavailable"}
 	}
@@ -295,7 +273,6 @@ func (service *IdentityPermissionCatalogApplicationService) SetEnabled(ctx conte
 	if !enabled && permissionKey == "identity.permissions.set_enabled" {
 		return IdentityPermissionEnablementResult{}, &apperror.AppError{Kind: apperror.KindBadRequest, Code: "backend.identity.permission_recovery_capability_required", Params: map[string]string{"permission": permissionKey}}
 	}
-	ctx = requestcontext.WithWorkspaceID(ctx, service.workspace)
 	current, found, err := service.repository.GetIdentityPermissionDefinition(ctx, service.workspace, permissionKey)
 	if err != nil {
 		return IdentityPermissionEnablementResult{}, err
@@ -344,6 +321,7 @@ func (service *IdentityPermissionCatalogApplicationService) PermissionDefinition
 	}
 	out := make(map[string]identitymodel.IdentityPermissionDefinition, len(snapshot.definitions))
 	for key, definition := range snapshot.definitions {
+		definition.I18n = cloneIdentityPermissionText(definition.I18n)
 		out[key] = definition
 	}
 	return out
@@ -356,7 +334,7 @@ func (service *IdentityPermissionCatalogApplicationService) ReloadCurrentSnapsho
 	if service == nil {
 		return &apperror.AppError{Kind: apperror.KindUnavailable, Code: "backend.identity.permission_catalog_unavailable"}
 	}
-	return service.refreshRuntimeSnapshot(requestcontext.WithWorkspaceID(ctx, service.workspace))
+	return service.refreshRuntimeSnapshot(ctx)
 }
 
 // ValidatePermissionSelections requires every RoleSchema grant to exist in the
@@ -453,20 +431,6 @@ func (service *IdentityPermissionCatalogApplicationService) refreshRuntimeSnapsh
 }
 
 func (service *IdentityPermissionCatalogApplicationService) List(ctx context.Context) ([]identitymodel.IdentityPermissionDefinition, error) {
-	if service != nil && service.hostWorkspaceScopes {
-		workspaceID := requestcontext.WorkspaceID(ctx)
-		if workspaceID == "" {
-			return nil, &apperror.AppError{Kind: apperror.KindForbidden, Code: "backend.workspace_scope_required"}
-		}
-		if workspaceID != service.workspace {
-			scoped, err := service.ForWorkspace(workspaceID)
-			if err != nil {
-				return nil, err
-			}
-			return scoped.List(ctx)
-		}
-	}
-
 	records, err := service.repository.ListIdentityPermissionDefinitions(ctx, service.workspace)
 	if err != nil {
 		return nil, err
@@ -495,12 +459,18 @@ func (service *IdentityPermissionCatalogApplicationService) projectDefinitionWit
 	}
 	usages := cloneIdentityActionPermissionUsages(resolution.usages)
 	point := identitymodel.IdentityPermissionDefinition{
-		Key: record.PermissionKey, Label: record.Label, System: system,
+		Key: record.PermissionKey, ModuleKey: record.ModuleKey, GroupKey: record.GroupKey,
+		Label: record.Label, System: system,
 		Resource: record.ResourceKey, ResourceLabel: record.ResourceKey, Action: record.OperationKey,
 		Category: record.Category, Description: record.Description, SourceType: record.SourceKind,
+		ObjectKey: record.ObjectKey, ScopeKind: record.ScopeKind, DefaultLocale: record.DefaultLocale, I18n: cloneIdentityPermissionText(record.I18n),
 		DefinitionStatus: record.DefinitionStatus, Enabled: record.Enabled, SourceKind: record.SourceKind,
 		SourceOwner: record.SourceOwner, DefinitionHash: record.DefinitionHash, SourceSnapshotHash: record.SourceSnapshotHash,
-		ActionUsageStatus: usageStatus, GrantMode: string(actioncontract.PermissionGrantInternal), ActionUsages: usages,
+		ActionUsageStatus: usageStatus, GrantMode: record.GrantMode, ActionUsages: usages,
+	}
+	if text, found := record.I18n[record.DefaultLocale]; found {
+		point.Label, point.ResourceLabel, point.ActionLabel = text.Label, text.ResourceLabel, text.OperationLabel
+		point.Description = text.Description
 	}
 	if len(usages) > 0 {
 		point.SourceActionKey = usages[0].ActionKey
@@ -509,9 +479,16 @@ func (service *IdentityPermissionCatalogApplicationService) projectDefinitionWit
 		point.ApprovalRequired = usages[0].ApprovalRequired
 		point.AssuranceRequired = append([]string(nil), usages[0].AssuranceRequired...)
 		point.LifecycleStatus = usages[0].LifecycleStatus
-		point.GrantMode = usages[0].GrantMode
 	}
 	return point
+}
+
+func cloneIdentityPermissionText(source identitymodel.IdentityPermissionLocalizedText) identitymodel.IdentityPermissionLocalizedText {
+	result := make(identitymodel.IdentityPermissionLocalizedText, len(source))
+	for locale, text := range source {
+		result[locale] = text
+	}
+	return result
 }
 
 type identityActionUsageResolution struct {
@@ -591,21 +568,32 @@ func identityPermissionKeyParts(key string) (string, string, string) {
 
 func IdentityPermissionDefinitionHash(definition identitymodel.IdentityPermissionDefinitionRecord) (string, error) {
 	canonical := struct {
-		PermissionKey string `json:"permission_key"`
-		ResourceKey   string `json:"resource_key"`
-		OperationKey  string `json:"operation_key"`
-		Label         string `json:"label"`
-		Description   string `json:"description"`
-		Category      string `json:"category"`
-		SourceKind    string `json:"source_kind"`
-		SourceOwner   string `json:"source_owner"`
+		PermissionKey string                                        `json:"permission_key"`
+		ModuleKey     string                                        `json:"module_key"`
+		GroupKey      string                                        `json:"group_key"`
+		ResourceKey   string                                        `json:"resource_key"`
+		OperationKey  string                                        `json:"operation_key"`
+		Label         string                                        `json:"label"`
+		Description   string                                        `json:"description"`
+		Category      string                                        `json:"category"`
+		SourceKind    string                                        `json:"source_kind"`
+		GrantMode     string                                        `json:"grant_mode"`
+		ScopeKind     string                                        `json:"scope_kind"`
+		ObjectKey     string                                        `json:"object_key"`
+		DefaultLocale string                                        `json:"default_locale"`
+		I18n          identitymodel.IdentityPermissionLocalizedText `json:"i18n"`
+		SourceOwner   string                                        `json:"source_owner"`
 	}{
-		PermissionKey: strings.TrimSpace(definition.PermissionKey), ResourceKey: strings.TrimSpace(definition.ResourceKey),
+		PermissionKey: strings.TrimSpace(definition.PermissionKey), ModuleKey: strings.TrimSpace(definition.ModuleKey), GroupKey: strings.TrimSpace(definition.GroupKey),
+		ResourceKey:  strings.TrimSpace(definition.ResourceKey),
 		OperationKey: strings.TrimSpace(definition.OperationKey), Label: strings.TrimSpace(definition.Label),
 		Description: strings.TrimSpace(definition.Description), Category: strings.TrimSpace(definition.Category),
 		SourceKind: strings.TrimSpace(definition.SourceKind), SourceOwner: strings.TrimSpace(definition.SourceOwner),
+		GrantMode: strings.TrimSpace(definition.GrantMode), ScopeKind: strings.TrimSpace(definition.ScopeKind), ObjectKey: strings.TrimSpace(definition.ObjectKey),
+		DefaultLocale: strings.TrimSpace(definition.DefaultLocale), I18n: cloneIdentityPermissionText(definition.I18n),
 	}
-	if canonical.PermissionKey == "" || canonical.ResourceKey == "" || canonical.OperationKey == "" || canonical.Label == "" || canonical.Category == "" || canonical.SourceKind == "" || canonical.SourceOwner == "" {
+	text, found := canonical.I18n[canonical.DefaultLocale]
+	if canonical.PermissionKey == "" || canonical.ModuleKey == "" || canonical.GroupKey == "" || canonical.ResourceKey == "" || canonical.OperationKey == "" || canonical.Label == "" || canonical.Category == "" || canonical.SourceKind == "" || canonical.SourceOwner == "" || canonical.GrantMode == "" || canonical.ScopeKind == "" || canonical.DefaultLocale == "" || !found || text.Label == "" {
 		return "", fmt.Errorf("Identity permission definition is incomplete")
 	}
 	raw, err := json.Marshal(canonical)
@@ -639,44 +627,4 @@ func IdentityPermissionSourceSnapshotHash(definitions []identitymodel.IdentityPe
 	}
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:]), nil
-}
-
-// ReconcileApplicationSourcesFromWorkspace seeds published source metadata;
-// it does not copy grants or administrator-owned enablement.
-func (service *IdentityPermissionCatalogApplicationService) ReconcileApplicationSourcesFromWorkspace(ctx context.Context, sourceWorkspaceID string) error {
-	records, err := service.repository.ListIdentityPermissionDefinitions(ctx, sourceWorkspaceID)
-	if err != nil {
-		return err
-	}
-	owners := map[string][]identitymodel.IdentityPermissionDefinitionRecord{}
-	for _, record := range records {
-		if record.SourceOwner == IdentityBuiltinAuthorizationOwner {
-			continue
-		}
-		if _, ok := owners[record.SourceOwner]; !ok {
-			owners[record.SourceOwner] = nil
-		}
-		if record.DefinitionStatus == identitymodel.IdentityPermissionDefinitionActive {
-			owners[record.SourceOwner] = append(owners[record.SourceOwner], record)
-		}
-	}
-	keys := make([]string, 0, len(owners))
-	for key := range owners {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	for _, owner := range keys {
-		previous, err := service.CurrentSourceSnapshotHash(ctx, owner)
-		if err != nil {
-			return err
-		}
-		hash, err := identityPermissionSnapshotHash(owner, owners[owner])
-		if err != nil {
-			return err
-		}
-		if _, err := service.ReconcileDefinitions(ctx, owner, previous, hash, owners[owner]); err != nil {
-			return err
-		}
-	}
-	return nil
 }

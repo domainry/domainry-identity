@@ -12,7 +12,6 @@ import (
 
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 	authapplication "github.com/domainry/domainry-identity/internal/application/auth"
-	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	identitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity"
 	identitytransaction "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/transaction"
@@ -47,6 +46,7 @@ func (binding *moduleBinding) initialCredentialRotationRequired() bool {
 
 type workspaceBootstrapRoleCatalog struct {
 	roles                                []identitymodel.RoleSchema
+	sourceOwner                          string
 	sha256                               string
 	initialWorkspaceAdministratorRoleKey string
 }
@@ -98,11 +98,10 @@ func (binding *moduleBinding) BootstrapWorkspaceIdentity(ctx context.Context, re
 	if err != nil {
 		return identitysdk.WorkspaceIdentityBootstrapReceipt{}, fmt.Errorf("hash workspace bootstrap credential: %w", err)
 	}
-	roles, err := workspaceBootstrapRoles(request.WorkspaceID, roleCatalog)
-	if err != nil {
-		return identitysdk.WorkspaceIdentityBootstrapReceipt{}, err
+	adminRoleID := identitypersistence.GlobalRoleID(roleCatalog.sourceOwner, roleCatalog.initialWorkspaceAdministratorRoleKey)
+	if adminRoleID == "" {
+		return identitysdk.WorkspaceIdentityBootstrapReceipt{}, bootstrapError(identitysdk.ErrorClassUnavailable, "identity.workspace_bootstrap_role_catalog_invalid", nil)
 	}
-	adminRoleID := identitypersistence.WorkspaceRoleID(request.WorkspaceID, roleCatalog.initialWorkspaceAdministratorRoleKey)
 	companyID := request.CompanyID
 	graph := identitypersistence.WorkspaceIdentityBootstrapGraph{
 		Company: identitymodel.IdentityOrganizationUnit{
@@ -121,7 +120,7 @@ func (binding *moduleBinding) BootstrapWorkspaceIdentity(ctx context.Context, re
 			AccountType: identitymodel.IdentityAccountHuman, OrgID: companyID,
 			ReportingPath: "/" + request.InitialAdminUserID, Status: identitymodel.IdentityStatusActive,
 		},
-		Roles: roles, AdminRoleID: adminRoleID,
+		Roles: nil, AdminRoleID: adminRoleID,
 	}
 	applications, err := authapplication.NewAuthApplicationRegistrationService(binding.runtime.AuthStore, request.WorkspaceID)
 	if err != nil {
@@ -144,21 +143,6 @@ func (binding *moduleBinding) BootstrapWorkspaceIdentity(ctx context.Context, re
 		return injectWorkspaceBootstrapFailure(transaction.WorkspaceProvisionFailures, stage)
 	}); err != nil {
 		return identitysdk.WorkspaceIdentityBootstrapReceipt{}, err
-	}
-	permissionCatalog, err := identityapplication.NewIdentityPermissionCatalogApplicationService(binding.runtime.IdentityStore, binding.runtime.IdentityActions, request.WorkspaceID)
-	if err != nil {
-		return identitysdk.WorkspaceIdentityBootstrapReceipt{}, fmt.Errorf("assemble workspace bootstrap permission catalog: %w", err)
-	}
-	if _, err := permissionCatalog.ReconcileOwner(identitytransaction.WithExecutor(ctx, tx), identityapplication.IdentityBuiltinAuthorizationOwner); err != nil {
-		return identitysdk.WorkspaceIdentityBootstrapReceipt{}, fmt.Errorf("provision workspace bootstrap permissions: %w", err)
-	}
-	// Runtime-owned definitions come from the already published installation
-	// application, never from roles or client input. Administrator enablement is
-	// local to the destination workspace and is preserved by reconciliation.
-	if binding.application.WorkspaceID.Valid() {
-		if err := permissionCatalog.ReconcileApplicationSourcesFromWorkspace(identitytransaction.WithExecutor(ctx, tx), string(binding.application.WorkspaceID)); err != nil {
-			return identitysdk.WorkspaceIdentityBootstrapReceipt{}, err
-		}
 	}
 	if err := binding.runtime.AuthStore.UpsertIdentityCredentialWithExecutor(ctx, tx, request.WorkspaceID, identitymodel.IdentityCredential{
 		UserID: request.InitialAdminUserID, PasswordHash: string(passwordHash), MustChangePassword: mustChangePassword,
@@ -403,36 +387,12 @@ func (binding *moduleBinding) workspaceBootstrapRoleCatalogSnapshot() workspaceB
 	return catalog
 }
 
-func workspaceBootstrapRoles(workspaceID string, catalog workspaceBootstrapRoleCatalog) ([]identitymodel.IdentityRole, error) {
-	roles := make([]identitymodel.IdentityRole, 0, len(catalog.roles))
-	for _, definition := range catalog.roles {
-		key, label := strings.TrimSpace(definition.Key), strings.TrimSpace(definition.Name)
-		if key == "" || label == "" {
-			return nil, &identitysdk.Error{Class: identitysdk.ErrorClassInternal, Code: "identity.workspace_bootstrap_role_catalog_invalid"}
-		}
-		roles = append(roles, identitymodel.IdentityRole{
-			RoleID: identitypersistence.WorkspaceRoleID(workspaceID, key), Key: key, Label: label,
-			Description: "Trusted project role provisioned during Workspace bootstrap", Status: identitymodel.IdentityStatusActive,
-		})
-	}
-	return roles, nil
-}
-
 func newWorkspaceBootstrapRoleCatalog(inputs []identitysdk.ProjectRoleDefinition, definitions []identitymodel.RoleSchema, initialAdministratorRoleKey string) (workspaceBootstrapRoleCatalog, error) {
 	initialAdministratorRoleKey = strings.TrimSpace(initialAdministratorRoleKey)
 	if initialAdministratorRoleKey == "" {
 		return workspaceBootstrapRoleCatalog{}, &identitysdk.Error{Class: identitysdk.ErrorClassInternal, Code: "identity.workspace_bootstrap_initial_administrator_role_required"}
 	}
-	selected := make([]identitymodel.RoleSchema, 0, len(definitions))
-	for _, definition := range definitions {
-		if !definition.ProvisionToWorkspaces {
-			continue
-		}
-		if !workspaceBootstrapProvisionableHumanRole(definition) {
-			return workspaceBootstrapRoleCatalog{}, &identitysdk.Error{Class: identitysdk.ErrorClassInternal, Code: "identity.workspace_bootstrap_role_catalog_invalid", Params: map[string]string{"role_key": definition.Key}}
-		}
-		selected = append(selected, definition)
-	}
+	selected := append([]identitymodel.RoleSchema(nil), definitions...)
 	sort.Slice(selected, func(left, right int) bool { return selected[left].Key < selected[right].Key })
 	var administrator *identitymodel.RoleSchema
 	for index := range selected {
@@ -456,19 +416,6 @@ func newWorkspaceBootstrapRoleCatalog(inputs []identitysdk.ProjectRoleDefinition
 		roles: selected, sha256: digest,
 		initialWorkspaceAdministratorRoleKey: initialAdministratorRoleKey,
 	}, nil
-}
-
-func workspaceBootstrapProvisionableHumanRole(definition identitymodel.RoleSchema) bool {
-	audience := definition.Audience
-	if audience == "" {
-		audience = identitymodel.IdentityRoleAudienceAny
-	}
-	mode := definition.AssignmentMode
-	if mode == "" {
-		mode = identitymodel.IdentityRoleAssignmentManual
-	}
-	return (audience == identitymodel.IdentityRoleAudienceAny || audience == identitymodel.IdentityRoleAudienceUser || audience == identitymodel.IdentityRoleAudienceBusiness) &&
-		(mode == identitymodel.IdentityRoleAssignmentManual || mode == identitymodel.IdentityRoleAssignmentRequestOnly)
 }
 
 func workspaceBootstrapInitialAdministratorRole(definition identitymodel.RoleSchema) bool {

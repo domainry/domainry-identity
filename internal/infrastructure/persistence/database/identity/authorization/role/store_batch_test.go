@@ -68,7 +68,7 @@ func TestRoleUpsertUsesMultiRowStatementAcrossDialects(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(execer.statements) != 1 || len(execer.arguments) != 1 || len(execer.arguments[0]) != 16 {
+			if len(execer.statements) != 1 || len(execer.arguments) != 1 || len(execer.arguments[0]) != 22 {
 				t.Fatalf("role upsert writes=%d args=%v", len(execer.statements), execer.arguments)
 			}
 			statement := execer.statements[0]

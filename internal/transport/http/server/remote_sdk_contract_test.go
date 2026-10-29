@@ -108,7 +108,11 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("register orders application: %v", err)
 	}
-	permissionRequest, err := identity.NewPermissionReconcileRequest(ordersApplication, "application:orders-runtime", "", []identity.PermissionDefinition{{PermissionKey: "customer.read", ResourceKey: "customer", OperationKey: "read", Label: "Read customers", Category: "Orders", SourceKind: "object_action"}})
+	permissionRequest, err := identity.NewPermissionReconcileRequest("application:orders-runtime", "", []identity.PermissionDefinition{{
+		PermissionKey: "customer.read", ModuleKey: "orders", GroupKey: "customer", ResourceKey: "customer", OperationKey: "read",
+		Label: "Read customers", Category: "Orders", SourceKind: "object_action", GrantMode: "direct", ScopeKind: "none", DefaultLocale: "en",
+		I18n: identity.PermissionLocalizedText{"en": {ModuleLabel: "Orders", GroupLabel: "Customers", ResourceLabel: "Customers", OperationLabel: "Read", Label: "Read customers"}},
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,14 +124,14 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 	if !ok {
 		t.Fatal("remote permission registry has no source snapshot reader")
 	}
-	snapshotRequest := identity.PermissionSourceSnapshotRequest{Application: ordersApplication, SourceOwner: permissionRequest.SourceOwner}
+	snapshotRequest := identity.PermissionSourceSnapshotRequest{SourceOwner: permissionRequest.SourceOwner}
 	snapshot, err := snapshotReader.CurrentSourceSnapshot(t.Context(), snapshotRequest)
 	if err != nil || snapshot.ValidateFor(snapshotRequest) != nil || snapshot.SnapshotHash != permissionReceipt.SnapshotHash {
 		t.Fatalf("remote permission source snapshot=%+v err=%v", snapshot, err)
 	}
 	updatedDefinitions := append([]identity.PermissionDefinition(nil), permissionRequest.Definitions...)
 	updatedDefinitions[0].Label = "Read current customers"
-	updatedRequest, err := identity.NewPermissionReconcileRequest(ordersApplication, permissionRequest.SourceOwner, permissionReceipt.SnapshotHash, updatedDefinitions)
+	updatedRequest, err := identity.NewPermissionReconcileRequest(permissionRequest.SourceOwner, permissionReceipt.SnapshotHash, updatedDefinitions)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +147,7 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 			t.Fatalf("stale remote permission error=%#v", err)
 		}
 	}
-	conflictingRequest, err := identity.NewPermissionReconcileRequest(ordersApplication, "application:other-runtime", "", updatedDefinitions)
+	conflictingRequest, err := identity.NewPermissionReconcileRequest("application:other-runtime", "", updatedDefinitions)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +159,7 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 			t.Fatalf("remote permission owner conflict error=%#v", err)
 		}
 	}
-	forbiddenOwnerRequest, err := identity.NewPermissionReconcileRequest(ordersApplication, "application:forbidden-runtime", "", updatedDefinitions)
+	forbiddenOwnerRequest, err := identity.NewPermissionReconcileRequest("application:forbidden-runtime", "", updatedDefinitions)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +171,7 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 			t.Fatalf("forbidden permission owner error=%#v", err)
 		}
 	}
-	if _, err := snapshotReader.CurrentSourceSnapshot(t.Context(), identity.PermissionSourceSnapshotRequest{Application: ordersApplication, SourceOwner: "application:forbidden-runtime"}); err == nil {
+	if _, err := snapshotReader.CurrentSourceSnapshot(t.Context(), identity.PermissionSourceSnapshotRequest{SourceOwner: "application:forbidden-runtime"}); err == nil {
 		t.Fatal("service credential read an owner snapshot outside its configured scope")
 	} else {
 		var sdkError *identity.Error

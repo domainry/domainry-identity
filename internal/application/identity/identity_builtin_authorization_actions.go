@@ -168,8 +168,8 @@ func IdentityBuiltinAuthorizationActions() []identitymodel.IdentityActionDefinit
 
 func identityOrganizationUnitDeliveryNonHTTPActions() []identitymodel.IdentityActionDefinition {
 	return []identitymodel.IdentityActionDefinition{
-		nonHTTPPermissionAction(identitycontract.IdentityOrganizationUnitDeliveryCreatePermission, "identity.organization_unit_delivery", "Handler 组织节点交付", "create", "创建", "在已授权父节点下原子创建通用组织节点", actioncontract.EffectWrite, actioncontract.RiskHigh),
-		nonHTTPPermissionAction(identitycontract.IdentityOrganizationUnitDeliveryResolvePermission, "identity.organization_unit_delivery", "Handler 组织节点交付", "resolve", "解析", "按持久化父节点权限解析最小组织节点投影", actioncontract.EffectRead, actioncontract.RiskLow),
+		nonHTTPPermissionAction(identitycontract.IdentityOrganizationUnitDeliveryCreatePermission, "identity.organization_unit_delivery", "组织架构同步", "create", "创建", "在授权的上级组织下创建组织节点", actioncontract.EffectWrite, actioncontract.RiskHigh),
+		nonHTTPPermissionAction(identitycontract.IdentityOrganizationUnitDeliveryResolvePermission, "identity.organization_unit_delivery", "组织架构同步", "resolve", "查看", "查看授权范围内的组织节点", actioncontract.EffectRead, actioncontract.RiskLow),
 	}
 }
 
@@ -198,20 +198,20 @@ func identityWorkspaceUsageNonHTTPActions() []identitymodel.IdentityActionDefini
 
 func identityStoreOrganizationDeliveryNonHTTPActions() []identitymodel.IdentityActionDefinition {
 	return []identitymodel.IdentityActionDefinition{
-		nonHTTPPermissionAction(identitycontract.IdentityStoreOrganizationDeliveryCreatePermission, "identity.store_organization_delivery", "Handler 门店组织交付", "create", "创建", "在公司节点下原子创建门店组织", actioncontract.EffectWrite, actioncontract.RiskHigh),
-		nonHTTPPermissionAction(identitycontract.IdentityStoreOrganizationDeliveryRenamePermission, "identity.store_organization_delivery", "Handler 门店组织交付", "rename", "改名", "原子修改门店组织名称", actioncontract.EffectWrite, actioncontract.RiskMedium),
-		nonHTTPPermissionAction(identitycontract.IdentityStoreOrganizationDeliveryDisablePermission, "identity.store_organization_delivery", "Handler 门店组织交付", "disable", "停用", "原子停用门店组织", actioncontract.EffectWrite, actioncontract.RiskHigh),
-		nonHTTPPermissionAction(identitycontract.IdentityStoreOrganizationDeliveryResolvePermission, "identity.store_organization_delivery", "Handler 门店组织交付", "resolve", "解析", "读取一个最小门店组织投影", actioncontract.EffectRead, actioncontract.RiskLow),
-		nonHTTPPermissionAction(identitycontract.IdentityStoreOrganizationDeliveryListPermission, "identity.store_organization_delivery", "Handler 门店组织交付", "list", "列表", "读取数据范围内的最小门店组织列表", actioncontract.EffectRead, actioncontract.RiskLow),
+		nonHTTPPermissionAction(identitycontract.IdentityStoreOrganizationDeliveryCreatePermission, "identity.store_organization_delivery", "门店组织同步", "create", "创建", "在公司组织下创建门店组织", actioncontract.EffectWrite, actioncontract.RiskHigh),
+		nonHTTPPermissionAction(identitycontract.IdentityStoreOrganizationDeliveryRenamePermission, "identity.store_organization_delivery", "门店组织同步", "rename", "重命名", "修改门店组织名称", actioncontract.EffectWrite, actioncontract.RiskMedium),
+		nonHTTPPermissionAction(identitycontract.IdentityStoreOrganizationDeliveryDisablePermission, "identity.store_organization_delivery", "门店组织同步", "disable", "停用", "停用门店组织", actioncontract.EffectWrite, actioncontract.RiskHigh),
+		nonHTTPPermissionAction(identitycontract.IdentityStoreOrganizationDeliveryResolvePermission, "identity.store_organization_delivery", "门店组织同步", "resolve", "查看", "查看单个门店组织", actioncontract.EffectRead, actioncontract.RiskLow),
+		nonHTTPPermissionAction(identitycontract.IdentityStoreOrganizationDeliveryListPermission, "identity.store_organization_delivery", "门店组织同步", "list", "查看列表", "查看授权范围内的门店组织列表", actioncontract.EffectRead, actioncontract.RiskLow),
 	}
 }
 
 func identityHandlerDeliveryNonHTTPActions() []identitymodel.IdentityActionDefinition {
 	return []identitymodel.IdentityActionDefinition{
-		nonHTTPPermissionAction(identitycontract.IdentityHandlerDeliveryCreatePermission, "identity.handler_delivery", "Handler 身份交付", "create", "创建", "原子创建用户、精确角色与业务身份绑定", actioncontract.EffectWrite, actioncontract.RiskHigh),
-		nonHTTPPermissionAction(identitycontract.IdentityHandlerDeliveryUpdatePermission, "identity.handler_delivery", "Handler 身份交付", "update", "更新", "原子更新用户、精确角色与业务身份绑定", actioncontract.EffectWrite, actioncontract.RiskHigh),
-		nonHTTPPermissionAction(identitycontract.IdentityHandlerDeliveryDisablePermission, "identity.handler_delivery", "Handler 身份交付", "disable", "停用", "原子停用用户并撤销会话", actioncontract.EffectWrite, actioncontract.RiskHigh),
-		nonHTTPPermissionAction(identitycontract.IdentityHandlerDeliveryResolvePermission, "identity.handler_delivery", "Handler 身份交付", "resolve", "解析", "读取业务 Handler 所需的最小规范身份投影", actioncontract.EffectRead, actioncontract.RiskLow),
+		nonHTTPPermissionAction(identitycontract.IdentityHandlerDeliveryCreatePermission, "identity.handler_delivery", "业务身份同步", "create", "创建", "创建用户并关联指定角色和业务身份", actioncontract.EffectWrite, actioncontract.RiskHigh),
+		nonHTTPPermissionAction(identitycontract.IdentityHandlerDeliveryUpdatePermission, "identity.handler_delivery", "业务身份同步", "update", "更新", "更新用户的角色和业务身份", actioncontract.EffectWrite, actioncontract.RiskHigh),
+		nonHTTPPermissionAction(identitycontract.IdentityHandlerDeliveryDisablePermission, "identity.handler_delivery", "业务身份同步", "disable", "停用", "停用用户并注销现有会话", actioncontract.EffectWrite, actioncontract.RiskHigh),
+		nonHTTPPermissionAction(identitycontract.IdentityHandlerDeliveryResolvePermission, "identity.handler_delivery", "业务身份同步", "resolve", "查看", "查看业务系统使用的用户身份信息", actioncontract.EffectRead, actioncontract.RiskLow),
 	}
 }
 
@@ -242,9 +242,12 @@ func nonHTTPPermissionAction(key, capabilityKey, capabilityLabel, operationKey, 
 		Authorization: actioncontract.Authorization{Strategy: actioncontract.AuthorizationAuthenticated},
 		NonHTTP:       []identitymodel.IdentityNonHTTPActionBinding{{Kind: "application_use_case", InvocationKey: key}},
 		Permission: &identitymodel.IdentityPermissionDefinitionContract{
-			Key: key, Owner: IdentityBuiltinAuthorizationOwner, ResourceKey: capabilityKey, OperationKey: operationKey,
+			Key: key, Owner: IdentityBuiltinAuthorizationOwner, ModuleKey: "identity", GroupKey: capabilityKey,
+			ResourceKey: capabilityKey, OperationKey: operationKey,
 			Label: capabilityLabel + " · " + operationLabel, Description: label,
 			Category: "Identity 权限管理", GrantMode: actioncontract.PermissionGrantBundled,
+			ScopeKind: actioncontract.PermissionScopeNone, DefaultLocale: "zh-CN",
+			I18n:            identityPermissionLocalizedText(capabilityKey, capabilityLabel, operationKey, operationLabel, label),
 			LifecycleStatus: actioncontract.LifecycleActive,
 		},
 		EffectClass: effect, RiskLevel: risk, IdempotencyDecision: "application_service_contract",
@@ -347,12 +350,64 @@ func buildIdentityBuiltinAction(spec identityBuiltinActionSpec) identitymodel.Id
 	}
 	if spec.permission {
 		definition.Permission = &identitymodel.IdentityPermissionDefinitionContract{
-			Key: key, Owner: IdentityBuiltinAuthorizationOwner, ResourceKey: capabilityKey, OperationKey: operationKey,
+			Key: key, Owner: IdentityBuiltinAuthorizationOwner, ModuleKey: "identity", GroupKey: capabilityKey,
+			ResourceKey: capabilityKey, OperationKey: operationKey,
 			Label: strings.TrimSpace(spec.capabilityLabel) + " · " + strings.TrimSpace(spec.operationLabel), Description: spec.label,
-			Category: "Identity 权限管理", GrantMode: actioncontract.PermissionGrantInternal, LifecycleStatus: actioncontract.LifecycleActive,
+			Category: "Identity 权限管理", GrantMode: actioncontract.PermissionGrantInternal,
+			ScopeKind: actioncontract.PermissionScopeNone, DefaultLocale: "zh-CN",
+			I18n:            identityPermissionLocalizedText(capabilityKey, spec.capabilityLabel, operationKey, spec.operationLabel, spec.label),
+			LifecycleStatus: actioncontract.LifecycleActive,
 		}
 	}
 	return definition
+}
+
+func identityPermissionLocalizedText(capabilityKey, capabilityLabel, operationKey, operationLabel, description string) actioncontract.PermissionLocalizedText {
+	englishResource := identityPermissionEnglishLabel(capabilityKey)
+	englishOperation := identityPermissionEnglishOperation(operationKey)
+	return actioncontract.PermissionLocalizedText{
+		"zh-CN": {
+			ModuleLabel: "身份与权限", GroupLabel: strings.TrimSpace(capabilityLabel), ResourceLabel: strings.TrimSpace(capabilityLabel),
+			OperationLabel: strings.TrimSpace(operationLabel), Label: strings.TrimSpace(capabilityLabel) + " · " + strings.TrimSpace(operationLabel),
+			Description: strings.TrimSpace(description),
+		},
+		"en": {
+			ModuleLabel: "Identity and access", GroupLabel: englishResource, ResourceLabel: englishResource,
+			OperationLabel: englishOperation, Label: englishResource + " · " + englishOperation,
+			Description: "Provides access to " + englishResource + " for the “" + englishOperation + "” operation.",
+		},
+	}
+}
+
+func identityPermissionEnglishOperation(operationKey string) string {
+	if label := map[string]string{
+		"list": "List", "get": "View", "search": "Search", "create": "Create", "update": "Update", "delete": "Delete",
+		"validate": "Validate", "publish": "Publish", "versions": "View versions", "enable": "Enable", "disable": "Disable",
+		"assign": "Assign", "revoke": "Revoke", "approve": "Approve", "reject": "Reject", "upsert": "Save",
+		"archive": "Archive", "unlock": "Unlock", "batch": "Run batch", "decide": "Decide", "effective_access": "View effective access",
+		"rename": "Rename", "resolve": "View",
+	}[strings.TrimSpace(operationKey)]; label != "" {
+		return label
+	}
+	return identityPermissionEnglishLabel(operationKey)
+}
+
+func identityPermissionEnglishLabel(key string) string {
+	if label := map[string]string{
+		"identity.handler_delivery":            "Business identity synchronization",
+		"identity.store_organization_delivery": "Store organization synchronization",
+		"identity.organization_unit_delivery":  "Organization synchronization",
+	}[strings.TrimSpace(key)]; label != "" {
+		return label
+	}
+	value := strings.TrimPrefix(strings.TrimSpace(key), "identity.")
+	value = strings.NewReplacer(".", " ", "_", " ", "-", " ").Replace(value)
+	words := strings.Fields(value)
+	if len(words) == 0 {
+		return "Identity"
+	}
+	words[0] = strings.ToUpper(words[0][:1]) + words[0][1:]
+	return strings.Join(words, " ")
 }
 
 func NewStandaloneIdentityAuthorizationSliceRegistry() (*IdentityActionRegistry, error) {

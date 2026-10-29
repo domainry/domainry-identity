@@ -33,17 +33,13 @@ func New(backend Backend, now func() string) *Store {
 }
 
 func (s *Store) RemoveIdentityMenusAtomically(ctx context.Context, workspaceID string, menus []identitymodel.IdentityMenu) error {
-	workspaceID, err := identityWorkspaceID(workspaceID)
-	if err != nil {
-		return err
-	}
 	tx, err := s.backend.DB().BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 	for _, menu := range menus {
-		if err := s.removeStatements(ctx, tx, workspaceID, menu, true); err != nil {
+		if err := s.removeStatements(ctx, tx, menu, true); err != nil {
 			return err
 		}
 	}
@@ -58,10 +54,7 @@ func (s *Store) ListIdentityMenus(ctx context.Context, workspaceID string) ([]id
 }
 
 func (s *Store) UpsertIdentityMenu(ctx context.Context, workspaceID string, menu identitymodel.IdentityMenu) error {
-	workspaceID, err := identityWorkspaceID(workspaceID)
-	if err != nil {
-		return err
-	}
+	_ = workspaceID
 	if menu.MenuID == "" {
 		return fmt.Errorf("menu id is required")
 	}
@@ -71,8 +64,12 @@ func (s *Store) UpsertIdentityMenu(ctx context.Context, workspaceID string, menu
 	if menu.Status == "" {
 		menu.Status = identitymodel.IdentityStatusActive
 	}
+	menu.SourceOwner = strings.TrimSpace(menu.SourceOwner)
+	if menu.SourceOwner == "" {
+		return fmt.Errorf("menu source owner is required")
+	}
 	var persistedStatus string
-	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_menus", workspaceID).Columns("status").Where(query.Equal("menu_id", menu.MenuID)).Build()
+	statement, arguments, err := query.NewSelectBuilder(s.backend.SQLRenderer(), "_identity_menus").Columns("status").Where(query.Equal("menu_id", menu.MenuID)).Build()
 	if err != nil {
 		return fmt.Errorf("build identity menu status query: %w", err)
 	}
@@ -84,10 +81,10 @@ func (s *Store) UpsertIdentityMenu(ctx context.Context, workspaceID string, menu
 		return nil
 	}
 	now := timevalue.Millis(s.now())
-	insert := query.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_menus", workspaceID).
-		Columns("menu_id", "menu_key", "label", "description", "route", "icon", "parent_id", "sort_order", "status", "created_at", "updated_at").
-		Values(menu.MenuID, menu.Key, menu.Label, menu.Description, menu.Route, menu.Icon, nullableText(menu.ParentID), menu.SortOrder, string(menu.Status), now, now)
-	s.backend.ApplyUpsert(insert, []string{"menu_id"}, "menu_key", "label", "description", "route", "icon", "parent_id", "sort_order", "status", "updated_at")
+	insert := query.NewInsertBuilder(s.backend.SQLRenderer(), "_identity_menus").
+		Columns("menu_id", "source_owner", "menu_key", "label", "description", "route", "icon", "parent_id", "sort_order", "status", "created_at", "updated_at").
+		Values(menu.MenuID, menu.SourceOwner, menu.Key, menu.Label, menu.Description, menu.Route, menu.Icon, nullableText(menu.ParentID), menu.SortOrder, string(menu.Status), now, now)
+	s.backend.ApplyUpsert(insert, []string{"menu_id"}, "source_owner", "menu_key", "label", "description", "route", "icon", "parent_id", "sort_order", "status", "updated_at")
 	statement, arguments, err = insert.Build()
 	if err != nil {
 		return fmt.Errorf("build identity menu upsert: %w", err)
@@ -99,10 +96,6 @@ func (s *Store) UpsertIdentityMenu(ctx context.Context, workspaceID string, menu
 }
 
 func (s *Store) RemoveIdentityMenu(ctx context.Context, workspaceID, menuID string) error {
-	workspaceID, err := identityWorkspaceID(workspaceID)
-	if err != nil {
-		return err
-	}
 	menus, err := s.ListIdentityMenus(ctx, workspaceID)
 	if err != nil {
 		return err
@@ -124,7 +117,7 @@ func (s *Store) RemoveIdentityMenu(ctx context.Context, workspaceID, menuID stri
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if err := s.removeStatements(ctx, tx, workspaceID, menu, false); err != nil {
+	if err := s.removeStatements(ctx, tx, menu, false); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {
@@ -133,8 +126,8 @@ func (s *Store) RemoveIdentityMenu(ctx context.Context, workspaceID, menuID stri
 	return nil
 }
 
-func (s *Store) removeStatements(ctx context.Context, execer execer, workspaceID string, menu identitymodel.IdentityMenu, requireAffected bool) error {
-	statement, arguments, err := query.NewWorkspaceDeleteBuilder(s.backend.SQLRenderer(), "_identity_role_menu_assignments", workspaceID).
+func (s *Store) removeStatements(ctx context.Context, execer execer, menu identitymodel.IdentityMenu, requireAffected bool) error {
+	statement, arguments, err := query.NewDeleteBuilder(s.backend.SQLRenderer(), "_identity_role_menu_assignments").
 		Where(query.In("menu_id", menu.MenuID, menu.Key)).Build()
 	if err != nil {
 		return fmt.Errorf("build identity menu assignment delete: %w", err)
@@ -142,7 +135,7 @@ func (s *Store) removeStatements(ctx context.Context, execer execer, workspaceID
 	if _, err := execer.ExecContext(ctx, statement, arguments...); err != nil {
 		return err
 	}
-	statement, arguments, err = query.NewWorkspaceUpdateBuilder(s.backend.SQLRenderer(), "_identity_menus", workspaceID).
+	statement, arguments, err = query.NewUpdateBuilder(s.backend.SQLRenderer(), "_identity_menus").
 		Set("status", string(identitymodel.IdentityStatusDeleted)).Set("updated_at", timevalue.Millis(s.now())).Where(query.Equal("menu_id", menu.MenuID)).Build()
 	if err != nil {
 		return fmt.Errorf("build identity menu soft delete: %w", err)
@@ -164,11 +157,8 @@ func (s *Store) removeStatements(ctx context.Context, execer execer, workspaceID
 }
 
 func (s *Store) SetIdentityRoleMenus(ctx context.Context, workspaceID, roleID string, menuIDs []string) error {
-	workspaceID, err := identityWorkspaceID(workspaceID)
-	if err != nil {
-		return err
-	}
-	statement, arguments, err := query.NewWorkspaceDeleteBuilder(s.backend.SQLRenderer(), "_identity_role_menu_assignments", workspaceID).Where(query.Equal("role_id", roleID)).Build()
+	_ = workspaceID
+	statement, arguments, err := query.NewDeleteBuilder(s.backend.SQLRenderer(), "_identity_role_menu_assignments").Where(query.Equal("role_id", roleID)).Build()
 	if err != nil {
 		return fmt.Errorf("build identity role-menu reset: %w", err)
 	}
@@ -180,7 +170,7 @@ func (s *Store) SetIdentityRoleMenus(ctx context.Context, workspaceID, roleID st
 	if len(menuIDs) == 0 {
 		return nil
 	}
-	insert := query.NewWorkspaceInsertBuilder(s.backend.SQLRenderer(), "_identity_role_menu_assignments", workspaceID).Columns("role_id", "menu_id", "created_at", "updated_at")
+	insert := query.NewInsertBuilder(s.backend.SQLRenderer(), "_identity_role_menu_assignments").Columns("role_id", "menu_id", "created_at", "updated_at")
 	for _, menuID := range menuIDs {
 		insert.Values(roleID, menuID, now, now)
 	}
@@ -197,12 +187,9 @@ func (s *Store) ListIdentityRoleMenuAssignments(ctx context.Context, workspaceID
 }
 
 func (s *Store) LoadMenus(ctx context.Context, workspaceID string) ([]identitymodel.IdentityMenu, error) {
-	workspaceID, err := identityWorkspaceID(workspaceID)
-	if err != nil {
-		return nil, err
-	}
-	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_menus", workspaceID).
-		Columns("id", "menu_id", "menu_key", "label", "description", "route", "icon", "parent_id", "sort_order", "status").
+	_ = workspaceID
+	statement, arguments, err := query.NewSelectBuilder(s.backend.SQLRenderer(), "_identity_menus").
+		Columns("id", "menu_id", "source_owner", "menu_key", "label", "description", "route", "icon", "parent_id", "sort_order", "status").
 		Where(query.NotEqual("status", string(identitymodel.IdentityStatusDeleted))).OrderBy(query.Ascending("sort_order"), query.Ascending("menu_key")).Build()
 	if err != nil {
 		return nil, fmt.Errorf("build identity menus query: %w", err)
@@ -217,7 +204,7 @@ func (s *Store) LoadMenus(ctx context.Context, workspaceID string) ([]identitymo
 		var menu identitymodel.IdentityMenu
 		var parentID sql.NullString
 		var status string
-		if err := rows.Scan(&menu.ID, &menu.MenuID, &menu.Key, &menu.Label, &menu.Description, &menu.Route, &menu.Icon, &parentID, &menu.SortOrder, &status); err != nil {
+		if err := rows.Scan(&menu.ID, &menu.MenuID, &menu.SourceOwner, &menu.Key, &menu.Label, &menu.Description, &menu.Route, &menu.Icon, &parentID, &menu.SortOrder, &status); err != nil {
 			return nil, err
 		}
 		menu.ParentID = valueFromNull(parentID)
@@ -228,11 +215,8 @@ func (s *Store) LoadMenus(ctx context.Context, workspaceID string) ([]identitymo
 }
 
 func (s *Store) LoadRoleMenuAssignments(ctx context.Context, workspaceID, roleID string) ([]identitymodel.IdentityRoleMenuAssignment, error) {
-	workspaceID, err := identityWorkspaceID(workspaceID)
-	if err != nil {
-		return nil, err
-	}
-	builder := query.NewWorkspaceSelectBuilder(s.backend.SQLRenderer(), "_identity_role_menu_assignments", workspaceID).Columns("role_id", "menu_id")
+	_ = workspaceID
+	builder := query.NewSelectBuilder(s.backend.SQLRenderer(), "_identity_role_menu_assignments").Columns("role_id", "menu_id")
 	if strings.TrimSpace(roleID) != "" {
 		builder.Where(query.Equal("role_id", roleID))
 	}

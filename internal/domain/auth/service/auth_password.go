@@ -76,7 +76,7 @@ func (s *AuthDomainService) ensureSeedCredential(ctx context.Context, workspaceI
 	if exists {
 		return nil
 	}
-	return s.setPassword(ctx, workspaceID, userID, s.defaultPassword, true)
+	return s.setPassword(ctx, workspaceID, userID, s.defaultPassword, s.initialCredentialRotationRequired)
 }
 
 func (s *AuthDomainService) Login(ctx context.Context, workspaceID, login, password string) (authmodel.AuthSession, error) {

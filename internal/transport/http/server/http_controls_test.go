@@ -38,8 +38,8 @@ func TestStandaloneRouteInventoryBaseline(t *testing.T) {
 	t.Cleanup(func() { _ = server.CloseContext(t.Context()) })
 	routes := server.RouteInventory()
 	sum := sha256.Sum256([]byte(strings.Join(routes, "\n")))
-	const wantCount = 165
-	const wantSHA256 = "7884102998bfdcbc0a6a24cd02dd999a4f14d8128ffb8038207cc4a89090c4af"
+	const wantCount = 170
+	const wantSHA256 = "d4d9ef23916aac8a37605bd43da3e828b2f39c9e86de674886afa15178396631"
 	if len(routes) != wantCount || hex.EncodeToString(sum[:]) != wantSHA256 {
 		t.Fatalf("standalone route inventory count=%d sha256=%s routes=%#v", len(routes), hex.EncodeToString(sum[:]), routes)
 	}

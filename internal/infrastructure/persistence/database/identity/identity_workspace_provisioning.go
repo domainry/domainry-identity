@@ -211,8 +211,7 @@ func (s *SQLIdentityStore) WorkspaceIdentityBootstrapStateExistsWithExecutor(ctx
 	}
 	for _, table := range []string{
 		"_identity_organization_units", "_identity_users", "_identity_roles",
-		"_identity_user_role_assignments", "_identity_menus", "_identity_role_menu_assignments",
-		"_identity_credentials", "_identity_permissions",
+		"_identity_user_role_assignments", "_identity_credentials",
 	} {
 		statement, arguments, err := query.NewWorkspaceSelectBuilder(s.sqlRenderer(), table, workspaceID).
 			Projections(query.Project(query.CountAll())).Build()

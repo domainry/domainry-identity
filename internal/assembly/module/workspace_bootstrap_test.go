@@ -38,14 +38,14 @@ func TestWorkspaceBootstrapVolatileCredentialReplacementAndDiscardDoNotAccumulat
 func TestWorkspaceBootstrapRoleCatalogDigestIsCanonicalAndAuthorizationComplete(t *testing.T) {
 	roles := []identitysdk.ProjectRoleDefinition{
 		{
-			Key: "admin", Name: "Administrator", Audience: "any", AssignmentMode: "manual", ProvisionToWorkspaces: true, SchemaHash: "schema-admin",
+			Key: "admin", Name: "Administrator", Audience: "any", AssignmentMode: "manual", SchemaHash: "schema-admin",
 			Permissions: []identitysdk.ProjectRolePermission{
 				{PermissionKey: "customer.write", DataScope: identitysdk.DataScopeOrg},
 				{PermissionKey: "customer.read", DataScope: identitysdk.DataScopeAll},
 			},
 			PermissionSetKeys: []string{"write", "read"},
 		},
-		{Key: "member", Name: "Member", Audience: "user", AssignmentMode: "manual", ProvisionToWorkspaces: true, SchemaHash: "schema-member"},
+		{Key: "member", Name: "Member", Audience: "user", AssignmentMode: "manual", SchemaHash: "schema-member"},
 	}
 	digest := func(inputs []identitysdk.ProjectRoleDefinition, administrator string) string {
 		t.Helper()

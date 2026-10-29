@@ -78,11 +78,22 @@ func (*testWorkspaceIdentityUsageAuthority) ResolveAuthorizedWorkspaceIdentityUs
 
 func permissionReconcileRequest(t *testing.T, application identitysdk.ApplicationRef, sourceOwner, previousSnapshotHash string, definitions []identitysdk.PermissionDefinition) identitysdk.PermissionReconcileRequest {
 	t.Helper()
-	request, err := identitysdk.NewPermissionReconcileRequest(application, sourceOwner, previousSnapshotHash, definitions)
+	request, err := identitysdk.NewPermissionReconcileRequest(sourceOwner, previousSnapshotHash, definitions)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return request
+}
+
+func testSDKPermissionDefinition(resourceKey, operationKey, label string) identitysdk.PermissionDefinition {
+	return identitysdk.PermissionDefinition{
+		PermissionKey: resourceKey + "." + operationKey, ModuleKey: "orders", GroupKey: resourceKey,
+		ResourceKey: resourceKey, OperationKey: operationKey, Label: label, Category: "Orders", SourceKind: "object_action",
+		GrantMode: "direct", ScopeKind: "none", DefaultLocale: "en",
+		I18n: identitysdk.PermissionLocalizedText{"en": {
+			ModuleLabel: "Orders", GroupLabel: "Customers", ResourceLabel: "Customers", OperationLabel: operationKey, Label: label,
+		}},
+	}
 }
 
 type testEmbeddedMigrationCall struct {
@@ -347,8 +358,8 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		t.Fatalf("register project application: %v", err)
 	}
 	permissionDefinitions := []identitysdk.PermissionDefinition{
-		{PermissionKey: "customer.read", ResourceKey: "customer", OperationKey: "read", Label: "Read customers", Category: "Orders", SourceKind: "object_action"},
-		{PermissionKey: "customer.export", ResourceKey: "customer", OperationKey: "export", Label: "Export customers", Category: "Orders", SourceKind: "object_action"},
+		testSDKPermissionDefinition("customer", "read", "Read customers"),
+		testSDKPermissionDefinition("customer", "export", "Export customers"),
 	}
 	receipt, err := binding.Permissions().Reconcile(t.Context(), permissionReconcileRequest(t, application, "application:orders-runtime", "", permissionDefinitions))
 	if err != nil || receipt.SourceOwner != "application:orders-runtime" {
@@ -359,7 +370,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		t.Fatal("module Binding does not expose project role publication")
 	}
 	roleReceipt, err := rolePublisher.PublishProjectRoles(t.Context(), identitysdk.ProjectRoleCatalog{
-		Application: application,
+		SourceOwner: "application:orders-runtime",
 		Roles: []identitysdk.ProjectRoleDefinition{
 			{Key: "project_viewer", Name: "Project Viewer", Permissions: []identitysdk.ProjectRolePermission{{PermissionKey: "customer.read", DataScope: identitysdk.DataScopeAll}}, Audience: "any", AssignmentMode: "manual", RiskLevel: "normal", SchemaHash: strings.Repeat("a", 64)},
 			{Key: "customer_sync_service", Name: "Customer sync service", Permissions: []identitysdk.ProjectRolePermission{{PermissionKey: "customer.read", DataScope: identitysdk.DataScopeAll}}, Audience: "service", AssignmentMode: "system_managed", RiskLevel: "normal", SchemaHash: strings.Repeat("b", 64)},
@@ -369,7 +380,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		t.Fatalf("project role receipt=%#v err=%v", roleReceipt, err)
 	}
 	repeatedRoleReceipt, err := rolePublisher.PublishProjectRoles(t.Context(), identitysdk.ProjectRoleCatalog{
-		Application: application,
+		SourceOwner: "application:orders-runtime",
 		Roles: []identitysdk.ProjectRoleDefinition{
 			{Key: "project_viewer", Name: "Project Viewer", Permissions: []identitysdk.ProjectRolePermission{{PermissionKey: "customer.read", DataScope: identitysdk.DataScopeAll}}, Audience: "any", AssignmentMode: "manual", RiskLevel: "normal", SchemaHash: strings.Repeat("a", 64)},
 			{Key: "customer_sync_service", Name: "Customer sync service", Permissions: []identitysdk.ProjectRolePermission{{PermissionKey: "customer.read", DataScope: identitysdk.DataScopeAll}}, Audience: "service", AssignmentMode: "system_managed", RiskLevel: "normal", SchemaHash: strings.Repeat("b", 64)},
@@ -378,37 +389,8 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	if err != nil || repeatedRoleReceipt != roleReceipt {
 		t.Fatalf("idempotent project role receipt=%#v want=%#v err=%v", repeatedRoleReceipt, roleReceipt, err)
 	}
-	if _, err := rolePublisher.PublishProjectRoles(t.Context(), identitysdk.ProjectRoleCatalog{Application: identitysdk.ApplicationRef{WorkspaceID: "other", ApplicationKey: application.ApplicationKey}}); err == nil {
-		t.Fatal("cross-workspace project role publication accepted")
-	}
-	bundlePublisher, ok := binding.(identitysdk.ProjectRolePermissionBundlePublisher)
-	if !ok {
-		t.Fatal("module Binding does not expose project role permission bundles")
-	}
-	bundleRequest := identitysdk.ProjectRolePermissionBundleRequest{
-		Application: application, SourceOwner: "orders:exports", RoleKey: "project_viewer", ActorID: "admin",
-		Permissions:    []identitysdk.ProjectRolePermission{{PermissionKey: "customer.export", DataScope: identitysdk.DataScopeAll}},
-		BusinessReason: "Enable the fixed customer export bundle", OperationID: "orders-export-setup-1",
-	}
-	bundleReceipt, err := bundlePublisher.PublishProjectRolePermissionBundle(t.Context(), bundleRequest)
-	if err != nil || bundleReceipt.RoleKey != "project_viewer" || bundleReceipt.Added != 1 || bundleReceipt.PermissionCount != 2 || bundleReceipt.SchemaHash == "" {
-		t.Fatalf("project role permission bundle receipt=%#v err=%v", bundleReceipt, err)
-	}
-	repeatedBundleReceipt, err := bundlePublisher.PublishProjectRolePermissionBundle(t.Context(), bundleRequest)
-	if err != nil || repeatedBundleReceipt.Added != 0 || repeatedBundleReceipt.Updated != 0 || repeatedBundleReceipt.PermissionCount != 2 || repeatedBundleReceipt.SchemaHash != bundleReceipt.SchemaHash {
-		t.Fatalf("repeated project role permission bundle receipt=%#v first=%#v err=%v", repeatedBundleReceipt, bundleReceipt, err)
-	}
-	updatedBundleRequest := bundleRequest
-	updatedBundleRequest.Permissions = []identitysdk.ProjectRolePermission{{PermissionKey: "customer.export", DataScope: identitysdk.DataScopeOwner}}
-	updatedBundleRequest.OperationID = "orders-export-setup-2"
-	updatedBundleReceipt, err := bundlePublisher.PublishProjectRolePermissionBundle(t.Context(), updatedBundleRequest)
-	if err != nil || updatedBundleReceipt.Added != 0 || updatedBundleReceipt.Updated != 1 || updatedBundleReceipt.PermissionCount != 2 || updatedBundleReceipt.SchemaHash == bundleReceipt.SchemaHash {
-		t.Fatalf("updated project role permission bundle receipt=%#v first=%#v err=%v", updatedBundleReceipt, bundleReceipt, err)
-	}
-	crossWorkspaceBundle := bundleRequest
-	crossWorkspaceBundle.Application.WorkspaceID = "other"
-	if _, err := bundlePublisher.PublishProjectRolePermissionBundle(t.Context(), crossWorkspaceBundle); err == nil {
-		t.Fatal("cross-workspace project role permission bundle accepted")
+	if _, err := rolePublisher.PublishProjectRoles(t.Context(), identitysdk.ProjectRoleCatalog{}); err == nil {
+		t.Fatal("project role publication without a source owner accepted")
 	}
 	roles, err := binding.Projection().ListRoles(t.Context(), identitysdk.ProjectionQuery{})
 	if err != nil {
@@ -418,7 +400,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	for _, role := range roles {
 		if role.Key == "project_viewer" {
 			foundProjectRole = true
-			if want := identitypersistence.WorkspaceRoleID(string(application.WorkspaceID), role.Key); role.RoleID != want {
+			if want := identitypersistence.GlobalRoleID("application:orders-runtime", role.Key); role.RoleID != want {
 				t.Fatalf("project role ID=%q want=%q", role.RoleID, want)
 			}
 		}
@@ -497,7 +479,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	if _, err := workloadBinding.WorkflowWorkloads().ApplyWorkflowWorkloadBindings(t.Context(), tampered); err == nil || !strings.Contains(err.Error(), "release_digest_mismatch") {
 		t.Fatalf("tampered workload release accepted: %v", err)
 	}
-	if _, err := probeDB.ExecContext(t.Context(), `UPDATE _identity_roles SET status='disabled' WHERE workspace_id=? AND role_key=?`, "workspace-primary", "customer_sync_service"); err != nil {
+	if _, err := probeDB.ExecContext(t.Context(), `UPDATE _identity_roles SET status='disabled' WHERE scope_type='global' AND role_key=?`, "customer_sync_service"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := binding.Principals().Resolve(t.Context(), identitysdk.PrincipalResolutionRequest{
@@ -506,7 +488,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	}); err == nil || !strings.Contains(err.Error(), "role_unavailable") {
 		t.Fatalf("workflow workload resolved through a disabled role: %v", err)
 	}
-	if _, err := probeDB.ExecContext(t.Context(), `UPDATE _identity_roles SET status='active' WHERE workspace_id=? AND role_key=?`, "workspace-primary", "customer_sync_service"); err != nil {
+	if _, err := probeDB.ExecContext(t.Context(), `UPDATE _identity_roles SET status='active' WHERE scope_type='global' AND role_key=?`, "customer_sync_service"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := probeDB.ExecContext(t.Context(), `UPDATE _identity_workflow_workload_bindings SET role_key='project_viewer' WHERE workspace_id=? AND application_key=? AND workflow_key=?`, "workspace-primary", "orders-runtime", "customer_sync"); err != nil {
@@ -717,13 +699,8 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	if err := moduleDB.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _identity_applications WHERE workspace_id = ? AND application_key = ?`, "workspace-primary", "orders-runtime").Scan(&applicationCount); err != nil || applicationCount != 1 {
 		t.Fatalf("application registration count=%d err=%v", applicationCount, err)
 	}
-	if err := moduleDB.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _identity_permissions WHERE workspace_id = ? AND permission_key = ? AND source_owner = ?`, "workspace-primary", "customer.read", "application:orders-runtime").Scan(&permissionCount); err != nil || permissionCount != 1 {
+	if err := moduleDB.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM _identity_permissions WHERE permission_key = ? AND source_owner = ?`, "customer.read", "application:orders-runtime").Scan(&permissionCount); err != nil || permissionCount != 1 {
 		t.Fatalf("permission definition count=%d err=%v", permissionCount, err)
-	}
-	otherWorkspaceApplication := application
-	otherWorkspaceApplication.WorkspaceID = "workspace-2"
-	if _, err := binding.Permissions().Reconcile(t.Context(), permissionReconcileRequest(t, otherWorkspaceApplication, "application:orders-runtime", "", nil)); err == nil {
-		t.Fatal("application-scoped module binding reconciled another workspace")
 	}
 	identitycontracttest.Run(t, identitycontracttest.Fixture{
 		Binding: binding, WorkspaceID: "workspace-primary", ApplicationKey: "orders-runtime", Login: "admin@example.com", Password: "Domainry@2026",
@@ -741,14 +718,6 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 	reopenedReceipt, err := reopened.Permissions().Reconcile(t.Context(), permissionReconcileRequest(t, application, "application:orders-runtime", receipt.SnapshotHash, permissionDefinitions))
 	if err != nil || reopenedReceipt.SnapshotHash != receipt.SnapshotHash || reopenedReceipt.Unchanged != len(permissionDefinitions) {
 		t.Fatalf("reopened permission receipt=%#v want hash=%q err=%v", reopenedReceipt, receipt.SnapshotHash, err)
-	}
-	reopenedBundlePublisher, ok := reopened.(identitysdk.ProjectRolePermissionBundlePublisher)
-	if !ok {
-		t.Fatal("reopened module Binding does not expose project role permission bundles")
-	}
-	reopenedBundleReceipt, err := reopenedBundlePublisher.PublishProjectRolePermissionBundle(t.Context(), updatedBundleRequest)
-	if err != nil || reopenedBundleReceipt.Added != 0 || reopenedBundleReceipt.Updated != 0 || reopenedBundleReceipt.PermissionCount != 2 || reopenedBundleReceipt.SchemaHash != updatedBundleReceipt.SchemaHash {
-		t.Fatalf("persisted project role permission bundle receipt=%#v first=%#v err=%v", reopenedBundleReceipt, updatedBundleReceipt, err)
 	}
 }
 

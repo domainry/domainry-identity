@@ -24,33 +24,34 @@ import (
 // aggregate's full storage contract merely because Store implements both.
 // AuthDomainService owns authentication sessions and credential operations.
 type AuthDomainService struct {
-	identity           authcontract.AuthIdentityPort
-	localeIdentity     authcontract.AuthLocaleIdentityPort
-	authorization      authcontract.AuthAuthorization
-	identityStore      authrepository.AuthRepository
-	secret             []byte
-	issuer             string
-	audience           string
-	activeKID          string
-	activePrivateKey   ed25519.PrivateKey
-	verificationKeys   map[string]ed25519.PublicKey
-	defaultPassword    string
-	accessTTL          time.Duration
-	refreshTTL         time.Duration
-	maxLoginFailures   int
-	loginLockDuration  time.Duration
-	otpResendCooldown  time.Duration
-	otpMaxAttempts     int
-	passwordPolicy     authpolicy.AuthPasswordPolicy
-	defaultLocale      string
-	normalizeLocale    func(string) string
-	supportedLocales   map[string]struct{}
-	readRandomBytes    func([]byte) (int, error)
-	guestMu            sync.Mutex
-	challengeMu        sync.Mutex
-	challenges         map[string]authmodel.AuthProviderChallenge
-	credentialEmail    credentialemail.Delivery
-	credentialSetupURL string
+	identity                          authcontract.AuthIdentityPort
+	localeIdentity                    authcontract.AuthLocaleIdentityPort
+	authorization                     authcontract.AuthAuthorization
+	identityStore                     authrepository.AuthRepository
+	secret                            []byte
+	issuer                            string
+	audience                          string
+	activeKID                         string
+	activePrivateKey                  ed25519.PrivateKey
+	verificationKeys                  map[string]ed25519.PublicKey
+	defaultPassword                   string
+	initialCredentialRotationRequired bool
+	accessTTL                         time.Duration
+	refreshTTL                        time.Duration
+	maxLoginFailures                  int
+	loginLockDuration                 time.Duration
+	otpResendCooldown                 time.Duration
+	otpMaxAttempts                    int
+	passwordPolicy                    authpolicy.AuthPasswordPolicy
+	defaultLocale                     string
+	normalizeLocale                   func(string) string
+	supportedLocales                  map[string]struct{}
+	readRandomBytes                   func([]byte) (int, error)
+	guestMu                           sync.Mutex
+	challengeMu                       sync.Mutex
+	challenges                        map[string]authmodel.AuthProviderChallenge
+	credentialEmail                   credentialemail.Delivery
+	credentialSetupURL                string
 }
 
 func NewAuthDomainService(identity authcontract.AuthIdentityPort, identityStore authrepository.AuthRepository, secret string, defaultPassword string, accessTTL time.Duration, refreshTTL time.Duration, maxLoginFailures int, loginLockDuration time.Duration, otpResendCooldown time.Duration, otpMaxAttempts int, passwordPolicy authpolicy.AuthPasswordPolicy) *AuthDomainService {
@@ -84,28 +85,35 @@ func NewAuthDomainService(identity authcontract.AuthIdentityPort, identityStore 
 		passwordPolicy.MinLength = 8
 	}
 	service := &AuthDomainService{
-		identity:          identity,
-		authorization:     identity,
-		identityStore:     identityStore,
-		secret:            []byte(secret),
-		issuer:            "http://localhost:8081",
-		audience:          "domainry-runtime",
-		defaultPassword:   defaultPassword,
-		accessTTL:         accessTTL,
-		refreshTTL:        refreshTTL,
-		maxLoginFailures:  maxLoginFailures,
-		loginLockDuration: loginLockDuration,
-		otpResendCooldown: otpResendCooldown,
-		otpMaxAttempts:    otpMaxAttempts,
-		passwordPolicy:    passwordPolicy,
-		defaultLocale:     "en-US",
-		supportedLocales:  map[string]struct{}{"en-US": {}},
-		readRandomBytes:   rand.Read,
-		challenges:        map[string]authmodel.AuthProviderChallenge{},
+		identity:                          identity,
+		authorization:                     identity,
+		identityStore:                     identityStore,
+		secret:                            []byte(secret),
+		issuer:                            "http://localhost:8081",
+		audience:                          "domainry-runtime",
+		defaultPassword:                   defaultPassword,
+		initialCredentialRotationRequired: true,
+		accessTTL:                         accessTTL,
+		refreshTTL:                        refreshTTL,
+		maxLoginFailures:                  maxLoginFailures,
+		loginLockDuration:                 loginLockDuration,
+		otpResendCooldown:                 otpResendCooldown,
+		otpMaxAttempts:                    otpMaxAttempts,
+		passwordPolicy:                    passwordPolicy,
+		defaultLocale:                     "en-US",
+		supportedLocales:                  map[string]struct{}{"en-US": {}},
+		readRandomBytes:                   rand.Read,
+		challenges:                        map[string]authmodel.AuthProviderChallenge{},
 	}
 	_ = service.ConfigureSigningKeys("dev-v1", secret, nil)
 	service.localeIdentity, _ = identity.(authcontract.AuthLocaleIdentityPort)
 	return service
+}
+
+func (s *AuthDomainService) ConfigureInitialCredentialRotation(required bool) {
+	if s != nil {
+		s.initialCredentialRotationRequired = required
+	}
 }
 
 // ConfigureLocalePolicy binds Auth projections to the Runtime catalog without

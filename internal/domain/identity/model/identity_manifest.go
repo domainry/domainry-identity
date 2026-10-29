@@ -6,25 +6,24 @@ import (
 )
 
 type RoleSchema struct {
-	Key                   string                             `json:"key"`
-	Name                  string                             `json:"name"`
-	Description           string                             `json:"description,omitempty"`
-	I18n                  localizationmodel.LocalizedTextMap `json:"i18n,omitempty"`
-	Permissions           []RolePermission                   `json:"permissions"`
-	FieldPermissions      []FieldPermission                  `json:"field_permissions,omitempty"`
-	ReferencePermissions  []ReferencePermission              `json:"reference_permissions,omitempty"`
-	ExportRules           []ExportRule                       `json:"export_rules,omitempty"`
-	Audience              IdentityRoleAudience               `json:"audience,omitempty"`
-	RequiredBindingKey    string                             `json:"required_binding_key,omitempty"`
-	AssignmentMode        IdentityRoleAssignmentMode         `json:"assignment_mode,omitempty"`
-	RiskLevel             IdentityRoleRiskLevel              `json:"risk_level,omitempty"`
-	ConflictRoleKeys      []string                           `json:"conflict_role_keys,omitempty"`
-	GrantableRoleKeys     []string                           `json:"grantable_role_keys,omitempty"`
-	PermissionSetKeys     []string                           `json:"permission_set_keys,omitempty"`
-	PermissionSetGroups   []string                           `json:"permission_set_group_keys,omitempty"`
-	GuardrailKeys         []string                           `json:"guardrail_keys,omitempty"`
-	Guardrails            []IdentityGuardrailPolicy          `json:"guardrails,omitempty"`
-	ProvisionToWorkspaces bool                               `json:"provision_to_workspaces,omitempty"`
+	Key                  string                             `json:"key"`
+	Name                 string                             `json:"name"`
+	Description          string                             `json:"description,omitempty"`
+	I18n                 localizationmodel.LocalizedTextMap `json:"i18n,omitempty"`
+	Permissions          []RolePermission                   `json:"permissions"`
+	FieldPermissions     []FieldPermission                  `json:"field_permissions,omitempty"`
+	ReferencePermissions []ReferencePermission              `json:"reference_permissions,omitempty"`
+	ExportRules          []ExportRule                       `json:"export_rules,omitempty"`
+	Audience             IdentityRoleAudience               `json:"audience,omitempty"`
+	RequiredBindingKey   string                             `json:"required_binding_key,omitempty"`
+	AssignmentMode       IdentityRoleAssignmentMode         `json:"assignment_mode,omitempty"`
+	RiskLevel            IdentityRoleRiskLevel              `json:"risk_level,omitempty"`
+	ConflictRoleKeys     []string                           `json:"conflict_role_keys,omitempty"`
+	GrantableRoleKeys    []string                           `json:"grantable_role_keys,omitempty"`
+	PermissionSetKeys    []string                           `json:"permission_set_keys,omitempty"`
+	PermissionSetGroups  []string                           `json:"permission_set_group_keys,omitempty"`
+	GuardrailKeys        []string                           `json:"guardrail_keys,omitempty"`
+	Guardrails           []IdentityGuardrailPolicy          `json:"guardrails,omitempty"`
 	// ProjectFieldPermissionOverride marks a persisted, Identity-owned field
 	// policy overlay for an application-owned role. The application remains the
 	// authority for every other role property.

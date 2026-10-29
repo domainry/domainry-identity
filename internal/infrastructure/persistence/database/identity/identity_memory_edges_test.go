@@ -259,16 +259,16 @@ func TestMemoryIdentityRequestsMenusAndPolicyEdges(t *testing.T) {
 	if err := store.UpsertIdentityMenu(ctx, "workspace-primary", identitymodel.IdentityMenu{}); err == nil {
 		t.Fatal("empty menu accepted")
 	}
-	for _, menu := range []identitymodel.IdentityMenu{{MenuID: "b", SortOrder: 1}, {MenuID: "a", Key: "key-a", SortOrder: 1, Status: identitymodel.IdentityStatusDisabled}, {MenuID: "c", SortOrder: 0}} {
+	for _, menu := range []identitymodel.IdentityMenu{{MenuID: "b", SourceOwner: "application:test", SortOrder: 1}, {MenuID: "a", SourceOwner: "application:test", Key: "key-a", SortOrder: 1, Status: identitymodel.IdentityStatusDisabled}, {MenuID: "c", SourceOwner: "application:test", SortOrder: 0}} {
 		if err := store.UpsertIdentityMenu(ctx, "workspace-primary", menu); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := store.UpsertIdentityMenu(ctx, "other", identitymodel.IdentityMenu{MenuID: "other"}); err != nil {
+	if err := store.UpsertIdentityMenu(ctx, "other", identitymodel.IdentityMenu{MenuID: "other", SourceOwner: "application:test"}); err != nil {
 		t.Fatal(err)
 	}
 	menus, err := store.ListIdentityMenus(ctx, "workspace-primary")
-	if err != nil || len(menus) != 3 || menus[0].MenuID != "c" || menus[1].MenuID != "b" {
+	if err != nil || len(menus) != 4 || menus[0].MenuID != "c" || menus[1].MenuID != "other" {
 		t.Fatalf("menus=%#v err=%v", menus, err)
 	}
 	if err := store.SetIdentityRoleMenus(ctx, "workspace-primary", "role", []string{"a", "b", "key-a", "b"}); err != nil {
@@ -283,7 +283,7 @@ func TestMemoryIdentityRequestsMenusAndPolicyEdges(t *testing.T) {
 	if specific, err := store.ListIdentityRoleMenuAssignments(ctx, "workspace-primary", "role"); err != nil || len(specific) != 3 {
 		t.Fatalf("specific=%#v err=%v", specific, err)
 	}
-	if all, err := store.ListIdentityRoleMenuAssignments(ctx, "workspace-primary", ""); err != nil || len(all) != 4 {
+	if all, err := store.ListIdentityRoleMenuAssignments(ctx, "workspace-primary", ""); err != nil || len(all) != 5 {
 		t.Fatalf("all=%#v err=%v", all, err)
 	}
 	if err := store.RemoveIdentityMenu(ctx, "workspace-primary", "missing"); err == nil {

@@ -164,12 +164,18 @@ func identityValueOrDefault(value, fallback string) string {
 func generatedManifestIdentitySeed() Seed {
 	platformMenus := generatedIdentityMenus()
 	roleMenus := generatedIdentityRoleMenusFromTemplate(platformMenus)
+	definitions := WithStandaloneIdentityRoleDefinitions(nil)
+	roles := make([]identitymodel.IdentityRole, 0, len(definitions))
+	for _, definition := range definitions {
+		roles = append(roles, identitymodel.IdentityRole{
+			RoleID: definition.Key, ScopeType: identitymodel.IdentityRoleScopeGlobal,
+			SourceOwner: IdentityBuiltinAuthorizationOwner, Key: definition.Key,
+			Label: definition.Name, Description: definition.Description,
+			Definition: definition, Status: identitymodel.IdentityStatusActive,
+		})
+	}
 	return Seed{
-		Roles: []identitymodel.IdentityRole{
-			{RoleID: "admin", Key: "admin", Label: "Admin", Status: identitymodel.IdentityStatusActive},
-			{RoleID: "organization_administrator", Key: "organization_administrator", Label: "Organization administrator", Status: identitymodel.IdentityStatusActive},
-			{RoleID: "system_administrator", Key: "system_administrator", Label: "System administrator", Status: identitymodel.IdentityStatusActive},
-		},
+		Roles: roles,
 		Users: []identitymodel.IdentityUser{{
 			UserID: "admin",
 			Name:   "Admin",
@@ -191,24 +197,26 @@ func generatedIdentityMenus() []identitymodel.IdentityMenu {
 	for _, group := range platformAdminNavigation.Groups {
 		groupIDs[group.Key] = group.MenuID
 		menus = append(menus, identitymodel.IdentityMenu{
-			MenuID:    group.MenuID,
-			Key:       group.MenuID,
-			Label:     group.Label["en"],
-			Icon:      group.Icon,
-			SortOrder: group.SortOrder,
-			Status:    identitymodel.IdentityStatusActive,
+			MenuID:      group.MenuID,
+			SourceOwner: IdentityBuiltinAuthorizationOwner,
+			Key:         group.MenuID,
+			Label:       group.Label["en"],
+			Icon:        group.Icon,
+			SortOrder:   group.SortOrder,
+			Status:      identitymodel.IdentityStatusActive,
 		})
 	}
 	for _, workspace := range platformAdminNavigation.Workspaces {
 		menus = append(menus, identitymodel.IdentityMenu{
-			MenuID:    workspace.MenuID,
-			Key:       workspace.MenuKey,
-			Label:     workspace.Label["en"],
-			Route:     workspace.Route,
-			Icon:      workspace.Icon,
-			ParentID:  groupIDs[workspace.Group],
-			SortOrder: workspace.SortOrder,
-			Status:    identitymodel.IdentityStatusActive,
+			MenuID:      workspace.MenuID,
+			SourceOwner: IdentityBuiltinAuthorizationOwner,
+			Key:         workspace.MenuKey,
+			Label:       workspace.Label["en"],
+			Route:       workspace.Route,
+			Icon:        workspace.Icon,
+			ParentID:    groupIDs[workspace.Group],
+			SortOrder:   workspace.SortOrder,
+			Status:      identitymodel.IdentityStatusActive,
 		})
 	}
 	return menus
