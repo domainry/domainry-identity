@@ -100,7 +100,11 @@ func (s *SQLIdentityStore) GetIdentityUserWithinDataScope(ctx context.Context, w
 }
 
 func (s *SQLIdentityStore) UpsertIdentityUser(ctx context.Context, workspaceID string, user identitymodel.IdentityUser) error {
-	return s.writeIdentityUser(ctx, s.db, workspaceID, user)
+	execer := identityUserExecer(s.db)
+	if transactionExecutor := transaction.ExecutorFromContext(ctx); transactionExecutor != nil {
+		execer = transactionExecutor
+	}
+	return s.writeIdentityUser(ctx, execer, workspaceID, user)
 }
 
 func (s *SQLIdentityStore) CreateIdentityUser(ctx context.Context, workspaceID string, user identitymodel.IdentityUser) error {

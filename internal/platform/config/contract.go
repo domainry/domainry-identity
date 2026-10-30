@@ -69,7 +69,7 @@ func Definitions() []Definition {
 	for i := 0; i < typeOfConfig.NumField(); i++ {
 		field := typeOfConfig.Field(i)
 		name := configEnvName(field.Name)
-		secret := strings.Contains(name, "SECRET") || strings.Contains(name, "PASSWORD") || strings.Contains(name, "DSN") || strings.Contains(name, "API_KEY") || strings.Contains(name, "ACCESS_TOKEN") || (strings.Contains(name, "CREDENTIAL") && name != "AUTH_INITIAL_CREDENTIAL_ROTATION_REQUIRED") || field.Name == "AuthJWTVerificationKeys" || field.Name == "IdentityDataDecryptOnlyKeys" || field.Name == "TelemetryHeaders" || field.Name == "AuthFeishuEventVerificationToken" || field.Name == "AuthFeishuEventEncryptKey"
+		secret := strings.Contains(name, "SECRET") || strings.Contains(name, "PASSWORD") || strings.Contains(name, "DSN") || strings.Contains(name, "API_KEY") || strings.Contains(name, "ACCESS_TOKEN") || (strings.Contains(name, "CREDENTIAL") && name != "AUTH_INITIAL_CREDENTIAL_ROTATION_REQUIRED") || field.Name == "AuthJWTVerificationKeys" || field.Name == "IdentityDataDecryptOnlyKeys" || field.Name == "TelemetryHeaders" || field.Name == "AuthFeishuEventVerificationToken" || field.Name == "AuthFeishuEventEncryptKey" || field.Name == "IdentitySCIMBearerTokens"
 		defaultValue := valueOfDefaults.Field(i).Interface()
 		if secret {
 			defaultValue = "[REDACTED]"

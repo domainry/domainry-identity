@@ -16,6 +16,7 @@ const (
 	TableBoundaryProfileBinding TableBoundary = "profile_binding"
 	TableBoundaryAuthorization  TableBoundary = "authorization"
 	TableBoundaryAuthentication TableBoundary = "authentication"
+	TableBoundarySCIM           TableBoundary = "scim_protocol"
 	TableBoundaryMetadata       TableBoundary = "metadata_governance"
 	TableBoundaryEvidence       TableBoundary = "audit_and_contract_evidence"
 )
@@ -60,6 +61,9 @@ var identityTableOwnership = []TableOwnership{
 	{Name: "_identity_role_menu_assignments", Boundary: TableBoundaryAuthorization, MigrationDisposition: MigrationPortable},
 	{Name: "_identity_role_requests", Boundary: TableBoundaryAuthorization, MigrationDisposition: MigrationPortable},
 	{Name: "_identity_roles", Boundary: TableBoundaryAuthorization, MigrationDisposition: MigrationPortable},
+	{Name: "_identity_scim_group_members", Boundary: TableBoundarySCIM, MigrationDisposition: MigrationPortable},
+	{Name: "_identity_scim_groups", Boundary: TableBoundarySCIM, MigrationDisposition: MigrationPortable},
+	{Name: "_identity_scim_users", Boundary: TableBoundarySCIM, MigrationDisposition: MigrationPortable},
 	{Name: "_identity_user_role_assignments", Boundary: TableBoundaryAuthorization, MigrationDisposition: MigrationPortable},
 	{Name: "_identity_workflow_workload_bindings", Boundary: TableBoundaryAuthorization, MigrationDisposition: MigrationPortable},
 	{Name: "_identity_users", Boundary: TableBoundaryIdentityCore, MigrationDisposition: MigrationPortable},
@@ -85,6 +89,9 @@ var schemaTableOwnership = []schemaownership.Table{
 	owned("_identity_role_menu_assignments", schemaownership.KindRelation, schemaownership.RetentionProduct, []string{"id"}, "workspace role/menu relation and bounded role-to-menu or menu-to-role lookup", "role or menu deletion physically removes dependent assignments"),
 	entity("_identity_role_requests", schemaownership.RetentionProduct, "role_request_id", "rolereq", "workspace/request identity and bounded requester, subject or review-state listing", "resolved requests follow authorization governance retention; subject erasure redacts personal references"),
 	entity("_identity_roles", schemaownership.RetentionProduct, "role_id", "role", "workspace/role identity and exact role-key lookup", "role deletion is rejected or cascaded only after active assignments and menu links are removed"),
+	owned("_identity_scim_group_members", schemaownership.KindRelation, schemaownership.RetentionUserErase, []string{"id"}, "workspace/group membership and bounded user or group lookup", "SCIM user or group deletion physically removes directory memberships"),
+	entity("_identity_scim_groups", schemaownership.RetentionProduct, "group_id", "scimgrp", "workspace/group identity and bounded external-id or display-name lookup", "SCIM group deletion tombstones the group and physically removes its memberships"),
+	entity("_identity_scim_users", schemaownership.RetentionUserErase, "user_id", "scimusr", "workspace/SCIM user identity and bounded external-id or userName lookup", "SCIM deletion tombstones the protocol resource while Identity retains the disabled business subject"),
 	owned("_identity_user_role_assignments", schemaownership.KindRelation, schemaownership.RetentionUserErase, []string{"id"}, "workspace user/role relation and bounded user or role lookup", "revocation preserves bounded terminal state; user erasure removes subject-owned assignments"),
 	entity("_identity_users", schemaownership.RetentionUserErase, "user_id", "user", "workspace/user identity, globally unique login resolution and bounded organization hierarchy lookup", "subject erasure anonymizes the user aggregate after credentials and active sessions are removed"),
 	owned("_identity_workflow_workload_bindings", schemaownership.KindRelation, schemaownership.RetentionProduct, []string{"id"}, "workspace application/workflow relation and bounded release-state lookup", "release replacement deactivates obsolete bindings; application removal deletes terminal bindings"),

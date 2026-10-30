@@ -328,6 +328,37 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 			"created_at BIGINT NOT NULL",
 			"updated_at BIGINT NOT NULL",
 		},
+		"_identity_scim_users": {
+			"id " + types.AutoIncrementBigInt,
+			"workspace_id " + text + " NOT NULL",
+			"user_id " + text + " NOT NULL",
+			"external_id " + text,
+			"user_name " + text + " NOT NULL",
+			"user_name_key " + identityIndexText + " NOT NULL",
+			"department TEXT NOT NULL DEFAULT ''",
+			"version BIGINT NOT NULL DEFAULT 1",
+			"created_at BIGINT NOT NULL",
+			"updated_at BIGINT NOT NULL",
+			"deleted_at BIGINT NOT NULL DEFAULT 0",
+		},
+		"_identity_scim_groups": {
+			"id " + types.AutoIncrementBigInt,
+			"workspace_id " + text + " NOT NULL",
+			"group_id " + text + " NOT NULL",
+			"external_id " + text,
+			"display_name TEXT NOT NULL",
+			"version BIGINT NOT NULL DEFAULT 1",
+			"created_at BIGINT NOT NULL",
+			"updated_at BIGINT NOT NULL",
+			"deleted_at BIGINT NOT NULL DEFAULT 0",
+		},
+		"_identity_scim_group_members": {
+			"id " + types.AutoIncrementBigInt,
+			"workspace_id " + text + " NOT NULL",
+			"group_id " + text + " NOT NULL",
+			"user_id " + text + " NOT NULL",
+			"created_at BIGINT NOT NULL",
+		},
 	}
 	// These final-schema tables use engine-provided physical types that
 	// domainry-orm cannot yet express as a custom ColumnType. Every definition
@@ -383,6 +414,9 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 		{table: "_identity_external_accounts", name: "idx_identity_external_accounts_user", columns: []string{"workspace_id", "user_id"}},
 		{table: "_identity_mfa_factors", name: "idx_identity_mfa_factors_user", columns: []string{"workspace_id", "user_id"}},
 		{table: "_identity_profile_bindings", name: "idx_identity_profile_bindings_user", columns: []string{"workspace_id", "binding_key", "identity_user_id"}},
+		{table: "_identity_scim_users", name: "idx_identity_scim_users_active", columns: []string{"workspace_id", "deleted_at", "id"}},
+		{table: "_identity_scim_groups", name: "idx_identity_scim_groups_active", columns: []string{"workspace_id", "deleted_at", "id"}},
+		{table: "_identity_scim_group_members", name: "idx_identity_scim_group_members_user", columns: []string{"workspace_id", "user_id"}},
 	} {
 		if err := s.CreateIndexIfMissing(ctx, index.table, index.name, false, index.columns...); err != nil {
 			return fmt.Errorf("create %s: %w", index.name, err)
@@ -419,6 +453,10 @@ func EnsureIdentitySchema(ctx context.Context, s Store) error {
 		{table: "_identity_organization_units", name: "uniq_identity_organization_unit_sibling_name", columns: []string{"workspace_id", "sibling_key"}},
 		{table: "_identity_profile_bindings", name: "uniq_identity_profile_binding_profile", columns: []string{"workspace_id", "object_key", "profile_id"}},
 		{table: "_identity_profile_bindings", name: "uniq_identity_profile_binding_user", columns: []string{"workspace_id", "binding_key", "identity_user_id"}},
+		{table: "_identity_scim_users", name: "uniq_identity_scim_user", columns: []string{"workspace_id", "user_id"}},
+		{table: "_identity_scim_users", name: "uniq_identity_scim_user_name", columns: []string{"workspace_id", "user_name_key"}},
+		{table: "_identity_scim_groups", name: "uniq_identity_scim_group", columns: []string{"workspace_id", "group_id"}},
+		{table: "_identity_scim_group_members", name: "uniq_identity_scim_group_member", columns: []string{"workspace_id", "group_id", "user_id"}},
 	} {
 		if err := s.CreateIndexIfMissing(ctx, index.table, index.name, true, index.columns...); err != nil {
 			return fmt.Errorf("create %s: %w", index.name, err)

@@ -118,6 +118,7 @@ IDENTITY_DATA_SECRET_KEY
 IDENTITY_APPLICATION_SERVICE_CREDENTIALS
 IDENTITY_APPLICATION_PERMISSION_OWNERS
 IDENTITY_APPLICATION_RATE_LIMIT_PER_MINUTE
+IDENTITY_SCIM_BEARER_TOKENS
 IDENTITY_ACTION_USAGE_RUNTIME_URL
 IDENTITY_ACTION_USAGE_REQUEST_TIMEOUT
 IDENTITY_ACTION_USAGE_APPLICATION_KEY
@@ -136,6 +137,21 @@ CORS_ALLOWED_ORIGINS
 owner 即使使用有效应用凭证也返回 `identity.permission_source_owner_forbidden`。
 `IDENTITY_APPLICATION_RATE_LIMIT_PER_MINUTE` 为每个已注册应用独立计算的分钟请求上限，
 不会让一个 Runtime 应用耗尽其他应用的额度。
+
+### SCIM 2.0
+
+Identity 的 SCIM 协议入口由 `IDENTITY_SCIM_BEARER_TOKENS` 启用，格式为
+`workspace=token`，多个 Workspace 以逗号分隔。Bearer Token 自身解析唯一的
+Workspace，客户端不需要也不能用请求头另选 Workspace；生产 Token 至少 32 个字符，
+不得与 JWT、数据加密、运维或其他 Workspace 的 SCIM Secret 复用。独立服务和内嵌
+Runtime 都使用 `/scim/v2`；内嵌模式由 Runtime 直接挂载相同的模块路由，不另外启动
+Identity HTTP 服务。
+
+当前实现提供 `ServiceProviderConfig`、`ResourceTypes`、`Schemas`、`Users` 和
+`Groups`，支持分页、SCIM Filter、PUT、PATCH、弱 ETag/`If-Match`。删除 User 会停用
+Identity 账号并同时撤销 Session，但保留业务主体和审计事实。Group 与 Membership 保存为
+独立的外部目录事实，不会隐式创建或覆盖 Domainry Role，也不会把 IdP 的任意 Group 名称
+直接当成组织 ID；组织和授权投影必须由显式映射规则完成。
 
 独立部署需要在权限管理页展示 Runtime/module 当前 Action 使用关系时，设置
 `IDENTITY_ACTION_USAGE_RUNTIME_URL` 为 Runtime 基础 URL。Identity 会把同一次权限目录请求中的

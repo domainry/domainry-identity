@@ -91,6 +91,45 @@ func TestApplicationServiceCredentialsLoadAsRedactedKeyMap(t *testing.T) {
 	}
 }
 
+func TestSCIMBearerTokensLoadAsRedactedWorkspaceMap(t *testing.T) {
+	t.Setenv("IDENTITY_SCIM_BEARER_TOKENS", "workspace-a=workspace-a-scim-secret,workspace-b=workspace-b-scim-secret")
+	cfg := FromEnv()
+	if cfg.IdentitySCIMBearerTokens["workspace-a"] != "workspace-a-scim-secret" || cfg.IdentitySCIMBearerTokens["workspace-b"] != "workspace-b-scim-secret" {
+		t.Fatalf("SCIM bearer tokens=%v", cfg.IdentitySCIMBearerTokens)
+	}
+	definition, ok := definitionByName(Definitions(), "IDENTITY_SCIM_BEARER_TOKENS")
+	if !ok || definition.Type != TypeKeyMap || !definition.Secret || definition.Default != "[REDACTED]" {
+		t.Fatalf("SCIM token definition=%+v found=%v", definition, ok)
+	}
+}
+
+func TestProductionSCIMBearerTokensAreStrongScopedAndIndependent(t *testing.T) {
+	valid := Config{
+		Environment: "production", AuthJWTSecret: "jwt-secret", AuthJWTActiveKID: "jwt-1",
+		AuthDefaultPassword: "StrongPassword!", AuthInitialCredentialRotationRequired: true, AuthPasswordMinLength: 12,
+		IdentityDataSecretKey: "integration-secret", IdentityDataActiveKeyID: "data-1", IdentityOperationsAccessToken: "operations-access-token",
+		IdentitySCIMBearerTokens: map[string]string{"workspace-a": "workspace-a-scim-token-with-32-characters"},
+	}
+	setValidProductionListeners(&valid)
+	if err := valid.ValidateSecurity(); err != nil {
+		t.Fatalf("valid SCIM bearer token: %v", err)
+	}
+	for name, tokens := range map[string]map[string]string{
+		"invalid workspace": {"default": "workspace-a-scim-token-with-32-characters"},
+		"weak":              {"workspace-a": "short"},
+		"reused":            {"workspace-a": "shared-scim-token-with-32-characters", "workspace-b": "shared-scim-token-with-32-characters"},
+		"operations":        {"workspace-a": "operations-access-token"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cfg := valid
+			cfg.IdentitySCIMBearerTokens = tokens
+			if err := cfg.ValidateSecurity(); err == nil || !strings.Contains(err.Error(), "IDENTITY_SCIM_BEARER_TOKENS") {
+				t.Fatalf("error=%v", err)
+			}
+		})
+	}
+}
+
 func TestProductionSaaSDeploymentRequiresAnApplicationCredential(t *testing.T) {
 	if err := (Config{Environment: "production"}).ValidateSaaSDeployment(); err == nil || !strings.Contains(err.Error(), "IDENTITY_APPLICATION_SERVICE_CREDENTIALS") {
 		t.Fatalf("missing SaaS credential error=%v", err)

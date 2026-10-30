@@ -143,8 +143,8 @@ func TestIdentitySchemaOwnershipMatchesFreshPhysicalPrimaryKeys(t *testing.T) {
 	if err := schemaownership.ValidateAll(tables); err != nil {
 		t.Fatal(err)
 	}
-	if len(tables) != 22 {
-		t.Fatalf("Identity owned table count=%d, want 22", len(tables))
+	if len(tables) != 25 {
+		t.Fatalf("Identity owned table count=%d, want 25", len(tables))
 	}
 	store, err := database.OpenContext(t.Context(), config.Config{
 		DatabaseDriver: "sqlite",

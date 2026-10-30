@@ -6,15 +6,17 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
-	authpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/auth"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
+	scimmodel "github.com/domainry/domainry-identity/internal/domain/scim/model"
 	. "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
+	authpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/auth"
 	identitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity"
+	scimpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/scim"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 )
 
@@ -72,6 +74,13 @@ func TestIdentitySubjectLifecycleContract(t *testing.T) {
 		VALUES ('workspace-primary','member','member_profile','member-1','user','active',1,1,1)`); err != nil {
 		t.Fatal(err)
 	}
+	scimStore := scimpersistence.NewStore(identity)
+	if err := scimStore.CreateUserLink(t.Context(), scimmodel.UserLink{WorkspaceID: "workspace-primary", UserID: "user", UserName: "user@example.com", ExternalID: "directory-user"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := scimStore.CreateGroup(t.Context(), scimmodel.DirectoryGroup{WorkspaceID: "workspace-primary", GroupID: "directory-group", DisplayName: "Engineering", MemberIDs: []string{"user"}}); err != nil {
+		t.Fatal(err)
+	}
 
 	lifecycle := identitypersistence.NewIdentitySubjectLifecycleStore(identity, authpersistence.NewAuthStore(identity).EraseSubjectLoginArtifacts)
 	if lifecycle.Owner(t.Context()) != "identity" {
@@ -92,7 +101,7 @@ func TestIdentitySubjectLifecycleContract(t *testing.T) {
 	bindSharedSubjectLifecycle(t, store.DB(), identity)
 	beginSharedSubjectErasure(t, store.DB(), "workspace-primary", "user", "subject:user")
 	preview, err := lifecycle.PreviewSubject(t.Context(), "workspace-primary", "user")
-	if err != nil || !strings.Contains(string(preview), `"credentials":1`) || !strings.Contains(string(preview), `"mfa_factors":1`) {
+	if err != nil || !strings.Contains(string(preview), `"credentials":1`) || !strings.Contains(string(preview), `"mfa_factors":1`) || !strings.Contains(string(preview), `"scim_resources":1`) || !strings.Contains(string(preview), `"scim_group_memberships":1`) {
 		t.Fatalf("preview=%s err=%v", preview, err)
 	}
 	exported, err := lifecycle.ExportSubject(t.Context(), "workspace-primary", "user")
@@ -103,6 +112,9 @@ func TestIdentitySubjectLifecycleContract(t *testing.T) {
 		!strings.Contains(string(exported), `"support_org_id":"supported-organization-unit"`) ||
 		!strings.Contains(string(exported), `"role_assignments":[{"`) ||
 		!strings.Contains(string(exported), `"profile_relations":[{"`) ||
+		!strings.Contains(string(exported), `"scim_resources":[{"`) ||
+		!strings.Contains(string(exported), `"user_name":"user@example.com"`) ||
+		!strings.Contains(string(exported), `"scim_group_memberships":[{"`) ||
 		!strings.Contains(string(exported), `"object_key":"member_profile"`) {
 		t.Fatalf("export=%s err=%v", exported, err)
 	}
@@ -123,6 +135,13 @@ func TestIdentitySubjectLifecycleContract(t *testing.T) {
 	var factorCount int
 	if err := store.DB().QueryRowContext(t.Context(), "SELECT COUNT(*) FROM _identity_mfa_factors WHERE workspace_id = ? AND user_id = ?", "workspace-primary", "user").Scan(&factorCount); err != nil || factorCount != 0 {
 		t.Fatalf("MFA factors retained: count=%d err=%v", factorCount, err)
+	}
+	if _, found, err := scimStore.GetUserLink(t.Context(), "workspace-primary", "user"); err != nil || found {
+		t.Fatalf("SCIM user mapping retained: found=%v err=%v", found, err)
+	}
+	group, found, err := scimStore.GetGroup(t.Context(), "workspace-primary", "directory-group")
+	if err != nil || !found || group.Version != 2 || len(group.MemberIDs) != 0 {
+		t.Fatalf("SCIM group after subject erasure=%+v found=%v err=%v", group, found, err)
 	}
 	if _, err := lifecycle.EraseSubject(t.Context(), "workspace-primary", "missing", nil); err == nil {
 		t.Fatal("missing erase succeeded")
@@ -183,6 +202,8 @@ func TestIdentitySubjectEraseRollsBackAtEveryOwnedFactStage(t *testing.T) {
 		{"external accounts", "_identity_external_accounts", "DELETE"},
 		{"mfa factors", "_identity_mfa_factors", "DELETE"},
 		{"role assignments", "_identity_user_role_assignments", "DELETE"},
+		{"SCIM memberships", "_identity_scim_group_members", "DELETE"},
+		{"SCIM user mapping", "_identity_scim_users", "DELETE"},
 		{"identity anonymization", "_identity_users", "UPDATE"},
 	}
 	for _, stage := range stages {
@@ -222,6 +243,15 @@ func TestIdentitySubjectEraseRollsBackAtEveryOwnedFactStage(t *testing.T) {
 				`INSERT INTO _identity_auth_refresh_tokens
 					(workspace_id, user_id, session_id, token_hash, expires_at, created_at, updated_at)
 					VALUES ('workspace-primary','user','session','hash',32503680000000,1,1)`,
+				`INSERT INTO _identity_scim_users
+					(workspace_id,user_id,external_id,user_name,user_name_key,department,version,created_at,updated_at,deleted_at)
+					VALUES ('workspace-primary','user','directory-user','user@example.test','user@example.test','Directory Engineering',1,1,1,0)`,
+				`INSERT INTO _identity_scim_groups
+					(workspace_id,group_id,external_id,display_name,version,created_at,updated_at,deleted_at)
+					VALUES ('workspace-primary','directory-group','directory-group','Engineering',1,1,1,0)`,
+				`INSERT INTO _identity_scim_group_members
+					(workspace_id,group_id,user_id,created_at)
+					VALUES ('workspace-primary','directory-group','user',1)`,
 			} {
 				if _, err := store.DB().ExecContext(t.Context(), statement); err != nil {
 					t.Fatal(err)
@@ -240,7 +270,7 @@ func TestIdentitySubjectEraseRollsBackAtEveryOwnedFactStage(t *testing.T) {
 			}
 			for _, table := range []string{
 				"_identity_credentials", "_identity_external_accounts", "_identity_mfa_factors",
-				"_identity_auth_refresh_tokens", "_identity_user_role_assignments",
+				"_identity_auth_refresh_tokens", "_identity_user_role_assignments", "_identity_scim_users", "_identity_scim_group_members",
 			} {
 				var count int
 				if err := store.DB().QueryRowContext(t.Context(), "SELECT COUNT(*) FROM "+table+" WHERE workspace_id='workspace-primary' AND user_id='user'").Scan(&count); err != nil || count != 1 {

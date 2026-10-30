@@ -190,7 +190,21 @@ func (s *Store) EraseSubjectForRequest(ctx context.Context, requestID, workspace
 	if err = s.eraseAuthentication(ctx, tx, workspaceID, userID, phone); err != nil {
 		return nil, err
 	}
-	for _, table := range []string{"_identity_auth_refresh_tokens", "_identity_credentials", "_identity_external_accounts", "_identity_mfa_factors", "_identity_user_role_assignments", "_identity_role_requests"} {
+	// A SCIM membership changes the Group representation and therefore its ETag.
+	// Advance affected groups before removing the membership rows as part of the
+	// same subject-erasure transaction.
+	scimGroupIDs := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), "_identity_scim_group_members", workspaceID).
+		Columns("group_id").Where(query.Equal("user_id", userID))
+	statement, args, err = query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_scim_groups", workspaceID).
+		SetExpression("version", query.Add(query.Column("version"), query.Value(int64(1)))).Set("updated_at", time.Now().UTC().UnixMilli()).
+		Where(query.And(query.Equal("deleted_at", int64(0)), query.InSubquery("group_id", scimGroupIDs))).Build()
+	if err != nil {
+		return nil, err
+	}
+	if _, err = tx.ExecContext(ctx, statement, args...); err != nil {
+		return nil, err
+	}
+	for _, table := range []string{"_identity_auth_refresh_tokens", "_identity_credentials", "_identity_external_accounts", "_identity_mfa_factors", "_identity_user_role_assignments", "_identity_role_requests", "_identity_scim_group_members", "_identity_scim_users"} {
 		statement, args, err = query.NewWorkspaceDeleteBuilder(s.store.SQLRenderer(), table, workspaceID).Where(query.Equal("user_id", userID)).Build()
 		if err != nil {
 			return nil, err

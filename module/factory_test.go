@@ -252,7 +252,7 @@ func TestFactoryOpensDirectSDKBinding(t *testing.T) {
 		t.Fatal("module Binding does not expose its HTTP Adapters")
 	}
 	adapters := httpProvider.HTTPAdapters()
-	if len(adapters) != 3 {
+	if len(adapters) != 4 {
 		t.Fatalf("HTTP adapter count=%d", len(adapters))
 	}
 	foundUsers, foundLogin, foundRemoteDiscovery, foundRemoteCredentialRoute := false, false, false, false

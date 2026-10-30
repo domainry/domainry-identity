@@ -9,6 +9,7 @@ import (
 	"time"
 
 	identitysdk "github.com/domainry/domainry-identity-sdk"
+	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	"github.com/domainry/domainry-identity/internal/platform/productbrand"
 )
 
@@ -119,6 +120,7 @@ type Config struct {
 	IdentityApplicationServicePolicies    map[string][]string
 	IdentityApplicationRateLimitPerMinute int
 	IdentityOperationsAccessToken         string
+	IdentitySCIMBearerTokens              map[string]string
 	IdentityWorkspaceID                   string
 	IdentityBrowserApplicationKey         string
 	IdentityBrowserReturnURLs             []string
@@ -237,6 +239,7 @@ func FromEnv() Config {
 		IdentityApplicationServicePolicies:    keyListMapEnv("IDENTITY_APPLICATION_SERVICE_POLICIES"),
 		IdentityApplicationRateLimitPerMinute: intEnv("IDENTITY_APPLICATION_RATE_LIMIT_PER_MINUTE", 1200),
 		IdentityOperationsAccessToken:         strings.TrimSpace(os.Getenv("IDENTITY_OPERATIONS_ACCESS_TOKEN")),
+		IdentitySCIMBearerTokens:              keyMapEnv("IDENTITY_SCIM_BEARER_TOKENS"),
 		IdentityWorkspaceID:                   strings.TrimSpace(os.Getenv("IDENTITY_WORKSPACE_ID")),
 		IdentityBrowserApplicationKey:         env("IDENTITY_BROWSER_APPLICATION_KEY", "domainry-identity-admin"),
 		IdentityBrowserReturnURLs:             csvEnv("IDENTITY_BROWSER_RETURN_URLS", defaultIdentityBrowserReturnURLs(environment)),
@@ -307,6 +310,23 @@ func (c Config) ValidateSecurity() error {
 	}
 	if strings.TrimSpace(c.IdentityOperationsAccessToken) == "" {
 		return fmt.Errorf("IDENTITY_OPERATIONS_ACCESS_TOKEN must be set in production")
+	}
+	seenSCIMTokens := map[string]string{}
+	for workspaceID, token := range c.IdentitySCIMBearerTokens {
+		workspaceID, token = strings.TrimSpace(workspaceID), strings.TrimSpace(token)
+		if _, err := identitymodel.NewWorkspaceID(workspaceID); err != nil {
+			return fmt.Errorf("IDENTITY_SCIM_BEARER_TOKENS workspace %q is invalid", workspaceID)
+		}
+		if len(token) < 32 {
+			return fmt.Errorf("IDENTITY_SCIM_BEARER_TOKENS token for %s must contain at least 32 characters in production", workspaceID)
+		}
+		if previousWorkspace, duplicate := seenSCIMTokens[token]; duplicate {
+			return fmt.Errorf("IDENTITY_SCIM_BEARER_TOKENS must not reuse one token for %s and %s", previousWorkspace, workspaceID)
+		}
+		seenSCIMTokens[token] = workspaceID
+		if token == strings.TrimSpace(c.IdentityOperationsAccessToken) || token == strings.TrimSpace(c.AuthJWTSecret) || token == strings.TrimSpace(c.IdentityDataSecretKey) {
+			return fmt.Errorf("IDENTITY_SCIM_BEARER_TOKENS token for %s must be distinct from operations, JWT, and data secrets", workspaceID)
+		}
 	}
 	if c.IdentityApplicationRateLimitPerMinute <= 0 {
 		return fmt.Errorf("IDENTITY_APPLICATION_RATE_LIMIT_PER_MINUTE must be greater than zero in production")

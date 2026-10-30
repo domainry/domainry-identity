@@ -59,7 +59,7 @@ func (s *Store) ResolveSubject(ctx context.Context, workspaceID, subjectType, su
 
 func (s *Store) PreviewSubject(ctx context.Context, workspaceID, userID string) (json.RawMessage, error) {
 	counts := map[string]int64{}
-	for name, table := range map[string]string{"users": "_identity_users", "credentials": "_identity_credentials", "external_accounts": "_identity_external_accounts", "mfa_factors": "_identity_mfa_factors", "refresh_tokens": "_identity_auth_refresh_tokens", "role_assignments": "_identity_user_role_assignments"} {
+	for name, table := range map[string]string{"users": "_identity_users", "credentials": "_identity_credentials", "external_accounts": "_identity_external_accounts", "mfa_factors": "_identity_mfa_factors", "refresh_tokens": "_identity_auth_refresh_tokens", "role_assignments": "_identity_user_role_assignments", "scim_resources": "_identity_scim_users", "scim_group_memberships": "_identity_scim_group_members"} {
 		column := "user_id"
 		statement, arguments, err := query.NewWorkspaceSelectBuilder(s.store.SQLRenderer(), table, workspaceID).
 			Projections(query.Project(query.CountAll())).Where(query.Equal(column, userID)).Build()
@@ -128,6 +128,10 @@ func (s *Store) exportSubjectRelationships(ctx context.Context, workspaceID, use
 			identityRelationshipSelect(s.store.SQLRenderer(), "_identity_user_role_assignments", workspaceID, []string{"role_id", "binding_key", "profile_id", "source", "status", "valid_from", "valid_until", "granted_by", "grant_reason", "revoked_by", "revoked_at", "revoke_reason"}).Where(query.Equal("user_id", userID)).OrderBy(query.Ascending("role_id"))},
 		{"profile_relations", []string{"binding_key", "object_key", "profile_id", "status", "invitation_channel", "claim_proof_type"},
 			identityRelationshipSelect(s.store.SQLRenderer(), "_identity_profile_bindings", workspaceID, []string{"binding_key", "object_key", "profile_id", "status", "invitation_channel", "claim_proof_type"}).Where(query.Equal("identity_user_id", userID)).OrderBy(query.Ascending("binding_key"), query.Ascending("object_key"), query.Ascending("profile_id"))},
+		{"scim_resources", []string{"external_id", "user_name", "department"},
+			identityRelationshipSelect(s.store.SQLRenderer(), "_identity_scim_users", workspaceID, []string{"external_id", "user_name", "department"}).Where(query.Equal("user_id", userID)).OrderBy(query.Ascending("id"))},
+		{"scim_group_memberships", []string{"group_id"},
+			identityRelationshipSelect(s.store.SQLRenderer(), "_identity_scim_group_members", workspaceID, []string{"group_id"}).Where(query.Equal("user_id", userID)).OrderBy(query.Ascending("group_id"))},
 	}
 	result := make(map[string]any, len(definitions))
 	for _, definition := range definitions {

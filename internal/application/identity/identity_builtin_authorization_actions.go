@@ -72,6 +72,28 @@ func IdentityBuiltinAuthorizationActions() []identitymodel.IdentityActionDefinit
 		authPrincipalAction("auth.role_requests.create", "角色申请", "创建", "POST", "/auth/role-requests", "创建当前用户角色申请"),
 		authPrincipalAction("identity.effective_menus.get", "有效菜单", "获取", "GET", "/identity/effective-menus", "获取当前用户有效菜单"),
 
+		// SCIM authenticates its workspace-scoped bearer inside the protocol
+		// handler. The outer Action stays anonymous for the same reason as the
+		// session validation routes: a human access-token verifier must not
+		// consume or reject a directory provisioning credential first.
+		anonymousAction("identity.scim.service_provider_config.get", "SCIM 协议", "服务配置", "GET", "/scim/v2/ServiceProviderConfig", "读取 SCIM 服务配置"),
+		anonymousAction("identity.scim.resource_types.list", "SCIM 协议", "资源类型列表", "GET", "/scim/v2/ResourceTypes", "列出 SCIM 资源类型"),
+		anonymousAction("identity.scim.resource_types.get", "SCIM 协议", "资源类型", "GET", "/scim/v2/ResourceTypes/{resourceType}", "读取 SCIM 资源类型"),
+		anonymousAction("identity.scim.schemas.list", "SCIM 协议", "Schema 列表", "GET", "/scim/v2/Schemas", "列出 SCIM Schema"),
+		anonymousAction("identity.scim.schemas.get", "SCIM 协议", "Schema", "GET", "/scim/v2/Schemas/{schema}", "读取 SCIM Schema"),
+		anonymousAction("identity.scim.users.list", "SCIM 用户", "列出", "GET", "/scim/v2/Users", "列出 SCIM 用户"),
+		anonymousAction("identity.scim.users.create", "SCIM 用户", "创建", "POST", "/scim/v2/Users", "创建 SCIM 用户"),
+		anonymousAction("identity.scim.users.get", "SCIM 用户", "查看", "GET", "/scim/v2/Users/{resourceID}", "读取 SCIM 用户"),
+		anonymousAction("identity.scim.users.replace", "SCIM 用户", "替换", "PUT", "/scim/v2/Users/{resourceID}", "替换 SCIM 用户"),
+		anonymousAction("identity.scim.users.patch", "SCIM 用户", "更新", "PATCH", "/scim/v2/Users/{resourceID}", "更新 SCIM 用户"),
+		anonymousAction("identity.scim.users.delete", "SCIM 用户", "删除", "DELETE", "/scim/v2/Users/{resourceID}", "停用并删除 SCIM 用户资源"),
+		anonymousAction("identity.scim.groups.list", "SCIM 目录组", "列出", "GET", "/scim/v2/Groups", "列出 SCIM 目录组"),
+		anonymousAction("identity.scim.groups.create", "SCIM 目录组", "创建", "POST", "/scim/v2/Groups", "创建 SCIM 目录组"),
+		anonymousAction("identity.scim.groups.get", "SCIM 目录组", "查看", "GET", "/scim/v2/Groups/{resourceID}", "读取 SCIM 目录组"),
+		anonymousAction("identity.scim.groups.replace", "SCIM 目录组", "替换", "PUT", "/scim/v2/Groups/{resourceID}", "替换 SCIM 目录组"),
+		anonymousAction("identity.scim.groups.patch", "SCIM 目录组", "更新", "PATCH", "/scim/v2/Groups/{resourceID}", "更新 SCIM 目录组成员"),
+		anonymousAction("identity.scim.groups.delete", "SCIM 目录组", "删除", "DELETE", "/scim/v2/Groups/{resourceID}", "删除 SCIM 目录组"),
+
 		permissionAction("identity.organization_units.list", "组织机构管理", "列出", "GET", "/identity/organization-units", "列出组织机构", organizationUnits),
 		permissionAction("identity.organization_units.get", "组织机构管理", "查看", "GET", "/identity/organization-units/{organizationUnitID}", "查看组织机构", nil),
 		permissionAction("identity.organization_units.versions", "组织机构管理", "查看版本", "GET", "/identity/organization-units/{organizationUnitID}/versions", "查看组织机构版本", nil),

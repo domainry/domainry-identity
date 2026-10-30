@@ -10,6 +10,7 @@ import (
 	"github.com/domainry/domainry-foundation/apperror"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	"github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/timevalue"
+	identitytransaction "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/transaction"
 	ormdialect "github.com/domainry/domainry-orm/dialect"
 	"github.com/domainry/domainry-orm/query"
 )
@@ -307,6 +308,14 @@ func (s *Store) UpsertMany(ctx context.Context, workspaceID string, items []iden
 	workspaceID, err := workspace(workspaceID)
 	if err != nil {
 		return err
+	}
+	if executor := identitytransaction.ExecutorFromContext(ctx); executor != nil {
+		for _, item := range items {
+			if err := s.Upsert(ctx, executor, workspaceID, item); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
 	tx, err := s.backend.DB().BeginTx(ctx, nil)
 	if err != nil {

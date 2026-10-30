@@ -22,6 +22,7 @@ import (
 	identityauthoring "github.com/domainry/domainry-identity/internal/application/authoring"
 	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
 	portabilityapplication "github.com/domainry/domainry-identity/internal/application/portability"
+	scimapplication "github.com/domainry/domainry-identity/internal/application/scim"
 	identitycomposition "github.com/domainry/domainry-identity/internal/composition"
 	definitionmodel "github.com/domainry/domainry-identity/internal/domain/definition/model"
 	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
@@ -31,12 +32,14 @@ import (
 	database "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database"
 	identitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/identity"
 	portabilitypersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/portability"
+	scimpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/scim"
 	runtimeactionusage "github.com/domainry/domainry-identity/internal/infrastructure/runtimeactionusage"
 	"github.com/domainry/domainry-identity/internal/platform/config"
 	authhttp "github.com/domainry/domainry-identity/internal/transport/http/auth"
 	identityhttp "github.com/domainry/domainry-identity/internal/transport/http/identity"
 	portabilityhttp "github.com/domainry/domainry-identity/internal/transport/http/portability"
 	remotesdkhttp "github.com/domainry/domainry-identity/internal/transport/http/remotesdk"
+	scimhttp "github.com/domainry/domainry-identity/internal/transport/http/scim"
 	metadatasdk "github.com/domainry/domainry-metadata-sdk"
 )
 
@@ -50,6 +53,7 @@ type Server struct {
 	embeddedPublicAuthRoutes     []string
 	embeddedManagementAuthRoutes []string
 	remoteSDKRoutes              []string
+	embeddedSCIMRoutes           []string
 }
 
 type recordingRouteRegistrar struct {
@@ -346,6 +350,23 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *identitycomposi
 	authRoutes := newRecordingRouteRegistrar(mux, standaloneActions)
 	authHandler.RegisterRoutes(authRoutes)
 
+	scimRoutes := newRecordingRouteRegistrar(mux, standaloneActions)
+	scimService, scimErr := scimapplication.NewService(core.Identity, core.Auth, scimpersistence.NewStore(core.IdentityStore), core.IdentityStore)
+	if scimErr != nil {
+		return nil, fmt.Errorf("assemble SCIM application service: %w", scimErr)
+	}
+	scimHandler, scimErr := scimhttp.NewHandler(scimhttp.Dependencies{
+		Service: scimService, BearerTokens: cfg.IdentitySCIMBearerTokens,
+		WritesFrozen: core.Store.IdentityWritesFrozen, MaxBodyBytes: int64(cfg.HTTPPublicMaxJSONBodyBytes),
+		Audit: func(request *http.Request, event, summary string, metadata map[string]any) {
+			anonymousSecurityAudit(request, event, summary, metadata)
+		},
+	})
+	if scimErr != nil {
+		return nil, fmt.Errorf("assemble SCIM HTTP adapter: %w", scimErr)
+	}
+	scimHandler.RegisterRoutes(scimRoutes)
+
 	objects := func() []definitionmodel.ObjectSchema { return core.MetadataRuntime.Schema().Objects }
 	governance := identityapplication.NewIdentityGovernanceApplicationServiceWithPermissionSource(core.Identity.Repository(), core.Identity.PermissionDefinitions, func() map[string]definitionmodel.ObjectSchema {
 		result := make(map[string]definitionmodel.ObjectSchema, len(objects()))
@@ -436,7 +457,7 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *identitycomposi
 		return nil, fmt.Errorf("resolve embedded browser authentication routes: %w", err)
 	}
 	embeddedPublicAuthRoutes, embeddedManagementAuthRoutes := embeddedAuthRouteInventory(httpSupport.exposures, authRoutes.patterns, embeddedBrowserRoutes)
-	for _, registrar := range []*recordingRouteRegistrar{healthRoutes, portabilityRoutes, authRoutes, identityRoutes, moduleRoutes, directRoutes, remoteSDKRoutes, browserRoutes} {
+	for _, registrar := range []*recordingRouteRegistrar{healthRoutes, portabilityRoutes, authRoutes, scimRoutes, identityRoutes, moduleRoutes, directRoutes, remoteSDKRoutes, browserRoutes} {
 		if registrar.err != nil {
 			return nil, registrar.err
 		}
@@ -446,6 +467,7 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *identitycomposi
 		healthRoutes.patterns,
 		portabilityRoutes.patterns,
 		authRoutes.patterns,
+		scimRoutes.patterns,
 		identityRoutes.patterns,
 		moduleRoutes.patterns,
 		directRoutes.patterns,
@@ -459,6 +481,7 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *identitycomposi
 		embeddedPublicAuthRoutes:     embeddedPublicAuthRoutes,
 		embeddedManagementAuthRoutes: embeddedManagementAuthRoutes,
 		remoteSDKRoutes:              append([]string(nil), remoteSDKRoutes.patterns...),
+		embeddedSCIMRoutes:           append([]string(nil), scimRoutes.patterns...),
 	}, nil
 }
 
@@ -648,6 +671,34 @@ func (s *Server) EmbeddedRemoteSDKRoutes() ([]modulehttp.Route, error) {
 	}
 	return routes, nil
 }
+
+// EmbeddedSCIMRoutes returns the SCIM protocol routes enabled for the module.
+// Each handler authenticates its own workspace-scoped provisioning bearer;
+// the embedding Runtime must therefore mount these anonymous outer Actions
+// without substituting a human session or application-service verifier.
+func (s *Server) EmbeddedSCIMRoutes() ([]modulehttp.Route, error) {
+	if s == nil {
+		return nil, nil
+	}
+	routes := make([]modulehttp.Route, 0, len(s.embeddedSCIMRoutes))
+	for _, pattern := range s.embeddedSCIMRoutes {
+		method, routeTemplate, ok := strings.Cut(strings.TrimSpace(pattern), " ")
+		if !ok {
+			return nil, fmt.Errorf("Identity SCIM route pattern %q is invalid", pattern)
+		}
+		definition, found := s.actions.ResolveHTTP(method, routeTemplate)
+		if !found {
+			return nil, fmt.Errorf("Identity SCIM route %q has no canonical Action", pattern)
+		}
+		route, err := modulehttp.RouteFromAction(definition)
+		if err != nil {
+			return nil, fmt.Errorf("project Identity SCIM route %q: %w", pattern, err)
+		}
+		routes = append(routes, route)
+	}
+	return routes, nil
+}
+
 func (s *Server) SDKBinding() identitysdk.Binding {
 	if s == nil || s.core == nil {
 		return nil

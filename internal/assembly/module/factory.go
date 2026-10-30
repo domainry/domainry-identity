@@ -344,6 +344,15 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 		remoteOnlyRoutes = append(remoteOnlyRoutes, route)
 	}
 	remoteAdapter := modulehttptransport.NewAdapter("identity_remote_sdk", managementServer.Routes(), remoteOnlyRoutes, auditRecorder)
+	scimRoutes, err := managementServer.EmbeddedSCIMRoutes()
+	if err != nil {
+		_ = identityRuntime.CloseContext(ctx)
+		return nil, fmt.Errorf("assemble Identity SCIM adapter: %w", err)
+	}
+	adapters := []identityhttpapi.Adapter{browserAdapter, managementAdapter, remoteAdapter}
+	if len(scimRoutes) != 0 {
+		adapters = append(adapters, modulehttptransport.NewAdapter("identity_scim", managementServer.Routes(), scimRoutes, auditRecorder))
+	}
 	portabilityRepository, err := portabilitypersistence.NewSQLRepository(store)
 	if err != nil {
 		_ = identityRuntime.CloseContext(ctx)
@@ -359,7 +368,7 @@ func (factory *Factory) open(ctx context.Context, application identitysdk.Applic
 		workflowWorkloads = workloadBinding.WorkflowWorkloads()
 	}
 	return &moduleBinding{
-		Binding: scopedBinding, runtime: identityRuntime, application: application, adapters: []identityhttpapi.Adapter{browserAdapter, managementAdapter, remoteAdapter},
+		Binding: scopedBinding, runtime: identityRuntime, application: application, adapters: adapters,
 		portability: &identityPortabilityDataExchangeProvider{service: portabilityService}, workspaceUsage: workspaceUsage,
 		workflowWorkloads: workflowWorkloads, initialCredentialRotation: initialCredentialRotationPolicyFromConfig(cfg.AuthInitialCredentialRotationRequired),
 	}, nil
