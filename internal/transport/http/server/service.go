@@ -221,6 +221,9 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *identitycomposi
 	if err != nil {
 		return nil, fmt.Errorf("configure Identity application service credentials: %w", err)
 	}
+	if err = applicationCredentials.ConfigureGlobalApplicationServices(cfg.IdentityGlobalApplicationServiceCredentials, cfg.IdentityGlobalApplicationServicePolicies); err != nil {
+		return nil, fmt.Errorf("configure Identity global application service credentials: %w", err)
+	}
 	authoringProjection, err := core.IdentityActions.ProjectAuthoringDomain(identitycontract.IdentityAuthoringDomain())
 	if err != nil {
 		return nil, fmt.Errorf("resolve Identity authoring Actions: %w", err)
@@ -451,6 +454,12 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *identitycomposi
 		}
 		browserRoutes.Handle(definition.HTTP.Method+" "+definition.HTTP.RouteTemplate, browserMux)
 	}
+	// The standalone server also publishes the canonical root authorization
+	// endpoint declared by auth.authorize. The /browser-prefixed gateway is the
+	// deployment-specific browser surface; registered applications use the
+	// stable /auth protocol routes and must reach the same handlers.
+	browserRoutes.HandleFunc("GET /auth/authorize", browserGateway.AuthorizeBrowserApplication)
+	browserRoutes.HandleFunc("POST /auth/code/exchange", browserGateway.ExchangeAuthorizationCode)
 	standaloneBrowserRoutes := browserRoutes.patterns
 	embeddedBrowserRoutes, err := browsergateway.RoutePatterns("")
 	if err != nil {

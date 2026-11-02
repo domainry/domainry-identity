@@ -9,8 +9,8 @@ require (
 	github.com/domainry/domainry-audit v0.1.45
 	github.com/domainry/domainry-audit-sdk v0.1.21
 	github.com/domainry/domainry-data-exchange-sdk v0.3.21
-	github.com/domainry/domainry-foundation v0.2.19
-	github.com/domainry/domainry-identity-sdk v0.1.40
+	github.com/domainry/domainry-foundation v0.2.20
+	github.com/domainry/domainry-identity-sdk v0.1.41
 	github.com/domainry/domainry-metadata v0.1.39
 	github.com/domainry/domainry-metadata-sdk v0.1.19
 	github.com/go-sql-driver/mysql v1.10.0
@@ -41,7 +41,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/google/uuid v1.6.0 // indirect
+	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect

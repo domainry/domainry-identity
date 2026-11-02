@@ -91,6 +91,40 @@ func TestApplicationServiceCredentialsLoadAsRedactedKeyMap(t *testing.T) {
 	}
 }
 
+func TestGlobalApplicationServiceCredentialsLoadAsRedactedKeyMap(t *testing.T) {
+	t.Setenv("IDENTITY_GLOBAL_APPLICATION_SERVICE_CREDENTIALS", "verdent-knowledge#global-index=global-knowledge-secret")
+	t.Setenv("IDENTITY_GLOBAL_APPLICATION_SERVICE_POLICIES", "verdent-knowledge=audience:domainry-runtime|grant:enterprise.knowledge.index_target")
+	cfg := FromEnv()
+	if got := cfg.IdentityGlobalApplicationServiceCredentials["verdent-knowledge#global-index"]; got != "global-knowledge-secret" {
+		t.Fatalf("global credential=%q", got)
+	}
+	if got := cfg.IdentityGlobalApplicationServicePolicies["verdent-knowledge"]; !reflect.DeepEqual(got, []string{"audience:domainry-runtime", "grant:enterprise.knowledge.index_target"}) {
+		t.Fatalf("global policy=%v", got)
+	}
+	definition, ok := definitionByName(Definitions(), "IDENTITY_GLOBAL_APPLICATION_SERVICE_CREDENTIALS")
+	if !ok || definition.Type != TypeKeyMap || !definition.Secret || definition.Default != "[REDACTED]" {
+		t.Fatalf("global credential definition=%+v found=%v", definition, ok)
+	}
+}
+
+func TestProductionGlobalApplicationServiceDoesNotRequireBrowserRegistration(t *testing.T) {
+	cfg := Config{
+		Environment: "production", AuthJWTSecret: "jwt-secret", AuthJWTActiveKID: "jwt-1",
+		AuthDefaultPassword: "StrongPassword!", AuthInitialCredentialRotationRequired: true, AuthPasswordMinLength: 12,
+		IdentityDataSecretKey: "integration-secret", IdentityDataActiveKeyID: "data-1",
+		IdentityGlobalApplicationServiceCredentials: map[string]string{
+			"domainry-runtime#knowledge-catalog": "domainry-runtime-global-knowledge-credential",
+		},
+		IdentityGlobalApplicationServicePolicies: map[string][]string{
+			"domainry-runtime": {"audience:verdent-knowledge", "grant:knowledge.library_catalog.read"},
+		},
+	}
+	setValidProductionListeners(&cfg)
+	if err := cfg.ValidateSecurity(); err != nil {
+		t.Fatalf("headless global service application was rejected: %v", err)
+	}
+}
+
 func TestSCIMBearerTokensLoadAsRedactedWorkspaceMap(t *testing.T) {
 	t.Setenv("IDENTITY_SCIM_BEARER_TOKENS", "workspace-a=workspace-a-scim-secret,workspace-b=workspace-b-scim-secret")
 	cfg := FromEnv()

@@ -225,6 +225,20 @@ func TestRemoteSDKBindingAgainstRealIdentityHTTPServer(t *testing.T) {
 	if _, err := resourceServices.Verify(t.Context(), identity.VerifyApplicationServiceTokenRequest{AccessToken: serviceToken.AccessToken, Grant: identity.ApplicationServiceGrant{Resource: "notification_governance", Action: "read"}}); err == nil {
 		t.Fatal("service token authorized an unissued grant")
 	}
+	globalNotificationFactory := identityremote.NewFactory(identityremote.Config{
+		Endpoint: testServer.URL, Issuer: issuer, Audience: "domainry-notification",
+		ServiceAccessToken: notificationCredential, HTTPClient: testServer.Client(),
+	})
+	globalNotificationBinding, err := globalNotificationFactory.Open(t.Context(), identity.ApplicationRef{ApplicationKey: "domainry-notification"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = globalNotificationBinding.Close(t.Context()) })
+	globalResourceServices := globalNotificationBinding.(identity.ApplicationServiceBinding).ApplicationServices()
+	globalPrincipal, err := globalResourceServices.Verify(t.Context(), identity.VerifyApplicationServiceTokenRequest{AccessToken: serviceToken.AccessToken, Grant: grant})
+	if err != nil || globalPrincipal.Application.WorkspaceID != "workspace-primary" || globalPrincipal.SubjectID != "service:orders-runtime" {
+		t.Fatalf("global resource service principal=%+v err=%v", globalPrincipal, err)
+	}
 
 	identitycontracttest.Run(t, identitycontracttest.Fixture{
 		Binding: binding, WorkspaceID: "workspace-primary", ApplicationKey: "orders-runtime", Login: "admin@example.com", Password: "Domainry@2026",

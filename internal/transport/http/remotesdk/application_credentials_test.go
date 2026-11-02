@@ -127,6 +127,96 @@ func TestApplicationCredentialRegistryCapsServiceTokenAudienceAndGrants(t *testi
 	}
 }
 
+func TestGlobalApplicationServiceCredentialScopesTokensByWorkspaceAndPolicy(t *testing.T) {
+	registry, err := NewApplicationCredentialRegistry(nil, nil, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = registry.ConfigureGlobalApplicationServices(
+		map[string]string{"verdent-knowledge#global-index": "global-knowledge-secret"},
+		map[string][]string{"verdent-knowledge": {"audience:domainry-runtime", "grant:enterprise.knowledge.index_target"}},
+	); err != nil {
+		t.Fatal(err)
+	}
+	registry.clock = func() time.Time { return time.Date(2026, 11, 1, 2, 0, 0, 0, time.UTC) }
+	request := identitysdk.ExchangeApplicationServiceTokenRequest{
+		Application: identitysdk.ApplicationRef{WorkspaceID: "workspace-a", ApplicationKey: "verdent-knowledge"},
+		Audience:    "domainry-runtime", Grants: []identitysdk.ApplicationServiceGrant{{Resource: "enterprise.knowledge", Action: "index_target"}},
+	}
+	decision := registry.AuthorizeApplicationServiceRequest("Bearer global-knowledge-secret", request)
+	if !decision.Authenticated || !decision.ServicePolicyAllowed || decision.RateLimited || decision.WorkspaceID != "workspace-a" || decision.CredentialID != "global-index" {
+		t.Fatalf("workspace-a decision=%+v", decision)
+	}
+	if !registry.Active(identitysdk.ApplicationScope{WorkspaceID: "workspace-a", ApplicationKey: "verdent-knowledge"}, "global-index") {
+		t.Fatal("issued global credential ID was not active for resource verification")
+	}
+	if decision = registry.AuthorizeApplicationServiceRequest("Bearer global-knowledge-secret", request); !decision.Authenticated || !decision.RateLimited {
+		t.Fatalf("workspace-a rate limit=%+v", decision)
+	}
+	request.Application.WorkspaceID = "workspace-b"
+	if decision = registry.AuthorizeApplicationServiceRequest("Bearer global-knowledge-secret", request); !decision.Authenticated || !decision.ServicePolicyAllowed || decision.RateLimited {
+		t.Fatalf("workspace-b shared rate bucket or rejected=%+v", decision)
+	}
+	request.Audience = "other-runtime"
+	if decision = registry.AuthorizeApplicationServiceRequest("Bearer global-knowledge-secret", request); !decision.Authenticated || decision.ServicePolicyAllowed {
+		t.Fatalf("global credential escaped audience policy=%+v", decision)
+	}
+}
+
+func TestGlobalApplicationServiceCredentialRejectsScopedSecretReuse(t *testing.T) {
+	registry, err := NewApplicationCredentialRegistry(map[string]string{"workspace-a/verdent-knowledge": "reused-secret"}, nil, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = registry.ConfigureGlobalApplicationServices(
+		map[string]string{"verdent-knowledge#global-index": "reused-secret"},
+		map[string][]string{"verdent-knowledge": {"audience:domainry-runtime", "grant:enterprise.knowledge.index_target"}},
+	)
+	if err == nil {
+		t.Fatal("scoped application secret was reused as a global credential")
+	}
+}
+
+func TestApplicationCredentialRegistryResolvesGlobalVerifierByUniqueResourceCredential(t *testing.T) {
+	registry, err := NewApplicationCredentialRegistry(map[string]string{
+		"workspace-primary/domainry-notification": "notification-secret",
+		"workspace-other/domainry-notification":   "other-notification-secret",
+	}, nil, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decision := registry.AuthorizeAudience("Bearer notification-secret", "domainry-notification")
+	if !decision.Authenticated || decision.RateLimited || decision.WorkspaceID != "workspace-primary" || decision.ApplicationKey != "domainry-notification" {
+		t.Fatalf("global verifier decision = %+v", decision)
+	}
+	if decision := registry.AuthorizeAudience("Bearer notification-secret", "other-runtime"); decision.Authenticated {
+		t.Fatalf("credential escaped its resource audience: %+v", decision)
+	}
+	if decision := registry.AuthorizeAudience("Bearer unknown-secret", "domainry-notification"); decision.Authenticated {
+		t.Fatalf("unknown credential authenticated: %+v", decision)
+	}
+}
+
+func TestApplicationCredentialRegistryAuthorizesGlobalResourceVerifier(t *testing.T) {
+	registry, err := NewApplicationCredentialRegistry(nil, nil, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = registry.ConfigureGlobalApplicationServices(
+		map[string]string{"verdent-knowledge#global-service": "global-knowledge-secret"},
+		map[string][]string{"verdent-knowledge": {"audience:domainry-runtime", "grant:enterprise.knowledge.index_target"}},
+	); err != nil {
+		t.Fatal(err)
+	}
+	decision := registry.AuthorizeAudience("Bearer global-knowledge-secret", "verdent-knowledge")
+	if !decision.Authenticated || !decision.Global || decision.RateLimited || decision.WorkspaceID != "" || decision.ApplicationKey != "verdent-knowledge" || decision.CredentialID != "global-service" {
+		t.Fatalf("global verifier decision=%+v", decision)
+	}
+	if escaped := registry.AuthorizeAudience("Bearer global-knowledge-secret", "other-application"); escaped.Authenticated {
+		t.Fatalf("global verifier escaped its audience: %+v", escaped)
+	}
+}
+
 func TestApplicationCredentialRegistryRejectsInvalidServicePolicies(t *testing.T) {
 	credentials := map[string]string{"workspace-primary/orders-runtime": "service-secret"}
 	for name, policies := range map[string]map[string][]string{

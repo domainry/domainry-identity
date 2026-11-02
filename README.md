@@ -116,6 +116,8 @@ AUTH_JWT_SECRET
 AUTH_DEFAULT_PASSWORD
 IDENTITY_DATA_SECRET_KEY
 IDENTITY_APPLICATION_SERVICE_CREDENTIALS
+IDENTITY_GLOBAL_APPLICATION_SERVICE_CREDENTIALS
+IDENTITY_GLOBAL_APPLICATION_SERVICE_POLICIES
 IDENTITY_APPLICATION_PERMISSION_OWNERS
 IDENTITY_APPLICATION_RATE_LIMIT_PER_MINUTE
 IDENTITY_SCIM_BEARER_TOKENS
@@ -137,6 +139,15 @@ CORS_ALLOWED_ORIGINS
 owner 即使使用有效应用凭证也返回 `identity.permission_source_owner_forbidden`。
 `IDENTITY_APPLICATION_RATE_LIMIT_PER_MINUTE` 为每个已注册应用独立计算的分钟请求上限，
 不会让一个 Runtime 应用耗尽其他应用的额度。
+
+`IDENTITY_GLOBAL_APPLICATION_SERVICE_CREDENTIALS` 仅用于显式注册的全局 SaaS
+应用，格式为 `application#credential-id=token`；对应
+`IDENTITY_GLOBAL_APPLICATION_SERVICE_POLICIES` 必须以
+`application=audience:<resource-app>|grant:<resource>.<action>` 精确限制可申请的
+短期 Token。全局凭据可以为不同 Workspace 申请同一应用的 Token，但不会获得用户
+身份、角色、权限目录写入能力或任意 grant；限流按 Workspace/application 隔离。
+纯服务应用不需要伪造浏览器 Redirect URL 或注册到全局浏览器应用目录；凭据与精确
+Policy 本身就是独立的服务身份注册边界。
 
 ### SCIM 2.0
 

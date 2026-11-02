@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -68,6 +69,65 @@ func TestAuthorizationCodeIsBoundAndConsumedExactlyOnce(t *testing.T) {
 	if persisted == "" || strings.Contains(persisted, "refresh") || strings.Contains(persisted, "access") {
 		t.Fatalf("authorization session was not encrypted: %q", persisted)
 	}
+}
+
+func TestDistinctAuthorizationCodesConsumeConcurrentlyOnSQLite(t *testing.T) {
+	store := openStoreForGeneratedListTest(t)
+	defer store.Close()
+	if err := store.EnsureSchema(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	identityStore, err := identitypersistence.NewSQLIdentityStore(t.Context(), store.DB(), store.PersistenceEngine())
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository := NewAuthStoreWithKeyProvider(identityStore, store.SecretKeyProvider())
+	now := time.Now().UTC()
+	const concurrentCodes = 8
+	values := make([]authmodel.AuthAuthorizationCode, 0, concurrentCodes)
+	for index := 0; index < concurrentCodes; index++ {
+		value := authmodel.AuthAuthorizationCode{
+			Code: "parallel-one-time-code-" + string(rune('a'+index)), WorkspaceID: "workspace-primary", ApplicationKey: "verdent-knowledge",
+			RedirectURL: "http://127.0.0.1:8080/auth/callback", ExpiresAt: now.Add(time.Minute).Format(time.RFC3339Nano),
+			Session: authmodel.AuthSession{WorkspaceID: "workspace-primary", AccessToken: "access", RefreshToken: "refresh"},
+		}
+		if err := repository.CreateAuthAuthorizationCode(t.Context(), value); err != nil {
+			t.Fatal(err)
+		}
+		values = append(values, value)
+	}
+
+	start := make(chan struct{})
+	errors := make(chan error, concurrentCodes)
+	var wait sync.WaitGroup
+	for _, value := range values {
+		value := value
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			<-start
+			_, consumed, err := repository.ConsumeAuthAuthorizationCode(t.Context(), value.WorkspaceID, value.Code, value.ApplicationKey, value.RedirectURL, "", now)
+			if err != nil {
+				errors <- err
+				return
+			}
+			if !consumed {
+				errors <- &authorizationCodeNotConsumedError{code: value.Code}
+			}
+		}()
+	}
+	close(start)
+	wait.Wait()
+	close(errors)
+	for err := range errors {
+		t.Error(err)
+	}
+}
+
+type authorizationCodeNotConsumedError struct{ code string }
+
+func (err *authorizationCodeNotConsumedError) Error() string {
+	return "authorization code was not consumed: " + err.code
 }
 
 func TestAuthorizationCodePKCEFailureDoesNotConsumeCode(t *testing.T) {

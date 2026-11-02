@@ -176,6 +176,13 @@ func RegisterRoutes(registrar RouteRegistrar, binding identitysdk.Binding, suppo
 			return
 		}
 		decision := credentials.Authorize(r.Header.Get("Authorization"), scope)
+		if scope.WorkspaceID == "" {
+			// A global resource application binding has no request-independent
+			// Workspace to put in this header. Its static credential is unique
+			// across the registry and therefore resolves the exact resource
+			// Workspace without trusting an unverified caller-supplied scope.
+			decision = credentials.AuthorizeAudience(r.Header.Get("Authorization"), request.Audience)
+		}
 		writeApplicationCredentialRateLimit(w, decision)
 		if !decision.Authenticated {
 			support.writeError(w, r, http.StatusUnauthorized, "identity.application_service_verifier_invalid")
@@ -193,6 +200,10 @@ func RegisterRoutes(registrar RouteRegistrar, binding identitysdk.Binding, suppo
 		principal, err := authority.VerifyApplicationServiceToken(r.Context(), request)
 		if err != nil {
 			support.writeServiceError(w, r, err)
+			return
+		}
+		if principal.Audience != decision.ApplicationKey || !decision.Global && principal.Application.WorkspaceID != decision.WorkspaceID {
+			support.writeError(w, r, http.StatusUnauthorized, "identity.application_service_verifier_scope_mismatch")
 			return
 		}
 		if !credentials.Active(identitysdk.ApplicationScope{WorkspaceID: principal.Application.WorkspaceID, ApplicationKey: principal.Application.ApplicationKey}, principal.CredentialID) {

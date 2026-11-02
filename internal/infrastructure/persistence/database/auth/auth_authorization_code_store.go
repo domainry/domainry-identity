@@ -95,11 +95,6 @@ func (s AuthStore) ConsumeAuthAuthorizationCode(ctx context.Context, workspaceID
 		now = time.Now().UTC()
 	}
 	nowMillis := now.UTC().UnixMilli()
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return authmodel.AuthSession{}, false, err
-	}
-	defer func() { _ = tx.Rollback() }()
 	conditions := query.And(
 		query.Equal("code_hash", codeHash), query.Equal("application_key", applicationKey), query.Equal("redirect_url", redirectURL),
 		query.Equal("consumed_at", int64(0)), query.GreaterThan("expires_at", nowMillis),
@@ -110,7 +105,7 @@ func (s AuthStore) ConsumeAuthAuthorizationCode(ctx context.Context, workspaceID
 		return authmodel.AuthSession{}, false, buildErr
 	}
 	var envelope, codeChallenge, codeChallengeMethod string
-	if err := tx.QueryRowContext(ctx, selectStatement, selectArgs...).Scan(&envelope, &codeChallenge, &codeChallengeMethod); err != nil {
+	if err := s.db.QueryRowContext(ctx, selectStatement, selectArgs...).Scan(&envelope, &codeChallenge, &codeChallengeMethod); err != nil {
 		if err == sql.ErrNoRows {
 			return authmodel.AuthSession{}, false, nil
 		}
@@ -119,19 +114,12 @@ func (s AuthStore) ConsumeAuthAuthorizationCode(ctx context.Context, workspaceID
 	if !authorizationCodePKCEMatches(codeChallenge, codeChallengeMethod, codeVerifier) {
 		return authmodel.AuthSession{}, false, nil
 	}
-	updateStatement, updateArgs, buildErr := query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_auth_authorization_codes", workspaceID).
-		Set("consumed_at", nowMillis).Where(conditions).Build()
-	if buildErr != nil {
-		return authmodel.AuthSession{}, false, buildErr
-	}
-	result, err := tx.ExecContext(ctx, updateStatement, updateArgs...)
-	if err != nil {
-		return authmodel.AuthSession{}, false, err
-	}
-	count, err := result.RowsAffected()
-	if err != nil || count != 1 {
-		return authmodel.AuthSession{}, false, err
-	}
+	// Decrypt before the atomic consume. SQLite cannot safely upgrade several
+	// concurrent read transactions to writers: parallel browser callbacks used
+	// to leave every transaction holding a shared lock, then fail all but one
+	// UPDATE with SQLITE_BUSY. The conditional UPDATE below is the one-time
+	// consume boundary; decrypting first is safe because no session is returned
+	// unless this caller wins that update.
 	plain, err := s.codeSecrets.Decrypt(ctx, workspaceID, codeHash, envelope)
 	if err != nil {
 		return authmodel.AuthSession{}, false, err
@@ -140,8 +128,21 @@ func (s AuthStore) ConsumeAuthAuthorizationCode(ctx context.Context, workspaceID
 	if err != nil {
 		return authmodel.AuthSession{}, false, err
 	}
-	if err := tx.Commit(); err != nil {
+	updateStatement, updateArgs, buildErr := query.NewWorkspaceUpdateBuilder(s.store.SQLRenderer(), "_identity_auth_authorization_codes", workspaceID).
+		Set("consumed_at", nowMillis).Where(conditions).Build()
+	if buildErr != nil {
+		return authmodel.AuthSession{}, false, buildErr
+	}
+	result, err := s.db.ExecContext(ctx, updateStatement, updateArgs...)
+	if err != nil {
 		return authmodel.AuthSession{}, false, err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return authmodel.AuthSession{}, false, err
+	}
+	if count != 1 {
+		return authmodel.AuthSession{}, false, nil
 	}
 	return session, true, nil
 }

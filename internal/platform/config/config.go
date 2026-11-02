@@ -85,175 +85,179 @@ type Config struct {
 	SkipManifestValidation            bool
 	// AllowEmptyAuthoringManifest is set only by the trusted configuring
 	// Provision lifecycle. It is not loaded from environment configuration.
-	AllowEmptyAuthoringManifest           bool
-	CORSAllowedOrigins                    []string
-	AuthJWTSecret                         string
-	AuthJWTActiveKID                      string
-	AuthJWTVerificationKeys               map[string]string
-	AuthIssuer                            string
-	AuthAudience                          string
-	AuthMarket                            string
-	AuthDefaultPassword                   string
-	AuthInitialCredentialRotationRequired bool
-	AuthPasswordMinLength                 int
-	AuthPasswordRequireUpper              bool
-	AuthPasswordRequireLower              bool
-	AuthPasswordRequireNumber             bool
-	AuthPasswordRequireSymbol             bool
-	AuthAccessTTL                         time.Duration
-	AuthRefreshTTL                        time.Duration
-	AuthMaxLoginFailures                  int
-	AuthLoginLockDuration                 time.Duration
-	AuthOTPResendCooldown                 time.Duration
-	AuthOTPMaxAttempts                    int
-	AuthTOTPLoginMFAWhenEnrolled          bool
-	AuthAllowDevHeaders                   bool
-	AuthExternalAutoCreateUsers           bool
-	AuthFeishuOffboardingEnabled          bool
-	AuthFeishuOffboardingAppID            string
-	AuthFeishuOffboardingTenantKey        string
-	AuthFeishuOffboardingWorkspaceID      string
-	AuthFeishuEventVerificationToken      string
-	AuthFeishuEventEncryptKey             string
-	IdentityApplicationServiceCredentials map[string]string
-	IdentityApplicationPermissionOwners   map[string][]string
-	IdentityApplicationServicePolicies    map[string][]string
-	IdentityApplicationRateLimitPerMinute int
-	IdentityOperationsAccessToken         string
-	IdentitySCIMBearerTokens              map[string]string
-	IdentityWorkspaceID                   string
-	IdentityBrowserApplicationKey         string
-	IdentityBrowserReturnURLs             []string
-	IdentityGlobalBrowserApplications     map[string][]string
-	IdentityGlobalBrowserCredentials      map[string]string
-	IdentityGlobalCatalogSourceOwners     map[string][]string
-	IdentityActionUsageRuntimeURL         string
-	IdentityActionUsageRequestTimeout     time.Duration
-	IdentityActionUsageApplicationKey     string
-	IdentityActionUsageRuntimeAudience    string
-	IdentityActionUsageCredentialID       string
-	IdentityDataSecretKey                 string
-	IdentityDataActiveKeyID               string
-	IdentityDataDecryptOnlyKeys           map[string]string
+	AllowEmptyAuthoringManifest                 bool
+	CORSAllowedOrigins                          []string
+	AuthJWTSecret                               string
+	AuthJWTActiveKID                            string
+	AuthJWTVerificationKeys                     map[string]string
+	AuthIssuer                                  string
+	AuthAudience                                string
+	AuthMarket                                  string
+	AuthDefaultPassword                         string
+	AuthInitialCredentialRotationRequired       bool
+	AuthPasswordMinLength                       int
+	AuthPasswordRequireUpper                    bool
+	AuthPasswordRequireLower                    bool
+	AuthPasswordRequireNumber                   bool
+	AuthPasswordRequireSymbol                   bool
+	AuthAccessTTL                               time.Duration
+	AuthRefreshTTL                              time.Duration
+	AuthMaxLoginFailures                        int
+	AuthLoginLockDuration                       time.Duration
+	AuthOTPResendCooldown                       time.Duration
+	AuthOTPMaxAttempts                          int
+	AuthTOTPLoginMFAWhenEnrolled                bool
+	AuthAllowDevHeaders                         bool
+	AuthExternalAutoCreateUsers                 bool
+	AuthFeishuOffboardingEnabled                bool
+	AuthFeishuOffboardingAppID                  string
+	AuthFeishuOffboardingTenantKey              string
+	AuthFeishuOffboardingWorkspaceID            string
+	AuthFeishuEventVerificationToken            string
+	AuthFeishuEventEncryptKey                   string
+	IdentityApplicationServiceCredentials       map[string]string
+	IdentityApplicationPermissionOwners         map[string][]string
+	IdentityApplicationServicePolicies          map[string][]string
+	IdentityGlobalApplicationServiceCredentials map[string]string
+	IdentityGlobalApplicationServicePolicies    map[string][]string
+	IdentityApplicationRateLimitPerMinute       int
+	IdentityOperationsAccessToken               string
+	IdentitySCIMBearerTokens                    map[string]string
+	IdentityWorkspaceID                         string
+	IdentityBrowserApplicationKey               string
+	IdentityBrowserReturnURLs                   []string
+	IdentityGlobalBrowserApplications           map[string][]string
+	IdentityGlobalBrowserCredentials            map[string]string
+	IdentityGlobalCatalogSourceOwners           map[string][]string
+	IdentityActionUsageRuntimeURL               string
+	IdentityActionUsageRequestTimeout           time.Duration
+	IdentityActionUsageApplicationKey           string
+	IdentityActionUsageRuntimeAudience          string
+	IdentityActionUsageCredentialID             string
+	IdentityDataSecretKey                       string
+	IdentityDataActiveKeyID                     string
+	IdentityDataDecryptOnlyKeys                 map[string]string
 }
 
 func FromEnv() Config {
 	environment := env("APP_ENV", env("GO_ENV", env("NODE_ENV", "development")))
 	return Config{
-		ServiceVersion:                        env("DOMAINRY_IDENTITY_VERSION", env("DOMAINRY_RUNTIME_VERSION", "dev")),
-		ServiceInstanceID:                     env("IDENTITY_INSTANCE_ID", os.Getenv("RUNTIME_INSTANCE_ID")),
-		ProductBrandName:                      productbrand.NameFromEnvironment(),
-		Environment:                           environment,
-		AppLocale:                             env("APP_LOCALE", "en-US"),
-		HTTPBindHost:                          strings.TrimSpace(os.Getenv("HTTP_BIND_HOST")),
-		Port:                                  env("PORT", "8081"),
-		HTTPPublicAddr:                        strings.TrimSpace(os.Getenv("HTTP_PUBLIC_ADDR")),
-		HTTPManagementAddr:                    strings.TrimSpace(os.Getenv("HTTP_MANAGEMENT_ADDR")),
-		HTTPOpsAddr:                           strings.TrimSpace(os.Getenv("HTTP_OPS_ADDR")),
-		HTTPOpsAllowPublicBindBreakGlass:      boolEnv("HTTP_OPS_ALLOW_PUBLIC_BIND_BREAK_GLASS", false),
-		HTTPOpsPublicBindBreakGlassReason:     strings.TrimSpace(os.Getenv("HTTP_OPS_PUBLIC_BIND_BREAK_GLASS_REASON")),
-		HTTPReadHeaderTimeout:                 durationEnv("HTTP_READ_HEADER_TIMEOUT", 5*time.Second),
-		HTTPReadTimeout:                       durationEnv("HTTP_READ_TIMEOUT", 30*time.Second),
-		HTTPWriteTimeout:                      durationEnv("HTTP_WRITE_TIMEOUT", 2*time.Minute),
-		HTTPIdleTimeout:                       durationEnv("HTTP_IDLE_TIMEOUT", time.Minute),
-		HTTPShutdownTimeout:                   durationEnv("HTTP_SHUTDOWN_TIMEOUT", 10*time.Second),
-		HTTPMaxJSONBodyBytes:                  intEnv("HTTP_MAX_JSON_BODY_BYTES", 2<<20),
-		HTTPMaxHeaderBytes:                    intEnv("HTTP_MAX_HEADER_BYTES", 1<<20),
-		HTTPPublicMaxJSONBodyBytes:            intEnv("HTTP_PUBLIC_MAX_JSON_BODY_BYTES", 2<<20),
-		HTTPManagementMaxJSONBodyBytes:        intEnv("HTTP_MANAGEMENT_MAX_JSON_BODY_BYTES", 2<<20),
-		HTTPOpsMaxJSONBodyBytes:               intEnv("HTTP_OPS_MAX_JSON_BODY_BYTES", 1<<20),
-		HTTPPublicRequestTimeout:              durationEnv("HTTP_PUBLIC_REQUEST_TIMEOUT", 30*time.Second),
-		HTTPManagementRequestTimeout:          durationEnv("HTTP_MANAGEMENT_REQUEST_TIMEOUT", 30*time.Second),
-		HTTPOpsRequestTimeout:                 durationEnv("HTTP_OPS_REQUEST_TIMEOUT", 15*time.Second),
-		HTTPPublicRateLimitPerMinute:          intEnv("HTTP_PUBLIC_RATE_LIMIT_PER_MINUTE", 6000),
-		HTTPManagementRateLimitPerMinute:      intEnv("HTTP_MANAGEMENT_RATE_LIMIT_PER_MINUTE", 3000),
-		HTTPOpsRateLimitPerMinute:             intEnv("HTTP_OPS_RATE_LIMIT_PER_MINUTE", 1200),
-		TelemetryExporter:                     env("TELEMETRY_EXPORTER", env("OTEL_TRACES_EXPORTER", "none")),
-		TelemetryEndpoint:                     strings.TrimSpace(env("TELEMETRY_ENDPOINT", os.Getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"))),
-		TelemetryHeaders:                      keyValueEnv("TELEMETRY_HEADERS", os.Getenv("OTEL_EXPORTER_OTLP_HEADERS")),
-		TelemetryInsecure:                     boolEnv("TELEMETRY_INSECURE", false),
-		TelemetrySampleRatio:                  floatEnv("TELEMETRY_SAMPLE_RATIO", 1),
-		TelemetryExportTimeout:                durationEnv("TELEMETRY_EXPORT_TIMEOUT", 5*time.Second),
-		HealthCheckTimeout:                    durationEnv("HEALTH_CHECK_TIMEOUT", 2*time.Second),
-		DatabaseDriver:                        env("DATABASE_DRIVER", "sqlite"),
-		DatabaseDSN:                           env("DATABASE_DSN", ""),
-		DatabaseMigrationDSN:                  strings.TrimSpace(os.Getenv("DATABASE_MIGRATION_DSN")),
-		DatabaseMigrationMode:                 databaseMigrationModeEnv(environment),
-		DatabaseMinSchemaVersion:              strings.TrimSpace(os.Getenv("DATABASE_MIN_SCHEMA_VERSION")),
-		DatabaseMaxSchemaVersion:              strings.TrimSpace(os.Getenv("DATABASE_MAX_SCHEMA_VERSION")),
-		DatabaseConnectionMode:                strings.TrimSpace(os.Getenv("DATABASE_CONNECTION_MODE")),
-		DatabaseSchema:                        strings.TrimSpace(os.Getenv("DATABASE_SCHEMA")),
-		DatabaseMaxOpenConns:                  intEnv("DATABASE_MAX_OPEN_CONNS", 10),
-		DatabaseMaxIdleConns:                  intEnv("DATABASE_MAX_IDLE_CONNS", 5),
-		DatabaseMaxConnections:                intEnv("DATABASE_MAX_CONNECTIONS", 0),
-		DatabaseReservedConnections:           intEnv("DATABASE_RESERVED_CONNECTIONS", 0),
-		ServiceReplicaCount:                   intEnv("IDENTITY_REPLICA_COUNT", intEnv("RUNTIME_REPLICA_COUNT", 1)),
-		DatabaseConnMaxLifetime:               durationEnv("DATABASE_CONN_MAX_LIFETIME", 30*time.Minute),
-		DatabaseConnMaxIdleTime:               durationEnv("DATABASE_CONN_MAX_IDLE_TIME", 5*time.Minute),
-		DatabaseConnectTimeout:                durationEnv("DATABASE_CONNECT_TIMEOUT", 10*time.Second),
-		DatabaseStatementTimeout:              durationEnv("DATABASE_STATEMENT_TIMEOUT", 30*time.Second),
-		DatabaseLockTimeout:                   durationEnv("DATABASE_LOCK_TIMEOUT", 5*time.Second),
-		DatabaseSSLRootCert:                   strings.TrimSpace(os.Getenv("DATABASE_SSL_ROOT_CERT")),
-		DBPath:                                env("APP_DB_PATH", "data/runtime.db"),
-		ManifestPath:                          env("TEMPLATE_MANIFEST", "domainry.template.json"),
-		MigrationDir:                          env("MIGRATION_DIR", "migrations"),
-		MigrationSQL:                          strings.TrimSpace(os.Getenv("MIGRATION_SQL")),
-		MigrationBackupDir:                    env("MIGRATION_BACKUP_DIR", "data/migration-backups"),
-		MigrationBackupEvidencePath:           strings.TrimSpace(os.Getenv("MIGRATION_BACKUP_EVIDENCE_PATH")),
-		MigrationBackupLastSuccessAt:          strings.TrimSpace(os.Getenv("MIGRATION_BACKUP_LAST_SUCCESS_AT")),
-		MigrationRestoreDrillSuccessAt:        strings.TrimSpace(os.Getenv("MIGRATION_RESTORE_DRILL_LAST_SUCCESS_AT")),
-		MigrationOperator:                     env("MIGRATION_OPERATOR", "runtime"),
-		MigrationInstanceID:                   strings.TrimSpace(os.Getenv("MIGRATION_INSTANCE_ID")),
-		SkipManifestValidation:                boolEnv("SKIP_MANIFEST_VALIDATION", false),
-		CORSAllowedOrigins:                    csvEnv("CORS_ALLOWED_ORIGINS", []string{"*"}),
-		AuthJWTSecret:                         env("AUTH_JWT_SECRET", DevJWTSecret),
-		AuthJWTActiveKID:                      env("AUTH_JWT_ACTIVE_KID", "dev-v1"),
-		AuthJWTVerificationKeys:               keyMapEnv("AUTH_JWT_VERIFICATION_KEYS"),
-		AuthIssuer:                            env("AUTH_ISSUER", "http://localhost:8081"),
-		AuthAudience:                          env("AUTH_AUDIENCE", "domainry-runtime"),
-		AuthMarket:                            env("AUTH_MARKET", env("APP_MARKET", "jp")),
-		AuthDefaultPassword:                   env("AUTH_DEFAULT_PASSWORD", DevDefaultAdminPassword),
-		AuthInitialCredentialRotationRequired: boolEnv("AUTH_INITIAL_CREDENTIAL_ROTATION_REQUIRED", true),
-		AuthPasswordMinLength:                 intEnv("AUTH_PASSWORD_MIN_LENGTH", 8),
-		AuthPasswordRequireUpper:              boolEnv("AUTH_PASSWORD_REQUIRE_UPPER", false),
-		AuthPasswordRequireLower:              boolEnv("AUTH_PASSWORD_REQUIRE_LOWER", false),
-		AuthPasswordRequireNumber:             boolEnv("AUTH_PASSWORD_REQUIRE_NUMBER", false),
-		AuthPasswordRequireSymbol:             boolEnv("AUTH_PASSWORD_REQUIRE_SYMBOL", false),
-		AuthAccessTTL:                         durationEnv("AUTH_ACCESS_TTL", 24*time.Hour),
-		AuthRefreshTTL:                        durationEnv("AUTH_REFRESH_TTL", 30*24*time.Hour),
-		AuthMaxLoginFailures:                  intEnv("AUTH_MAX_LOGIN_FAILURES", 5),
-		AuthLoginLockDuration:                 durationEnv("AUTH_LOGIN_LOCK_DURATION", 15*time.Minute),
-		AuthOTPResendCooldown:                 durationEnv("AUTH_OTP_RESEND_COOLDOWN", 60*time.Second),
-		AuthOTPMaxAttempts:                    intEnv("AUTH_OTP_MAX_ATTEMPTS", 5),
-		AuthTOTPLoginMFAWhenEnrolled:          boolEnv("AUTH_TOTP_LOGIN_MFA_WHEN_ENROLLED", false),
-		AuthAllowDevHeaders:                   boolEnv("AUTH_ALLOW_DEV_HEADERS", false),
-		AuthExternalAutoCreateUsers:           boolEnv("AUTH_EXTERNAL_AUTO_CREATE_USERS", false),
-		AuthFeishuOffboardingEnabled:          boolEnv("AUTH_FEISHU_OFFBOARDING_ENABLED", false),
-		AuthFeishuOffboardingAppID:            strings.TrimSpace(os.Getenv("AUTH_FEISHU_OFFBOARDING_APP_ID")),
-		AuthFeishuOffboardingTenantKey:        strings.TrimSpace(os.Getenv("AUTH_FEISHU_OFFBOARDING_TENANT_KEY")),
-		AuthFeishuOffboardingWorkspaceID:      strings.TrimSpace(os.Getenv("AUTH_FEISHU_OFFBOARDING_WORKSPACE_ID")),
-		AuthFeishuEventVerificationToken:      strings.TrimSpace(os.Getenv("AUTH_FEISHU_EVENT_VERIFICATION_TOKEN")),
-		AuthFeishuEventEncryptKey:             strings.TrimSpace(os.Getenv("AUTH_FEISHU_EVENT_ENCRYPT_KEY")),
-		IdentityApplicationServiceCredentials: keyMapEnv("IDENTITY_APPLICATION_SERVICE_CREDENTIALS"),
-		IdentityApplicationPermissionOwners:   keyListMapEnv("IDENTITY_APPLICATION_PERMISSION_OWNERS"),
-		IdentityApplicationServicePolicies:    keyListMapEnv("IDENTITY_APPLICATION_SERVICE_POLICIES"),
-		IdentityApplicationRateLimitPerMinute: intEnv("IDENTITY_APPLICATION_RATE_LIMIT_PER_MINUTE", 1200),
-		IdentityOperationsAccessToken:         strings.TrimSpace(os.Getenv("IDENTITY_OPERATIONS_ACCESS_TOKEN")),
-		IdentitySCIMBearerTokens:              keyMapEnv("IDENTITY_SCIM_BEARER_TOKENS"),
-		IdentityWorkspaceID:                   strings.TrimSpace(os.Getenv("IDENTITY_WORKSPACE_ID")),
-		IdentityBrowserApplicationKey:         env("IDENTITY_BROWSER_APPLICATION_KEY", "domainry-identity-admin"),
-		IdentityBrowserReturnURLs:             csvEnv("IDENTITY_BROWSER_RETURN_URLS", defaultIdentityBrowserReturnURLs(environment)),
-		IdentityGlobalBrowserApplications:     keyListMapEnv("IDENTITY_GLOBAL_BROWSER_APPLICATIONS"),
-		IdentityGlobalBrowserCredentials:      keyMapEnv("IDENTITY_GLOBAL_BROWSER_CREDENTIALS"),
-		IdentityGlobalCatalogSourceOwners:     keyListMapEnv("IDENTITY_GLOBAL_CATALOG_SOURCE_OWNERS"),
-		IdentityActionUsageRuntimeURL:         strings.TrimSpace(os.Getenv("IDENTITY_ACTION_USAGE_RUNTIME_URL")),
-		IdentityActionUsageRequestTimeout:     durationEnv("IDENTITY_ACTION_USAGE_REQUEST_TIMEOUT", 3*time.Second),
-		IdentityActionUsageApplicationKey:     env("IDENTITY_ACTION_USAGE_APPLICATION_KEY", "domainry-identity-control-plane"),
-		IdentityActionUsageRuntimeAudience:    env("IDENTITY_ACTION_USAGE_RUNTIME_AUDIENCE", "domainry-runtime"),
-		IdentityActionUsageCredentialID:       env("IDENTITY_ACTION_USAGE_CREDENTIAL_ID", "identity-action-usage"),
-		IdentityDataSecretKey:                 env("IDENTITY_DATA_SECRET_KEY", DevIdentityDataSecret),
-		IdentityDataActiveKeyID:               env("IDENTITY_DATA_ACTIVE_KEY_ID", "dev-v1"),
-		IdentityDataDecryptOnlyKeys:           keyMapEnv("IDENTITY_DATA_DECRYPT_ONLY_KEYS"),
+		ServiceVersion:                              env("DOMAINRY_IDENTITY_VERSION", env("DOMAINRY_RUNTIME_VERSION", "dev")),
+		ServiceInstanceID:                           env("IDENTITY_INSTANCE_ID", os.Getenv("RUNTIME_INSTANCE_ID")),
+		ProductBrandName:                            productbrand.NameFromEnvironment(),
+		Environment:                                 environment,
+		AppLocale:                                   env("APP_LOCALE", "en-US"),
+		HTTPBindHost:                                strings.TrimSpace(os.Getenv("HTTP_BIND_HOST")),
+		Port:                                        env("PORT", "8081"),
+		HTTPPublicAddr:                              strings.TrimSpace(os.Getenv("HTTP_PUBLIC_ADDR")),
+		HTTPManagementAddr:                          strings.TrimSpace(os.Getenv("HTTP_MANAGEMENT_ADDR")),
+		HTTPOpsAddr:                                 strings.TrimSpace(os.Getenv("HTTP_OPS_ADDR")),
+		HTTPOpsAllowPublicBindBreakGlass:            boolEnv("HTTP_OPS_ALLOW_PUBLIC_BIND_BREAK_GLASS", false),
+		HTTPOpsPublicBindBreakGlassReason:           strings.TrimSpace(os.Getenv("HTTP_OPS_PUBLIC_BIND_BREAK_GLASS_REASON")),
+		HTTPReadHeaderTimeout:                       durationEnv("HTTP_READ_HEADER_TIMEOUT", 5*time.Second),
+		HTTPReadTimeout:                             durationEnv("HTTP_READ_TIMEOUT", 30*time.Second),
+		HTTPWriteTimeout:                            durationEnv("HTTP_WRITE_TIMEOUT", 2*time.Minute),
+		HTTPIdleTimeout:                             durationEnv("HTTP_IDLE_TIMEOUT", time.Minute),
+		HTTPShutdownTimeout:                         durationEnv("HTTP_SHUTDOWN_TIMEOUT", 10*time.Second),
+		HTTPMaxJSONBodyBytes:                        intEnv("HTTP_MAX_JSON_BODY_BYTES", 2<<20),
+		HTTPMaxHeaderBytes:                          intEnv("HTTP_MAX_HEADER_BYTES", 1<<20),
+		HTTPPublicMaxJSONBodyBytes:                  intEnv("HTTP_PUBLIC_MAX_JSON_BODY_BYTES", 2<<20),
+		HTTPManagementMaxJSONBodyBytes:              intEnv("HTTP_MANAGEMENT_MAX_JSON_BODY_BYTES", 2<<20),
+		HTTPOpsMaxJSONBodyBytes:                     intEnv("HTTP_OPS_MAX_JSON_BODY_BYTES", 1<<20),
+		HTTPPublicRequestTimeout:                    durationEnv("HTTP_PUBLIC_REQUEST_TIMEOUT", 30*time.Second),
+		HTTPManagementRequestTimeout:                durationEnv("HTTP_MANAGEMENT_REQUEST_TIMEOUT", 30*time.Second),
+		HTTPOpsRequestTimeout:                       durationEnv("HTTP_OPS_REQUEST_TIMEOUT", 15*time.Second),
+		HTTPPublicRateLimitPerMinute:                intEnv("HTTP_PUBLIC_RATE_LIMIT_PER_MINUTE", 6000),
+		HTTPManagementRateLimitPerMinute:            intEnv("HTTP_MANAGEMENT_RATE_LIMIT_PER_MINUTE", 3000),
+		HTTPOpsRateLimitPerMinute:                   intEnv("HTTP_OPS_RATE_LIMIT_PER_MINUTE", 1200),
+		TelemetryExporter:                           env("TELEMETRY_EXPORTER", env("OTEL_TRACES_EXPORTER", "none")),
+		TelemetryEndpoint:                           strings.TrimSpace(env("TELEMETRY_ENDPOINT", os.Getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"))),
+		TelemetryHeaders:                            keyValueEnv("TELEMETRY_HEADERS", os.Getenv("OTEL_EXPORTER_OTLP_HEADERS")),
+		TelemetryInsecure:                           boolEnv("TELEMETRY_INSECURE", false),
+		TelemetrySampleRatio:                        floatEnv("TELEMETRY_SAMPLE_RATIO", 1),
+		TelemetryExportTimeout:                      durationEnv("TELEMETRY_EXPORT_TIMEOUT", 5*time.Second),
+		HealthCheckTimeout:                          durationEnv("HEALTH_CHECK_TIMEOUT", 2*time.Second),
+		DatabaseDriver:                              env("DATABASE_DRIVER", "sqlite"),
+		DatabaseDSN:                                 env("DATABASE_DSN", ""),
+		DatabaseMigrationDSN:                        strings.TrimSpace(os.Getenv("DATABASE_MIGRATION_DSN")),
+		DatabaseMigrationMode:                       databaseMigrationModeEnv(environment),
+		DatabaseMinSchemaVersion:                    strings.TrimSpace(os.Getenv("DATABASE_MIN_SCHEMA_VERSION")),
+		DatabaseMaxSchemaVersion:                    strings.TrimSpace(os.Getenv("DATABASE_MAX_SCHEMA_VERSION")),
+		DatabaseConnectionMode:                      strings.TrimSpace(os.Getenv("DATABASE_CONNECTION_MODE")),
+		DatabaseSchema:                              strings.TrimSpace(os.Getenv("DATABASE_SCHEMA")),
+		DatabaseMaxOpenConns:                        intEnv("DATABASE_MAX_OPEN_CONNS", 10),
+		DatabaseMaxIdleConns:                        intEnv("DATABASE_MAX_IDLE_CONNS", 5),
+		DatabaseMaxConnections:                      intEnv("DATABASE_MAX_CONNECTIONS", 0),
+		DatabaseReservedConnections:                 intEnv("DATABASE_RESERVED_CONNECTIONS", 0),
+		ServiceReplicaCount:                         intEnv("IDENTITY_REPLICA_COUNT", intEnv("RUNTIME_REPLICA_COUNT", 1)),
+		DatabaseConnMaxLifetime:                     durationEnv("DATABASE_CONN_MAX_LIFETIME", 30*time.Minute),
+		DatabaseConnMaxIdleTime:                     durationEnv("DATABASE_CONN_MAX_IDLE_TIME", 5*time.Minute),
+		DatabaseConnectTimeout:                      durationEnv("DATABASE_CONNECT_TIMEOUT", 10*time.Second),
+		DatabaseStatementTimeout:                    durationEnv("DATABASE_STATEMENT_TIMEOUT", 30*time.Second),
+		DatabaseLockTimeout:                         durationEnv("DATABASE_LOCK_TIMEOUT", 5*time.Second),
+		DatabaseSSLRootCert:                         strings.TrimSpace(os.Getenv("DATABASE_SSL_ROOT_CERT")),
+		DBPath:                                      env("APP_DB_PATH", "data/runtime.db"),
+		ManifestPath:                                env("TEMPLATE_MANIFEST", "domainry.template.json"),
+		MigrationDir:                                env("MIGRATION_DIR", "migrations"),
+		MigrationSQL:                                strings.TrimSpace(os.Getenv("MIGRATION_SQL")),
+		MigrationBackupDir:                          env("MIGRATION_BACKUP_DIR", "data/migration-backups"),
+		MigrationBackupEvidencePath:                 strings.TrimSpace(os.Getenv("MIGRATION_BACKUP_EVIDENCE_PATH")),
+		MigrationBackupLastSuccessAt:                strings.TrimSpace(os.Getenv("MIGRATION_BACKUP_LAST_SUCCESS_AT")),
+		MigrationRestoreDrillSuccessAt:              strings.TrimSpace(os.Getenv("MIGRATION_RESTORE_DRILL_LAST_SUCCESS_AT")),
+		MigrationOperator:                           env("MIGRATION_OPERATOR", "runtime"),
+		MigrationInstanceID:                         strings.TrimSpace(os.Getenv("MIGRATION_INSTANCE_ID")),
+		SkipManifestValidation:                      boolEnv("SKIP_MANIFEST_VALIDATION", false),
+		CORSAllowedOrigins:                          csvEnv("CORS_ALLOWED_ORIGINS", []string{"*"}),
+		AuthJWTSecret:                               env("AUTH_JWT_SECRET", DevJWTSecret),
+		AuthJWTActiveKID:                            env("AUTH_JWT_ACTIVE_KID", "dev-v1"),
+		AuthJWTVerificationKeys:                     keyMapEnv("AUTH_JWT_VERIFICATION_KEYS"),
+		AuthIssuer:                                  env("AUTH_ISSUER", "http://localhost:8081"),
+		AuthAudience:                                env("AUTH_AUDIENCE", "domainry-runtime"),
+		AuthMarket:                                  env("AUTH_MARKET", env("APP_MARKET", "jp")),
+		AuthDefaultPassword:                         env("AUTH_DEFAULT_PASSWORD", DevDefaultAdminPassword),
+		AuthInitialCredentialRotationRequired:       boolEnv("AUTH_INITIAL_CREDENTIAL_ROTATION_REQUIRED", true),
+		AuthPasswordMinLength:                       intEnv("AUTH_PASSWORD_MIN_LENGTH", 8),
+		AuthPasswordRequireUpper:                    boolEnv("AUTH_PASSWORD_REQUIRE_UPPER", false),
+		AuthPasswordRequireLower:                    boolEnv("AUTH_PASSWORD_REQUIRE_LOWER", false),
+		AuthPasswordRequireNumber:                   boolEnv("AUTH_PASSWORD_REQUIRE_NUMBER", false),
+		AuthPasswordRequireSymbol:                   boolEnv("AUTH_PASSWORD_REQUIRE_SYMBOL", false),
+		AuthAccessTTL:                               durationEnv("AUTH_ACCESS_TTL", 24*time.Hour),
+		AuthRefreshTTL:                              durationEnv("AUTH_REFRESH_TTL", 30*24*time.Hour),
+		AuthMaxLoginFailures:                        intEnv("AUTH_MAX_LOGIN_FAILURES", 5),
+		AuthLoginLockDuration:                       durationEnv("AUTH_LOGIN_LOCK_DURATION", 15*time.Minute),
+		AuthOTPResendCooldown:                       durationEnv("AUTH_OTP_RESEND_COOLDOWN", 60*time.Second),
+		AuthOTPMaxAttempts:                          intEnv("AUTH_OTP_MAX_ATTEMPTS", 5),
+		AuthTOTPLoginMFAWhenEnrolled:                boolEnv("AUTH_TOTP_LOGIN_MFA_WHEN_ENROLLED", false),
+		AuthAllowDevHeaders:                         boolEnv("AUTH_ALLOW_DEV_HEADERS", false),
+		AuthExternalAutoCreateUsers:                 boolEnv("AUTH_EXTERNAL_AUTO_CREATE_USERS", false),
+		AuthFeishuOffboardingEnabled:                boolEnv("AUTH_FEISHU_OFFBOARDING_ENABLED", false),
+		AuthFeishuOffboardingAppID:                  strings.TrimSpace(os.Getenv("AUTH_FEISHU_OFFBOARDING_APP_ID")),
+		AuthFeishuOffboardingTenantKey:              strings.TrimSpace(os.Getenv("AUTH_FEISHU_OFFBOARDING_TENANT_KEY")),
+		AuthFeishuOffboardingWorkspaceID:            strings.TrimSpace(os.Getenv("AUTH_FEISHU_OFFBOARDING_WORKSPACE_ID")),
+		AuthFeishuEventVerificationToken:            strings.TrimSpace(os.Getenv("AUTH_FEISHU_EVENT_VERIFICATION_TOKEN")),
+		AuthFeishuEventEncryptKey:                   strings.TrimSpace(os.Getenv("AUTH_FEISHU_EVENT_ENCRYPT_KEY")),
+		IdentityApplicationServiceCredentials:       keyMapEnv("IDENTITY_APPLICATION_SERVICE_CREDENTIALS"),
+		IdentityApplicationPermissionOwners:         keyListMapEnv("IDENTITY_APPLICATION_PERMISSION_OWNERS"),
+		IdentityApplicationServicePolicies:          keyListMapEnv("IDENTITY_APPLICATION_SERVICE_POLICIES"),
+		IdentityGlobalApplicationServiceCredentials: keyMapEnv("IDENTITY_GLOBAL_APPLICATION_SERVICE_CREDENTIALS"),
+		IdentityGlobalApplicationServicePolicies:    keyListMapEnv("IDENTITY_GLOBAL_APPLICATION_SERVICE_POLICIES"),
+		IdentityApplicationRateLimitPerMinute:       intEnv("IDENTITY_APPLICATION_RATE_LIMIT_PER_MINUTE", 1200),
+		IdentityOperationsAccessToken:               strings.TrimSpace(os.Getenv("IDENTITY_OPERATIONS_ACCESS_TOKEN")),
+		IdentitySCIMBearerTokens:                    keyMapEnv("IDENTITY_SCIM_BEARER_TOKENS"),
+		IdentityWorkspaceID:                         strings.TrimSpace(os.Getenv("IDENTITY_WORKSPACE_ID")),
+		IdentityBrowserApplicationKey:               env("IDENTITY_BROWSER_APPLICATION_KEY", "domainry-identity-admin"),
+		IdentityBrowserReturnURLs:                   csvEnv("IDENTITY_BROWSER_RETURN_URLS", defaultIdentityBrowserReturnURLs(environment)),
+		IdentityGlobalBrowserApplications:           keyListMapEnv("IDENTITY_GLOBAL_BROWSER_APPLICATIONS"),
+		IdentityGlobalBrowserCredentials:            keyMapEnv("IDENTITY_GLOBAL_BROWSER_CREDENTIALS"),
+		IdentityGlobalCatalogSourceOwners:           keyListMapEnv("IDENTITY_GLOBAL_CATALOG_SOURCE_OWNERS"),
+		IdentityActionUsageRuntimeURL:               strings.TrimSpace(os.Getenv("IDENTITY_ACTION_USAGE_RUNTIME_URL")),
+		IdentityActionUsageRequestTimeout:           durationEnv("IDENTITY_ACTION_USAGE_REQUEST_TIMEOUT", 3*time.Second),
+		IdentityActionUsageApplicationKey:           env("IDENTITY_ACTION_USAGE_APPLICATION_KEY", "domainry-identity-control-plane"),
+		IdentityActionUsageRuntimeAudience:          env("IDENTITY_ACTION_USAGE_RUNTIME_AUDIENCE", "domainry-runtime"),
+		IdentityActionUsageCredentialID:             env("IDENTITY_ACTION_USAGE_CREDENTIAL_ID", "identity-action-usage"),
+		IdentityDataSecretKey:                       env("IDENTITY_DATA_SECRET_KEY", DevIdentityDataSecret),
+		IdentityDataActiveKeyID:                     env("IDENTITY_DATA_ACTIVE_KEY_ID", "dev-v1"),
+		IdentityDataDecryptOnlyKeys:                 keyMapEnv("IDENTITY_DATA_DECRYPT_ONLY_KEYS"),
 	}
 }
 
@@ -353,6 +357,40 @@ func (c Config) ValidateSecurity() error {
 			return fmt.Errorf("IDENTITY_APPLICATION_SERVICE_CREDENTIALS credential for %s must be independent from operations, JWT, and data-encryption secrets", scope)
 		}
 		seenApplicationCredentials[credential] = scope
+	}
+	globalApplicationCredentialScopes := make([]string, 0, len(c.IdentityGlobalApplicationServiceCredentials))
+	for scope := range c.IdentityGlobalApplicationServiceCredentials {
+		globalApplicationCredentialScopes = append(globalApplicationCredentialScopes, scope)
+	}
+	sort.Strings(globalApplicationCredentialScopes)
+	globalApplications := map[string]struct{}{}
+	for _, scope := range globalApplicationCredentialScopes {
+		credential := strings.TrimSpace(c.IdentityGlobalApplicationServiceCredentials[scope])
+		applicationScope, _, _ := strings.Cut(strings.TrimSpace(scope), "#")
+		applicationKey := strings.TrimSpace(applicationScope)
+		if !identitysdk.ApplicationKey(applicationKey).Valid() || credential == "" {
+			return fmt.Errorf("IDENTITY_GLOBAL_APPLICATION_SERVICE_CREDENTIALS contains invalid scope %q or an empty credential", scope)
+		}
+		if c.IsProduction() && len(credential) < 32 {
+			return fmt.Errorf("IDENTITY_GLOBAL_APPLICATION_SERVICE_CREDENTIALS credential for %s must contain at least 32 characters in production", scope)
+		}
+		if previousScope, duplicate := seenApplicationCredentials[credential]; duplicate {
+			return fmt.Errorf("Identity application service credential must not be reused by %s and %s", previousScope, scope)
+		}
+		if credential == strings.TrimSpace(c.IdentityOperationsAccessToken) || credential == strings.TrimSpace(c.AuthJWTSecret) || credential == strings.TrimSpace(c.IdentityDataSecretKey) {
+			return fmt.Errorf("IDENTITY_GLOBAL_APPLICATION_SERVICE_CREDENTIALS credential for %s must be independent from operations, JWT, and data-encryption secrets", scope)
+		}
+		seenApplicationCredentials[credential] = scope
+		globalApplications[applicationKey] = struct{}{}
+	}
+	for applicationKey, policy := range c.IdentityGlobalApplicationServicePolicies {
+		applicationKey = strings.TrimSpace(applicationKey)
+		if _, registered := globalApplications[applicationKey]; !registered {
+			return fmt.Errorf("IDENTITY_GLOBAL_APPLICATION_SERVICE_POLICIES application %q has no global service credential", applicationKey)
+		}
+		if len(policy) == 0 {
+			return fmt.Errorf("IDENTITY_GLOBAL_APPLICATION_SERVICE_POLICIES application %q is empty", applicationKey)
+		}
 	}
 	for _, redirectURL := range c.IdentityBrowserReturnURLs {
 		if err := validateProductionRedirectURL("IDENTITY_BROWSER_RETURN_URLS", redirectURL); err != nil {
