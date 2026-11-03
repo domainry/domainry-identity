@@ -54,7 +54,7 @@ Do not infer authorization from menu visibility, Role name, seniority, or fronte
     "initial_workspace_administrator_role": "workspace_admin"
   },
   "roles": [
-    {"key":"workspace_admin","name":"Workspace administrator","audience":"user","assignment_mode":"manual","provision_to_workspaces":true,"permissions":[{"permission_key":"lead.read","data_scope":"all"},{"permission_key":"lead.update","data_scope":"all"}]},
+    {"key":"workspace_admin","name":"Workspace administrator","audience":"user","assignment_mode":"manual","permissions":[{"permission_key":"lead.read","data_scope":"all"},{"permission_key":"lead.update","data_scope":"all"}]},
     {"key":"sales_rep","name":"Sales representative","audience":"user","assignment_mode":"manual","permissions":[{"permission_key":"lead.read","data_scope":"owner"},{"permission_key":"lead.update","data_scope":"owner"}]},
     {"key":"store_operator","name":"Store operator","audience":"user","assignment_mode":"manual","permissions":[{"permission_key":"sales_order.read","data_scope":"org"},{"permission_key":"sales_order.update","data_scope":"org"}]},
     {"key":"regional_manager","name":"Regional manager","audience":"user","assignment_mode":"manual","permissions":[{"permission_key":"lead.read","data_scope":"org_child"}]},

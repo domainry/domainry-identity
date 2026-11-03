@@ -1,9 +1,9 @@
-# Workspace Identity bootstrap V1
+# Workspace Identity bootstrap V5
 
 Identity implements one trusted bootstrap protocol:
 
-- version: `domainry-workspace-identity-bootstrap-v1`
-- hash: `2437c3597855a0985c63d82bc4f524e4e28053ba54d956c790262a1500d7c53c`
+- version: `domainry-workspace-identity-bootstrap-v5`
+- hash: `09d8c1814de8b9a8b0e19c65e3bba2aeb863d6bebf89b0e2f3e2c37ee22cb13c`
 
 The Runtime opens `BootstrapBinding`, binds its application-owned
 `ProjectRoleCatalog`, and then calls `BootstrapWorkspaceIdentity` inside the
@@ -11,11 +11,11 @@ host-owned transaction. The catalog must name
 `InitialWorkspaceAdministratorRoleKey` explicitly. Identity does not infer an
 administrator from role names or catalog shape.
 
-Every role with `provision_to_workspaces=true` is materialized when it is a
-human role: audience `any`, `user`, or `business_profile`, and assignment mode
-`manual` or `request_only`. The initial administrator role must additionally
-have audience `any` or `user`, assignment mode `manual`, and no required
-binding. Service/system roles marked for Workspace provisioning fail closed.
+Every human role is materialized when its audience is `any`, `user`, or
+`business_profile` and its assignment mode is `manual` or `request_only`. The
+initial administrator role must additionally have audience `any` or `user`,
+assignment mode `manual`, and no required binding. Service/system roles are not
+part of Workspace bootstrap.
 
 Identity and the SDK use the same canonical catalog digest helper. The digest
 covers the complete selected authorization definitions and the explicit

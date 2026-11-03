@@ -85,22 +85,18 @@ func TestIdentityRoleAuthoringContractsPublishExactHTTPShapes(t *testing.T) {
 	if _, exposed := rolePayload.Properties["platform_role_extension"]; exposed {
 		t.Fatal("role authoring contract exposes internal platform_role_extension")
 	}
-	for _, field := range []string{"permission_set_keys", "permission_set_group_keys", "guardrail_keys", "provision_to_workspaces"} {
+	for _, field := range []string{"permission_set_keys", "permission_set_group_keys", "guardrail_keys"} {
 		if _, ok := rolePayload.Properties[field]; !ok {
 			t.Fatalf("role authoring contract missing %s", field)
 		}
 	}
-	if field := rolePayload.Properties["provision_to_workspaces"]; field.Type != "boolean" || field.Default != false {
-		t.Fatalf("role workspace provisioning field=%#v", field)
+	if _, exposed := rolePayload.Properties["provision_to_workspaces"]; exposed {
+		t.Fatal("role authoring contract exposes retired provision_to_workspaces")
 	}
-	parameterFound := false
 	for _, parameter := range role.Parameters {
 		if parameter.Key == "provision_to_workspaces" {
-			parameterFound = parameter.Type == "boolean" && parameter.Default == false
+			t.Fatal("role authoring parameters expose retired provision_to_workspaces")
 		}
-	}
-	if !parameterFound {
-		t.Fatalf("role authoring parameters omit provision_to_workspaces: %#v", role.Parameters)
 	}
 	permission := IdentityRolePermissionAuthoringCapability()
 	if permission.InputSchema == nil || permission.OutputSchema == nil || len(permission.ReferenceContracts) != 2 || permission.ResourceOperations != nil || permission.Execution.ChangeControl != "direct_audited_versioned_metadata" {
