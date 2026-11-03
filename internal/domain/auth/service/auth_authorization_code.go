@@ -160,5 +160,7 @@ func pkceS256(verifier string) string {
 
 func validAuthorizationRedirectURL(raw string) bool {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
-	return err == nil && parsed.IsAbs() && parsed.User == nil && parsed.Fragment == "" && (parsed.Scheme == "https" || parsed.Scheme == "http" && (parsed.Hostname() == "localhost" || parsed.Hostname() == "127.0.0.1"))
+	// The registered callback is checked before issuance and bound to the code
+	// during exchange. Apply the same HTTP/HTTPS syntax as registration.
+	return err == nil && parsed.IsAbs() && parsed.Host != "" && parsed.User == nil && parsed.Fragment == "" && (parsed.Scheme == "https" || parsed.Scheme == "http")
 }
