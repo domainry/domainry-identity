@@ -128,7 +128,7 @@ func TestAuthProviderSetupResultCoversProviderKindsAndWrappers(t *testing.T) {
 	if !ok {
 		t.Fatal("disabled provider not found")
 	}
-	disabledResult := handler.authProviderSetupResult(disabled)
+	disabledResult := handler.authProviderSetupResult(t.Context(), disabled)
 	if disabledResult["status"] != "blocked_missing_configuration" || disabledResult["redirect_url"] != "" || disabledResult["scope"] != "" {
 		t.Fatalf("disabled result = %#v", disabledResult)
 	}
@@ -137,7 +137,7 @@ func TestAuthProviderSetupResultCoversProviderKindsAndWrappers(t *testing.T) {
 	if !enabled || github.Key != "github" {
 		t.Fatalf("enabled provider = %#v enabled=%v", github, enabled)
 	}
-	manual := handler.authProviderSetupResult(github)
+	manual := handler.authProviderSetupResult(t.Context(), github)
 	remote := manual["remote_check"].(map[string]any)
 	if manual["status"] != "configured_manual_provider_review_required" || remote["status"] != "not_implemented_for_provider" {
 		t.Fatalf("manual result = %#v", manual)
@@ -149,7 +149,7 @@ func TestAuthProviderSetupResultCoversProviderKindsAndWrappers(t *testing.T) {
 	}
 
 	otp := authmodel.AuthProviderConfig{Key: "whatsapp", Label: "WhatsApp", Type: "otp", Enabled: true, OTPProvider: "meta"}
-	otpResult := handler.authProviderSetupResult(otp)
+	otpResult := handler.authProviderSetupResult(t.Context(), otp)
 	checks := otpResult["checks"].([]map[string]any)
 	steps := otpResult["next_steps"].([]string)
 	if len(checks) != 2 || checks[0]["ok"] != true || checks[1]["ok"] != false || len(steps) != 1 || steps[0] != "configure_connection_key" {

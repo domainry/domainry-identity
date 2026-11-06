@@ -321,7 +321,7 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *identitycomposi
 		FeishuEventPolicy: identityprovider.FeishuEventPolicy{Enabled: cfg.AuthFeishuOffboardingEnabled, AppID: cfg.AuthFeishuOffboardingAppID, TenantKey: cfg.AuthFeishuOffboardingTenantKey, WorkspaceID: cfg.AuthFeishuOffboardingWorkspaceID, VerificationToken: cfg.AuthFeishuEventVerificationToken, EncryptKey: cfg.AuthFeishuEventEncryptKey},
 		FeishuOffboarding: authapplication.FeishuOffboardingService{Auth: core.Auth, Identity: core.Identity, WorkspaceID: cfg.AuthFeishuOffboardingWorkspaceID},
 		Passwords:         core.Auth, ExternalAccounts: core.Auth, RoleRequests: core.Identity,
-		ProviderConfiguration: core.ProviderConfiguration, ProviderFlows: core.ProviderFlows, ProviderCallback: identityprovider.CallbackAdapter{},
+		ProviderConfiguration: core.ProviderConfiguration, ProviderFlows: core.ProviderFlows, ProviderCallback: identityprovider.CallbackAdapter{}, ProviderPassword: identityprovider.LDAPPasswordAdapter{},
 		Principal: httpSupport.principal, WriteJSON: httpSupport.writeJSON, WriteError: httpSupport.writeError,
 		WriteServiceError: httpSupport.writeServiceError, DecodeJSON: httpSupport.decodeJSON,
 		ActionAuthorization: actionAuthorization,

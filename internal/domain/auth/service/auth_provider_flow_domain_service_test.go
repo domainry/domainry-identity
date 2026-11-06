@@ -11,12 +11,50 @@ import (
 	"net/url"
 	"testing"
 
+	authcontract "github.com/domainry/domainry-identity/internal/domain/auth/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
 
 type authProviderCallbackAdapterProbe struct {
 	called bool
 	input  authmodel.AuthProviderCallbackInput
+}
+
+type authProviderPasswordAdapterStub struct {
+	assertion authmodel.AuthExternalIdentityAssertion
+	err       error
+}
+
+func (stub authProviderPasswordAdapterStub) Authenticate(context.Context, string, authmodel.AuthProviderConfig, string, string) (authmodel.AuthExternalIdentityAssertion, error) {
+	return stub.assertion, stub.err
+}
+
+func (authProviderPasswordAdapterStub) Probe(context.Context, authmodel.AuthProviderConfig) error {
+	return nil
+}
+
+func TestLDAPProviderPasswordLoginReusesVerifiedExternalIdentityProvisioning(t *testing.T) {
+	auth, identityRepository, authRepository := newFaultAuthDomainService()
+	providers := NewAuthProviderDomainService([]map[string]any{{
+		"key": "ldap", "label": "AD / LDAP", "type": "ldap", "enabled": true,
+		"auto_create_users": true, "default_role_key": "sales",
+	}}, true)
+	flows := NewAuthProviderFlowDomainService(auth, providers)
+	assertion := authmodel.AuthExternalIdentityAssertion{
+		Provider: "ldap", Subject: "objectguid:stable-user-id", Email: "employee@example.test",
+		DisplayName: "Directory Employee", ProviderSubjectVerified: true,
+	}
+	session, err := flows.LoginWithProviderPassword(t.Context(), "workspace-application", "ldap", "employee", "secret", "enterprise", authProviderPasswordAdapterStub{assertion: assertion})
+	if err != nil || session.User.Email != assertion.Email || len(session.AuthenticationMethods) != 1 || session.AuthenticationMethods[0] != "ldap" {
+		t.Fatalf("session=%#v err=%v", session, err)
+	}
+	if len(identityRepository.users) != 1 || len(authRepository.accounts) != 1 || authRepository.accounts[0].ProviderSubject != assertion.Subject {
+		t.Fatalf("users=%#v accounts=%#v", identityRepository.users, authRepository.accounts)
+	}
+	_, err = flows.LoginWithProviderPassword(t.Context(), "workspace-application", "ldap", "employee", "wrong", "enterprise", authProviderPasswordAdapterStub{err: authcontract.ErrAuthProviderInvalidCredentials})
+	if authProviderTestErrorCode(err) != "auth.invalid_credentials" {
+		t.Fatalf("invalid credential error=%v", err)
+	}
 }
 
 func TestOAuth2StartAdaptsWeChatClientParameterWithoutWeakeningState(t *testing.T) {
@@ -107,7 +145,7 @@ func TestFederatedCallbackAutoBindsExistingUserByEmail(t *testing.T) {
 	providers := NewAuthProviderDomainService([]map[string]any{{
 		"key": "feishu", "type": "oidc", "enabled": true,
 		"auth_url": "https://accounts.feishu.cn/open-apis/authen/v1/authorize", "client_id": "client", "redirect_url": "https://app.example/callback",
-		"scope":             "openid",
+		"scope":             "openid contact:user.email:readonly",
 		"auto_create_users": true,
 	}}, true)
 	flows := NewAuthProviderFlowDomainService(auth, providers)
@@ -115,8 +153,8 @@ func TestFederatedCallbackAutoBindsExistingUserByEmail(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if parsed, parseErr := url.Parse(started.AuthURL); parseErr != nil || parsed.Query().Has("scope") {
-		t.Fatalf("Feishu authorization URL must not send OIDC scope: %q err=%v", started.AuthURL, parseErr)
+	if parsed, parseErr := url.Parse(started.AuthURL); parseErr != nil || parsed.Query().Get("scope") != "contact:user.email:readonly" {
+		t.Fatalf("Feishu authorization URL must remove only the OIDC pseudo-scope: %q err=%v", started.AuthURL, parseErr)
 	}
 	assertion := authmodel.AuthExternalIdentityAssertion{Provider: "feishu", Subject: "feishu-subject", Email: "existing@example.test", ProviderSubjectVerified: true}
 	session, err := flows.ExchangeAndCompleteCallback(t.Context(), "workspace-application", "feishu", started.State, authmodel.AuthProviderCallbackInput{}, assertionAdapter{assertion: assertion})

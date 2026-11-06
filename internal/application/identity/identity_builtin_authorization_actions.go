@@ -58,6 +58,7 @@ func IdentityBuiltinAuthorizationActions() []identitymodel.IdentityActionDefinit
 		authPublicPermissionAction(identitycontract.IdentityActionAuthProvidersSetup, "认证提供方", "配置", "PUT", "/auth/providers/{provider}/setup", "配置认证提供方"),
 		anonymousAction("auth.providers.start_get", "认证提供方", "发起登录", "GET", "/auth/providers/{provider}/start", "发起认证提供方登录"),
 		anonymousAction("auth.providers.start_post", "认证提供方", "发起登录", "POST", "/auth/providers/{provider}/start", "发起认证提供方登录"),
+		anonymousAction("auth.providers.password_login", "认证提供方", "密码登录", "POST", "/auth/providers/{provider}/login", "通过密码型认证提供方登录"),
 		anonymousAction("auth.providers.callback_get", "认证提供方", "处理回调", "GET", "/auth/providers/{provider}/callback", "处理认证提供方回调"),
 		anonymousAction("auth.providers.callback_post", "认证提供方", "处理回调", "POST", "/auth/providers/{provider}/callback", "处理认证提供方回调"),
 		anonymousAction("auth.providers.verify", "认证提供方", "验证", "POST", "/auth/providers/{provider}/verify", "验证认证提供方挑战"),

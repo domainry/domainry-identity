@@ -34,7 +34,7 @@ func (h *AuthHandler) authProviderSetupCheck(w http.ResponseWriter, r *http.Requ
 		h.writeError(w, r, http.StatusNotFound, "auth.provider_unknown")
 		return
 	}
-	h.writeJSON(w, http.StatusOK, h.authProviderSetupResult(config))
+	h.writeJSON(w, http.StatusOK, h.authProviderSetupResult(r.Context(), config))
 }
 
 func (h *AuthHandler) authProviderSetupSave(w http.ResponseWriter, r *http.Request) {
@@ -50,12 +50,12 @@ func (h *AuthHandler) authProviderSetupSave(w http.ResponseWriter, r *http.Reque
 	}
 	h.writeJSON(w, http.StatusOK, map[string]any{
 		"provider":    nextConfig.SafeMap(),
-		"setup_check": h.authProviderSetupResult(nextConfig),
+		"setup_check": h.authProviderSetupResult(r.Context(), nextConfig),
 		"effective":   true,
 	})
 }
 
-func (h *AuthHandler) authProviderSetupResult(config authmodel.AuthProviderConfig) map[string]any {
+func (h *AuthHandler) authProviderSetupResult(ctx context.Context, config authmodel.AuthProviderConfig) map[string]any {
 	raw := config.Map()
 	providerType, enabled := config.Type, config.Enabled
 	result := map[string]any{
@@ -77,6 +77,20 @@ func (h *AuthHandler) authProviderSetupResult(config authmodel.AuthProviderConfi
 		result["redirect_url"] = config.RedirectURL
 		result["scope"] = config.Scope
 	}
+	if providerType == "ldap" {
+		result["ldap_url"] = config.LDAPURL
+		result["ldap_start_tls"] = config.LDAPStartTLS
+		result["ldap_bind_dn"] = config.LDAPBindDN
+		result["ldap_bind_password_configured"] = config.ClientSecretConfigured
+		result["ldap_users_dn"] = config.LDAPUsersDN
+		result["ldap_user_search_filter"] = config.LDAPUserSearchFilter
+		result["ldap_username_attribute"] = config.LDAPUsernameAttribute
+		result["ldap_uuid_attribute"] = config.LDAPUUIDAttribute
+		result["ldap_email_attribute"] = config.LDAPEmailAttribute
+		result["ldap_first_name_attribute"] = config.LDAPFirstNameAttribute
+		result["ldap_last_name_attribute"] = config.LDAPLastNameAttribute
+		result["ldap_ca_certificate_configured"] = config.VerificationKeyConfigured
+	}
 	if !enabled {
 		result["status"] = "blocked_missing_configuration"
 		return result
@@ -86,6 +100,21 @@ func (h *AuthHandler) authProviderSetupResult(config authmodel.AuthProviderConfi
 		result["can_auto_fetch"] = true
 		result["remote_check"] = h.checkFeishuProviderConfig(raw)
 	default:
+		if strings.EqualFold(config.Type, "ldap") {
+			if h.providerPassword == nil {
+				result["status"] = "provider_adapter_unavailable"
+				result["remote_check"] = map[string]any{"status": "failed", "reason": "provider_adapter_unavailable"}
+				return result
+			}
+			if err := h.providerPassword.Probe(ctx, config); err != nil {
+				result["status"] = "remote_check_failed"
+				result["remote_check"] = map[string]any{"status": "failed", "reason": "directory_probe_failed"}
+				return result
+			}
+			result["status"] = "configured"
+			result["remote_check"] = map[string]any{"status": "ok", "can_login": true}
+			return result
+		}
 		result["status"] = "configured_manual_provider_review_required"
 		result["remote_check"] = map[string]any{
 			"status": "not_implemented_for_provider",
@@ -110,6 +139,17 @@ func (h *AuthHandler) externalLoginPolicy(ctx context.Context, config authmodel.
 func authProviderSetupChecks(config map[string]any) []map[string]any {
 	providerType := stringFromProviderConfig(config, "type")
 	switch providerType {
+	case "ldap":
+		return []map[string]any{
+			{"key": "ldap_url", "ok": stringFromProviderConfig(config, "ldap_url") != "", "label": "LDAP URL"},
+			{"key": "ldap_bind_dn", "ok": stringFromProviderConfig(config, "ldap_bind_dn") != "", "label": "Bind DN"},
+			{"key": "ldap_bind_password", "ok": boolFromProviderConfig(config, "client_secret_configured"), "label": "Bind password"},
+			{"key": "ldap_users_dn", "ok": stringFromProviderConfig(config, "ldap_users_dn") != "", "label": "Users DN"},
+			{"key": "ldap_user_search_filter", "ok": stringFromProviderConfig(config, "ldap_user_search_filter") != "", "label": "User search filter"},
+			{"key": "ldap_username_attribute", "ok": stringFromProviderConfig(config, "ldap_username_attribute") != "", "label": "Username attribute"},
+			{"key": "ldap_uuid_attribute", "ok": stringFromProviderConfig(config, "ldap_uuid_attribute") != "", "label": "UUID attribute"},
+			{"key": "ldap_email_attribute", "ok": stringFromProviderConfig(config, "ldap_email_attribute") != "", "label": "Email attribute"},
+		}
 	case "otp":
 		return []map[string]any{
 			{"key": "provider", "ok": stringFromProviderConfig(config, "otp_provider") != "", "label": "OTP provider"},

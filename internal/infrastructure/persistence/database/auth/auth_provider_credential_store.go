@@ -57,8 +57,17 @@ func (s AuthStore) UpsertAuthProviderCredential(ctx context.Context, provider st
 		TokenURL: strings.TrimSpace(request.TokenURL), UserInfoURL: strings.TrimSpace(request.UserInfoURL), Scope: strings.TrimSpace(request.Scope),
 		ListUsersURL: strings.TrimSpace(request.ListUsersURL), ClientID: strings.TrimSpace(request.ClientID), ClientSecret: strings.TrimSpace(request.ClientSecret), VerificationKey: strings.TrimSpace(request.VerificationKey),
 		RedirectURL: strings.TrimSpace(request.RedirectURL), OTPProvider: strings.TrimSpace(request.OTPProvider), AllowedPurposes: append([]string(nil), request.AllowedPurposes...),
-		DefaultRoleKey: strings.TrimSpace(request.DefaultRoleKey), RoleMappings: append([]authmodel.AuthProviderRoleMapping(nil), request.RoleMappings...),
+		LDAPURL: strings.TrimSpace(request.LDAPURL), LDAPStartTLS: request.LDAPStartTLS, LDAPBindDN: strings.TrimSpace(request.LDAPBindDN),
+		LDAPUsersDN: strings.TrimSpace(request.LDAPUsersDN), LDAPUserSearchFilter: strings.TrimSpace(request.LDAPUserSearchFilter),
+		LDAPUsernameAttribute: strings.TrimSpace(request.LDAPUsernameAttribute), LDAPUUIDAttribute: strings.TrimSpace(request.LDAPUUIDAttribute),
+		LDAPEmailAttribute: strings.TrimSpace(request.LDAPEmailAttribute), LDAPFirstNameAttribute: strings.TrimSpace(request.LDAPFirstNameAttribute),
+		LDAPLastNameAttribute: strings.TrimSpace(request.LDAPLastNameAttribute),
+		DefaultRoleKey:        strings.TrimSpace(request.DefaultRoleKey), RoleMappings: append([]authmodel.AuthProviderRoleMapping(nil), request.RoleMappings...),
 		UpdatedBy: strings.TrimSpace(principal.UserID),
+	}
+	if strings.EqualFold(credential.Type, "ldap") {
+		credential.ClientSecret = request.LDAPBindPassword
+		credential.VerificationKey = strings.TrimSpace(request.LDAPCACertificate)
 	}
 	if request.AutoCreateUsers != nil {
 		credential.AutoCreateUsers = *request.AutoCreateUsers

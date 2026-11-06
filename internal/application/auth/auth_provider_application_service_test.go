@@ -27,3 +27,19 @@ func TestMergeTypedAuthProviderCredentialsRestoresCustomProvider(t *testing.T) {
 		t.Fatal("internal restored configuration lost encrypted credential value")
 	}
 }
+
+func TestMergeTypedAuthProviderCredentialsRestoresLDAPProvider(t *testing.T) {
+	merged := MergeTypedAuthProviderCredentials(nil, []authmodel.AuthProviderCredential{{
+		ProviderKey: "ldap", Label: "AD / LDAP", Type: "ldap", LDAPURL: "ldaps://ad.example.com:636",
+		LDAPBindDN: "CN=Verdent,DC=example,DC=com", ClientSecret: "bind-secret", LDAPUsersDN: "DC=example,DC=com",
+		LDAPUserSearchFilter: "(objectClass=user)", LDAPUsernameAttribute: "sAMAccountName", LDAPUUIDAttribute: "objectGUID", LDAPEmailAttribute: "mail",
+	}})
+	if len(merged) != 1 || merged[0]["type"] != "ldap" || merged[0]["enabled"] != true || merged[0]["ldap_url"] != "ldaps://ad.example.com:636" {
+		t.Fatalf("merged=%#v", merged)
+	}
+	config := authmodel.AuthProviderConfigFromMap(merged[0])
+	safe := config.SafeMap()
+	if safe["ldap_bind_password_configured"] != true || safe["client_secret"] != nil {
+		t.Fatalf("safe LDAP provider=%#v", safe)
+	}
+}

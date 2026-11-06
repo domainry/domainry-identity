@@ -6,6 +6,7 @@ import authmodel "github.com/domainry/domainry-identity/internal/domain/auth/mod
 
 import (
 	"context"
+	"errors"
 	"net/url"
 	"strings"
 	"time"
@@ -108,8 +109,16 @@ func (s *AuthProviderFlowDomainService) StartExternalAccountLinkForApplication(c
 func providerAuthorizationScope(config authmodel.AuthProviderConfig) string {
 	if strings.EqualFold(config.Key, "feishu") || strings.EqualFold(config.Key, "lark") {
 		// Feishu/Lark browser login is OAuth 2.0, not OpenID Connect. Sending the
-		// OIDC pseudo-scope "openid" makes the provider reject the request (20043).
-		return ""
+		// OIDC pseudo-scope "openid" makes the provider reject the request (20043),
+		// but real Feishu user scopes (for example the verified enterprise email
+		// field) must still be forwarded to the authorization endpoint.
+		scopes := make([]string, 0, len(strings.Fields(config.Scope)))
+		for _, scope := range strings.Fields(config.Scope) {
+			if !strings.EqualFold(scope, "openid") {
+				scopes = append(scopes, scope)
+			}
+		}
+		return strings.Join(scopes, " ")
 	}
 	return config.Scope
 }
@@ -410,6 +419,35 @@ func (s *AuthProviderFlowDomainService) ExchangeCode(ctx context.Context, worksp
 	}
 	return s.CompleteCallbackForApplication(ctx, workspaceID, config, assertion, applicationKey)
 }
+
+func (s *AuthProviderFlowDomainService) LoginWithProviderPassword(ctx context.Context, workspaceID, provider, login, password, applicationKey string, adapter authcontract.AuthProviderPasswordAdapter) (authmodel.AuthSession, error) {
+	config, ok := s.providers.Enabled(ctx, provider)
+	if !ok {
+		return authmodel.AuthSession{}, forbidden("auth.provider_not_configured")
+	}
+	if !strings.EqualFold(config.Type, "ldap") {
+		return authmodel.AuthSession{}, badRequest("auth.provider_password_login_not_supported")
+	}
+	if adapter == nil {
+		return authmodel.AuthSession{}, &apperror.AppError{Kind: apperror.KindUnavailable, Code: "auth.provider_password_login_unavailable"}
+	}
+	if strings.TrimSpace(login) == "" || password == "" {
+		return authmodel.AuthSession{}, forbidden("auth.invalid_credentials")
+	}
+	assertion, err := adapter.Authenticate(ctx, config.Key, config, login, password)
+	if err != nil {
+		if errors.Is(err, authcontract.ErrAuthProviderInvalidCredentials) {
+			return authmodel.AuthSession{}, forbidden("auth.invalid_credentials")
+		}
+		return authmodel.AuthSession{}, &apperror.AppError{Kind: apperror.KindUnavailable, Code: "auth.provider_password_login_failed", Err: err}
+	}
+	if normalizeProvider(assertion.Provider) != normalizeProvider(config.Key) || !assertion.ProviderSubjectVerified {
+		return authmodel.AuthSession{}, forbidden("auth.invalid_credentials")
+	}
+	return s.completeProviderLoginForApplication(ctx, workspaceID, config, assertion, applicationKey, authmodel.AuthenticationContext{
+		Methods: []string{"ldap"}, AssuranceLevel: "urn:domainry:acr:1",
+	})
+}
 func (s *AuthProviderFlowDomainService) ConsumeCallbackChallenge(ctx context.Context, workspaceID, provider, state string) (authmodel.AuthProviderConfig, authmodel.AuthProviderChallenge, error) {
 	config, ok := s.providers.Enabled(ctx, provider)
 	if !ok {
@@ -431,7 +469,11 @@ func (s *AuthProviderFlowDomainService) CompleteCallback(ctx context.Context, wo
 }
 
 func (s *AuthProviderFlowDomainService) CompleteCallbackForApplication(ctx context.Context, workspaceID string, config authmodel.AuthProviderConfig, assertion authmodel.AuthExternalIdentityAssertion, applicationKey string) (authmodel.AuthSession, error) {
-	result, err := s.auth.ExternalLoginWithPolicyForApplication(ctx, workspaceID, assertion, s.providers.AuthExternalLoginPolicy(ctx, config), applicationKey)
+	return s.completeProviderLoginForApplication(ctx, workspaceID, config, assertion, applicationKey, authmodel.AuthenticationContext{Methods: []string{"federated"}, AssuranceLevel: "urn:domainry:acr:1"})
+}
+
+func (s *AuthProviderFlowDomainService) completeProviderLoginForApplication(ctx context.Context, workspaceID string, config authmodel.AuthProviderConfig, assertion authmodel.AuthExternalIdentityAssertion, applicationKey string, authentication authmodel.AuthenticationContext) (authmodel.AuthSession, error) {
+	result, err := s.auth.ExternalLoginWithPolicyForApplicationAndAuthentication(ctx, workspaceID, assertion, s.providers.AuthExternalLoginPolicy(ctx, config), applicationKey, authentication)
 	if err != nil {
 		return authmodel.AuthSession{}, err
 	}

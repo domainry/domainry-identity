@@ -22,6 +22,16 @@ type AuthProviderConfig struct {
 	VerificationKey           string
 	RedirectURL               string
 	Scope                     string
+	LDAPURL                   string
+	LDAPStartTLS              bool
+	LDAPBindDN                string
+	LDAPUsersDN               string
+	LDAPUserSearchFilter      string
+	LDAPUsernameAttribute     string
+	LDAPUUIDAttribute         string
+	LDAPEmailAttribute        string
+	LDAPFirstNameAttribute    string
+	LDAPLastNameAttribute     string
 	OTPProvider               string
 	ConnectionKey             string
 	AllowedPurposes           []string
@@ -48,7 +58,7 @@ func AuthProviderConfigFromMap(raw map[string]any) AuthProviderConfig {
 	}
 	getBool := func(key string) bool { value, _ := raw[key].(bool); return value }
 	_, autoCreateConfigured := raw["auto_create_users"]
-	config := AuthProviderConfig{Key: get("key"), Label: get("label"), Type: get("type"), Adapter: get("adapter"), Enabled: getBool("enabled"), Issuer: get("issuer"), AuthURL: get("auth_url"), TokenURL: get("token_url"), UserInfoURL: get("userinfo_url"), ClientID: get("client_id"), ClientSecret: get("client_secret"), VerificationKey: get("verification_key"), RedirectURL: get("redirect_url"), Scope: get("scope"), OTPProvider: get("otp_provider"), ConnectionKey: get("connection_key"), AllowedPurposes: authProviderStringSlice(raw["allowed_purposes"]), AutoCreateUsers: getBool("auto_create_users"), AutoCreateConfigured: autoCreateConfigured, DefaultRoleKey: get("default_role_key"), ClientSecretConfigured: getBool("client_secret_configured"), VerificationKeyConfigured: getBool("verification_key_configured"), ConfiguredFrom: get("configured_from"), UpdatedAt: get("updated_at"), Extra: map[string]any{}}
+	config := AuthProviderConfig{Key: get("key"), Label: get("label"), Type: get("type"), Adapter: get("adapter"), Enabled: getBool("enabled"), Issuer: get("issuer"), AuthURL: get("auth_url"), TokenURL: get("token_url"), UserInfoURL: get("userinfo_url"), ClientID: get("client_id"), ClientSecret: get("client_secret"), VerificationKey: get("verification_key"), RedirectURL: get("redirect_url"), Scope: get("scope"), LDAPURL: get("ldap_url"), LDAPStartTLS: getBool("ldap_start_tls"), LDAPBindDN: get("ldap_bind_dn"), LDAPUsersDN: get("ldap_users_dn"), LDAPUserSearchFilter: get("ldap_user_search_filter"), LDAPUsernameAttribute: get("ldap_username_attribute"), LDAPUUIDAttribute: get("ldap_uuid_attribute"), LDAPEmailAttribute: get("ldap_email_attribute"), LDAPFirstNameAttribute: get("ldap_first_name_attribute"), LDAPLastNameAttribute: get("ldap_last_name_attribute"), OTPProvider: get("otp_provider"), ConnectionKey: get("connection_key"), AllowedPurposes: authProviderStringSlice(raw["allowed_purposes"]), AutoCreateUsers: getBool("auto_create_users"), AutoCreateConfigured: autoCreateConfigured, DefaultRoleKey: get("default_role_key"), ClientSecretConfigured: getBool("client_secret_configured"), VerificationKeyConfigured: getBool("verification_key_configured"), ConfiguredFrom: get("configured_from"), UpdatedAt: get("updated_at"), Extra: map[string]any{}}
 	config.RoleMappings = authProviderRoleMappingsFromAny(raw["role_mappings"])
 	for key, value := range raw {
 		// OTP delivery credentials belong to Integration. Ignore legacy Identity
@@ -95,7 +105,7 @@ func (c AuthProviderConfig) Clone() AuthProviderConfig {
 
 func (c AuthProviderConfig) Map() map[string]any {
 	out := authProviderCloneMap(c.Extra)
-	for key, value := range map[string]any{"key": c.Key, "label": c.Label, "type": c.Type, "adapter": c.Adapter, "enabled": c.Enabled, "issuer": c.Issuer, "auth_url": c.AuthURL, "token_url": c.TokenURL, "userinfo_url": c.UserInfoURL, "client_id": c.ClientID, "client_secret": c.ClientSecret, "verification_key": c.VerificationKey, "redirect_url": c.RedirectURL, "scope": c.Scope, "otp_provider": c.OTPProvider, "connection_key": c.ConnectionKey, "auto_create_users": c.AutoCreateUsers, "default_role_key": c.DefaultRoleKey, "role_mappings": c.RoleMappings, "client_secret_configured": c.ClientSecretConfigured, "verification_key_configured": c.VerificationKeyConfigured, "configured_from": c.ConfiguredFrom, "updated_at": c.UpdatedAt} {
+	for key, value := range map[string]any{"key": c.Key, "label": c.Label, "type": c.Type, "adapter": c.Adapter, "enabled": c.Enabled, "issuer": c.Issuer, "auth_url": c.AuthURL, "token_url": c.TokenURL, "userinfo_url": c.UserInfoURL, "client_id": c.ClientID, "client_secret": c.ClientSecret, "verification_key": c.VerificationKey, "redirect_url": c.RedirectURL, "scope": c.Scope, "ldap_url": c.LDAPURL, "ldap_start_tls": c.LDAPStartTLS, "ldap_bind_dn": c.LDAPBindDN, "ldap_users_dn": c.LDAPUsersDN, "ldap_user_search_filter": c.LDAPUserSearchFilter, "ldap_username_attribute": c.LDAPUsernameAttribute, "ldap_uuid_attribute": c.LDAPUUIDAttribute, "ldap_email_attribute": c.LDAPEmailAttribute, "ldap_first_name_attribute": c.LDAPFirstNameAttribute, "ldap_last_name_attribute": c.LDAPLastNameAttribute, "otp_provider": c.OTPProvider, "connection_key": c.ConnectionKey, "auto_create_users": c.AutoCreateUsers, "default_role_key": c.DefaultRoleKey, "role_mappings": c.RoleMappings, "client_secret_configured": c.ClientSecretConfigured, "verification_key_configured": c.VerificationKeyConfigured, "configured_from": c.ConfiguredFrom, "updated_at": c.UpdatedAt} {
 		if text, ok := value.(string); !ok || text != "" {
 			out[key] = value
 		}
@@ -178,6 +188,10 @@ func (c AuthProviderConfig) SafeMap() map[string]any {
 	delete(out, "phone_number_id")
 	delete(out, "access_token_configured")
 	delete(out, "phone_number_id_configured")
+	if strings.EqualFold(c.Type, "ldap") {
+		out["ldap_bind_password_configured"] = c.ClientSecretConfigured
+		out["ldap_ca_certificate_configured"] = c.VerificationKeyConfigured
+	}
 	return out
 }
 

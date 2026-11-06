@@ -314,7 +314,7 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 	binding, err := identitysdkadapter.NewBinding(identitysdkadapter.BindingDependencies{
 		Subjects:          identitypersistence.NewIdentitySubjectLifecycleStore(identityStore, authStore.EraseSubjectLoginArtifacts),
 		WorkspaceResolver: options.WorkspaceResolver, Config: cfg, Authentication: authApp, ProviderConfiguration: providerConfiguration,
-		ProviderFlows: providerFlows, ProviderCallback: identityprovider.CallbackAdapter{},
+		ProviderFlows: providerFlows, ProviderCallback: identityprovider.CallbackAdapter{}, ProviderPassword: identityprovider.LDAPPasswordAdapter{},
 		EffectiveAccess: effectiveAccess, Identity: identityApp,
 		Applications: applicationRegistrations, Permissions: permissionCatalog, RoleCatalog: globalRoleCatalog, HandlerDelivery: handlerDelivery, StoreOrganizations: storeOrganizations, OrganizationUnits: organizationUnits,
 		Clock: options.Clock, MutationFence: store, OperationsPersistence: identityStore, LoginTransactions: authStore,

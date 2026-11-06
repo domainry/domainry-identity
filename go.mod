@@ -10,9 +10,10 @@ require (
 	github.com/domainry/domainry-audit-sdk v0.1.21
 	github.com/domainry/domainry-data-exchange-sdk v0.3.21
 	github.com/domainry/domainry-foundation v0.2.20
-	github.com/domainry/domainry-identity-sdk v0.1.43
+	github.com/domainry/domainry-identity-sdk v0.1.44
 	github.com/domainry/domainry-metadata v0.1.39
 	github.com/domainry/domainry-metadata-sdk v0.1.19
+	github.com/go-ldap/ldap/v3 v3.4.15
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/russellhaering/goxmldsig v1.6.0
@@ -24,6 +25,8 @@ require (
 )
 
 require (
+	github.com/Azure/go-ntlmssp v0.1.1 // indirect
+	github.com/go-asn1-ber/asn1-ber v1.5.8 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/mattermost/xml-roundtrip-validator v0.1.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.45.0 // indirect

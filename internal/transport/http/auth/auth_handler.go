@@ -39,6 +39,10 @@ type authProviderCodeExchangeFlow interface {
 	ExchangeCode(context.Context, string, string, string, string, authcontract.AuthProviderCodeExchangeAdapter) (authmodel.AuthSession, error)
 }
 
+type authProviderPasswordFlow interface {
+	LoginWithProviderPassword(context.Context, string, string, string, string, string, authcontract.AuthProviderPasswordAdapter) (authmodel.AuthSession, error)
+}
+
 type authAuthorizationCodeIssuer interface {
 	IssueAuthorizationCode(context.Context, string, string, authmodel.AuthSession) (string, error)
 }
@@ -52,6 +56,7 @@ type AuthHandler struct {
 	providerConfiguration     *authapplication.AuthProviderApplicationService
 	providerFlows             AuthProviderFlowApplication
 	providerCallback          authcontract.AuthProviderCallbackAdapter
+	providerPassword          authcontract.AuthProviderPasswordAdapter
 	principal                 func(*http.Request) identitymodel.Principal
 	writeJSON                 func(http.ResponseWriter, int, any)
 	writeError                func(http.ResponseWriter, *http.Request, int, string, ...string)
@@ -75,6 +80,7 @@ type AuthDependencies struct {
 	ProviderConfiguration     *authapplication.AuthProviderApplicationService
 	ProviderFlows             AuthProviderFlowApplication
 	ProviderCallback          authcontract.AuthProviderCallbackAdapter
+	ProviderPassword          authcontract.AuthProviderPasswordAdapter
 	Principal                 func(*http.Request) identitymodel.Principal
 	WriteJSON                 func(http.ResponseWriter, int, any)
 	WriteError                func(http.ResponseWriter, *http.Request, int, string, ...string)
@@ -101,7 +107,7 @@ func NewAuthHandler(deps AuthDependencies) *AuthHandler {
 	return &AuthHandler{
 		passwords: deps.Passwords, externalAccounts: deps.ExternalAccounts, roleRequests: deps.RoleRequests,
 		providerConfiguration: deps.ProviderConfiguration, providerFlows: deps.ProviderFlows,
-		providerCallback: deps.ProviderCallback, principal: deps.Principal,
+		providerCallback: deps.ProviderCallback, providerPassword: deps.ProviderPassword, principal: deps.Principal,
 		writeJSON: deps.WriteJSON, writeError: deps.WriteError,
 		writeServiceError: deps.WriteServiceError, decodeJSON: deps.DecodeJSON, actionAuthorization: actionAuthorization,
 		providerFailureAudit: deps.ProviderFailureAudit, securityAudit: deps.SecurityAudit,

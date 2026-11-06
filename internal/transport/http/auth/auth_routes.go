@@ -33,6 +33,7 @@ func (h *AuthHandler) RegisterRoutes(mux routeRegistrar) {
 	h.registerAuthAction(mux, identitycontract.IdentityActionAuthProvidersSetup, h.authProviderSetupSave)
 	h.registerAuthAction(mux, "auth.providers.start_get", h.authProviderStart)
 	h.registerAuthAction(mux, "auth.providers.start_post", h.authProviderStart)
+	h.registerAuthAction(mux, "auth.providers.password_login", h.authProviderPasswordLogin)
 	h.registerAuthAction(mux, "auth.providers.callback_get", h.authProviderCallback)
 	h.registerAuthAction(mux, "auth.providers.callback_post", h.authProviderCallback)
 	h.registerAuthAction(mux, "auth.providers.verify", h.authProviderVerify)

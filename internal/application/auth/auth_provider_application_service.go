@@ -46,7 +46,7 @@ func (s *AuthProviderApplicationService) SaveSetup(ctx context.Context, provider
 	if !ok {
 		provider = strings.ToLower(strings.TrimSpace(provider))
 		providerType := strings.ToLower(strings.TrimSpace(request.Type))
-		if !customAuthProviderKeyPattern.MatchString(provider) || (providerType != "oidc" && providerType != "oauth2" && providerType != "saml") {
+		if !customAuthProviderKeyPattern.MatchString(provider) || (providerType != "oidc" && providerType != "oauth2" && providerType != "saml" && providerType != "ldap") {
 			return authmodel.AuthProviderConfig{}, authProviderApplicationError(apperror.KindNotFound, "auth.provider_unknown")
 		}
 		label := strings.TrimSpace(request.Label)
@@ -162,7 +162,7 @@ func MergeTypedAuthProviderCredentials(configs []map[string]any, credentials []a
 
 func restorableAuthProviderType(providerType string) bool {
 	switch strings.ToLower(strings.TrimSpace(providerType)) {
-	case "oidc", "oauth2", "saml", "otp", "code_exchange", "wechat_mini_program":
+	case "oidc", "oauth2", "saml", "ldap", "otp", "code_exchange", "wechat_mini_program":
 		return true
 	default:
 		return false
@@ -171,7 +171,7 @@ func restorableAuthProviderType(providerType string) bool {
 
 func configurableAuthProviderType(providerType string) bool {
 	switch strings.ToLower(strings.TrimSpace(providerType)) {
-	case "oidc", "oauth2", "saml", "otp", "code_exchange", "wechat_mini_program":
+	case "oidc", "oauth2", "saml", "ldap", "otp", "code_exchange", "wechat_mini_program":
 		return true
 	default:
 		return false
@@ -204,7 +204,17 @@ func authProviderApplyCredential(config *authmodel.AuthProviderConfig, value aut
 			*target = strings.TrimSpace(candidate)
 		}
 	}
-	if strings.EqualFold(config.Type, "otp") {
+	if strings.EqualFold(config.Type, "ldap") {
+		config.LDAPURL, config.LDAPStartTLS, config.LDAPBindDN = strings.TrimSpace(value.LDAPURL), value.LDAPStartTLS, strings.TrimSpace(value.LDAPBindDN)
+		config.LDAPUsersDN, config.LDAPUserSearchFilter = strings.TrimSpace(value.LDAPUsersDN), strings.TrimSpace(value.LDAPUserSearchFilter)
+		config.LDAPUsernameAttribute, config.LDAPUUIDAttribute = strings.TrimSpace(value.LDAPUsernameAttribute), strings.TrimSpace(value.LDAPUUIDAttribute)
+		config.LDAPEmailAttribute = strings.TrimSpace(value.LDAPEmailAttribute)
+		config.LDAPFirstNameAttribute, config.LDAPLastNameAttribute = strings.TrimSpace(value.LDAPFirstNameAttribute), strings.TrimSpace(value.LDAPLastNameAttribute)
+		config.ClientSecret, config.VerificationKey = value.ClientSecret, value.VerificationKey
+		config.ClientSecretConfigured = value.ClientSecret != ""
+		config.VerificationKeyConfigured = value.VerificationKey != ""
+		config.Enabled = config.LDAPURL != "" && config.LDAPBindDN != "" && config.ClientSecretConfigured && config.LDAPUsersDN != "" && config.LDAPUserSearchFilter != "" && config.LDAPUsernameAttribute != "" && config.LDAPUUIDAttribute != "" && config.LDAPEmailAttribute != ""
+	} else if strings.EqualFold(config.Type, "otp") {
 		config.OTPProvider, config.ConnectionKey = strings.TrimSpace(value.OTPProvider), strings.TrimSpace(value.ConnectionKey)
 		config.AllowedPurposes = append([]string(nil), value.AllowedPurposes...)
 		config.Enabled = config.OTPProvider == "mock" || config.OTPProvider != "" && config.ConnectionKey != ""

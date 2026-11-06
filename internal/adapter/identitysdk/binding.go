@@ -28,6 +28,7 @@ type BindingDependencies struct {
 	ProviderConfiguration   *authapplication.AuthProviderApplicationService
 	ProviderFlows           *authapplication.AuthProviderFlowApplicationService
 	ProviderCallback        authcontract.AuthProviderCallbackAdapter
+	ProviderPassword        authcontract.AuthProviderPasswordAdapter
 	EffectiveAccess         *identityapplication.IdentityEffectiveAccessApplicationService
 	Identity                *identityapplication.IdentityApplicationService
 	Applications            *authapplication.AuthApplicationRegistrationService
@@ -52,6 +53,7 @@ type sdkBinding struct {
 	providers                   *authapplication.AuthProviderApplicationService
 	flows                       *authapplication.AuthProviderFlowApplicationService
 	providerCallback            authcontract.AuthProviderCallbackAdapter
+	providerPassword            authcontract.AuthProviderPasswordAdapter
 	access                      *identityapplication.IdentityEffectiveAccessApplicationService
 	identity                    *identityapplication.IdentityApplicationService
 	applications                *authapplication.AuthApplicationRegistrationService
@@ -72,7 +74,7 @@ type sdkBinding struct {
 
 func NewBinding(dependencies BindingDependencies) (identitysdk.Binding, error) {
 	if dependencies.Authentication == nil || dependencies.ProviderConfiguration == nil || dependencies.ProviderFlows == nil ||
-		dependencies.ProviderCallback == nil || dependencies.EffectiveAccess == nil || dependencies.Identity == nil ||
+		dependencies.ProviderCallback == nil || dependencies.ProviderPassword == nil || dependencies.EffectiveAccess == nil || dependencies.Identity == nil ||
 		dependencies.Applications == nil || dependencies.Permissions == nil || dependencies.RoleCatalog == nil || dependencies.HandlerDelivery == nil || dependencies.StoreOrganizations == nil || dependencies.OrganizationUnits == nil || dependencies.MutationFence == nil || dependencies.OperationsPersistence == nil || dependencies.LoginTransactions == nil {
 		return nil, errors.New("complete Identity SDK Binding dependencies are required")
 	}
@@ -82,9 +84,9 @@ func NewBinding(dependencies BindingDependencies) (identitysdk.Binding, error) {
 	binding := &sdkBinding{descriptor: identitysdk.Descriptor{
 		ProtocolVersion: identitysdk.CurrentProtocolVersion, BundleVersion: identitysdk.CurrentPolicyBundleVersion, AuthorizationVersion: identitysdk.CurrentAuthorizationContractVersion,
 		Mode: identitysdk.DeploymentModeModule, Issuer: defaultString(dependencies.Config.AuthIssuer, "http://localhost:8081"), Audience: defaultString(dependencies.Config.AuthAudience, "domainry-runtime"),
-		Capabilities: []string{"authentication", "challenge_authentication", "external_accounts", "action_assurance", "token_verification", "authorization", "principal_resolution", "workflow_workload_identity", "identity_projection", "handler_delivery", "store_organization_delivery", "organization_unit_delivery", "application_registration", "permission_reconciliation", "project_role_catalog", "credentials", "oidc", "saml"},
+		Capabilities: []string{"authentication", "provider_password_authentication", "challenge_authentication", "external_accounts", "action_assurance", "token_verification", "authorization", "principal_resolution", "workflow_workload_identity", "identity_projection", "handler_delivery", "store_organization_delivery", "organization_unit_delivery", "application_registration", "permission_reconciliation", "project_role_catalog", "credentials", "oidc", "saml"},
 	}, auth: dependencies.Authentication, providers: dependencies.ProviderConfiguration, flows: dependencies.ProviderFlows,
-		providerCallback: dependencies.ProviderCallback, access: dependencies.EffectiveAccess, identity: dependencies.Identity,
+		providerCallback: dependencies.ProviderCallback, providerPassword: dependencies.ProviderPassword, access: dependencies.EffectiveAccess, identity: dependencies.Identity,
 		workspaceResolver: dependencies.WorkspaceResolver, applications: dependencies.Applications, permissions: dependencies.Permissions, roleCatalog: dependencies.RoleCatalog, handlerDelivery: dependencies.HandlerDelivery, storeOrganizations: dependencies.StoreOrganizations, organizationUnits: dependencies.OrganizationUnits, clock: dependencies.Clock,
 		subjects: dependencies.Subjects, mutationFence: dependencies.MutationFence, operationsPersistence: dependencies.OperationsPersistence, loginTransactions: dependencies.LoginTransactions,
 		loginApplicationWorkspaceID: identitysdk.WorkspaceID(strings.TrimSpace(dependencies.Config.IdentityWorkspaceID)),
@@ -278,6 +280,27 @@ func (adapter sdkAuthentication) Providers(ctx context.Context, query identitysd
 func (adapter sdkAuthentication) LoginWithPassword(ctx context.Context, request identitysdk.PasswordLoginRequest) (identitysdk.AuthSession, error) {
 	outcome, err := adapter.LoginWithPasswordOutcome(ctx, request)
 	return sdkAuthenticatedSession(outcome, err)
+}
+
+func (adapter sdkAuthentication) LoginWithProviderPassword(ctx context.Context, request identitysdk.ProviderPasswordLoginRequest) (identitysdk.AuthSession, error) {
+	if !request.WorkspaceID.Valid() {
+		return identitysdk.AuthSession{}, &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "backend.workspace_scope_required"}
+	}
+	if err := adapter.binding.requireMutableWorkspace(ctx, request.WorkspaceID); err != nil {
+		return identitysdk.AuthSession{}, err
+	}
+	application := identitysdk.ApplicationRef{WorkspaceID: request.WorkspaceID, ApplicationKey: request.ApplicationKey}
+	if found, err := adapter.binding.applicationRegistered(ctx, application); err != nil {
+		return identitysdk.AuthSession{}, sdkBoundaryError(err)
+	} else if !found {
+		return identitysdk.AuthSession{}, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.application_not_registered"}
+	}
+	session, err := adapter.binding.flows.LoginWithProviderPassword(
+		requestcontext.WithWorkspaceID(ctx, string(request.WorkspaceID)),
+		string(request.WorkspaceID), request.Provider, request.Login, request.Password,
+		string(request.ApplicationKey), adapter.binding.providerPassword,
+	)
+	return sdkAuthSession(session), sdkBoundaryError(err)
 }
 
 func (adapter sdkAuthentication) LoginWithPasswordOutcome(ctx context.Context, request identitysdk.PasswordLoginRequest) (identitysdk.AuthenticationOutcome, error) {

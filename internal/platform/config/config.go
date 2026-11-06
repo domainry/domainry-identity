@@ -583,6 +583,7 @@ func (c Config) AuthProviders() []map[string]any {
 	providers := []map[string]any{
 		{"key": "local", "label": "Password", "enabled": true, "type": "password", "priority": "p0", "market": "global", "markets": []string{"global", "jp", "br"}, "channels": []string{"staff", "customer"}},
 		{"key": "sms", "label": "SMS verification code", "enabled": false, "type": "otp", "priority": "p0", "market": "global", "markets": []string{"global", "jp", "br"}, "channels": []string{"customer"}},
+		{"key": "ldap", "label": "AD / LDAP", "enabled": false, "type": "ldap", "priority": "p1", "market": "global", "markets": []string{"global", "jp", "br"}, "channels": []string{"staff"}},
 		{"key": "feishu", "label": "Feishu", "enabled": false, "type": "oidc", "auth_url": "https://accounts.feishu.cn/open-apis/authen/v1/authorize", "priority": "p1", "market": "global", "markets": []string{"global"}, "channels": []string{"staff"}},
 		{"key": "lark", "label": "Lark", "enabled": false, "type": "oidc", "auth_url": "https://accounts.larksuite.com/open-apis/authen/v1/authorize", "priority": "p1", "market": "global", "markets": []string{"global"}, "channels": []string{"staff"}},
 		{"key": "google", "label": "Google", "enabled": false, "type": "oidc", "issuer": "https://accounts.google.com", "auth_url": "https://accounts.google.com/o/oauth2/v2/auth", "scope": "openid email profile", "priority": "p1", "market": "global", "markets": []string{"global", "jp", "br"}, "channels": []string{"staff", "customer"}},

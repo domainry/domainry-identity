@@ -11,6 +11,51 @@ import (
 	authprojection "github.com/domainry/domainry-identity/internal/domain/auth/projection"
 )
 
+func (h *AuthHandler) authProviderPasswordLogin(w http.ResponseWriter, r *http.Request) {
+	provider := strings.TrimSpace(r.PathValue("provider"))
+	var req struct {
+		WorkspaceID    string `json:"workspace_id"`
+		ApplicationKey string `json:"application_key"`
+		Login          string `json:"login"`
+		Password       string `json:"password"`
+	}
+	if !h.decodeJSON(w, r, &req) {
+		return
+	}
+	workspaceID, ok := h.requireWorkspace(w, r, req.WorkspaceID)
+	if !ok {
+		return
+	}
+	applicationKey := strings.TrimSpace(req.ApplicationKey)
+	if h.applicationRegistered != nil {
+		if applicationKey == "" {
+			h.writeError(w, r, http.StatusBadRequest, "identity.application_scope_invalid")
+			return
+		}
+		registered, err := h.applicationRegistered(r.Context(), workspaceID, applicationKey)
+		if err != nil {
+			h.writeServiceError(w, r, err)
+			return
+		}
+		if !registered {
+			h.writeError(w, r, http.StatusBadRequest, "identity.application_not_registered")
+			return
+		}
+	}
+	flow, supported := h.providerFlows.(authProviderPasswordFlow)
+	if !supported || h.providerPassword == nil {
+		h.writeError(w, r, http.StatusServiceUnavailable, "auth.provider_password_login_unavailable")
+		return
+	}
+	result, err := flow.LoginWithProviderPassword(requestcontext.WithWorkspaceID(r.Context(), workspaceID), workspaceID, provider, req.Login, req.Password, applicationKey, h.providerPassword)
+	if err != nil {
+		h.providerFailureAudit(r, provider, "password_login")
+		h.writeServiceError(w, r, err)
+		return
+	}
+	h.writeJSON(w, http.StatusOK, result)
+}
+
 func (h *AuthHandler) authProviderStart(w http.ResponseWriter, r *http.Request) {
 	provider := strings.TrimSpace(r.PathValue("provider"))
 	var req struct {

@@ -76,6 +76,21 @@ func (s *AuthProviderFlowApplicationService) LoginWithPasswordOutcome(ctx contex
 	return outcome, nil
 }
 
+func (s *AuthProviderFlowApplicationService) LoginWithProviderPassword(ctx context.Context, workspaceID, provider, login, password, applicationKey string, adapter authcontract.AuthProviderPasswordAdapter) (authmodel.AuthSession, error) {
+	session, err := s.AuthProviderFlowDomainService.LoginWithProviderPassword(ctx, workspaceID, provider, login, password, applicationKey, adapter)
+	if err != nil {
+		if auditErr := s.appendAuthenticationFailure(ctx, workspaceID, "ldap", provider, applicationKey, login, "authentication_failed", authenticationErrorCode(err)); auditErr != nil {
+			return authmodel.AuthSession{}, auditErr
+		}
+		return session, err
+	}
+	if auditErr := s.appendAuthenticationSuccess(ctx, "ldap", provider, applicationKey, session); auditErr != nil {
+		s.revokeUnauditedSession(ctx, session)
+		return authmodel.AuthSession{}, auditErr
+	}
+	return session, nil
+}
+
 func (s *AuthProviderFlowApplicationService) VerifyOTPOutcome(ctx context.Context, workspaceID, provider, state, code string) (authmodel.AuthenticationOutcome, error) {
 	outcome, err := s.AuthProviderFlowDomainService.VerifyOTPOutcome(ctx, workspaceID, provider, state, code)
 	if err != nil {
