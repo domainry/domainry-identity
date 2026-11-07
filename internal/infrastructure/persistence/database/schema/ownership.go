@@ -89,9 +89,9 @@ var schemaTableOwnership = []schemaownership.Table{
 	owned("_identity_role_menu_assignments", schemaownership.KindRelation, schemaownership.RetentionProduct, []string{"id"}, "workspace role/menu relation and bounded role-to-menu or menu-to-role lookup", "role or menu deletion physically removes dependent assignments"),
 	entity("_identity_role_requests", schemaownership.RetentionProduct, "role_request_id", "rolereq", "workspace/request identity and bounded requester, subject or review-state listing", "resolved requests follow authorization governance retention; subject erasure redacts personal references"),
 	entity("_identity_roles", schemaownership.RetentionProduct, "role_id", "role", "workspace/role identity and exact role-key lookup", "role deletion is rejected or cascaded only after active assignments and menu links are removed"),
-	owned("_identity_scim_group_members", schemaownership.KindRelation, schemaownership.RetentionUserErase, []string{"id"}, "workspace/group membership and bounded user or group lookup", "SCIM user or group deletion physically removes directory memberships"),
-	entity("_identity_scim_groups", schemaownership.RetentionProduct, "group_id", "scimgrp", "workspace/group identity and bounded external-id or display-name lookup", "SCIM group deletion tombstones the group and physically removes its memberships"),
-	entity("_identity_scim_users", schemaownership.RetentionUserErase, "user_id", "scimusr", "workspace/SCIM user identity and bounded external-id or userName lookup", "SCIM deletion tombstones the protocol resource while Identity retains the disabled business subject"),
+	ownedWithUniqueKey("_identity_scim_group_members", schemaownership.KindRelation, schemaownership.RetentionUserErase, []string{"workspace_id", "group_id", "user_id"}, "workspace/group membership and bounded user or group lookup", "SCIM user or group deletion physically removes directory memberships"),
+	ownedWithUniqueKey("_identity_scim_groups", schemaownership.KindState, schemaownership.RetentionProduct, []string{"workspace_id", "group_id"}, "workspace/group identity and bounded external-id or display-name lookup", "SCIM group deletion tombstones the group and physically removes its memberships"),
+	ownedWithUniqueKey("_identity_scim_users", schemaownership.KindState, schemaownership.RetentionUserErase, []string{"workspace_id", "user_id"}, "workspace/SCIM user identity and bounded external-id or userName lookup", "SCIM deletion tombstones the protocol resource while Identity retains the disabled business subject"),
 	owned("_identity_user_role_assignments", schemaownership.KindRelation, schemaownership.RetentionUserErase, []string{"id"}, "workspace user/role relation and bounded user or role lookup", "revocation preserves bounded terminal state; user erasure removes subject-owned assignments"),
 	entity("_identity_users", schemaownership.RetentionUserErase, "user_id", "user", "workspace/user identity, globally unique login resolution and bounded organization hierarchy lookup", "subject erasure anonymizes the user aggregate after credentials and active sessions are removed"),
 	owned("_identity_workflow_workload_bindings", schemaownership.KindRelation, schemaownership.RetentionProduct, []string{"id"}, "workspace application/workflow relation and bounded release-state lookup", "release replacement deactivates obsolete bindings; application removal deletes terminal bindings"),
@@ -102,6 +102,12 @@ func owned(name string, kind schemaownership.TableKind, retention schemaownershi
 		Name: name, Owner: MigrationOwner, Kind: kind, WorkspaceScope: schemaownership.ScopeWorkspace,
 		RetentionClass: retention, PrimaryKey: primaryKey, BoundedQueryPath: queryPath, DeletionPolicy: deletionPolicy,
 	}
+}
+
+func ownedWithUniqueKey(name string, kind schemaownership.TableKind, retention schemaownership.RetentionClass, uniqueKey []string, queryPath, deletionPolicy string) schemaownership.Table {
+	table := owned(name, kind, retention, []string{"id"}, queryPath, deletionPolicy)
+	table.UniqueKey = append([]string(nil), uniqueKey...)
+	return table
 }
 
 func entity(name string, retention schemaownership.RetentionClass, idColumn, prefix, queryPath, deletionPolicy string) schemaownership.Table {

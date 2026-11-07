@@ -180,6 +180,29 @@ func TestIdentitySchemaOwnershipMatchesFreshPhysicalPrimaryKeys(t *testing.T) {
 	}
 }
 
+func TestSCIMSchemaOwnershipUsesWorkspaceScopedNaturalKeys(t *testing.T) {
+	tables := map[string]schemaownership.Table{}
+	for _, table := range identityschema.SchemaOwnership() {
+		tables[table.Name] = table
+	}
+	for name, want := range map[string]struct {
+		kind      schemaownership.TableKind
+		uniqueKey string
+	}{
+		"_identity_scim_group_members": {kind: schemaownership.KindRelation, uniqueKey: "workspace_id,group_id,user_id"},
+		"_identity_scim_groups":        {kind: schemaownership.KindState, uniqueKey: "workspace_id,group_id"},
+		"_identity_scim_users":         {kind: schemaownership.KindState, uniqueKey: "workspace_id,user_id"},
+	} {
+		table, found := tables[name]
+		if !found {
+			t.Fatalf("SCIM table %s is absent from schema ownership", name)
+		}
+		if table.Kind != want.kind || strings.Join(table.UniqueKey, ",") != want.uniqueKey {
+			t.Errorf("SCIM table %s ownership kind=%s unique_key=%v, want kind=%s unique_key=%s", name, table.Kind, table.UniqueKey, want.kind, want.uniqueKey)
+		}
+	}
+}
+
 func TestIdentityOwnershipCatalogRejectsPlaneBusinessTables(t *testing.T) {
 	for _, table := range identityschema.IdentityTableOwnership() {
 		if table.Name == "_schema_migrations" {
