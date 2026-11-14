@@ -15,6 +15,15 @@ type mutationFenceStub struct {
 	err    error
 }
 
+type workspaceResolverStub struct {
+	resolved identitysdk.WorkspaceID
+	err      error
+}
+
+func (stub workspaceResolverStub) ResolveWorkspace(context.Context, identitysdk.WorkspaceID) (identitysdk.WorkspaceID, error) {
+	return stub.resolved, stub.err
+}
+
 func (mutationFenceStub) BindOperationsPersistence()       {}
 func (mutationFenceStub) OperationsPersistenceBound() bool { return true }
 
@@ -47,6 +56,34 @@ func TestSDKMutationFenceFailsClosedForFrozenAndUnavailableWorkspaces(t *testing
 	} {
 		t.Run(name, func(t *testing.T) {
 			binding := &sdkBinding{mutationFence: fixture.fence}
+			err := binding.requireMutableWorkspace(t.Context(), "workspace-a")
+			var sdkError *identitysdk.Error
+			if !errors.As(err, &sdkError) || sdkError.Code != fixture.code || sdkError.Class != fixture.class {
+				t.Fatalf("error=%#v", err)
+			}
+		})
+	}
+}
+
+func TestSDKWorkspaceResolutionDistinguishesOutageFromCredentialMismatch(t *testing.T) {
+	for name, fixture := range map[string]struct {
+		resolver workspaceResolverStub
+		code     string
+		class    identitysdk.ErrorClass
+	}{
+		"unavailable": {
+			resolver: workspaceResolverStub{err: errors.New("database unavailable")},
+			code:     "identity.workspace_resolution_unavailable",
+			class:    identitysdk.ErrorClassUnavailable,
+		},
+		"mismatch": {
+			resolver: workspaceResolverStub{resolved: "workspace-b"},
+			code:     "auth.invalid_credentials",
+			class:    identitysdk.ErrorClassForbidden,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			binding := &sdkBinding{workspaceResolver: fixture.resolver, mutationFence: mutationFenceStub{}}
 			err := binding.requireMutableWorkspace(t.Context(), "workspace-a")
 			var sdkError *identitysdk.Error
 			if !errors.As(err, &sdkError) || sdkError.Code != fixture.code || sdkError.Class != fixture.class {

@@ -34,11 +34,8 @@ func (binding *sdkBinding) requireMutableWorkspace(ctx context.Context, workspac
 	if !identitysdk.WorkspaceID(workspace).Valid() {
 		return &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "backend.workspace_scope_required"}
 	}
-	if binding.workspaceResolver != nil {
-		resolved, err := binding.workspaceResolver.ResolveWorkspace(ctx, workspaceID)
-		if err != nil || resolved != workspaceID {
-			return &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "auth.invalid_credentials"}
-		}
+	if err := binding.requireResolvedWorkspace(ctx, workspaceID); err != nil {
+		return err
 	}
 	frozen, err := binding.mutationFence.IdentityWritesFrozen(ctx, workspace)
 	if err != nil {
@@ -46,6 +43,24 @@ func (binding *sdkBinding) requireMutableWorkspace(ctx context.Context, workspac
 	}
 	if frozen {
 		return &identitysdk.Error{Class: identitysdk.ErrorClassConflict, Code: "identity.workspace_writes_frozen"}
+	}
+	return nil
+}
+
+// requireResolvedWorkspace keeps infrastructure outages distinct from an
+// actual workspace mismatch. Conflating both as invalid credentials makes a
+// PostgreSQL outage look like a user login failure and hides the dependency
+// incident from both HTTP clients and operational metrics.
+func (binding *sdkBinding) requireResolvedWorkspace(ctx context.Context, workspaceID identitysdk.WorkspaceID) error {
+	if binding.workspaceResolver == nil {
+		return nil
+	}
+	resolved, err := binding.workspaceResolver.ResolveWorkspace(ctx, workspaceID)
+	if err != nil {
+		return &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.workspace_resolution_unavailable", Cause: err}
+	}
+	if resolved != workspaceID {
+		return &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "auth.invalid_credentials"}
 	}
 	return nil
 }

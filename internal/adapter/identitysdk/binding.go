@@ -614,11 +614,10 @@ func (binding *sdkBinding) scopedApplications(ctx context.Context, application i
 	if string(application.ApplicationKey) != binding.descriptor.Audience && !global {
 		return nil, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.application_scope_mismatch"}
 	}
-	resolved, err := binding.workspaceResolver.ResolveWorkspace(ctx, application.WorkspaceID)
-	if err != nil || resolved != application.WorkspaceID {
-		return nil, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "auth.invalid_credentials"}
+	if err := binding.requireResolvedWorkspace(ctx, application.WorkspaceID); err != nil {
+		return nil, err
 	}
-	return binding.applications.ForWorkspace(string(resolved))
+	return binding.applications.ForWorkspace(string(application.WorkspaceID))
 }
 
 func (binding *sdkBinding) applicationRegistered(ctx context.Context, application identitysdk.ApplicationRef) (bool, error) {
