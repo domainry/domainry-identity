@@ -113,11 +113,14 @@ func (s *IdentityDomainService) BuildWorkflowWorkloadPrincipal(ctx context.Conte
 		identityCanonicalizeEffectiveRole(&definition)
 		definition.Permissions = s.identityFilterExecutablePermissions(definition.Permissions)
 		definition.Permissions = identityFilterGuardrailDeniedPermissions(definition)
+		// The filtered effective role already carries every permission that can
+		// authorize this workload.  Hashing the installation-wide permission
+		// catalog would revoke an unrelated workload whenever another application
+		// reconciles or restarts its own catalog owner.
 		encoded, _ := json.Marshal(struct {
-			Binding               identitymodel.IdentityWorkflowWorkloadBinding
-			Role                  identitymodel.RoleSchema
-			PermissionFingerprint string
-		}{binding, definition, identityPermissionStateFingerprint(s.PermissionDefinitions())})
+			Binding identitymodel.IdentityWorkflowWorkloadBinding
+			Role    identitymodel.RoleSchema
+		}{binding, definition})
 		digest := sha256.Sum256(encoded)
 		return identitymodel.Principal{UserID: binding.SubjectID, WorkspaceID: s.workspace, Role: definition, Known: true, AuthorizationRevision: hex.EncodeToString(digest[:])}, nil
 	}

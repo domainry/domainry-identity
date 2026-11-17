@@ -112,7 +112,7 @@ func (s *IdentityDomainService) buildPrincipal(ctx context.Context, userID strin
 		published.Permissions = identityFilterGuardrailDeniedPermissions(published)
 		role = published
 	}
-	authorizationRevision := identityAuthorizationRevision(user, activeAssignments, activeIdentityRoles, role, identityPermissionStateFingerprint(s.PermissionDefinitions()))
+	authorizationRevision := identityAuthorizationRevision(user, activeAssignments, activeIdentityRoles, role)
 	scopeRevision := identityScopeRevision(orgScopeIDs, supportOrgScopeIDs, reportingScopeUserIDs)
 	return identitymodel.Principal{
 		UserID:                user.UserID,
@@ -225,7 +225,7 @@ func (s *IdentityDomainService) buildPrincipalForRole(ctx context.Context, userI
 	identityCanonicalizeEffectiveRole(&published)
 	published.Permissions = s.identityFilterExecutablePermissions(published.Permissions)
 	published.Permissions = identityFilterGuardrailDeniedPermissions(published)
-	authorizationRevision := identityAuthorizationRevision(user, []identitymodel.IdentityUserRoleAssignment{activeAssignment}, []identitymodel.IdentityRole{identityRole}, published, identityPermissionStateFingerprint(s.PermissionDefinitions()))
+	authorizationRevision := identityAuthorizationRevision(user, []identitymodel.IdentityUserRoleAssignment{activeAssignment}, []identitymodel.IdentityRole{identityRole}, published)
 	scopeRevision := identityScopeRevision(orgScopeIDs, supportOrgScopeIDs, reportingScopeUserIDs)
 	return identitymodel.Principal{
 		UserID:                user.UserID,
@@ -262,7 +262,7 @@ func (s *IdentityDomainService) identityFilterExecutablePermissions(grants []ide
 	return identityCanonicalRolePermissions(filtered)
 }
 
-func identityAuthorizationRevision(user identitymodel.IdentityUser, assignments []identitymodel.IdentityUserRoleAssignment, roles []identitymodel.IdentityRole, role identitymodel.RoleSchema, permissionStateFingerprint string) string {
+func identityAuthorizationRevision(user identitymodel.IdentityUser, assignments []identitymodel.IdentityUserRoleAssignment, roles []identitymodel.IdentityRole, role identitymodel.RoleSchema) string {
 	sort.Slice(assignments, func(left, right int) bool {
 		return identityCanonicalJSON(assignments[left]) < identityCanonicalJSON(assignments[right])
 	})
@@ -277,12 +277,11 @@ func identityAuthorizationRevision(user identitymodel.IdentityUser, assignments 
 		AccountType  identitymodel.IdentityAccountType `json:"account_type"`
 	}
 	encoded, _ := json.Marshal(struct {
-		User            authorizationUser                          `json:"user"`
-		Assignments     []identitymodel.IdentityUserRoleAssignment `json:"assignments"`
-		Roles           []identitymodel.IdentityRole               `json:"roles"`
-		EffectiveRole   identitymodel.RoleSchema                   `json:"effective_role"`
-		PermissionState string                                     `json:"permission_state"`
-	}{User: authorizationUser{user.UserID, user.Status, user.OrgID, user.SupportOrgID, user.AccountType}, Assignments: assignments, Roles: roles, EffectiveRole: role, PermissionState: permissionStateFingerprint})
+		User          authorizationUser                          `json:"user"`
+		Assignments   []identitymodel.IdentityUserRoleAssignment `json:"assignments"`
+		Roles         []identitymodel.IdentityRole               `json:"roles"`
+		EffectiveRole identitymodel.RoleSchema                   `json:"effective_role"`
+	}{User: authorizationUser{user.UserID, user.Status, user.OrgID, user.SupportOrgID, user.AccountType}, Assignments: assignments, Roles: roles, EffectiveRole: role})
 	return fmt.Sprintf("%x", sha256.Sum256(encoded))
 }
 
@@ -292,29 +291,6 @@ func identityScopeRevision(orgScopeIDs, supportOrgScopeIDs, reportingScopeUserID
 		SupportOrgScopeIDs    []string `json:"support_org_scope_ids"`
 		ReportingScopeUserIDs []string `json:"reporting_scope_user_ids"`
 	}{orgScopeIDs, supportOrgScopeIDs, reportingScopeUserIDs})
-	return fmt.Sprintf("%x", sha256.Sum256(encoded))
-}
-
-// identityPermissionStateFingerprint captures the authorization-relevant
-// current database snapshot without coupling bearer revisions to labels or
-// timestamps. Any key becoming unknown, disabled, retired, or active changes
-// the fingerprint, including when that key is not granted by the current role.
-func identityPermissionStateFingerprint(definitions map[string]identitymodel.IdentityPermissionDefinition) string {
-	type state struct {
-		Key     string `json:"key"`
-		Status  string `json:"status"`
-		Enabled bool   `json:"enabled"`
-	}
-	values := make([]state, 0, len(definitions))
-	for key, definition := range definitions {
-		key = strings.TrimSpace(key)
-		if key == "" {
-			continue
-		}
-		values = append(values, state{Key: key, Status: strings.TrimSpace(definition.DefinitionStatus), Enabled: definition.Enabled})
-	}
-	sort.Slice(values, func(left, right int) bool { return values[left].Key < values[right].Key })
-	encoded, _ := json.Marshal(values)
 	return fmt.Sprintf("%x", sha256.Sum256(encoded))
 }
 

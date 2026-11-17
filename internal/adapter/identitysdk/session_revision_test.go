@@ -154,6 +154,60 @@ func TestCurrentSessionInvalidatesCachedAuthorizationBeforeTTL(t *testing.T) {
 	}
 }
 
+func TestCurrentSessionSurvivesUnrelatedPermissionCatalogReconcile(t *testing.T) {
+	f := newPrincipalReadFixture(t)
+	ctx := requestcontext.WithWorkspaceID(f.ctx, "workspace-primary")
+	user, found, err := f.repo.GetIdentityUser(ctx, "workspace-primary", "subject")
+	if err != nil || !found {
+		t.Fatalf("load subject: found=%v err=%v", found, err)
+	}
+	user.Email = "subject@example.test"
+	if err := f.repo.UpsertIdentityUser(ctx, "workspace-primary", user); err != nil {
+		t.Fatal(err)
+	}
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte("SessionTest1!"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authStore := authpersistence.NewAuthStore(f.repo.SQLIdentityStore)
+	if err := authStore.UpsertIdentityCredential(ctx, "workspace-primary", identitymodel.IdentityCredential{UserID: "subject", PasswordHash: string(passwordHash)}); err != nil {
+		t.Fatal(err)
+	}
+	auth := authapplication.NewAuthApplicationService(f.identity, authStore, "session-revision-test-secret", "", time.Hour, 24*time.Hour, 5, time.Minute, time.Minute, 3, authpolicy.AuthPasswordPolicy{})
+	if err := auth.ConfigureTokenMetadata("https://identity.example.test", "principal-test"); err != nil {
+		t.Fatal(err)
+	}
+	binding := f.resolver.binding
+	binding.auth = auth
+	binding.descriptor = identitysdk.Descriptor{Issuer: "https://identity.example.test", Audience: "principal-test"}
+	resolver, err := identityprincipal.NewResolver(binding, identityprincipal.Options{Cache: identityprincipal.NewMemoryCache()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	login, err := auth.LoginForApplication(ctx, "workspace-primary", "subject@example.test", "SessionTest1!", "principal-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := resolver.Authenticate(ctx, login.AccessToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A different application may add or retire a catalog key while this
+	// subject's effective grants remain identical.  That catalog churn must not
+	// turn an otherwise valid cross-Pod bearer into authorization_revision_stale.
+	f.identity.ReplacePermissionDefinitions(append(f.grants, identitymodel.IdentityPermissionDefinition{
+		Key: "unrelated.application.inspect", DefinitionStatus: identitymodel.IdentityPermissionDefinitionActive, Enabled: true,
+	}))
+	after, err := resolver.Authenticate(ctx, login.AccessToken)
+	if err != nil {
+		t.Fatalf("unrelated permission reconcile invalidated current session: %v", err)
+	}
+	if after.AuthorizationRevision != before.AuthorizationRevision {
+		t.Fatalf("unrelated permission reconcile changed revision: before=%s after=%s", before.AuthorizationRevision, after.AuthorizationRevision)
+	}
+}
+
 func TestDepartmentTreeChangesRefreshScopeWithoutRevokingUserSession(t *testing.T) {
 	f := newPrincipalReadFixture(t)
 	ctx := requestcontext.WithWorkspaceID(f.ctx, "workspace-primary")
