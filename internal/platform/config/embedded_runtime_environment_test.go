@@ -26,6 +26,11 @@ func TestEmbeddedProductProductionEnvironmentLoadsIdentityContract(t *testing.T)
 		"INTEGRATION_SECRET_KEY":           "local-test-integration-secret",
 		"INTEGRATION_ACTIVE_KEY_ID":        "product-v1",
 		"UPLOAD_DIR":                       "/app/uploads",
+		"SCHEDULER_ENABLED":                "true",
+		"SCHEDULER_POLL_INTERVAL":          "1s",
+		"SCHEDULER_BATCH_SIZE":             "25",
+		"SCHEDULER_LEASE_TTL":              "30s",
+		"SCHEDULER_MAX_CATCHUP_WINDOWS":    "1",
 	}
 	for name, value := range values {
 		t.Setenv(name, value)

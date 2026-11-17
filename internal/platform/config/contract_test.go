@@ -205,6 +205,11 @@ func TestEmbeddedIdentityAcceptsRuntimeOwnedWorkspaceConfiguration(t *testing.T)
 		"RUNTIME_INSTANCE_ID",
 		"RUNTIME_WORKSPACE_PROVISION_CLIENT_ID",
 		"RUNTIME_WORKSPACE_PROVISION_SIGNING_SECRET",
+		"SCHEDULER_ENABLED",
+		"SCHEDULER_POLL_INTERVAL",
+		"SCHEDULER_BATCH_SIZE",
+		"SCHEDULER_LEASE_TTL",
+		"SCHEDULER_MAX_CATCHUP_WINDOWS",
 	} {
 		if !embeddedRuntimeConfigName(name) {
 			t.Fatalf("Runtime-owned configuration %q rejected by embedded Identity", name)
@@ -212,6 +217,9 @@ func TestEmbeddedIdentityAcceptsRuntimeOwnedWorkspaceConfiguration(t *testing.T)
 	}
 	if embeddedRuntimeConfigName("RUNTIME_WORKSPACE_PROVISION_SIGNING_SECRT") {
 		t.Fatal("misspelled Runtime-owned configuration was accepted")
+	}
+	if embeddedRuntimeConfigName("SCHEDULER_LEASE_TTL_SECONDS") {
+		t.Fatal("unknown Runtime-owned Scheduler configuration was accepted")
 	}
 }
 
