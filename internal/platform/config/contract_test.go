@@ -200,6 +200,21 @@ func TestLoadRejectsMisspelledManagedEnvironmentVariable(t *testing.T) {
 	}
 }
 
+func TestEmbeddedIdentityAcceptsRuntimeOwnedWorkspaceConfiguration(t *testing.T) {
+	for _, name := range []string{
+		"RUNTIME_INSTANCE_ID",
+		"RUNTIME_WORKSPACE_PROVISION_CLIENT_ID",
+		"RUNTIME_WORKSPACE_PROVISION_SIGNING_SECRET",
+	} {
+		if !embeddedRuntimeConfigName(name) {
+			t.Fatalf("Runtime-owned configuration %q rejected by embedded Identity", name)
+		}
+	}
+	if embeddedRuntimeConfigName("RUNTIME_WORKSPACE_PROVISION_SIGNING_SECRT") {
+		t.Fatal("misspelled Runtime-owned configuration was accepted")
+	}
+}
+
 func TestProductionSecurityHardGates(t *testing.T) {
 	valid := Config{Environment: "production", AuthJWTSecret: "jwt", AuthJWTActiveKID: "jwt-1", AuthDefaultPassword: "StrongPassword!", AuthInitialCredentialRotationRequired: true, IdentityDataSecretKey: "integration", IdentityDataActiveKeyID: "data-1", CORSAllowedOrigins: []string{"https://admin.example.com"}, AuthPasswordMinLength: 12}
 	setValidProductionListeners(&valid)
