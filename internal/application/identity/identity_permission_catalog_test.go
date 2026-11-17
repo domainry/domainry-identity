@@ -153,6 +153,47 @@ func TestPermissionDefinitionAndSnapshotHashesAreCanonical(t *testing.T) {
 	}
 }
 
+func TestWorkspacePermissionDefinitionsReadSharedRepositoryAcrossReplicas(t *testing.T) {
+	repository := &permissionCatalogRepositoryStub{records: []identitymodel.IdentityPermissionDefinitionRecord{
+		permissionCatalogTestDefinition("business.customer.read", "business.customer", "read", "Read customer", "Business", "test", "application:test"),
+	}}
+	for index := range repository.records {
+		repository.records[index].DefinitionStatus = identitymodel.IdentityPermissionDefinitionActive
+		repository.records[index].Enabled = true
+	}
+	registry := identityTestAuthorizationRegistryWithDirectPermission(t)
+	first, err := NewIdentityPermissionCatalogApplicationService(repository, registry, "workspace")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := NewIdentityPermissionCatalogApplicationService(repository, registry, "workspace")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := first.ReloadCurrentSnapshot(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := second.ReloadCurrentSnapshot(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+
+	remote := permissionCatalogTestDefinition("business.customer.export", "business.customer", "export", "Export customer", "Business", "test", "application:remote")
+	remote.DefinitionStatus = identitymodel.IdentityPermissionDefinitionActive
+	remote.Enabled = true
+	repository.records = append(repository.records, remote)
+
+	if _, found := second.PermissionDefinitions()[remote.PermissionKey]; found {
+		t.Fatal("second replica route-gate cache unexpectedly observed another replica's reconcile")
+	}
+	shared, err := second.WorkspacePermissionDefinitions(t.Context(), "workspace")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if definition, found := shared[remote.PermissionKey]; !found || !definition.Enabled || definition.DefinitionStatus != identitymodel.IdentityPermissionDefinitionActive {
+		t.Fatalf("workspace authorization did not read committed shared definition: found=%v definition=%+v", found, definition)
+	}
+}
+
 func TestRolePermissionSelectionsRequireCurrentSelectableDefinitions(t *testing.T) {
 	service := &IdentityPermissionCatalogApplicationService{}
 	service.snapshot.Store(&identityPermissionRuntimeSnapshot{byKey: map[string]identityPermissionRuntimeState{

@@ -76,14 +76,26 @@ func (service *IdentityPermissionCatalogApplicationService) EnableHostWorkspaceS
 	service.hostWorkspaceScopes = true
 }
 
-// WorkspacePermissionDefinitions exposes the global definition snapshot to a
-// workspace-scoped authorization request.
+// WorkspacePermissionDefinitions loads one authoritative database snapshot
+// for a complete workspace-scoped principal resolution. The caller pins the
+// returned map for that resolution, so every authorization revision is derived
+// from shared persistence instead of the process-local route-gate cache. This
+// is required when another Identity replica reconciles a remote application's
+// permission catalog: a token issued by either replica must carry the same
+// authorization revision immediately after the shared transaction commits.
 func (service *IdentityPermissionCatalogApplicationService) WorkspacePermissionDefinitions(ctx context.Context, workspaceID string) (map[string]identitymodel.IdentityPermissionDefinition, error) {
-	_ = ctx
 	if _, err := service.ForWorkspace(workspaceID); err != nil {
 		return nil, err
 	}
-	return service.PermissionDefinitions(), nil
+	records, err := service.repository.ListIdentityPermissionDefinitions(ctx, service.workspace)
+	if err != nil {
+		return nil, err
+	}
+	definitions := make(map[string]identitymodel.IdentityPermissionDefinition, len(records))
+	for _, record := range records {
+		definitions[record.PermissionKey] = service.projectDefinition(record)
+	}
+	return definitions, nil
 }
 
 // UseActionUsageProvider binds the host-owned live registry query. Embedded
