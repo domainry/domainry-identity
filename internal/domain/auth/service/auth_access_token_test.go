@@ -4,6 +4,7 @@ import authmodel "github.com/domainry/domainry-identity/internal/domain/auth/mod
 
 import (
 	"encoding/base64"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -65,6 +66,11 @@ func TestAccessTokenVerificationFailsClosedForDurableSessionState(t *testing.T) 
 	repository.refreshTokens[0].ExpiresAt = now.Add(-time.Minute).Format(time.RFC3339)
 	if _, err := auth.VerifyAccessToken(t.Context(), token); apperror.CodeOf(err) != "auth.session_expired" {
 		t.Fatalf("expired durable session error=%v", err)
+	}
+	repository.authSessionStateErr = errors.New("session store unavailable")
+	if _, err := auth.VerifyAccessToken(t.Context(), token); apperror.KindOf(err) != apperror.KindUnavailable ||
+		apperror.CodeOf(err) != "auth.service_unavailable" || !errors.Is(err, repository.authSessionStateErr) {
+		t.Fatalf("unavailable durable session error=%v", err)
 	}
 }
 

@@ -363,12 +363,16 @@ type faultExternalAuthRepository struct {
 	getRefreshTokenErrAt  int
 	getRefreshTokenCalls  int
 	revokeRefreshTokenErr error
+	authSessionStateErr   error
 	discardRefreshTokens  bool
 	revokedRefreshTokens  []string
 	refreshMu             sync.Mutex
 }
 
 func (r *faultExternalAuthRepository) AuthSessionState(_ context.Context, _, userID, sessionID string, now time.Time) (string, error) {
+	if r.authSessionStateErr != nil {
+		return authrepository.AuthSessionStateMissing, r.authSessionStateErr
+	}
 	found, revoked := false, false
 	for _, token := range r.refreshTokens {
 		if token.UserID != userID || token.SessionID != sessionID {

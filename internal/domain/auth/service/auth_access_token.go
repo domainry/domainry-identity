@@ -12,6 +12,8 @@ import (
 	"encoding/json"
 	"strings"
 	"time"
+
+	"github.com/domainry/domainry-foundation/apperror"
 )
 
 func (s *AuthDomainService) VerifyAccessToken(ctx context.Context, token string) (authmodel.AuthClaims, error) {
@@ -29,7 +31,7 @@ func (s *AuthDomainService) VerifyAccessToken(ctx context.Context, token string)
 	}
 	state, err := sessions.AuthSessionState(ctx, claims.WorkspaceID, claims.Subject, claims.SessionID, now)
 	if err != nil {
-		return claims, err
+		return claims, apperror.New(apperror.KindUnavailable, "auth.service_unavailable", err, nil)
 	}
 	switch state {
 	case authrepository.AuthSessionStateActive:
