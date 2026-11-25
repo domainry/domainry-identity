@@ -3,6 +3,7 @@ package service
 import authmodel "github.com/domainry/domainry-identity/internal/domain/auth/model"
 
 import (
+	"context"
 	"encoding/base64"
 	"errors"
 	"strings"
@@ -72,6 +73,51 @@ func TestAccessTokenVerificationFailsClosedForDurableSessionState(t *testing.T) 
 		apperror.CodeOf(err) != "auth.service_unavailable" || !errors.Is(err, repository.authSessionStateErr) {
 		t.Fatalf("unavailable durable session error=%v", err)
 	}
+}
+
+func TestAccessTokenVerificationBoundsStalledSessionLookup(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		budget time.Duration
+	}{
+		{name: "default lookup deadline", budget: authSessionLookupTimeout},
+		{name: "shorter caller deadline", budget: 25 * time.Millisecond},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			auth, _, repository := newFaultAuthDomainService()
+			token := validIdentityAccessToken(t, auth, "user", "workspace-primary")
+			auth.identityStore = stalledSessionRepository{repository}
+			ctx := t.Context()
+			if test.budget < authSessionLookupTimeout {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(ctx, test.budget)
+				defer cancel()
+			}
+			start := time.Now()
+			_, err := auth.VerifyAccessToken(ctx, token)
+			if apperror.KindOf(err) != apperror.KindUnavailable ||
+				apperror.CodeOf(err) != "auth.service_unavailable" || !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("stalled authoritative lookup error=%v", err)
+			}
+			if elapsed := time.Since(start); elapsed > test.budget+time.Second {
+				t.Fatalf("lookup exceeded deadline: elapsed=%v, budget=%v", elapsed, test.budget)
+			}
+			auth.identityStore = repository
+			if _, err := auth.VerifyAccessToken(t.Context(), token); err != nil {
+				t.Fatalf("original token failed after session store recovered: %v", err)
+			}
+		})
+	}
+}
+
+type stalledSessionRepository struct{ *faultExternalAuthRepository }
+
+func (r stalledSessionRepository) AuthSessionState(ctx context.Context, _, _, _ string, _ time.Time) (string, error) {
+	if _, ok := ctx.Deadline(); !ok {
+		return "", errors.New("missing authoritative lookup deadline")
+	}
+	<-ctx.Done()
+	return "", ctx.Err()
 }
 
 func TestAuthAccessTokenSigningKeyRotationOverlap(t *testing.T) {

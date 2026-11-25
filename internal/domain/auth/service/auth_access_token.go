@@ -16,6 +16,8 @@ import (
 	"github.com/domainry/domainry-foundation/apperror"
 )
 
+const authSessionLookupTimeout = 2 * time.Second
+
 func (s *AuthDomainService) VerifyAccessToken(ctx context.Context, token string) (authmodel.AuthClaims, error) {
 	claims, err := s.VerifySignedAccessToken(ctx, token)
 	if err != nil {
@@ -29,7 +31,9 @@ func (s *AuthDomainService) VerifyAccessToken(ctx context.Context, token string)
 	if !ok {
 		return claims, forbidden("auth.session_expired")
 	}
-	state, err := sessions.AuthSessionState(ctx, claims.WorkspaceID, claims.Subject, claims.SessionID, now)
+	sessionContext, cancel := context.WithTimeout(ctx, authSessionLookupTimeout)
+	defer cancel()
+	state, err := sessions.AuthSessionState(sessionContext, claims.WorkspaceID, claims.Subject, claims.SessionID, now)
 	if err != nil {
 		return claims, apperror.New(apperror.KindUnavailable, "auth.service_unavailable", err, nil)
 	}

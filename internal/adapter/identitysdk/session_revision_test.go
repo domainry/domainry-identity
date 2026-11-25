@@ -1,19 +1,122 @@
 package identitysdkadapter
 
 import (
+	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/domainry/domainry-foundation/requestcontext"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
+	identityscope "github.com/domainry/domainry-identity-sdk/application"
 	identityprincipal "github.com/domainry/domainry-identity-sdk/authorization/principal"
+	identityhttp "github.com/domainry/domainry-identity-sdk/httpmiddleware"
 	authapplication "github.com/domainry/domainry-identity/internal/application/auth"
 	authpolicy "github.com/domainry/domainry-identity/internal/domain/auth/policy"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 	authpersistence "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/auth"
 	"golang.org/x/crypto/bcrypt"
 )
+
+type bearerWorkspaceResolver struct {
+	read func(context.Context, identitysdk.WorkspaceID) (identitysdk.WorkspaceID, error)
+}
+
+func (resolver bearerWorkspaceResolver) ResolveWorkspace(ctx context.Context, workspace identitysdk.WorkspaceID) (identitysdk.WorkspaceID, error) {
+	return resolver.read(ctx, workspace)
+}
+
+func TestEmbeddedBearerWorkspaceLookupHasDeadline(t *testing.T) {
+	var stalled bool
+	fixture := bearerWorkspaceResolver{read: func(ctx context.Context, workspace identitysdk.WorkspaceID) (identitysdk.WorkspaceID, error) {
+		if !stalled {
+			return workspace, nil
+		}
+		<-ctx.Done()
+		return "", ctx.Err()
+	}}
+	verifyEmbeddedBearerWorkspaceRecovery(t, fixture, func(value bool) { stalled = value })
+}
+
+func verifyEmbeddedBearerWorkspaceRecovery(t *testing.T, workspaceResolver identitysdk.WorkspaceResolver, stall func(bool)) {
+	t.Helper()
+	f := newPrincipalReadFixture(t)
+	ctx := requestcontext.WithWorkspaceID(f.ctx, "workspace-primary")
+	user := identitymodel.IdentityUser{UserID: "subject", Name: "Subject", Email: "subject@example.test", Status: identitymodel.IdentityStatusActive}
+	if err := f.repo.UpsertIdentityUser(ctx, "workspace-primary", user); err != nil {
+		t.Fatal(err)
+	}
+	password := "SessionTest1!"
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := authpersistence.NewAuthStore(f.repo.SQLIdentityStore)
+	if err := store.UpsertIdentityCredential(ctx, "workspace-primary", identitymodel.IdentityCredential{UserID: "subject", PasswordHash: string(hash)}); err != nil {
+		t.Fatal(err)
+	}
+	auth := authapplication.NewAuthApplicationService(f.identity, store, "session-revision-test-secret", "", time.Hour, 24*time.Hour, 5, time.Minute, time.Minute, 3, authpolicy.AuthPasswordPolicy{})
+	if err := auth.ConfigureTokenMetadata("https://identity.example.test", "principal-test"); err != nil {
+		t.Fatal(err)
+	}
+	login, err := auth.LoginForApplication(ctx, "workspace-primary", user.Email, password, "principal-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding := f.resolver.binding
+	binding.auth = auth
+	binding.descriptor = identitysdk.Descriptor{Issuer: "https://identity.example.test", Audience: "principal-test"}
+	binding.workspaceResolver = workspaceResolver
+	scoped, err := identityscope.BindWithWorkspaceResolver(binding, identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "principal-test"}, workspaceResolver)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolver, err := identityprincipal.NewAuthenticator(scoped, identityprincipal.Options{Cache: identityprincipal.NewMemoryCache()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	middleware, err := identityhttp.New(resolver, identityhttp.WithBindingCredential(scoped))
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := middleware.Authenticate(middleware.RequirePermission("order.read", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})))
+	request := func(timeout time.Duration) *httptest.ResponseRecorder {
+		t.Helper()
+		requestContext, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		r := httptest.NewRequestWithContext(requestContext, http.MethodGet, "/test-protected-resource", nil)
+		r.Header.Set("Authorization", "Bearer "+login.AccessToken)
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, r)
+		return recorder
+	}
+	if result := request(5 * time.Second); result.Code != http.StatusNoContent {
+		t.Fatalf("healthy token: status=%d body=%s", result.Code, result.Body.String())
+	}
+	stall(true)
+	defer stall(false)
+	for _, budget := range []struct {
+		parent time.Duration
+		max    time.Duration
+	}{{5 * time.Second, 3 * time.Second}, {150 * time.Millisecond, time.Second}} {
+		started := time.Now()
+		result := request(budget.parent)
+		elapsed := time.Since(started)
+		if elapsed >= budget.max || result.Code != http.StatusServiceUnavailable || !strings.Contains(result.Body.String(), "auth.service_unavailable") {
+			t.Fatalf("stalled bearer workspace lookup: elapsed=%v status=%d body=%s", elapsed, result.Code, result.Body.String())
+		}
+		t.Logf("stalled bearer workspace lookup returned %d in %v", result.Code, elapsed)
+	}
+	stall(false)
+	if result := request(5 * time.Second); result.Code != http.StatusNoContent {
+		t.Fatalf("original token after recovery: status=%d body=%s", result.Code, result.Body.String())
+	}
+}
 
 func TestCurrentSessionInvalidatesCachedAuthorizationBeforeTTL(t *testing.T) {
 	for _, change := range []string{"department", "assignment", "role-disabled", "permission-disabled", "user-disabled", "read-error"} {

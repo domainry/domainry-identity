@@ -469,6 +469,8 @@ func (adapter sdkAuthentication) CurrentSession(ctx context.Context, request ide
 
 type sdkTokenVerifier struct{ binding *sdkBinding }
 
+const bearerApplicationLookupTimeout = 2 * time.Second
+
 func (adapter sdkTokenVerifier) Verify(ctx context.Context, request identitysdk.VerifyTokenRequest) (identitysdk.VerifiedToken, error) {
 	claims, err := adapter.binding.auth.VerifySignedAccessToken(ctx, request.AccessToken)
 	if err != nil {
@@ -486,8 +488,16 @@ func (adapter sdkTokenVerifier) Verify(ctx context.Context, request identitysdk.
 		return identitysdk.VerifiedToken{}, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.token_invalid"}
 	}
 	if adapter.binding.workspaceResolver != nil {
-		registered, err := adapter.binding.applicationRegistered(ctx, identitysdk.ApplicationRef{WorkspaceID: identitysdk.WorkspaceID(claims.WorkspaceID), ApplicationKey: identitysdk.ApplicationKey(claims.Audience)})
+		// Embedded token verification consults the workspace and registration before
+		// the session lookup can apply its own deadline.
+		lookupContext, cancel := context.WithTimeout(ctx, bearerApplicationLookupTimeout)
+		defer cancel()
+		registered, err := adapter.binding.applicationRegistered(lookupContext, identitysdk.ApplicationRef{WorkspaceID: identitysdk.WorkspaceID(claims.WorkspaceID), ApplicationKey: identitysdk.ApplicationKey(claims.Audience)})
 		if err != nil {
+			var typedError *identitysdk.Error
+			if !errors.As(err, &typedError) {
+				err = &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.application_lookup_unavailable", Cause: err}
+			}
 			return identitysdk.VerifiedToken{}, err
 		}
 		if !registered {
