@@ -9,7 +9,7 @@ require (
 	github.com/domainry/domainry-audit v0.1.47
 	github.com/domainry/domainry-audit-sdk v0.1.23
 	github.com/domainry/domainry-data-exchange-sdk v0.3.23
-	github.com/domainry/domainry-foundation v0.2.29
+	github.com/domainry/domainry-foundation v0.2.30
 	github.com/domainry/domainry-identity-sdk v0.1.47
 	github.com/domainry/domainry-metadata v0.1.41
 	github.com/domainry/domainry-metadata-sdk v0.1.21

@@ -23,10 +23,8 @@ github.com/domainry/domainry-audit-sdk v0.1.23 h1:9lXFm2AMSTCWSIdrKqNDVMi/KHZQAs
 github.com/domainry/domainry-audit-sdk v0.1.23/go.mod h1:Peotv7Py4g5xv+cmot5zqEzCJpKZW81S4kkc21V0pVw=
 github.com/domainry/domainry-data-exchange-sdk v0.3.23 h1:rYls9H7VgcXJNM1exuO+RABsloAd6L6/tA8znjsyGNU=
 github.com/domainry/domainry-data-exchange-sdk v0.3.23/go.mod h1:4T9VXJP6q6xZjKAQU/hclnC/DkjwKyApyD/SJ6JxqxY=
-github.com/domainry/domainry-foundation v0.2.29 h1:tXFxWk9Nx0UmizInWLRNQV7FrEZWRH3+Uq2QAIfRxH0=
-github.com/domainry/domainry-foundation v0.2.29/go.mod h1:gWwPHYvr28OkDqiLnQVCn18YyYd7zZUSVv0d/Q2VjG4=
-github.com/domainry/domainry-identity-sdk v0.1.46 h1:/aOqoobIq+jHUPxxLbB2sHIiGhde1xDlQfPC4dOhlyM=
-github.com/domainry/domainry-identity-sdk v0.1.46/go.mod h1:kijyPlL9snBfA42p63Ye1IbYL8H6r9UepJhFEFinuTQ=
+github.com/domainry/domainry-foundation v0.2.30 h1:9p7J/HGArvRWLiUXun/CMOxJwn//pzm/PVabzLwV0sI=
+github.com/domainry/domainry-foundation v0.2.30/go.mod h1:gWwPHYvr28OkDqiLnQVCn18YyYd7zZUSVv0d/Q2VjG4=
 github.com/domainry/domainry-identity-sdk v0.1.47 h1:ggTLMnp8hRwcnsA99FM7w2Swz6ZuRF34k4bq0EYtWf0=
 github.com/domainry/domainry-identity-sdk v0.1.47/go.mod h1:kijyPlL9snBfA42p63Ye1IbYL8H6r9UepJhFEFinuTQ=
 github.com/domainry/domainry-metadata v0.1.41 h1:2c78RaPXJe2hVnr/TEjjkl0/266FNpIfHNonghH6wWg=
