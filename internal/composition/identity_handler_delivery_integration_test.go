@@ -11,6 +11,7 @@ import (
 	"github.com/domainry/domainry-foundation/apperror"
 	"github.com/domainry/domainry-foundation/requestcontext"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
+	identityscope "github.com/domainry/domainry-identity-sdk/application"
 	authrepository "github.com/domainry/domainry-identity/internal/domain/auth/repository"
 	identitycontract "github.com/domainry/domainry-identity/internal/domain/identity/contract"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
@@ -58,6 +59,13 @@ func TestHandlerDeliveryIsAtomicIdempotentGovernedAndRestartSafe(t *testing.T) {
 				identitycontract.IdentityHandlerDeliveryResolvePermission,
 			),
 		},
+		identitymodel.RoleSchema{
+			Key: "handler_workflow", Name: "Handler workflow", Audience: identitymodel.IdentityRoleAudienceService,
+			AssignmentMode: identitymodel.IdentityRoleAssignmentSystemManaged, GrantableRoleKeys: []string{"employee"},
+			Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll,
+				identitycontract.IdentityHandlerDeliveryDisablePermission, identitycontract.IdentityHandlerDeliveryResolvePermission,
+			),
+		},
 		identitymodel.RoleSchema{Key: "employee", Name: "Employee", Audience: identitymodel.IdentityRoleAudienceAny, AssignmentMode: identitymodel.IdentityRoleAssignmentManual},
 	)
 
@@ -83,6 +91,33 @@ func TestHandlerDeliveryIsAtomicIdempotentGovernedAndRestartSafe(t *testing.T) {
 	if _, err := core.Binding.Applications().Register(t.Context(), identitysdk.ApplicationRegistration{Application: application}); err != nil {
 		t.Fatal(err)
 	}
+	workloadSpec := identitysdk.WorkflowWorkloadBindingSpec{
+		WorkflowKey: "handler_delivery", DefinitionVersionID: "handler-definition-1", DefinitionVersion: 1, RoleKey: "handler_workflow",
+		ActionKeys: []string{identitycontract.IdentityHandlerDeliveryDisablePermission, identitycontract.IdentityHandlerDeliveryResolvePermission},
+	}
+	workloadDigest, err := identitysdk.WorkflowWorkloadReleaseDigest([]identitysdk.WorkflowWorkloadBindingSpec{workloadSpec})
+	if err != nil {
+		t.Fatal(err)
+	}
+	workloadReleaseID := identitysdk.WorkflowWorkloadReleaseID(workloadDigest)
+	workloadBinding, ok := core.Binding.(identitysdk.WorkflowWorkloadIdentityBinding)
+	if !ok || workloadBinding.WorkflowWorkloads() == nil {
+		t.Fatal("Identity Binding does not expose Workflow workload identity")
+	}
+	if _, err := workloadBinding.WorkflowWorkloads().ApplyWorkflowWorkloadBindings(t.Context(), identitysdk.ApplyWorkflowWorkloadBindingsRequest{
+		Application: identitysdk.ApplicationScope{WorkspaceID: application.WorkspaceID, ApplicationKey: application.ApplicationKey},
+		ReleaseID:   workloadReleaseID, ReleaseDigest: workloadDigest, Bindings: []identitysdk.WorkflowWorkloadBindingSpec{workloadSpec},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	workloadAuthority := &identitysdk.HandlerWorkloadAuthority{
+		WorkspaceID: application.WorkspaceID, SubjectID: identitysdk.WorkflowWorkloadSubjectID(workloadSpec.WorkflowKey), RoleKey: workloadSpec.RoleKey,
+		WorkflowKey: workloadSpec.WorkflowKey, DefinitionVersionID: workloadSpec.DefinitionVersionID, DefinitionVersion: workloadSpec.DefinitionVersion,
+		ReleaseID: workloadReleaseID, ReleaseDigest: workloadDigest, TaskID: "handler-task-1", SourceEventID: "handler-event-1",
+	}
+	workloadContext := identityscope.WithScope(requestcontext.WithWorkspaceID(t.Context(), string(application.WorkspaceID)), identitysdk.ApplicationScope{
+		WorkspaceID: application.WorkspaceID, ApplicationKey: application.ApplicationKey,
+	})
 	adminSession, err := core.Binding.Authentication().LoginWithPassword(t.Context(), identitysdk.PasswordLoginRequest{
 		WorkspaceID: application.WorkspaceID, ApplicationKey: application.ApplicationKey, Login: "admin@example.com", Password: cfg.AuthDefaultPassword,
 	})
@@ -98,7 +133,7 @@ func TestHandlerDeliveryIsAtomicIdempotentGovernedAndRestartSafe(t *testing.T) {
 	}
 	handler := core.Binding.(identitysdk.HandlerDeliveryBinding).HandlerDelivery()
 	create := identitysdk.HandlerDeliveryRequest{
-		ContractVersion: identitysdk.HandlerDeliveryContractVersionV1, AccessToken: handlerSession.AccessToken, IdempotencyKey: "employee-create-1",
+		ContractVersion: identitysdk.CurrentHandlerDeliveryContractVersion, AccessToken: handlerSession.AccessToken, IdempotencyKey: "employee-create-1",
 		User: identitysdk.HandlerUserMutation{Operation: identitysdk.HandlerUserCreate, LoginMode: identitysdk.HandlerLoginPassword, User: identitysdk.User{
 			UserID: "employee-1", Name: "Employee One", Email: "employee-1@example.test", AccountType: "human", Status: "active",
 		}}, RoleKeys: []string{"employee"},
@@ -158,7 +193,7 @@ func TestHandlerDeliveryIsAtomicIdempotentGovernedAndRestartSafe(t *testing.T) {
 		t.Fatal(err)
 	}
 	projection, err := handler.ResolveBoundIdentity(t.Context(), identitysdk.HandlerBoundIdentityRequest{
-		ContractVersion: identitysdk.HandlerDeliveryContractVersionV1, AccessToken: staffSession.AccessToken, UserID: "employee-1",
+		ContractVersion: identitysdk.CurrentHandlerDeliveryContractVersion, AccessToken: staffSession.AccessToken, UserID: "employee-1",
 	})
 	if err != nil || projection.DisplayName != "Employee One" || !projection.Active || len(projection.RoleKeys) != 1 || projection.RoleKeys[0] != "employee" {
 		t.Fatalf("projection=%+v err=%v", projection, err)
@@ -166,6 +201,19 @@ func TestHandlerDeliveryIsAtomicIdempotentGovernedAndRestartSafe(t *testing.T) {
 	projectionJSON, err := json.Marshal(projection)
 	if err != nil || strings.Contains(string(projectionJSON), "employee-1@example.test") || strings.Contains(string(projectionJSON), "credential") || strings.Contains(string(projectionJSON), "password") || strings.Contains(string(projectionJSON), "phone") {
 		t.Fatalf("minimal projection leaked private fields: %s err=%v", projectionJSON, err)
+	}
+	workloadProjection, err := handler.ResolveBoundIdentity(workloadContext, identitysdk.HandlerBoundIdentityRequest{
+		ContractVersion: identitysdk.CurrentHandlerDeliveryContractVersion, WorkloadAuthority: workloadAuthority, UserID: "employee-1",
+	})
+	if err != nil || workloadProjection.UserID != "employee-1" || !workloadProjection.Active {
+		t.Fatalf("workload projection=%+v err=%v", workloadProjection, err)
+	}
+	staleAuthority := *workloadAuthority
+	staleAuthority.ReleaseDigest = strings.Repeat("f", 64)
+	if _, err := handler.ResolveBoundIdentity(workloadContext, identitysdk.HandlerBoundIdentityRequest{
+		ContractVersion: identitysdk.CurrentHandlerDeliveryContractVersion, WorkloadAuthority: &staleAuthority, UserID: "employee-1",
+	}); err == nil || !strings.Contains(err.Error(), "release_digest_mismatch") {
+		t.Fatalf("stale workload authority resolved identity: %v", err)
 	}
 	staffWrite := create
 	staffWrite.AccessToken, staffWrite.IdempotencyKey = staffSession.AccessToken, "staff-write-attempt"
@@ -268,9 +316,10 @@ func TestHandlerDeliveryIsAtomicIdempotentGovernedAndRestartSafe(t *testing.T) {
 	}
 	disable := create
 	disable.IdempotencyKey = "employee-disable-1"
+	disable.AccessToken, disable.WorkloadAuthority = "", workloadAuthority
 	disable.User.Operation, disable.User.ExpectedVersion = identitysdk.HandlerUserDisable, updated.User.Version
 	disable.User.LoginMode = ""
-	disabled, err := handler.DeliverIdentity(t.Context(), disable)
+	disabled, err := handler.DeliverIdentity(workloadContext, disable)
 	if err != nil || disabled.User.Status != "disabled" || disabled.RevokedSessions != 1 {
 		t.Fatalf("disabled=%+v err=%v", disabled, err)
 	}

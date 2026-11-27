@@ -70,42 +70,53 @@ func (adapter sdkPrincipalResolver) resolveWorkflowWorkload(ctx context.Context,
 	WorkflowWorkloadBinding(context.Context, string, string) (identitymodel.IdentityWorkflowWorkloadBinding, bool, error)
 	BuildWorkflowWorkloadPrincipal(context.Context, identitymodel.IdentityWorkflowWorkloadBinding) (identitymodel.Principal, error)
 }) (identitysdk.PrincipalResolution, error) {
+	_, resolution, err := adapter.resolveWorkflowWorkloadPrincipal(ctx, request, identity)
+	return resolution, err
+}
+
+func (adapter sdkPrincipalResolver) resolveWorkflowWorkloadPrincipal(ctx context.Context, request identitysdk.PrincipalResolutionRequest, identity interface {
+	WorkflowWorkloadBinding(context.Context, string, string) (identitymodel.IdentityWorkflowWorkloadBinding, bool, error)
+	BuildWorkflowWorkloadPrincipal(context.Context, identitymodel.IdentityWorkflowWorkloadBinding) (identitymodel.Principal, error)
+}) (identitymodel.Principal, identitysdk.PrincipalResolution, error) {
 	scope, ok := identityscope.ScopeFromContext(ctx)
 	if !ok {
-		return identitysdk.PrincipalResolution{}, &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.application_scope_required"}
+		return identitymodel.Principal{}, identitysdk.PrincipalResolution{}, &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.application_scope_required"}
 	}
 	workload := request.Workload
+	if workload == nil {
+		return identitymodel.Principal{}, identitysdk.PrincipalResolution{}, &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.workflow_workload_resolution_invalid"}
+	}
 	workflowKey := strings.TrimSpace(workload.WorkflowKey)
 	subjectID := identitysdk.WorkflowWorkloadSubjectID(workflowKey)
 	if subjectID == "" || request.SubjectID != subjectID || strings.TrimSpace(request.RoleKey) == "" || strings.TrimSpace(workload.DefinitionVersionID) == "" || workload.DefinitionVersion <= 0 || strings.TrimSpace(workload.ReleaseDigest) == "" {
-		return identitysdk.PrincipalResolution{}, &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.workflow_workload_resolution_invalid"}
+		return identitymodel.Principal{}, identitysdk.PrincipalResolution{}, &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.workflow_workload_resolution_invalid"}
 	}
 	binding, found, err := identity.WorkflowWorkloadBinding(ctx, string(scope.ApplicationKey), workflowKey)
 	if err != nil {
-		return identitysdk.PrincipalResolution{}, sdkBoundaryError(err)
+		return identitymodel.Principal{}, identitysdk.PrincipalResolution{}, sdkBoundaryError(err)
 	}
 	if !found || binding.Status != identitysdk.WorkflowWorkloadBindingActive {
-		return identitysdk.PrincipalResolution{}, &identitysdk.Error{Class: identitysdk.ErrorClassNotFound, Code: "identity.workflow_workload_not_found"}
+		return identitymodel.Principal{}, identitysdk.PrincipalResolution{}, &identitysdk.Error{Class: identitysdk.ErrorClassNotFound, Code: "identity.workflow_workload_not_found"}
 	}
 	if binding.RoleKey != strings.TrimSpace(request.RoleKey) {
-		return identitysdk.PrincipalResolution{}, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.workflow_workload_role_mismatch"}
+		return identitymodel.Principal{}, identitysdk.PrincipalResolution{}, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.workflow_workload_role_mismatch"}
 	}
 	if binding.DefinitionVersionID != strings.TrimSpace(workload.DefinitionVersionID) || binding.DefinitionVersion != workload.DefinitionVersion {
-		return identitysdk.PrincipalResolution{}, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.workflow_workload_version_mismatch"}
+		return identitymodel.Principal{}, identitysdk.PrincipalResolution{}, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.workflow_workload_version_mismatch"}
 	}
 	if binding.ReleaseID != strings.TrimSpace(workload.ReleaseID) || binding.ReleaseDigest != strings.TrimSpace(workload.ReleaseDigest) {
-		return identitysdk.PrincipalResolution{}, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.workflow_workload_release_digest_mismatch"}
+		return identitymodel.Principal{}, identitysdk.PrincipalResolution{}, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.workflow_workload_release_digest_mismatch"}
 	}
 	principal, err := identity.BuildWorkflowWorkloadPrincipal(ctx, binding)
 	if err != nil {
-		return identitysdk.PrincipalResolution{}, sdkBoundaryError(err)
+		return identitymodel.Principal{}, identitysdk.PrincipalResolution{}, sdkBoundaryError(err)
 	}
 	if !principal.Known {
-		return identitysdk.PrincipalResolution{}, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.workflow_workload_role_unavailable"}
+		return identitymodel.Principal{}, identitysdk.PrincipalResolution{}, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.workflow_workload_role_unavailable"}
 	}
 	snapshot, err := adapter.binding.access.SnapshotWorkflowWorkload(ctx, principal)
 	if err != nil {
-		return identitysdk.PrincipalResolution{}, sdkBoundaryError(err)
+		return identitymodel.Principal{}, identitysdk.PrincipalResolution{}, sdkBoundaryError(err)
 	}
 	bundle := sdkAccessBundle(snapshot, principal, adapter.binding.clock.Now().UTC())
 	result := identitysdk.Principal{
@@ -115,5 +126,5 @@ func (adapter sdkPrincipalResolver) resolveWorkflowWorkload(ctx context.Context,
 		Roles:    []identitysdk.Role{sdkProjectionRole(identitymodel.IdentityRole{RoleID: principal.Role.Key, Key: principal.Role.Key, Label: principal.Role.Name, Status: identitymodel.IdentityStatusActive})},
 		Workload: &identitysdk.WorkflowWorkloadPrincipalContext{WorkflowKey: workflowKey, DefinitionVersionID: workload.DefinitionVersionID, DefinitionVersion: workload.DefinitionVersion, ReleaseID: workload.ReleaseID, ReleaseDigest: workload.ReleaseDigest, TaskID: strings.TrimSpace(workload.TaskID), SourceEventID: strings.TrimSpace(workload.SourceEventID), InitiatorSubjectID: workload.InitiatorSubjectID},
 	}
-	return identitysdk.PrincipalResolution{Principal: result, AccessBundle: bundle}, nil
+	return principal, identitysdk.PrincipalResolution{Principal: result, AccessBundle: bundle}, nil
 }

@@ -7,8 +7,10 @@ import (
 	"testing"
 
 	identitysdk "github.com/domainry/domainry-identity-sdk"
+	identityscope "github.com/domainry/domainry-identity-sdk/application"
 	organizationunit "github.com/domainry/domainry-identity-sdk/organizationunit"
 	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
+	identitycomposition "github.com/domainry/domainry-identity/internal/composition"
 	ormsqlite "github.com/domainry/domainry-orm/sqlite"
 	_ "modernc.org/sqlite"
 )
@@ -33,6 +35,28 @@ func TestHandlerDeliveryModuleExposesOnlyTransactionBoundNarrowCapability(t *tes
 	}
 	if _, leaked := any(capability).(identitysdk.HandlerDeliveryUnitOfWorkBinder); leaked {
 		t.Fatal("project capability leaked the transaction binder")
+	}
+}
+
+func TestHandlerDeliveryModuleScopesWorkloadAuthorityToBoundApplication(t *testing.T) {
+	application := identitysdk.ApplicationRef{WorkspaceID: "workspace-primary", ApplicationKey: "runtime-app"}
+	adapter := moduleHandlerDelivery{binding: &moduleBinding{runtime: &identitycomposition.Core{}, application: application}}
+	authority := &identitysdk.HandlerWorkloadAuthority{WorkspaceID: application.WorkspaceID, SubjectID: "workflow:directory-sync", RoleKey: "directory_sync_service", WorkflowKey: "directory-sync", DefinitionVersionID: "definition-1", DefinitionVersion: 1, ReleaseID: "release-1", ReleaseDigest: "digest-1"}
+	ctx, err := adapter.authorizedContext(t.Context(), "", authority)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope, ok := identityscope.ScopeFromContext(ctx)
+	if !ok || scope.WorkspaceID != application.WorkspaceID || scope.ApplicationKey != application.ApplicationKey {
+		t.Fatalf("workload application scope=%+v found=%v", scope, ok)
+	}
+	if _, err := adapter.authorizedContext(t.Context(), "bearer", authority); err == nil {
+		t.Fatal("module accepted bearer and workload authority together")
+	}
+	crossWorkspace := *authority
+	crossWorkspace.WorkspaceID = "workspace-other"
+	if _, err := adapter.authorizedContext(t.Context(), "", &crossWorkspace); err == nil {
+		t.Fatal("module accepted cross-workspace workload authority")
 	}
 }
 

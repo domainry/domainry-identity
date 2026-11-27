@@ -14,13 +14,17 @@ func (binding *sdkBinding) forToken(ctx context.Context, token string) (*sdkBind
 	if err != nil {
 		return nil, err
 	}
-	applications, err := binding.scopedApplications(ctx, identitysdk.ApplicationRef{WorkspaceID: verified.WorkspaceID, ApplicationKey: verified.Audience})
+	return binding.forApplication(ctx, identitysdk.ApplicationRef{WorkspaceID: verified.WorkspaceID, ApplicationKey: verified.Audience})
+}
+
+func (binding *sdkBinding) forApplication(ctx context.Context, application identitysdk.ApplicationRef) (*sdkBinding, error) {
+	applications, err := binding.scopedApplications(ctx, application)
 	if err != nil {
 		return nil, err
 	}
 	clone := *binding
 	clone.applications = applications
-	clone.handlerDelivery = binding.handlerDelivery.ForWorkspace(string(verified.WorkspaceID), applications)
-	clone.organizationUnits = binding.organizationUnits.ForWorkspace(string(verified.WorkspaceID), applications)
+	clone.handlerDelivery = binding.handlerDelivery.ForWorkspace(string(application.WorkspaceID), applications)
+	clone.organizationUnits = binding.organizationUnits.ForWorkspace(string(application.WorkspaceID), applications)
 	return &clone, nil
 }

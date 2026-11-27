@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	identitysdk "github.com/domainry/domainry-identity-sdk"
+	identityscope "github.com/domainry/domainry-identity-sdk/application"
 	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
 	identitymodel "github.com/domainry/domainry-identity/internal/domain/identity/model"
 )
@@ -21,21 +22,13 @@ func (adapter sdkHandlerDelivery) DeliverIdentity(ctx context.Context, request i
 	if adapter.binding == nil || adapter.binding.handlerDelivery == nil {
 		return identitysdk.HandlerDeliveryResult{}, &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.handler_delivery_unavailable"}
 	}
-	scoped, scopeErr := adapter.binding.forToken(ctx, request.AccessToken)
+	scoped, workloadPrincipal, applicationKey, scopeErr := adapter.authorize(ctx, request.AccessToken, request.WorkloadAuthority, true)
 	if scopeErr != nil {
 		return identitysdk.HandlerDeliveryResult{}, scopeErr
 	}
 	adapter.binding = scoped
-
-	claims, err := adapter.binding.auth.VerifyAccessToken(ctx, strings.TrimSpace(request.AccessToken))
-	if err != nil {
-		return identitysdk.HandlerDeliveryResult{}, sdkBoundaryError(err)
-	}
-	if err := adapter.binding.requireMutableWorkspace(ctx, identitysdk.WorkspaceID(claims.WorkspaceID)); err != nil {
-		return identitysdk.HandlerDeliveryResult{}, err
-	}
 	result, err := adapter.binding.handlerDelivery.Deliver(ctx, identityapplication.IdentityHandlerDeliveryRequest{
-		ContractVersion: request.ContractVersion, AccessToken: request.AccessToken, IdempotencyKey: request.IdempotencyKey,
+		ContractVersion: request.ContractVersion, AccessToken: request.AccessToken, VerifiedWorkloadPrincipal: workloadPrincipal, ApplicationKey: applicationKey, IdempotencyKey: request.IdempotencyKey,
 		Operation: identitymodel.IdentityHandlerUserOperation(request.User.Operation), User: internalHandlerUser(request.User.User),
 		ExpectedVersion: request.User.ExpectedVersion, LoginMode: identitymodel.IdentityHandlerLoginMode(request.User.LoginMode),
 		RoleKeys: append([]string(nil), request.RoleKeys...), ProfileBinding: internalHandlerProfileBinding(request.ProfileBinding),
@@ -47,14 +40,14 @@ func (adapter sdkHandlerDelivery) ResolveBoundIdentity(ctx context.Context, requ
 	if adapter.binding == nil || adapter.binding.handlerDelivery == nil {
 		return identitysdk.HandlerBoundIdentity{}, &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.handler_delivery_unavailable"}
 	}
-	scoped, scopeErr := adapter.binding.forToken(ctx, request.AccessToken)
+	scoped, workloadPrincipal, applicationKey, scopeErr := adapter.authorize(ctx, request.AccessToken, request.WorkloadAuthority, false)
 	if scopeErr != nil {
 		return identitysdk.HandlerBoundIdentity{}, scopeErr
 	}
 	adapter.binding = scoped
 
 	result, err := adapter.binding.handlerDelivery.ResolveBoundIdentity(ctx, identityapplication.IdentityHandlerBoundIdentityRequest{
-		ContractVersion: request.ContractVersion, AccessToken: request.AccessToken, UserID: request.UserID,
+		ContractVersion: request.ContractVersion, AccessToken: request.AccessToken, VerifiedWorkloadPrincipal: workloadPrincipal, ApplicationKey: applicationKey, UserID: request.UserID,
 		ProfileBinding: internalHandlerProfileBindingSelector(request.ProfileBinding),
 	})
 	if err != nil {
@@ -75,6 +68,60 @@ func (adapter sdkHandlerDelivery) ResolveBoundIdentity(ctx context.Context, requ
 		}
 	}
 	return projection, nil
+}
+
+func (adapter sdkHandlerDelivery) authorize(ctx context.Context, accessToken string, workload *identitysdk.HandlerWorkloadAuthority, mutable bool) (*sdkBinding, *identitymodel.Principal, string, error) {
+	accessToken = strings.TrimSpace(accessToken)
+	if (accessToken != "") == (workload != nil) {
+		return nil, nil, "", &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.handler_delivery_authority_invalid"}
+	}
+	if workload == nil {
+		scoped, err := adapter.binding.forToken(ctx, accessToken)
+		if err != nil {
+			return nil, nil, "", err
+		}
+		if mutable {
+			claims, err := scoped.auth.VerifyAccessToken(ctx, accessToken)
+			if err != nil {
+				return nil, nil, "", sdkBoundaryError(err)
+			}
+			if err := scoped.requireMutableWorkspace(ctx, identitysdk.WorkspaceID(claims.WorkspaceID)); err != nil {
+				return nil, nil, "", err
+			}
+		}
+		return scoped, nil, "", nil
+	}
+	scope, ok := identityscope.ScopeFromContext(ctx)
+	if !ok || workload.WorkspaceID != scope.WorkspaceID || !scope.WorkspaceID.Valid() || !scope.ApplicationKey.Valid() || strings.TrimSpace(adapter.binding.descriptor.Audience) != string(scope.ApplicationKey) {
+		return nil, nil, "", &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.handler_delivery_application_scope_mismatch"}
+	}
+	scoped, err := adapter.binding.forApplication(ctx, identitysdk.ApplicationRef{WorkspaceID: scope.WorkspaceID, ApplicationKey: scope.ApplicationKey})
+	if err != nil {
+		return nil, nil, "", err
+	}
+	if mutable {
+		if err := scoped.requireMutableWorkspace(ctx, scope.WorkspaceID); err != nil {
+			return nil, nil, "", err
+		}
+	}
+	identity, workspaceContext, err := (sdkProjection{binding: scoped}).scoped(ctx)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	principalRequest := identitysdk.PrincipalResolutionRequest{
+		SubjectID: workload.SubjectID,
+		RoleKey:   strings.TrimSpace(workload.RoleKey),
+		Workload: &identitysdk.WorkflowWorkloadResolution{
+			WorkflowKey: strings.TrimSpace(workload.WorkflowKey), DefinitionVersionID: strings.TrimSpace(workload.DefinitionVersionID), DefinitionVersion: workload.DefinitionVersion,
+			ReleaseID: strings.TrimSpace(workload.ReleaseID), ReleaseDigest: strings.TrimSpace(workload.ReleaseDigest), TaskID: strings.TrimSpace(workload.TaskID),
+			SourceEventID: strings.TrimSpace(workload.SourceEventID), InitiatorSubjectID: workload.InitiatorSubjectID,
+		},
+	}
+	principal, _, err := (sdkPrincipalResolver{binding: scoped}).resolveWorkflowWorkloadPrincipal(identityscope.WithScope(workspaceContext, scope), principalRequest, identity)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	return scoped, &principal, string(scope.ApplicationKey), nil
 }
 
 func internalHandlerProfileBindingSelector(value *identitysdk.HandlerProfileBindingSelector) *identityapplication.IdentityHandlerProfileBindingSelector {

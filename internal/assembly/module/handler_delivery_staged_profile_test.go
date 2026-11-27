@@ -83,7 +83,7 @@ func TestHandlerDeliveryModuleAcceptsRuntimeStagedProfileWithinBoundTransaction(
 		t.Fatal(err)
 	}
 	request := identitysdk.HandlerDeliveryRequest{
-		ContractVersion: identitysdk.HandlerDeliveryContractVersionV1, AccessToken: session.AccessToken, IdempotencyKey: "employee-create-embedded",
+		ContractVersion: identitysdk.CurrentHandlerDeliveryContractVersion, AccessToken: session.AccessToken, IdempotencyKey: "employee-create-embedded",
 		User:           identitysdk.HandlerUserMutation{Operation: identitysdk.HandlerUserCreate, LoginMode: identitysdk.HandlerLoginNone, User: identitysdk.User{UserID: "employee-1", Name: "Employee One", Email: "employee-1@example.test", AccountType: "human", Status: "active"}},
 		RoleKeys:       []string{"employee"},
 		ProfileBinding: &identitysdk.HandlerProfileBindingMutation{BindingKey: "employee_profile", ObjectKey: "employee_profile", ProfileID: "profile-1", EmbeddedProfileRecord: map[string]any{"employment_status": "active"}},

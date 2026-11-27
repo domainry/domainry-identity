@@ -20,7 +20,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-const IdentityHandlerDeliveryContractVersionV1 = "domainry-identity-handler-delivery-v1"
+const IdentityHandlerDeliveryContractVersionV2 = "domainry-identity-handler-delivery-v2"
 
 type IdentityHandlerDeliveryAuthenticator interface {
 	VerifyAccessToken(context.Context, string) (authmodel.AuthClaims, error)
@@ -42,22 +42,26 @@ type IdentityHandlerProfileBindingRequest struct {
 }
 
 type IdentityHandlerDeliveryRequest struct {
-	ContractVersion string
-	AccessToken     string
-	IdempotencyKey  string
-	Operation       identitymodel.IdentityHandlerUserOperation
-	User            identitymodel.IdentityUser
-	ExpectedVersion int64
-	LoginMode       identitymodel.IdentityHandlerLoginMode
-	RoleKeys        []string
-	ProfileBinding  *IdentityHandlerProfileBindingRequest
+	ContractVersion           string
+	AccessToken               string
+	VerifiedWorkloadPrincipal *identitymodel.Principal
+	ApplicationKey            string
+	IdempotencyKey            string
+	Operation                 identitymodel.IdentityHandlerUserOperation
+	User                      identitymodel.IdentityUser
+	ExpectedVersion           int64
+	LoginMode                 identitymodel.IdentityHandlerLoginMode
+	RoleKeys                  []string
+	ProfileBinding            *IdentityHandlerProfileBindingRequest
 }
 
 type IdentityHandlerBoundIdentityRequest struct {
-	ContractVersion string
-	AccessToken     string
-	UserID          string
-	ProfileBinding  *IdentityHandlerProfileBindingSelector
+	ContractVersion           string
+	AccessToken               string
+	VerifiedWorkloadPrincipal *identitymodel.Principal
+	ApplicationKey            string
+	UserID                    string
+	ProfileBinding            *IdentityHandlerProfileBindingSelector
 }
 
 type IdentityHandlerProfileBindingSelector struct {
@@ -127,7 +131,9 @@ func (s *IdentityHandlerDeliveryApplicationService) ResolveBoundIdentity(ctx con
 		return IdentityHandlerBoundIdentity{}, handlerDeliveryError(apperror.KindInternal, "backend.identity.handler_delivery_unavailable")
 	}
 	request.ContractVersion, request.AccessToken, request.UserID = strings.TrimSpace(request.ContractVersion), strings.TrimSpace(request.AccessToken), strings.TrimSpace(request.UserID)
-	if request.ContractVersion != IdentityHandlerDeliveryContractVersionV1 || request.AccessToken == "" || request.UserID == "" {
+	hasBearer := request.AccessToken != ""
+	hasWorkload := request.VerifiedWorkloadPrincipal != nil
+	if request.ContractVersion != IdentityHandlerDeliveryContractVersionV2 || hasBearer == hasWorkload || request.UserID == "" {
 		return IdentityHandlerBoundIdentity{}, handlerDeliveryError(apperror.KindBadRequest, "backend.identity.handler_projection_invalid")
 	}
 	if request.ProfileBinding != nil {
@@ -138,25 +144,9 @@ func (s *IdentityHandlerDeliveryApplicationService) ResolveBoundIdentity(ctx con
 			return IdentityHandlerBoundIdentity{}, handlerDeliveryError(apperror.KindBadRequest, "backend.identity.handler_projection_invalid")
 		}
 	}
-	claims, err := s.dependencies.Authentication.VerifyAccessToken(ctx, request.AccessToken)
+	principal, workspaceContext, _, err := s.authorizeHandlerDeliveryActor(ctx, request.AccessToken, request.VerifiedWorkloadPrincipal, request.ApplicationKey)
 	if err != nil {
 		return IdentityHandlerBoundIdentity{}, err
-	}
-	workspaceID := strings.TrimSpace(s.dependencies.WorkspaceID)
-	registered, err := s.dependencies.Applications.Registered(ctx, claims.Audience)
-	if err != nil {
-		return IdentityHandlerBoundIdentity{}, err
-	}
-	if claims.WorkspaceID != workspaceID || s.dependencies.Applications.WorkspaceID() != workspaceID || !registered {
-		return IdentityHandlerBoundIdentity{}, handlerDeliveryError(apperror.KindForbidden, "identity.handler_delivery_application_scope_mismatch")
-	}
-	workspaceContext := requestcontext.WithWorkspaceID(ctx, workspaceID)
-	principal, err := s.dependencies.Authentication.PrincipalFromBearer(workspaceContext, "Bearer "+request.AccessToken, requestcontext.RequestID(ctx))
-	if err != nil {
-		return IdentityHandlerBoundIdentity{}, err
-	}
-	if !principal.Known || principal.UserID != claims.Subject || principal.WorkspaceID != workspaceID || principal.AuthorizationRevision == "" || principal.AuthorizationRevision != claims.AuthorizationRevision {
-		return IdentityHandlerBoundIdentity{}, handlerDeliveryError(apperror.KindConflict, "auth.authorization_stale")
 	}
 	permissionKey := identitycontract.IdentityHandlerDeliveryResolvePermission
 	if !identitycontract.IdentityRoleHasPermissionKey(principal.Role, permissionKey) {
@@ -200,7 +190,7 @@ func (s *IdentityHandlerDeliveryApplicationService) ResolveBoundIdentity(ctx con
 			return IdentityHandlerBoundIdentity{}, err
 		}
 	}
-	profileBinding, err := s.resolveRequestedProfileBinding(workspaceContext, workspaceID, user.UserID, request.ProfileBinding)
+	profileBinding, err := s.resolveRequestedProfileBinding(workspaceContext, principal.WorkspaceID, user.UserID, request.ProfileBinding)
 	if err != nil {
 		return IdentityHandlerBoundIdentity{}, err
 	}
@@ -237,6 +227,50 @@ func (s *IdentityHandlerDeliveryApplicationService) resolveRequestedProfileBindi
 	return &bindingCopy, nil
 }
 
+func (s *IdentityHandlerDeliveryApplicationService) authorizeHandlerDeliveryActor(ctx context.Context, accessToken string, verifiedWorkload *identitymodel.Principal, applicationKey string) (identitymodel.Principal, context.Context, string, error) {
+	workspaceID := strings.TrimSpace(s.dependencies.WorkspaceID)
+	applicationKey = strings.TrimSpace(applicationKey)
+	workspaceContext := requestcontext.WithWorkspaceID(ctx, workspaceID)
+	var principal identitymodel.Principal
+	if verifiedWorkload != nil {
+		principal = *verifiedWorkload
+		if strings.TrimSpace(accessToken) != "" || applicationKey == "" || !principal.Known || principal.WorkspaceID != workspaceID || strings.TrimSpace(principal.UserID) == "" || strings.TrimSpace(principal.AuthorizationRevision) == "" ||
+			principal.Role.Audience != identitymodel.IdentityRoleAudienceService || principal.Role.AssignmentMode != identitymodel.IdentityRoleAssignmentSystemManaged || strings.TrimSpace(principal.Role.Key) == "" {
+			return identitymodel.Principal{}, ctx, "", handlerDeliveryError(apperror.KindForbidden, "backend.identity.handler_delivery_workload_actor_invalid")
+		}
+	} else {
+		claims, err := s.dependencies.Authentication.VerifyAccessToken(ctx, strings.TrimSpace(accessToken))
+		if err != nil {
+			return identitymodel.Principal{}, ctx, "", err
+		}
+		applicationKey = strings.TrimSpace(claims.Audience)
+		if claims.WorkspaceID != workspaceID {
+			return identitymodel.Principal{}, ctx, "", handlerDeliveryError(apperror.KindForbidden, "auth.workspace_mismatch")
+		}
+		principal, err = s.dependencies.Authentication.PrincipalFromBearer(workspaceContext, "Bearer "+strings.TrimSpace(accessToken), requestcontext.RequestID(ctx))
+		if err != nil {
+			return identitymodel.Principal{}, ctx, "", err
+		}
+		if !principal.Known || principal.WorkspaceID != workspaceID || principal.UserID != claims.Subject {
+			return identitymodel.Principal{}, ctx, "", handlerDeliveryError(apperror.KindForbidden, "backend.identity.handler_delivery_actor_invalid")
+		}
+		if principal.AuthorizationRevision == "" || principal.AuthorizationRevision != claims.AuthorizationRevision {
+			return identitymodel.Principal{}, ctx, "", handlerDeliveryError(apperror.KindConflict, "auth.authorization_stale")
+		}
+	}
+	if s.dependencies.Applications.WorkspaceID() != workspaceID {
+		return identitymodel.Principal{}, ctx, "", handlerDeliveryError(apperror.KindForbidden, "identity.handler_delivery_application_scope_mismatch")
+	}
+	registered, err := s.dependencies.Applications.Registered(workspaceContext, applicationKey)
+	if err != nil {
+		return identitymodel.Principal{}, ctx, "", err
+	}
+	if !registered {
+		return identitymodel.Principal{}, ctx, "", handlerDeliveryError(apperror.KindForbidden, "identity.application_not_registered")
+	}
+	return principal, workspaceContext, applicationKey, nil
+}
+
 func (s *IdentityHandlerDeliveryApplicationService) Deliver(ctx context.Context, request IdentityHandlerDeliveryRequest) (identitymodel.IdentityHandlerDeliveryResult, error) {
 	if err := ctx.Err(); err != nil {
 		return identitymodel.IdentityHandlerDeliveryResult{}, err
@@ -247,7 +281,9 @@ func (s *IdentityHandlerDeliveryApplicationService) Deliver(ctx context.Context,
 	request.ContractVersion = strings.TrimSpace(request.ContractVersion)
 	request.IdempotencyKey = strings.TrimSpace(request.IdempotencyKey)
 	request.AccessToken = strings.TrimSpace(request.AccessToken)
-	if request.ContractVersion != IdentityHandlerDeliveryContractVersionV1 || request.IdempotencyKey == "" || request.AccessToken == "" || request.ExpectedVersion < 0 || strings.TrimSpace(request.User.UserID) == "" {
+	hasBearer := request.AccessToken != ""
+	hasWorkload := request.VerifiedWorkloadPrincipal != nil
+	if request.ContractVersion != IdentityHandlerDeliveryContractVersionV2 || hasBearer == hasWorkload || request.IdempotencyKey == "" || request.ExpectedVersion < 0 || strings.TrimSpace(request.User.UserID) == "" {
 		return identitymodel.IdentityHandlerDeliveryResult{}, handlerDeliveryError(apperror.KindBadRequest, "backend.identity.handler_delivery_invalid")
 	}
 	if request.Operation != identitymodel.IdentityHandlerUserCreate && request.Operation != identitymodel.IdentityHandlerUserUpdate && request.Operation != identitymodel.IdentityHandlerUserDisable {
@@ -260,32 +296,11 @@ func (s *IdentityHandlerDeliveryApplicationService) Deliver(ctx context.Context,
 	} else if request.LoginMode != "" {
 		return identitymodel.IdentityHandlerDeliveryResult{}, handlerDeliveryError(apperror.KindBadRequest, "backend.identity.handler_delivery_login_mode_invalid")
 	}
-	claims, err := s.dependencies.Authentication.VerifyAccessToken(ctx, request.AccessToken)
+	principal, workspaceContext, applicationKey, err := s.authorizeHandlerDeliveryActor(ctx, request.AccessToken, request.VerifiedWorkloadPrincipal, request.ApplicationKey)
 	if err != nil {
 		return identitymodel.IdentityHandlerDeliveryResult{}, err
 	}
-	workspaceID := strings.TrimSpace(s.dependencies.WorkspaceID)
-	if claims.WorkspaceID != workspaceID || s.dependencies.Applications.WorkspaceID() != workspaceID {
-		return identitymodel.IdentityHandlerDeliveryResult{}, handlerDeliveryError(apperror.KindForbidden, "auth.workspace_mismatch")
-	}
-	registered, err := s.dependencies.Applications.Registered(ctx, claims.Audience)
-	if err != nil {
-		return identitymodel.IdentityHandlerDeliveryResult{}, err
-	}
-	if !registered {
-		return identitymodel.IdentityHandlerDeliveryResult{}, handlerDeliveryError(apperror.KindForbidden, "identity.application_not_registered")
-	}
-	workspaceContext := requestcontext.WithWorkspaceID(ctx, workspaceID)
-	principal, err := s.dependencies.Authentication.PrincipalFromBearer(workspaceContext, "Bearer "+request.AccessToken, requestcontext.RequestID(ctx))
-	if err != nil {
-		return identitymodel.IdentityHandlerDeliveryResult{}, err
-	}
-	if !principal.Known || principal.WorkspaceID != workspaceID || principal.UserID != claims.Subject {
-		return identitymodel.IdentityHandlerDeliveryResult{}, handlerDeliveryError(apperror.KindForbidden, "backend.identity.handler_delivery_actor_invalid")
-	}
-	if principal.AuthorizationRevision == "" || principal.AuthorizationRevision != claims.AuthorizationRevision {
-		return identitymodel.IdentityHandlerDeliveryResult{}, handlerDeliveryError(apperror.KindConflict, "auth.authorization_stale")
-	}
+	workspaceID := principal.WorkspaceID
 	permissionKey := handlerDeliveryPermissionForOperation(request.Operation)
 	if !identitycontract.IdentityRoleHasPermissionKey(principal.Role, permissionKey) {
 		return identitymodel.IdentityHandlerDeliveryResult{}, handlerDeliveryError(apperror.KindForbidden, "backend.identity.data_scope_denied")
@@ -296,7 +311,7 @@ func (s *IdentityHandlerDeliveryApplicationService) Deliver(ctx context.Context,
 		return identitymodel.IdentityHandlerDeliveryResult{}, err
 	}
 	request.User.UserID = strings.TrimSpace(request.User.UserID)
-	fingerprint, err := identityHandlerDeliveryFingerprint(request, principal.UserID, claims.Audience)
+	fingerprint, err := identityHandlerDeliveryFingerprint(request, principal.UserID, applicationKey)
 	if err != nil {
 		return identitymodel.IdentityHandlerDeliveryResult{}, err
 	}
@@ -339,7 +354,7 @@ func (s *IdentityHandlerDeliveryApplicationService) Deliver(ctx context.Context,
 			Event:          "identity.handler_delivery." + string(request.Operation), ObjectKey: identitycontract.IdentityUserObjectKey,
 			RecordID: request.User.UserID, Principal: principal, Summary: "Runtime handler delivered Identity state",
 			Before: handlerDeliveryUserAuditMap(before), After: handlerDeliveryUserAuditMap(receipt.Result.User),
-			Metadata: map[string]any{"application_key": claims.Audience, "idempotency_key": request.IdempotencyKey, "role_keys": append([]string(nil), request.RoleKeys...), "profile_binding": request.ProfileBinding != nil, "login_mode": request.LoginMode},
+			Metadata: map[string]any{"application_key": applicationKey, "idempotency_key": request.IdempotencyKey, "role_keys": append([]string(nil), request.RoleKeys...), "profile_binding": request.ProfileBinding != nil, "login_mode": request.LoginMode, "workload": request.VerifiedWorkloadPrincipal != nil},
 		}); err != nil {
 			return fmt.Errorf("append Identity handler delivery audit: %w", err)
 		}
@@ -534,6 +549,8 @@ func slicesSort(values []string) {
 
 func identityHandlerDeliveryFingerprint(request IdentityHandlerDeliveryRequest, actorID, audience string) (string, error) {
 	request.AccessToken = ""
+	request.VerifiedWorkloadPrincipal = nil
+	request.ApplicationKey = ""
 	payload, err := json.Marshal(struct {
 		Request  IdentityHandlerDeliveryRequest `json:"request"`
 		ActorID  string                         `json:"actor_id"`

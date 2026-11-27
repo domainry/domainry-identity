@@ -4,7 +4,9 @@ import (
 	"context"
 	"strings"
 
+	"github.com/domainry/domainry-foundation/requestcontext"
 	identitysdk "github.com/domainry/domainry-identity-sdk"
+	identityscope "github.com/domainry/domainry-identity-sdk/application"
 	identityapplication "github.com/domainry/domainry-identity/internal/application/identity"
 	identitytransaction "github.com/domainry/domainry-identity/internal/infrastructure/persistence/database/transaction"
 )
@@ -26,12 +28,10 @@ func (adapter moduleHandlerDelivery) DeliverIdentity(ctx context.Context, reques
 	if adapter.binding == nil || adapter.binding.runtime == nil || adapter.binding.runtime.Auth == nil || adapter.binding.runtime.Binding == nil {
 		return identitysdk.HandlerDeliveryResult{}, &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.handler_delivery_unavailable"}
 	}
-	claims, err := adapter.binding.runtime.Auth.VerifyAccessToken(ctx, strings.TrimSpace(request.AccessToken))
+	var err error
+	ctx, err = adapter.authorizedContext(ctx, request.AccessToken, request.WorkloadAuthority)
 	if err != nil {
 		return identitysdk.HandlerDeliveryResult{}, err
-	}
-	if !adapter.binding.acceptsWorkspace(ctx, claims.WorkspaceID) || claims.Audience != string(adapter.binding.application.ApplicationKey) {
-		return identitysdk.HandlerDeliveryResult{}, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.handler_delivery_application_scope_mismatch"}
 	}
 	provider, ok := adapter.binding.runtime.Binding.(identitysdk.HandlerDeliveryBinding)
 	if !ok || provider.HandlerDelivery() == nil {
@@ -58,12 +58,10 @@ func (adapter moduleHandlerDelivery) ResolveBoundIdentity(ctx context.Context, r
 	if adapter.binding == nil || adapter.binding.runtime == nil || adapter.binding.runtime.Auth == nil || adapter.binding.runtime.Binding == nil {
 		return identitysdk.HandlerBoundIdentity{}, &identitysdk.Error{Class: identitysdk.ErrorClassUnavailable, Code: "identity.handler_delivery_unavailable"}
 	}
-	claims, err := adapter.binding.runtime.Auth.VerifyAccessToken(ctx, strings.TrimSpace(request.AccessToken))
+	var err error
+	ctx, err = adapter.authorizedContext(ctx, request.AccessToken, request.WorkloadAuthority)
 	if err != nil {
 		return identitysdk.HandlerBoundIdentity{}, err
-	}
-	if !adapter.binding.acceptsWorkspace(ctx, claims.WorkspaceID) || claims.Audience != string(adapter.binding.application.ApplicationKey) {
-		return identitysdk.HandlerBoundIdentity{}, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.handler_delivery_application_scope_mismatch"}
 	}
 	provider, ok := adapter.binding.runtime.Binding.(identitysdk.HandlerDeliveryBinding)
 	if !ok || provider.HandlerDelivery() == nil {
@@ -73,6 +71,29 @@ func (adapter moduleHandlerDelivery) ResolveBoundIdentity(ctx context.Context, r
 		ctx = identitytransaction.WithExecutor(ctx, adapter.tx)
 	}
 	return provider.HandlerDelivery().ResolveBoundIdentity(ctx, request)
+}
+
+func (adapter moduleHandlerDelivery) authorizedContext(ctx context.Context, accessToken string, workload *identitysdk.HandlerWorkloadAuthority) (context.Context, error) {
+	accessToken = strings.TrimSpace(accessToken)
+	if (accessToken != "") == (workload != nil) {
+		return ctx, &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.handler_delivery_authority_invalid"}
+	}
+	if workload == nil {
+		claims, err := adapter.binding.runtime.Auth.VerifyAccessToken(ctx, accessToken)
+		if err != nil {
+			return ctx, err
+		}
+		if !adapter.binding.acceptsWorkspace(ctx, claims.WorkspaceID) || claims.Audience != string(adapter.binding.application.ApplicationKey) {
+			return ctx, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.handler_delivery_application_scope_mismatch"}
+		}
+		return ctx, nil
+	}
+	workspaceID := strings.TrimSpace(string(workload.WorkspaceID))
+	if !workload.WorkspaceID.Valid() || !adapter.binding.application.ApplicationKey.Valid() || !adapter.binding.acceptsWorkspace(ctx, workspaceID) {
+		return ctx, &identitysdk.Error{Class: identitysdk.ErrorClassForbidden, Code: "identity.handler_delivery_application_scope_mismatch"}
+	}
+	ctx = requestcontext.WithWorkspaceID(ctx, workspaceID)
+	return identityscope.WithScope(ctx, identitysdk.ApplicationScope{WorkspaceID: workload.WorkspaceID, ApplicationKey: adapter.binding.application.ApplicationKey}), nil
 }
 
 var _ identitysdk.HandlerDelivery = moduleHandlerDelivery{}
