@@ -388,7 +388,7 @@ func newHTTPServer(ctx context.Context, cfg config.Config, core *identitycomposi
 	identityHandler := identityhttp.NewIdentityHandler(identityhttp.IdentityDependencies{
 		Users: core.Identity, Roles: core.Identity, Policies: core.Identity, Menus: core.Identity, Authorization: core.Identity,
 		EffectiveAccess: core.EffectiveAccess, AccessReviews: accessReviews, Governance: governance,
-		Localization: core.Metadata, UserSecurity: core.Auth, Audit: core.Audit,
+		Localization: core.Metadata, UserSecurity: core.Auth, Audit: core.Audit, ProfileBindings: core.ProfileBindings,
 		Principal: httpSupport.principal, WriteJSON: httpSupport.writeJSON, WriteError: httpSupport.writeError,
 		WriteServiceError: httpSupport.writeServiceError, DecodeJSON: httpSupport.decodeJSON,
 		SecurityAudit: anonymousSecurityAudit, SecurityPrincipal: principalSecurityAudit,
