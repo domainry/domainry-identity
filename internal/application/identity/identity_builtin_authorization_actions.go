@@ -186,7 +186,6 @@ func IdentityBuiltinAuthorizationActions() []identitymodel.IdentityActionDefinit
 	out := make([]identitymodel.IdentityActionDefinition, 0, len(specs)+21)
 	out = append(out, identityMetadataNonHTTPActions(metadata)...)
 	out = append(out, identityHandlerDeliveryNonHTTPActions()...)
-	out = append(out, identityStoreOrganizationDeliveryNonHTTPActions()...)
 	out = append(out, identityOrganizationUnitDeliveryNonHTTPActions()...)
 	out = append(out, identityWorkspaceUsageNonHTTPActions()...)
 	for _, spec := range specs {
@@ -198,7 +197,10 @@ func IdentityBuiltinAuthorizationActions() []identitymodel.IdentityActionDefinit
 func identityOrganizationUnitDeliveryNonHTTPActions() []identitymodel.IdentityActionDefinition {
 	return []identitymodel.IdentityActionDefinition{
 		nonHTTPPermissionAction(identitycontract.IdentityOrganizationUnitDeliveryCreatePermission, "identity.organization_unit_delivery", "组织架构同步", "create", "创建", "在授权的上级组织下创建组织节点", actioncontract.EffectWrite, actioncontract.RiskHigh),
+		nonHTTPPermissionAction(identitycontract.IdentityOrganizationUnitDeliveryRenamePermission, "identity.organization_unit_delivery", "组织架构同步", "rename", "重命名", "修改授权范围内的组织节点名称", actioncontract.EffectWrite, actioncontract.RiskMedium),
+		nonHTTPPermissionAction(identitycontract.IdentityOrganizationUnitDeliveryDisablePermission, "identity.organization_unit_delivery", "组织架构同步", "disable", "停用", "停用授权范围内的组织节点", actioncontract.EffectWrite, actioncontract.RiskHigh),
 		nonHTTPPermissionAction(identitycontract.IdentityOrganizationUnitDeliveryResolvePermission, "identity.organization_unit_delivery", "组织架构同步", "resolve", "查看", "查看授权范围内的组织节点", actioncontract.EffectRead, actioncontract.RiskLow),
+		nonHTTPPermissionAction(identitycontract.IdentityOrganizationUnitDeliveryListPermission, "identity.organization_unit_delivery", "组织架构同步", "list", "查看列表", "查看授权范围内的组织节点列表", actioncontract.EffectRead, actioncontract.RiskLow),
 	}
 }
 
@@ -223,16 +225,6 @@ func identityWorkspaceUsageNonHTTPActions() []identitymodel.IdentityActionDefini
 	action.IdempotencyDecision = "not_applicable_current_usage_read"
 	action.AuditClass = "installation_identity_usage"
 	return []identitymodel.IdentityActionDefinition{action}
-}
-
-func identityStoreOrganizationDeliveryNonHTTPActions() []identitymodel.IdentityActionDefinition {
-	return []identitymodel.IdentityActionDefinition{
-		nonHTTPPermissionAction(identitycontract.IdentityStoreOrganizationDeliveryCreatePermission, "identity.store_organization_delivery", "门店组织同步", "create", "创建", "在公司组织下创建门店组织", actioncontract.EffectWrite, actioncontract.RiskHigh),
-		nonHTTPPermissionAction(identitycontract.IdentityStoreOrganizationDeliveryRenamePermission, "identity.store_organization_delivery", "门店组织同步", "rename", "重命名", "修改门店组织名称", actioncontract.EffectWrite, actioncontract.RiskMedium),
-		nonHTTPPermissionAction(identitycontract.IdentityStoreOrganizationDeliveryDisablePermission, "identity.store_organization_delivery", "门店组织同步", "disable", "停用", "停用门店组织", actioncontract.EffectWrite, actioncontract.RiskHigh),
-		nonHTTPPermissionAction(identitycontract.IdentityStoreOrganizationDeliveryResolvePermission, "identity.store_organization_delivery", "门店组织同步", "resolve", "查看", "查看单个门店组织", actioncontract.EffectRead, actioncontract.RiskLow),
-		nonHTTPPermissionAction(identitycontract.IdentityStoreOrganizationDeliveryListPermission, "identity.store_organization_delivery", "门店组织同步", "list", "查看列表", "查看授权范围内的门店组织列表", actioncontract.EffectRead, actioncontract.RiskLow),
-	}
 }
 
 func identityHandlerDeliveryNonHTTPActions() []identitymodel.IdentityActionDefinition {
@@ -432,9 +424,8 @@ func identityPermissionEnglishOperation(operationKey string) string {
 
 func identityPermissionEnglishLabel(key string) string {
 	if label := map[string]string{
-		"identity.handler_delivery":            "Business identity synchronization",
-		"identity.store_organization_delivery": "Store organization synchronization",
-		"identity.organization_unit_delivery":  "Organization synchronization",
+		"identity.handler_delivery":           "Business identity synchronization",
+		"identity.organization_unit_delivery": "Organization synchronization",
 	}[strings.TrimSpace(key)]; label != "" {
 		return label
 	}

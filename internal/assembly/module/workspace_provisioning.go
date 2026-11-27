@@ -113,7 +113,7 @@ func acceptanceFixtures(request identitysdk.WorkspaceIdentityProvisionRequest, r
 	organizations := make([]identitymodel.IdentityOrganizationUnit, 0, len(request.AcceptanceOrganizations))
 	organizationIDs := map[string]bool{}
 	for index, item := range request.AcceptanceOrganizations {
-		id, code, name := strings.TrimSpace(item.ID), strings.TrimSpace(item.Code), strings.TrimSpace(item.Name)
+		id, code, name, nodeType := strings.TrimSpace(item.ID), strings.TrimSpace(item.Code), strings.TrimSpace(item.Name), identitymodel.IdentityOrganizationUnitType(strings.TrimSpace(item.NodeType))
 		if id == "" {
 			return nil, nil, nil, nil, acceptanceFixtureInvalid("organization", index, "id", "required", nil)
 		}
@@ -126,8 +126,11 @@ func acceptanceFixtures(request identitysdk.WorkspaceIdentityProvisionRequest, r
 		if name == "" {
 			return nil, nil, nil, nil, acceptanceFixtureInvalid("organization", index, "name", "required", map[string]string{"organization_id": id})
 		}
+		if !nodeType.Valid() {
+			return nil, nil, nil, nil, acceptanceFixtureInvalid("organization", index, "node_type", "invalid", map[string]string{"organization_id": id})
+		}
 		organizationIDs[id] = true
-		organizations = append(organizations, identitymodel.IdentityOrganizationUnit{OrganizationUnitID: id, Code: code, Name: name, NodeType: identitymodel.IdentityOrganizationUnitDepartment, Path: "/" + id, AncestorIDs: []string{}, Depth: 0, SortOrder: index, Status: identitymodel.IdentityStatusActive})
+		organizations = append(organizations, identitymodel.IdentityOrganizationUnit{OrganizationUnitID: id, Code: code, Name: name, NodeType: nodeType, Path: "/" + id, AncestorIDs: []string{}, Depth: 0, SortOrder: index, Status: identitymodel.IdentityStatusActive})
 	}
 	users := make([]identitymodel.IdentityUser, 0, len(request.AcceptanceActors))
 	assignments := make([]identitymodel.IdentityUserRoleAssignment, 0, len(request.AcceptanceActors))

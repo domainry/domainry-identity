@@ -17,8 +17,8 @@ func TestAcceptanceFixturesMaterializeRoleOrgReportingAndCredentialGraph(t *test
 	}
 	request := identitysdk.WorkspaceIdentityProvisionRequest{
 		AcceptanceOrganizations: []identitysdk.WorkspaceAcceptanceOrganization{
-			{ID: "east", Code: "east", Name: "East"},
-			{ID: "north", Code: "north", Name: "North"},
+			{ID: "east", Code: "east", Name: "East", NodeType: "district"},
+			{ID: "north", Code: "north", Name: "North", NodeType: "district"},
 		},
 		AcceptanceActors: []identitysdk.WorkspaceAcceptanceActor{
 			{ID: "director", LoginID: "director@example.test", Name: "Director", RoleKey: "sales_director", InitialPassword: "DirectorPassword1!"},
@@ -59,7 +59,7 @@ func TestAcceptanceFixturesMaterializeRoleOrgReportingAndCredentialGraph(t *test
 
 func TestAcceptanceFixturesRejectMissingManager(t *testing.T) {
 	_, _, _, _, err := acceptanceFixtures(identitysdk.WorkspaceIdentityProvisionRequest{
-		AcceptanceOrganizations: []identitysdk.WorkspaceAcceptanceOrganization{{ID: "east", Code: "east", Name: "East"}},
+		AcceptanceOrganizations: []identitysdk.WorkspaceAcceptanceOrganization{{ID: "east", Code: "east", Name: "East", NodeType: "district"}},
 		AcceptanceActors:        []identitysdk.WorkspaceAcceptanceActor{{ID: "sales", LoginID: "sales@example.test", Name: "Sales", RoleKey: "sales_rep", OrganizationID: "east", ManagerUserID: "missing", InitialPassword: "SalesPassword1!"}},
 	}, []identitymodel.IdentityRole{{RoleID: "role-sales", Key: "sales_rep"}})
 	if err == nil {

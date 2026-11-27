@@ -1,5 +1,13 @@
 package identitymodel
 
+type IdentityOrganizationUnitOperation string
+
+const (
+	IdentityOrganizationUnitCreate  IdentityOrganizationUnitOperation = "create"
+	IdentityOrganizationUnitRename  IdentityOrganizationUnitOperation = "rename"
+	IdentityOrganizationUnitDisable IdentityOrganizationUnitOperation = "disable"
+)
+
 type IdentityOrganizationUnitDeliveryState struct {
 	WorkspaceID      string
 	OrganizationID   string
@@ -9,13 +17,16 @@ type IdentityOrganizationUnitDeliveryState struct {
 }
 
 type IdentityOrganizationUnitDeliveryMutation struct {
-	WorkspaceID        string
-	ActorID            string
-	IdempotencyKey     string
-	RequestFingerprint string
-	Organization       IdentityOrganizationUnit
-	ExpectedVersion    int64
-	DataScope          IdentityDataScopeFilter
+	WorkspaceID          string
+	ActorID              string
+	IdempotencyKey       string
+	RequestFingerprint   string
+	Operation            IdentityOrganizationUnitOperation
+	Organization         IdentityOrganizationUnit
+	RelatedOrganizations []IdentityOrganizationUnit
+	ExpectedVersion      int64
+	CurrentFingerprint   string
+	DataScope            IdentityDataScopeFilter
 }
 
 type IdentityDeliveredOrganizationUnit struct {
@@ -37,6 +48,11 @@ type IdentityOrganizationUnitDeliveryResult struct {
 	DeliveryID   string                            `json:"delivery_id"`
 	Organization IdentityDeliveredOrganizationUnit `json:"organization"`
 	Replayed     bool                              `json:"replayed"`
+}
+
+type IdentityDeliveredOrganizationUnitPage struct {
+	Items      []IdentityDeliveredOrganizationUnit `json:"items"`
+	NextCursor string                              `json:"next_cursor,omitempty"`
 }
 
 type IdentityOrganizationUnitDeliveryReceipt struct {

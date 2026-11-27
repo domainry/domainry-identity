@@ -865,7 +865,7 @@ func TestFactoryEmbeddedOrganizationUnitDeliveryRollsBackWithHostTransaction(t *
 	}
 	if _, err := mismatchDelivery.ResolveOrganizationUnit(t.Context(), organizationunit.ResolveRequest{
 		ContractVersion: organizationunit.DeliveryContractVersionV1, AccessToken: otherSession.AccessToken,
-		OrganizationID: "company-a", NodeType: organizationunit.NodeTypeDepartment,
+		OrganizationID: "company-a", NodeType: organizationunit.NodeType("department"),
 	}); err == nil {
 		_ = mismatchTransaction.Rollback(t.Context())
 		t.Fatal("cross-application token was accepted")
@@ -901,7 +901,7 @@ func TestFactoryEmbeddedOrganizationUnitDeliveryRollsBackWithHostTransaction(t *
 		IdempotencyKey:  "factory-department-rollback",
 		Organization: organizationunit.CreateCandidate{
 			OrganizationID: "factory-department", Code: "FACTORY-DEPARTMENT", Name: "Factory Department",
-			NodeType: organizationunit.NodeTypeDepartment, ParentOrganizationID: "company-a", ExpectedVersion: 0,
+			NodeType: organizationunit.NodeType("department"), ParentOrganizationID: "company-a", ExpectedVersion: 0,
 		},
 	})
 	if err != nil || created.Organization.Path != "/company-a/factory-department" {

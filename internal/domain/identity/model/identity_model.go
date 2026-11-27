@@ -1,6 +1,9 @@
 package identitymodel
 
-import identitysdk "github.com/domainry/domainry-identity-sdk"
+import (
+	identitysdk "github.com/domainry/domainry-identity-sdk"
+	organizationunit "github.com/domainry/domainry-identity-sdk/organizationunit"
+)
 
 type IdentityStatus string
 
@@ -32,25 +35,9 @@ const (
 	IdentityWorkTerminated IdentityWorkStatus = "terminated"
 )
 
-type IdentityOrganizationUnitType string
+type IdentityOrganizationUnitType = organizationunit.NodeType
 
-const (
-	IdentityOrganizationUnitCompany    IdentityOrganizationUnitType = "company"
-	IdentityOrganizationUnitRegion     IdentityOrganizationUnitType = "region"
-	IdentityOrganizationUnitStore      IdentityOrganizationUnitType = "store"
-	IdentityOrganizationUnitDepartment IdentityOrganizationUnitType = "department"
-	IdentityOrganizationUnitTeam       IdentityOrganizationUnitType = "team"
-	IdentityOrganizationUnitWarehouse  IdentityOrganizationUnitType = "warehouse"
-)
-
-func (value IdentityOrganizationUnitType) Valid() bool {
-	switch value {
-	case IdentityOrganizationUnitCompany, IdentityOrganizationUnitRegion, IdentityOrganizationUnitStore, IdentityOrganizationUnitDepartment, IdentityOrganizationUnitTeam, IdentityOrganizationUnitWarehouse:
-		return true
-	default:
-		return false
-	}
-}
+const IdentityOrganizationUnitCompany IdentityOrganizationUnitType = organizationunit.NodeTypeCompany
 
 const (
 	IdentityAccountHuman      IdentityAccountType = "human"

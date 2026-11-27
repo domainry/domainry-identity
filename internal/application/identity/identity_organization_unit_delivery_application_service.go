@@ -1,11 +1,14 @@
 package identity
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 
 	auditcontract "github.com/domainry/domainry-audit-sdk/contract"
@@ -19,6 +22,11 @@ import (
 )
 
 const IdentityOrganizationUnitDeliveryContractVersionV1 = "domainry-identity-organization-unit-delivery-v1"
+
+const (
+	IdentityOrganizationUnitDefaultPageSize = 50
+	IdentityOrganizationUnitMaxPageSize     = 100
+)
 
 type IdentityOrganizationUnitDeliveryRequest struct {
 	ContractVersion      string
@@ -38,6 +46,25 @@ type IdentityOrganizationUnitResolveRequest struct {
 	AccessToken     string
 	OrganizationID  string
 	NodeType        identitymodel.IdentityOrganizationUnitType
+}
+
+type IdentityOrganizationUnitMutationRequest struct {
+	ContractVersion string
+	AccessToken     string
+	IdempotencyKey  string
+	Operation       identitymodel.IdentityOrganizationUnitOperation
+	OrganizationID  string
+	NodeType        identitymodel.IdentityOrganizationUnitType
+	Name            string
+	ExpectedVersion int64
+}
+
+type IdentityOrganizationUnitListRequest struct {
+	ContractVersion string
+	AccessToken     string
+	NodeType        identitymodel.IdentityOrganizationUnitType
+	PageSize        int
+	Cursor          string
 }
 
 type IdentityOrganizationUnitDeliveryDependencies struct {
@@ -120,7 +147,7 @@ func (s *IdentityOrganizationUnitDeliveryApplicationService) Create(ctx context.
 		}
 		mutation := identitymodel.IdentityOrganizationUnitDeliveryMutation{
 			WorkspaceID: principal.WorkspaceID, ActorID: principal.UserID, IdempotencyKey: request.IdempotencyKey,
-			RequestFingerprint: fingerprint, Organization: prepared, ExpectedVersion: request.ExpectedVersion,
+			RequestFingerprint: fingerprint, Operation: identitymodel.IdentityOrganizationUnitCreate, Organization: prepared, ExpectedVersion: request.ExpectedVersion,
 			DataScope: identitycontract.IdentityPermissionDataScopeFilter(principal, permissionKey),
 		}
 		receipt, executeErr := s.dependencies.Repository.ExecuteIdentityOrganizationUnitDelivery(transactionContext, mutation)
@@ -146,6 +173,158 @@ func (s *IdentityOrganizationUnitDeliveryApplicationService) Create(ctx context.
 		return nil
 	})
 	return result, err
+}
+
+func (s *IdentityOrganizationUnitDeliveryApplicationService) Mutate(ctx context.Context, request IdentityOrganizationUnitMutationRequest) (identitymodel.IdentityOrganizationUnitDeliveryResult, error) {
+	if s == nil || s.dependencies.Identity == nil || s.dependencies.Transactions == nil || s.dependencies.Repository == nil || s.dependencies.Audit == nil {
+		return identitymodel.IdentityOrganizationUnitDeliveryResult{}, organizationUnitDeliveryError(apperror.KindInternal, "backend.identity.organization_unit_delivery_unavailable")
+	}
+	request.ContractVersion = strings.TrimSpace(request.ContractVersion)
+	request.AccessToken = strings.TrimSpace(request.AccessToken)
+	request.IdempotencyKey = strings.TrimSpace(request.IdempotencyKey)
+	request.OrganizationID = strings.TrimSpace(request.OrganizationID)
+	request.Name = strings.TrimSpace(request.Name)
+	if request.ContractVersion != IdentityOrganizationUnitDeliveryContractVersionV1 || request.AccessToken == "" || request.IdempotencyKey == "" || request.OrganizationID == "" || !validDeliveredOrganizationUnitType(request.NodeType) || request.ExpectedVersion < 1 {
+		return identitymodel.IdentityOrganizationUnitDeliveryResult{}, organizationUnitDeliveryError(apperror.KindBadRequest, "backend.identity.organization_unit_delivery_invalid")
+	}
+	permissionKey := ""
+	switch request.Operation {
+	case identitymodel.IdentityOrganizationUnitRename:
+		if request.Name == "" {
+			return identitymodel.IdentityOrganizationUnitDeliveryResult{}, organizationUnitDeliveryError(apperror.KindBadRequest, "backend.identity.organization_unit_delivery_invalid")
+		}
+		permissionKey = identitycontract.IdentityOrganizationUnitDeliveryRenamePermission
+	case identitymodel.IdentityOrganizationUnitDisable:
+		if request.Name != "" {
+			return identitymodel.IdentityOrganizationUnitDeliveryResult{}, organizationUnitDeliveryError(apperror.KindBadRequest, "backend.identity.organization_unit_delivery_invalid")
+		}
+		permissionKey = identitycontract.IdentityOrganizationUnitDeliveryDisablePermission
+	default:
+		return identitymodel.IdentityOrganizationUnitDeliveryResult{}, organizationUnitDeliveryError(apperror.KindBadRequest, "backend.identity.organization_unit_operation_invalid")
+	}
+	workspaceContext, claims, principal, err := s.authorize(ctx, request.AccessToken)
+	if err != nil {
+		return identitymodel.IdentityOrganizationUnitDeliveryResult{}, err
+	}
+	if !identitycontract.IdentityRoleHasPermissionKey(principal.Role, permissionKey) || !organizationUnitParentScopeAllows(principal, permissionKey, request.OrganizationID) {
+		return identitymodel.IdentityOrganizationUnitDeliveryResult{}, organizationUnitDeliveryError(apperror.KindForbidden, "backend.identity.organization_unit_scope_denied")
+	}
+	fingerprint, err := identityOrganizationUnitMutationRequestFingerprint(request, principal.UserID, claims.Audience)
+	if err != nil {
+		return identitymodel.IdentityOrganizationUnitDeliveryResult{}, err
+	}
+	var result identitymodel.IdentityOrganizationUnitDeliveryResult
+	err = s.dependencies.Transactions.WithinIdentityTransaction(workspaceContext, func(transactionContext context.Context) error {
+		if receipt, found, loadErr := s.dependencies.Repository.GetIdentityOrganizationUnitDeliveryReceipt(transactionContext, principal.WorkspaceID, request.IdempotencyKey); loadErr != nil {
+			return loadErr
+		} else if found {
+			if receipt.RequestFingerprint != fingerprint || receipt.Result.Organization.OrganizationUnitID != request.OrganizationID || receipt.Result.Organization.NodeType != request.NodeType {
+				return organizationUnitDeliveryError(apperror.KindConflict, "backend.idempotency_key_reused")
+			}
+			result = receipt.Result
+			result.Replayed = true
+			return nil
+		}
+
+		current, found, loadErr := s.dependencies.Identity.FindOrganizationUnit(transactionContext, request.OrganizationID)
+		if loadErr != nil {
+			return loadErr
+		}
+		if !found {
+			return organizationUnitDeliveryError(apperror.KindNotFound, "backend.identity.organization_unit_not_found")
+		}
+		if current.NodeType != request.NodeType {
+			return organizationUnitDeliveryError(apperror.KindConflict, "backend.identity.organization_unit_type_conflict")
+		}
+		if current.Status == identitymodel.IdentityStatusDisabled && request.Operation == identitymodel.IdentityOrganizationUnitDisable {
+			return organizationUnitDeliveryError(apperror.KindConflict, "backend.identity.organization_unit_already_disabled")
+		}
+		currentFingerprint := identityOrganizationUnitDeliveryFingerprint(current)
+		state, stateFound, stateErr := s.dependencies.Repository.GetIdentityOrganizationUnitDeliveryState(transactionContext, principal.WorkspaceID, current.OrganizationUnitID)
+		if stateErr != nil {
+			return stateErr
+		}
+		currentVersion := int64(1)
+		if stateFound {
+			currentVersion = state.Version
+			if state.StateFingerprint != currentFingerprint {
+				return organizationUnitDeliveryError(apperror.KindConflict, "backend.identity.organization_unit_external_change")
+			}
+		}
+		if request.ExpectedVersion != currentVersion {
+			return organizationUnitDeliveryError(apperror.KindConflict, "backend.identity.organization_unit_version_conflict")
+		}
+		desired := current
+		if request.Operation == identitymodel.IdentityOrganizationUnitRename {
+			desired.Name = request.Name
+		} else {
+			desired.Status = identitymodel.IdentityStatusDisabled
+		}
+		prepared, related, prepareErr := s.dependencies.Identity.PrepareOrganizationUnitForAtomicDelivery(transactionContext, desired)
+		if prepareErr != nil {
+			return prepareErr
+		}
+		mutation := identitymodel.IdentityOrganizationUnitDeliveryMutation{
+			WorkspaceID: principal.WorkspaceID, ActorID: principal.UserID, IdempotencyKey: request.IdempotencyKey,
+			RequestFingerprint: fingerprint, Operation: request.Operation, Organization: prepared, RelatedOrganizations: related,
+			ExpectedVersion: request.ExpectedVersion, CurrentFingerprint: currentFingerprint,
+			DataScope: identitycontract.IdentityPermissionDataScopeFilter(principal, permissionKey),
+		}
+		receipt, executeErr := s.dependencies.Repository.ExecuteIdentityOrganizationUnitDelivery(transactionContext, mutation)
+		if executeErr != nil {
+			return fmt.Errorf("persist Identity organization unit mutation: %w", executeErr)
+		}
+		if appendErr := s.dependencies.Audit.AppendAudit(transactionContext, auditapplication.AuditAppendRequest{
+			IdempotencyKey: "identity-organization-unit-delivery:" + request.IdempotencyKey,
+			Family:         auditcontract.EventFamilyIdentityGovernance, Event: "identity.organization_unit_delivery." + string(request.Operation),
+			ObjectKey: identitycontract.IdentityOrganizationUnitObjectKey, RecordID: request.OrganizationID, Principal: principal,
+			Summary: "Runtime handler mutated an Identity organization unit", After: organizationUnitDeliveryAuditMap(receipt.Result.Organization),
+			Metadata: map[string]any{"application_key": claims.Audience, "idempotency_key": request.IdempotencyKey},
+		}); appendErr != nil {
+			return fmt.Errorf("append Identity organization unit audit: %w", appendErr)
+		}
+		result = receipt.Result
+		return nil
+	})
+	return result, err
+}
+
+func (s *IdentityOrganizationUnitDeliveryApplicationService) List(ctx context.Context, request IdentityOrganizationUnitListRequest) (identitymodel.IdentityDeliveredOrganizationUnitPage, error) {
+	request.ContractVersion = strings.TrimSpace(request.ContractVersion)
+	request.AccessToken = strings.TrimSpace(request.AccessToken)
+	request.Cursor = strings.TrimSpace(request.Cursor)
+	if request.ContractVersion != IdentityOrganizationUnitDeliveryContractVersionV1 || request.AccessToken == "" || !validDeliveredOrganizationUnitType(request.NodeType) {
+		return identitymodel.IdentityDeliveredOrganizationUnitPage{}, organizationUnitDeliveryError(apperror.KindBadRequest, "backend.identity.organization_unit_projection_invalid")
+	}
+	pageSize, err := normalizeOrganizationUnitPageSize(request.PageSize)
+	if err != nil {
+		return identitymodel.IdentityDeliveredOrganizationUnitPage{}, err
+	}
+	afterID, err := decodeOrganizationUnitCursor(request.Cursor)
+	if err != nil {
+		return identitymodel.IdentityDeliveredOrganizationUnitPage{}, err
+	}
+	workspaceContext, _, principal, err := s.authorize(ctx, request.AccessToken)
+	if err != nil {
+		return identitymodel.IdentityDeliveredOrganizationUnitPage{}, err
+	}
+	permissionKey := identitycontract.IdentityOrganizationUnitDeliveryListPermission
+	if !identitycontract.IdentityRoleHasPermissionKey(principal.Role, permissionKey) {
+		return identitymodel.IdentityDeliveredOrganizationUnitPage{}, organizationUnitDeliveryError(apperror.KindForbidden, "backend.identity.organization_unit_projection_denied")
+	}
+	items, err := s.dependencies.Repository.ListIdentityOrganizationUnitsPage(workspaceContext, principal.WorkspaceID, request.NodeType, identitycontract.IdentityPermissionDataScopeFilter(principal, permissionKey), afterID, pageSize+1)
+	if err != nil {
+		return identitymodel.IdentityDeliveredOrganizationUnitPage{}, err
+	}
+	page := identitymodel.IdentityDeliveredOrganizationUnitPage{Items: items}
+	if len(items) > pageSize {
+		page.Items = append([]identitymodel.IdentityDeliveredOrganizationUnit(nil), items[:pageSize]...)
+		page.NextCursor, err = encodeOrganizationUnitCursor(page.Items[len(page.Items)-1].ID)
+		if err != nil {
+			return identitymodel.IdentityDeliveredOrganizationUnitPage{}, err
+		}
+	}
+	return page, nil
 }
 
 func (s *IdentityOrganizationUnitDeliveryApplicationService) Resolve(ctx context.Context, request IdentityOrganizationUnitResolveRequest) (identitymodel.IdentityDeliveredOrganizationUnit, error) {
@@ -263,12 +442,7 @@ func validateIdentityOrganizationUnitDeliveryRequest(request IdentityOrganizatio
 }
 
 func validDeliveredOrganizationUnitType(nodeType identitymodel.IdentityOrganizationUnitType) bool {
-	switch nodeType {
-	case identitymodel.IdentityOrganizationUnitRegion, identitymodel.IdentityOrganizationUnitDepartment, identitymodel.IdentityOrganizationUnitTeam, identitymodel.IdentityOrganizationUnitWarehouse:
-		return true
-	default:
-		return false
-	}
+	return nodeType.Valid() && nodeType != identitymodel.IdentityOrganizationUnitCompany
 }
 
 func validOrganizationUnitDeliveryParent(parent identitymodel.IdentityOrganizationUnit, found bool) bool {
@@ -291,6 +465,67 @@ func identityOrganizationUnitDeliveryRequestFingerprint(request IdentityOrganiza
 	}
 	sum := sha256.Sum256(payload)
 	return hex.EncodeToString(sum[:]), nil
+}
+
+func identityOrganizationUnitMutationRequestFingerprint(request IdentityOrganizationUnitMutationRequest, actorID, audience string) (string, error) {
+	request.AccessToken = ""
+	payload, err := json.Marshal(struct {
+		Request  IdentityOrganizationUnitMutationRequest `json:"request"`
+		ActorID  string                                  `json:"actor_id"`
+		Audience string                                  `json:"audience"`
+	}{Request: request, ActorID: actorID, Audience: audience})
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(payload)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+type identityOrganizationUnitCursor struct {
+	Version int   `json:"v"`
+	AfterID int64 `json:"after_id"`
+}
+
+func normalizeOrganizationUnitPageSize(pageSize int) (int, error) {
+	if pageSize == 0 {
+		return IdentityOrganizationUnitDefaultPageSize, nil
+	}
+	if pageSize < 1 || pageSize > IdentityOrganizationUnitMaxPageSize {
+		return 0, organizationUnitDeliveryError(apperror.KindBadRequest, "backend.identity.organization_unit_page_size_invalid")
+	}
+	return pageSize, nil
+}
+
+func encodeOrganizationUnitCursor(afterID int64) (string, error) {
+	payload, err := json.Marshal(identityOrganizationUnitCursor{Version: 1, AfterID: afterID})
+	if err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(payload), nil
+}
+
+func decodeOrganizationUnitCursor(cursor string) (int64, error) {
+	cursor = strings.TrimSpace(cursor)
+	if cursor == "" {
+		return 0, nil
+	}
+	if len(cursor) > 2048 {
+		return 0, organizationUnitDeliveryError(apperror.KindBadRequest, "backend.identity.organization_unit_cursor_invalid")
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(cursor)
+	if err != nil {
+		return 0, organizationUnitDeliveryError(apperror.KindBadRequest, "backend.identity.organization_unit_cursor_invalid")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.DisallowUnknownFields()
+	var decoded identityOrganizationUnitCursor
+	if err := decoder.Decode(&decoded); err != nil {
+		return 0, organizationUnitDeliveryError(apperror.KindBadRequest, "backend.identity.organization_unit_cursor_invalid")
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF || decoded.Version != 1 || decoded.AfterID < 1 {
+		return 0, organizationUnitDeliveryError(apperror.KindBadRequest, "backend.identity.organization_unit_cursor_invalid")
+	}
+	return decoded.AfterID, nil
 }
 
 func identityOrganizationUnitDeliveryFingerprint(organization identitymodel.IdentityOrganizationUnit) string {

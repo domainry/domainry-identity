@@ -111,7 +111,7 @@ func (s *SQLIdentityStore) ResolveIdentityDeliveredOrganizationUnit(ctx context.
 		Alias("child").
 		Projections(
 			query.Project(childPhysicalID), query.Project(childID), query.Project(query.QualifiedColumn("child", "code")), query.Project(query.QualifiedColumn("child", "name")),
-			query.Project(query.QualifiedColumn("child", "node_type")), query.Project(query.QualifiedColumn("child", "status")), query.Project(parentID),
+			query.Project(query.QualifiedColumn("child", "node_type")), query.Project(query.QualifiedColumn("child", "status")), query.Project(parentID), query.Project(query.QualifiedColumn("parent", "node_type")),
 			query.Project(query.QualifiedColumn("child", "path")), query.Project(query.QualifiedColumn("child", "ancestor_ids")),
 			query.Project(query.QualifiedColumn("child", "depth")), query.Project(query.QualifiedColumn("child", "sort_order")),
 			query.Project(query.QualifiedColumn("child", "delivery_version")),
@@ -129,15 +129,19 @@ func (s *SQLIdentityStore) ResolveIdentityDeliveredOrganizationUnit(ctx context.
 	}
 	var item identitymodel.IdentityDeliveredOrganizationUnit
 	var ancestorsJSON, stateFingerprint string
+	var parentNodeType identitymodel.IdentityOrganizationUnitType
 	err = s.reader(ctx).QueryRowContext(ctx, statement, arguments...).Scan(
 		&item.ID, &item.OrganizationUnitID, &item.Code, &item.Name, &item.NodeType, &item.Status, &item.ParentOrganizationID,
-		&item.Path, &ancestorsJSON, &item.Depth, &item.SortOrder, &item.Version, &stateFingerprint,
+		&parentNodeType, &item.Path, &ancestorsJSON, &item.Depth, &item.SortOrder, &item.Version, &stateFingerprint,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return identitymodel.IdentityDeliveredOrganizationUnit{}, false, nil
 	}
 	if err != nil {
 		return identitymodel.IdentityDeliveredOrganizationUnit{}, false, err
+	}
+	if !parentNodeType.Valid() {
+		return identitymodel.IdentityDeliveredOrganizationUnit{}, false, organizationUnitDeliveryStoreError(apperror.KindConflict, "backend.identity.organization_unit_external_change")
 	}
 	if err := json.Unmarshal([]byte(ancestorsJSON), &item.AncestorIDs); err != nil {
 		return identitymodel.IdentityDeliveredOrganizationUnit{}, false, fmt.Errorf("decode Identity organization unit delivery ancestors: %w", err)
@@ -151,19 +155,93 @@ func (s *SQLIdentityStore) ResolveIdentityDeliveredOrganizationUnit(ctx context.
 	return item, true, nil
 }
 
+// ListIdentityOrganizationUnitsPage returns a bounded, type-filtered catalog
+// from the canonical organization tree. Node type is data supplied by the
+// caller's compiled capability; no product-specific organization kind owns a
+// separate directory.
+func (s *SQLIdentityStore) ListIdentityOrganizationUnitsPage(ctx context.Context, workspaceID string, nodeType identitymodel.IdentityOrganizationUnitType, scope identitymodel.IdentityDataScopeFilter, afterID int64, fetchLimit int) ([]identitymodel.IdentityDeliveredOrganizationUnit, error) {
+	workspaceID, err := identityWorkspaceID(workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	if !validOrganizationUnitDeliveryNodeType(nodeType) || fetchLimit < 1 || fetchLimit > 101 {
+		return nil, organizationUnitDeliveryStoreError(apperror.KindBadRequest, "backend.identity.organization_unit_page_invalid")
+	}
+	scope = scope.Normalized()
+	physicalID := query.QualifiedColumn("unit", "id")
+	organizationID := query.QualifiedColumn("unit", "organization_unit_id")
+	predicates := []query.Predicate{query.EqualValue(query.QualifiedColumn("unit", "node_type"), string(nodeType))}
+	if afterID > 0 {
+		predicates = append(predicates, query.GreaterThanExpression(physicalID, afterID))
+	}
+	if !scope.Unrestricted {
+		if len(scope.OwnerOrgIDs) == 0 {
+			predicates = append(predicates, query.AlwaysFalse())
+		} else {
+			values := make([]any, len(scope.OwnerOrgIDs))
+			for index := range scope.OwnerOrgIDs {
+				values[index] = scope.OwnerOrgIDs[index]
+			}
+			predicates = append(predicates, query.InExpression(organizationID, values...))
+		}
+	}
+	statement, arguments, err := query.NewWorkspaceSelectBuilder(s.sqlRenderer(), "_identity_organization_units", workspaceID).
+		Alias("unit").
+		Projections(
+			query.Project(physicalID), query.Project(organizationID), query.Project(query.QualifiedColumn("unit", "code")),
+			query.Project(query.QualifiedColumn("unit", "name")), query.Project(query.QualifiedColumn("unit", "node_type")),
+			query.Project(query.QualifiedColumn("unit", "status")), query.Project(query.QualifiedColumn("unit", "parent_id")),
+			query.Project(query.QualifiedColumn("unit", "path")), query.Project(query.QualifiedColumn("unit", "ancestor_ids")),
+			query.Project(query.QualifiedColumn("unit", "depth")), query.Project(query.QualifiedColumn("unit", "sort_order")),
+			query.Project(query.QualifiedColumn("unit", "delivery_version")),
+		).
+		Join(query.InnerJoin("_identity_organization_units", "parent", query.And(
+			query.EqualExpressions(query.QualifiedColumn("parent", "workspace_id"), query.QualifiedColumn("unit", "workspace_id")),
+			query.EqualExpressions(query.QualifiedColumn("parent", "organization_unit_id"), query.QualifiedColumn("unit", "parent_id")),
+		))).
+		Where(query.And(predicates...)).OrderBy(query.AscendingExpression(physicalID)).Limit(fetchLimit).Build()
+	if err != nil {
+		return nil, fmt.Errorf("build Identity organization unit page query: %w", err)
+	}
+	rows, err := s.reader(ctx).QueryContext(ctx, statement, arguments...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]identitymodel.IdentityDeliveredOrganizationUnit, 0, fetchLimit)
+	for rows.Next() {
+		var item identitymodel.IdentityDeliveredOrganizationUnit
+		var ancestorsJSON string
+		if err := rows.Scan(&item.ID, &item.OrganizationUnitID, &item.Code, &item.Name, &item.NodeType, &item.Status, &item.ParentOrganizationID, &item.Path, &ancestorsJSON, &item.Depth, &item.SortOrder, &item.Version); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal([]byte(ancestorsJSON), &item.AncestorIDs); err != nil {
+			return nil, fmt.Errorf("decode Identity organization unit ancestors: %w", err)
+		}
+		if item.Version < 1 {
+			item.Version = 1
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 func (s *SQLIdentityStore) ExecuteIdentityOrganizationUnitDelivery(ctx context.Context, mutation identitymodel.IdentityOrganizationUnitDeliveryMutation) (identitymodel.IdentityOrganizationUnitDeliveryReceipt, error) {
 	executor := identitytransaction.ExecutorFromContext(ctx)
 	if executor == nil {
 		return identitymodel.IdentityOrganizationUnitDeliveryReceipt{}, organizationUnitDeliveryStoreError(apperror.KindInternal, "backend.identity.organization_unit_transaction_required")
 	}
 	parentID := identityOrganizationUnitDeliveryParentID(mutation.Organization.ParentID)
-	if strings.TrimSpace(mutation.WorkspaceID) == "" || strings.TrimSpace(mutation.ActorID) == "" || strings.TrimSpace(mutation.IdempotencyKey) == "" || strings.TrimSpace(mutation.RequestFingerprint) == "" || strings.TrimSpace(mutation.Organization.OrganizationUnitID) == "" || parentID == "" || mutation.ExpectedVersion != 0 || !validOrganizationUnitDeliveryNodeType(mutation.Organization.NodeType) {
+	if strings.TrimSpace(mutation.WorkspaceID) == "" || strings.TrimSpace(mutation.ActorID) == "" || strings.TrimSpace(mutation.IdempotencyKey) == "" || strings.TrimSpace(mutation.RequestFingerprint) == "" || strings.TrimSpace(mutation.Organization.OrganizationUnitID) == "" || parentID == "" || !validOrganizationUnitDeliveryNodeType(mutation.Organization.NodeType) || !identityOrganizationUnitOperationValid(mutation.Operation) {
 		return identitymodel.IdentityOrganizationUnitDeliveryReceipt{}, organizationUnitDeliveryStoreError(apperror.KindBadRequest, "backend.identity.organization_unit_delivery_invalid")
 	}
 	if !s.OperationsPersistenceBound() {
 		return identitymodel.IdentityOrganizationUnitDeliveryReceipt{}, fmt.Errorf("identity shared Operations persistence is not bound")
 	}
-	if !organizationUnitDeliveryMutationScopeAllows(mutation.DataScope, parentID) {
+	if !organizationUnitDeliveryMutationScopeAllows(mutation.DataScope, mutation.Operation, mutation.Organization) {
 		return identitymodel.IdentityOrganizationUnitDeliveryReceipt{}, organizationUnitDeliveryStoreError(apperror.KindForbidden, "backend.identity.organization_unit_scope_denied")
 	}
 	if receipt, found, err := s.GetIdentityOrganizationUnitDeliveryReceipt(ctx, mutation.WorkspaceID, mutation.IdempotencyKey); err != nil {
@@ -175,35 +253,62 @@ func (s *SQLIdentityStore) ExecuteIdentityOrganizationUnitDelivery(ctx context.C
 		receipt.Result.Replayed = true
 		return receipt, nil
 	}
-	parent, found, err := s.LockIdentityOrganizationUnitDeliveryParent(ctx, mutation.WorkspaceID, parentID)
-	if err != nil {
-		return identitymodel.IdentityOrganizationUnitDeliveryReceipt{}, err
-	}
-	if !found || !parent.NodeType.Valid() || parent.Status != identitymodel.IdentityStatusActive {
-		return identitymodel.IdentityOrganizationUnitDeliveryReceipt{}, organizationUnitDeliveryStoreError(apperror.KindConflict, "backend.identity.organization_unit_parent_invalid")
-	}
-	if !identityOrganizationUnitDeliveryHierarchyMatchesParent(mutation.Organization, parent) {
-		return identitymodel.IdentityOrganizationUnitDeliveryReceipt{}, organizationUnitDeliveryStoreError(apperror.KindConflict, "backend.identity.organization_unit_external_change")
-	}
-	// A same-parent concurrent invocation may have committed while this
-	// transaction waited for the parent lock. Re-read the receipt so an
-	// identical request replays instead of degrading into an ID conflict.
-	if receipt, receiptFound, receiptErr := s.GetIdentityOrganizationUnitDeliveryReceipt(ctx, mutation.WorkspaceID, mutation.IdempotencyKey); receiptErr != nil {
-		return identitymodel.IdentityOrganizationUnitDeliveryReceipt{}, receiptErr
-	} else if receiptFound {
-		if receipt.RequestFingerprint != mutation.RequestFingerprint {
-			return identitymodel.IdentityOrganizationUnitDeliveryReceipt{}, organizationUnitDeliveryStoreError(apperror.KindConflict, "backend.idempotency_key_reused")
+	currentVersion := int64(0)
+	switch mutation.Operation {
+	case identitymodel.IdentityOrganizationUnitCreate:
+		if mutation.ExpectedVersion != 0 {
+			return identitymodel.IdentityOrganizationUnitDeliveryReceipt{}, organizationUnitDeliveryStoreError(apperror.KindConflict, "backend.identity.organization_unit_version_conflict")
 		}
-		receipt.Result.Replayed = true
-		return receipt, nil
-	}
-	if _, found, err := s.GetIdentityOrganizationUnitWithinDataScope(ctx, mutation.WorkspaceID, mutation.Organization.OrganizationUnitID, identitymodel.IdentityDataScopeFilter{Unrestricted: true}); err != nil {
-		return identitymodel.IdentityOrganizationUnitDeliveryReceipt{}, err
-	} else if found {
-		return identitymodel.IdentityOrganizationUnitDeliveryReceipt{}, organizationUnitDeliveryStoreError(apperror.KindConflict, "backend.identity.organization_unit_version_conflict")
-	}
-	if err := s.insertDeliveredOrganizationUnit(ctx, executor, mutation.WorkspaceID, mutation.Organization, 1, organizationUnitDeliveryStoreFingerprint(mutation.Organization)); err != nil {
-		return identitymodel.IdentityOrganizationUnitDeliveryReceipt{}, normalizeOrganizationUnitDeliveryWriteError(err)
+		parent, found, err := s.LockIdentityOrganizationUnitDeliveryParent(ctx, mutation.WorkspaceID, parentID)
+		if err != nil {
+			return identitymodel.IdentityOrganizationUnitDeliveryReceipt{}, err
+		}
+		if !found || !parent.NodeType.Valid() || parent.Status != identitymodel.IdentityStatusActive {
+			return identitymodel.IdentityOrganizationUnitDeliveryReceipt{}, organizationUnitDeliveryStoreError(apperror.KindConflict, "backend.identity.organization_unit_parent_invalid")
+		}
+		if !identityOrganizationUnitDeliveryHierarchyMatchesParent(mutation.Organization, parent) {
+			return identitymodel.IdentityOrganizationUnitDeliveryReceipt{}, organizationUnitDeliveryStoreError(apperror.KindConflict, "backend.identity.organization_unit_external_change")
+		}
+		if _, found, err := s.GetIdentityOrganizationUnitWithinDataScope(ctx, mutation.WorkspaceID, mutation.Organization.OrganizationUnitID, identitymodel.IdentityDataScopeFilter{Unrestricted: true}); err != nil {
+			return identitymodel.IdentityOrganizationUnitDeliveryReceipt{}, err
+		} else if found {
+			return identitymodel.IdentityOrganizationUnitDeliveryReceipt{}, organizationUnitDeliveryStoreError(apperror.KindConflict, "backend.identity.organization_unit_version_conflict")
+		}
+		if err := s.insertDeliveredOrganizationUnit(ctx, executor, mutation.WorkspaceID, mutation.Organization, 1, organizationUnitDeliveryStoreFingerprint(mutation.Organization)); err != nil {
+			return identitymodel.IdentityOrganizationUnitDeliveryReceipt{}, normalizeOrganizationUnitDeliveryWriteError(err)
+		}
+		currentVersion = 1
+	case identitymodel.IdentityOrganizationUnitRename, identitymodel.IdentityOrganizationUnitDisable:
+		current, found, err := s.GetIdentityOrganizationUnitWithinDataScope(ctx, mutation.WorkspaceID, mutation.Organization.OrganizationUnitID, identitymodel.IdentityDataScopeFilter{Unrestricted: true})
+		if err != nil {
+			return identitymodel.IdentityOrganizationUnitDeliveryReceipt{}, err
+		}
+		if !found || current.NodeType != mutation.Organization.NodeType || organizationUnitDeliveryStoreFingerprint(current) != mutation.CurrentFingerprint {
+			return identitymodel.IdentityOrganizationUnitDeliveryReceipt{}, organizationUnitDeliveryStoreError(apperror.KindConflict, "backend.identity.organization_unit_version_conflict")
+		}
+		state, stateFound, err := s.GetIdentityOrganizationUnitDeliveryState(ctx, mutation.WorkspaceID, mutation.Organization.OrganizationUnitID)
+		if err != nil {
+			return identitymodel.IdentityOrganizationUnitDeliveryReceipt{}, err
+		}
+		currentVersion = 1
+		if stateFound {
+			currentVersion = state.Version
+			if state.StateFingerprint != mutation.CurrentFingerprint {
+				return identitymodel.IdentityOrganizationUnitDeliveryReceipt{}, organizationUnitDeliveryStoreError(apperror.KindConflict, "backend.identity.organization_unit_external_change")
+			}
+		}
+		if mutation.ExpectedVersion != currentVersion {
+			return identitymodel.IdentityOrganizationUnitDeliveryReceipt{}, organizationUnitDeliveryStoreError(apperror.KindConflict, "backend.identity.organization_unit_version_conflict")
+		}
+		nextVersion := currentVersion + 1
+		updated, err := s.updateDeliveredOrganizationUnitCAS(ctx, executor, mutation.WorkspaceID, current, mutation.Organization, mutation.Operation, stateFound, currentVersion, mutation.CurrentFingerprint, nextVersion, organizationUnitDeliveryStoreFingerprint(mutation.Organization))
+		if err != nil {
+			return identitymodel.IdentityOrganizationUnitDeliveryReceipt{}, err
+		}
+		if !updated {
+			return identitymodel.IdentityOrganizationUnitDeliveryReceipt{}, organizationUnitDeliveryStoreError(apperror.KindConflict, "backend.identity.organization_unit_version_conflict")
+		}
+		currentVersion = nextVersion
 	}
 	persisted, found, err := s.GetIdentityOrganizationUnitWithinDataScope(ctx, mutation.WorkspaceID, mutation.Organization.OrganizationUnitID, identitymodel.IdentityDataScopeFilter{Unrestricted: true})
 	if err != nil {
@@ -216,7 +321,7 @@ func (s *SQLIdentityStore) ExecuteIdentityOrganizationUnitDelivery(ctx context.C
 	now := nowString()
 	result := identitymodel.IdentityOrganizationUnitDeliveryResult{
 		DeliveryID:   handlerDeliveryStableID("organization-unit", mutation.WorkspaceID, mutation.IdempotencyKey),
-		Organization: identityOrganizationUnitDeliveryStoreProjection(persisted, 1),
+		Organization: identityOrganizationUnitDeliveryStoreProjection(persisted, currentVersion),
 	}
 	receipt := identitymodel.IdentityOrganizationUnitDeliveryReceipt{
 		WorkspaceID: mutation.WorkspaceID, ActorID: mutation.ActorID, IdempotencyKey: mutation.IdempotencyKey,
@@ -229,13 +334,48 @@ func (s *SQLIdentityStore) ExecuteIdentityOrganizationUnitDelivery(ctx context.C
 	relatedIDsJSON, _ := json.Marshal(uniqueHandlerDeliveryStrings([]string{mutation.Organization.OrganizationUnitID, parentID}))
 	if err := operationreceipt.InsertSucceeded(ctx, executor, s.sqlRenderer(), operationreceipt.Succeeded{
 		OperationID: result.DeliveryID, WorkspaceID: mutation.WorkspaceID, Owner: organizationUnitOperationOwner, Kind: organizationUnitOperationKind,
-		ActionKey: "identity.organization_unit.create", ResourceType: "identity_organization_unit", ResourceID: mutation.Organization.OrganizationUnitID,
+		ActionKey: "identity.organization_unit." + string(mutation.Operation), ResourceType: "identity_organization_unit", ResourceID: mutation.Organization.OrganizationUnitID,
 		IdempotencyKey: mutation.IdempotencyKey, RequestFingerprint: mutation.RequestFingerprint, RequestedBy: mutation.ActorID,
 		Reason: "deliver organization unit", ResultJSON: resultJSON, RelatedIDsJSON: relatedIDsJSON, CompletedAt: now,
 	}); err != nil {
 		return identitymodel.IdentityOrganizationUnitDeliveryReceipt{}, normalizeOrganizationUnitDeliveryWriteError(err)
 	}
 	return receipt, nil
+}
+
+func (s *SQLIdentityStore) updateDeliveredOrganizationUnitCAS(ctx context.Context, executor identitytransaction.Executor, workspaceID string, current, desired identitymodel.IdentityOrganizationUnit, operation identitymodel.IdentityOrganizationUnitOperation, stateFound bool, expectedVersion int64, expectedFingerprint string, nextVersion int64, nextFingerprint string) (bool, error) {
+	currentAncestors, _ := json.Marshal(current.AncestorIDs)
+	predicates := []query.Predicate{
+		query.Equal("organization_unit_id", current.OrganizationUnitID), query.Equal("code", current.Code), query.Equal("name", current.Name),
+		query.Equal("node_type", string(current.NodeType)), query.Equal("parent_id", identityOrganizationUnitDeliveryParentID(current.ParentID)),
+		query.Equal("path", current.Path), query.Equal("ancestor_ids", string(currentAncestors)), query.Equal("depth", current.Depth),
+		query.Equal("sort_order", current.SortOrder), query.Equal("status", string(current.Status)),
+	}
+	if stateFound {
+		predicates = append(predicates, query.Equal("delivery_owner", organizationUnitStateOwner), query.Equal("delivery_version", expectedVersion), query.Equal("delivery_state_fingerprint", expectedFingerprint))
+	} else {
+		predicates = append(predicates, query.Equal("delivery_owner", ""), query.Equal("delivery_version", int64(0)), query.Equal("delivery_state_fingerprint", ""))
+	}
+	update := query.NewWorkspaceUpdateBuilder(s.sqlRenderer(), "_identity_organization_units", workspaceID).
+		Set("delivery_owner", organizationUnitStateOwner).Set("delivery_version", nextVersion).Set("delivery_state_fingerprint", nextFingerprint).Set("updated_at", timeMillis(nowString()))
+	switch operation {
+	case identitymodel.IdentityOrganizationUnitRename:
+		update.Set("name", desired.Name).Set("sibling_key", identitymodel.IdentityOrganizationUnitSiblingKey(desired.ParentID, desired.Name))
+	case identitymodel.IdentityOrganizationUnitDisable:
+		update.Set("status", string(identitymodel.IdentityStatusDisabled))
+	default:
+		return false, organizationUnitDeliveryStoreError(apperror.KindBadRequest, "backend.identity.organization_unit_operation_invalid")
+	}
+	statement, arguments, err := update.Where(query.And(predicates...)).Build()
+	if err != nil {
+		return false, fmt.Errorf("build Identity organization unit CAS update: %w", err)
+	}
+	result, err := executor.ExecContext(ctx, statement, arguments...)
+	if err != nil {
+		return false, err
+	}
+	count, err := result.RowsAffected()
+	return count == 1, err
 }
 
 // LockIdentityOrganizationUnitDeliveryParent takes a write lock without
@@ -293,30 +433,27 @@ func (s *SQLIdentityStore) insertDeliveredOrganizationUnit(ctx context.Context, 
 }
 
 func validOrganizationUnitDeliveryNodeType(nodeType identitymodel.IdentityOrganizationUnitType) bool {
-	switch nodeType {
-	case identitymodel.IdentityOrganizationUnitRegion, identitymodel.IdentityOrganizationUnitDepartment, identitymodel.IdentityOrganizationUnitTeam, identitymodel.IdentityOrganizationUnitWarehouse:
-		return true
-	default:
-		return false
-	}
+	return nodeType.Valid() && nodeType != identitymodel.IdentityOrganizationUnitCompany
 }
 
 func validOrganizationUnitDeliveryParentTypePredicate() query.Predicate {
-	values := []any{
-		string(identitymodel.IdentityOrganizationUnitCompany), string(identitymodel.IdentityOrganizationUnitRegion),
-		string(identitymodel.IdentityOrganizationUnitStore), string(identitymodel.IdentityOrganizationUnitDepartment),
-		string(identitymodel.IdentityOrganizationUnitTeam), string(identitymodel.IdentityOrganizationUnitWarehouse),
-	}
-	return query.InExpression(query.QualifiedColumn("parent", "node_type"), values...)
+	return query.NotEqualValue(query.QualifiedColumn("parent", "node_type"), "")
 }
 
-func organizationUnitDeliveryMutationScopeAllows(scope identitymodel.IdentityDataScopeFilter, parentID string) bool {
+func identityOrganizationUnitOperationValid(operation identitymodel.IdentityOrganizationUnitOperation) bool {
+	return operation == identitymodel.IdentityOrganizationUnitCreate || operation == identitymodel.IdentityOrganizationUnitRename || operation == identitymodel.IdentityOrganizationUnitDisable
+}
+
+func organizationUnitDeliveryMutationScopeAllows(scope identitymodel.IdentityDataScopeFilter, operation identitymodel.IdentityOrganizationUnitOperation, organization identitymodel.IdentityOrganizationUnit) bool {
 	if scope.Unrestricted {
 		return true
 	}
-	parentID = strings.TrimSpace(parentID)
+	targetID := strings.TrimSpace(organization.OrganizationUnitID)
+	if operation == identitymodel.IdentityOrganizationUnitCreate {
+		targetID = identityOrganizationUnitDeliveryParentID(organization.ParentID)
+	}
 	for _, allowed := range scope.Normalized().OwnerOrgIDs {
-		if allowed == parentID {
+		if allowed == targetID {
 			return true
 		}
 	}

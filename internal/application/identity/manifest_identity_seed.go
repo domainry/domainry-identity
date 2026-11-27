@@ -201,9 +201,6 @@ func manifestIdentityOrganizationUnits(configured []identitymodel.ManifestIdenti
 			SortOrder:          configuredUnit.SortOrder,
 			Status:             identitymodel.IdentityStatus(identityValueOrDefault(configuredUnit.Status, string(identitymodel.IdentityStatusActive))),
 		}
-		if organizationUnit.NodeType == "" {
-			organizationUnit.NodeType = identitymodel.IdentityOrganizationUnitDepartment
-		}
 		if configuredUnit.ParentID != nil {
 			parentID := strings.TrimSpace(*configuredUnit.ParentID)
 			if _, exists := byID[parentID]; exists {

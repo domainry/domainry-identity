@@ -21,7 +21,6 @@ func (binding *sdkBinding) forToken(ctx context.Context, token string) (*sdkBind
 	clone := *binding
 	clone.applications = applications
 	clone.handlerDelivery = binding.handlerDelivery.ForWorkspace(string(verified.WorkspaceID), applications)
-	clone.storeOrganizations = binding.storeOrganizations.ForWorkspace(string(verified.WorkspaceID), applications)
 	clone.organizationUnits = binding.organizationUnits.ForWorkspace(string(verified.WorkspaceID), applications)
 	return &clone, nil
 }

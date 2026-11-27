@@ -8,8 +8,8 @@ import (
 
 func TestUpsertOrganizationUnitRechecksChangedRepositorySnapshot(t *testing.T) {
 	parentID := "parent"
-	parent := identitymodel.IdentityOrganizationUnit{OrganizationUnitID: parentID, Code: "PARENT", Name: "Parent", NodeType: identitymodel.IdentityOrganizationUnitDepartment, Path: "/parent"}
-	organizationUnit := identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "child", Code: "CHILD", Name: "Child", NodeType: identitymodel.IdentityOrganizationUnitDepartment, ParentID: &parentID}
+	parent := identitymodel.IdentityOrganizationUnit{OrganizationUnitID: parentID, Code: "PARENT", Name: "Parent", NodeType: identitymodel.IdentityOrganizationUnitType("department"), Path: "/parent"}
+	organizationUnit := identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "child", Code: "CHILD", Name: "Child", NodeType: identitymodel.IdentityOrganizationUnitType("department"), ParentID: &parentID}
 	for _, test := range []struct {
 		name   string
 		second []identitymodel.IdentityOrganizationUnit

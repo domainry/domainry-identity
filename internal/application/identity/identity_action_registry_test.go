@@ -13,8 +13,8 @@ func TestStandaloneAuthorizationSliceRegistryOwnsCompleteRouteAndPermissionMatri
 		t.Fatal(err)
 	}
 	definitions := registry.Definitions()
-	if len(definitions) != 156 {
-		t.Fatalf("Identity Action count=%d want=156", len(definitions))
+	if len(definitions) != 154 {
+		t.Fatalf("Identity Action count=%d want=154", len(definitions))
 	}
 	seenHTTP := map[string]string{}
 	pageBindings := 0
@@ -58,8 +58,8 @@ func TestStandaloneAuthorizationSliceRegistryOwnsCompleteRouteAndPermissionMatri
 	if pageBindings != 7 {
 		t.Fatalf("page-bound Identity Actions=%d want=7", pageBindings)
 	}
-	if nonHTTPBindings != 22 {
-		t.Fatalf("non-HTTP Identity Actions=%d want=22", nonHTTPBindings)
+	if nonHTTPBindings != 20 {
+		t.Fatalf("non-HTTP Identity Actions=%d want=20", nonHTTPBindings)
 	}
 	for key, binding := range map[string]string{
 		"auth.session.get":                        "GET /auth/session",
@@ -94,8 +94,8 @@ func TestStandaloneAuthorizationSliceRegistryOwnsCompleteRouteAndPermissionMatri
 		t.Fatalf("effective menus must be public-listener, authenticated, and principal-scoped: found=%v action=%+v", found, effectiveMenus)
 	}
 	permissions := registry.OwnedPermissionDefinitions(IdentityBuiltinAuthorizationOwner)
-	if len(permissions) != 101 {
-		t.Fatalf("owned permission count=%d want=101", len(permissions))
+	if len(permissions) != 99 {
+		t.Fatalf("owned permission count=%d want=99", len(permissions))
 	}
 	for _, key := range []string{"auth.providers.setup_check", "auth.providers.setup"} {
 		definition, found := registry.Definition(key)
@@ -121,14 +121,13 @@ func TestStandaloneAuthorizationSliceRegistryOwnsCompleteRouteAndPermissionMatri
 		t.Fatalf("Workspace usage Action is not an exact purpose-specific non-HTTP permission: found=%v definition=%+v", found, usage)
 	}
 	for _, key := range []string{
-		"identity.store_organization_delivery.create", "identity.store_organization_delivery.rename",
-		"identity.store_organization_delivery.disable", "identity.store_organization_delivery.resolve",
-		"identity.store_organization_delivery.list",
-		"identity.organization_unit_delivery.create", "identity.organization_unit_delivery.resolve",
+		"identity.organization_unit_delivery.create", "identity.organization_unit_delivery.rename",
+		"identity.organization_unit_delivery.disable", "identity.organization_unit_delivery.resolve",
+		"identity.organization_unit_delivery.list",
 	} {
 		definition, found := registry.Definition(key)
 		if !found || definition.HTTP != nil || len(definition.NonHTTP) != 1 || definition.NonHTTP[0].InvocationKey != key {
-			t.Fatalf("StoreOrganization Action %q must be non-HTTP and purpose-specific: found=%v definition=%+v", key, found, definition)
+			t.Fatalf("OrganizationUnit Action %q must be non-HTTP and purpose-specific: found=%v definition=%+v", key, found, definition)
 		}
 	}
 	for _, permission := range permissions {

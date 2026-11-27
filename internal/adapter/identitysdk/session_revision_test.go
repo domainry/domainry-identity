@@ -124,7 +124,7 @@ func TestCurrentSessionInvalidatesCachedAuthorizationBeforeTTL(t *testing.T) {
 			f := newPrincipalReadFixture(t)
 			ctx := requestcontext.WithWorkspaceID(f.ctx, "workspace-primary")
 			for _, id := range []string{"department-a", "department-b"} {
-				if err := f.repo.UpsertIdentityOrganizationUnit(ctx, "workspace-primary", identitymodel.IdentityOrganizationUnit{OrganizationUnitID: id, Code: id, Name: id, NodeType: identitymodel.IdentityOrganizationUnitDepartment, Status: identitymodel.IdentityStatusActive}); err != nil {
+				if err := f.repo.UpsertIdentityOrganizationUnit(ctx, "workspace-primary", identitymodel.IdentityOrganizationUnit{OrganizationUnitID: id, Code: id, Name: id, NodeType: identitymodel.IdentityOrganizationUnitType("department"), Status: identitymodel.IdentityStatusActive}); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -315,7 +315,7 @@ func TestDepartmentTreeChangesRefreshScopeWithoutRevokingUserSession(t *testing.
 	f := newPrincipalReadFixture(t)
 	ctx := requestcontext.WithWorkspaceID(f.ctx, "workspace-primary")
 	for _, id := range []string{"department-a", "department-b"} {
-		if err := f.repo.UpsertIdentityOrganizationUnit(ctx, "workspace-primary", identitymodel.IdentityOrganizationUnit{OrganizationUnitID: id, Code: id, Name: id, NodeType: identitymodel.IdentityOrganizationUnitDepartment, Status: identitymodel.IdentityStatusActive}); err != nil {
+		if err := f.repo.UpsertIdentityOrganizationUnit(ctx, "workspace-primary", identitymodel.IdentityOrganizationUnit{OrganizationUnitID: id, Code: id, Name: id, NodeType: identitymodel.IdentityOrganizationUnitType("department"), Status: identitymodel.IdentityStatusActive}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -350,7 +350,7 @@ func TestDepartmentTreeChangesRefreshScopeWithoutRevokingUserSession(t *testing.
 		t.Fatalf("initial scope=%v err=%v", before.OrgScopeIDs, err)
 	}
 	parent := "department-a"
-	child := identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "department-child", Code: "child", Name: "Child", NodeType: identitymodel.IdentityOrganizationUnitDepartment, ParentID: &parent, Status: identitymodel.IdentityStatusActive}
+	child := identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "department-child", Code: "child", Name: "Child", NodeType: identitymodel.IdentityOrganizationUnitType("department"), ParentID: &parent, Status: identitymodel.IdentityStatusActive}
 	if err := f.repo.UpsertIdentityOrganizationUnit(ctx, "workspace-primary", child); err != nil {
 		t.Fatal(err)
 	}

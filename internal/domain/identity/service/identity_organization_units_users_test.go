@@ -12,12 +12,12 @@ import (
 func TestUpsertOrganizationUnitBuildsHierarchy(t *testing.T) {
 	repository := &identityOrganizationUnitUserRepository{}
 	service := NewIdentityDomainService(repository, nil)
-	root := identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "region", Code: "REGION", Name: "Region", NodeType: identitymodel.IdentityOrganizationUnitRegion}
+	root := identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "region", Code: "REGION", Name: "Region", NodeType: identitymodel.IdentityOrganizationUnitType("region")}
 	if err := service.UpsertOrganizationUnit(t.Context(), root); err != nil {
 		t.Fatal(err)
 	}
 	parentID := " region "
-	store := identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "store", Code: "STORE", Name: "Store", NodeType: identitymodel.IdentityOrganizationUnitStore, ParentID: &parentID}
+	store := identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "store", Code: "STORE", Name: "Store", NodeType: identitymodel.IdentityOrganizationUnitType("store"), ParentID: &parentID}
 	if err := service.UpsertOrganizationUnit(t.Context(), store); err != nil {
 		t.Fatal(err)
 	}
@@ -31,8 +31,8 @@ func TestUpsertOrganizationUnitOwnsDerivedHierarchyFactsAndReparentsSubtree(t *t
 	repository := &identityOrganizationUnitUserRepository{}
 	service := NewIdentityDomainService(repository, nil)
 	for _, unit := range []identitymodel.IdentityOrganizationUnit{
-		{OrganizationUnitID: "root-a", Code: "ROOT-A", Name: "Root A", NodeType: identitymodel.IdentityOrganizationUnitRegion, Path: "/caller/path", AncestorIDs: []string{"caller"}, Depth: 99},
-		{OrganizationUnitID: "root-b", Code: "ROOT-B", Name: "Root B", NodeType: identitymodel.IdentityOrganizationUnitRegion},
+		{OrganizationUnitID: "root-a", Code: "ROOT-A", Name: "Root A", NodeType: identitymodel.IdentityOrganizationUnitType("region"), Path: "/caller/path", AncestorIDs: []string{"caller"}, Depth: 99},
+		{OrganizationUnitID: "root-b", Code: "ROOT-B", Name: "Root B", NodeType: identitymodel.IdentityOrganizationUnitType("region")},
 	} {
 		if err := service.UpsertOrganizationUnit(t.Context(), unit); err != nil {
 			t.Fatal(err)
@@ -40,19 +40,19 @@ func TestUpsertOrganizationUnitOwnsDerivedHierarchyFactsAndReparentsSubtree(t *t
 	}
 	rootA, rootB := "root-a", "root-b"
 	for _, unit := range []identitymodel.IdentityOrganizationUnit{
-		{OrganizationUnitID: "parent", Code: "PARENT", Name: "Parent", NodeType: identitymodel.IdentityOrganizationUnitDepartment, ParentID: &rootB},
-		{OrganizationUnitID: "child", Code: "CHILD", Name: "Child", NodeType: identitymodel.IdentityOrganizationUnitTeam, ParentID: &rootA},
+		{OrganizationUnitID: "parent", Code: "PARENT", Name: "Parent", NodeType: identitymodel.IdentityOrganizationUnitType("department"), ParentID: &rootB},
+		{OrganizationUnitID: "child", Code: "CHILD", Name: "Child", NodeType: identitymodel.IdentityOrganizationUnitType("team"), ParentID: &rootA},
 	} {
 		if err := service.UpsertOrganizationUnit(t.Context(), unit); err != nil {
 			t.Fatal(err)
 		}
 	}
 	child := "child"
-	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "grandchild", Code: "GRANDCHILD", Name: "Grandchild", NodeType: identitymodel.IdentityOrganizationUnitTeam, ParentID: &child}); err != nil {
+	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "grandchild", Code: "GRANDCHILD", Name: "Grandchild", NodeType: identitymodel.IdentityOrganizationUnitType("team"), ParentID: &child}); err != nil {
 		t.Fatal(err)
 	}
 	parent := "parent"
-	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "child", Code: "CHILD", Name: "Child", NodeType: identitymodel.IdentityOrganizationUnitTeam, ParentID: &parent, Path: "/forged"}); err != nil {
+	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "child", Code: "CHILD", Name: "Child", NodeType: identitymodel.IdentityOrganizationUnitType("team"), ParentID: &parent, Path: "/forged"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -72,11 +72,11 @@ func TestUpsertOrganizationUnitOwnsDerivedHierarchyFactsAndReparentsSubtree(t *t
 }
 
 func TestUpsertOrganizationUnitRollsBackWholeDerivedSubtree(t *testing.T) {
-	root := identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "root", Code: "ROOT", Name: "Root", NodeType: identitymodel.IdentityOrganizationUnitRegion, Path: "/root"}
+	root := identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "root", Code: "ROOT", Name: "Root", NodeType: identitymodel.IdentityOrganizationUnitType("region"), Path: "/root"}
 	rootID := root.OrganizationUnitID
-	child := identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "child", Code: "CHILD", Name: "Child", NodeType: identitymodel.IdentityOrganizationUnitTeam, ParentID: &rootID, Path: "/root/child", AncestorIDs: []string{"root"}, Depth: 1}
+	child := identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "child", Code: "CHILD", Name: "Child", NodeType: identitymodel.IdentityOrganizationUnitType("team"), ParentID: &rootID, Path: "/root/child", AncestorIDs: []string{"root"}, Depth: 1}
 	childID := child.OrganizationUnitID
-	grandchild := identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "grandchild", Code: "GRANDCHILD", Name: "Grandchild", NodeType: identitymodel.IdentityOrganizationUnitTeam, ParentID: &childID, Path: "/root/child/grandchild", AncestorIDs: []string{"root", "child"}, Depth: 2}
+	grandchild := identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "grandchild", Code: "GRANDCHILD", Name: "Grandchild", NodeType: identitymodel.IdentityOrganizationUnitType("team"), ParentID: &childID, Path: "/root/child/grandchild", AncestorIDs: []string{"root", "child"}, Depth: 2}
 	repository := &identityOrganizationUnitUserRepository{
 		organizationUnits:     []identitymodel.IdentityOrganizationUnit{root, child, grandchild},
 		upsertOrganizationErr: errIdentityOrganizationUnitUserEdge,
@@ -84,7 +84,7 @@ func TestUpsertOrganizationUnitRollsBackWholeDerivedSubtree(t *testing.T) {
 	}
 	before := append([]identitymodel.IdentityOrganizationUnit(nil), repository.organizationUnits...)
 	if err := NewIdentityDomainService(repository, nil).UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{
-		OrganizationUnitID: "child", Code: "CHILD", Name: "Renamed Child", NodeType: identitymodel.IdentityOrganizationUnitTeam, ParentID: &rootID,
+		OrganizationUnitID: "child", Code: "CHILD", Name: "Renamed Child", NodeType: identitymodel.IdentityOrganizationUnitType("team"), ParentID: &rootID,
 	}); !errors.Is(err, errIdentityOrganizationUnitUserEdge) {
 		t.Fatalf("error=%v", err)
 	}
@@ -94,7 +94,7 @@ func TestUpsertOrganizationUnitRollsBackWholeDerivedSubtree(t *testing.T) {
 }
 
 func TestUpsertUserStoresPrimaryOrganizationAndPersonnelFields(t *testing.T) {
-	repository := &identityOrganizationUnitUserRepository{organizationUnits: []identitymodel.IdentityOrganizationUnit{{OrganizationUnitID: "team", Code: "TEAM", Name: "Team", NodeType: identitymodel.IdentityOrganizationUnitTeam, Status: identitymodel.IdentityStatusActive}}}
+	repository := &identityOrganizationUnitUserRepository{organizationUnits: []identitymodel.IdentityOrganizationUnit{{OrganizationUnitID: "team", Code: "TEAM", Name: "Team", NodeType: identitymodel.IdentityOrganizationUnitType("team"), Status: identitymodel.IdentityStatusActive}}}
 	service := NewIdentityDomainService(repository, nil)
 	err := service.UpsertUser(t.Context(), identitymodel.IdentityUser{
 		UserID: " user ", Name: " User ", Email: " USER@example.com ", OrgID: " team ",

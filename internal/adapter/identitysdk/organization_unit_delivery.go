@@ -36,6 +36,23 @@ func (adapter sdkOrganizationUnitDelivery) CreateOrganizationUnit(ctx context.Co
 	return sdkOrganizationUnitDeliveryResult(result), sdkBoundaryError(err)
 }
 
+func (adapter sdkOrganizationUnitDelivery) MutateOrganizationUnit(ctx context.Context, request organizationunit.MutationRequest) (organizationunit.DeliveryResult, error) {
+	if adapter.binding == nil || adapter.binding.organizationUnits == nil {
+		return organizationunit.DeliveryResult{}, organizationUnitDeliveryUnavailableError()
+	}
+	scoped, scopeErr := adapter.binding.forToken(ctx, request.AccessToken)
+	if scopeErr != nil {
+		return organizationunit.DeliveryResult{}, scopeErr
+	}
+	adapter.binding = scoped
+	result, err := adapter.binding.organizationUnits.Mutate(ctx, identityapplication.IdentityOrganizationUnitMutationRequest{
+		ContractVersion: request.ContractVersion, AccessToken: request.AccessToken, IdempotencyKey: request.IdempotencyKey,
+		Operation: identitymodel.IdentityOrganizationUnitOperation(request.Organization.Operation), OrganizationID: request.Organization.OrganizationID,
+		NodeType: identitymodel.IdentityOrganizationUnitType(request.Organization.NodeType), Name: request.Organization.Name, ExpectedVersion: request.Organization.ExpectedVersion,
+	})
+	return sdkOrganizationUnitDeliveryResult(result), sdkBoundaryError(err)
+}
+
 func (adapter sdkOrganizationUnitDelivery) ResolveOrganizationUnit(ctx context.Context, request organizationunit.ResolveRequest) (organizationunit.DeliveredOrganizationUnit, error) {
 	if adapter.binding == nil || adapter.binding.organizationUnits == nil {
 		return organizationunit.DeliveredOrganizationUnit{}, organizationUnitDeliveryUnavailableError()
@@ -51,6 +68,28 @@ func (adapter sdkOrganizationUnitDelivery) ResolveOrganizationUnit(ctx context.C
 		NodeType: identitymodel.IdentityOrganizationUnitType(request.NodeType),
 	})
 	return sdkDeliveredOrganizationUnit(result), sdkBoundaryError(err)
+}
+
+func (adapter sdkOrganizationUnitDelivery) ListOrganizationUnits(ctx context.Context, request organizationunit.ListRequest) (organizationunit.Page, error) {
+	if adapter.binding == nil || adapter.binding.organizationUnits == nil {
+		return organizationunit.Page{}, organizationUnitDeliveryUnavailableError()
+	}
+	scoped, scopeErr := adapter.binding.forToken(ctx, request.AccessToken)
+	if scopeErr != nil {
+		return organizationunit.Page{}, scopeErr
+	}
+	adapter.binding = scoped
+	result, err := adapter.binding.organizationUnits.List(ctx, identityapplication.IdentityOrganizationUnitListRequest{
+		ContractVersion: request.ContractVersion, AccessToken: request.AccessToken, NodeType: identitymodel.IdentityOrganizationUnitType(request.NodeType), PageSize: request.PageSize, Cursor: request.Cursor,
+	})
+	if err != nil {
+		return organizationunit.Page{}, sdkBoundaryError(err)
+	}
+	out := organizationunit.Page{Items: make([]organizationunit.DeliveredOrganizationUnit, len(result.Items)), NextCursor: result.NextCursor}
+	for index := range result.Items {
+		out.Items[index] = sdkDeliveredOrganizationUnit(result.Items[index])
+	}
+	return out, nil
 }
 
 func sdkOrganizationUnitDeliveryResult(value identitymodel.IdentityOrganizationUnitDeliveryResult) organizationunit.DeliveryResult {

@@ -38,12 +38,28 @@ func (adapter moduleOrganizationUnitDelivery) CreateOrganizationUnit(ctx context
 	return provider.CreateOrganizationUnit(identitytransaction.WithExecutor(ctx, adapter.tx), request)
 }
 
+func (adapter moduleOrganizationUnitDelivery) MutateOrganizationUnit(ctx context.Context, request organizationunit.MutationRequest) (organizationunit.DeliveryResult, error) {
+	provider, err := adapter.provider(ctx, request.AccessToken)
+	if err != nil {
+		return organizationunit.DeliveryResult{}, err
+	}
+	return provider.MutateOrganizationUnit(identitytransaction.WithExecutor(ctx, adapter.tx), request)
+}
+
 func (adapter moduleOrganizationUnitDelivery) ResolveOrganizationUnit(ctx context.Context, request organizationunit.ResolveRequest) (organizationunit.DeliveredOrganizationUnit, error) {
 	provider, err := adapter.provider(ctx, request.AccessToken)
 	if err != nil {
 		return organizationunit.DeliveredOrganizationUnit{}, err
 	}
 	return provider.ResolveOrganizationUnit(identitytransaction.WithExecutor(ctx, adapter.tx), request)
+}
+
+func (adapter moduleOrganizationUnitDelivery) ListOrganizationUnits(ctx context.Context, request organizationunit.ListRequest) (organizationunit.Page, error) {
+	provider, err := adapter.provider(ctx, request.AccessToken)
+	if err != nil {
+		return organizationunit.Page{}, err
+	}
+	return provider.ListOrganizationUnits(identitytransaction.WithExecutor(ctx, adapter.tx), request)
 }
 
 func (adapter moduleOrganizationUnitDelivery) provider(ctx context.Context, accessToken string) (organizationunit.Delivery, error) {

@@ -186,26 +186,16 @@ type IdentityHandlerDeliveryRepository interface {
 	ExecuteIdentityHandlerDelivery(context.Context, identitymodel.IdentityHandlerDeliveryMutation) (identitymodel.IdentityHandlerDeliveryReceipt, error)
 }
 
-// IdentityStoreOrganizationDeliveryRepository owns only concurrency evidence
-// and the atomic StoreOrganization mutation. Organization facts remain in the
-// canonical Identity organization aggregate; the state record stores a CAS
-// version and fingerprint, not a duplicate organization projection.
-type IdentityStoreOrganizationDeliveryRepository interface {
-	GetIdentityStoreOrganizationDeliveryReceipt(context.Context, string, string) (identitymodel.IdentityStoreOrganizationDeliveryReceipt, bool, error)
-	GetIdentityStoreOrganizationState(context.Context, string, string) (identitymodel.IdentityStoreOrganizationState, bool, error)
-	ListIdentityStoreOrganizationsPage(context.Context, string, identitymodel.IdentityDataScopeFilter, int64, int) ([]identitymodel.IdentityStoreOrganization, error)
-	ExecuteIdentityStoreOrganizationDelivery(context.Context, identitymodel.IdentityStoreOrganizationDeliveryMutation) (identitymodel.IdentityStoreOrganizationDeliveryReceipt, error)
-}
-
-// IdentityOrganizationUnitDeliveryRepository persists only create receipts
-// and concurrency evidence. Canonical organization facts remain in
+// IdentityOrganizationUnitDeliveryRepository persists lifecycle receipts and
+// concurrency evidence. Canonical organization facts remain in
 // _identity_organization_units and every operation is bound to a persisted
-// parent in the same Workspace.
+// hierarchy in the same Workspace.
 type IdentityOrganizationUnitDeliveryRepository interface {
 	LockIdentityOrganizationUnitDeliveryParent(context.Context, string, string) (identitymodel.IdentityOrganizationUnit, bool, error)
 	GetIdentityOrganizationUnitDeliveryReceipt(context.Context, string, string) (identitymodel.IdentityOrganizationUnitDeliveryReceipt, bool, error)
 	GetIdentityOrganizationUnitDeliveryState(context.Context, string, string) (identitymodel.IdentityOrganizationUnitDeliveryState, bool, error)
 	ResolveIdentityDeliveredOrganizationUnit(context.Context, string, string, identitymodel.IdentityOrganizationUnitType, identitymodel.IdentityDataScopeFilter) (identitymodel.IdentityDeliveredOrganizationUnit, bool, error)
+	ListIdentityOrganizationUnitsPage(context.Context, string, identitymodel.IdentityOrganizationUnitType, identitymodel.IdentityDataScopeFilter, int64, int) ([]identitymodel.IdentityDeliveredOrganizationUnit, error)
 	ExecuteIdentityOrganizationUnitDelivery(context.Context, identitymodel.IdentityOrganizationUnitDeliveryMutation) (identitymodel.IdentityOrganizationUnitDeliveryReceipt, error)
 }
 

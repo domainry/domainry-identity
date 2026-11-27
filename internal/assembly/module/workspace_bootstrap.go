@@ -109,12 +109,6 @@ func (binding *moduleBinding) BootstrapWorkspaceIdentity(ctx context.Context, re
 			NodeType: identitymodel.IdentityOrganizationUnitCompany, Path: "/" + companyID,
 			AncestorIDs: []string{}, Depth: 0, SortOrder: 0, Status: identitymodel.IdentityStatusActive,
 		},
-		FirstStore: identitymodel.IdentityOrganizationUnit{
-			OrganizationUnitID: request.FirstStoreID, Code: request.FirstStoreCode, Name: request.FirstStoreName,
-			NodeType: identitymodel.IdentityOrganizationUnitStore, ParentID: &companyID,
-			Path: "/" + companyID + "/" + request.FirstStoreID, AncestorIDs: []string{companyID},
-			Depth: 1, SortOrder: 0, Status: identitymodel.IdentityStatusActive,
-		},
 		InitialAdmin: identitymodel.IdentityUser{
 			UserID: request.InitialAdminUserID, Name: request.InitialAdminName, Email: request.InitialAdminLoginID,
 			AccountType: identitymodel.IdentityAccountHuman, OrgID: companyID,
@@ -158,7 +152,7 @@ func (binding *moduleBinding) BootstrapWorkspaceIdentity(ctx context.Context, re
 		OperationID: identitypersistence.WorkspaceIdentityBootstrapReceiptID(request.WorkspaceID, request.InvocationID),
 		WorkspaceID: request.WorkspaceID, InvocationID: request.InvocationID, RequestFingerprint: fingerprint,
 		ContractVersion: request.ContractVersion, ContractHash: request.ContractHash,
-		CompanyID: request.CompanyID, FirstStoreID: request.FirstStoreID,
+		CompanyID:          request.CompanyID,
 		InitialAdminUserID: request.InitialAdminUserID, InitialAdminLoginID: request.InitialAdminLoginID,
 		RoleCatalogSHA256:                    roleCatalog.sha256,
 		InitialWorkspaceAdministratorRoleKey: roleCatalog.initialWorkspaceAdministratorRoleKey,
@@ -310,9 +304,6 @@ func normalizeWorkspaceBootstrapRequest(request identitysdk.WorkspaceIdentityBoo
 	request.CompanyID = strings.TrimSpace(request.CompanyID)
 	request.CompanyCode = strings.TrimSpace(request.CompanyCode)
 	request.CompanyName = strings.TrimSpace(request.CompanyName)
-	request.FirstStoreID = strings.TrimSpace(request.FirstStoreID)
-	request.FirstStoreCode = strings.TrimSpace(request.FirstStoreCode)
-	request.FirstStoreName = strings.TrimSpace(request.FirstStoreName)
 	request.InitialAdminUserID = strings.TrimSpace(request.InitialAdminUserID)
 	request.InitialAdminLoginID = strings.ToLower(strings.TrimSpace(request.InitialAdminLoginID))
 	request.InitialAdminName = strings.TrimSpace(request.InitialAdminName)
@@ -331,21 +322,18 @@ func validateWorkspaceBootstrapRequest(request identitysdk.WorkspaceIdentityBoot
 	}
 	identifiers := map[string]string{
 		"invocation_id": request.InvocationID, "company_id": request.CompanyID,
-		"first_store_id": request.FirstStoreID, "initial_admin_user_id": request.InitialAdminUserID,
+		"initial_admin_user_id": request.InitialAdminUserID,
 	}
 	for field, value := range identifiers {
 		if err := identitysdk.ValidateIdentifier(field, value); err != nil || strings.Contains(value, "/") {
 			return &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.workspace_bootstrap_invalid", Cause: err, Params: map[string]string{"field": field}}
 		}
 	}
-	values := []string{request.CompanyCode, request.CompanyName, request.FirstStoreCode, request.FirstStoreName, request.InitialAdminLoginID, request.InitialAdminName}
+	values := []string{request.CompanyCode, request.CompanyName, request.InitialAdminLoginID, request.InitialAdminName}
 	for _, value := range values {
 		if value == "" {
 			return bootstrapError(identitysdk.ErrorClassBadRequest, "identity.workspace_bootstrap_invalid", nil)
 		}
-	}
-	if request.CompanyID == request.FirstStoreID || strings.EqualFold(request.CompanyCode, request.FirstStoreCode) {
-		return bootstrapError(identitysdk.ErrorClassBadRequest, "identity.workspace_bootstrap_invalid", nil)
 	}
 	if request.InitialAdminPassword == "" || len(request.InitialAdminPassword) > 72 {
 		return &identitysdk.Error{Class: identitysdk.ErrorClassBadRequest, Code: "identity.workspace_bootstrap_invalid", Params: map[string]string{"field": "initial_admin_password"}}
@@ -357,7 +345,6 @@ func workspaceBootstrapFingerprint(request identitysdk.WorkspaceIdentityBootstra
 	values := []string{
 		request.ContractVersion, request.ContractHash, request.InvocationID, request.WorkspaceID,
 		request.CompanyID, request.CompanyCode, request.CompanyName,
-		request.FirstStoreID, request.FirstStoreCode, request.FirstStoreName,
 		request.InitialAdminUserID, request.InitialAdminLoginID, request.InitialAdminName, request.InitialAdminPassword,
 		fmt.Sprintf("must_change_password=%t", mustChangePassword),
 	}
@@ -371,7 +358,7 @@ func workspaceBootstrapReceipt(receipt identitypersistence.WorkspaceIdentityBoot
 	return identitysdk.WorkspaceIdentityBootstrapReceipt{
 		ContractVersion: receipt.ContractVersion, ContractHash: receipt.ContractHash,
 		ReceiptID: receipt.OperationID, InvocationID: receipt.InvocationID, WorkspaceID: receipt.WorkspaceID,
-		CompanyID: receipt.CompanyID, FirstStoreID: receipt.FirstStoreID,
+		CompanyID:          receipt.CompanyID,
 		InitialAdminUserID: receipt.InitialAdminUserID, InitialAdminLoginID: receipt.InitialAdminLoginID,
 		RoleCatalogSHA256:                    receipt.RoleCatalogSHA256,
 		InitialWorkspaceAdministratorRoleKey: receipt.InitialWorkspaceAdministratorRoleKey,
@@ -436,7 +423,6 @@ func injectWorkspaceBootstrapFailure(injector identitysdk.WorkspaceProvisionFail
 	}
 	points := map[identitypersistence.WorkspaceIdentityProvisionStage]string{
 		identitypersistence.WorkspaceIdentityProvisionStageCompany:        identitysdk.WorkspaceProvisionFailureAfterCompany,
-		identitypersistence.WorkspaceIdentityProvisionStageFirstStore:     identitysdk.WorkspaceProvisionFailureAfterFirstStore,
 		identitypersistence.WorkspaceIdentityProvisionStageUser:           identitysdk.WorkspaceProvisionFailureAfterIdentityUser,
 		identitypersistence.WorkspaceIdentityProvisionStageRole:           identitysdk.WorkspaceProvisionFailureAfterIdentityRole,
 		identitypersistence.WorkspaceIdentityProvisionStageRoleAssignment: identitysdk.WorkspaceProvisionFailureAfterRoleAssignment,

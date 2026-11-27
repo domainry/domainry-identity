@@ -52,6 +52,10 @@ func (organizationUnitDeliveryRepositoryStub) ResolveIdentityDeliveredOrganizati
 	return identitymodel.IdentityDeliveredOrganizationUnit{}, false, nil
 }
 
+func (organizationUnitDeliveryRepositoryStub) ListIdentityOrganizationUnitsPage(context.Context, string, identitymodel.IdentityOrganizationUnitType, identitymodel.IdentityDataScopeFilter, int64, int) ([]identitymodel.IdentityDeliveredOrganizationUnit, error) {
+	return nil, nil
+}
+
 func (organizationUnitDeliveryRepositoryStub) ExecuteIdentityOrganizationUnitDelivery(context.Context, identitymodel.IdentityOrganizationUnitDeliveryMutation) (identitymodel.IdentityOrganizationUnitDeliveryReceipt, error) {
 	return identitymodel.IdentityOrganizationUnitDeliveryReceipt{}, nil
 }
@@ -86,11 +90,10 @@ func TestOrganizationUnitDeliveryScopesOnlyPersistedParent(t *testing.T) {
 	}
 }
 
-func TestOrganizationUnitDeliveryPermissionDoesNotAliasManagementOrStoreDelivery(t *testing.T) {
+func TestOrganizationUnitDeliveryPermissionDoesNotAliasManagement(t *testing.T) {
 	role := identitymodel.RoleSchema{Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, identitycontract.IdentityOrganizationUnitDeliveryCreatePermission)}
 	for _, other := range []string{
 		"identity.organization_units.create", "identity.organization_units.update",
-		identitycontract.IdentityStoreOrganizationDeliveryCreatePermission,
 	} {
 		if identitycontract.IdentityRoleHasPermissionKey(role, other) {
 			t.Fatalf("organization-unit delivery grant aliased %q", other)
@@ -101,7 +104,7 @@ func TestOrganizationUnitDeliveryPermissionDoesNotAliasManagementOrStoreDelivery
 func TestOrganizationUnitDeliveryCreateValidationRejectsRootAndMutationFields(t *testing.T) {
 	valid := IdentityOrganizationUnitDeliveryRequest{
 		ContractVersion: IdentityOrganizationUnitDeliveryContractVersionV1, AccessToken: "token", IdempotencyKey: "delivery-1",
-		OrganizationID: "department", Code: "DEPARTMENT", Name: "Department", NodeType: identitymodel.IdentityOrganizationUnitDepartment,
+		OrganizationID: "department", Code: "DEPARTMENT", Name: "Department", NodeType: identitymodel.IdentityOrganizationUnitType("department"),
 		ParentOrganizationID: "company", ExpectedVersion: 0,
 	}
 	if err := validateIdentityOrganizationUnitDeliveryRequest(valid); err != nil {
@@ -112,8 +115,8 @@ func TestOrganizationUnitDeliveryCreateValidationRejectsRootAndMutationFields(t 
 	if err := validateIdentityOrganizationUnitDeliveryRequest(invalidType); apperror.CodeOf(err) != "backend.identity.organization_unit_type_invalid" {
 		t.Fatalf("root node error=%v", err)
 	}
-	invalidType.NodeType = identitymodel.IdentityOrganizationUnitStore
-	if err := validateIdentityOrganizationUnitDeliveryRequest(invalidType); apperror.CodeOf(err) != "backend.identity.organization_unit_type_invalid" {
+	valid.NodeType = identitymodel.IdentityOrganizationUnitType("store")
+	if err := validateIdentityOrganizationUnitDeliveryRequest(valid); err != nil {
 		t.Fatalf("store node error=%v", err)
 	}
 	stale := valid

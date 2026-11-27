@@ -35,7 +35,6 @@ type BindingDependencies struct {
 	Permissions             *identityapplication.IdentityPermissionCatalogApplicationService
 	RoleCatalog             *identityapplication.IdentityGlobalRoleCatalogApplicationService
 	HandlerDelivery         *identityapplication.IdentityHandlerDeliveryApplicationService
-	StoreOrganizations      *identityapplication.IdentityStoreOrganizationDeliveryApplicationService
 	OrganizationUnits       *identityapplication.IdentityOrganizationUnitDeliveryApplicationService
 	Clock                   identitysdk.Clock
 	MutationFence           IdentityMutationFence
@@ -60,7 +59,6 @@ type sdkBinding struct {
 	permissions                 *identityapplication.IdentityPermissionCatalogApplicationService
 	roleCatalog                 *identityapplication.IdentityGlobalRoleCatalogApplicationService
 	handlerDelivery             *identityapplication.IdentityHandlerDeliveryApplicationService
-	storeOrganizations          *identityapplication.IdentityStoreOrganizationDeliveryApplicationService
 	organizationUnits           *identityapplication.IdentityOrganizationUnitDeliveryApplicationService
 	clock                       identitysdk.Clock
 	mutationFence               IdentityMutationFence
@@ -75,7 +73,7 @@ type sdkBinding struct {
 func NewBinding(dependencies BindingDependencies) (identitysdk.Binding, error) {
 	if dependencies.Authentication == nil || dependencies.ProviderConfiguration == nil || dependencies.ProviderFlows == nil ||
 		dependencies.ProviderCallback == nil || dependencies.ProviderPassword == nil || dependencies.EffectiveAccess == nil || dependencies.Identity == nil ||
-		dependencies.Applications == nil || dependencies.Permissions == nil || dependencies.RoleCatalog == nil || dependencies.HandlerDelivery == nil || dependencies.StoreOrganizations == nil || dependencies.OrganizationUnits == nil || dependencies.MutationFence == nil || dependencies.OperationsPersistence == nil || dependencies.LoginTransactions == nil {
+		dependencies.Applications == nil || dependencies.Permissions == nil || dependencies.RoleCatalog == nil || dependencies.HandlerDelivery == nil || dependencies.OrganizationUnits == nil || dependencies.MutationFence == nil || dependencies.OperationsPersistence == nil || dependencies.LoginTransactions == nil {
 		return nil, errors.New("complete Identity SDK Binding dependencies are required")
 	}
 	if dependencies.Clock == nil {
@@ -84,10 +82,10 @@ func NewBinding(dependencies BindingDependencies) (identitysdk.Binding, error) {
 	binding := &sdkBinding{descriptor: identitysdk.Descriptor{
 		ProtocolVersion: identitysdk.CurrentProtocolVersion, BundleVersion: identitysdk.CurrentPolicyBundleVersion, AuthorizationVersion: identitysdk.CurrentAuthorizationContractVersion,
 		Mode: identitysdk.DeploymentModeModule, Issuer: defaultString(dependencies.Config.AuthIssuer, "http://localhost:8081"), Audience: defaultString(dependencies.Config.AuthAudience, "domainry-runtime"),
-		Capabilities: []string{"authentication", "provider_password_authentication", "challenge_authentication", "external_accounts", "action_assurance", "token_verification", "authorization", "principal_resolution", "workflow_workload_identity", "identity_projection", "handler_delivery", "store_organization_delivery", "organization_unit_delivery", "application_registration", "permission_reconciliation", "project_role_catalog", "credentials", "oidc", "saml"},
+		Capabilities: []string{"authentication", "provider_password_authentication", "challenge_authentication", "external_accounts", "action_assurance", "token_verification", "authorization", "principal_resolution", "workflow_workload_identity", "identity_projection", "handler_delivery", "organization_unit_delivery", "application_registration", "permission_reconciliation", "project_role_catalog", "credentials", "oidc", "saml"},
 	}, auth: dependencies.Authentication, providers: dependencies.ProviderConfiguration, flows: dependencies.ProviderFlows,
 		providerCallback: dependencies.ProviderCallback, providerPassword: dependencies.ProviderPassword, access: dependencies.EffectiveAccess, identity: dependencies.Identity,
-		workspaceResolver: dependencies.WorkspaceResolver, applications: dependencies.Applications, permissions: dependencies.Permissions, roleCatalog: dependencies.RoleCatalog, handlerDelivery: dependencies.HandlerDelivery, storeOrganizations: dependencies.StoreOrganizations, organizationUnits: dependencies.OrganizationUnits, clock: dependencies.Clock,
+		workspaceResolver: dependencies.WorkspaceResolver, applications: dependencies.Applications, permissions: dependencies.Permissions, roleCatalog: dependencies.RoleCatalog, handlerDelivery: dependencies.HandlerDelivery, organizationUnits: dependencies.OrganizationUnits, clock: dependencies.Clock,
 		subjects: dependencies.Subjects, mutationFence: dependencies.MutationFence, operationsPersistence: dependencies.OperationsPersistence, loginTransactions: dependencies.LoginTransactions,
 		loginApplicationWorkspaceID: identitysdk.WorkspaceID(strings.TrimSpace(dependencies.Config.IdentityWorkspaceID)),
 		globalBrowserApplications:   cloneGlobalBrowserApplications(dependencies.Config.IdentityGlobalBrowserApplications),

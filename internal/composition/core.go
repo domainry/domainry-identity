@@ -74,7 +74,6 @@ type Core struct {
 	PermissionCatalog     *identityapplication.IdentityPermissionCatalogApplicationService
 	ProfileBindings       *identityapplication.IdentityProfileBindingApplicationService
 	HandlerDelivery       *identityapplication.IdentityHandlerDeliveryApplicationService
-	StoreOrganizations    *identityapplication.IdentityStoreOrganizationDeliveryApplicationService
 	OrganizationUnits     *identityapplication.IdentityOrganizationUnitDeliveryApplicationService
 	Binding               identitysdk.Binding
 }
@@ -303,10 +302,6 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 		WorkspaceID: workspaceID, Authentication: authApp, Applications: applicationRegistrations, Identity: identityApp,
 		ProfileBindings: profileBindings, Transactions: identityStore, Repository: identityStore, Audit: auditApp,
 	})
-	storeOrganizations := identityapplication.NewIdentityStoreOrganizationDeliveryApplicationService(identityapplication.IdentityStoreOrganizationDeliveryDependencies{
-		WorkspaceID: workspaceID, Authentication: authApp, Applications: applicationRegistrations, Identity: identityApp,
-		Transactions: identityStore, Repository: identityStore, Audit: auditApp,
-	})
 	organizationUnits := identityapplication.NewIdentityOrganizationUnitDeliveryApplicationService(identityapplication.IdentityOrganizationUnitDeliveryDependencies{
 		WorkspaceID: workspaceID, Authentication: authApp, Applications: applicationRegistrations, Identity: identityApp,
 		Transactions: identityStore, Repository: identityStore, Audit: auditApp,
@@ -316,7 +311,7 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 		WorkspaceResolver: options.WorkspaceResolver, Config: cfg, Authentication: authApp, ProviderConfiguration: providerConfiguration,
 		ProviderFlows: providerFlows, ProviderCallback: identityprovider.CallbackAdapter{}, ProviderPassword: identityprovider.LDAPPasswordAdapter{},
 		EffectiveAccess: effectiveAccess, Identity: identityApp,
-		Applications: applicationRegistrations, Permissions: permissionCatalog, RoleCatalog: globalRoleCatalog, HandlerDelivery: handlerDelivery, StoreOrganizations: storeOrganizations, OrganizationUnits: organizationUnits,
+		Applications: applicationRegistrations, Permissions: permissionCatalog, RoleCatalog: globalRoleCatalog, HandlerDelivery: handlerDelivery, OrganizationUnits: organizationUnits,
 		Clock: options.Clock, MutationFence: store, OperationsPersistence: identityStore, LoginTransactions: authStore,
 		ResolveLoginWorkspace: func(ctx context.Context, login string) (identitysdk.WorkspaceID, bool, error) {
 			workspaceID, found, err := identityStore.GlobalLoginWorkspace(ctx, login)
@@ -338,7 +333,7 @@ func NewWithManifest(ctx context.Context, cfg config.Config, store *database.Ide
 		MetadataRuntime: metadataRuntime, Metadata: metadataApp, MetadataSchema: metadataSchemaApp,
 		ProviderConfiguration: providerConfiguration, ProviderFlows: providerFlows,
 		EffectiveAccess: effectiveAccess, IdentityActions: identityActions, PermissionCatalog: permissionCatalog,
-		ProfileBindings: profileBindings, HandlerDelivery: handlerDelivery, StoreOrganizations: storeOrganizations, OrganizationUnits: organizationUnits, Binding: binding,
+		ProfileBindings: profileBindings, HandlerDelivery: handlerDelivery, OrganizationUnits: organizationUnits, Binding: binding,
 	}, nil
 }
 

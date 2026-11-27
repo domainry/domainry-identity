@@ -29,7 +29,7 @@ func TestOrganizationUnitDeliveryResolveRendersWorkspaceParentScopeForEveryDiale
 			defer cleanup()
 			store.renderer = test.renderer
 			_, found, err := store.ResolveIdentityDeliveredOrganizationUnit(
-				t.Context(), "workspace-primary", "department-sales", identitymodel.IdentityOrganizationUnitDepartment,
+				t.Context(), "workspace-primary", "department-sales", identitymodel.IdentityOrganizationUnitType("department"),
 				identitymodel.IdentityDataScopeFilter{OwnerOrgIDs: []string{"company-a"}},
 			)
 			if err != nil || found {

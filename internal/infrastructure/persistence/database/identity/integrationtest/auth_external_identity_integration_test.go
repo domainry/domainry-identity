@@ -236,7 +236,7 @@ func newExternalAuthFixture(t *testing.T) (*authdomain.AuthDomainService, *ident
 	t.Helper()
 	repository := identitypersistence.NewMemoryIdentityStore()
 	identity, _ := identitybusiness.NewIdentityDomainService(repository, []identitymodel.IdentityPermissionDefinition{currentPermission("identity.roles.list", "identity.roles", "list")}).ForWorkspace("workspace-primary")
-	if err := identity.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "dept_sales", Code: "dept_sales", NodeType: identitymodel.IdentityOrganizationUnitDepartment, Name: "Sales", Path: "/sales", Status: identitymodel.IdentityStatusActive}); err != nil {
+	if err := identity.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "dept_sales", Code: "dept_sales", NodeType: identitymodel.IdentityOrganizationUnitType("department"), Name: "Sales", Path: "/sales", Status: identitymodel.IdentityStatusActive}); err != nil {
 		t.Fatalf("seed sales organizationUnit: %v", err)
 	}
 	for _, role := range []identitymodel.IdentityRole{

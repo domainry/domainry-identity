@@ -41,8 +41,8 @@ func assertIdentityRepositoryWorkspaceIsolation(t *testing.T, repository identit
 	t.Helper()
 	ctx := t.Context()
 	const workspaceA, workspaceB = "workspace-a", "workspace-b"
-	organizationUnitA := identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "organization-unit-a", Code: "A", Name: "Organization Unit A", NodeType: identitymodel.IdentityOrganizationUnitTeam, Path: "/organization-unit-a"}
-	organizationUnitB := identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "organization-unit-b", Code: "B", Name: "Organization Unit B", NodeType: identitymodel.IdentityOrganizationUnitStore, Path: "/organization-unit-b"}
+	organizationUnitA := identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "organization-unit-a", Code: "A", Name: "Organization Unit A", NodeType: identitymodel.IdentityOrganizationUnitType("team"), Path: "/organization-unit-a"}
+	organizationUnitB := identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "organization-unit-b", Code: "B", Name: "Organization Unit B", NodeType: identitymodel.IdentityOrganizationUnitType("store"), Path: "/organization-unit-b"}
 	userA := identitymodel.IdentityUser{UserID: "user-a", Name: "User A", Email: "a@example.com", OrgID: organizationUnitA.OrganizationUnitID, WorkerNo: "A-001", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive}
 	userB := identitymodel.IdentityUser{UserID: "user-b", Name: "User B", Email: "b@example.com", OrgID: organizationUnitB.OrganizationUnitID, WorkerNo: "B-001", WorkerType: identitymodel.IdentityWorkerEmployee, WorkStatus: identitymodel.IdentityWorkActive}
 	roleA := identitymodel.IdentityRole{RoleID: "role-a", Key: "role-a", Label: "Role A"}

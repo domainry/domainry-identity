@@ -84,7 +84,7 @@ func TestIdentityGovernanceValidationAggregatesUserOrganizationUnitAndRoleAssign
 	objects := map[string]definitionmodel.ObjectSchema{"identity_probe": {Key: "identity_probe", Name: "Identity Probe", Fields: []definitionmodel.FieldSchema{{Key: "name", Name: "Name", Type: "text"}}}}
 	store := identitypersistence.NewMemoryIdentityStore()
 	identity, _ := identitybusiness.NewIdentityDomainService(store, nil).ForWorkspace("workspace-a")
-	if err := identity.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "sales", Code: "sales", NodeType: identitymodel.IdentityOrganizationUnitDepartment, Name: "Sales"}); err != nil {
+	if err := identity.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "sales", Code: "sales", NodeType: identitymodel.IdentityOrganizationUnitType("department"), Name: "Sales"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := identity.UpsertUser(t.Context(), identitymodel.IdentityUser{UserID: "manager", Name: "Manager", Email: "manager@example.com"}); err != nil {

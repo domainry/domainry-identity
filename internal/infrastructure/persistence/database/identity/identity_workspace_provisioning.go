@@ -26,7 +26,6 @@ const (
 	WorkspaceIdentityProvisionStageRole           WorkspaceIdentityProvisionStage = "role"
 	WorkspaceIdentityProvisionStageRoleAssignment WorkspaceIdentityProvisionStage = "role_assignment"
 	WorkspaceIdentityProvisionStageCompany        WorkspaceIdentityProvisionStage = "company"
-	WorkspaceIdentityProvisionStageFirstStore     WorkspaceIdentityProvisionStage = "first_store"
 )
 
 // ProvisionWorkspaceIdentityWithExecutor persists only Identity-owned state
@@ -93,7 +92,7 @@ func (s *SQLIdentityStore) ProvisionWorkspaceIdentityWithExecutor(
 }
 
 // ProvisionWorkspaceAcceptanceFixturesWithExecutor appends only explicitly
-// gated verification identities. The trusted company, store, administrator,
+// gated verification identities. The trusted company root, administrator,
 // administrator assignment, and administrator credential are never touched.
 func (s *SQLIdentityStore) ProvisionWorkspaceAcceptanceFixturesWithExecutor(
 	ctx context.Context,
@@ -131,7 +130,6 @@ func (s *SQLIdentityStore) ProvisionWorkspaceAcceptanceFixturesWithExecutor(
 
 type WorkspaceIdentityBootstrapGraph struct {
 	Company      identitymodel.IdentityOrganizationUnit
-	FirstStore   identitymodel.IdentityOrganizationUnit
 	InitialAdmin identitymodel.IdentityUser
 	Roles        []identitymodel.IdentityRole
 	AdminRoleID  string
@@ -145,7 +143,6 @@ type WorkspaceIdentityBootstrapReceipt struct {
 	ContractVersion                      string `json:"contract_version"`
 	ContractHash                         string `json:"contract_hash"`
 	CompanyID                            string `json:"company_id"`
-	FirstStoreID                         string `json:"first_store_id"`
 	InitialAdminUserID                   string `json:"initial_admin_user_id"`
 	InitialAdminLoginID                  string `json:"initial_admin_login_id"`
 	RoleCatalogSHA256                    string `json:"role_catalog_sha256"`
@@ -162,7 +159,6 @@ type workspaceIdentityBootstrapReceiptJSON struct {
 	ContractVersion                      string `json:"contract_version"`
 	ContractHash                         string `json:"contract_hash"`
 	CompanyID                            string `json:"company_id"`
-	FirstStoreID                         string `json:"first_store_id"`
 	InitialAdminUserID                   string `json:"initial_admin_user_id"`
 	InitialAdminLoginID                  string `json:"initial_admin_login_id"`
 	RoleCatalogSHA256                    string `json:"role_catalog_sha256"`
@@ -174,7 +170,7 @@ type workspaceIdentityBootstrapReceiptJSON struct {
 func (value WorkspaceIdentityBootstrapReceipt) MarshalJSON() ([]byte, error) {
 	return json.Marshal(workspaceIdentityBootstrapReceiptJSON{
 		OperationID: value.OperationID, WorkspaceID: value.WorkspaceID, InvocationID: value.InvocationID, RequestFingerprint: value.RequestFingerprint,
-		ContractVersion: value.ContractVersion, ContractHash: value.ContractHash, CompanyID: value.CompanyID, FirstStoreID: value.FirstStoreID,
+		ContractVersion: value.ContractVersion, ContractHash: value.ContractHash, CompanyID: value.CompanyID,
 		InitialAdminUserID: value.InitialAdminUserID, InitialAdminLoginID: value.InitialAdminLoginID, RoleCatalogSHA256: value.RoleCatalogSHA256,
 		InitialWorkspaceAdministratorRoleKey: value.InitialWorkspaceAdministratorRoleKey,
 		CredentialClaimedAt:                  timeMillis(value.CredentialClaimedAt), CreatedAt: timeMillis(value.CreatedAt),
@@ -188,7 +184,7 @@ func (value *WorkspaceIdentityBootstrapReceipt) UnmarshalJSON(raw []byte) error 
 	}
 	*value = WorkspaceIdentityBootstrapReceipt{
 		OperationID: stored.OperationID, WorkspaceID: stored.WorkspaceID, InvocationID: stored.InvocationID, RequestFingerprint: stored.RequestFingerprint,
-		ContractVersion: stored.ContractVersion, ContractHash: stored.ContractHash, CompanyID: stored.CompanyID, FirstStoreID: stored.FirstStoreID,
+		ContractVersion: stored.ContractVersion, ContractHash: stored.ContractHash, CompanyID: stored.CompanyID,
 		InitialAdminUserID: stored.InitialAdminUserID, InitialAdminLoginID: stored.InitialAdminLoginID, RoleCatalogSHA256: stored.RoleCatalogSHA256,
 		InitialWorkspaceAdministratorRoleKey: stored.InitialWorkspaceAdministratorRoleKey,
 		CredentialClaimedAt:                  timeString(stored.CredentialClaimedAt), CreatedAt: timeString(stored.CreatedAt),
@@ -243,14 +239,6 @@ func (s *SQLIdentityStore) WriteWorkspaceIdentityBootstrapGraphWithExecutor(ctx 
 	}
 	if after != nil {
 		if err := after(WorkspaceIdentityProvisionStageCompany); err != nil {
-			return err
-		}
-	}
-	if err := s.writeIdentityOrganizationUnit(ctx, execer, workspaceID, graph.FirstStore); err != nil {
-		return fmt.Errorf("provision workspace first store: %w", err)
-	}
-	if after != nil {
-		if err := after(WorkspaceIdentityProvisionStageFirstStore); err != nil {
 			return err
 		}
 	}
@@ -334,7 +322,7 @@ func (s *SQLIdentityStore) InsertWorkspaceIdentityBootstrapReceiptWithExecutor(c
 		"contract_hash":    receipt.ContractHash,
 		"role_catalog":     receipt.RoleCatalogSHA256,
 	})
-	relatedIDsJSON, _ := json.Marshal([]string{receipt.WorkspaceID, receipt.CompanyID, receipt.FirstStoreID, receipt.InitialAdminUserID})
+	relatedIDsJSON, _ := json.Marshal([]string{receipt.WorkspaceID, receipt.CompanyID, receipt.InitialAdminUserID})
 	if err := operationreceipt.InsertSucceeded(ctx, execer, s.sqlRenderer(), operationreceipt.Succeeded{
 		OperationID: receipt.OperationID, WorkspaceID: receipt.WorkspaceID, Owner: workspaceBootstrapOperationOwner, Kind: workspaceBootstrapOperationKind,
 		ActionKey: "identity.workspace.bootstrap", ResourceType: "workspace", ResourceID: receipt.WorkspaceID,

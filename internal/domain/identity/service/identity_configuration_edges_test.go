@@ -219,18 +219,18 @@ func TestValidateOrganizationUnitConfigurationContractAndHierarchyMatrix(t *test
 		requireIdentityIssue(t, issues, code)
 	}
 	for _, status := range []identitymodel.IdentityStatus{"", identitymodel.IdentityStatusActive, identitymodel.IdentityStatusDisabled} {
-		got, validateErr := service.ValidateOrganizationUnitConfiguration(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "organizationUnit", Code: "ORG", Name: "OrganizationUnit", NodeType: identitymodel.IdentityOrganizationUnitDepartment, Status: status})
+		got, validateErr := service.ValidateOrganizationUnitConfiguration(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "organizationUnit", Code: "ORG", Name: "OrganizationUnit", NodeType: identitymodel.IdentityOrganizationUnitType("department"), Status: status})
 		if validateErr != nil || len(got) != 0 {
 			t.Fatalf("status=%q issues=%+v err=%v", status, got, validateErr)
 		}
 	}
 	for _, nodeType := range []identitymodel.IdentityOrganizationUnitType{
 		identitymodel.IdentityOrganizationUnitCompany,
-		identitymodel.IdentityOrganizationUnitRegion,
-		identitymodel.IdentityOrganizationUnitStore,
-		identitymodel.IdentityOrganizationUnitDepartment,
-		identitymodel.IdentityOrganizationUnitTeam,
-		identitymodel.IdentityOrganizationUnitWarehouse,
+		identitymodel.IdentityOrganizationUnitType("region"),
+		identitymodel.IdentityOrganizationUnitType("store"),
+		identitymodel.IdentityOrganizationUnitType("department"),
+		identitymodel.IdentityOrganizationUnitType("team"),
+		identitymodel.IdentityOrganizationUnitType("warehouse"),
 	} {
 		got, validateErr := service.ValidateOrganizationUnitConfiguration(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "organizationUnit", Code: "ORG", Name: "OrganizationUnit", NodeType: nodeType})
 		if validateErr != nil || len(got) != 0 {
@@ -260,7 +260,7 @@ func TestValidateOrganizationUnitConfigurationContractAndHierarchyMatrix(t *test
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			repository.organizationUnits = test.organizationUnits
-			got, validateErr := service.ValidateOrganizationUnitConfiguration(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "organizationUnit", Code: "ORG", Name: "OrganizationUnit", NodeType: identitymodel.IdentityOrganizationUnitDepartment, ParentID: test.parentID})
+			got, validateErr := service.ValidateOrganizationUnitConfiguration(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "organizationUnit", Code: "ORG", Name: "OrganizationUnit", NodeType: identitymodel.IdentityOrganizationUnitType("department"), ParentID: test.parentID})
 			if validateErr != nil {
 				t.Fatal(validateErr)
 			}
@@ -281,14 +281,14 @@ func TestValidateOrganizationUnitConfigurationContractAndHierarchyMatrix(t *test
 		{OrganizationUnitID: "different-parent", Name: "OrganizationUnit"},
 		{OrganizationUnitID: "different-name", Name: "Other", ParentID: &root},
 	}
-	issues, err = service.ValidateOrganizationUnitConfiguration(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "same", Code: "SAME", Name: "OrganizationUnit", NodeType: identitymodel.IdentityOrganizationUnitDepartment, ParentID: &root})
+	issues, err = service.ValidateOrganizationUnitConfiguration(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "same", Code: "SAME", Name: "OrganizationUnit", NodeType: identitymodel.IdentityOrganizationUnitType("department"), ParentID: &root})
 	if err != nil {
 		t.Fatal(err)
 	}
 	requireIdentityIssue(t, issues, "backend.identity.organization_unit_name_exists")
 
 	repository.listOrganizationUnitErr = errIdentityOrganizationUnitUserEdge
-	if _, err := service.ValidateOrganizationUnitConfiguration(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "id", Code: "ID", Name: "Name", NodeType: identitymodel.IdentityOrganizationUnitDepartment}); !errors.Is(err, errIdentityOrganizationUnitUserEdge) {
+	if _, err := service.ValidateOrganizationUnitConfiguration(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "id", Code: "ID", Name: "Name", NodeType: identitymodel.IdentityOrganizationUnitType("department")}); !errors.Is(err, errIdentityOrganizationUnitUserEdge) {
 		t.Fatalf("list organizationUnits error=%v", err)
 	}
 }

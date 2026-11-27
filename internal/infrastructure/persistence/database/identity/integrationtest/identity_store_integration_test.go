@@ -20,7 +20,7 @@ func TestIdentityServiceValidatesPermissionsAndComputesEffectiveKeys(t *testing.
 		currentPermission("crm.customer.view", "crm.customer", "view"),
 		currentPermission("crm.customer.edit", "crm.customer", "edit"),
 	}).ForWorkspace("workspace-primary")
-	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "company", Code: "company", NodeType: identitymodel.IdentityOrganizationUnitDepartment, Name: "Company", Path: "/company"}); err != nil {
+	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "company", Code: "company", NodeType: identitymodel.IdentityOrganizationUnitType("department"), Name: "Company", Path: "/company"}); err != nil {
 		t.Fatalf("upsert company organizationUnit: %v", err)
 	}
 	if err := service.UpsertUser(t.Context(), identitymodel.IdentityUser{UserID: "u-admin", Name: "Admin", Email: "admin@example.com"}); err != nil {
@@ -30,18 +30,18 @@ func TestIdentityServiceValidatesPermissionsAndComputesEffectiveKeys(t *testing.
 	if err := service.AssignUserRole(t.Context(), identitymodel.IdentityUserRoleAssignment{UserID: "u-admin", RoleID: "r-admin"}); err != nil {
 		t.Fatalf("assign role: %v", err)
 	}
-	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "d-root", Code: "d-root", NodeType: identitymodel.IdentityOrganizationUnitDepartment, Name: "Root", Path: "/caller-controlled-root"}); err != nil {
+	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "d-root", Code: "d-root", NodeType: identitymodel.IdentityOrganizationUnitType("department"), Name: "Root", Path: "/caller-controlled-root"}); err != nil {
 		t.Fatalf("upsert root organizationUnit: %v", err)
 	}
 	rootParent := "d-root"
-	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "d-child", Code: "d-child", NodeType: identitymodel.IdentityOrganizationUnitDepartment, Name: "Child", ParentID: &rootParent, Path: "/caller-controlled-child"}); err != nil {
+	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "d-child", Code: "d-child", NodeType: identitymodel.IdentityOrganizationUnitType("department"), Name: "Child", ParentID: &rootParent, Path: "/caller-controlled-child"}); err != nil {
 		t.Fatalf("upsert child organizationUnit: %v", err)
 	}
 	childParent := "d-child"
-	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "d-grandchild", Code: "d-grandchild", NodeType: identitymodel.IdentityOrganizationUnitDepartment, Name: "Grandchild", ParentID: &childParent, Path: "/caller-controlled-grandchild"}); err != nil {
+	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "d-grandchild", Code: "d-grandchild", NodeType: identitymodel.IdentityOrganizationUnitType("department"), Name: "Grandchild", ParentID: &childParent, Path: "/caller-controlled-grandchild"}); err != nil {
 		t.Fatalf("upsert grandchild organizationUnit: %v", err)
 	}
-	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "d-child", Code: "d-child", NodeType: identitymodel.IdentityOrganizationUnitDepartment, Name: "Child", ParentID: &rootParent, Path: "/still-not-authoritative"}); err != nil {
+	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "d-child", Code: "d-child", NodeType: identitymodel.IdentityOrganizationUnitType("department"), Name: "Child", ParentID: &rootParent, Path: "/still-not-authoritative"}); err != nil {
 		t.Fatalf("move child organizationUnit: %v", err)
 	}
 	movedOrganizationUnits, err := service.ListOrganizationUnits(t.Context())
@@ -56,15 +56,15 @@ func TestIdentityServiceValidatesPermissionsAndComputesEffectiveKeys(t *testing.
 		t.Fatalf("expected child organizationUnit path to be rebuilt, got %#v", movedOrganizationPaths)
 	}
 	selfParent := "d-self"
-	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "d-self", Code: "d-self", NodeType: identitymodel.IdentityOrganizationUnitDepartment, Name: "Self", ParentID: &selfParent, Path: "/self"}); err == nil {
+	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "d-self", Code: "d-self", NodeType: identitymodel.IdentityOrganizationUnitType("department"), Name: "Self", ParentID: &selfParent, Path: "/self"}); err == nil {
 		t.Fatalf("expected self-parent organizationUnit to be rejected")
 	}
 	missingParent := "d-missing"
-	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "d-orphan", Code: "d-orphan", NodeType: identitymodel.IdentityOrganizationUnitDepartment, Name: "Orphan", ParentID: &missingParent, Path: "/orphan"}); err == nil {
+	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "d-orphan", Code: "d-orphan", NodeType: identitymodel.IdentityOrganizationUnitType("department"), Name: "Orphan", ParentID: &missingParent, Path: "/orphan"}); err == nil {
 		t.Fatalf("expected missing parent organizationUnit to be rejected")
 	}
 	grandchildParent := "d-grandchild"
-	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "d-root", Code: "d-root", NodeType: identitymodel.IdentityOrganizationUnitDepartment, Name: "Root", ParentID: &grandchildParent, Path: "/root"}); err == nil {
+	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "d-root", Code: "d-root", NodeType: identitymodel.IdentityOrganizationUnitType("department"), Name: "Root", ParentID: &grandchildParent, Path: "/root"}); err == nil {
 		t.Fatalf("expected cyclic organizationUnit hierarchy to be rejected")
 	}
 	service.ReplaceRoleDefinitions([]identitymodel.RoleSchema{{Key: "admin", Name: "Admin", Permissions: identitymodel.RolePermissionsWithScope(identitymodel.IdentityDataScopeAll, "crm.customer.edit", "crm.customer.view")}})
@@ -189,30 +189,30 @@ func TestIdentityServiceRejectsDuplicateUserEmails(t *testing.T) {
 func TestIdentityServiceRejectsMissingAndDuplicateSiblingOrganizationUnitNames(t *testing.T) {
 	repo := identitypersistence.NewMemoryIdentityStore()
 	service, _ := identitybusiness.NewIdentityDomainService(repo, nil).ForWorkspace("workspace-primary")
-	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "root-a", Code: "root-a", NodeType: identitymodel.IdentityOrganizationUnitDepartment, Name: "Company"}); err != nil {
+	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "root-a", Code: "root-a", NodeType: identitymodel.IdentityOrganizationUnitType("department"), Name: "Company"}); err != nil {
 		t.Fatalf("upsert first root organizationUnit: %v", err)
 	}
-	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "root-b", Code: "root-b", NodeType: identitymodel.IdentityOrganizationUnitDepartment, Name: " company "}); err == nil {
+	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "root-b", Code: "root-b", NodeType: identitymodel.IdentityOrganizationUnitType("department"), Name: " company "}); err == nil {
 		t.Fatal("expected duplicate root organizationUnit name to be rejected")
 	}
-	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "root-b", Code: "root-b", NodeType: identitymodel.IdentityOrganizationUnitDepartment, Name: "Division"}); err != nil {
+	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "root-b", Code: "root-b", NodeType: identitymodel.IdentityOrganizationUnitType("department"), Name: "Division"}); err != nil {
 		t.Fatalf("upsert second root organizationUnit: %v", err)
 	}
 	rootA := "root-a"
 	rootB := "root-b"
-	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "child-a", Code: "child-a", NodeType: identitymodel.IdentityOrganizationUnitDepartment, Name: "Sales", ParentID: &rootA}); err != nil {
+	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "child-a", Code: "child-a", NodeType: identitymodel.IdentityOrganizationUnitType("department"), Name: "Sales", ParentID: &rootA}); err != nil {
 		t.Fatalf("upsert first child organizationUnit: %v", err)
 	}
-	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "child-b", Code: "child-b", NodeType: identitymodel.IdentityOrganizationUnitDepartment, Name: "SALES", ParentID: &rootA}); err == nil {
+	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "child-b", Code: "child-b", NodeType: identitymodel.IdentityOrganizationUnitType("department"), Name: "SALES", ParentID: &rootA}); err == nil {
 		t.Fatal("expected duplicate sibling organizationUnit name to be rejected")
 	}
-	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "child-b", Code: "child-b", NodeType: identitymodel.IdentityOrganizationUnitDepartment, Name: "Sales", ParentID: &rootB}); err != nil {
+	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "child-b", Code: "child-b", NodeType: identitymodel.IdentityOrganizationUnitType("department"), Name: "Sales", ParentID: &rootB}); err != nil {
 		t.Fatalf("same organizationUnit name under a different parent should remain valid: %v", err)
 	}
-	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "child-a", Code: "child-a", NodeType: identitymodel.IdentityOrganizationUnitDepartment, Name: " SALES ", ParentID: &rootA}); err != nil {
+	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "child-a", Code: "child-a", NodeType: identitymodel.IdentityOrganizationUnitType("department"), Name: " SALES ", ParentID: &rootA}); err != nil {
 		t.Fatalf("updating the existing organizationUnit should remain valid: %v", err)
 	}
-	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "missing-name", Code: "missing-name", NodeType: identitymodel.IdentityOrganizationUnitDepartment, Name: "  "}); err == nil {
+	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "missing-name", Code: "missing-name", NodeType: identitymodel.IdentityOrganizationUnitType("department"), Name: "  "}); err == nil {
 		t.Fatal("expected blank organizationUnit name to be rejected")
 	}
 }
@@ -220,10 +220,10 @@ func TestIdentityServiceRejectsMissingAndDuplicateSiblingOrganizationUnitNames(t
 func TestIdentityServiceKeepsOrganizationUnitSortOrder(t *testing.T) {
 	repo := identitypersistence.NewMemoryIdentityStore()
 	service, _ := identitybusiness.NewIdentityDomainService(repo, nil).ForWorkspace("workspace-primary")
-	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "later", Code: "later", NodeType: identitymodel.IdentityOrganizationUnitDepartment, Name: "Later", SortOrder: 20}); err != nil {
+	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "later", Code: "later", NodeType: identitymodel.IdentityOrganizationUnitType("department"), Name: "Later", SortOrder: 20}); err != nil {
 		t.Fatalf("upsert later organizationUnit: %v", err)
 	}
-	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "earlier", Code: "earlier", NodeType: identitymodel.IdentityOrganizationUnitDepartment, Name: "Earlier", SortOrder: 10}); err != nil {
+	if err := service.UpsertOrganizationUnit(t.Context(), identitymodel.IdentityOrganizationUnit{OrganizationUnitID: "earlier", Code: "earlier", NodeType: identitymodel.IdentityOrganizationUnitType("department"), Name: "Earlier", SortOrder: 10}); err != nil {
 		t.Fatalf("upsert earlier organizationUnit: %v", err)
 	}
 	organizationUnits, err := service.ListOrganizationUnits(t.Context())

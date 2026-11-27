@@ -185,7 +185,7 @@ func TestWorkspaceIdentityBootstrapCreatesGraphAndReleasesCredentialAfterCommit(
 	}
 	completeWorkspaceIdentityBootstrap(t, bootstrap, receipt, identitysdk.WorkspaceIdentityBootstrapTransactionCommitted)
 
-	assertIdentityRowCount(t, db, "_identity_organization_units", request.WorkspaceID, 2)
+	assertIdentityRowCount(t, db, "_identity_organization_units", request.WorkspaceID, 1)
 	assertIdentityRowCount(t, db, "_identity_users", request.WorkspaceID, 1)
 	assertIdentityRowCount(t, db, "_identity_roles", request.WorkspaceID, 0)
 	assertIdentityRowCount(t, db, "_identity_user_role_assignments", request.WorkspaceID, 1)
@@ -427,7 +427,7 @@ func TestWorkspaceIdentityBootstrapReplayAndDuplicateAreDeterministic(t *testing
 		t.Fatal(err)
 	}
 	for table, want := range map[string]int{
-		"_identity_organization_units": 2, "_identity_users": 1, "_identity_roles": 0,
+		"_identity_organization_units": 1, "_identity_users": 1, "_identity_roles": 0,
 		"_identity_user_role_assignments": 1, "_identity_credentials": 1,
 	} {
 		assertIdentityRowCount(t, db, table, request.WorkspaceID, want)
@@ -436,7 +436,7 @@ func TestWorkspaceIdentityBootstrapReplayAndDuplicateAreDeterministic(t *testing
 	assertIdentityOperationCount(t, db, request.WorkspaceID, "identity.workspace_bootstrap", 1)
 
 	conflict := request
-	conflict.FirstStoreName = "Changed Store"
+	conflict.CompanyName = "Changed Company"
 	conflictTx := beginBootstrapTx(t, db)
 	if _, err := bootstrap.BootstrapWorkspaceIdentity(t.Context(), conflict, identitysdk.EmbeddedTransaction{Executor: conflictTx}); err == nil {
 		_ = conflictTx.Rollback()
@@ -531,7 +531,6 @@ func TestWorkspaceIdentityBootstrapRejectsUnpinnedContract(t *testing.T) {
 func TestWorkspaceIdentityBootstrapRollsBackEveryBoundaryAndRetriesCleanly(t *testing.T) {
 	points := []string{
 		identitysdk.WorkspaceProvisionFailureAfterCompany,
-		identitysdk.WorkspaceProvisionFailureAfterFirstStore,
 		identitysdk.WorkspaceProvisionFailureAfterIdentityUser,
 		identitysdk.WorkspaceProvisionFailureAfterIdentityRole,
 		identitysdk.WorkspaceProvisionFailureAfterRoleAssignment,
@@ -649,7 +648,6 @@ func workspaceIdentityBootstrapRequest(workspaceID, invocationID string) identit
 		ContractHash:    identitysdk.WorkspaceIdentityBootstrapContractHash,
 		InvocationID:    invocationID, WorkspaceID: workspaceID,
 		CompanyID: workspaceID + "-company", CompanyCode: "COMPANY", CompanyName: "Example Company",
-		FirstStoreID: workspaceID + "-store", FirstStoreCode: "STORE-001", FirstStoreName: "First Store",
 		InitialAdminUserID: workspaceID + "-admin", InitialAdminLoginID: login, InitialAdminName: "Initial Admin",
 		InitialAdminPassword: "domainry!123",
 	}
@@ -683,7 +681,7 @@ func assertBootstrapOrganizationGraph(t *testing.T, db *sql.DB, request identity
 		}
 		items = append(items, item)
 	}
-	if len(items) != 2 || items[0] != (organization{id: request.CompanyID, nodeType: "company", path: "/" + request.CompanyID, ancestors: "[]", status: "active"}) || items[1] != (organization{id: request.FirstStoreID, nodeType: "store", parentID: request.CompanyID, path: "/" + request.CompanyID + "/" + request.FirstStoreID, ancestors: `["` + request.CompanyID + `"]`, depth: 1, status: "active"}) {
+	if len(items) != 1 || items[0] != (organization{id: request.CompanyID, nodeType: "company", path: "/" + request.CompanyID, ancestors: "[]", status: "active"}) {
 		t.Fatalf("organizations=%#v", items)
 	}
 	var orgID, accountType, status string

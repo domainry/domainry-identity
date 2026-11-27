@@ -12,20 +12,21 @@ implementation repository does not publish a second alias package.
 
 ## Operations and types
 
-`Delivery` has exactly two methods:
+`Delivery` exposes one lifecycle for every non-root organization node:
 
 ```go
 CreateOrganizationUnit(context.Context, DeliveryRequest) (DeliveryResult, error)
 ResolveOrganizationUnit(context.Context, ResolveRequest) (DeliveredOrganizationUnit, error)
+MutateOrganizationUnit(context.Context, MutationRequest) (DeliveryResult, error)
+ListOrganizationUnits(context.Context, ListRequest) (Page, error)
 ```
 
 Create accepts the Runtime-owned stable opaque ID, code, name, node type,
 persisted parent ID, sort order, zero expected version, access token, and
 idempotency key. Identity derives active status, path, ancestors, and depth.
-The V1 delivery child types are `region`, `department`, `team`, and `warehouse`.
-`company` remains root-only. `store` remains exclusively owned by the existing
-purpose-specific `StoreOrganizationDelivery`, so this capability cannot bypass
-store hierarchy or quota policy.
+V1 accepts any product-defined lower-snake-case child type of at most 64
+characters. `company` remains root-only. Node type is data; Identity does not
+own the product's node vocabulary or force a company-to-store topology.
 
 Resolve accepts only an organization ID and expected node type. It does not
 accept a parent ID. Identity joins the requested node to its real persisted,
@@ -33,7 +34,7 @@ active parent inside the current Workspace and applies authorization to that
 parent in the same repository query. A caller therefore cannot discover an
 untrusted parent and cannot forge one to widen its scope.
 
-Both operations return the canonical ID, code, name, node type, status, parent
+All operations return the canonical ID, code, name, node type, status, parent
 ID, path, ancestor IDs, depth, sort order, and delivery version. Creates start
 at version 1.
 
@@ -65,11 +66,13 @@ The module descriptor advertises `organization_unit_delivery` when available.
 The source-owned exact permissions are:
 
 - `identity.organization_unit_delivery.create`
+- `identity.organization_unit_delivery.rename`
+- `identity.organization_unit_delivery.disable`
 - `identity.organization_unit_delivery.resolve`
+- `identity.organization_unit_delivery.list`
 
-These permissions do not imply `identity.organization_units.*` or
-`identity.store_organization_delivery.*`, and those grants do not authorize
-this capability.
+These permissions do not imply the administrator-facing
+`identity.organization_units.*` permissions.
 
 Identity verifies the bearer token, application audience, fixed module
 Workspace, registered application, actor, and authorization revision. Create

@@ -36,24 +36,6 @@ func TestHandlerDeliveryModuleExposesOnlyTransactionBoundNarrowCapability(t *tes
 	}
 }
 
-func TestStoreOrganizationModuleExposesOnlyTransactionBoundNarrowCapability(t *testing.T) {
-	binding := &moduleBinding{}
-	if _, exposed := any(binding).(identitysdk.StoreOrganizationDeliveryBinding); exposed {
-		t.Fatal("embedded module exposed an unbound StoreOrganizationDelivery")
-	}
-	binder := binding.StoreOrganizationDeliveryUnitOfWorkBinder()
-	if _, err := binder.BindStoreOrganizationDeliveryUnitOfWork(identitysdk.EmbeddedTransaction{Executor: &sql.DB{}}); err == nil {
-		t.Fatal("plain database handle was accepted as a transaction")
-	}
-	capability, err := binder.BindStoreOrganizationDeliveryUnitOfWork(identitysdk.EmbeddedTransaction{Executor: &sql.Tx{}})
-	if err != nil || capability == nil {
-		t.Fatalf("bound capability=%v err=%v", capability, err)
-	}
-	if _, leaked := any(capability).(identitysdk.StoreOrganizationDeliveryUnitOfWorkBinder); leaked {
-		t.Fatal("project capability leaked the StoreOrganization transaction binder")
-	}
-}
-
 func TestOrganizationUnitModuleExposesOnlyTransactionBoundNarrowCapability(t *testing.T) {
 	binding := &moduleBinding{}
 	if _, exposed := any(binding).(organizationunit.Binding); exposed {
@@ -120,9 +102,6 @@ func TestDeliveryBindersAcceptDomainryORMSQLiteImmediateTransaction(t *testing.T
 	carrier := identitysdk.EmbeddedTransaction{Executor: transaction}
 	if capability, err := binding.HandlerDeliveryUnitOfWorkBinder().BindHandlerDeliveryUnitOfWork(carrier); err != nil || capability == nil {
 		t.Fatalf("bind HandlerDelivery to SQLite immediate transaction: capability=%v err=%v", capability, err)
-	}
-	if capability, err := binding.StoreOrganizationDeliveryUnitOfWorkBinder().BindStoreOrganizationDeliveryUnitOfWork(carrier); err != nil || capability == nil {
-		t.Fatalf("bind StoreOrganizationDelivery to SQLite immediate transaction: capability=%v err=%v", capability, err)
 	}
 	if capability, err := binding.OrganizationUnitDeliveryUnitOfWorkBinder().BindOrganizationUnitDeliveryUnitOfWork(carrier); err != nil || capability == nil {
 		t.Fatalf("bind OrganizationUnitDelivery to SQLite immediate transaction: capability=%v err=%v", capability, err)
